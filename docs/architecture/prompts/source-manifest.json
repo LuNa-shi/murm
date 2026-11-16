@@ -57,7 +57,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "3522a298790ff717c79b183e55a85789b57204e14b913d881d3ef093ecebd852"
+      "sha256": "bf1b725a805e1f4bc30ac632e5074e26a4b27418b423a361b0f2a44d10554661"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -128,7 +128,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 665,
+      "line": 677,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     },
     {
@@ -175,12 +175,12 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 433,
+      "line": 445,
       "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 745,
+      "line": 757,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {

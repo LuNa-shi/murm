@@ -17,6 +17,16 @@ export const FINAL_TREE_SOURCE_PINS = Object.freeze({
   lean4export: '15f6055e299ad5b89345e533cc2192f4cc00f659',
   mathlib: '0df444a360eaa60ab8c11dca51a86af692955474',
 });
+const fltContractPath = fileURLToPath(new URL('../../benchmarks/flt10/projection-contract.json', import.meta.url));
+const fltPins = Object.freeze({ ...FINAL_TREE_SOURCE_PINS,
+  mathlib: 'db584cd6d46c92f209a44c0f1c829460d327499d',
+  flt: 'aa2d8b34692b16c70f699536de0d8e75b9a3e9ef',
+});
+function sourcePins(configuration) {
+  if (configuration.benchmarkProfile == null) return FINAL_TREE_SOURCE_PINS;
+  if (configuration.benchmarkProfile === 'flt10-dag-v1') return fltPins;
+  throw failure('Unknown checker benchmark profile');
+}
 const hash = value => createHash('sha256').update(stableStringify(value)).digest('hex');
 const failure = message => new Error(message);
 const hostMounts = Object.freeze(['/usr/lib', '/usr/lib64']);
@@ -88,6 +98,7 @@ export async function fingerprintFinalTreeArtifact(root, { label, host = false, 
 }
 
 function selected(configuration) {
+  sourcePins(configuration ?? {});
   if (!configuration || !Array.isArray(configuration.libraryRoots) || !Array.isArray(configuration.comparatorLibraryRoots) ||
       configuration.comparatorLibraryRoots.length !== 2 || !configuration.libraryRoots.length) {
     throw failure('Checker configuration requires pinned dependency and Comparator libraries');
@@ -102,6 +113,10 @@ function selected(configuration) {
     bubblewrap: configuration.bubblewrap ?? '/usr/bin/bwrap', localModules: configuration.localModules ?? [],
     timeoutMs: configuration.timeoutMs ?? 120_000,
     ...(configuration.projectChecks === undefined ? {} : { projectChecks: configuration.projectChecks }),
+    ...(configuration.benchmarkProfile == null ? {} : {
+      benchmarkProfile: configuration.benchmarkProfile, checkpoint: configuration.checkpoint,
+      projectionRoot: configuration.projectionRoot, preserveFixturePrefix: true,
+    }),
   };
 }
 
@@ -124,6 +139,7 @@ async function artifacts(configuration, expected = null) {
     { label: 'systemd-run', path: '/usr/bin/systemd-run' },
     { label: 'systemctl', path: '/usr/bin/systemctl' },
     ...hostMounts.map((path, index) => ({ label: `host-library-${index}`, path, host: true, directory: true })),
+    ...(configuration.benchmarkProfile === 'flt10-dag-v1' ? [{ label: 'flt-contract', path: fltContractPath }] : []),
   ];
   if (expected && (!Array.isArray(expected) || expected.length !== roots.length)) {
     throw failure('Final-tree checker artifact set differs from its lock');
@@ -164,17 +180,20 @@ async function verifyVersion(leanRoot, bubblewrap = null) {
 
 async function verifySources(configuration, sources) {
   const sourceRoots = {};
-  for (const key of ['comparator', 'lean4export', 'mathlib']) {
+  const pins = sourcePins(configuration);
+  for (const key of ['comparator', 'lean4export', 'mathlib', ...(pins.flt ? ['flt'] : [])]) {
     const root = await canonical(sources?.[key], key);
     const { stdout } = await exec('/usr/bin/git', ['-C', root, 'rev-parse', 'HEAD'], { env: {}, timeout: 5000, maxBuffer: 4096 });
     const changes = await exec('/usr/bin/git', ['-C', root, 'status', '--porcelain', '--untracked-files=no'], { env: {}, timeout: 5000, maxBuffer: 64 * 1024 });
-    if (stdout.trim() !== FINAL_TREE_SOURCE_PINS[key] || changes.stdout.trim()) throw failure(`Unexpected ${key} checkout revision or tracked changes`);
+    if (stdout.trim() !== pins[key] || changes.stdout.trim()) throw failure(`Unexpected ${key} checkout revision or tracked changes`);
     sourceRoots[key] = root;
   }
   const library = root => join(root, '.lake/build/lib/lean');
   const mathlibDependencies = JSON.parse(await readFile(join(sourceRoots.mathlib, 'lake-manifest.json'), 'utf8')).packages;
   const dependencyPins = {};
+  const projectionLibrary = pins.flt ? await verifyFltProjection(configuration, sourceRoots.flt) : null;
   for (const root of configuration.libraryRoots) {
+    if (root === projectionLibrary) continue;
     if (root === library(sourceRoots.mathlib)) continue;
     const match = mathlibDependencies.find(pkg => root === library(resolve(sourceRoots.mathlib, '..', pkg.name)));
     if (!match) throw failure('Checker dependency is not a pinned Mathlib package');
@@ -192,13 +211,43 @@ async function verifySources(configuration, sources) {
   return { sourceRoots, dependencyPins };
 }
 
+async function verifyFltProjection(configuration, sourceRoot) {
+  const contract = JSON.parse(await readFile(fltContractPath, 'utf8'))[configuration.checkpoint];
+  if (!contract || !Number.isInteger(configuration.checkpoint)) throw failure('Unknown FLT checkpoint');
+  const root = await canonical(configuration.projectionRoot, 'FLT projection');
+  const library = join(root, 'lib');
+  if (!configuration.libraryRoots.includes(library)) throw failure('FLT projection library is missing');
+  const expected = new Set();
+  for (const [path, expectedHash] of Object.entries(contract.sources)) {
+    const original = await readFile(join(sourceRoot, path));
+    const projected = await readFile(join(root, 'source', path));
+    if (!original.equals(projected) || createHash('sha256').update(projected).digest('hex') !== expectedHash) {
+      throw failure(`FLT definition differs from the pinned cut: ${path}`);
+    }
+    expected.add(path.replace(/\.lean$/, '.olean'));
+  }
+  const frontier = `FLT10/DAG_q${configuration.checkpoint}.lean`;
+  if (await readFile(join(root, 'source', frontier), 'utf8') !== contract.frontier) throw failure('FLT frontier differs from the pinned cut');
+  expected.add(frontier.replace(/\.lean$/, '.olean'));
+  async function visit(directory, prefix = '') {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      const path = `${prefix}${entry.name}`;
+      if (entry.isDirectory()) await visit(join(directory, entry.name), `${path}/`);
+      else if (!entry.isFile() || !expected.delete(path)) throw failure(`Unexpected artifact in FLT projection: ${path}`);
+    }
+  }
+  await visit(library);
+  if (expected.size) throw failure('FLT projection lacks compiled safe modules');
+  return library;
+}
+
 /** Trusted operator tool. This attests to the supplied source/build deployments. */
 export async function createFinalTreeArtifactLock({ configuration, sources }) {
   const deployment = selected(configuration);
   await verifyVersion(deployment.leanRoot);
   const { sourceRoots, dependencyPins } = await verifySources(deployment, sources);
   const manifest = {
-    version: 1, configuration: deployment, sources: FINAL_TREE_SOURCE_PINS, sourceRoots, dependencyPins,
+    version: 1, configuration: deployment, sources: sourcePins(deployment), sourceRoots, dependencyPins,
     artifacts: await artifacts(deployment),
   };
   return { ...manifest, sha256: hash(manifest) };
@@ -206,13 +255,16 @@ export async function createFinalTreeArtifactLock({ configuration, sources }) {
 
 export async function createLockedFinalTreeVerifier({ configuration, problem }) {
   const deployment = selected(configuration);
+  if (deployment.benchmarkProfile === 'flt10-dag-v1' && problem?.checkpoint !== deployment.checkpoint) {
+    throw failure('FLT problem checkpoint does not match the locked projection');
+  }
   const input = configuration.artifactLock;
   if (!input) throw failure('Trusted final-tree artifact lock is required');
   const lock = typeof input === 'string' ? JSON.parse(await readFile(await canonical(input, 'lock'), 'utf8')) : structuredClone(input);
   const { sha256, ...manifest } = lock ?? {};
   if (manifest.version !== 1 || sha256 !== hash(manifest) ||
       stableStringify(manifest.configuration) !== stableStringify(deployment) ||
-      stableStringify(manifest.sources) !== stableStringify(FINAL_TREE_SOURCE_PINS)) {
+      stableStringify(manifest.sources) !== stableStringify(sourcePins(deployment))) {
     throw failure('Final-tree artifact lock does not match this checker configuration');
   }
   if (!Array.isArray(manifest.artifacts)) throw failure('Final-tree artifact lock lacks an artifact set');
@@ -221,8 +273,8 @@ export async function createLockedFinalTreeVerifier({ configuration, problem }) 
   const resources = await verifyCheckerProcessLimits();
   const identity = { ...deployment.identity, environment_ref: `${deployment.identity.environment_ref}:sha256:${sha256}` };
   const adapter = new LeanFinalTreeVerifier({
-    ...deployment, identity, targetPath: problem.problem_file, declarationName: problem.id,
+    ...deployment, identity, targetPath: problem.problem_file, declarationName: problem.declaration_name ?? problem.id,
     fixtureSource: problem.source, fixtureSha256: problem.source_hash,
   });
-  return { adapter, evidence: { artifact_lock_sha256: sha256, identity, sources: FINAL_TREE_SOURCE_PINS, dependency_pins: manifest.dependencyPins, timeout_ms: adapter.timeoutMs, project_checks: adapter.projectChecks, resources } };
+  return { adapter, evidence: { artifact_lock_sha256: sha256, identity, sources: sourcePins(deployment), dependency_pins: manifest.dependencyPins, timeout_ms: adapter.timeoutMs, project_checks: adapter.projectChecks, resources } };
 }

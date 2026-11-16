@@ -279,3 +279,50 @@ The trusted final-tree deployment accepts `projectChecks: true` (default false).
 No new dependency is downloaded at check time. The configured, locked library roots become synthetic offline Lake path dependencies; the toolchain and library artifact fingerprints cover the executable inputs. Project source roots derive from the fixed target path, not a caller flag. See [Services](04-services.md#locked-lake-project-preparation-and-compilation) for module coverage, build outputs and error handling. Rebuild the Agent image after changing CLI help or the Workspace skill; the benchmark verifies their hashes before starting a Bot.
 
 Independent deployment additionally writes private `judge-peer-config.json` (including its coordinator credential), per-service `*.instance-lock` files, and `judge-checker-resources.ndjson` under project state. These are operator-owned deployment/recovery evidence, never Bot/public output.
+
+## FLT10 preparation and checker deployment
+
+`scripts/benchmarks/prepare_flt10.py` consumes a clean FLT source checkout at
+`aa2d8b34692b16c70f699536de0d8e75b9a3e9ef`, Mathlib at
+`db584cd6d46c92f209a44c0f1c829460d327499d`, and the existing Lean 4.33.1 toolchain.
+It uses the upstream statement graph builder to preserve all declaration/import
+metadata while cutting each target's transitive proof cone. Safe definition
+imports are traversed in dependency order; any proof-module import or cycle
+aborts preparation. Each checkpoint compiles its own safe sources and generated
+`FLT10.DAG_qN` with only that projection plus Mathlib dependencies on the search
+path. Compiler failure is bounded to 180 seconds per module and leaves a local
+build log. No Agent or provider is started by preparation. Source-only mode is
+explicitly non-runnable. Existing output directories are rejected.
+
+The generated source and cut identities must match the tracked
+`benchmarks/flt10/projection-contract.json`. Public context shards and manifests
+are prepared for all ten inputs; each problem is bound to its context manifest
+SHA-256. The output config is a private setup input. Supply the existing sandbox,
+model gateway, Mission grant and ordinary Judge policies from the approved local
+deployment. Use one checkpoint-specific `final_tree_checker` per selected run,
+with `benchmarkProfile=flt10-dag-v1`, `checkpoint`, `projectionRoot`, and that
+projection's `lib` alongside the pinned Mathlib package libraries. Do not include
+other checkpoints or the original full FLT build directory. Mathlib search uses
+`MATHLIB_SEARCH_SOURCE_ROOT` pointing only at the same Mathlib source tree.
+
+The artifact-lock creator recognizes only the legacy default profile and the
+FLT profile. The latter pins the separate Mathlib and FLT source revisions,
+checks source cleanliness, verifies safe projected source bytes against the
+tracked contract and rejects extra/missing compiled modules in the projection.
+The lock fingerprints all mounted artifacts plus the FLT contract. Launch checks
+these fingerprints and the normal cgroup/toolchain requirements again. Unknown
+profiles or altered artifacts fail before any research execution. Comparator,
+lean4export, namespace isolation, theorem-type comparison, axiom policy and kernel
+replay are unchanged. FLT additionally fixes the original source prefix before
+its single terminal `sorry`, rejecting changed imports or statement before final
+checking. Ordinary diagnostics still report source errors separately from final
+Mission acceptance.
+
+The existing CLI accepts `--benchmark-root` as a clearer alias of
+`--putnambench-root`; its entry script remains `run-putnambench-benchmark.mjs` for
+compatibility. Metadata records `benchmark` and `fixture_commit` in addition to
+legacy Putnam fields. Select a problem explicitly, use four Cores and project
+parallelism one for the first Q10/Q20 observations, and give each run a fresh
+EXP ID. Time limits and paid-run authorization are owned by Issue #133, not by
+this setup tool. The ordinary shutdown, peer cleanup, checker ownership and
+reporting paths remain the same as other Swarm benchmark runs.

@@ -1,0 +1,27 @@
+{
+  "canonical_theorem": "fermat_last_theorem",
+  "checkpoint_score": 100,
+  "dataset": "FLT10bench",
+  "imports": [
+    "FLT10.DAG_q100"
+  ],
+  "lean_env_id": "formal_flt10_q100",
+  "namespace": "FLT10Bench",
+  "problem_id": "flt10_q100_fermat_last_theorem",
+  "route_stage": "final_flt",
+  "slug": "q100",
+  "solved": false,
+  "source_kind": "anthropic_statement_reconstruction",
+  "source_repository": "repository-local/vendor/flt10-source",
+  "source_revision": "f44bd7c1a53cce80b00fd625a5852d8ad9d1705e",
+  "subset": "core_ladder_v1",
+  "theorem_name": "FLT10Bench.q100_fermat_last_theorem",
+  "theorem_names": [
+    "FLT10Bench.q100_fermat_last_theorem"
+  ],
+  "verification_profile": "formal_flt10",
+  "projection_mode": "proof_dag_cut_v1",
+  "dag_module": "FLT10.DAG_q100",
+  "target_cut": "target_proof_dependency_cone",
+  "definition_policy": "retain_statement_definitions_only_when_their_import_closure_has_no_cut_proof"
+}

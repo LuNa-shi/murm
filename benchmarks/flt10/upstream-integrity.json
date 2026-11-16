@@ -1,0 +1,87 @@
+{
+  "benchmark_revision": "flt10bench-proof-dag-cut-v1",
+  "projection_mode": "proof_dag_cut_v1",
+  "target_cut": "target_proof_dependency_cone",
+  "entries": {
+    "flt10_q100_fermat_last_theorem": {
+      "baseline_sha256": "0aeb60165e5f78ea874b8c8db4cdd2b52766802808b8a664cb3b9e161a538c2d",
+      "canonical_theorem": "fermat_last_theorem",
+      "checkpoint_score": 100,
+      "metadata_sha256": "0f85fe5e57f2c1384a7d0aec093ba80704a34812ec704557dc424a4659f23734",
+      "problem_sha256": "314285d1eee617ac1955158ea5d33dae7160be5ce1e4dca2f01ffffe15d0585f",
+      "source_frontier": "FLT10/DAG_q100.lean"
+    },
+    "flt10_q10_of_counterexample": {
+      "baseline_sha256": "70b457388c35e492ae048993586fcafdae2f0cdaf28b02ca24810d68909f88c4",
+      "canonical_theorem": "FreyPackage.of_counterexample",
+      "checkpoint_score": 10,
+      "metadata_sha256": "fb08e78966312c31c0937cbd77be6d2f4e3f543f4d710c89649b1447bfc6038d",
+      "problem_sha256": "8980e6a309dd83d1d59ec539bc37ebc54d3c475eac00b94c04e13a5bc3aceefc",
+      "source_frontier": "FLT10/DAG_q10.lean"
+    },
+    "flt10_q20_reducible_cofixed": {
+      "baseline_sha256": "822ab7414a071d2ef44e2490ad175dc5547797a8e5d9cf8d146fdb12855c393f",
+      "canonical_theorem": "FreyPackage.frey_reducible_hasCofixedLine",
+      "checkpoint_score": 20,
+      "metadata_sha256": "622080f7c1948367c4eca3f8e39557d9883b795d017732d20610d3aaa47d7241",
+      "problem_sha256": "36d8ad2f1eab99a44a845c009b4020c94cca855b5fe6e40fdc832b5e65afe8b7",
+      "source_frontier": "FLT10/DAG_q20.lean"
+    },
+    "flt10_q30_atp_filtration": {
+      "baseline_sha256": "595bc9b6693d932c3c9e8bb4b8f30a53e9e7fe54d5b51abab70d8e66e51843be",
+      "canonical_theorem": "WeierstrassCurve.exists_atP_filtration_of_multiplicativeReduction",
+      "checkpoint_score": 30,
+      "metadata_sha256": "879352cbaa665105eb9c3bc7f777a0b38f1acbc77d1124a33ed95173b75d5f4d",
+      "problem_sha256": "fe05ff4586570166bcb4a6fea6062bf656d114cd879ce1373f115971eb4dea2c",
+      "source_frontier": "FLT10/DAG_q30.lean"
+    },
+    "flt10_q40_prime_quotient": {
+      "baseline_sha256": "31b24ccd1100b40f8e259d8d1fa04267a15dd0268fce8805ad5d36a4adfb17b6",
+      "canonical_theorem": "WeierstrassCurve.exists_quotientDatum_of_galois_stable_primeCard",
+      "checkpoint_score": 40,
+      "metadata_sha256": "d188f093a26f5f5b0710fc531ecf4834e2a30bf76e311efe3e24b5f3f0ad1efd",
+      "problem_sha256": "479f394f3b44e3ae11fb21e166c230e5dd52ef8033b34f7445bdaaca97428451",
+      "source_frontier": "FLT10/DAG_q40.lean"
+    },
+    "flt10_q50_mazur_step_three": {
+      "baseline_sha256": "72267e54697e1c1c5134cac99ba7f403d1509aac46e44a1e482dcd3e0a731645",
+      "canonical_theorem": "WeierstrassCurve.mazurStepThree_not_inZeroComponentAt",
+      "checkpoint_score": 50,
+      "metadata_sha256": "6a68533b9ffc6234d2fe3680ff80d3064782dfde272f9c448d191ce12b0e3637",
+      "problem_sha256": "2eaceee2b0069d2ad92d4eb53965e5455bed33f9afb826bbc2f4e712bb068ab8",
+      "source_frontier": "FLT10/DAG_q50.lean"
+    },
+    "flt10_q60_no_cofixed_large": {
+      "baseline_sha256": "9d8c260e99596a30634335908f93c88d6a4ea643e8f892c4205e950c709076bc",
+      "canonical_theorem": "FreyPackage.frey_no_cofixed_large",
+      "checkpoint_score": 60,
+      "metadata_sha256": "d603ca3b9cc7fbd33257052a090c4937932029df706ff9d180093460227a694f",
+      "problem_sha256": "bffe766933efed3b1c6a472d48da4071af99f78bc3e17b2957f405212eb95564",
+      "source_frontier": "FLT10/DAG_q60.lean"
+    },
+    "flt10_q70_mazur_frey": {
+      "baseline_sha256": "00ce74faf206fb8d6a4abc117f54744e4ae614cbc69c85f2b230c650e103b864",
+      "canonical_theorem": "FreyPackage.Mazur_Frey",
+      "checkpoint_score": 70,
+      "metadata_sha256": "0d53fafae68f6874ab7a64a317efe867002ecb32e52ee7bf6fe44461e64352d7",
+      "problem_sha256": "6b0f5edafc7ff2eacbbba12dbbcec9ebddbf52ec859eb2582a577fff02a52496",
+      "source_frontier": "FLT10/DAG_q70.lean"
+    },
+    "flt10_q80_frey_is_modular": {
+      "baseline_sha256": "cfa5c411ee7765fb8ee07bccb47cedcdba6021d7759356234bc7e43d46fdead0",
+      "canonical_theorem": "FreyPackage.frey_isModular",
+      "checkpoint_score": 80,
+      "metadata_sha256": "a0e368919e8ea446f944c947e87e7ffa3838c9b48567f08f5406a0c6753f5701",
+      "problem_sha256": "3b1b165b1a196a5b96b80996dab2d10ebe95292c224618ddbf4db87d02ff27ef",
+      "source_frontier": "FLT10/DAG_q80.lean"
+    },
+    "flt10_q90_level_lowering": {
+      "baseline_sha256": "d345b831d5c7c6c768700d52ddd575860ab73b1ef6a487d8ec7c1bdb954dbd87",
+      "canonical_theorem": "FreyPackage.level_lowering_to_two",
+      "checkpoint_score": 90,
+      "metadata_sha256": "854d64a3df5bf7d1dc90d7b93353aeebf23264f949ceea23d062126964ac879e",
+      "problem_sha256": "ad865cbb2351f1ff61b1e685247cacc8c78073d1f240593b78f6aee16c380bc6",
+      "source_frontier": "FLT10/DAG_q90.lean"
+    }
+  }
+}

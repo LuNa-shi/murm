@@ -30,6 +30,16 @@ test('final-tree verifier fixes the source identity and rejects missing source b
 
 const lean = { skip: !leanRoot || !comparatorRoot };
 
+test('benchmark proof-placeholder contract rejects changed imports or statement before dispatch', async () => {
+  const source = 'import FLT10.DAG_q10\ntheorem FLT10Bench.target : True := by\n  sorry\n';
+  const verifier = fixture(source, { declarationName: 'FLT10Bench.target', preserveFixturePrefix: true });
+  for (const candidate of [source.replace('FLT10.DAG_q10', 'Mathlib'), source.replace(': True', ': False')]) {
+    const result = await verifier.check({ files: { 'Toy.lean': candidate }, tree: 'fixed' });
+    assert.equal(result.verdict, 'FAIL');
+    assert.match(result.diagnostic, /fixture prefix/);
+  }
+});
+
 test('production locked source diagnostics compile the full Mathlib import', {
   skip: !leanRoot || !process.env.SWARMENV_TEST_PUTNAM_ROOT || !process.env.SWARMENV_TEST_CHECKER_CGROUP,
 }, async t => {

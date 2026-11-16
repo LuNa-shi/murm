@@ -4,7 +4,7 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 export const FIXTURE_REQUIRED_FIELDS = Object.freeze([
-  'fixture_id', 'putnambench_commit', 'problem_file', 'problem_file_hash', 'lean_toolchain',
+  'fixture_id', 'problem_file', 'problem_file_hash', 'lean_toolchain',
   'mathlib_version', 'checker_ref', 'checker_version', 'environment_ref',
 ]);
 
@@ -17,7 +17,8 @@ export function validateFixtureManifest(manifest) {
   for (const field of FIXTURE_REQUIRED_FIELDS) {
     if (typeof manifest[field] !== 'string' || manifest[field].length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `fixture_manifest.${field} is required`);
   }
-  if (!/^[0-9a-f]{40}$/.test(manifest.putnambench_commit)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'putnambench_commit must be a full commit SHA');
+  const commit = manifest.fixture_commit ?? manifest.putnambench_commit;
+  if (!/^[0-9a-f]{40}$/.test(commit)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'fixture_commit (or putnambench_commit) must be a full commit SHA');
   if (!/^[0-9a-f]{64}$/.test(manifest.problem_file_hash)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'problem_file_hash must be SHA-256');
   return manifest;
 }

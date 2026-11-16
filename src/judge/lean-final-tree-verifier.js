@@ -246,7 +246,7 @@ function collectProjectDiagnostics(sources) {
 export class LeanFinalTreeVerifier {
   constructor({
     identity, leanRoot, libraryRoots = [], comparatorLibraryRoots, exporterPath, targetPath,
-    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, timeoutMs = 120_000, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
+    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, preserveFixturePrefix = false, timeoutMs = 120_000, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
   }) {
     if (!identity || !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof identity[key] === 'string' && identity[key])) {
       throw new TypeError('Final-tree verifier requires a fixed checker identity');
@@ -278,6 +278,13 @@ export class LeanFinalTreeVerifier {
     this.targetPath = targetPath;
     this.declarationName = declarationName;
     this.fixtureSource = Buffer.from(fixtureSource);
+    if (typeof preserveFixturePrefix !== 'boolean') throw new TypeError('Invalid fixture prefix policy');
+    const placeholder = this.fixtureSource.toString().match(/\bsorry\b/g);
+    if (preserveFixturePrefix && (placeholder?.length !== 1 || !/\bsorry\s*$/.test(this.fixtureSource.toString()))) {
+      throw new TypeError('Proof-placeholder fixture requires one terminal sorry');
+    }
+    this.fixturePrefix = preserveFixturePrefix
+      ? this.fixtureSource.toString().slice(0, this.fixtureSource.toString().lastIndexOf('sorry')) : null;
     this.timeoutMs = timeoutMs;
     this.resourceLimits = allowUnboundedDiagnostics !== true;
     // The systemd cgroup remains the production memory authority. Lean's
@@ -432,6 +439,9 @@ export class LeanFinalTreeVerifier {
     try {
       assertWithinDeadline({ signal, deadline });
       if (!files || !Object.hasOwn(files, this.targetPath)) return result('FAIL', 'Final tree lacks the locked theorem source path');
+      if (this.fixturePrefix !== null && !files[this.targetPath].toString().startsWith(this.fixturePrefix)) {
+        return result('FAIL', 'Benchmark fixture prefix (imports and theorem statement) changed');
+      }
       if (this.localModules.some(module => !Object.hasOwn(files, module.path))) {
         return result('FAIL', 'Final tree lacks a configured local Lean module source');
       }

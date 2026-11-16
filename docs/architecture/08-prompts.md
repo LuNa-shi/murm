@@ -234,3 +234,15 @@ The registered Bot Bridge sends Chinese `notice` fields on the same CLI response
 | Soft closeout and finish | The soft-closeout body names the E and the milliseconds remaining against its persisted deadline at composition. It is available in an already scheduled continuation or handoff notification. A finish response identifies the durable request and E admitted to closing before physical release. |
 
 The `use-workspace` skill now describes conditional project checking: save a fixed revision, use a revision-only Judge call for project diagnostics, and add `--path` when a Task requires file-specific delivery evidence. It explains imports under the locked source directory, actual module coverage, warnings and the separate Mission proof check. The skill remains an image resource discovered through the existing manifest and sent through the existing skill-read path; it does not grant new authority or require a particular research decomposition. The command help distinguishes deployments with project checking from compatibility source-only deployments.
+
+### FLT10 Mission context
+
+The benchmark runner retains the ordinary Mission goal template
+`Solve ${problem.id} through independent, shared Task work.` For the explicit
+`flt10` profile it appends the exact sentence ` Read benchmark/README.md for the
+fixed benchmark contract and public context.` This goal enters the same Mission
+and discovery context paths described above. The README is verified public
+Workspace input and explains the pinned original target, proof-placeholder
+restriction, complete compressed statement graph queries and safe definition
+references. It is not automatically expanded into every turn. No ContextSwarm
+Agent prompt, collaboration policy or scheduler instruction is imported.

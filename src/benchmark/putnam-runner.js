@@ -25,6 +25,7 @@ import { ServicesSDK } from '../sdk/services-sdk.js';
 import { TaskService, fixedExecutionInputHash } from '../task/task-service.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 import { verifyBenchmarkFixtureCheckout, readBenchmarkFixture, verifyBenchmarkRunFixture, assertTimedServiceComposition } from './benchmark-fixture.js';
+import { readBenchmarkContext } from './benchmark-context.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
@@ -309,7 +310,9 @@ function taskContext(router, task, actorRef) {
 
 function fixtureManifest(problem, sourceHash, leanProjectRoot, config) {
   return {
-    fixture_id: `putnam-${problem.id}`,
+    fixture_id: `${config.benchmark ?? 'putnam'}-${problem.id}`,
+    benchmark: config.benchmark ?? 'putnambench',
+    fixture_commit: config.fixture_commit ?? config.putnambench_commit,
     putnambench_commit: config.putnambench_commit,
     problem_file: problem.problem_file,
     problem_file_hash: sourceHash,
@@ -370,11 +373,16 @@ function observationLogger(observationStore, experimentId, source) {
 export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyPinnedCheckout = false } = {}) {
   const config = JSON.parse(await readFile(resolve(configPath), 'utf8'));
   required(putnamBenchRoot, 'putnamBenchRoot');
-  if (!Array.isArray(config.problems) || config.problems.length !== 12) {
-    throw new TypeError('benchmark config must contain exactly 12 problems');
+  if (config.benchmark != null && !['putnambench', 'flt10'].includes(config.benchmark)) {
+    throw new TypeError('unsupported benchmark');
   }
+  const problemCount = config.benchmark === 'flt10' ? 10 : 12;
+  if (!Array.isArray(config.problems) || config.problems.length !== problemCount) {
+    throw new TypeError(`benchmark config must contain exactly ${problemCount} problems`);
+  }
+  const commit = config.fixture_commit ?? config.putnambench_commit;
   const root = resolve(putnamBenchRoot);
-  if (verifyPinnedCheckout) await verifyBenchmarkFixtureCheckout({ root, commit: config.putnambench_commit });
+  if (verifyPinnedCheckout) await verifyBenchmarkFixtureCheckout({ root, commit });
   const leanProjectRoot = resolve(root, 'lean4');
   const projectRoot = await readFile(join(leanProjectRoot, 'lean-toolchain'), 'utf8')
     .then(() => leanProjectRoot)
@@ -384,8 +392,12 @@ export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyP
   for (const problem of config.problems) {
     if (seen.has(problem.id)) throw new TypeError(`duplicate problem id: ${problem.id}`);
     seen.add(problem.id);
-    const { sourcePath, source, sourceHash } = await readBenchmarkFixture({ root, path: problem.problem_file, commit: verifyPinnedCheckout ? config.putnambench_commit : null });
+    const { sourcePath, source, sourceHash } = await readBenchmarkFixture({ root, path: problem.problem_file, commit: verifyPinnedCheckout ? commit : null });
     validateProblemInput(problem, source);
+    if (problem.source_sha256 != null && sourceHash !== problem.source_sha256) throw new TypeError(`benchmark source digest mismatch: ${problem.id}`);
+    if (config.benchmark === 'flt10' && !/^FLT10Bench\.[A-Za-z_][A-Za-z0-9_]*$/.test(problem.declaration_name ?? '')) {
+      throw new TypeError('FLT10 requires an explicit Lean declaration name');
+    }
     problems.push({
       ...problem,
       source_path: sourcePath,
@@ -1728,12 +1740,12 @@ async function createProjectState(problem, config, options) {
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
     const mission = taskService.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
-      goal: `Solve ${problem.id} through independent, shared Task work.`,
+      goal: `Solve ${problem.id} through independent, shared Task work.${config.benchmark === 'flt10' ? ' Read benchmark/README.md for the fixed benchmark contract and public context.' : ''}`,
       ...(workspaceMergeChecker ? { merge_required_check: workspaceMergeChecker.identity } : {}),
       acceptance_conditions: {
         project: problem.id,
         source_hash: problem.source_hash,
-        theorem: problem.id,
+        theorem: problem.declaration_name ?? problem.id,
         target_path: problem.problem_file,
         required_check: finalTreeChecker?.identity ?? null,
       },
@@ -1742,7 +1754,7 @@ async function createProjectState(problem, config, options) {
     const publicWorkspace = await missionWorkspace.create({
       missionId: mission.mission_id,
       workspaceId,
-      initialFiles: { [problem.problem_file]: problem.source },
+      initialFiles: { ...await readBenchmarkContext(problem, config), [problem.problem_file]: problem.source },
       metadata: { input_snapshot_hash: problem.source_hash, checker: fixture.checker_ref, environment: fixture.environment_ref },
     });
     missionSubmissionStore = createMissionCoordination({ taskService, contextService, workspace: missionWorkspace,
@@ -2695,7 +2707,7 @@ async function runProject(problem, config, options) {
   if ((options.timeboxMs ?? 60 * 60_000) > 0) {
     problem = { ...problem };
     config = { ...config };
-    const verified = await verifyBenchmarkRunFixture({ root: config.putnam_bench_root, commit: config.putnambench_commit, problem })
+    const verified = await verifyBenchmarkRunFixture({ root: config.putnam_bench_root, commit: config.fixture_commit ?? config.putnambench_commit, problem })
       .catch(error => {
         if (options.signal?.aborted) throw operatorStop();
         throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Timed benchmarks require a verified committed fixture', {}, { cause: error });

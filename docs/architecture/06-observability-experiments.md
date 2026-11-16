@@ -257,3 +257,32 @@ The analyzer reads raw Pi `tool_execution_end`/`tool_result` events and hashes t
 ## Independent service evidence
 
 The coordinator logs remote Context/Judge request start/completion and records the peer PIDs and HTTP deployment mode. Judge peers currently do not receive the coordinator's stage logger. Their durable CheckResult database, phase receipts, private stderr log and checker resource ledger establish peer-side outcomes; a per-stage checker NDJSON stream must not be inferred from coordinator completion records. Raw databases, logs and resource identities stay in ignored experiment storage. Checker cleanup is verified before terminal report eligibility; peer shutdown subsequently remains part of store close, and a shutdown failure propagates instead of silently confirming process cleanup.
+
+## FLT10 benchmark inputs
+
+Issue #133 adds the complete ten-checkpoint FLT10 ladder as benchmark inputs;
+its first authorized observations select Q10 and Q20 individually. The existing
+runner and Swarm organization execute them. `config/flt10.json` names the pinned
+ContextSwarm fixture commit and original paths, original baseline digests, and
+explicit Lean declaration names. Project IDs remain filesystem-safe identifiers;
+`declaration_name` selects the namespaced theorem for Mission acceptance and
+independent kernel replay. Legacy Putnam manifests still use the project ID.
+
+The loader requires ten entries for `benchmark=flt10` and twelve for the default
+Putnam profile, rejects unknown profiles, duplicates, malformed FLT names and
+source hash changes, and checks each original file against the pinned Git blob.
+Timed execution repeats the fixture check. Generic `fixture_commit` records the
+input revision; `putnambench_commit` remains readable for old inputs and reports.
+
+Before initial Workspace creation, `readBenchmarkContext` verifies a host-bound
+context manifest and every file digest, rejects traversal, symlinks, duplicates,
+Lean source destinations and files outside `benchmark/`, and enforces 2 MiB per
+file and 14 MiB total. Failures stop setup and trigger normal project cleanup.
+The verified bytes seed the public Workspace with the original target source.
+Full graph metadata is split into independently compressed XZ shards. The Python
+reader checks each shard and searches statements in memory without extracting the
+whole graph to Bot disk. Cut metadata and safe definition text accompany it.
+These are public input files, not Tasks or Materials; the usual Workspace revision
+history records subsequent research changes. The seeded README explains the exact
+target path and metadata query commands. No completed proof or historical run is
+seeded. Core scheduling, Task selection and collaboration rules are unchanged.

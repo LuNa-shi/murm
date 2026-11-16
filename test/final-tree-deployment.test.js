@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS } from '../src/judge/final-tree-deployment.js';
+import { createFinalTreeArtifactLock, createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS } from '../src/judge/final-tree-deployment.js';
 import { stableStringify } from '../src/protocol/envelope.js';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -13,6 +13,10 @@ const configuration = {
   identity, leanRoot: '/not-installed', libraryRoots: ['/nominal-dependency'],
   comparatorLibraryRoots: ['/nominal-comparator', '/nominal-export-lib'], exporterPath: '/nominal-export',
 };
+
+test('checker lock rejects unknown benchmark profiles before tool invocation', async () => {
+  await assert.rejects(createFinalTreeArtifactLock({ configuration: { ...configuration, benchmarkProfile: 'arbitrary' } }), /benchmark profile/);
+});
 
 test('deployment gate requires the lock and rejects altered content or selection before invoking tools', async () => {
   await assert.rejects(createLockedFinalTreeVerifier({ configuration }), /artifact lock is required/);
