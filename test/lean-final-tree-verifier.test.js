@@ -116,6 +116,61 @@ test('real isolated Lean uses local modules from the complete tree with trusted 
   assert.equal((await verifier.check({ files, tree: 'missing' })).verdict, 'FAIL');
 });
 
+test('Lake project input rejects sources outside the module layout and trusted namespace collisions', async () => {
+  const verifier = fixture(undefined, { projectChecks: true, targetPath: 'src/Toy.lean' });
+  const files = { 'src/Toy.lean': Buffer.from('theorem toy : True := trivial\n') };
+  const startProcess = () => assert.fail('invalid project input must not launch a process');
+  for (const path of ['Outside.lean', 'src/Bad.Name.lean', 'src/Mathlib/Shadow.lean']) {
+    const result = await verifier.checkProject({ files: { ...files, [path]: 'example : True := trivial\n' }, tree: 'invalid', startProcess });
+    assert.equal(result.verdict, 'FAIL');
+    assert.ok(result.diagnostic.includes(path));
+    assert.deepEqual(result.checked_paths, []);
+  }
+});
+
+test('isolated Lake compiles offline Mathlib and all project modules before independent proof checking', {
+  skip: !leanRoot || !comparatorRoot || !process.env.SWARMENV_TEST_PUTNAM_ROOT || !process.env.SWARMENV_TEST_CHECKER_CGROUP,
+}, async () => {
+  const libraryRoots = ['batteries', 'Qq', 'aesop', 'proofwidgets', 'importGraph', 'LeanSearchClient', 'plausible', 'mathlib']
+    .map(pkg => join(process.env.SWARMENV_TEST_PUTNAM_ROOT, '.lake/packages', pkg, '.lake/build/lib/lean'));
+  const verifier = fixture(undefined, { projectChecks: true, targetPath: 'src/Toy.lean', libraryRoots });
+  const files = {
+    'src/Toy.lean': Buffer.from('import Helpers.Counting\ntheorem toy : True := counting\n'),
+    'src/Helpers/Counting.lean': 'import Helpers.Geometry\ntheorem counting : True := geometry\n',
+    'src/Helpers/Geometry.lean': 'import Mathlib\ntheorem geometry : True := trivial\n',
+    'lakefile.lean': 'this candidate configuration must never execute\n',
+    'lake-manifest.json': 'this candidate manifest must never load\n',
+    '.lake/build/lib/lean/Helpers/Geometry.olean': Buffer.from('also untrusted'),
+  };
+  let launches = 0;
+  const complete = await verifier.checkProject({ files, tree: 'fixed', startProcess: launch => { launches++; return launch(); } });
+  assert.equal(complete.verdict, 'PASS', complete.diagnostic);
+  assert.equal(launches, 1);
+  assert.equal(complete.checked_tree, 'fixed');
+  assert.deepEqual(complete.checked_paths, ['src/Helpers/Counting.lean', 'src/Helpers/Geometry.lean', 'src/Toy.lean']);
+  const broken = await verifier.checkProject({ files: { ...files, 'src/Unreferenced.lean': 'theorem broken : True := 0\n' }, tree: 'broken' });
+  assert.equal(broken.verdict, 'FAIL', broken.diagnostic);
+  assert.match(broken.diagnostic, /src\/Unreferenced\.lean/);
+  const missing = { ...files };
+  delete missing['src/Helpers/Geometry.lean'];
+  const missedDependency = await verifier.checkProject({ files: missing, tree: 'missing' });
+  assert.equal(missedDependency.verdict, 'FAIL', missedDependency.diagnostic);
+  assert.match(missedDependency.diagnostic, /Helpers\.Geometry/);
+  const cyclic = await verifier.checkProject({ files: { ...files,
+    'src/Helpers/Geometry.lean': 'import Helpers.Counting\ntheorem geometry : True := trivial\n' }, tree: 'cycle' });
+  assert.equal(cyclic.verdict, 'FAIL', cyclic.diagnostic);
+  assert.match(cyclic.diagnostic, /cycle/);
+  const accepted = await verifier.check({ files, tree: 'fixed' });
+  assert.equal(accepted.verdict, 'PASS', accepted.diagnostic);
+  const sorry = { ...files, 'src/Helpers/Geometry.lean': 'theorem geometry : True := by sorry\n' };
+  const tentative = await verifier.checkProject({ files: sorry, tree: 'sorry' });
+  assert.equal(tentative.verdict, 'PASS', tentative.diagnostic);
+  assert.match(tentative.warnings.join('\n'), /Geometry\.lean.*sorry/);
+  const rejected = await verifier.check({ files: sorry, tree: 'sorry' });
+  assert.equal(rejected.verdict, 'FAIL', rejected.diagnostic);
+  assert.match(rejected.diagnostic, /axiom policy/);
+});
+
 test('real isolated Lean does not expose the host home, environment, or project write access', lean, async () => {
   const result = await fixture().check({ files: { 'Toy.lean': `
 def inspectSandbox : IO Unit := do

@@ -138,7 +138,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, coordinationPermissions = [], workspaceMergeChecker = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -148,6 +148,7 @@ export class Runtime {
     // repository revisions to a Bot; Git itself remains Runtime-owned.
     this.missionWorkspace = missionWorkspace;
     this.missionWorkspaceId = missionWorkspaceId;
+    this.workspaceProjectCheck = workspaceProjectCheck;
     this.missionSubmissionStore = missionSubmissionStore;
     this.coordinationPermissions = Object.freeze([...coordinationPermissions]);
     if (workspaceMergeChecker && (typeof workspaceMergeChecker.check !== 'function' ||
@@ -754,11 +755,17 @@ export class Runtime {
   async readWorkspaceCheckSource(input, identity) {
     this.#guardExecutionWorkspace(identity);
     const allowed = new Set(['workspace_id', 'revision', 'path', 'request_key']);
+    const hasPath = input?.path !== undefined;
     if (!input || Object.keys(input).some(key => !allowed.has(key)) || !/^\d+\.\d+$/.test(input.revision ?? '') ||
-        typeof input.path !== 'string' || !input.path || input.path.startsWith('/') || input.path.includes('\\') || input.path.split('/').some(part => !part || part === '.' || part === '..')) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge check requires a fixed public revision and path; save the project first');
+        (!hasPath && !this.workspaceProjectCheck) ||
+        (hasPath && (typeof input.path !== 'string' || !input.path || input.path.startsWith('/') || input.path.includes('\\') || input.path.split('/').some(part => !part || part === '.' || part === '..')))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, this.workspaceProjectCheck
+        ? 'Judge check requires a fixed public revision and a valid optional file path; save the project first'
+        : 'Judge check requires a fixed public revision and path; save the project first');
     }
     if (input.workspace_id !== undefined && input.workspace_id !== this.missionWorkspaceId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge input must belong to the Bot Mission Workspace');
+    if (this.workspaceProjectCheck) return { workspace_id: this.missionWorkspaceId, revision: input.revision,
+      ...(hasPath ? { path: input.path } : {}), check_mode: 'lean-project' };
     const snapshot = await this.missionWorkspace.exportRevision({ workspaceId: this.missionWorkspaceId, revision: input.revision });
     this.#guardExecutionWorkspace(identity);
     if (!Object.hasOwn(snapshot.files, input.path)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge file is unavailable at the fixed public revision');
@@ -833,6 +840,10 @@ export class Runtime {
         const check = Promise.resolve().then(() => adapter.check({
           ...plan, signal: controller.signal, identity: adapter.identity,
           source: { task_id: task.task_id, execution_id: initial.execution_id }, deadline,
+          startProcess: launch => this.taskService.withServiceLifecycleWrite(() => {
+            guard();
+            return launch();
+          }),
         }));
         const active = { controller, promise: check.finally(() => {
           if (this.activeWorkspaceCheck === active) this.activeWorkspaceCheck = null;
@@ -845,6 +856,7 @@ export class Runtime {
           if (Date.now() >= deadline) throw new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline');
           return { verdict: result?.verdict, check_result_id: typeof result?.check_result_id === 'string' ? result.check_result_id.slice(0, 256) : null,
             diagnostic: typeof result?.diagnostic === 'string' ? result.diagnostic.slice(0, 2048) : null,
+            ...(result?.check_mode === 'lean-project' ? { check_mode: result.check_mode, checked_count: result.checked_paths?.length ?? 0 } : {}),
             checked_tree: plan.tree, checker: adapter.identity, policy: checkPolicy };
         } finally { clearTimeout(timer); }
       } : null,

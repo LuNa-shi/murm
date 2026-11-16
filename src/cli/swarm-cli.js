@@ -31,7 +31,7 @@ Follow next_cursor even after an empty page, then view Task details before propo
     create: TASK_PROPOSAL_HELP,
     take: 'Take an eligible Task by its positional ID. Example: swarm task take T1 --request-id take-t1 (replace T1 with the returned task_id). The result includes the Execution and pinned inputs. If the response is unknown, reuse the same request ID with the same Task.',
     link: `Link a published Material to a Task. Provide --task-id, --material-id and --role (input, response, handoff, or experience).
-Create the link during an active Execution, before soft closeout; linking is not a soft-closeout operation.
+Plan to create the link during an active Execution, before soft closeout.
 To cite your own published Material when finishing, link it to your current Task with --role experience.
 Example: swarm task link --task-id T1 --material-id M1 --role experience --request-id link-m1
 Replace T1 and M1 with the current task_id and the published material_id. Response and handoff links require the producing Execution. A response targets a different receiving Task.`,
@@ -78,7 +78,9 @@ Replace M1 with an actual Material ID. After an unknown response, reuse the same
     finish: 'Record the result of a durable Mission submission.',
   },
   judge: {
-    check: `Check a saved public Workspace file with --revision and --path. Save first. This diagnostic checks the selected file in the configured Lean environment. Other files in the saved revision are not loaded as local import modules. Final Mission acceptance checks a fixed tree separately.
+    check: `Check a saved public Workspace revision with --revision R. When the project checker is configured, Lake builds the revision's Lean modules, including local imports. Find the locked target path with swarm mission view. Keep Lean sources under the target's source directory, and import siblings by module name relative to that directory. Example: if the target is lean4/src/Main.lean, save lean4/src/Proof/Geometry.lean and write import Proof.Geometry. Judge uses its trusted project configuration.
+Add --path P to identify a particular Lean delivery file in the receipt. This still builds the whole project. The selected file must satisfy the delivery source policy. Legacy single-file checkers require --path.
+A build result is diagnostic. A check without --path does not supply a Task delivery file receipt. Mission acceptance separately validates the locked target proof on a fixed tree.
 --timeout-ms controls how long the CLI waits for HTTP. The service controls the checker's execution limit. For a 3-minute source check with preflight already ready, use --timeout-ms 210000 to allow extra response time.
 Use a stable --request-id. After a lost response, use swarm judge result --request-key with the original ID, or repeat the same request with the same ID.`,
     result: 'Read one CheckResult. Use --check-result-id or --request-key; request-key lookup survives a lost submit response.',

@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { createWriteStream } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { finished } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCheckerProcessLimits } from './checker-process-limits.js';
 
@@ -160,10 +160,67 @@ async function materialize(directory, files, budget) {
   }
 }
 
+function projectSources(files, targetPath, reservedModules) {
+  if (!files || typeof files !== 'object' || !Object.hasOwn(files, targetPath)) {
+    throw new TypeError('Workspace project lacks the locked theorem source path');
+  }
+  const root = posix.dirname(targetPath);
+  const prefix = root === '.' ? '' : `${root}/`;
+  const sources = [];
+  for (const path of Object.keys(files).sort()) {
+    // Candidate Lake configuration is inert. Judge provides its own project.
+    if (!path.endsWith('.lean') || path === 'lakefile.lean') continue;
+    const module = path.slice(prefix.length, -5).replaceAll('/', '.');
+    if (!validPath(path) || !path.startsWith(prefix) || !validModule(module) ||
+        module.replaceAll('.', '/') !== path.slice(prefix.length, -5)) {
+      throw new TypeError(`Lean source is outside the configured module layout: ${path.slice(0, 160)}`);
+    }
+    if (reservedModules.has(module.split('.')[0])) throw new TypeError(`Lean source shadows a trusted module: ${path.slice(0, 160)}`);
+    sources.push({ path, module, sourcePath: `source/${path.slice(prefix.length)}` });
+  }
+  if (!sources.some(source => source.path === targetPath)) throw new TypeError('Locked theorem source is not a project module');
+  return sources;
+}
+
+function projectInput(files, sources, libraryCount, leanMemoryArgument) {
+  const inputs = Object.fromEntries(sources.map(({ path, sourcePath }) => [sourcePath, files[path]]));
+  const dependencies = Array.from({ length: libraryCount }, (_, i) => `dependency${i}`);
+  const manifest = (name, packages) => JSON.stringify({ version: '1.2.0', packagesDir: '.lake/packages',
+    name, lakeDir: '.lake', fixedToolchain: true, packages });
+  const packages = dependencies.map(name => ({ type: 'path', scope: '', name,
+    manifestFile: 'lake-manifest.json', inherited: false, dir: `dependencies/${name}`, configFile: 'lakefile.toml' }));
+  inputs['lake-manifest.json'] = manifest('swarmenv_project', packages);
+  const roots = [...new Set(sources.map(({ module }) => module.split('.')[0]))];
+  inputs['lakefile.toml'] = [
+    'name = "swarmenv_project"', 'fixedToolchain = true', 'defaultTargets = ["WorkspaceProof"]',
+    'srcDir = "source"', '[[lean_lib]]', 'name = "WorkspaceProof"',
+    `roots = ${JSON.stringify(roots)}`, `globs = ${JSON.stringify(sources.map(({ module }) => module))}`,
+    `moreLeanArgs = ${JSON.stringify(['-j1', leanMemoryArgument])}`,
+    ...dependencies.flatMap(name => ['[[require]]', `name = "${name}"`, `path = "dependencies/${name}"`]),
+  ].join('\n');
+  for (const name of dependencies) {
+    inputs[`dependencies/${name}/lakefile.toml`] = `name = "${name}"\nfixedToolchain = true\n`;
+    inputs[`dependencies/${name}/lake-manifest.json`] = manifest(name, []);
+  }
+  return inputs;
+}
+
+function projectDiagnostics(output, sources) {
+  const paths = new Map(sources.map(({ path, sourcePath }) => [sourcePath, path]));
+  const findings = { warning: [], error: [] };
+  for (const line of output.split('\n')) {
+    const match = /^(warning|error): (?:\/project\/)?(source\/[^:]+):(\d+:\d+):(.*)$/.exec(line);
+    if (!match || !paths.has(match[2]) || findings[match[1]].length >= 8) continue;
+    findings[match[1]].push(`${paths.get(match[2])}:${match[3]}:${match[4]}`.slice(0, 320));
+  }
+  if (/^error: (?:build )?cycle detected:/m.test(output)) findings.error.push('Lean project imports contain a cycle');
+  return findings;
+}
+
 export class LeanFinalTreeVerifier {
   constructor({
     identity, leanRoot, libraryRoots = [], comparatorLibraryRoots, exporterPath, targetPath,
-    declarationName, fixtureSource, fixtureSha256, localModules = [], timeoutMs = 120_000, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
+    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, timeoutMs = 120_000, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
   }) {
     if (!identity || !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof identity[key] === 'string' && identity[key])) {
       throw new TypeError('Final-tree verifier requires a fixed checker identity');
@@ -188,6 +245,10 @@ export class LeanFinalTreeVerifier {
       throw new TypeError('Invalid trusted local Lean module build order');
     }
     this.localModules = Object.freeze(localModules.map(module => Object.freeze({ ...module })));
+    if (typeof projectChecks !== 'boolean' || (projectChecks && localModules.length)) {
+      throw new TypeError('Project checks require automatic module discovery without a manual build order');
+    }
+    this.projectChecks = projectChecks;
     this.targetPath = targetPath;
     this.declarationName = declarationName;
     this.fixtureSource = Buffer.from(fixtureSource);
@@ -198,6 +259,78 @@ export class LeanFinalTreeVerifier {
     // below that physical limit. Keep its guard only for opt-in diagnostics
     // that do not use the production cgroup wrapper.
     this.leanMemoryArgument = this.resourceLimits ? '-M0' : '-M4096';
+  }
+
+  async #projectSources(files) {
+    // Core names in the pinned toolchain plus namespaces from mounted packages.
+    const reserved = new Set(['Init', 'Lean', 'Std', 'Lake', 'LakeMain', 'LeanIR', 'LeanChecker', 'Leanc', 'Mathlib']);
+    const namespaces = await Promise.all(this.libraryRoots.map(root => readdir(root, { withFileTypes: true })));
+    for (const entries of namespaces) {
+      for (const entry of entries) {
+        if (entry.isDirectory() || entry.isSymbolicLink()) reserved.add(entry.name);
+        if (entry.name.endsWith('.olean')) reserved.add(entry.name.slice(0, -6));
+      }
+    }
+    return projectSources(files, this.targetPath, reserved);
+  }
+
+  async #materializeProject(directory, files, sources, budget) {
+    await materialize(directory, projectInput(files, sources, this.libraryRoots.length, this.leanMemoryArgument), budget);
+    await mkdir(join(directory, '.lake'));
+    for (let i = 0; i < this.libraryRoots.length; i++) {
+      assertWithinDeadline(budget);
+      await mkdir(join(directory, 'dependencies', `dependency${i}`, '.lake/build/lib/lean'), { recursive: true });
+    }
+  }
+
+  #buildProject(input, { signal, deadline, stdoutPath, targetModule, startProcess = launch => launch() }) {
+    const args = sandboxArgs(this.leanRoot);
+    const dependencyPaths = this.libraryRoots.map((root, index) => {
+      const destination = `/project/dependencies/dependency${index}/.lake/build/lib/lean`;
+      return [root, destination];
+    });
+    args.push('--ro-bind', input, '/project', '--size', '268435456', '--tmpfs', '/project/.lake',
+      ...dependencyPaths.flatMap(([root, destination]) => ['--ro-bind', root, destination]),
+      '--ro-bind', '/usr/bin/dash', '/bin/sh', '--setenv', 'LEAN_NUM_THREADS', '1', '--chdir', '/project');
+    if (targetModule) args.push('--ro-bind', this.exporterPath, '/bin/lean4export', '--setenv', 'LEAN_PATH',
+      ['/project/.lake/build/lib/lean', ...dependencyPaths.map(([, dest]) => dest)].join(':'));
+    args.push('/bin/sh', '-eu', '-c',
+      'ulimit -c 0\n' +
+      '/toolchain/bin/lake --no-cache --no-ansi --log-level=warning build >&2 || { status=$?; if [ "$status" = 1 ]; then exit 21; fi; exit 23; }\n' +
+      'if [ "$#" != 0 ]; then exec /bin/lean4export --ignore-missing "$@"; fi', 'swarmenv-project');
+    if (targetModule) args.push(targetModule, '--', this.declarationName, ...axioms, ...primitives);
+    return startProcess(() => execute(this.bubblewrap, args, { signal, deadline,
+      maxOutput: targetModule ? exportLimit : diagnosticLimit, stdoutPath, resourceLimits: this.resourceLimits }));
+  }
+
+  async checkProject({ files, tree, signal, deadline = Date.now() + this.timeoutMs, startProcess }) {
+    if (!this.projectChecks) return { verdict: 'ERROR', diagnostic: 'Workspace project checking is not configured', checked_tree: tree, checked_paths: [] };
+    deadline = Math.min(deadline, Date.now() + this.timeoutMs);
+    const budget = { signal, deadline };
+    const result = (verdict, diagnostic, extra = {}) => ({ verdict, diagnostic, checked_tree: tree, checked_paths: [], ...extra });
+    let directory;
+    try {
+      assertWithinDeadline(budget);
+      let sources;
+      try { sources = await this.#projectSources(files); }
+      catch (error) { if (error instanceof TypeError) return result('FAIL', error.message); throw error; }
+      directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-check-'));
+      await this.#materializeProject(directory, files, sources, budget);
+      const built = await this.#buildProject(directory, { ...budget, startProcess });
+      const findings = projectDiagnostics(built.stderr, sources);
+      if (built.code === 0) return result('PASS', null, { checked_paths: sources.map(({ path }) => path), warnings: findings.warning });
+      if (built.code === sourceFailureStatus && !built.stderrTruncated && !resourceDiagnostic.test(built.stderr) && findings.error.length) {
+        return result('FAIL', findings.error.join('\n'), { warnings: findings.warning });
+      }
+      return result('ERROR', 'Locked Lake project build did not complete');
+    } catch (error) {
+      // The lifecycle guard at process start returns its typed rejection to Judge.
+      if (error.code && ['NOT_ALLOWED', 'FENCED', 'STALE_VERSION', 'SERVICE_NOT_READY'].includes(error.code)) throw error;
+      const timedOut = /deadline elapsed/.test(error.message);
+      return result('ERROR', timedOut ? 'Lake project check deadline elapsed' : 'Locked Lake project build did not complete', { timed_out: timedOut });
+    } finally {
+      if (directory) await rm(directory, { recursive: true, force: true });
+    }
   }
 
   async runSourceDiagnostic(_command, invocation, { timeoutMs, maxOutputBytes }) {
@@ -280,14 +413,27 @@ export class LeanFinalTreeVerifier {
       const originalDirectory = join(directory, 'original');
       const candidateDirectory = join(directory, 'candidate');
       await materialize(originalDirectory, { [this.targetPath]: this.fixtureSource }, budget);
-      await materialize(candidateDirectory, files, budget);
+      let sources;
+      if (this.projectChecks) {
+        try { sources = await this.#projectSources(files); }
+        catch (error) { if (error instanceof TypeError) return result('FAIL', error.message); throw error; }
+        await this.#materializeProject(candidateDirectory, files, sources, budget);
+      } else await materialize(candidateDirectory, files, budget);
       const originalExport = join(directory, 'original.jsonl');
       const candidateExport = join(directory, 'candidate.jsonl');
       const original = await this.#export(originalDirectory, { ...budget, stdoutPath: originalExport });
       if (original.code !== 0 || !original.stdoutBytes) return result('ERROR', 'Locked Lean fixture could not be exported');
-      const candidate = await this.#export(candidateDirectory, { ...budget, stdoutPath: candidateExport, localModules: this.localModules });
+      const candidate = sources
+        ? await this.#buildProject(candidateDirectory, { ...budget, stdoutPath: candidateExport,
+          targetModule: sources.find(({ path }) => path === this.targetPath).module })
+        : await this.#export(candidateDirectory, { ...budget, stdoutPath: candidateExport, localModules: this.localModules });
       if (candidate.code !== 0 || !candidate.stdoutBytes) {
-        if (candidate.code === sourceFailureStatus && !candidate.stderrTruncated && isSourceDiagnostic(candidate.stderr)) return result('FAIL', 'Final-tree theorem source did not compile with the locked Lean dependencies');
+        if (candidate.code === sourceFailureStatus && !candidate.stderrTruncated) {
+          if (sources) {
+            const { error } = projectDiagnostics(candidate.stderr, sources);
+            if (!resourceDiagnostic.test(candidate.stderr) && error.length) return result('FAIL', error[0]);
+          } else if (isSourceDiagnostic(candidate.stderr)) return result('FAIL', 'Final-tree theorem source did not compile with the locked Lean dependencies');
+        }
         return result('ERROR', 'Final-tree proof export did not complete');
       }
       // Only the trusted parser/kernel and inert exports enter this namespace.

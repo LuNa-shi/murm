@@ -368,7 +368,7 @@ merge 不修改源 revision，也不以 Bot 自报 PASS 为依据。最终提交
 
 | 命令 | 用途 | 关键行为 |
 |---|---|---|
-| `swarm judge check` | 对明确的 Workspace revision/path 或 Material 输入检查 | 固定内容、checker/environment 和范围；普通研究检查需要 active E |
+| `swarm judge check --revision R [--path P]` | 项目模式检查完整固定 Workspace；可选 path 绑定文件交付回执 | 由 Lake 编译同版本的 Lean 模块与 import；报告覆盖范围，普通检查需要 active E；兼容单文件模式仍要求 path |
 | `swarm judge result <id>` | 查询具体服务的异步检查 | 仅服务实际异步运行时使用；结果不是可随意套用的全局 PASS |
 | `swarm service list/view` | 发现已启用服务 | 名称、版本、权限和帮助入口；未配置服务不伪装可用 |
 

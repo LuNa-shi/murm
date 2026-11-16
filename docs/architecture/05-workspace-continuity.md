@@ -500,3 +500,7 @@ stable capture. The published revision source records the immutable content iden
 recorded impact. A merge records the source revision’s explicit uses, while parents preserve broader lineage. A later correction does not edit the revision. Query potentially affected
 direct revisions with `workspace history --all --material-id ID`, and inspect Material
 corrections and the affected files before deciding whether they require revalidation.
+
+## Lean projects across public revisions
+
+In a deployment with locked project checking, multiple Bots can save distinct Lean modules and integrate them through ordinary apply/save/merge. The complete fixed revision supplies imports; public main changes never alter a check already in flight. A project merge check compiles the actual combined tree, including unreferenced in-scope Lean modules, before the existing conditional main publication. It permits diagnostic warnings for unfinished work so auxiliary contributions can merge before the Mission theorem is complete. Final Mission verification still uses a frozen complete tree and the trusted theorem/proof check. An unmerged saved revision can be checked in the same way without advancing main. [Services](04-services.md#locked-lake-project-preparation-and-compilation) defines module roots, scope and failure classification.

@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `cf55b1c6958359df1b90b3a57d823f9309bd78fd13a354fae217ad2a4f6f4399`
+Body SHA-256: `3b7e7b3757a7105a7c8ea6330c961114dd9595fed5f192df38f02d9d8369ed81`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -73,7 +73,7 @@ Body SHA-256: `cf55b1c6958359df1b90b3a57d823f9309bd78fd13a354fae217ad2a4f6f4399`
   - swarmenv_material_unsupersede: Revoke only the matching successor using the observed relation_version and a reason; preserve all history. (logical operation context.material_unsupersede; writes state; inputs required=[material_id,replacement_material_id,expected_version,reason] fields=[expected_version,material_id,reason,replacement_material_id]; Revoke only the matching successor using the observed relation_version and a reason; preserve all history.)
 - Judge Service — Workspace source checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
-  - swarmenv_judge_workspace_check: Check a Workspace file reference against the configured checker and return a durable CheckResult. (logical operation judge.workspace_check; writes state; inputs required=[revision,path] fields=[path,request_key,revision,workspace_id]; Check a Workspace file reference against the configured checker and return a durable CheckResult.)
+  - swarmenv_judge_workspace_check: Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path. (logical operation judge.workspace_check; writes state; inputs required=[revision] fields=[path,request_key,revision,workspace_id]; Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.)
 - SwarmEnv Runtime — Task-scoped Execution projection
   - swarmenv_execution_get: Read the current Execution identity and Workspace revision. (logical operation runtime.get_execution; read-only; inputs required=[execution_id] fields=[execution_id]; Read the current Execution before acting on its Task.)
   - swarmenv_workspace_diff: Compare two revisions in the current task-scoped Workspace. (logical operation runtime.workspace_diff; read-only; inputs required=[none] fields=[from_revision,to_revision]; Inspect the auditable file changes between revisions.)
@@ -283,14 +283,14 @@ Body SHA-256: `682306dd8de9790b320a95e8f963511ea5e7c53f8a50d678284262c0173154dc`
 ````
 ## swarmenv_judge_workspace_check
 
-Body SHA-256: `921124b418fd1533ddd48a2b4f6fb8cbe8a1c2e7628d27f3b965db9e2c4d8144`
+Body SHA-256: `0d2776ad489aff90fc2fd9fbd107a54e78cd07293efba860d8c44c8b2fc12922`
 
 ````text
 {
-  "description": "Check a Workspace file reference against the configured checker and return a durable CheckResult.",
-  "promptSnippet": "Judge Service: Check a Workspace file reference against the configured checker and return a durable CheckResult.",
+  "description": "Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.",
+  "promptSnippet": "Judge Service: Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.",
   "promptGuidelines": [
-    "Check a Workspace file reference against the configured checker and return a durable CheckResult.",
+    "Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.",
     "Help: service://judge/workspace_check"
   ]
 }

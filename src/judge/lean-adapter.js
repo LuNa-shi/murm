@@ -77,7 +77,7 @@ export function runProcess(command, args, { cwd, env = process.env, timeoutMs = 
 }
 
 export class LeanChecker {
-  constructor({ command = 'lake', checkerRef = 'lean', checkerVersion = 'mvp-1', timeoutMs = 120_000, maxOutputBytes = 1_000_000, workRoot = tmpdir(), runner = runProcess, rejectSorry = true, logger = null } = {}) {
+  constructor({ command = 'lake', checkerRef = 'lean', checkerVersion = 'mvp-1', timeoutMs = 120_000, maxOutputBytes = 1_000_000, workRoot = tmpdir(), runner = runProcess, projectChecker = null, rejectSorry = true, logger = null } = {}) {
     this.command = command;
     this.checkerRef = checkerRef;
     this.checkerVersion = checkerVersion;
@@ -85,6 +85,7 @@ export class LeanChecker {
     this.maxOutputBytes = maxOutputBytes;
     this.workRoot = workRoot;
     this.runner = runner;
+    this.projectChecker = projectChecker;
     this.rejectSorry = rejectSorry;
     this.logger = logger;
   }
@@ -238,6 +239,40 @@ export class LeanChecker {
     }, identity);
     this.logger?.append({ event: 'checker.preflight.complete', status: result.status, checker_process_status: result.checker_process_status, diagnostic_code: result.diagnostic_code, evidence: result.evidence });
     return result;
+  }
+
+  async checkProject({ files, tree, path, content, startProcess }) {
+    const inputFailure = diagnostic => ({
+      verdict: 'ERROR', result_class: 'request_failure', checker_process_status: 'not_started', retryable: false,
+      diagnostic_code: 'project_input_invalid', evidence: { diagnostic, checker_started: false },
+    });
+    if (path && /\b(?:sorry|admit|axiom)\b/i.test(content)) {
+      return inputFailure('Selected delivery file contains a forbidden placeholder. Use a project check without --path to diagnose partial work.');
+    }
+    let started = false;
+    const result = await this.projectChecker({ files, tree, deadline: Date.now() + this.timeoutMs,
+      startProcess: launch => startProcess(() => { started = true; return launch(); }) });
+    if (result.verdict === 'FAIL' && !started) return inputFailure(result.diagnostic);
+    const paths = result.checked_paths;
+    const leanFiles = Object.keys(files).filter(file => file.endsWith('.lean') && file !== 'lakefile.lean');
+    const complete = result.verdict === 'PASS' && started && result.checked_tree === tree &&
+      Array.isArray(paths) && paths.length > 0 && paths.length === leanFiles.length &&
+      new Set(paths).size === paths.length && paths.every(file => typeof file === 'string' && file.endsWith('.lean') &&
+        file !== 'lakefile.lean' && Object.hasOwn(files, file));
+    if (complete && path && !paths.includes(path)) {
+      return { ...inputFailure('Project build did not cover the requested Lean source path.'),
+        checker_process_status: 'completed', evidence: { diagnostic: 'Project build did not cover the requested Lean source path.', checker_started: true } };
+    }
+    const verdict = result.verdict === 'PASS' && !complete ? 'ERROR' : result.verdict;
+    const processStatus = result.timed_out ? 'timeout' : !started ? 'not_started' : verdict === 'ERROR' ? 'crashed' : 'completed';
+    return {
+      verdict, checker_process_status: processStatus,
+      result_class: verdict === 'PASS' ? 'PASS' : verdict === 'FAIL' ? 'source_failure' : 'infrastructure_failure',
+      evidence: { diagnostic: result.verdict === 'PASS' && !complete ? 'Project checker returned incomplete tree coverage.' : result.diagnostic,
+        checker_started: started, timed_out: Boolean(result.timed_out),
+        ...(complete ? { checked_paths: paths, build_warnings: Array.isArray(result.warnings)
+          ? result.warnings.filter(warning => typeof warning === 'string').slice(0, 32).map(warning => warning.slice(0, 1024)) : [] } : {}) },
+    };
   }
 
   async check({ workspace_source, targetTask, workspace, fixtureManifest, assertCanStart = () => {}, startProcess = launch => { assertCanStart(); return launch(); } }) {

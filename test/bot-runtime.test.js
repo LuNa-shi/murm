@@ -842,7 +842,7 @@ async function workspaceFixture(t, options = {}) {
   f.service.contextService = context;
   if (options.createMissionSubmissionStore) f.runtime.missionSubmissionStore = options.createMissionSubmissionStore({ ...f, context });
   const bridge = new ServicesBridge({ taskService: f.service, contextService: context, runtime: f.runtime, coreId: 'core-1',
-    registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, missionSubmissionStore: f.runtime.missionSubmissionStore, judgeService: options.createJudgeService?.(f.service) ?? options.judgeService }),
+    registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, missionSubmissionStore: f.runtime.missionSubmissionStore, judgeService: options.createJudgeService?.(f.service, f.runtime) ?? options.judgeService }),
     onTake: result => f.runtime.bindAgentExecution(result.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }) });
   await bridge.start();
   t.after(() => bridge.stop());
@@ -1378,6 +1378,57 @@ test('registered Judge CLI checks only a fixed public file and scopes durable re
   assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
 });
 
+
+test('registered Judge CLI builds an immutable project and binds a selected delivery file to the same tree', async t => {
+  const { JudgeService } = await import('../src/judge/judge-service.js');
+  const { LeanChecker } = await import('../src/judge/lean-adapter.js');
+  const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
+  const builds = [];
+  const createJudgeService = (service, runtime) => {
+    const checker = new LeanChecker({ projectChecker: async ({ files, tree, startProcess }) => startProcess(() => {
+      builds.push({ files, tree });
+      return { verdict: 'PASS', checked_tree: tree, checked_paths: ['Helper.lean', 'Proof.lean'],
+        warnings: ['Helper.lean: provisional proof'] };
+    }) });
+    checker.preflight = async () => ({ status: 'healthy', checker_process_status: 'completed',
+      evidence: { input_binding_verified: true, toolchain_version_verified: true, checker_version_verified: true } });
+    const judge = new JudgeService(service.db, { taskService: service, checker,
+      readProjectRevision: reference => runtime.missionWorkspace.exportRevision(reference), fixtureManifest: {
+        fixture_id: 'project-source', putnambench_commit: 'a'.repeat(40), problem_file: 'input.txt',
+        problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'test', ...checkerIdentity,
+      } });
+    service.setCheckResultReader(id => judge.getCheckResult(id));
+    return judge;
+  };
+  const { command, dispatch, guest, bridge } = await workspaceFixture(t, { createJudgeService,
+    runtimeOptions: { workspaceProjectCheck: true },
+    completionContract: { workspace_delivery: { paths: ['Proof.lean'], check: checkerIdentity } },
+  });
+  guest.files['Proof.lean'] = Buffer.from('import Helper\ntheorem proof : True := helper');
+  guest.files['Helper.lean'] = Buffer.from('theorem helper : True := True.intro');
+  const saved = await dispatch('save', 'fixed-project');
+  guest.files['Helper.lean'] = Buffer.from('unsaved private edit');
+  const project = await command('judge', 'check', '--revision', saved.revision, '--request-id', 'project-check');
+  assert.equal(project.verdict, 'PASS');
+  assert.equal(project.mathematical_outcome, 'unassessed');
+  assert.equal(project.workspace_input.git_tree, saved.git_tree);
+  assert.equal(project.workspace_input.check_mode, 'lean-project');
+  assert.equal(project.workspace_input.path, undefined);
+  assert.deepEqual(project.build, { checked_count: 2, checked_paths: ['Helper.lean', 'Proof.lean'],
+    warnings: ['Helper.lean: provisional proof'] });
+  assert.equal(String(builds[0].files['Helper.lean']), 'theorem helper : True := True.intro');
+  assert.deepEqual(await command('judge', 'result', '--request-key', 'project-check'), project);
+  const finish = checkId => command('task', 'finish', '--outcome', 'done', '--workspace-revision', saved.revision, '--check-result-id', checkId);
+  await assert.rejects(finish(project.check_result_id), /did not pass for this delivery/);
+  await assert.rejects(bridge.call({ operation: 'workspace_check', payload: { revision: saved.revision, files: {} } }), { code: 'INVALID_CONTRACT' });
+  await assert.rejects(bridge.call({ operation: 'workspace_check', payload: { revision: saved.revision, path: 'input.txt' } }), { code: 'INVALID_CONTRACT' });
+  const scoped = await command('judge', 'check', '--revision', saved.revision, '--path', 'Proof.lean', '--request-id', 'delivery-check');
+  assert.equal(scoped.workspace_input.path, 'Proof.lean');
+  assert.equal(scoped.workspace_input.git_tree, saved.git_tree);
+  assert.equal(builds.length, 2);
+  assert.equal(String(builds[1].files['Helper.lean']), String(builds[0].files['Helper.lean']));
+  assert.equal((await finish(scoped.check_result_id)).workspace_delivery.check.checked_tree, saved.git_tree);
+});
 
 const mergeCheckerIdentity = { checker_ref: 'controlled-tree', checker_version: '1', environment_ref: 'network-disabled-test' };
 

@@ -20,3 +20,5 @@ Workspace 在 sandbox 外由 Runtime 管理 Git。你只修改当前 E 的 /work
 未合入的实验版本可以不再选用，不要求专门 discard 或删除。需要改变当前项目文件集合时，通过普通文件修改/删除后 save 表达；历史 revision 仍可读取。没有 candidate discard，也不为多文件成果创建 manifest 对象。
 
 Mission 验证期间 main merge 会冻结。查询现有 submission，不用其他接口绕过；save/apply 本身不改变被验收快照。
+
+Lean 项目检查先看 `swarm judge check --help`。配置启用项目检查时，save 后用 `swarm judge check --revision R` 检查整个固定版本；模块文件放在锁定题目所在源码目录下，按 Lean 模块名相互 import，无需复制证明正文。需要给 Task 的指定文件提交检查回执时加 `--path P`：仍编译同一项目，并将回执绑定到该文件。核对实际覆盖文件与警告；编译成功不等于 Mission 已证明，部分证明的占位符只能作为诊断状态保留，最终提交仍须通过独立验收。没有启用项目检查的部署仍要求 `--path`，不要假定它能读取相邻模块。

@@ -813,7 +813,8 @@ function sanitizedCheck(result, material) {
   const processEvidence = result.process_evidence ?? {};
   const checkerProcessStatus = result.checker_process_status ?? evidence.checker_process_status ?? 'unknown';
   const resultClass = result.result_class ?? evidence.result_class ?? 'unassessed';
-  const mathematicalOutcome = evidence.mathematical_outcome ?? (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
+  const mathematicalOutcome = result.mathematical_outcome ?? evidence.mathematical_outcome ??
+    (resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed');
   return {
     workspace_source_id: material.material_id,
     material_hash: material.content_hash,
@@ -1548,6 +1549,9 @@ async function createProjectState(problem, config, options) {
   assertInitializing();
   const finalTreeChecker = options.finalTreeChecker ?? finalTreeDeployment?.adapter ?? null;
   const lockedSourceRunner = finalTreeDeployment?.adapter.runSourceDiagnostic.bind(finalTreeDeployment.adapter);
+  const projectChecker = finalTreeDeployment?.adapter.projectChecks
+    ? finalTreeDeployment.adapter.checkProject.bind(finalTreeDeployment.adapter) : null;
+  const sourceCheckerTimeoutMs = Math.min(options.checkerTimeoutMs ?? 120_000, finalTreeDeployment?.adapter.timeoutMs ?? Infinity);
   let sandboxObservationStore = null;
   const sandboxConfig = options.sandbox ?? {};
   const timeBoundedModel = modelBudget == null && timedBenchmark;
@@ -1645,18 +1649,30 @@ async function createProjectState(problem, config, options) {
     const taskService = new TaskService(database, { contextService, logger: taskLogger });
     contextService.taskService = taskService;
     const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
+    if (projectChecker) fixture.environment_ref = `${fixture.environment_ref}:lean-project:sha256:${finalTreeDeployment.evidence.artifact_lock_sha256}`;
+    const workspaceMergeChecker = projectChecker ? {
+      identity: { checker_ref: fixture.checker_ref, checker_version: fixture.checker_version, environment_ref: fixture.environment_ref },
+      timeoutMs: sourceCheckerTimeoutMs,
+      async check(plan) {
+        const result = await projectChecker(plan);
+        if (result.checked_tree !== plan.tree) return { verdict: 'ERROR', diagnostic: 'Project check result does not identify the combined Workspace tree' };
+        return { ...result, check_mode: 'lean-project', check_result_id: `projectcheck:${randomUUID()}` };
+      },
+    } : null;
     judgeService = new JudgeService(join(projectDir, 'judge.sqlite'), {
       missionBudget: judgeMissionBudget,
       taskService,
       logger: judgeLogger,
       maxInfrastructureRetries: options.maxInfrastructureRetries,
       fixtureManifest: fixture,
+      readProjectRevision: projectChecker ? reference => missionWorkspace.exportRevision(reference) : null,
       checker: options.checker ?? new LeanChecker({
         workRoot: join(projectDir, 'judge-work'),
         logger: checkerLogger,
         command: options.leanCommand ?? 'lake',
-        timeoutMs: Math.min(options.checkerTimeoutMs ?? 120_000, finalTreeDeployment?.adapter.timeoutMs ?? Infinity),
+        timeoutMs: sourceCheckerTimeoutMs,
         runner: lockedSourceRunner,
+        projectChecker,
       }),
     });
     taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
@@ -1685,6 +1701,7 @@ async function createProjectState(problem, config, options) {
     const mission = taskService.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
       goal: `Solve ${problem.id} through independent, shared Task work.`,
+      ...(workspaceMergeChecker ? { merge_required_check: workspaceMergeChecker.identity } : {}),
       acceptance_conditions: {
         project: problem.id,
         source_hash: problem.source_hash,
@@ -1869,6 +1886,8 @@ async function createProjectState(problem, config, options) {
         missionWorkspace,
         missionWorkspaceId: publicWorkspace.workspace_id,
         missionSubmissionStore,
+        workspaceProjectCheck: Boolean(projectChecker),
+        workspaceMergeChecker,
         coordinationPermissions: options.coordinationPermissions ?? config.mission_coordination_permissions ?? [],
         agentAdapter: adapter,
         runtimeCapabilities,
@@ -2499,6 +2518,7 @@ async function createProjectState(problem, config, options) {
             core.checks.push({
               ...sanitizedCheck(check, candidateMaterial),
               source_path: payload?.path ?? null,
+              ...(check.build ? { workspace_input: check.workspace_input, build: check.build } : {}),
             });
             if (check.evidence?.forbidden_placeholder === true || check.diagnostic_class === 'forbidden_placeholder' || check.diagnostic_code === 'checker_request_rejected') {
               core.cheatingFlags.push({ kind: 'forbidden_placeholder', material_hash: check.material_hash ?? null });
@@ -2511,6 +2531,7 @@ async function createProjectState(problem, config, options) {
                 workspace_source_id: payload?.workspace_source_id ?? result?.workspace_source_id ?? null,
                 check_result_id: check.check_result_id ?? result?.check_result_id ?? null,
                 verdict: check.verdict ?? result?.verdict ?? null,
+                ...(check.build ? { workspace_input: check.workspace_input, build: check.build } : {}),
               },
             });
             core.parallelism.recordWorkUnit({

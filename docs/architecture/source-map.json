@@ -701,9 +701,10 @@
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
-        "docs/architecture/05-workspace-continuity.md"
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Isolated final-tree Lean export, theorem comparison and kernel replay"
+      "role": "Locked offline Lake project builds, isolated proof export, theorem comparison and kernel replay"
     },
     {
       "path": "src/observability/benchmark-report-importer.js",
