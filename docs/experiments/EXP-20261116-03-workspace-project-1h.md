@@ -1,6 +1,6 @@
 # EXP-20261116-03: Whole-Workspace Lean collaboration, one-hour maximum
 
-Status: REGISTERED
+Status: BLOCKED — operator stopped to diagnose repeated checker infrastructure classification
 Approved Issue: [#127 follow-up implementation, experiment and merge decision](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716), retaining [#122 behavioral acceptance](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896946332).
 Implementation PR: [#128](https://github.com/LuNa-shi/SwarmEnv/pull/128).
 Repeat of [EXP-20261116-02](EXP-20261116-02-workspace-project-1h.md), which stopped before model work because the image failed the immutable-resource ownership contract. This repeat includes the [approved startup workflow fixes](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6907134029).
@@ -50,16 +50,33 @@ Stop normally at trusted Mission acceptance or the one-hour deadline and perform
 
 ## Results
 
-Pending execution. No natural Bot result is claimed.
+Clean launch `5aef6e7`; project 04:32:06.082–04:38:01.785 UTC, 355,703 ms. All four initial Bots reached READY, each examined public work and proposed/took its own Task. Four Executions overlapped; two Tasks completed and two reopened on operator stop. Two replacements reached READY without taking a Task before interruption. Six Bots closed; independent provider queries returned HTTP 404 for all six exact sandbox IDs. `solved=false`, `made_progress=true`, `protocol_valid=false`, with `operator_stop` the only invalid reason.
+
+| Core / Bot prefix | Responsibility and observed result |
+|---|---|
+| 1 / `750517d1` | Proposed `04fe748e` for the overall geometry contradiction. Read Core 2 Material `6fc232d4`, applied main 0.10, recorded its use, and saved 0.14 with actual import and lemma use from the separate circle module. Lake resolved the module and reported remaining proof errors. Task reopened at stop. |
+| 2 / `3fd7cb2c` | Proposed `7820358b`, proved the circle exception bound, passed named-file whole-project check `3d019ae1`, merged main 0.10, published/linked Material `6fc232d4`, and finished. Successor `2cb514b1` read both delivered helpers but had no Execution at stop. |
+| 3 / `c9b5fefe` | Proposed `ec7df245` for a Euclidean distance-grid helper, passed `f4f5893c`, merged main 0.13, published/linked `2c6d803c`, and finished. It also linked that result to Core 1's Task; Core 1 had not consumed it. Successor `8bb2db76` reached discovery only. |
+| 4 / `11287ed3` | Proposed `5ae88c92` for finite counting. Saved 0.15; `676bc101` settled PASS during shutdown after the Bridge had fenced its response. The saved result was not merged or delivered; Task reopened. |
+
+The two merge receipts checked the actual combined tree, including earlier unchanged helper files. Main 0.13's Git tree equals its passing check tree and contains two independent helpers plus the unchanged seed theorem. Core 1's saved 0.14 imported and used Core 2's helper without inlining it, but that draft still had proof errors. No Mission submission occurred.
+
+Ordinary checks: 14 total, five PASS, six source failures, one selected seed-placeholder rejection, and two `checker_crashed` infrastructure classifications. The final report's cheating flag arrays are empty; the seed rejection did not invalidate this run. Completed model requests recorded 2,270,606 input and 20,300 output tokens across 101 requests; three other settlements have unknown usage. Currency cost is unknown.
 
 ## Analysis
 
-This is an acceptance follow-up with startup and checker changes, not a controlled attribution study. Observe whether autonomous Bots divide work, continue public results and make meaningful Mission progress. Natural multi-file imports, Bot expiry and difficult recovery are covered only if actually triggered.
+The startup fixes worked in the real OpenSandbox deployment. Initial Core registration respected one-minute staggering, all four performed autonomous discovery and execution, and finished Bots were replaced immediately. Checks compiled multiple files, combined-tree merges retained earlier work, and the integrator actually imported a predecessor's separate module. This supports meaningful division and reuse, while interruption leaves Mission completion and successor Execution unverified.
+
+A bounded no-model replay of exact revision 0.8 reproduced both infrastructure classifications. Lake exited with normal source-failure status and verbose source errors; stderr exceeded the retained 8,192-character limit. The project checker treated truncated diagnostics as a crash even though the retained errors and exit evidence showed normal source rejection. The two error receipts therefore overstated infrastructure failure and caused unnecessary retries. Repair must classify the full stream with bounded metadata and continue distinguishing genuine resource exhaustion; simply ignoring truncation could hide a late resource failure.
+
+Core 1 also had a recoverable provenance error: an `integration` Material-use record did not satisfy Workspace saving's explicit `workspace` use requirement. It corrected the use and saved with a fresh request ID. These two records describe one downstream use, not two independent handoffs. Selecting the original seed theorem for a delivery check correctly rejected its placeholder; an earlier live interpretation that this had created a cheating flag was disproved by the authoritative report.
 
 ## Next steps
 
-Launch only after the fixed-image probes and complete test suite pass; assign independent system and Bot observers, analyze the real records, and merge PR #128 only if acceptance succeeds.
+Fix the reproduced whole-project diagnostic classification, review ordinary and final build paths, replay the original tree and long-output resource cases, then run a fresh preregistered repeat within the same approved inputs and limits. PR #128 remains unmerged until acceptance succeeds.
 
 ## Evidence and limitations
 
-Real isolated tests demonstrated import order, unreferenced-file errors, missing/cyclic imports, full-Mathlib multi-file compilation, and final rejection of imported `sorry`. These are deterministic probes, not natural-model evidence. Earlier EXP-08 remains bound to its original single-file checker and shorter limits. Currency cost is unknown unless independently measured; a successful early stop is not one-hour endurance evidence.
+Repository analyzer exited 0 and generated the private `analysis/experiment-analysis.md`; independent Bot/system observations and scoped provider cleanup checks are retained beside it. Authoritative records are the per-project Task, Context, Judge and model-budget databases plus immutable Workspace trees and Bridge/Runtime events. No raw conversations, proof source, private paths or credentials are committed.
+
+No Bot or selection time limit expired. No final submission ran. The main merged helpers did not import one another; the imported draft failed on ordinary target proof errors. Natural import resolution, deterministic import/final-replay probes, and final Mission acceptance are distinct evidence classes. This short interrupted run is not one-hour endurance evidence.
