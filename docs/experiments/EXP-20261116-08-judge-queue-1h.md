@@ -69,6 +69,8 @@ Engineering validation on the final runtime: **654 tests / 640 PASS / 14 environ
 
 ## Analysis
 
+A subsequent owner-requested [single-versus-multi trajectory analysis](EXP-20261116-05-08-trajectory-comparison.md) reconstructs the PASS scopes, unused formal branch, context transitions and merge delays from these same immutable traces. It is retrospective analysis, not a new run.
+
 ### Development feedback and actual reuse
 
 The unlimited ordinary policy was exercised beyond the old 20-request cap: requests 21–33 continued normally. CircleBridge Execution `2f56b173` iterated across eight failing saved versions before revision `0.19` / CheckResult `f36eea1b` passed. CircleIntersections `ed6293ed` progressed from `0.13` / `6e838db0` FAIL to `0.17` / `2d8a11e5` PASS. PlaneSimilarity `1392dfde` progressed from `0.14` / `0fab40e0` FAIL to `0.20` / `b986ef95` PASS. These are distinct immutable inputs under the same owning responsibility, not replays counted as new iterations.
