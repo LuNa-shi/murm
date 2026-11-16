@@ -8,7 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261116-01` | [Issue #127](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716) | **Whole-Workspace Lean collaboration, 1h maximum · REGISTERED** | `dfc0c87` | [Project-check acceptance](EXP-20261116-01-workspace-project-1h.md) |
+| `EXP-20261116-02` | [Issue #127](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716) | **Whole-Workspace Lean collaboration, 1h maximum · REGISTERED** | `dfc0c87` | [Project-check acceptance repeat](EXP-20261116-02-workspace-project-1h.md) |
+| `EXP-20261116-01` | [Issue #127](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716) | **Pre-existing evidence directory rejected before Bot startup · BLOCKED** | `dfc0c87` | [Project-check acceptance](EXP-20261116-01-workspace-project-1h.md) |
 | `EXP-20261115-08` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896946332) | **Four criteria passed; accepted in 11m06s of 1h limit · PASS** | `77f716c` | [Single-project 1h acceptance](EXP-20261115-08-single-problem-1h.md) |
 | `EXP-20261115-07` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Stopped on gap-discovery clarification at 16m33s · BLOCKED** | `6a256d6` | [Single-project 2h validation](EXP-20261115-07-single-problem-2h.md) |
 | `EXP-20261115-06` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6895020563) | **Mission accepted in 7m42s of 30m limit · PASS** | `6a256d6` | [Single-project 30m validation](EXP-20261115-06-single-problem-30m.md) |

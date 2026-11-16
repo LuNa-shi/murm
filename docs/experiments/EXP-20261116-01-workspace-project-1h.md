@@ -1,6 +1,6 @@
 # EXP-20261116-01: Whole-Workspace Lean collaboration, one-hour maximum
 
-Status: REGISTERED
+Status: BLOCKED — startup evidence-directory rejection
 Approved Issue: [#127 follow-up implementation, experiment and merge decision](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716), retaining [#122 behavioral acceptance](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896946332).
 Implementation PR: [#128](https://github.com/LuNa-shi/SwarmEnv/pull/128).
 Comparison: [EXP-20261115-08](EXP-20261115-08-single-problem-1h.md); a versioned acceptance follow-up, not a controlled causal comparison.
@@ -49,15 +49,15 @@ Stop normally at trusted Mission acceptance or the one-hour deadline and perform
 
 ## Results
 
-Not started at registration. Results will include actual durations, every Bot's activity, project build/import/merge evidence, authoritative Mission result, usage unknowns and physical cleanup.
+The CLI exited before creating any Bot or dispatching a model request: `beginPrivateAudit` rejected the pre-existing experiment directory with `EEXIST`. The operator had placed deployment/validation metadata there before launch. No project execution or aggregate result exists for this attempt; model collaboration and Mission outcome are unassessed.
 
 ## Analysis
 
-Pending actual run. The local multi-file probes establish implementation behavior only. The run must independently demonstrate useful autonomous collaboration under the reviewed code.
+This is an operator preparation failure at the private-audit directory gate, not a project-checker or model result. The runner requires a new directory so that an attempt cannot overwrite previous evidence. Preserve this attempt and stage deployment/validation inputs outside the next run directory.
 
 ## Next steps
 
-Complete final verification, run within the approved allowance, reconstruct actual behavior with experiment-analysis and independent observers, then merge PR #128 only if review and experiment acceptance pass. Record any remaining limitations in the Issue/PR.
+Repeat as [EXP-20261116-02](EXP-20261116-02-workspace-project-1h.md) with the same reviewed runtime, image, model, fixture and budgets. Let the CLI create its own private evidence directory; add validation metadata only after initialization. No code change or new resource allowance is needed.
 
 ## Evidence and limitations
 
