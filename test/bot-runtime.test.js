@@ -2145,7 +2145,7 @@ test('Task main project checks require build coverage of every declared delivery
   }
 });
 
-test('solver control binds a real Task and Execution while its Bot credential cannot take or finish', async t => {
+for (const accepted of [false, true]) test(`solver control completes real lifecycle with Mission acceptance=${accepted}`, async t => {
   const { service, runtime, startSession } = await fixture(t, { agentMode: 'solver' });
   const context = new ContextService(service.db, { taskService: service });
   const task = service.createTask({ mission_id: 'mission:bots', summary: 'Solve the entire original problem independently', expected_output: 'Verified solution', acceptance_conditions: ['Original theorem verified'], workspace: { enabled: true } }, makeEnvelope({ actorRef: 'operator:passk' })).task;
@@ -2169,11 +2169,27 @@ test('solver control binds a real Task and Execution while its Bot credential ca
   assert.equal(service.getExecution(result.execution.execution_id).state, 'RUNNING');
   assert.equal(service.getBot(started.bot.bot_id).execution_id, result.execution.execution_id);
   assert.equal(service.getExecution(result.execution.execution_id).owner_ref, started.bot.bot_id);
-  const finish = { operation: 'task_finish', operation_id: 'solver-control-finish', payload: { outcome: 'incomplete', summary: 'Diagnostic complete without a proof' } };
+  if (accepted) {
+    const loop = new IdentityTaskLoop({ coreId: 'core-1', taskService: service, runtime,
+      listEligibleTasks: () => [task], takeTask: async () => result, runExecution: async () => result,
+      handoffTimeoutMs: 5_000, handoffPollMs: 10,
+    });
+    const running = loop.runOnce();
+    t.after(async () => { loop.stop(); await running; });
+    while (!loop.executionId) await new Promise(resolve => setImmediate(resolve));
+    service.setMissionStopReader(() => true);
+    beginMissionCloseout({ agentMode: 'solver', taskService: service, missionId: 'mission:bots',
+      runDeadlineAt: Date.now() + 60_000, identityLoops: [loop], requestIdentityWake() {},
+    }, { submission_id: 'accepted-solver', actor_ref: started.bot.bot_id, finished_at: new Date().toISOString() });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(service.getBot(started.bot.bot_id).state, 'ACTIVE', 'acceptance must preserve the Bot until host finish');
+  }
+  const finish = { operation: 'task_finish', operation_id: 'solver-control-finish', payload: { outcome: accepted ? 'done' : 'incomplete', summary: 'Controlled completion' } };
   await assert.rejects(bridge.call(finish), error => error.code === 'NOT_ALLOWED');
   await bridge.controlCall(finish);
   assert.equal(service.getBot(started.bot.bot_id).state, 'CLOSED');
   assert.equal(session.closed, true);
+  if (accepted) assert.equal(service.getTask(task.task_id).state, 'DONE');
 });
 
 test('solver compaction preserves the same Bot and Execution beyond the Swarm rotation limit', async t => {

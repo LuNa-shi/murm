@@ -1035,7 +1035,10 @@ export function beginMissionCloseout(state, submission) {
     state.solvedBy = state.taskService.getBot(submission.actor_ref)?.core_id ?? null;
     state.acceptedSubmissionId = submission.submission_id;
     state.missionCloseoutDeadline = Math.min(state.runDeadlineAt, acceptedAt + allowance);
-    for (const loop of state.identityLoops ?? []) loop.stop();
+    // Solver finish is host-driven after acceptance. stop() fences a live
+    // Execution, so retain its loop until that genuine finish has settled.
+    // Mission stop and the fixed-attempt guard already forbid new discovery.
+    if (state.agentMode !== 'solver') for (const loop of state.identityLoops ?? []) loop.stop();
     state.backgroundStopPromises ??= [];
     if (state.controller) {
       const stop = Promise.resolve().then(() => state.controller.stop());
