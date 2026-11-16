@@ -1,6 +1,6 @@
 # EXP-20261116-04: Whole-Workspace Lean collaboration, one-hour maximum
 
-Status: REGISTERED — implementation and independent reviews complete; final launch checks pending
+Status: COMPLETE — four approved behavioral criteria PASS; trusted Mission accepted within the one-hour limit
 Approved Issue: [#127 follow-up implementation, experiment and merge decision](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716), retaining [#122 behavioral acceptance](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896946332).
 Implementation PR: [#128](https://github.com/LuNa-shi/SwarmEnv/pull/128).
 Repeat of [EXP-20261116-03](EXP-20261116-03-workspace-project-1h.md), interrupted after verbose Lake source errors were misclassified as infrastructure failures. This repeat repairs bounded diagnostic classification and operator check coverage while retaining the approved startup workflow and scientific acceptance.
@@ -12,7 +12,7 @@ Observe real Bot-driven Task proposal/take/finish, differentiated work, reuse of
 
 | Item | Fixed value |
 |---|---|
-| Runtime | `e00e2462143cf486f94c061edeebda5bf5862a0f`; independent Spec and Standards reviews PASS. Registration/test-only commits may follow; exact clean launch recorded in private metadata. |
+| Runtime | `e00e2462143cf486f94c061edeebda5bf5862a0f`; independent Spec and Standards reviews PASS. Clean launch `088541b7caa76503e09737bed686bcc17c08b3f1`; worktree clean. |
 | Problem | Only `putnam_2025_b1`; PutnamBench `a635813f5edf297d928f9bd5ef8324a26bdde09c`; input SHA256 `80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7`. |
 | Toolchain | Lean 4.33.1 `819816b2e0a3bf405af45ae5c7af2491d8f5bee6`; Mathlib `0df444a360eaa60ab8c11dca51a86af692955474`; Comparator `3927ad383f208ae977c340a91c48ac9b497d2097`; exporter `15f6055e299ad5b89345e533cc2192f4cc00f659`. |
 | Checker | Locked `projectChecks=true`; Lake builds all accepted research Lean modules from the fixed tree; final checker separately compares the original theorem, allowed axioms and kernel replay. Artifact lock `6407ca71a852f1cc71f9464c8cdf24f6b33b5d4ac6a30d241865c349d2caa4e0`. |
@@ -50,18 +50,53 @@ Stop normally at trusted Mission acceptance or the one-hour deadline and perform
 
 ## Results
 
-Pending the registered run. Independent Spec and Standards reviews passed runtime `e00e246`. Before launch, exact-image worker startup probes, disk quota/Landlock, real pinned project/final verifier and artifact-lock/cgroup gates must pass. The one-hour maximum preserves normal early stopping on trusted Mission acceptance.
+Runtime `e00e246` passed independent Spec and Standards review. The full suite passed 620 of 632 tests with 12 explicit environment-gated skips and zero failures. Separately enabled real pinned Lean/Mathlib project and final-verifier probes passed; the production artifact-lock/cgroup gate passed 3/3; exact-image worker probes passed 2/2; disk quota/Landlock and documentation/diff checks passed. The exact EXP-03 failed revision replay returned a bounded source FAIL, with actual resource failures kept distinct.
+
+The CLI ran 05:52:23.453–06:03:03.088 UTC. The project ran 05:53:39.114–06:03:02.634 UTC: **563,520 ms (9m23.520s)**. Normal trusted acceptance ended the one-hour maximum early: `solved=true`, `protocol_valid=true`, `invalid=false`, no invalid reasons. This is not one-hour endurance evidence.
+
+Submission `b1-final-main-017` fixed main `0.17`, commit `127abba55b28453450fd729454a1f05571ebc5c3`, tree `ec531519abe94b4a272266d36b9b88766c2590aa`, and explicit Material `83f15654`. Final receipt `treecheck:ef3020d1-d776-4584-a9a7-93d67efb98ae` passed the locked theorem/axiom/kernel verifier at 06:03:01.524 UTC. The submitting Bot had already finished; its closure did not cancel the admitted final check.
+
+| Core / Bot prefix | Responsibility and outcome | Public continuation |
+| --- | --- | --- |
+| 1 / `ca00ebcf` | Circle-intersection Task `5b66fbef`, E `8f3e3ecf`: repaired a source error, passed `fb4c22c6` on revision `0.4`, merged `0.6`, published/linked `9537c111`, done. | Integrator applied its public revision and used the unchanged helper module. |
+| 2 / `7c8268e9` | Circle-color Task `80161980`, E `a768e9ea`: checked and strengthened the helper through `0.8`, passed `8d11b363`, merged `0.10`, published/linked `e57d29f6`, done. | Integrator read the Material and applied the merged geometry results. |
+| 3 / `574bba05` | Finite-incidence Task `db9687bc`, E `9adf7758`: passed `8201a87a` on `0.11`, merged `0.15`, published/linked `6fc26255`, done. | Integrator first applied still-unmerged `0.11`; its later Material read corroborates reuse but did not cause that first import. |
+| 4 / `b2ba4464` | Integration Task `04cbc3ca`, E `6cb54927`: combined the three helpers on `0.14`, passed `2f3b3a22` over four modules, merged `0.17`, published/linked `83f15654`, submitted, done. | The fixed submitted tree was accepted by the independent final verifier. |
+| 1 / `90f1c068` | Axiom/declaration audit Task `492991d7`, E `a31a82f0`: applied integrated `0.14`, saved separate audit module on `0.16`, passed `18dbf5a1` over five modules, delivered `3908b954`, done. | Further reuse of the integrated source; audit was corroboration and was not a substitute for final verification. |
+| 2 / `acce8be6` | Cold-build Task `b195e0bc`, E `34f12e72`: managed checks passed main `0.10` and integrated `0.17`; intentional unmerged negative control `0.18` failed correctly. Delivered `017c319a`, finished incomplete. | No local Lean executable was available to establish the Task's requested standalone cache/exit evidence. Task reopened; no successor retook it before acceptance. Main remained `0.17`. |
+| 3 / `1eb8db29` | Provenance audit Task `63cdc60a`, E `3260397a`: compared three producer revisions with integrated main and recorded Workspace uses, delivered `87cf0c7f`, done. | Verified byte-exact helper reuse and interface wiring; did not alter the already submitted proof. |
+| 1 / `adc5ba9e` | Fresh Bot, discovery only after audit completion. | Public status/Task/file/Material reads; no Execution or delivery before closeout. |
+| 4 / `f9eb67db` | Fresh Bot, discovery only after integration completion. | Pending-submission polls and public reads; no Execution or delivery. |
+| 3 / `721a3cb2` | Fresh Bot, discovery only after provenance audit. | Mission/Task/Material reads; no Execution or delivery. |
+| 2 / `0e3476c5` | Fresh Bot, discovery only after incomplete handoff. | Mission status query; no Execution or delivery. |
+
+Seven Tasks and seven Executions were created autonomously: six finished done, one incomplete. There were seven Materials and nine explicit consumption records, which are not nine independent useful handoffs. Thirteen durable ordinary CheckResults exactly match the report's thirteen IDs and bindings: **8 PASS, 5 source FAIL, 0 infrastructure failures, 0 pending**. Four separate merge receipts checked combined trees at `0.6`, `0.10`, `0.15` and `0.17`; the final acceptance is a separate check. Ordinary checks used 13 of 20 admissions, zero infrastructure retries; final checking used 1 of 4 admissions. No selected-file placeholder rejection occurred in this run.
+
+All eleven Bots are CLOSED. Independent scoped provider queries returned HTTP 404 for all eleven exact sandbox IDs. Cleanup took 1,057 ms, with no cleanup errors, unhandled rejections, heartbeat errors or watchdog errors. Initial READY events were one minute apart; replacement Bots did not repeat that stagger. The four `PROCESS_EXITED` discovery settlements occurred after accepted Mission stop, not during productive execution.
+
+Raw RPC inspection found 22 Bash error completions: four source-check FAIL exits, sixteen unavailable-utility exits (six `jq`, six `python3`, three `python`, one `rg`), one denied scratch-file redirection and one listing of a nonexistent optional directory. Bots recovered with available Node/direct CLI operations or recorded the cold-audit limitation. These were shell-level failures, not Judge infrastructure or Bridge lifecycle failures. The analyzer surfaced eight of these events; zero report Core errors does not mean every shell command succeeded.
+
+Recorded model usage: 181 requests, 179 with usage, **4,422,621 input tokens and 32,590 output tokens**; two settlements have unknown usage and none remain pending. Currency cost is unknown.
 
 ## Analysis
 
-No new natural-Agent evidence yet. The exact EXP-03 revision replay now returns source FAIL with bounded diagnostics. Real pinned Lean checks distinguish ordinary errors in `Killed.lean` from actual heartbeat exhaustion; mocked pipe-boundary regressions cover late OOM and abnormal worker exits in both ordinary and final builds. These are implementation diagnostics, not research acceptance.
+| Approved criterion | Assessment | Evidence and limits |
+| --- | --- | --- |
+| Stable useful work and lifecycle | PASS for observed interval | Distinct identities replaced completed Bots, later audits executed, and all resources closed. No permanent idle Core while useful work remained was observed. Budget expiry and one-hour endurance were not exercised. |
+| Meaningful division | PASS | Three distinct geometry/counting responsibilities fed one integrator; follow-on audits and a positive/negative control had separate responsibilities. The cold-build responsibility was truthfully incomplete. |
+| Public reuse and continuation | PASS | Independent Git comparison confirms the accepted target imports and references all three producer modules, byte-identical to `0.4`, `0.8`, `0.11`. It reused an unmerged revision. Later audit Bots used the integrated target. |
+| Mission acceptance or substantial progress | PASS by trusted acceptance | Fixed main `0.17` passed the original theorem, allowed-axiom policy and kernel replay. Build success and Material counts are only supporting evidence. |
 
-The report now records durable project CheckResult IDs and coverage even when a closed Bot cannot receive the late response. A refused selected-file placeholder does not itself invalidate the project; project diagnostics alone do not establish research progress. The inherited report metadata's generic `cheating_policy` text is broader than this project-mode behavior; authoritative rejection/result fields and the architecture explanation distinguish it.
+The interrupted EXP-03 and this repeat demonstrate different boundaries: EXP-03 established early collaboration but stopped on faulty error classification; EXP-04 completed without checker infrastructure failures and produced accepted cross-module integration. They are versioned acceptance observations, not a controlled causal or performance comparison. The parser regressions and exact old-tree replay establish the diagnosed repair separately.
+
+The report's `checker_unassessed_count=13` counts the mathematical status of ordinary diagnostic checks, not pending or unclassified requests. Every ordinary receipt is terminal with its own source/build outcome; Mission mathematics is decided by the separate final verifier. The inherited generic `cheating_policy` metadata is broader than project-mode behavior: refused selected-file placeholders are request failures. This run exercised neither that refusal nor late check delivery after Bot fencing; deterministic regressions cover those paths.
 
 ## Next steps
 
-Run the registered profile after all final checks pass, analyze every Bot's responsibility, contribution and successor use, and independently verify checker and cleanup outcomes. Retain the same provider/model, fixture and budgets. No acceptance conclusion is drawn from review or test success alone.
+The approved behavioral criteria passed. PR #128 can be closed out with this report, independent review and exact tested identities. Longer endurance, different problems or controlled comparisons would require their own approved run; this result does not establish them. Preserve the incomplete cold-build Task outcome as an evidence limit, not a failed Mission or completed audit.
 
 ## Evidence and limitations
 
-Detailed local analysis will be written to `experiments/EXP-20261116-04/analysis/experiment-analysis.md`. Raw conversations, proof source, state databases, stdout/stderr and private deployment paths remain ignored. Currency cost remains unknown unless recorded by the provider. Observability uses a healthy local service with a fresh dedicated store; its identity will be captured in run metadata.
+The repository analyzer exited 0 and generated `analysis/experiment-analysis.md` with seven reconstructed Executions and no inventory warnings. Independent `analysis/bot-observation.md`, `analysis/system-observation.md` and `analysis/cleanup-verification.json` corroborate behavior and physical cleanup. Raw evidence is ignored under `experiments/EXP-20261116-04/`; the published document contains no raw conversations, proof source, stdout/stderr, credentials, private databases or private deployment paths.
+
+Primary records are `state/projects/putnam_2025_b1/project.sqlite` (Task/Execution/Bot/submission), `context.sqlite`, `judge.sqlite`, `model-budget.sqlite`, immutable Workspace trees, Bridge/Runtime logs and metadata-declared `<external>/observability.sqlite`. Core 4 Bridge events at lines 67, 79, 100, 109, 121, 124, 130, 144, 155, 164, 178 and 183 connect read/apply/save/check/merge/use/submit/finish. Independent audits are linked by Core 1 lines 202–263, Core 2 lines 246–274 and Core 3 lines 153–185. Discovery-only actions use explicit Bot READY/CLOSED windows; no hidden reasoning or private Session inheritance is inferred.
