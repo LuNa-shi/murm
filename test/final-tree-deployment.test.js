@@ -18,6 +18,20 @@ test('checker lock rejects unknown benchmark profiles before tool invocation', a
   await assert.rejects(createFinalTreeArtifactLock({ configuration: { ...configuration, benchmarkProfile: 'arbitrary' } }), /benchmark profile/);
 });
 
+test('root-only deployment binds the target and declaration to its foundation manifest', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-foundation-target-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bytes = JSON.stringify({ target_sha256: 'a'.repeat(64), declaration_name: 'Target.goal' });
+  await writeFile(join(root, 'foundation-manifest.json'), bytes);
+  const deployment = { ...configuration, benchmarkProfile: 'flt10-subtree-v1', checkpoint: 20,
+    projectionRoot: root, foundationSha256: sha256(bytes) };
+  const problem = { checkpoint: 20, source_hash: 'a'.repeat(64), declaration_name: 'Target.goal' };
+  for (const altered of [{ ...problem, source_hash: 'b'.repeat(64) }, { ...problem, declaration_name: 'Helper.goal' }]) {
+    await assert.rejects(createLockedFinalTreeVerifier({ configuration: deployment, problem: altered }), /locked foundation target/);
+  }
+  await assert.rejects(createLockedFinalTreeVerifier({ configuration: deployment, problem }), /artifact lock is required/);
+});
+
 test('deployment gate requires the lock and rejects altered content or selection before invoking tools', async () => {
   await assert.rejects(createLockedFinalTreeVerifier({ configuration }), /artifact lock is required/);
   const manifest = {

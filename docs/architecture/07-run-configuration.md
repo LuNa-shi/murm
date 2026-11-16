@@ -361,3 +361,80 @@ current discovery turn's settlement cursor across binding, as described in
 [Execution](02-execution.md). Neither resource budgets nor the core Swarm
 organization algorithm change. Tests and subsequent reports distinguish the
 repair's verification from the original blocked observation.
+
+## Root-only FLT Workspace tasks
+
+`prepare_flt_subtrees.py` is an operator-side CLI for the distinct
+`flt10-subtree-v1` profile. Its required inputs are the pinned FLT source,
+Lean executable, pinned Prove2Me extraction-tool checkout, and a new output
+folder. `--checkpoints` defaults to Q20 and accepts any subset of Q10–Q100;
+`--jobs` is 1–4, default 4. It never launches a model or uploads to Prove2Me.
+The Prove2Me scripts are external pinned tooling; the repository does not vendor
+them or its collaboration harness.
+
+The command verifies source/tool revisions and hashes, compiles a private seed
+from the previously reviewed foundation sources, then obtains declaration
+facts and syntax ranges with Lean. For each selected root it follows statement
+dependencies, recursively retains actual foundation values, constructor fields
+and instances in participating modules, and preserves dependencies of lexical
+context outside declaration bodies. Source subtraction uses parser byte spans.
+Only simple validated import headers and the known target preamble are adjusted.
+It recompiles the reduced foundation and target, and compares the root's
+elaborated expression representation before/after. A mismatch or compile error
+aborts preparation. This structural identity check supports extraction; it does
+not replace the independent final theorem comparison.
+
+Outputs are separated: per-checkpoint `private/` and `private-facts/` hold the
+extraction/provenance; `source/`, `lib/` and `foundation-manifest.json` are trusted
+checker deployment inputs; `public/` contains the target, readable reduced
+foundation, neutral README, Apache license, applicable source notices and public
+context manifest. The complete upstream attribution table is not exported because
+it names hidden proof modules. Retained source copyright headers remain. A dedicated deterministic
+Git commit pins public inputs. `benchmark-config.json` points to that fixture
+checkout and public manifest. No proof graph or hidden helper source enters the
+public manifest. A failed run leaves private diagnostic artifacts and requires
+a fresh output folder for retry. Preparation does not delete unrelated state.
+
+The loader accepts a safe configured benchmark identifier and 1–1000 problems,
+with explicit Lean declaration names where needed. `instructions_path`, when
+present, must be under `benchmark/` without traversal; the Mission goal directs
+the Bot to read it through Workspace. Existing fixture checkout/digest checks
+and context byte/path/hash limits remain. Benchmark-specific coordination code
+is not inserted into the Core loop.
+
+The new final-check profile pins FLT/Mathlib revisions, the operator-approved
+foundation manifest digest and compiled artifacts. Lock creation verifies the
+reduced source inventory and rejects unexpected compiled artifacts. Candidates
+can create ordinary project modules and add imports; trusted namespace shadowing
+and source-layout restrictions still reject. `requireCompleteProject` rejects
+`sorry`, `sorryAx`, `admit` or `axiom` tokens in submitted Lean files (including
+comments). Unlike the older FLT profile, it does not freeze the textual import
+prefix. Original theorem/type comparison, transitive axiom checking and kernel
+replay still govern final PASS; ordinary project diagnostics remain unchanged.
+All existing checker resource limits, deadlines and cleanup apply.
+
+Configs with `validation_required: true` require a private operator receipt
+before timed project initialization. Its hash and safe relative path are checked
+under `benchmark_validation_root`. A complete-target PASS must attest initial
+compilation, statement identity and visibility, and bind the exact target hash,
+public context hash and checker artifact-lock SHA plus a final check result ID.
+A missing, helper-only, stale or mismatched receipt fails before creating a Bot.
+The receipt is trusted operator evidence, not a proof supplied by a research
+Agent; the locked deployment is still verified independently afterward. No
+receipt is manufactured by preparation: new problems start unvalidated. Private
+reference proof source is never a public input or an additional trusted library.
+
+`scripts/validate-benchmark-witness.mjs` receives six operator paths/values:
+deployment config, public fixture checkout, problem ID, private witness directory,
+visibility audit, and a new receipt path. It verifies the fixture/context and
+requires an audit bound to the exact target/context. It collects only Lean files,
+rejects hidden entries and symlinks, applies the Workspace 2 MiB/file and 16 MiB
+total limits, and hashes the sorted file manifest. It runs the actual locked
+final checker on the complete witness tree. Only a PASS for that tree creates
+a mode-0600 receipt, exclusively (an existing output is not overwritten). Failure
+prints the diagnostic and exits nonzero without creating a receipt. The receipt
+contains the full check result, witness tree hash, target/context/lock hashes and
+visibility audit digest; it does not contain proof source. Timed launch checks
+that the embedded PASS and checked tree match the receipt. The visibility audit
+is separate operator evidence; this command does not claim to perform an Agent
+sandbox audit itself. Checker timeouts and cleanup retain the production behavior.

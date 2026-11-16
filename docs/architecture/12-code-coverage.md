@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **188 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **191 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -58,9 +58,9 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 |---|---|---|---|
 | [scripts/lock-final-tree-checker.mjs](../../scripts/lock-final-tree-checker.mjs) | Trusted local checker lock generator with source provenance checks | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `7320052d24221f1018a029a774f1071dec2a75330cf9bed69f3d1d6444320c94` |
 | [src/judge/checker-process-limits.js](../../src/judge/checker-process-limits.js) | Verified systemd cgroup limits and process-tree cleanup ownership | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `4900e0f3302edf041e2601ed06675950aa9b3550fb03b14f9e55c6f185dedeb0` |
-| [src/judge/final-tree-deployment.js](../../src/judge/final-tree-deployment.js) | Pinned source/artifact lock and production checker startup gate | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `345f4e042935874440285ee526d13d0b11aaf3c2067ac77f11e069811d2abee7` |
+| [src/judge/final-tree-deployment.js](../../src/judge/final-tree-deployment.js) | Pinned source/artifact lock and production checker startup gate | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `e8c3d66a76cea05f1a1faaed3684c46a88bc6910812514cb88c8416c87b652ac` |
 | [src/judge/final-tree-proof.lean](../../src/judge/final-tree-proof.lean) | Trusted Comparator harness consuming inert proof exports | [04-services](04-services.md) | `725d252c05e8eb609e60026c4910d0d9a60e697eb862e8439d77b673b468d1b8` |
-| [src/judge/lean-final-tree-verifier.js](../../src/judge/lean-final-tree-verifier.js) | Locked offline Lake project builds, isolated proof export, theorem comparison and kernel replay | [04-services](04-services.md), [05-workspace-continuity](05-workspace-continuity.md), [07-run-configuration](07-run-configuration.md) | `1667159c1d1acc6a5993e829f77dbf14c0272728c82cea23473f28c45bf159c5` |
+| [src/judge/lean-final-tree-verifier.js](../../src/judge/lean-final-tree-verifier.js) | Locked offline Lake project builds, isolated proof export, theorem comparison and kernel replay | [04-services](04-services.md), [05-workspace-continuity](05-workspace-continuity.md), [07-run-configuration](07-run-configuration.md) | `1cdfe85dc6a819074a04136756d4d2c68cc70be5df67ba2cddf30e2b81347c54` |
 | [src/runtime/mission-coordination.js](../../src/runtime/mission-coordination.js) | Trusted Task/Context/Mission acceptance assembly and observed input validation | [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `bb201e46853b0e1574a838b70b54085c17922b3f744690e56d56f1dbca5c4226` |
 
 ### Mission and Task (7)
@@ -89,7 +89,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 |---|---|---|---|
 | [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `29ce2f3c4c28168bf9f9ebf6c9e0e294a59ae2025cb734cd37fcc751fa528fa6` |
 
-### benchmark inputs (41)
+### benchmark inputs (42)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -128,12 +128,19 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [benchmarks/flt10/q90/metadata.json](../../benchmarks/flt10/q90/metadata.json) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `854d64a3df5bf7d1dc90d7b93353aeebf23264f949ceea23d062126964ac879e` |
 | [benchmarks/flt10/q90/problem.md](../../benchmarks/flt10/q90/problem.md) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `ad865cbb2351f1ff61b1e685247cacc8c78073d1f240593b78f6aee16c380bc6` |
 | [benchmarks/flt10/read_context.py](../../benchmarks/flt10/read_context.py) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `f0222f5feb2ceb70076a6ad959d5d182373030aa9a4c9b9652d42e1faa750b3d` |
-| [benchmarks/flt10/README.md](../../benchmarks/flt10/README.md) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `2210012b9ab7800b19cfbbefacf7164d04ddb6bf605e644561286da190c48634` |
+| [benchmarks/flt10/README.md](../../benchmarks/flt10/README.md) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `bb549ebe3f4e77d014364846ba9deea7a4135580b7ba4ea2a16dfb2f7f8c2a2c` |
+| [benchmarks/flt10/subtree-instructions.md](../../benchmarks/flt10/subtree-instructions.md) | Neutral multi-file proof project instructions loaded through Workspace | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `8dd8cdfb8bd9a39e74c1dd050dcfc7b69326e7320660b58f1f2d9b75b0b13b71` |
 | [benchmarks/flt10/upstream-integrity.json](../../benchmarks/flt10/upstream-integrity.json) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `f1dabecefab7f0be73f8c2b1574b76706fda0e5213b1fb695b6134ea476bb619` |
-| [config/flt10.json](../../config/flt10.json) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `1720590cdd28ae71ff6117665f44f0b9c89e089284e199186057f568b694524f` |
+| [config/flt10.json](../../config/flt10.json) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5addcb69f21e50738dd6d81b7fa1a6e2c691cc3dfee1a454278360dfb20a8bdd` |
 | [scripts/benchmarks/build_flt10_statement_graph.py](../../scripts/benchmarks/build_flt10_statement_graph.py) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5ded1d5ae02a070e63ea2643c0a0b39faac8cb3cf445b790ac12b29a4a9d38f9` |
 | [scripts/benchmarks/prepare_flt10.py](../../scripts/benchmarks/prepare_flt10.py) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7f151341138d6e3798135f454a89a327a655768b2978bf5a0b6cb4ab5cf1905e` |
-| [src/benchmark/benchmark-context.js](../../src/benchmark/benchmark-context.js) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `c45e2fee12a434656ba07e4f072ef342ae01d7535f0f0554e7915eb8c9aa36e4` |
+| [src/benchmark/benchmark-context.js](../../src/benchmark/benchmark-context.js) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `8563064217c3801d586da70287c7bd374889edef5a7ca1093e6195f654540173` |
+
+### benchmark setup (1)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [scripts/benchmarks/prepare_flt_subtrees.py](../../scripts/benchmarks/prepare_flt_subtrees.py) | Root-only FLT extraction, private typed facts and public fixture generation | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `d40cab74f2ac086746abd85b901d3a3381ac1c32f9756cab4052b4b46db5e537` |
 
 ### controlled verification data (4)
 
@@ -188,7 +195,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/observability/public/index.html](../../src/observability/public/index.html) | Generated dashboard HTML served by the observation server | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `232d9988e73793b5d0a06e150396e8b504098c6a67ec9829804a4caed1975bf5` |
 | [src/observability/public/styles.css](../../src/observability/public/styles.css) | Generated dashboard CSS served by the observation server | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `66a89e74376ff5ad35345f72c22cba142d9a42ba5c8f60b2e95ce8883cd7df36` |
 
-### launch and composition (14)
+### launch and composition (15)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -202,9 +209,10 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/run-putnambench-benchmark.mjs](../../scripts/run-putnambench-benchmark.mjs) | CLI options, locked input, persistent observer, batch and aggregate outputs | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `66d7444875d9aae24d99a8efb99e6fcfbe8992f34e5f43948707302478e76618` |
 | [scripts/service-host-entrypoint.sh](../../scripts/service-host-entrypoint.sh) | Explicit Judge checker prebuild gate and persistent volume marker | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `4c067092da38e68214149badb57dfcdb662523787dc3fbdae9740a93f25f9b75` |
 | [scripts/service-host.mjs](../../scripts/service-host.mjs) | Built-in HTTP service process composition and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `6714afeff7a7f2d2d055ca9969d7d9df216ade8ae8c20d02855d57fbaa1194de` |
+| [scripts/validate-benchmark-witness.mjs](../../scripts/validate-benchmark-witness.mjs) | Private complete-witness validation and launch receipt generation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `f6fbe281624437c0a0a92076f7f4cee24d9ebc402ecf868b5aea8877fa29a3fe` |
 | [services/opensandbox-agent/Dockerfile](../../services/opensandbox-agent/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `0e26cc854c0ddd4a80dca2eddd56a6df6e5b43b1c3473ca7b172aea184a0c971` |
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `2f7af32c853568f358b7c7fabb66d6992df5fbc727eac777130e1650ed124070` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `2a4039d9b0e5ba529def3a8aa4c79b9bc94d509965d793709d1841c75f8448d1` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `a0d1c160752758ab79d6e223c999a4bcc37a159f784e3a048f70cd54b3a724bf` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `27bd16068475e5b865f7f0ef8d9e4a5529bd4905dbe20cc1e46508cff07a6856` |
 
 ### observation and analysis (11)

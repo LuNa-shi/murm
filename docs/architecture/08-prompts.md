@@ -238,11 +238,52 @@ The `use-workspace` skill now describes conditional project checking: save a fix
 ### FLT10 Mission context
 
 The benchmark runner retains the ordinary Mission goal template
-`Solve ${problem.id} through independent, shared Task work.` For the explicit
-`flt10` profile it appends the exact sentence ` Read benchmark/README.md for the
-fixed benchmark contract and public context.` This goal enters the same Mission
+`Solve ${problem.id} through independent, shared Task work.` When `instructions_path` is configured it appends ` Read ${config.instructions_path} for the benchmark task and input contract.` This goal enters the same Mission
 and discovery context paths described above. The README is verified public
 Workspace input and explains the pinned original target, proof-placeholder
 restriction, complete compressed statement graph queries and safe definition
 references. It is not automatically expanded into every turn. No ContextSwarm
 Agent prompt, collaboration policy or scheduler instruction is imported.
+
+## Root-only benchmark task instructions
+
+The generic Mission goal appends `Read <instructions_path> for the benchmark
+task and input contract.` only when the benchmark config supplies that path.
+The value is validated during config loading. The startup composer includes the
+Mission goal in its ordinary discovery message; no new model send path or Core
+role assignment is introduced. The README body is delivered only if the Bot
+reads the corresponding Workspace file, and that read is ordinary tool evidence.
+For `flt10-subtree-v1`, the complete repository-controlled body is
+[the root-only task instruction file](../../benchmarks/flt10/subtree-instructions.md).
+Preparation replaces the single `{{target_path}}` field with the configured
+checkpoint path (`q20/Target.lean` for Q20) before hashing the public README. It permits new
+definitions/lemmas/modules, explains the existing save/check/integrate workflow,
+and states final correctness constraints without listing a decomposition.
+
+The complete root-only README template is:
+
+```markdown
+# Formal proof project
+
+Prove the target theorem in `{{target_path}}`. Its original mathematical statement
+and the supplied foundation are fixed. The initial proof contains `sorry`; this
+makes the starting project elaboratable but is not a completed proof.
+
+You may develop your own definitions, intermediate lemmas and Lean modules in
+the target directory and its subdirectories. Import those modules from the
+root proof as needed. Use public Mathlib and the supplied foundation; readable
+foundation source is under `benchmark/foundation/`. The Judge provides the
+pinned compiled dependencies. The Bot does not have a local Lean installation.
+
+Use Task to coordinate responsibilities and Material to share explanations,
+evidence and references to exact Workspace revisions and paths. Save your code
+before asking Judge to check a revision. Incomplete intermediate revisions can
+be used for diagnostics. Integrate the needed files into Workspace main before
+Mission submission; source compilation alone is not final acceptance.
+
+Final acceptance checks the unchanged mathematical target against its trusted
+challenge, checks proof assumptions, and replays the proof through the kernel.
+The final project must have no remaining proof holes or extra axioms. Private
+answers, previous runs and external network access are unavailable. There is no
+prescribed decomposition, list of helper lemmas or assignment of Core roles.
+```

@@ -57,3 +57,29 @@ the existing authenticated worker preparation path, renews preparation leases,
 and preserves discovery settlement across binding. Q10 must pass a real
 edit/Judge/feedback cycle and bounded observation before Q20 resumes. Passing
 setup tests alone does not establish parallel advantage.
+
+## Root-only Workspace variant
+
+Issue [#135](https://github.com/LuNa-shi/SwarmEnv/issues/135) adds the separate
+`flt10-subtree-v1` input/submission profile. Preparation defaults to **Q20 only**;
+Q100 is deferred. The original ladder above remains available for reproducibility.
+
+Run `scripts/benchmarks/prepare_flt_subtrees.py` with `--source`, `--lean`,
+`--extractors` and a fresh ignored `--output`. The extractor checkout is the
+operator-installed Prove2Me workspace at
+`79097e0d1fbab732ebf38ac23e7e5a700080c9c4`; tools are not vendored. Optional
+`--checkpoints 20` selects Q20 and `--jobs 4` bounds preparation concurrency.
+The output contains an independently pinned public fixture checkout with one
+root theorem, its reduced statement foundation and neutral task instructions.
+Private extraction facts and reference proofs must never be mounted to Bots.
+
+A successful preparation means the initial `sorry` project compiles and preserves
+the elaborated target. It does **not** establish solvability. Configure a
+`flt10-subtree-v1` checker with that checkpoint, foundation manifest digest and
+compiled foundation, then create its artifact lock. A complete private witness
+must pass `scripts/validate-benchmark-witness.mjs` under that deployment, with a
+separate actual visibility audit, before attaching the private receipt to the
+benchmark config. Missing or stale validation prevents timed startup. See
+[run configuration](../../docs/architecture/07-run-configuration.md) for the
+receipt contract. Agent proofs may add modules, definitions and lemmas; the
+final checker still verifies the original mathematical target and proof axioms.

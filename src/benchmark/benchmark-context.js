@@ -40,3 +40,24 @@ export async function readBenchmarkContext(problem, config) {
   }
   return files;
 }
+
+/** An operator receipt is separate from public inputs and required before paid work. */
+export async function assertBenchmarkReady(problem, config, checkerConfiguration) {
+  if (config.validation_required !== true) return;
+  if (!config.benchmark_validation_root || !problem.validation_manifest || !problem.validation_sha256 || !checkerConfiguration?.artifactLock) {
+    throw new TypeError('Benchmark is not ready: complete-target witness and visibility validation are required');
+  }
+  const root = await realpath(config.benchmark_validation_root);
+  const receipt = JSON.parse(await readPinned(root, problem.validation_manifest, problem.validation_sha256, 1024 * 1024));
+  const lock = typeof checkerConfiguration.artifactLock === 'string'
+    ? JSON.parse(await readFile(checkerConfiguration.artifactLock, 'utf8')) : checkerConfiguration.artifactLock;
+  if (receipt.verdict !== 'PASS' || receipt.scope !== 'complete-target' || receipt.initial_compilation !== true ||
+      receipt.statement_identity !== true || receipt.visibility_audit !== true ||
+      receipt.target_sha256 !== problem.source_hash || receipt.context_sha256 !== problem.context_sha256 ||
+      !/^[a-f0-9]{64}$/.test(receipt.checker_lock_sha256 ?? '') || receipt.checker_lock_sha256 !== lock.sha256 ||
+      !/^[a-f0-9]{64}$/.test(receipt.witness_tree_sha256 ?? '') ||
+      receipt.check_result?.verdict !== 'PASS' || receipt.check_result?.checked_tree !== `sha256:${receipt.witness_tree_sha256}` ||
+      !/^treecheck:[a-f0-9-]{36}$/.test(receipt.check_result?.check_result_id ?? '')) {
+    throw new TypeError('Benchmark is not ready: validation does not attest this complete target, context and checker');
+  }
+}

@@ -379,6 +379,15 @@
       "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
     },
     {
+      "path": "benchmarks/flt10/subtree-instructions.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Neutral multi-file proof project instructions loaded through Workspace"
+    },
+    {
       "path": "benchmarks/flt10/upstream-integrity.json",
       "category": "benchmark inputs",
       "chapters": [
@@ -494,6 +503,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
+    },
+    {
+      "path": "scripts/benchmarks/prepare_flt_subtrees.py",
+      "category": "benchmark setup",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Root-only FLT extraction, private typed facts and public fixture generation"
     },
     {
       "path": "scripts/bot-filesystem-policy.c",
@@ -692,6 +710,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Executable swarm CLI entry point and exit-code boundary"
+    },
+    {
+      "path": "scripts/validate-benchmark-witness.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Private complete-witness validation and launch receipt generation"
     },
     {
       "path": "services/builtin/Dockerfile",

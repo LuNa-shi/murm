@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { loadBenchmarkConfig } from '../src/benchmark/putnam-runner.js';
 import { createHash } from 'node:crypto';
-import { readBenchmarkContext } from '../src/benchmark/benchmark-context.js';
+import { assertBenchmarkReady, readBenchmarkContext } from '../src/benchmark/benchmark-context.js';
 import { fileURLToPath } from 'node:url';
 
 test('FLT10 loads all ten pinned statements with distinct project and Lean declaration names', async t => {
@@ -63,4 +63,41 @@ test('benchmark context retains binary metadata and rejects mutated or escaping 
   await writeFile(join(root, 'graph.xz'), 'changed');
   await assert.rejects(readBenchmarkContext(problem, config), /digest mismatch/);
   await assert.rejects(readBenchmarkContext({ ...problem, context_manifest: '../outside' }, config), /unsafe/);
+});
+
+test('a new benchmark loads one configured target without adding a runner branch', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-generic-fixture-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'Target.lean'), 'theorem Example.target : True := by sorry\n');
+  const config = { benchmark: 'example-subtree-v1', fixture_commit: 'local', instructions_path: 'benchmark/README.md',
+    problems: [{ id: 'example', problem_file: 'Target.lean', declaration_name: 'Example.target' }] };
+  await writeFile(join(root, 'config.json'), JSON.stringify(config));
+  const loaded = await loadBenchmarkConfig(join(root, 'config.json'), { putnamBenchRoot: root });
+  assert.equal(loaded.problems.length, 1);
+  assert.equal(loaded.problems[0].declaration_name, 'Example.target');
+  assert.equal(loaded.instructions_path, 'benchmark/README.md');
+});
+
+test('formal readiness requires a complete target receipt bound to its context and checker', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-validation-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const config = { validation_required: true, benchmark_validation_root: root };
+  const problem = { source_hash: 'target', context_sha256: 'public-context', validation_manifest: 'receipt.json' };
+  const checker = { artifactLock: { sha256: 'a'.repeat(64) } };
+  await assert.rejects(assertBenchmarkReady(problem, config, checker), /not ready/);
+  const receipt = { verdict: 'PASS', scope: 'complete-target', initial_compilation: true, statement_identity: true,
+    visibility_audit: true, target_sha256: 'target', context_sha256: 'public-context', checker_lock_sha256: 'a'.repeat(64),
+    witness_tree_sha256: 'c'.repeat(64), check_result: { verdict: 'PASS', checked_tree: 'sha256:' + 'c'.repeat(64),
+      check_result_id: 'treecheck:00000000-0000-4000-a000-000000000001' } };
+  const check = async changes => {
+    const bytes = JSON.stringify({ ...receipt, ...changes });
+    await writeFile(join(root, 'receipt.json'), bytes);
+    return assertBenchmarkReady({ ...problem, validation_sha256: createHash('sha256').update(bytes).digest('hex') }, config, checker);
+  };
+  await check({});
+  for (const changes of [{ scope: 'helper' }, { target_sha256: 'other' }, { context_sha256: 'old' },
+    { checker_lock_sha256: 'b'.repeat(64) }, { visibility_audit: false }, { statement_identity: false },
+    { witness_tree_sha256: 'd'.repeat(64) }, { check_result: { verdict: 'FAIL' } }]) {
+    await assert.rejects(check(changes), /not ready/);
+  }
 });

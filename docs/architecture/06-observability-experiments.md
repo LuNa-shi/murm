@@ -286,3 +286,14 @@ These are public input files, not Tasks or Materials; the usual Workspace revisi
 history records subsequent research changes. The seeded README explains the exact
 target path and metadata query commands. No completed proof or historical run is
 seeded. Core scheduling, Task selection and collaboration rules are unchanged.
+
+Root-only FLT preparation and formal readiness are separate observations. The
+operator records initial compilation, root identity, a private complete-target
+witness and visibility validation per checkpoint. A root `sorry` warning is an
+expected initial-state observation, never a solution. A validated private
+reference project is engineering evidence and is not Swarm research output.
+A timed run requires a receipt bound to its target/context/checker; missing
+validation fails before Bot creation. Earlier full-graph FLT reports retain their
+original profile. Current root-only work focuses on Q20; Q100 complete-proof
+validation and model experiments are deferred. See [run configuration](07-run-configuration.md)
+for the receipt and public/private file boundaries.

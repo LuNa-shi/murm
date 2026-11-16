@@ -30,6 +30,35 @@ test('final-tree verifier fixes the source identity and rejects missing source b
 
 const lean = { skip: !leanRoot || !comparatorRoot };
 
+test('complete-project policy rejects a hole in an unused helper before final dispatch', async () => {
+  const verifier = fixture(undefined, { projectChecks: true, requireCompleteProject: true });
+  const result = await verifier.check({ files: {
+    'Toy.lean': 'theorem toy : True := by trivial\n',
+    'Unused.lean': 'theorem later : True := by sorry\n',
+  }, tree: 'unfinished-project' });
+  assert.equal(result.verdict, 'FAIL');
+  assert.match(result.diagnostic, /incomplete|axiom/);
+});
+
+test('root-only final checking accepts a new definition and helper import but rejects a changed goal', lean, async () => {
+  const verifier = fixture('theorem toy (n : Nat) : n = n := by sorry\n',
+    { projectChecks: true, requireCompleteProject: true });
+  const files = {
+    'Toy.lean': 'import Research.Helpers\ntheorem toy (n : Nat) : n = n := by exact helper n\n',
+    'Research/Helpers.lean': 'def identityNat (n : Nat) : Nat := n\ntheorem helper (n : Nat) : identityNat n = n := by rfl\n',
+  };
+  const accepted = await verifier.check({ files, tree: 'new-definitions-and-import' });
+  assert.equal(accepted.verdict, 'PASS', accepted.diagnostic);
+  const changed = await verifier.check({ files: { ...files,
+    'Toy.lean': 'import Research.Helpers\ntheorem toy (n : Nat) (h : False) : n = n := by exact helper n\n',
+  }, tree: 'extra-hypothesis' });
+  assert.equal(changed.verdict, 'FAIL', changed.diagnostic);
+  const hidden = await verifier.check({ files: { ...files,
+    'Toy.lean': 'import P2M.Sol.Hidden\ntheorem toy (n : Nat) : n = n := by rfl\n',
+  }, tree: 'hidden-library' });
+  assert.equal(hidden.verdict, 'FAIL', hidden.diagnostic);
+});
+
 test('benchmark proof-placeholder contract rejects changed imports or statement before dispatch', async () => {
   const source = 'import FLT10.DAG_q10\ntheorem FLT10Bench.target : True := by\n  sorry\n';
   const verifier = fixture(source, { declarationName: 'FLT10Bench.target', preserveFixturePrefix: true });

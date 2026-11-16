@@ -25,7 +25,7 @@ import { ServicesSDK } from '../sdk/services-sdk.js';
 import { TaskService, fixedExecutionInputHash } from '../task/task-service.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 import { verifyBenchmarkFixtureCheckout, readBenchmarkFixture, verifyBenchmarkRunFixture, assertTimedServiceComposition } from './benchmark-fixture.js';
-import { readBenchmarkContext } from './benchmark-context.js';
+import { assertBenchmarkReady, readBenchmarkContext } from './benchmark-context.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
@@ -373,12 +373,15 @@ function observationLogger(observationStore, experimentId, source) {
 export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyPinnedCheckout = false } = {}) {
   const config = JSON.parse(await readFile(resolve(configPath), 'utf8'));
   required(putnamBenchRoot, 'putnamBenchRoot');
-  if (config.benchmark != null && !['putnambench', 'flt10'].includes(config.benchmark)) {
-    throw new TypeError('unsupported benchmark');
+  if (config.benchmark != null && !SAFE_PROJECT_ID.test(config.benchmark)) {
+    throw new TypeError('invalid benchmark name');
   }
-  const problemCount = config.benchmark === 'flt10' ? 10 : 12;
-  if (!Array.isArray(config.problems) || config.problems.length !== problemCount) {
-    throw new TypeError(`benchmark config must contain exactly ${problemCount} problems`);
+  if (!Array.isArray(config.problems) || !config.problems.length || config.problems.length > 1000) {
+    throw new TypeError('benchmark config requires between 1 and 1000 problems');
+  }
+  if (config.instructions_path != null && (typeof config.instructions_path !== 'string' ||
+      !/^benchmark\/[A-Za-z0-9_./-]+$/.test(config.instructions_path) || config.instructions_path.split('/').includes('..'))) {
+    throw new TypeError('invalid benchmark instructions path');
   }
   const commit = config.fixture_commit ?? config.putnambench_commit;
   const root = resolve(putnamBenchRoot);
@@ -395,8 +398,8 @@ export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyP
     const { sourcePath, source, sourceHash } = await readBenchmarkFixture({ root, path: problem.problem_file, commit: verifyPinnedCheckout ? commit : null });
     validateProblemInput(problem, source);
     if (problem.source_sha256 != null && sourceHash !== problem.source_sha256) throw new TypeError(`benchmark source digest mismatch: ${problem.id}`);
-    if (config.benchmark === 'flt10' && !/^FLT10Bench\.[A-Za-z_][A-Za-z0-9_]*$/.test(problem.declaration_name ?? '')) {
-      throw new TypeError('FLT10 requires an explicit Lean declaration name');
+    if (problem.declaration_name != null && !/^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*$/.test(problem.declaration_name)) {
+      throw new TypeError('invalid Lean declaration name');
     }
     problems.push({
       ...problem,
@@ -1512,6 +1515,10 @@ export function projectReport(state, startedAt, deadline) {
 async function createProjectState(problem, config, options) {
   const assertInitializing = () => { if (options.signal?.aborted) throw operatorStop(); };
   assertInitializing();
+  if ((options.timeboxMs ?? 60 * 60_000) > 0) {
+    await assertBenchmarkReady(problem, config, options.finalTreeCheckerConfig ?? config.final_tree_checker);
+    assertInitializing();
+  }
   // The Mission-scoped Task lifecycle is the only supported model.
   // Reject removed programmatic mode toggles rather than silently ignoring them.
   if (Object.hasOwn(options, 'taskModel') || Object.hasOwn(options, 'taskOriented')) {
@@ -1741,7 +1748,7 @@ async function createProjectState(problem, config, options) {
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
     const mission = taskService.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
-      goal: `Solve ${problem.id} through independent, shared Task work.${config.benchmark === 'flt10' ? ' Read benchmark/README.md for the fixed benchmark contract and public context.' : ''}`,
+      goal: `Solve ${problem.id} through independent, shared Task work.${config.instructions_path ? ` Read ${config.instructions_path} for the benchmark task and input contract.` : ''}`,
       ...(workspaceMergeChecker ? { merge_required_check: workspaceMergeChecker.identity } : {}),
       acceptance_conditions: {
         project: problem.id,

@@ -1,5 +1,6 @@
 {
   "benchmark": "flt10",
+  "instructions_path": "benchmark/README.md",
   "fixture_commit": "3e529ef2cd337a1b829fe280c7360cb3dd95b35c",
   "lean_toolchain": "leanprover/lean4:v4.33.1",
   "mathlib_version": "db584cd6d46c92f209a44c0f1c829460d327499d",
