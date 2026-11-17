@@ -21,6 +21,7 @@ import { promisify } from 'node:util';
 import { ServicesBridge } from '../src/agent/services-bridge.js';
 import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
+import { startIndependentServices } from '../src/sdk/independent-services.js';
 import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
 
 async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceConditions = {}, mergeRequiredCheck = null, beforeFetch = null } = {}) {
@@ -2145,54 +2146,78 @@ test('Task main project checks require build coverage of every declared delivery
   }
 });
 
-for (const accepted of [false, true]) test(`solver control completes real lifecycle with Mission acceptance=${accepted}`, async t => {
-  const { service, runtime, startSession } = await fixture(t, { agentMode: 'solver' });
-  const context = new ContextService(service.db, { taskService: service });
-  const task = service.createTask({ mission_id: 'mission:bots', summary: 'Solve the entire original problem independently', expected_output: 'Verified solution', acceptance_conditions: ['Original theorem verified'], workspace: { enabled: true } }, makeEnvelope({ actorRef: 'operator:passk' })).task;
-  let session;
-  const bridge = new ServicesBridge({ agentMode: 'solver', taskService: service, contextService: context, runtime, coreId: 'core-1',
-    registry: createBuiltinServiceRegistry({ taskService: service, contextService: context }),
-    onTake: async take => {
-      const bound = await runtime.bindAgentExecution(take.execution.execution_id, session, { sendInitialPrompt: false });
-      take.execution = bound.execution;
-    },
-  });
-  await bridge.start();
-  t.after(() => bridge.stop());
-  const started = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 60_000,
-    startSession: async options => { bridge.startBotIdentity(options.bot.bot_id); return startSession(options); },
-  });
-  session = started.session;
-  const take = { operation: 'task_take', operation_id: 'solver-control-take', payload: { task_id: task.task_id } };
-  await assert.rejects(bridge.call(take), error => error.code === 'NOT_ALLOWED');
-  const result = await bridge.controlCall(take);
-  assert.equal(service.getExecution(result.execution.execution_id).state, 'RUNNING');
-  assert.equal(service.getBot(started.bot.bot_id).execution_id, result.execution.execution_id);
-  assert.equal(service.getExecution(result.execution.execution_id).owner_ref, started.bot.bot_id);
-  let closeoutState;
-  if (accepted) {
-    const loop = new IdentityTaskLoop({ coreId: 'core-1', taskService: service, runtime,
-      listEligibleTasks: () => [task], takeTask: async () => result, runExecution: async () => result,
-      handoffTimeoutMs: 5_000, handoffPollMs: 10,
+for (const deployment of ['in-process', 'independent']) for (const accepted of [false, true]) test(`solver control completes real lifecycle with ${deployment} services and Mission acceptance=${accepted}`, async t => {
+  const { root, service, runtime, startSession } = await fixture(t, { agentMode: 'solver' });
+  const peers = deployment === 'independent' ? await startIndependentServices({
+    taskService: service, projectDir: root, logRoot: join(root, 'logs'),
+    fixtureManifest: { fixture_id: 'solver-integration', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
+      problem_file_hash: 'b'.repeat(64), lean_toolchain: 'controlled', mathlib_version: 'controlled',
+      checker_ref: 'controlled', checker_version: '1', environment_ref: 'controlled' }, checkerTimeoutMs: 1000,
+  }) : null;
+  try {
+    const context = peers?.context ?? new ContextService(service.db, { taskService: service });
+    runtime.contextService = context;
+    const task = service.createTask({ mission_id: 'mission:bots', summary: 'Solve the entire original problem independently', expected_output: 'Verified solution', acceptance_conditions: ['Original theorem verified'], workspace: { enabled: true } }, makeEnvelope({ actorRef: 'operator:passk' })).task;
+    let session;
+    const bridge = new ServicesBridge({ agentMode: 'solver', taskService: service, contextService: context, runtime, coreId: 'core-1',
+      registry: createBuiltinServiceRegistry({ taskService: service, contextService: context, judgeService: peers?.judge }),
+      onTake: async take => {
+        const bound = await runtime.bindAgentExecution(take.execution.execution_id, session, { sendInitialPrompt: false });
+        take.execution = bound.execution;
+      },
     });
-    const running = loop.runOnce();
-    t.after(async () => { loop.stop(); await running; });
-    while (!loop.executionId) await new Promise(resolve => setImmediate(resolve));
-    service.setMissionStopReader(() => true);
-    closeoutState = { agentMode: 'solver', taskService: service, missionId: 'mission:bots',
-      runDeadlineAt: Date.now() + 60_000, identityLoops: [loop], requestIdentityWake() {},
-    };
-    beginMissionCloseout(closeoutState, { submission_id: 'accepted-solver', actor_ref: started.bot.bot_id, finished_at: new Date().toISOString() });
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(service.getBot(started.bot.bot_id).state, 'ACTIVE', 'acceptance must preserve the Bot until host finish');
+    await bridge.start();
+    t.after(() => bridge.stop());
+    const started = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 60_000,
+      startSession: async options => { bridge.startBotIdentity(options.bot.bot_id); return startSession(options); },
+    });
+    session = started.session;
+    const take = { operation: 'task_take', operation_id: 'solver-control-take', payload: { task_id: task.task_id } };
+    await assert.rejects(bridge.call(take), error => error.code === 'NOT_ALLOWED');
+    const result = await bridge.controlCall(take);
+    assert.equal(service.getExecution(result.execution.execution_id).state, 'RUNNING');
+    assert.equal(service.getBot(started.bot.bot_id).execution_id, result.execution.execution_id);
+    assert.equal(service.getExecution(result.execution.execution_id).owner_ref, started.bot.bot_id);
+    await assert.rejects(bridge.call({ operation: 'context_get_material', payload: { material_id: 'private' } }), error => error.code === 'NOT_ALLOWED');
+    if (peers) {
+      const budget = peers.judge.getMissionCheckBudget('mission:bots');
+      assert.equal(budget.max_requests, null);
+      assert.equal(budget.max_concurrent, 4);
+      assert.equal(budget.max_queued, 8);
+      assert.equal(budget.queue_wait_ms, 120_000);
+      assert.equal(budget.admitted_requests, 0);
+    }
+    let closeoutState;
+    if (accepted) {
+      const loop = new IdentityTaskLoop({ coreId: 'core-1', taskService: service, runtime,
+        listEligibleTasks: () => [task], takeTask: async () => result, runExecution: async () => result,
+        handoffTimeoutMs: 5_000, handoffPollMs: 10,
+      });
+      const running = loop.runOnce();
+      t.after(async () => { loop.stop(); await running; });
+      while (!loop.executionId) await new Promise(resolve => setImmediate(resolve));
+      service.setMissionStopReader(() => true);
+      closeoutState = { agentMode: 'solver', taskService: service, missionId: 'mission:bots',
+        runDeadlineAt: Date.now() + 60_000, identityLoops: [loop], requestIdentityWake() {},
+      };
+      beginMissionCloseout(closeoutState, { submission_id: 'accepted-solver', actor_ref: started.bot.bot_id, finished_at: new Date().toISOString() });
+      await new Promise(resolve => setImmediate(resolve));
+      assert.equal(service.getBot(started.bot.bot_id).state, 'ACTIVE', 'acceptance must preserve the Bot until host finish');
+    }
+    const finish = { operation: 'task_finish', operation_id: 'solver-control-finish', payload: { outcome: accepted ? 'done' : 'incomplete', summary: 'Controlled completion' } };
+    await assert.rejects(bridge.call(finish), error => error.code === 'NOT_ALLOWED');
+    if (accepted) await finishSolverTask(closeoutState, { bridge, executionId: result.execution.execution_id });
+    else await bridge.controlCall(finish);
+    assert.equal(service.getBot(started.bot.bot_id).state, 'CLOSED');
+    assert.equal(session.closed, true);
+    if (accepted) assert.equal(service.getTask(task.task_id).state, 'DONE');
+  } finally {
+    try {
+      await runtime.shutdown();
+    } finally {
+      await peers?.close();
+    }
   }
-  const finish = { operation: 'task_finish', operation_id: 'solver-control-finish', payload: { outcome: accepted ? 'done' : 'incomplete', summary: 'Controlled completion' } };
-  await assert.rejects(bridge.call(finish), error => error.code === 'NOT_ALLOWED');
-  if (accepted) await finishSolverTask(closeoutState, { bridge, executionId: result.execution.execution_id });
-  else await bridge.controlCall(finish);
-  assert.equal(service.getBot(started.bot.bot_id).state, 'CLOSED');
-  assert.equal(session.closed, true);
-  if (accepted) assert.equal(service.getTask(task.task_id).state, 'DONE');
 });
 
 test('solver compaction preserves the same Bot and Execution beyond the Swarm rotation limit', async t => {
