@@ -29,7 +29,6 @@ export * from './runtime/opensandbox-manager.js';
 export * from './runtime/workspace-contract.js';
 export * from './runtime/runtime.js';
 export * from './runtime/runtime-capabilities.js';
-export * from './runtime/scheduler.js';
 export * from './runtime/task-controller.js';
 export * from './runtime/identity-task-loop.js';
 export * from './judge/fixture.js';

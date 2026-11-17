@@ -91,7 +91,7 @@ Sandbox 提供 Bash、Git、Node.js、curl、jq、Python 3（python3/python）�
 ````
 ## Compatibility SDK system addendum (system version 4; composition version 6)
 
-AgentCoreAdapter writes this body to identity-system-prompt.md and passes that file through Pi --append-system-prompt. It is an addendum to Pi-owned system instructions; it is not the whole upstream model request.
+This exported SDK composition body remains available to callers. No local-process adapter sends it as a system addendum; registered OpenSandbox startup uses the pinned Bot or solver resource above.
 
 Body SHA-256: `c28d9f75592f76330e674713af109ef336643f47b195102578615701634f198e`
 

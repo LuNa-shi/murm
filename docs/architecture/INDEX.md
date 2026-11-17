@@ -16,7 +16,7 @@ Read 00 first, then 07 for the actual launch and outer loop. Read 01–06 for th
 |---|---|
 | [00 System and a complete run](00-overview.md) | Who owns which facts? What happens from launch through collaboration, checking, handoff and shutdown? |
 | [01 Agent Core](01-agent-core.md) | How is Pi launched? What does a fresh Bot receive? How are tools installed, authorized and routed? |
-| [02 Execution and control loops](02-execution.md) | How do Controller, identity loop, Runtime and compatibility Scheduler interact? Which states, versions, timers and recovery rules apply? |
+| [02 Execution and control loops](02-execution.md) | How do Controller, identity loop and registered Runtime interact? Which states, versions, timers and recovery rules apply? |
 | [03 Mission and Task](03-mission-task.md) | What fields are persisted? How are independent Mission Tasks proposed, taken, completed, blocked and closed, and which historical paths remain executable? |
 | [04 Services](04-services.md) | What happens inside a named call? How do Context, Judge, Registry, remote services and Mathlib search work? |
 | [05 Workspace and continuity](05-workspace-continuity.md) | How do files, revisions, Git, snapshots, Sandbox, compaction, recovery and handoff preserve work? |
