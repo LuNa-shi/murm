@@ -112,9 +112,11 @@ Bundle documents are added from each Service's `documentation` array and dedupli
 
 The Pi extension separately registers `description`, `promptSnippet`, `promptGuidelines` and schemas. It does **not** pass `help.text` as an extension prompt guideline. Full-help composition and extension registration are distinct mechanisms. [Sources: agent-prompt](../../src/agent/agent-prompt.js), [capability-profile](../../src/agent/capability-profile.js), [extension](../../src/agent/swarmenv-extension.mjs), [Service bundle](../../src/sdk/service-bundle.js).
 
-## 6. Runtime starts, restarts and recovery
+## 6. Compatibility Runtime starts, restarts and recovery
 
 ### 6.1 Inner snapshot
+
+These generic composition APIs remain for SDK/local compatibility callers. Registered Bot startup uses the live first-turn message in §4 and does not restore a predecessor's private Session; take suppresses a second initial prompt.
 
 For Runtime-managed launch with a Registry, `#launch` chooses `bound` or `recovery`, builds a profile using current Task/Execution IDs, and calls `buildPromptSnapshot` with the full Task, Execution, prepared Workspace and optional recovery data. If the adapter already has a system addendum, the static user portion is `execution.agent_prompt`; otherwise the stable role SOP is prepended. A saved `agent_prompt` can itself already contain the SOP, so presence of a system addendum does not imply that the user message has no repeated SOP.
 
@@ -143,9 +145,11 @@ A process failure produces a seven-line instruction: resume the claimed Task; na
 
 Runtime uses one prompt queue for initial/follow-up delivery on an active Execution. It waits for a settled boundary where available. Notification delivery can defer when settlement times out; a durable later turn-end can serve as the safe boundary in the retry path. A successfully sent notification is marked delivered. It remains unprocessed until the Agent records `task_feedback`; it is not resent at every turn-end merely because feedback is outstanding.
 
-`handoff_warning` asks for linked Handoff Material before the deadline. `material_available` names Material/source Task/source Execution and requests read/adapt/feedback; it explicitly says the notice does not itself require handoff. Other notification types use the dependency-satisfied “Task is OPEN again” text. Missing Material/source IDs fall back to payload fields, then `<unknown>`. The exact bodies are in [04](prompts/04-runtime-messages.md).
+For unregistered compatibility notifications, `handoff_warning` asks for linked Handoff Material before the deadline. `material_available` names Material/source Task/source Execution and requests read/adapt/feedback; it explicitly says the notice does not itself require handoff. Other notification types use the dependency-satisfied “Task is OPEN again” text. Missing Material/source IDs fall back to payload fields, then `<unknown>`. The exact bodies are in [04](prompts/04-runtime-messages.md).
 
-After a successful automatic compaction checkpoint, the optional reminder asks for substantive completed work, findings, open questions and next step. Runtime skips that reminder when closing/rotating or no longer active. It is not the content of Pi's compacted summary. A non-Mission deadline reminder uses a different three-line body; Mission Tasks use the durable notification route. [Source: Runtime](../../src/runtime/runtime.js).
+For unregistered compatibility Sessions, after a successful automatic compaction checkpoint, the optional reminder asks for substantive completed work, findings, open questions and next step. Runtime skips that reminder when closing/rotating or no longer active. It is not the content of Pi's compacted summary. A non-Mission deadline reminder uses a different three-line body; Mission Tasks use the durable notification route. [Source: Runtime](../../src/runtime/runtime.js).
+
+Registered notifications instead use `buildBotNotification`: soft closeout directs explicit save/publish/finish, Material notices identify public references, and other changes request fresh public-state reads. Registered compaction sends the fixed reminder only when the live E permits it, using the soft-closeout body when required, and records `public_save:false`. It does not automatically checkpoint files or ask for the rejected compound `execution_progress` operation. Complete registered bodies are in [benchmark turns](prompts/03-benchmark-turns.md); the full compatibility bodies remain in [Runtime messages](prompts/04-runtime-messages.md).
 
 ### 7.2 Tool results are additional model inputs
 
@@ -155,7 +159,7 @@ The [fixed guidance catalog](prompts/06-tool-return-guidance.md) preserves compl
 
 The registered `task_take` response reaches native Bash through the protected CLI only after Runtime has finished prepare, activation and grant. It carries the refreshed Execution, actual pinned public Workspace metadata, exact Material input identities and applicable deadlines. The trusted discovery preview and actual input can differ. A bounded path comparison and `reread_required` flag tell the Bot to inspect the actual fixed inputs before relying on discovery content. There is no separately sent bound first prompt. Trusted compatibility paths can still expose pre-activation snapshots and are governed by the entry point they exercise. [Source: Task take](../../src/task/task-service.js) · [Bridge binding](../../src/agent/services-bridge.js) · [Benchmark onTake](../../src/benchmark/putnam-runner.js).
 
-The extension prints a JSON result into the text content block and truncates at 65,536 JavaScript characters, adding a truncation marker; structured `details` remain separately attached. Errors contain the authoritative code, retryability and details. Consequently a full database record or HTTP response does not by itself establish that all of its text appeared in model-visible tool content. The raw Pi response stream is the local evidence for that boundary. [Source: extension](../../src/agent/swarmenv-extension.mjs).
+The compatibility extension prints a JSON result into the text content block and truncates at 65,536 JavaScript characters, adding a truncation marker; structured `details` remain separately attached. Errors contain the authoritative code, retryability and details. Consequently a full database record or HTTP response does not by itself establish that all of its text appeared in model-visible tool content. The raw Pi response stream is the local evidence for that boundary. [Source: extension](../../src/agent/swarmenv-extension.mjs).
 
 ## 8. Exactly what is recorded today
 
@@ -180,10 +184,10 @@ The runtime event can record the inner snapshot before Mission wrapping or recor
 
 | Input/effect | Current evidence location | Limit |
 |---|---|---|
-| Stable addendum supplied to Pi | Session's `identity-system-prompt.md`; launch argument record | Does not include Pi's base prompt |
+| Stable addendum supplied to Pi | Registered worker: `/opt/swarmenv/src/agent/bot-contract/system.txt`, hash/ownership receipt and launch arguments; local compatibility Session: `identity-system-prompt.md` | Does not include Pi's base prompt |
 | Actual user turn | Raw Agent NDJSON `rpc_request.message` whose type is `prompt`, with message text and RPC ID | Proves write to Pi stdin; match response/turn records to establish processing |
 | Returned model/tool events | Raw Agent `rpc_record`, stdout/stderr and Pi Session artifacts | Private and potentially large; report projection can remove content |
-| Capability registration | Profile plus extension inputs, Registry manifests and launch configuration | Current profile may differ from a Session's earlier frozen registration |
+| Capability registration | Registered four-tool argv and CLI/profile manifests; compatibility extension inputs and launch configuration | Current profile may differ from a Session's earlier frozen registration |
 | Service document content | Exact bundle/version hashes and local documents | A hash alone does not prove injection on that launch path |
 | Dynamic Task/Mission data | State records/views and the actual outgoing message/tool result | Reading the later database alone can show a newer value than the Agent saw |
 | Notifications | Queue/attempt/delivery records plus corresponding outgoing follow-up | Delivered is different from feedback processed |

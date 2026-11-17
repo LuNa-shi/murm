@@ -37,7 +37,7 @@ Scheduler and IdentityTaskLoop coexist as separate implementations at this basel
 | `HANDED_OFF` | A finish handoff/block ended this attempt. Registered blocked finish requires a valid Task prerequisite; a handoff Material is optional. |
 | `SUPERSEDED` | A resumable legacy waiting attempt was replaced by a new clean/forked Execution. |
 
-The first three are the exported active states. Every other state is terminal and rejects ordinary further execution writes. An active state still has operation-specific restrictions: Workspace writes need a live `CREATED`/`RUNNING` Runtime binding, for example.
+The exported `ACTIVE_EXECUTION_STATES` constant retains `CREATED`, `RUNNING`, `WAITING` for compatibility. The separate active-Core query includes `CREATED`, `RUNNING`, `CLOSING`, retaining physical cleanup occupancy. `WAITING` is resumable compatibility state; `CLOSING` is also nonterminal but rejects new contributions. Terminal states are `SUCCEEDED`, `FAILED`, `EXPIRED`, `CANCELLED`, `FENCED`, `HANDED_OFF`, `SUPERSEDED`. None of these classifications alone grants write authority: registered Bot contributions require the current active binding, lease, deadlines and fence. [State constants](../../src/task/task-types.js) · [Task Service](../../src/task/task-service.js).
 
 These are the exact database spellings. Semantic handoff and progress handoff do **not** record the same terminal state. Preserve `state`, `terminal_reason` and handoff metadata together in reports.
 
@@ -154,11 +154,13 @@ Mutating Task Service dispatches use `BEGIN IMMEDIATE … COMMIT` and persist op
 
 Execution writes carry Task/Execution IDs plus specification, state and fence versions. Task Service rejects mismatched Task, stale specification/state version, stale fence and terminal Execution. Semantic handlers add owner checks where required. The low-level version checker is not an all-purpose actor authentication mechanism: Bridge binding and the operation-specific handler establish caller authority.
 
-Runtime uses its daemon actor for physical lifecycle operations. Semantic handoff/block uses the Execution's authenticated `owner_ref`, for example `agent:core-2`; using `runtime:core-2` would fail the Task owner check.
+Runtime uses its daemon actor for physical lifecycle operations. In unregistered compatibility APIs, semantic handoff/block uses the Execution's authenticated `owner_ref`, for example `agent:core-2`; using `runtime:core-2` would fail the Task owner check.
 
-Durable ownership ends before best-effort physical Workspace fencing on release. A failed physical fence is logged and does not roll back a terminal Execution. Later service writes still fail durable state/fence checks; this does not prove an arbitrary host process was physically isolated.
+In the legacy terminal-release path, durable ownership ends before best-effort physical Workspace fencing on release. A failed physical fence is logged and does not roll back a terminal Execution. Later service writes still fail durable state/fence checks; this does not prove an arbitrary host process was physically isolated.
 
-For semantic handoff/block, Runtime marks the binding closing, stops sandbox jobs, dispatches the Task transaction, then releases binding/Workspace. If Task validation rejects and that same Execution remains active, `#semanticRelease` restores `closing=false` so the Agent can correct its request. That repair is not universal across the older Runtime methods.
+For compatibility semantic handoff/block, Runtime marks the binding closing, stops sandbox jobs, dispatches the Task transaction, then releases binding/Workspace. If Task validation rejects and that same Execution remains active, `#semanticRelease` restores `closing=false` so the Agent can correct its request. That repair is not universal across the older Runtime methods.
+
+Registered `task_finish` instead commits a finish intent and `CLOSING` while retaining Task/Core ownership. Runtime stops the Session and confirms provider cleanup before trusted `finalizeExecutionFinish` projects the outcome and releases ownership. Failed or ambiguous cleanup keeps the binding occupied and retries; a terminal database write is not a substitute for isolation. Registered hard-stop/expiry uses the same retained cleanup ownership. See [accepted finish](03-mission-task.md#accepted-finish-and-safe-release) and the [registered lifecycle](#registered-bot-lifecycle) below.
 
 ## 7. Time, health and recovery
 
@@ -172,7 +174,7 @@ For semantic handoff/block, Runtime marks the binding closing, stops sandbox job
 
 Modern Task `timebox_ms` replaces generic duration; a global run deadline caps it. Runtime uses at least 1 ms. With a run deadline it keeps configured reminder lead time before the earlier end; without one it uses the lesser of configured reminder offset and just before Task timeout.
 
-`start_execution` recalculates these times. A same-Execution Session restart therefore restarts attempt timing, still capped by the global run deadline. Sweeps are invoked by the runner/composition; Runtime does not install an automatic timer for each method.
+The generic `start_execution`/compatibility restart path recalculates attempt times, capped by its run deadline, and relies on composition-driven sweeps. Registered Bot startup additionally arms automatic selection and hard-lifetime timers. Take never resets the Bot lifetime: activation intersects Task, Execution, Bot and Mission limits and rearms the timer to the earliest deadline. Registered recovery closes the Bot instead of restarting its private Session under renewed authority. The registered timing/cleanup contract is detailed under [registered lifecycle](#registered-bot-lifecycle) below.
 
 Reminder-sent time is committed before delivery. Modern Tasks receive durable `handoff_warning`; compatibility Tasks receive a direct follow-up. Registered expiry revokes the actual E and closes the Bot without inventing a handoff Material. Historical expiry paths may additionally record whether an existing Handoff Material was linked; that is an audit fact, not an automatic new research conclusion.
 
@@ -192,13 +194,13 @@ Within budget, Runtime fences the old Workspace incarnation and calls `recover_e
 
 `restartSession`, used by explicit identity rotation, also usually preserves Execution/Core and uses `recover_execution` for a running attempt. Session replacement is not a Task handoff. Recovery instructs the new model to inspect durable facts and not assume its interrupted turn completed.
 
-This remains the current Runtime recovery path, including when the OpenSandbox adapter is selected; clean preparation of a new Execution does not disable same-Execution recovery. Runtime preserves an explicitly configured `SWARMENV_AGENT_ROLE`, and otherwise uses `bound`, so a recovered child does not silently switch away from the authenticated Bridge's profile. Phase 02's no-process-recovery contract is a separate target design.
+These recovery APIs remain executable for unregistered local compatibility Sessions. They do not apply to registered OpenSandbox Bots: `restartSession` rejects registered identity replacement, and registered Session failure enters stop/cleanup without private recovery. Runtime retains explicitly configured role information for compatibility callers; a role label does not grant a registered Bot a second Execution. Phase 02 public continuity is the implemented registered path.
 
 ## 8. Release, switch and shutdown
 
 | Boundary | Durable effect | Physical effect |
 |---|---|---|
-| `releaseExecution` | None; a service already reached terminal state | Mark Core CLOSING; drain saves; confirm Session and sandbox stop; reconcile/release Workspace; only then mark Core IDLE |
+| `releaseExecution` | Compatibility: service already terminal. Registered accepted finish: finalize the durable `CLOSING` intent after isolation, then release occupancy | Mark Core CLOSING; drain saves; confirm Session and sandbox stop; reconcile/release Workspace; only then mark Core IDLE |
 | `stopExecution` | After confirmed process/sandbox stop, record terminal state/reason; retries preserve an existing terminal result | Same physical release |
 | `fenceExecution` | `FENCED`, fence increment, generation/reason | Confirm worker and sandbox stop, commit fence, reconcile Workspace fence and release binding/Core |
 | `detachSwitchedExecution` | None; old fence/new take already committed | Use previous fence to revoke old Workspace, detach old binding for same-Session rebind |
@@ -219,13 +221,13 @@ Bot-initiated `task_finish` now persists CLOSING and its finish intent before cl
 
 One listener set is attached per Session; event handlers read its current Execution binding, preventing handler multiplication on rebind. Closing/absent bindings ignore late events. Sibling fencing uses tracked pending-release promises and updates occupancy after cleanup reaches release.
 
-For register-and-switch, the old fence and new take share a Task Service transaction, but the earlier progress save and later detach/`onWorkUnit`/`onRelease`/new binding do not. A post-transaction callback error can occur after old authorization has ended and the new take exists.
+For compatibility register-and-switch, the old fence and new take share a Task Service transaction, but the earlier progress save and later detach/`onWorkUnit`/`onRelease`/new binding do not. A post-transaction callback error can occur after old authorization has ended and the new take exists.
 
 ## 9. Current lifecycle limits
 
-The current Mission model has one canonical Task lifecycle: an identity inspects the bounded eligible view, calls `task_take`, works in its clean Workspace, records progress, and ends with `task_finish`. Typed dependencies are represented by the current Task completion contract and reconciliation state. The public Registry and Runtime do not expose wait, wake, resume, registration-and-switch, or alternate lifecycle writers. Historical database columns may be read while importing old evidence, but they are not valid writers in the current implementation.
+The current Mission model has one canonical Task lifecycle: an identity inspects the bounded eligible view, calls `task_take`, works in its clean Workspace, records progress, and ends with `task_finish`. Typed dependencies are represented by the current Task completion contract and reconciliation state. The registered Bot surface does not expose wait, wake, resume or registration-and-switch. Exported Runtime/Task compatibility APIs retain some of those writers for trusted unregistered callers; their existence does not authorize Bots to bypass the canonical lifecycle. Historical rows and receipts remain readable.
 
-Runtime cleanup is ordered around durable ownership: Workspace and Execution writes carry the current fence and revision, terminal Task transitions fence the Execution, and physical Session/Sandbox release follows the durable transition. A failure before the durable transition is recorded as a preparation or handoff failure and cannot be reported as successful work.
+Registered cleanup distinguishes acceptance from completion: finish first persists its intent and CLOSING, rejecting new contributions while retaining the owner. After Session/Sandbox isolation, finalization projects Task outcome, advances the fence and releases occupancy. Stop/expiry likewise retains cleanup ownership until isolation. A failure or timeout before confirmed cleanup is pending/failed cleanup, never a completed release. Legacy terminal-release APIs retain their separate ordering described above.
 
 ## 10. Code and existing verification map
 
@@ -306,7 +308,7 @@ A grace timeout records the specific pending component and Core. Runtime retains
 
 Task proposal checks this phase after durable receipt lookup inside Task's write transaction. New apply checks before guest capture and again under the SQLite writer lock before its immutable `captured` plan is admitted. A completed apply receipt returns before unrelated pending recovery; a plan already captured before closeout can finish its original installation and acknowledgement while E remains hard-active. New main merge uses the same phase predicate. New Judge work checks shared Task authority within Judge's admission transaction, and again after asynchronous preflight before invoking the source checker. If preflight crosses the boundary, the accepted request receives a durable `request_failure` with `soft_closeout`, not a mathematical FAIL or checker infrastructure failure. Same request IDs retain their original fingerprints/results.
 
-Ordinary continuation is selected again after Session readiness immediately before the actual prompt call; a closed/replaced/expired binding is not sent another research prompt. During soft closeout, both continuation paths and registered compaction follow-up use the save/publish/finish-only message. The complete bodies and actual composition conditions are in [Prompts](08-prompts.md). Shared phase enforcement does not yet supply provider-side command classification or the separate Mission acceptance stop protocol.
+Ordinary continuation is selected again after Session readiness immediately before the actual prompt call; a closed/replaced/expired binding is not sent another research prompt. During soft closeout, both continuation paths and registered compaction follow-up use the save/publish/finish-only message. The complete bodies and actual composition conditions are in [Prompts](08-prompts.md). Phase enforcement does not classify the mathematical intent of arbitrary native Bash commands. The separate implemented Mission acceptance/closeout protocol is described in [Mission and Task](03-mission-task.md#accepted-mission-closeout).
 
 
 ### Provider creation intent on restart

@@ -2,7 +2,7 @@
 
 > 设计与决策入口：[Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · 原始讨论：[Issue #120](https://github.com/LuNa-shi/SwarmEnv/issues/120) · 前置 Sandbox 阶段：[Issue #119](https://github.com/LuNa-shi/SwarmEnv/issues/119) · 文档审阅：[PR #123](https://github.com/LuNa-shi/SwarmEnv/pull/123)。
 >
-> 状态：目标设计，已按本轮用户确认统一跨模块合同。Workspace 整版 merge 粒度也已确认；设计审阅不代表运行实现或真实 sandbox 已验收。[Architecture](../../architecture/INDEX.md) 继续描述当前实现。
+> 职责：Issue #122 批准的目标设计与后续明确修订。核心模型及 whole-Workspace 检查已在 PR #124/#126/#128 中实现；当前 `main` 的运行路径与兼容边界见 [Architecture](../../architecture/INDEX.md)，版本绑定的观察见 [实验索引](../../experiments/INDEX.md)。本目录的设计文本及 09/10 固定版本审计不作为当前 API 手册，也不据此推定所有研究假设已经验证。
 
 [Issue #122 的 Core 循环决策](https://github.com/LuNa-shi/SwarmEnv/issues/122#issuecomment-6896808817) 更新补位与选工合同。旧 Bot 安全关闭后，开放 Mission 在本次运行还有额度时补位，由新 Bot 优先选择已有合适 Task；没有合适项就默认发现公开缺口、提出并执行可验证的责任。空队列、所有 Task 已 done 或单 Bot 额度耗尽都不结束 Core 循环。首 Bot 按四 Core 的 0、1、2、3 分钟错峰，后继 Bot 不重复错峰。本轮不新增服务端语义去重。详见 [每个 Core 的循环与停止条件](01-model-and-runtime.md#每个-core-的循环与停止条件)。此前固定版本的运行证据保留原义。
 
