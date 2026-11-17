@@ -1,4 +1,4 @@
-import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../agent/bot-contract.js';
+import { agentContract, BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../agent/bot-contract.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
@@ -590,11 +590,12 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
+  async startAgent({ agentMode = 'swarm', executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
     const record = this.#record(executionId);
     const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }) => ({ path, sha256 })).sort((a, b) => a.path.localeCompare(b.path))) : null;
-    if (signature(resources) !== signature(BOT_RESOURCES)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
+    const contract = agentContract(agentMode);
+    if (signature(resources) !== signature(contract.resources)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
     if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
     if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
     if (record.agent) return { ...record.agent };
@@ -623,14 +624,14 @@ export class OpenSandboxManager {
         system_prompt: systemPrompt,
         system_prompt_path: systemPromptPath,
         resources,
-        contract_version: BOT_PROTOCOL_VERSION,
+        contract_version: contract.protocolVersion,
         ...(projectQuota ? { project_quota: projectQuota } : {}),
         ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}),
       },
       timeoutMs: 30_000,
     });
     const receipt = startup.body?.result?.contract;
-    if (receipt?.version !== BOT_PROTOCOL_VERSION || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
+    if (receipt?.version !== contract.protocolVersion || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
       throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Bot contract resources');
     }
     const quotaReceipt = startup.body?.result?.project_quota;

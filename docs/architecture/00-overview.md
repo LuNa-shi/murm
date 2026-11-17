@@ -51,14 +51,14 @@ Bot starts unbound with an empty protected guest project
   → Agent may check that fixed revision through Judge
   → Judge persists the result; the runner records diagnostic evidence
   → Agent may merge a fixed public revision into main under Runtime guards
+  → an authorized live Bot may separately submit fixed main and selected Materials
+    for trusted Mission acceptance (independent of Task completion)
   → Agent explicitly finishes done, incomplete, blocked or cancelled
-  → an authorized Bot may separately submit fixed main and selected Materials
-    for trusted Mission acceptance
   → Runtime confirms process/Sandbox isolation, then releases E and Core
   → a fresh Bot may continue from public state
 ```
 
-The **flat Mission Task model** is the only runtime Task model described by this architecture. The benchmark CLI has no Task-model selector, and the Agent/SDK surface exposes Mission Tasks, relations, Materials and Execution progress without Root/Child structure operations. Bots use the read, write, edit and bash tools, with the typed `swarm` CLI routed through their authenticated Bridge to Task, Material, Judge and Workspace operations. They do not receive a second set of domain-native tools.
+The **flat Mission Task model** is the normal benchmark model; the following chapters label retained lower-level compatibility APIs separately. The benchmark CLI has no Task-model selector, and the Agent/SDK surface exposes Mission Tasks, relations, Materials and Execution progress without Root/Child structure operations. Bots use the read, write, edit and bash tools, with the typed `swarm` CLI routed through their authenticated Bridge to Task, Material, Judge and Workspace operations. They do not receive a second set of domain-native tools.
 
 Within the flat benchmark path, `TaskController` observes eligible work and signals idle `IdentityTaskLoop`s; the Agent chooses its Task through `task_take`. Controller and Runner do not select the mathematical research route. See `src/benchmark/putnam-runner.js`, `src/runtime/task-controller.js`, and `src/runtime/identity-task-loop.js`.
 

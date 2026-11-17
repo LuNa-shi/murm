@@ -253,3 +253,16 @@ test('budgeted adapter strips upstream credentials and revokes local access befo
   assert.equal(manager.started.env.PI_GPT_PROXY_BASE_URL, 'http://host-gateway/v1');
   await session.stop();
 });
+
+test('solver startup pins only its solver instructions and preserves the native tools', async () => {
+  const manager = new FakeSandboxManager();
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'fixture', command: 'pi', agentMode: 'solver' });
+  const session = await adapter.start({ executionId: 'bot:solver', bot: { bot_id: 'bot:solver' } });
+  try {
+    assert.equal(manager.started.resources.length, 1);
+    assert.match(manager.started.resources[0].path, /solver-system.txt$/);
+    assert.equal(manager.started.args.includes('--skill'), false);
+    assert.equal(manager.started.env.SWARMENV_AGENT_MODE, 'solver');
+    assert.equal(manager.started.agentMode, 'solver');
+  } finally { await session.stop(); }
+});

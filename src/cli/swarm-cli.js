@@ -6,6 +6,8 @@ const SERVICE_NAMES = ['task', 'bot', 'material', 'workspace', 'mission', 'judge
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
 const ALIASES = Object.freeze({
+  solution: { submit: 'mission_submit', status: 'mission_submission_get' },
+  'mathlib-search': { search: 'mathlib_search' },
   bot: { exit: 'bot_exit' },
   // complete/block/close remain transport aliases for old clients; finish is
   // the single public Task lifecycle command.
@@ -300,6 +302,10 @@ function commandInput(service, command, options, args, input) {
 async function invoke(service, commandName, options, args = []) {
   let operation = ALIASES[service]?.[commandName] ?? commandName;
   const input = commandInput(service, commandName, options, args, { ...(await inputFrom(options)), ...flagInput(options) });
+  if (service === 'solution' && commandName === 'submit') {
+    if (Object.keys(input).length) throw new Error('solution submit accepts no input fields');
+    input.material_ids = [];
+  }
   if (service === 'workspace' && commandName === 'diff' && (input.from !== undefined || input.to !== undefined)) {
     if (typeof input.from !== 'string' || typeof input.to !== 'string' || !input.from || !input.to) throw new Error('public Workspace diff requires both --from and --to');
     operation = 'workspace_public_diff';
@@ -325,6 +331,15 @@ async function invoke(service, commandName, options, args = []) {
 
 export async function runSwarmCli(argv = process.argv.slice(2), { stdout = process.stdout } = {}) {
   const { positionals, options } = parseArgs(argv);
+  if (process.env.SWARMENV_AGENT_MODE === 'solver') {
+    const allowed = { workspace: ['view', 'history', 'status', 'diff', 'files', 'read', 'search', 'save', 'merge'], judge: ['check', 'result'], solution: ['submit', 'status'], 'mathlib-search': ['search'] };
+    const [service, command] = positionals;
+    if (service && (!allowed[service] || (command && !allowed[service].includes(command)))) throw new Error('Command unavailable in solver mode');
+    if (options.help || !service || !command) {
+      stdout.write('Solver tools: swarm workspace view|history|status|diff|files|read|search|save|merge; swarm judge check|result; swarm solution submit|status; swarm mathlib-search search --query <query>. Use --json and stable --request-id for writes.\n');
+      return 0;
+    }
+  }
   if (positionals[0] === 'context') throw new Error('swarm context is retired. Use swarm material for Material operations.');
   if (options.help) {
     if (positionals[0] === 'mission' && positionals[1] === 'submission') {

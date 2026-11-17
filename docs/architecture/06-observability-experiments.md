@@ -59,7 +59,7 @@ The standalone server accepts `--name value` or `--name=value` for these options
 | `--port` | `8787`; integer 0–65535, with 0 allowing an ephemeral port. |
 | `--report` | Null; optional report to import before serving/reusing the daemon. |
 | `--experiment-dir` | Null; optional original raw-evidence root for report import. |
-| `--no-raw-logs` | Disable raw-log import; otherwise it is enabled. |
+| `--no-raw-logs` | Accepted compatibility flag with no effect. This CLI imports report projections without raw logs; only a trusted library caller can opt into raw ingestion. |
 
 Healthy-daemon reuse returns the existing metadata and exits; passing a different bind address to this invocation does not reconfigure that existing process.
 
@@ -314,3 +314,7 @@ validation fails before Bot creation. Earlier full-graph FLT reports retain thei
 original profile. Current root-only work focuses on Q20; Q100 complete-proof
 validation and model experiments are deferred. See [run configuration](07-run-configuration.md)
 for the receipt and public/private file boundaries.
+
+## Independent-attempt evidence
+
+Pass@K preserves each attempt's normal Mission, Task, Bot, Execution, Workspace, Judge and model-budget evidence. Artifact directory keys append `-attempt-N`; `problem_id` remains the actual benchmark problem. The aggregate `pass_k` section records the group observation window separately from each Mission's active duration, attempt validity, accepted timestamps and late results. `first_success_ms` is measured from the common group start including preparation. One successful, valid attempt establishes the observed group success; validity of all K attempts is reported separately, so a partially invalid group is not a complete valid comparison. A single group is not a statistical estimate over a problem distribution.
