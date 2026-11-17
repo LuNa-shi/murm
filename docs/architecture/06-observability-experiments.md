@@ -42,6 +42,8 @@ Sources: [store and collection](../../src/observability/observation-store.js), [
 
 ## 3. Server lifecycle and complete HTTP surface
 
+The benchmark CLI defaults to no observer server. It does not probe existing metadata, start a daemon, open a shared observer database or write `metadata/observability.json` unless `--observability` is supplied. Host/port/metadata options and `SWARMENV_OBSERVABILITY_METADATA` configure the explicitly enabled server; they do not enable it. `metadata/experiment.json` records `protocol.observability_enabled`. Without the server, the runner still writes project-local ObservationStore events, durable service/Agent logs and authoritative databases, so reporting and offline analysis remain available. Explicitly enabled server startup failures still fail the launch; operator-stop handling remains bounded. The standalone server command remains an explicit operator action.
+
 The persistent entry is `scripts/serve-observability.mjs`. It defaults to `experiments`, loopback host, port 8787, database `<root>/.observability/observability.sqlite`, and metadata `<root>/.observability/server.json`. Repeated `--root` and `--scan-root` add roots; conventional `.worktrees`/`.worktree` paths are inferred even before they exist. Discovery scans for `observability.sqlite` to depth 5, excluding `.git` and `node_modules` directories. This keeps worktree-local historical runs visible to one server.
 
 A healthy existing daemon identified by metadata is reused. A requested report can be imported into that daemon's database without starting another server. New daemon metadata is written through temporary-file rename. SIGINT/SIGTERM closes the server/stores and removes metadata only if it still belongs to that process.

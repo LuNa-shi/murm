@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261117-04` | [Issue #138](https://github.com/LuNa-shi/SwarmEnv/issues/138) | **PASS · legacy cleanup; accepted in 18m28s, protocol valid** | `e8fd842` | [Legacy cleanup Putnam acceptance](EXP-20261117-04-legacy-cleanup-putnam.md) |
 | `EXP-20261117-03` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · 8h UNSOLVED; protocol INVALID, analyzer failed** | `d60b6b0` | [Q20 eight-hour retry](EXP-20261117-03-q20-subtree-8h.md) |
 | `EXP-20261117-02` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · STOPPED; align settlement wait** | `d60b6b0` | [Q20 eight-hour retry](EXP-20261117-02-q20-subtree-8h.md) |
 | `EXP-20261117-01` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · STARTUP_BLOCKED; zero model calls** | `2dc4a16` | [Q20 eight-hour](EXP-20261117-01-q20-subtree-8h.md) |

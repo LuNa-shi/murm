@@ -31,15 +31,15 @@ This section is generated from executable exports and checked against the source
 | Source | SHA-256 |
 |---|---|
 | [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `951de6a9e5ef0bdfee80f36263b508783256c55f5834b28ed1485e3385983e7b` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `528c5679002a17c048332291f2c5a51a4c7c9160467379dc1198cc604e667a6d` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `73df0e615556f8cff1d37f924e92a9de3b7c975ef60ac55c02598d3faad8c3e0` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `5be1832ad5b7e08437ded98d21f98445874a683c7127b97305b8ca370e3421b6` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `87073a340338c492b099745fbbaf171167936e96b18d7ca366705d3169bbb52b` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `9b360894c0065c5d77c1d2592988dc465097c3f92f8210e97667e0239cb5c8c5` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `c26e5b1047fb77a779564462962131fbe7af4437edacbedf1e1096f19183bf22` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `1bc2c8c8327de944953349a4f3d00c42c935ee8976fccec4a07b9637c8e33506` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `063d4bc085c0efb18accc75cd62146c0fe43fbfb099e1eae937cc559b502c168` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 

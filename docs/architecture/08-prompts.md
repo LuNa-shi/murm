@@ -15,7 +15,7 @@ The CLI and compatibility extension now send service requests through the shared
 | [02 Tool instructions](prompts/02-task-loop-and-tools.md) | Exact Task-loop guides for built-ins, Sandbox, and Sandbox plus Mathlib; full built-in capability-directory text; all extension description/snippet/guidance fields; full Mathlib `SKILL.md` and reference text |
 | [03 Benchmark turns](prompts/03-benchmark-turns.md) | Complete registered Bot discovery example, bound continuation, compaction and lifecycle notification bodies; compatibility take default |
 | [04 Runtime messages](prompts/04-runtime-messages.md) | Deadline, Material, dependency, compaction, recovery and controlled E2E repair messages, including fallback text |
-| [05 Composed context](prompts/05-composed-context-examples.md) | Full synthetic Runtime start/restart and recovery user bodies, preserving the current two-stage composition; dynamic helper defaults |
+| [05 Composed context](prompts/05-composed-context-examples.md) | Full synthetic optional registered bind user body, preserving the current two-stage composition; dynamic helper defaults |
 | [06 Tool-return guidance](prompts/06-tool-return-guidance.md) | Every fixed `hint`, `remediation` and `guidance` field in runtime sources, plus instructional `action` values; delivery conditions distinguish errors, notifications and an exported helper unused by the benchmark |
 | [Source manifest](prompts/source-manifest.json) | Source SHA-256 fingerprints, extraction anchors, generated document hashes and direct send-site inventory |
 | [10 API reference](10-service-api-reference.md) | Complete schemas and Service contracts supplying tool input/output metadata |
@@ -37,7 +37,7 @@ The registered Bot/OpenSandbox path and the older direct SDK path are distinct. 
 | Bound continuation | `buildBotContinuationMessage` selects the ordinary or soft-closeout body | Both runner send paths apply the phase selector. Soft closeout asks for save/publish/finish and prohibits new research; the ordinary body continues current work. Neither repeats the compatibility SDK SOP. |
 | Registered Bot notification | `buildBotNotification` for soft closeout, Material or dependency change | Runtime sends as `followUp` using the same Session. Save/publish/finish remain explicit CLI operations. Material delivery is distinct from recorded feedback. |
 | Registered Bot compaction | Pi's own compaction plus `BOT_COMPACTION_MESSAGE` when configured and still active | Runtime records the count but does not save a stale host tree or private checkpoint as public progress. Threshold/closure handling can suppress the reminder. |
-| Direct SDK start/restart/recovery | Compatibility `agent-prompt.js` SOP, capability directory and Runtime compositions described below | These paths remain exported for SDK callers and deterministic tests. Unregistered OpenSandbox startup rejects; this is not the normal registered Bot transport. |
+| Optional registered bind prompt | Bound SDK composer and current Mission context | Requires the original Bot Session; production take suppresses this optional send. Generic SDK composers remain callable without starting a process. |
 
 Full registered bodies appear in [01](prompts/01-system-identity.md), [03](prompts/03-benchmark-turns.md) and [08](prompts/08-bot-skills.md). Compatibility templates remain fully catalogued because their code is still executable through the direct SDK. Provider-owned context and actual provider serialization are separate from these repository text files.
 
@@ -114,15 +114,13 @@ Bundle documents are added from each Service's `documentation` array and dedupli
 
 The Pi extension separately registers `description`, `promptSnippet`, `promptGuidelines` and schemas. It does **not** pass `help.text` as an extension prompt guideline. Full-help composition and extension registration are distinct mechanisms. [Sources: agent-prompt](../../src/agent/agent-prompt.js), [capability-profile](../../src/agent/capability-profile.js), [extension](../../src/agent/swarmenv-extension.mjs), [Service bundle](../../src/sdk/service-bundle.js).
 
-## 6. Compatibility Runtime starts, restarts and recovery
+## 6. Optional registered bind composition
 
 ### 6.1 Inner snapshot
 
-These generic composition APIs remain for SDK/local compatibility callers. Registered Bot startup uses the live first-turn message in §4 and does not restore a predecessor's private Session; take suppresses a second initial prompt.
+`bindAgentExecution` can compose an inner bound snapshot for its original registered Bot Session. It includes the supplied or Registry-derived capability profile, static bound SOP, current Task/Execution and prepared Workspace. An explicitly supplied snapshot is preserved as provenance. The production runner uses `sendInitialPrompt:false`; this composed snapshot is not evidence of a model send.
 
-For Runtime-managed launch with a Registry, `#launch` chooses `bound` or `recovery`, builds a profile using current Task/Execution IDs, and calls `buildPromptSnapshot` with the full Task, Execution, prepared Workspace and optional recovery data. If the adapter already has a system addendum, the static user portion is `execution.agent_prompt`; otherwise the stable role SOP is prepended. A saved `agent_prompt` can itself already contain the SOP, so presence of a system addendum does not imply that the user message has no repeated SOP.
-
-`bindAgentExecution` also has snapshot/profile options and can build a snapshot for an existing Session. The benchmark asks it not to send a second prompt. Generic callers that leave `sendInitialPrompt` true continue to the next composition stage.
+With `sendInitialPrompt:true`, binding uses the outer composition below. Runtime has no local adapter launch or same-Execution Session-recovery send path. SDK generic/recovery aliases remain exported composition helpers, not a replacement execution path.
 
 ### 6.2 Outer Mission context
 
@@ -133,13 +131,11 @@ The outer context contains the current Mission; up to 32 Mission Task summaries 
 There are two easily missed details:
 
 - `modernTaskPromptProjection` supplies Task identity, goal, output, acceptance conditions and validation flags, but omits `completion_contract` and `task_instructions`. Thus the outer Task text falls back to acceptance conditions; the fuller contract/instructions can already be inside the inner snapshot.
-- The outer composer invocation does not pass an `execution` argument. Its Execution section therefore prints the default “supplied by Runtime” text even when the inner snapshot already printed an exact ID. Recovery reason is similarly present in the inner snapshot, while the outer invocation prints its default recovery section. The current persisted Execution does not carry the `session_reason` selector used by the outer helper, so its profile ordinarily resolves to `bound`, including after an inner recovery snapshot.
+- The outer composer invocation does not pass an `execution` argument. Its Execution section therefore prints the default “supplied by Runtime” text even when the inner snapshot already printed an exact ID. Recovery reason is similarly present in the inner snapshot, while the outer invocation prints its default recovery section. The outer Runtime profile always resolves to `bound`; it does not select a recovery launch.
 
 The generated [full examples](prompts/05-composed-context-examples.md) deliberately retain these duplicated blocks. They are not cleaned-up mockups. The actual final message may be much longer when Workspace, Tasks, Materials or provider documents contain substantial data.
 
-### 6.3 Recovery-specific text
-
-A process failure produces a seven-line instruction: resume the claimed Task; name failure class/attempt; include Task goal/output, Workspace revision and checkpoint; then warn against assuming the interrupted turn completed. Missing revision/checkpoint print `none`. Runtime saves this as the recovered Execution's `agent_prompt`, increments fencing through its recovery operation, and launches the replacement Session. The complete dynamic template is in [04](prompts/04-runtime-messages.md); the resulting two-stage example is in [05](prompts/05-composed-context-examples.md). This describes message construction, not a guarantee that the recovery operation will succeed. [Source: Runtime](../../src/runtime/runtime.js).
+Session failure sends no replacement-session instructions. Runtime closes the registered Bot and preserves cleanup ownership. Any successor receives fresh discovery from public state; it cannot inherit the failed conversation by a Runtime restart.
 
 ## 7. Notifications, compaction and tool-returned text
 
@@ -149,7 +145,7 @@ Runtime uses one prompt queue for initial/follow-up delivery on an active Execut
 
 For unregistered compatibility notifications, `handoff_warning` asks for linked Handoff Material before the deadline. `material_available` names Material/source Task/source Execution and requests read/adapt/feedback; it explicitly says the notice does not itself require handoff. Other notification types use the dependency-satisfied “Task is OPEN again” text. Missing Material/source IDs fall back to payload fields, then `<unknown>`. The exact bodies are in [04](prompts/04-runtime-messages.md).
 
-For unregistered compatibility Sessions, after a successful automatic compaction checkpoint, the optional reminder asks for substantive completed work, findings, open questions and next step. Runtime skips that reminder when closing/rotating or no longer active. It is not the content of Pi's compacted summary. A non-Mission deadline reminder uses a different three-line body; Mission Tasks use the durable notification route. [Source: Runtime](../../src/runtime/runtime.js).
+Registered successful compaction queues only the existing Bot/solver follow-up, subject to active ownership and deadline guards. It does not automatically save a private checkpoint or send an execution_progress request. The retained non-Mission deadline helper is catalogued separately from registered delivery.
 
 Registered notifications instead use `buildBotNotification`: soft closeout directs explicit save/publish/finish, Material notices identify public references, and other changes request fresh public-state reads. Registered compaction sends the fixed reminder only when the live E permits it, using the soft-closeout body when required, and records `public_save:false`. It does not automatically checkpoint files or ask for the rejected compound `execution_progress` operation. Complete registered bodies are in [benchmark turns](prompts/03-benchmark-turns.md); the full compatibility bodies remain in [Runtime messages](prompts/04-runtime-messages.md).
 

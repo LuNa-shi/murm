@@ -50,7 +50,7 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   });
   const missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'default-public') });
   await missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-default', initialFiles: { 'input.txt': 'public project input' } });
-  const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-default', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, agentAdapter: {}, ...runtimeOptions });
+  const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-default', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, ...runtimeOptions });
   t.after(async () => { await runtime.missionSubmissionStore?.stop({ missionId: 'mission:bots' }); await runtime.shutdown(); service.close(); await rm(root, { recursive: true, force: true }); });
   const startSession = async ({ bot, onSandboxCreated, beforeAgentStart }) => {
     const sandbox = await manager.ensureExecution({ executionId: bot.resource_key, botId: bot.bot_id, onCreated: onSandboxCreated });
@@ -263,17 +263,29 @@ test('an unexpected unbound process exit ends the Bot instead of reviving its id
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
 });
 
+test('Execution binding rejects unregistered owners before preparing a Workspace', async t => {
+  const { service, runtime, manager } = await fixture(t);
+  const task = service.createTask({ mission_id: 'mission:bots', summary: 'Check a rejected legacy launch', expected_output: 'No resource allocation', acceptance_conditions: ['Unregistered launch denied'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: 'agent:unregistered', core_id: 'core-1', take_key: 'legacy-binding' });
+  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, { stop() {} }, { coreId: 'core-1' }), { code: 'NOT_ALLOWED' });
+  assert.equal(service.getExecution(execution.execution_id).state, 'CREATED');
+  assert.equal(service.getExecution(execution.execution_id).workspace_ref, null);
+  assert.equal(manager.snapshot().executions.length, 0);
+  assert.equal(runtime.getActiveProcessCount(), 0);
+});
+
 test('taken Bot keeps its original Sandbox and closes before a successor can use the Core', async (t) => {
   const { service, runtime, manager, startSession, calls } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
   const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a local question', expected_output: 'Reusable note', acceptance_conditions: ['Question answered'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const taken = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:bound' });
+  await assert.rejects(runtime.bindAgentExecution(taken.execution.execution_id, { stop() {} }, { coreId: bot.core_id }), /original Bot Session/);
+  assert.equal(service.getExecution(taken.execution.execution_id).state, 'CREATED');
   await runtime.bindAgentExecution(taken.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
   const execution = service.getExecution(taken.execution.execution_id);
   assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
   assert.equal(manager.snapshot().executions.length, 1);
   assert.equal(calls.filter(call => call.method === 'POST' && call.url.endsWith('/sandboxes')).length, 1);
-  await assert.rejects(runtime.restartSession(execution.execution_id), /cannot replace/);
   service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: bot.bot_id, taskId: task.task_id, executionId: execution.execution_id,
     specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
   await runtime.releaseExecution(execution.execution_id);
@@ -2304,4 +2316,40 @@ test('solver compaction preserves the same Bot and Execution beyond the Swarm ro
   }
   assert.equal(messages.length, 5);
   assert.ok(messages.every(message => !/swarm task|swarm material/.test(message)));
+});
+
+
+test('slow Bot preparation keeps its reservation lease live before activation', async t => {
+  const { service, runtime, manager, startSession } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a slow public input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:slow-lease' });
+  let resume, entered;
+  const gate = new Promise(resolve => { resume = resolve; });
+  const copying = new Promise(resolve => { entered = resolve; });
+  const sync = manager.syncWorkspace.bind(manager);
+  manager.syncWorkspace = async input => { entered(); await gate; return sync(input); };
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: Date.now() });
+  const binding = runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
+  await copying;
+  try {
+    for (let step = 0; step < 4; step++) t.mock.timers.tick(10_000);
+    assert.ok(Date.parse(service.getExecution(execution.execution_id).lease_expires_at) > Date.now(), 'preparation must retain a live lease beyond its original 30 seconds');
+  } finally { resume(); }
+  await binding;
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+  assert.doesNotThrow(() => runtime.heartbeat(execution.execution_id));
+});
+
+
+test('binding cannot revive an already expired preparation lease', async t => {
+  const { service, runtime, startSession, manager } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect expired preparation ownership', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:expired-preparation' });
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse(execution.lease_expires_at) + 1 });
+  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }), /lease has expired/);
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+  assert.equal(manager.snapshot().executions.length, 0);
+  assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
 });

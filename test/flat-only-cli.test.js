@@ -27,7 +27,7 @@ test('benchmark CLI refuses an existing experiment directory before loading laun
   assert.equal(await readFile(sentinel, 'utf8'), 'previous attempt');
 });
 
-for (const late of [false, true]) test(`benchmark CLI handles SIGTERM ${late ? 'during aggregate output' : 'during failed observer startup'}`, async t => {
+for (const [late, observerEnabled] of [[false, true], [true, true], [true, false]]) test(`benchmark CLI handles SIGTERM ${late ? 'during aggregate output' : 'during failed observer startup'} with observer ${observerEnabled ? 'enabled' : 'disabled by default'}`, async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarm-cli-stop-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const fixture = join(root, 'fixture');
@@ -73,7 +73,7 @@ fs.writeFile = async (path, ...args) => {
 syncBuiltinESMExports();`);
     signalArguments.push('--import', inject);
   }
-  child = spawn(process.execPath, [...signalArguments, runner, '--problems', config, '--putnambench-root', fixture,
+  child = spawn(process.execPath, [...signalArguments, runner, ...(observerEnabled ? ['--observability'] : []), '--problems', config, '--putnambench-root', fixture,
     ...(late ? ['--initial-bot-stagger-ms', '1200'] : ['--problem', 'fixture_0',
       '--bot-max-ms', '1800000', '--selection-timeout-ms', '360000', '--checker-timeout-ms', '180000']),
     '--experiment-root', root, '--experiment-dir', experiment, '--report-dir', reports, '--observability-metadata', observer],
@@ -85,9 +85,14 @@ syncBuiltinESMExports();`);
   const [code, signal] = await once(child, 'close');
   assert.equal(signal, null, stderr);
   assert.equal(code, late ? 0 : 143, stderr);
-  assert.equal(healthChecks, 1);
+  assert.equal(healthChecks, observerEnabled ? 1 : 0);
   const aggregate = JSON.parse(await readFile(join(reports, 'aggregate-report.json')));
   const metadata = JSON.parse(await readFile(join(experiment, 'metadata', 'experiment.json')));
+  assert.equal(metadata.protocol.observability_enabled, observerEnabled);
+  if (!observerEnabled) {
+    await assert.rejects(readFile(join(experiment, 'metadata', 'observability.json')), { code: 'ENOENT' });
+    await assert.rejects(readFile(join(root, 'observer.sqlite')), { code: 'ENOENT' });
+  }
   assert.equal(aggregate.protocol.initial_bot_stagger_ms, late ? 1200 : 60000);
   assert.equal(metadata.protocol.initial_bot_stagger_ms, late ? 1200 : 60000);
   assert.equal(metadata.valid_for_analysis, false);

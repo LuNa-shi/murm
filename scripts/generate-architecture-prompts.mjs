@@ -68,7 +68,6 @@ const registry = createBuiltinServiceRegistry();
 const runtimeCaps = runtimeCapabilityList();
 const flatCaps = runtimeCaps.filter((c) => !['sandbox_exec', 'sandbox_job'].includes(c.operation));
 const profile = buildCapabilityProfile({ registry, role: AGENT_ROLES.BOUND, runtimeCapabilities: flatCaps });
-const recoveryProfile = buildCapabilityProfile({ registry, role: AGENT_ROLES.RECOVERY, runtimeCapabilities: flatCaps });
 const sandboxProfile = buildCapabilityProfile({ registry, role: AGENT_ROLES.BOUND, runtimeCapabilities: runtimeCaps });
 const mathlibBundle = await loadServiceBundle(resolve(root, 'services/mathlib-search'));
 const extendedRegistry = createBuiltinServiceRegistry();
@@ -78,7 +77,7 @@ const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, rol
 output('01-system-identity.md', header('Complete stable identity instructions', 'Source: [agent-prompt.js](../../../src/agent/agent-prompt.js). The normal registered Bot body is bot-contract/system.txt. The older compatibility SDK body is exported as SYSTEM_IDENTITY_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT and RECOVERY_AGENT_PROMPT. The aliases do not create distinct selection Agents or research strategies.')
   + block('Independent solver system addendum (swarm-solver-v1)', SOLVER_SYSTEM_PROMPT, 'Explicit Pass@K runs load only solver-system.txt through the same immutable worker contract. No Swarm skills are loaded.')
   + block(`Registered Bot system addendum (${BOT_PROTOCOL_VERSION})`, BOT_SYSTEM_PROMPT, 'Normal OpenSandbox Bots load the immutable image resource through --append-system-prompt. The worker verifies its hash and permissions before spawning Pi.')
-  + block(`Compatibility SDK system addendum (system version ${SYSTEM_PROMPT_VERSION}; composition version ${PROMPT_VERSION})`, SYSTEM_IDENTITY_PROMPT, 'AgentCoreAdapter writes this body to identity-system-prompt.md and passes that file through Pi --append-system-prompt. It is an addendum to Pi-owned system instructions; it is not the whole upstream model request.'));
+  + block(`Compatibility SDK system addendum (system version ${SYSTEM_PROMPT_VERSION}; composition version ${PROMPT_VERSION})`, SYSTEM_IDENTITY_PROMPT, 'This exported SDK composition body remains available to callers. No local-process adapter sends it as a system addendum; registered OpenSandbox startup uses the pinned Bot or solver resource above.'));
 
 let toolsDoc = header('Task-loop guide and tool-visible instructions', 'The first profile below is the benchmark flat Task model with built-in Services and no Sandbox or optional provider. Later profiles show the optional Sandbox/Mathlib additions. Exact schemas and exposure conditions are in [the API reference](../10-service-api-reference.md). The directory/help blocks exist as composer output; [the prompt path table](../08-prompts.md) states when they are actually delivered.');
 for (const [title, p] of [['Flat built-ins, no Sandbox', profile], ['Flat built-ins with Sandbox', sandboxProfile], ['Flat built-ins with Sandbox and Mathlib Search', extendedProfile]]) {
@@ -134,19 +133,13 @@ output('08-bot-skills.md', skillDoc);
 const notificationFunction = between(runtimePath, '  #notificationText', '\n\n  #onNotification');
 const notificationText = evaluate(`function notificationText${notificationFunction}`, { buildBotSoftCloseoutNotice })
   .bind({ clock: () => Date.parse('2026-01-01T00:00:30.000Z') });
-const recoveryFunction = between(runtimePath, '  #recoveryPrompt', '\n\n  #executionEnvelope');
-const recoveryText = evaluate(`function recoveryPrompt${recoveryFunction}`);
 const legacyReminder = evaluate(between(runtimePath, '        const prompt = ', ';\n        active.promptChain', "} else if (active) {\n        const prompt ="));
-const compactionReminder = evaluate(between(runtimePath, '              await active.session.prompt(\n                ', ',\n                { timeoutMs:', 'if (this.compactionCheckpointReminder'));
-let runtimeDoc = header('Complete notification and recovery messages', 'Sources: [runtime.js](../../../src/runtime/runtime.js). Runtime-generated values below are synthetic placeholders. These messages do not include Pi’s own compaction summary or provider retry messages, whose implementation is outside this repository.');
+let runtimeDoc = header('Complete Runtime notification messages', 'Sources: [runtime.js](../../../src/runtime/runtime.js). Runtime-generated values below are synthetic placeholders. These messages do not include Pi’s own compaction summary or provider retry messages, whose implementation is outside this repository.');
 for (const [label, type] of [['Execution deadline notification', 'handoff_warning'], ['Response Material notification', 'material_available'], ['Typed dependency satisfied notification', 'dependency_satisfied']]) {
   runtimeDoc += block(label, notificationText({ notification_type: type, notification_id: '<NOTIFICATION_ID>', material_id: '<MATERIAL_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', recipient_task_id: '<RECIPIENT_TASK_ID>', payload: {} }));
 }
 runtimeDoc += block('Material notification with missing source fields', notificationText({ notification_type: 'material_available', notification_id: '<NOTIFICATION_ID>', payload: {} }), 'The fallback body is included because the source explicitly uses <unknown> when neither top-level nor payload fields are present.');
 runtimeDoc += block('Legacy/non-Mission deadline reminder', legacyReminder);
-runtimeDoc += block('After-compaction substantive checkpoint reminder', compactionReminder);
-runtimeDoc += block('Session failure recovery instructions', recoveryText({ goal: '<TASK_GOAL>', expected_output: '<EXPECTED_OUTPUT>' }, { workspace_revision: '<WORKSPACE_REVISION>', checkpoint_ref: '<CHECKPOINT_REF>' }, '<FAILURE_CLASS>', '<RECOVERY_ATTEMPT>'));
-runtimeDoc += block('Session failure recovery without saved revision/checkpoint', recoveryText({ goal: '<TASK_GOAL>', expected_output: '<EXPECTED_OUTPUT>' }, {}, '<FAILURE_CLASS>', '<RECOVERY_ATTEMPT>'));
 output('04-runtime-messages.md', runtimeDoc);
 
 const sampleExecution = { execution_id: '<EXECUTION_ID>', task_id: '<TASK_ID>', workspace_revision: 1, started_at: '<STARTED_AT>', handoff_deadline: '<HANDOFF_DEADLINE>', execution_deadline: '<EXECUTION_DEADLINE>' };
@@ -158,15 +151,13 @@ const sampleNotifications = [{ notification_id: '<NOTIFICATION_ID>', notificatio
 const projectionFunction = between(runtimePath, 'function modernTaskPromptProjection', '\n\nexport class Runtime');
 const projectTask = evaluate(`function modernTaskPromptProjection${projectionFunction}`);
 const innerSnapshot = buildPromptSnapshot({ role: AGENT_ROLES.BOUND, profile, staticSop: BOUND_AGENT_PROMPT, task: syntheticTask, execution: sampleExecution, workspace: sampleWorkspace });
-const recoverySnapshot = buildPromptSnapshot({ role: AGENT_ROLES.RECOVERY, profile: recoveryProfile, staticSop: recoveryText(syntheticTask, sampleExecution, '<FAILURE_CLASS>', 1), task: syntheticTask, execution: sampleExecution, workspace: sampleWorkspace, recovery: { reason: 'session_recovery', checkpoint: '<CHECKPOINT_REF>', dependency: null } });
 function outerRuntimePrompt(snapshot) {
   // Mirrors #dynamicPromptContext: current DB Execution has no session_reason;
   // outer role defaults to bound and execution is intentionally not supplied.
   return composeAgentPrompt({ staticPrompt: snapshot.prompt, profile, mission: sampleMission, task: projectTask(syntheticTask), tasks: sampleSummaries, materials: sampleMaterials, notifications: sampleNotifications, deadline: { started_at: sampleExecution.started_at, handoff_deadline: sampleExecution.handoff_deadline, execution_deadline: sampleExecution.execution_deadline }, services: profile.services, workspace: { workspace_ref: sampleWorkspace.workspace_ref, workspace_revision: sampleWorkspace.workspace_revision, content_hash: sampleWorkspace.content_hash } });
 }
-output('05-composed-context-examples.md', header('Complete synthetic Runtime composition examples', 'These examples reproduce both composition stages of the current Mission Runtime start/restart path. The repeated profile/context blocks are present in the current composition; the generator deliberately preserves them. The ordinary benchmark task_take path suppresses this send and should be read in [03-benchmark-turns](03-benchmark-turns.md).')
-  + block('Runtime Mission start/restart: exact two-stage composed body for synthetic inputs', outerRuntimePrompt(innerSnapshot))
-  + block('Runtime Mission recovery: exact two-stage composed body for synthetic inputs', outerRuntimePrompt(recoverySnapshot))
+output('05-composed-context-examples.md', header('Complete synthetic Runtime composition examples', 'These examples reproduce both composition stages of the optional registered Runtime bind composition path. The repeated profile/context blocks are present in the current composition; the generator deliberately preserves them. The ordinary benchmark task_take path suppresses this send and should be read in [03-benchmark-turns](03-benchmark-turns.md).')
+  + block('Optional registered bind: exact two-stage composed body for synthetic inputs', outerRuntimePrompt(innerSnapshot))
   + block('Generic dynamic-only helper: no supplied context', composeDynamicAgentPrompt(), 'This exported helper is available to callers and tests. It is not evidence that the benchmark first turn uses it. Empty arrays still produce [] sections because contextSection skips only undefined, null and the empty string.'));
 
 async function listSourceFiles(directory) {

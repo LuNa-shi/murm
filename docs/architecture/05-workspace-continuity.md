@@ -97,16 +97,11 @@ Focused CLI/Git tests cover disjoint contributions in the actual checked combine
 
 The registered Bot starts in a protected Sandbox before take; after take Runtime materializes the selected immutable Mission revision into its guest project. Public continuity uses explicit save/apply/merge as described above.
 
-The compatibility `Runtime.startExecution` or `bindAgentExecution` path prepares a private
-WorkspaceManager support directory before starting the durable Execution. A Task need not expose file or
-Sandbox tools to its Agent for that support directory to exist: capability
-selection and materialization are separate decisions. Independent participants
-in the compatibility Task path receive independent writable directories. In
-the Issue #122 path Mission has no owner and the persistent Mission Workspace
-repository is separate from each Execution directory; no Core or Bot receives
-a shared mutable checkout.
+Runtime `bindAgentExecution` prepares one fresh WorkspaceManager support directory from the public Mission Workspace and pinned Material inputs, then activates the original registered Bot. The persistent public repository is separate from each Execution directory; no Core or Bot receives a shared mutable checkout. Capability selection and input materialization remain separate decisions.
 
-The default location is `<workspaceRoot>/<execution_id>`. The generated path
+The Runtime-generated path is `<workspaceRoot>/<execution_id>-fresh-<fence>`.
+
+The generated path
 segment must match `[A-Za-z0-9][A-Za-z0-9._-]*`; an explicitly provided Workspace
 must resolve strictly below the configured root. Runtime and Task Service
 retain the Execution's path, revision and hash; WorkspaceManager retains the
@@ -177,25 +172,23 @@ missing, even if an unindexed file happens to exist at that path.
 | Wrong owner / old fence / released Workspace | `NOT_ALLOWED` for wrong owner; `FENCED` for stale fence or released writes. |
 | Expected revision differs | `STALE_VERSION`. |
 
-Initial seeding uses safe-path checks but does not apply the allowed-output
-restriction to each generated support file. Later saves do apply it.
-Consequently, a restrictive output contract must permit
-`runtime-manifest.json` when the Runtime-created Session path updates that
-file; only `.pi/settings.json` has an explicit internal-output exemption.
+The lower-level WorkspaceManager creation helpers use safe-path checks but
+do not apply the allowed-output restriction to each generated support file.
+Later file API saves do apply it. The retained contract normalizer exempts
+`.pi/settings.json`; Runtime does not generate that file or a runtime manifest
+during registered Bot preparation.
 Required-input validation uses the supplied file manifest; it is not a
 continuous monitor that prevents later shell writes.
 
-## 3. Clean creation and existing binding
+## 3. Clean creation and recorded binding
 
 For a registered Bot with a public Mission Workspace, the benchmark passes a trusted `missionWorkspaceId` into Runtime. During take preparation, `exportRevision` resolves the fixed Task `workspace.revision`, or main when omitted, once under the repository recovery barrier and exports every file plus immutable revision/commit/tree/content and per-file hashes. Runtime verifies the Mission and rejects a conflicting Task Workspace ID. A concurrent main advance does not change the selected input. If no trusted Workspace ID is configured, an explicit Task Workspace ID is required and its Mission is still checked.
 
 The host Execution directory receives those exact project files, including binary data and the existing `.gitignore`/README. This path adds no Task README, runtime manifest, workspace manifest or `.pi` settings to project files. Host bookkeeping stays in private `.swarm` and `.git`. Creation holds a target lock, builds a sibling staging directory, verifies every file against the public manifest, imports raw Git blobs without ignore/attribute conversion, and publishes the completed directory by rename. Exact matching retries reuse its original input; a different input/fence or a nonempty partial target is rejected, never overlaid. The initial local Git tree therefore matches the public Git tree. The OpenSandbox transfer receives the trusted manifest, copies exactly those paths using base64 chunks of at most 65,536 characters into a per-file guest temporary path, verifies the complete received file with SHA-256, then renames it into place. This stays below Linux single-argument limits even for the 2 MiB maximum file. Failed copies best-effort remove their temporary file and fail preparation; `.environment` and other allowed names are not silently omitted by the legacy traversal filter. It rejects source symlinks and bytes differing from the pinned manifest. Per-file hashing establishes transport integrity. Protected PREPARED input and process-paused grant are additional implemented worker boundaries described below; hashing alone does not establish them. The initial public input identity is recorded in both private Workspace metadata and `executions.workspace_input_json` before activation, and cannot be changed by later local revision saves. Reports include this initial public reference separately from the older local integer revision/commit fields. This establishes complete input selection/transport and audit identity; protected guest preparation/grant follows the flow below; same-E apply uses the captured guest transaction and confirmation protocol described above.
 
-Unregistered compatibility Executions retain the older formal-source and generated-manifest creation path. A take cannot select another Execution's private revision, source path, checkpoint or directory.
+Runtime requires a registered Bot and its original Session before preparation. A take cannot select another Execution's private revision, source path, checkpoint or directory. Preparation uses a fresh directory keyed by Execution and fence; if the Execution already has a recorded Workspace reference, it fails with `FENCED` instead of restoring or replacing that binding. The matching filesystem retry behavior above applies before a durable binding has been recorded.
 
-If an Execution already has its own Workspace, Runtime reads its current metadata under the current fence and continues from that binding. Matching retries are idempotent; a different owner, fence, revision, or content hash is rejected. Workspace saves advance exactly one revision and persist the file manifest and content hash before the corresponding Execution reference is recorded.
-
-In the compatibility preparation path, Runtime generates the initial README, manifest, ignore rules, Pi settings and runtime manifest. Registered public input materialization instead preserves the exact supplied project tree as described above. These writes may create successive revisions, so revision one is the materialization boundary rather than a promise about the first model turn.
+Lower-level WorkspaceManager creation and cloning helpers remain available for direct callers, diagnostics and historical data handling. They can generate support files or copy a private revision, but Runtime no longer invokes them as an alternative execution preparation path. Workspace saves persist the file manifest and content hash before the corresponding Execution reference is recorded.
 
 
 ## 4. File operations, revisions and their precise limits
@@ -336,7 +329,7 @@ Runtime's common physical-release path retains a `CLOSING` Core and resource bin
 
 ## 6. Fence, release, restart and retained state
 
-The WorkspaceManager metadata and same-E restart APIs below are compatibility mechanisms. The registered path uses immutable public inputs, retained cleanup ownership and fresh Bot/E authority; `restartSession` rejects a registered Bot. Public revisions survive independently of its private directory.
+WorkspaceManager retains owner/fence metadata and lower-level historical storage helpers. Runtime startup uses only fresh registered Bot/Execution authority and immutable public inputs. It does not resume a predecessor private directory or replace a Session under the same Execution. Public revisions survive independently of the private directory.
 
 A normal Workspace write requires the same Execution ID, current fence and no
 `released_at`. `releaseWorkspace` verifies owner/fence and idempotently retries both metadata writes, retaining the original release timestamp after a partial write failure. It records a release timestamp without
@@ -352,14 +345,7 @@ container that retains raw filesystem access is not stopped merely because a
 JSON fence changed. Read/list APIs check ownership and fence but do not require
 an unreleased Workspace.
 
-Compatibility Session restart keeps the same Execution ID and Core. Runtime stops
-the previous actual Session, removes its identity-session registration, frees
-the in-memory Core, advances the Workspace and durable Execution fences via
-recovery, and starts another Session on the existing Workspace. Recovery
-increments session/attempt generations and recalculates attempt timing while
-retaining any global run deadline. That path does not create a new independent
-checkout. A Task handoff followed by another take does.
-[Execution restart and recovery](02-execution.md).
+A successor takes a new Execution and receives a fresh private working directory from public revisions and Materials. The prior Session is stopped and its resources cleaned before the Core becomes available. Private conversation/checkpoint restoration is not a Runtime recovery route. [Execution and cleanup](02-execution.md).
 
 Feedback also survives through durable Task/notification records rather than
 Pi memory alone: delivery, reading, consumption and handling are distinct
@@ -371,11 +357,7 @@ The selection and deduplication rules are in
 
 ## 7. Compaction and identity rotation
 
-Compaction accounting is in Runtime memory, keyed by the identity lane
-(Core ID where available, otherwise owner/Execution fallback). Ordinary Task
-release/rebind on that lane carries the count forward; explicit rotation and
-session recovery reset it. It is not a durable database counter restored
-across a host-process crash.
+Compaction accounting is in Runtime memory, associated with the current Bot/Core binding. A new Bot resets its count. The count is not restored across a host crash. Explicit solver mode retains the same Bot/Session across successful compactions, subject to its existing hard deadline.
 
 Defaults are `maxCompactions = 3`,
 `handoffWindowRatio = 0.8` and
@@ -389,13 +371,13 @@ when available and uses a valid measured value.
 | Event/condition | Runtime action |
 | --- | --- |
 | `compaction_start` when count is already at the configured maximum | Start identity rotation immediately with reason `compaction_limit`. |
-| Successful `compaction_end` with result and not aborted | Increment lane count and queue handling in arrival order: registered Bot reminder/observation, or compatibility private checkpoint. |
+| Successful `compaction_end` with result and not aborted | Increment lane count and queue handling in arrival order: registered Bot reminder/observation. |
 | At/above max after successful compaction, postcompaction usage unknown | Rotate conservatively with `compaction_window_unknown`. |
 | At/above max after successful compaction, known ratio at/above 0.8 | Rotate with `compaction_window_threshold`. |
 | At/above max, later `turn_end` with ratio at/above threshold | Rotate. |
 | At/above max, later `turn_end` with unknown usage | Log `continue_until_boundary`; this particular event does not immediately rotate. |
 | Successful compaction below both stopping conditions | Continue the current Bot only while its Execution remains active; after a lifecycle boundary a fresh Bot reads public state. |
-| Failed/nonaborted compaction without result | Enter the session-failure/recovery path described in [02](02-execution.md). |
+| Failed/nonaborted compaction without result | Enter the registered session-failure/cleanup path described in [02](02-execution.md). |
 
 When available, `estimatedTokensAfter` /
 `estimated_tokens_after` is preferred for the postcompaction ratio.
@@ -408,31 +390,7 @@ Do not turn this event-based intervention into a stronger provider guarantee.
 
 After successful compaction, Runtime waits for settlement (up to 30 seconds), verifies the current active Bot/E/deadline and optionally sends the fixed compaction reminder. During soft closeout the phase selector substitutes save/publish/finish guidance. It records `runtime.bot_compaction_recorded` with `public_save:false` and returns `not_saved`; Pi compaction does not publish the guest tree, a Material or a private checkpoint as public progress. A closing/rotating Bot receives no reminder. At a rotation boundary Runtime stops E as `HANDED_OFF` with reason `compaction_rotation`, confirms physical cleanup and allows a later fresh Bot to continue from explicitly published state. It does not call same-E Session restart.
 
-### Compatibility automatic checkpoints
-
-Saves are serialized behind the previous compaction save, including after a
-previous failure. If supported, Runtime waits up to 30 seconds for the Session
-to settle, verifies the Execution is still active and has a Workspace, saves a
-revision with an empty files map, then saves a checkpoint containing
-`kind: compaction`, reason, count, identity, tokens before and estimated
-tokens after. No Workspace or a no-longer-active Execution makes the save
-`not_applicable`; persistence errors log `save_failed` without blocking
-all later saves or stranding the lifecycle.
-
-With reminders enabled and no closing/rotation in progress, Runtime queues a
-follow-up prompt asking the current Bot to write substantive
-`execution_progress`; the prompt has a 30-second timeout. Compaction metadata
-alone is not converted into invented findings. The full reminder and exact
-send path appear in [08](08-prompts.md).
-
-Compatibility rotation coalesces concurrent requests and drains the already queued compaction
-save; a `compaction_start` rotation does not wait for a new settle event from
-the compaction it is interrupting. It calls
-`restartSession(reason: compaction_rotation)`, logs old/new identity IDs and
-resets the replacement count to zero. Normally the Execution ID stays the
-same, while Session identity, fence and recovery generation change. It is
-therefore an identity/Session replacement, not a Task handoff.
-[Runtime event, checkpoint and rotation implementation](../../src/runtime/runtime.js).
+Rotation coalesces concurrent requests and waits only for an already queued compaction follow-up. It stops the current Execution as HANDED_OFF and closes the Bot; no replacement Session, automatic private checkpoint or substantive-progress prompt is created. Explicit saves and Materials remain the evidence of public progress.
 
 ## 8. Sandbox provisioning and execution
 
