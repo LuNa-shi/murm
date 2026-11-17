@@ -55,7 +55,7 @@ Task loop (exact tool names in this Session):
 ````
 ## Flat built-ins: full callable capability directory
 
-Body SHA-256: `3b7e7b3757a7105a7c8ea6330c961114dd9595fed5f192df38f02d9d8369ed81`
+Body SHA-256: `6591fd87bb8fd4505b8218385ea2c6e075330c5b6b894dfb805b518c9b3c536f`
 
 ````text
 - Service Catalog — Role-scoped Service and capability discovery.
@@ -73,7 +73,7 @@ Body SHA-256: `3b7e7b3757a7105a7c8ea6330c961114dd9595fed5f192df38f02d9d8369ed81`
   - swarmenv_material_unsupersede: Revoke only the matching successor using the observed relation_version and a reason; preserve all history. (logical operation context.material_unsupersede; writes state; inputs required=[material_id,replacement_material_id,expected_version,reason] fields=[expected_version,material_id,reason,replacement_material_id]; Revoke only the matching successor using the observed relation_version and a reason; preserve all history.)
 - Judge Service — Workspace source checking and structured CheckResults.
   - swarmenv_judge_get_check_result: Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback. (logical operation judge.get_check_result; read-only; inputs required=[none] fields=[check_result_id,request_key]; Read a Judge CheckResult, checker process status, result class, retryability, and diagnostic feedback.)
-  - swarmenv_judge_workspace_check: Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path. (logical operation judge.workspace_check; writes state; inputs required=[revision] fields=[path,request_key,revision,workspace_id]; Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.)
+  - swarmenv_judge_workspace_check: Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path. (logical operation judge.workspace_check; writes state; inputs required=[revision] fields=[check_mode,path,request_key,revision,workspace_id]; Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.)
 - SwarmEnv Runtime — Task-scoped Execution projection
   - swarmenv_execution_get: Read the current Execution identity and Workspace revision. (logical operation runtime.get_execution; read-only; inputs required=[execution_id] fields=[execution_id]; Read the current Execution before acting on its Task.)
   - swarmenv_workspace_diff: Compare two revisions in the current task-scoped Workspace. (logical operation runtime.workspace_diff; read-only; inputs required=[none] fields=[from_revision,to_revision]; Inspect the auditable file changes between revisions.)
@@ -87,16 +87,17 @@ Body SHA-256: `3b7e7b3757a7105a7c8ea6330c961114dd9595fed5f192df38f02d9d8369ed81`
   - swarmenv_mission_get: Read the current Mission goal and acceptance conditions. (logical operation task.mission_get; read-only; inputs required=[mission_id] fields=[mission_id]; Read the current Mission goal and acceptance conditions.)
   - swarmenv_mission_submission_get: Read the durable Mission submission state and its immutable acceptance snapshot. (logical operation task.mission_submission_get; read-only; inputs required=[mission_id] fields=[mission_id,submission_id]; Read the durable Mission submission state and its immutable acceptance snapshot.)
   - swarmenv_mission_submit: Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance. (logical operation task.mission_submit; writes state; inputs required=[material_ids] fields=[material_ids]; Freeze the selected Workspace main revision and immutable Material/checker inputs for Mission acceptance.)
-  - swarmenv_task_cancel: Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner. (logical operation task.task_cancel; writes state; inputs required=[task_id,expected_spec_version,expected_state_version,reason] fields=[expected_spec_version,expected_state_version,reason,replacement_task_id,task_id]; Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.)
-  - swarmenv_task_create: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take. (logical operation task.task_create; writes state; inputs required=[mission_id,summary,expected_output,acceptance_conditions] fields=[acceptance_conditions,base_revision,completion_contract,depends_on,expected_output,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,summary,task_instructions,task_type,timebox_ms,workspace]; Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.)
+  - swarmenv_task_cancel: An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies. (logical operation task.task_cancel; writes state; inputs required=[task_id,expected_spec_version,expected_state_version,reason] fields=[expected_spec_version,expected_state_version,reason,replacement_task_id,task_id]; An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.)
+  - swarmenv_task_create: Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main. (logical operation task.task_create; writes state; inputs required=[summary,gap,expected_output,acceptance_conditions,priority] fields=[acceptance_conditions,base_revision,completion_contract,depends_on,expected_output,gap,goal,input_material_refs,mission_id,priority,required_capabilities,responsibility_key,summary,task_instructions,task_type,timebox_ms,workspace]; Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.)
   - swarmenv_task_dependency_replace: Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge. (logical operation task.task_dependency_replace; writes state; inputs required=[task_id,from_task_id,to_task_id,expected_spec_version,expected_state_version,reason] fields=[expected_spec_version,expected_state_version,from_task_id,reason,task_id,to_task_id]; Replace one cancelled prerequisite of an unowned blocked Task, preserving every other dependency and historical edge.)
   - swarmenv_task_feedback: Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state. (logical operation task.task_feedback; writes state; inputs required=[notification_id,decision,action] fields=[action,decision,details,notification_id]; Record this Execution's durable decision and action for delivered feedback; another Execution may retain its own handling state.)
   - swarmenv_task_finish: Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure. (logical operation task.task_finish; writes state; inputs required=[outcome] fields=[blocker,check_result_id,dependency,handoff_material_id,material_ids,outcome,reason,replacement_task_id,wait_for,workspace_revision]; Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup closes the Execution before the Task is released; inspect Task detail for closure.)
   - swarmenv_task_link_material: Link an immutable Material to a Task with an input, response, handoff, or experience role. (logical operation task.task_link_material; writes state; inputs required=[task_id,material_id,role] fields=[material_id,receiving_task_id,role,task_id]; Link an immutable Material to a Task with an input, response, handoff, or experience role.)
   - swarmenv_task_list: Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work. (logical operation task.task_list; read-only; inputs required=[none] fields=[available_only,cursor,limit,mission_id,query,state,states]; Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.)
+  - swarmenv_task_revise: An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract. (logical operation task.task_revise; writes state; inputs required=[task_id,expected_spec_version,expected_state_version,reason,changes] fields=[changes,expected_spec_version,expected_state_version,reason,task_id]; An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.)
   - swarmenv_task_status: Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery. (logical operation task.task_status; read-only; inputs required=[mission_id] fields=[limit,mission_id,states]; Read Mission counts and bounded Task and eligibility previews; use Task list to continue discovery.)
   - swarmenv_task_take: Take an existing Task in this Mission using the caller Bot and Core. (logical operation task.task_take; writes state; inputs required=[task_id] fields=[input_material_refs,take_key,task_id]; Take an existing Task in this Mission using the caller Bot and Core.)
-  - swarmenv_task_view: Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials. (logical operation task.task_view; read-only; inputs required=[none] fields=[task_id]; Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.)
+  - swarmenv_task_view: Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version. (logical operation task.task_view; read-only; inputs required=[none] fields=[contract_history_after_version,contract_history_limit,task_id]; Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version.)
   - swarmenv_workspace_current_diff: Compare the current E tree with its last saved revision. (logical operation task.workspace_current_diff; read-only; inputs required=[none] fields=[none]; Compare the current E tree with its last saved revision.)
   - swarmenv_workspace_merge: Conditionally merge one complete public Workspace revision into main after conflict and check validation. (logical operation task.workspace_merge; writes state; inputs required=[from] fields=[from]; Conditionally merge one complete public Workspace revision into main after conflict and check validation.)
   - swarmenv_workspace_public_apply: Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents. (logical operation task.workspace_public_apply; writes state; inputs required=[from] fields=[from]; Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.)
@@ -493,28 +494,28 @@ Body SHA-256: `a6567ffa44babeb019a266d40a3e2d40a44bce65133544959abd08bb2f979b74`
 ````
 ## swarmenv_task_cancel
 
-Body SHA-256: `9d5abd1ef831e37f498b403753f8d2a28952ade88fd0ed619041b0257f3da310`
+Body SHA-256: `3ab0a3e90ead208ebc4f63031f4fbbda4d513c436592938a56e1c46406c7683a`
 
 ````text
 {
-  "description": "Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
-  "promptSnippet": "Task Service: Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
+  "description": "An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.",
+  "promptSnippet": "Task Service: An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.",
   "promptGuidelines": [
-    "Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
+    "An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.",
     "Help: service://task/task_cancel"
   ]
 }
 ````
 ## swarmenv_task_create
 
-Body SHA-256: `fef726617fae99009ee96f6e5c6cd8d98567db434256a07ba9fcf4dd468adb31`
+Body SHA-256: `2cf9bd757e97dfdffc480bf9d6a286c33c44afdd0e6c45b24dee02ed1b854e42`
 
 ````text
 {
-  "description": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
-  "promptSnippet": "Task Service: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
+  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.",
+  "promptSnippet": "Task Service: Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.",
   "promptGuidelines": [
-    "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
+    "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.",
     "Help: service://task/task_create"
   ]
 }
@@ -589,6 +590,20 @@ Body SHA-256: `d66eefc93b667ef4b5978afa69e0bda852bc11369e422a7d6e6726ea26316b6e`
   ]
 }
 ````
+## swarmenv_task_revise
+
+Body SHA-256: `6e0510a63675f8e38d9d0e547cb1f687fb8937834d45b4a41dd3f4742a33b14a`
+
+````text
+{
+  "description": "An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.",
+  "promptSnippet": "Task Service: An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.",
+  "promptGuidelines": [
+    "An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.",
+    "Help: service://task/task_revise"
+  ]
+}
+````
 ## swarmenv_task_status
 
 Body SHA-256: `65b5436d80ff6eda9dfc883288f0100f7418f6ef650abf04967c316adec9906d`
@@ -619,14 +634,14 @@ Body SHA-256: `5c85eefabffe15eabce3eb65ea73b1c1a53b5bdca2e8f98af09029e529219769`
 ````
 ## swarmenv_task_view
 
-Body SHA-256: `3cad18d1931d6dbd664485eb045c2504b7915f13427fa85fe3fa3f3ee154dee1`
+Body SHA-256: `7ef625d52d7cbdb154a72ecb6d0e78110a4f92f5248d86f31b6ab589fcf8eac7`
 
 ````text
 {
-  "description": "Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
-  "promptSnippet": "Task Service: Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
+  "description": "Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version.",
+  "promptSnippet": "Task Service: Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version.",
   "promptGuidelines": [
-    "Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
+    "Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version.",
     "Help: service://task/task_view"
   ]
 }

@@ -1162,6 +1162,15 @@
       "role": "Independent Lean preflight/compiler process and diagnostic extraction"
     },
     {
+      "path": "src/judge/lean-module-checker.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Isolated module dependency compilation and Mission-scoped immutable artifact cache"
+    },
+    {
       "path": "src/judge/lean-final-tree-verifier.js",
       "category": "Mission acceptance and checker",
       "chapters": [

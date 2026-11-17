@@ -241,23 +241,23 @@ export class LeanChecker {
     return result;
   }
 
-  async checkProject({ files, tree, path, content, startProcess }) {
+  async checkProject({ files, tree, path, content, checkMode = 'lean-project', missionId, startProcess }) {
     const inputFailure = (diagnostic, diagnosticCode, started = false, evidence = {}) => ({
       verdict: 'ERROR', result_class: 'request_failure', checker_process_status: started ? 'completed' : 'not_started', retryable: false,
       evidence: { ...evidence, diagnostic, diagnostic_code: diagnosticCode, checker_started: started },
     });
-    if (path && /\b(?:sorry|admit|axiom)\b/i.test(content)) {
+    if (checkMode === 'lean-project' && path && /\b(?:sorry|admit|axiom)\b/i.test(content)) {
       return inputFailure('Selected delivery file contains a forbidden placeholder. Use a project check without --path to diagnose partial work.',
         'forbidden_placeholder', false, { forbidden_placeholder: true });
     }
     let started = false;
-    const result = await this.projectChecker({ files, tree, deadline: Date.now() + this.timeoutMs,
+    const result = await this.projectChecker({ files, tree, path, checkMode, missionId, deadline: Date.now() + this.timeoutMs,
       startProcess: launch => startProcess(() => { started = true; return launch(); }) });
     if (result.verdict === 'FAIL' && !started) return inputFailure(result.diagnostic, 'project_input_invalid');
     const paths = result.checked_paths;
     const leanFiles = Object.keys(files).filter(file => file.endsWith('.lean') && file !== 'lakefile.lean');
     const complete = result.verdict === 'PASS' && started && result.checked_tree === tree &&
-      Array.isArray(paths) && paths.length > 0 && paths.length === leanFiles.length &&
+      Array.isArray(paths) && paths.length > 0 && (checkMode === 'lean-module' ? result.scope === 'module' && result.requested_path === path && paths.includes(path) : paths.length === leanFiles.length) &&
       new Set(paths).size === paths.length && paths.every(file => typeof file === 'string' && file.endsWith('.lean') &&
         file !== 'lakefile.lean' && Object.hasOwn(files, file));
     if (complete && path && !paths.includes(path)) {
@@ -274,6 +274,8 @@ export class LeanChecker {
         ...(result.verdict === 'PASS' && !complete ? { diagnostic_code: 'project_coverage_incomplete' } : {}),
         ...(diagnosedLeanFailure ? { diagnostic_code: result.diagnostic_code } : {}),
         checker_started: started, timed_out: Boolean(result.timed_out),
+        build_scope: checkMode === 'lean-module' ? 'module' : 'project', requested_path: path ?? null,
+        ...(result.cache ? { build_cache: result.cache } : {}),
         ...(complete ? { checked_paths: paths, build_warnings: Array.isArray(result.warnings)
           ? result.warnings.filter(warning => typeof warning === 'string').slice(0, 32).map(warning => warning.slice(0, 1024)) : [] } : {}) },
     };

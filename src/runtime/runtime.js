@@ -114,6 +114,10 @@ function modernTaskPromptProjection(task) {
     task_id: task.task_id,
     mission_id: task.mission_id,
     summary: task.summary,
+    gap: task.gap ?? null,
+    priority: task.priority,
+    priority_level: task.priority_level ?? null,
+    spec_version: task.spec_version,
     goal: task.goal,
     expected_output: task.expected_output,
     acceptance_conditions: task.acceptance_conditions,
@@ -744,9 +748,12 @@ export class Runtime {
 
   async readWorkspaceCheckSource(input, identity) {
     this.#guardExecutionWorkspace(identity);
-    const allowed = new Set(['workspace_id', 'revision', 'path', 'request_key']);
+    const allowed = new Set(['workspace_id', 'revision', 'path', 'request_key', 'check_mode']);
+    const checkMode = input?.check_mode ?? 'lean-project';
     const hasPath = input?.path !== undefined;
-    if (!input || Object.keys(input).some(key => !allowed.has(key)) || !/^\d+\.\d+$/.test(input.revision ?? '') ||
+    if (!input || !['lean-project', 'lean-module'].includes(checkMode) ||
+        (checkMode === 'lean-module' && (!this.workspaceProjectCheck || !hasPath || typeof input.path !== 'string' || !input.path.endsWith('.lean'))) ||
+        Object.keys(input).some(key => !allowed.has(key)) || !/^\d+\.\d+$/.test(input.revision ?? '') ||
         (!hasPath && !this.workspaceProjectCheck) ||
         (hasPath && (typeof input.path !== 'string' || !input.path || input.path.startsWith('/') || input.path.includes('\\') || input.path.split('/').some(part => !part || part === '.' || part === '..')))) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, this.workspaceProjectCheck
@@ -755,7 +762,7 @@ export class Runtime {
     }
     if (input.workspace_id !== undefined && input.workspace_id !== this.missionWorkspaceId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge input must belong to the Bot Mission Workspace');
     if (this.workspaceProjectCheck) return { workspace_id: this.missionWorkspaceId, revision: input.revision,
-      ...(hasPath ? { path: input.path } : {}), check_mode: 'lean-project' };
+      ...(hasPath ? { path: input.path } : {}), check_mode: checkMode };
     const snapshot = await this.missionWorkspace.exportRevision({ workspaceId: this.missionWorkspaceId, revision: input.revision });
     this.#guardExecutionWorkspace(identity);
     if (!Object.hasOwn(snapshot.files, input.path)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge file is unavailable at the fixed public revision');
@@ -844,6 +851,9 @@ export class Runtime {
           const result = await Promise.race([active.promise,
             new Promise((_, reject) => { timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline')); controller.abort(); }, remaining); })]);
           if (Date.now() >= deadline) throw new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline');
+          if (result?.check_mode === 'lean-module' || result?.scope === 'module') {
+            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires a complete check; module-scoped evidence is insufficient');
+          }
           const checkedPaths = Array.isArray(result?.checked_paths) ? result.checked_paths : [];
           return { verdict: result?.verdict, check_result_id: typeof result?.check_result_id === 'string' ? result.check_result_id.slice(0, 256) : null,
             diagnostic: typeof result?.diagnostic === 'string' ? result.diagnostic.slice(0, 2048) : null,
@@ -2153,6 +2163,10 @@ export class Runtime {
     })?.map((candidate) => ({
       task_id: candidate.task_id,
       summary: candidate.summary,
+      gap: candidate.gap ?? null,
+      priority: candidate.priority,
+      priority_level: candidate.priority_level ?? null,
+      spec_version: candidate.spec_version,
       state: candidate.state,
       goal: candidate.goal,
       expected_output: candidate.expected_output,

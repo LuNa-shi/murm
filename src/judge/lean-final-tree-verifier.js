@@ -6,6 +6,7 @@ import { finished } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LeanModuleChecker } from './lean-module-checker.js';
 import { checkerResourceProfile, createCheckerProcessLimits } from './checker-process-limits.js';
 
 const verifierSource = fileURLToPath(new URL('./final-tree-proof.lean', import.meta.url));
@@ -40,7 +41,7 @@ function sourceDiagnostics(stderr) {
   const runtime = errors.find(({ data }) => typeof data === 'string' && infrastructureDiagnostic.test(data));
   if (runtime) return { diagnostic_code: /memory/i.test(runtime.data) ? 'checker_memory_limit' : 'checker_runtime_failure', diagnostic: excerpt(runtime) };
   const limited = errors.find(({ data }) => typeof data === 'string' && leanFailureCode(data));
-  return limited ? { diagnostic_code: leanFailureCode(limited.data), diagnostic: excerpt(limited) } : {};
+  return limited ? { diagnostic_code: leanFailureCode(limited.data), diagnostic: excerpt(limited) } : { diagnostic: errors.slice(0, 8).map(excerpt).join('\n') };
 }
 
 function leanFailureResult(failure) {
@@ -280,7 +281,7 @@ function collectProjectDiagnostics(sources) {
 export class LeanFinalTreeVerifier {
   constructor({
     identity, leanRoot, libraryRoots = [], comparatorLibraryRoots, exporterPath, targetPath,
-    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, projectJobs = 1, resources, preserveFixturePrefix = false, requireCompleteProject = false, timeoutMs = 120_000, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
+    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, projectJobs = 1, resources, preserveFixturePrefix = false, requireCompleteProject = false, timeoutMs = 120_000, moduleCacheBytes = 128 * 1024 ** 2, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
   }) {
     if (!identity || !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof identity[key] === 'string' && identity[key])) {
       throw new TypeError('Final-tree verifier requires a fixed checker identity');
@@ -332,6 +333,15 @@ export class LeanFinalTreeVerifier {
     // below that physical limit. Keep its guard only for opt-in diagnostics
     // that do not use the production cgroup wrapper.
     this.leanMemoryArgument = this.resourceLimits ? '-M0' : '-M4096';
+    const libraryPaths = libraryRoots.map((_, index) => `/library/${index}`);
+    this.moduleChecker = new LeanModuleChecker({ cacheBytes: moduleCacheBytes,
+      environmentKey: JSON.stringify([identity, leanRoot, libraryRoots, this.leanMemoryArgument, resources, projectJobs]),
+      sandbox: () => { const args = sandboxArgs(this.leanRoot); libraries(this.libraryRoots, 'library', args); return args; },
+      execute: (args, options) => execute(this.bubblewrap, args, { ...options, resourceLimits: this.resourceLimits, resources: this.resources }),
+      classify: stderr => sourceDiagnostics(stderr.replaceAll('/input/source/', posix.dirname(this.targetPath) === '.' ? '' : `${posix.dirname(this.targetPath)}/`)),
+    });
+    this.moduleChecker.libraryPaths = libraryPaths;
+    this.moduleChecker.memoryArgument = this.leanMemoryArgument;
   }
 
   async #projectSources(files) {
@@ -379,7 +389,7 @@ export class LeanFinalTreeVerifier {
     return { ...built, diagnostics: diagnostics.finish() };
   }
 
-  async checkProject({ files, tree, signal, deadline = Date.now() + this.timeoutMs, startProcess }) {
+  async checkProject({ files, tree, path, checkMode = 'lean-project', missionId, signal, deadline = Date.now() + this.timeoutMs, startProcess }) {
     if (!this.projectChecks) return { verdict: 'ERROR', diagnostic: 'Workspace project checking is not configured', checked_tree: tree, checked_paths: [] };
     deadline = Math.min(deadline, Date.now() + this.timeoutMs);
     const budget = { signal, deadline };
@@ -390,6 +400,7 @@ export class LeanFinalTreeVerifier {
       let sources;
       try { sources = await this.#projectSources(files); }
       catch (error) { if (error instanceof TypeError) return result('FAIL', error.message); throw error; }
+      if (checkMode === 'lean-module') return await this.moduleChecker.check({ files, sources, path, missionId, tree, budget, startProcess });
       directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-check-'));
       await this.#materializeProject(directory, files, sources, budget);
       const built = await this.#buildProject(directory, { ...budget, sources, startProcess });
@@ -406,6 +417,7 @@ export class LeanFinalTreeVerifier {
     } catch (error) {
       // The lifecycle guard at process start returns its typed rejection to Judge.
       if (error.code && ['NOT_ALLOWED', 'FENCED', 'STALE_VERSION', 'SERVICE_NOT_READY'].includes(error.code)) throw error;
+      if (error instanceof TypeError) return result('FAIL', error.message);
       const timedOut = /deadline elapsed/.test(error.message);
       return result('ERROR', timedOut ? 'Lake project check deadline elapsed' : 'Locked Lake project build did not complete', { timed_out: timedOut });
     } finally {

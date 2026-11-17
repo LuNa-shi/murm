@@ -19,6 +19,7 @@ const EVIDENCE_CLASSES = [
 
 const SENSITIVE_KEYS = /(?:^|_)(?:authorization|content|credential|formal_source|password|private_key|proof|raw_transcript|secret|stderr|stdout|task_instructions|token|api_key|agent_prompt|candidate_source)(?:$|_)/i;
 const SAFE_RESULT_KEYS = new Set([
+  'bridge_call_id', 'bridge_pairing', 'ok',
   'pi_result', 'pi_result_sha256', 'pi_result_json_bytes', 'pi_result_truncated', 'pi_result_limits', 'model_request_delivery',
   'task_id', 'root_id', 'parent_id', 'execution_id', 'owner_ref', 'task_type',
   'state', 'task_state', 'execution_state', 'state_version', 'attempt_no',
@@ -763,16 +764,28 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
   if (sourceClass === 'bridge') {
     const event = record.event ?? record.type;
     const operation = canonicalOperation(record.operation ?? null);
-    const pending = event === 'bridge.complete' ? context.takePending('bridge', operation) : null;
-    const effective = pending?.record ?? record;
-    const ids = { taskId: effective.task_id ?? record.task_id ?? null, executionId: effective.execution_id ?? record.execution_id ?? null, correlationId: effective.operation_id ?? record.operation_id ?? null };
+    const terminal = event === 'bridge.complete';
+    const pairing = event === 'bridge.start' ? null : context.matchBridge(operation, record, terminal);
+    const start = pairing?.pending?.record;
+    const ids = {
+      taskId: record.task_id ?? start?.task_id ?? null,
+      executionId: record.execution_id ?? start?.execution_id ?? null,
+      correlationId: record.operation_id ?? start?.operation_id ?? null,
+    };
     const result = record.result;
     facts.push(makeFact(root, {
       kind: event === 'bridge.start' ? 'service_call_started' : 'service_call_finished', at, source, ...ids, coreId, operation,
-      summary: { service: 'bridge', operation, phase: event === 'bridge.start' ? 'started' : 'finished', ok: record.ok ?? null, result: mode === 'full' ? safeResult(result) : null }, priority: 2,
+      summary: {
+        service: 'bridge', operation,
+        phase: event === 'bridge.start' ? 'started' : event === 'bridge.response_sent' ? 'response_sent' : 'finished',
+        bridge_call_id: record.bridge_call_id ?? null,
+        bridge_pairing: event === 'bridge.start' ? 'start' : pairing.basis,
+        ok: record.ok ?? null, error: record.error ?? null,
+        result: mode === 'full' ? safeResult(result) : null,
+      }, priority: 2,
     }));
     if (event === 'bridge.start') context.addPending('bridge', operation, record);
-    if (event === 'bridge.complete' && record.ok === true) facts.push(...domainFactsForService(root, {
+    if (terminal && record.ok === true && (start || record.task_id || record.execution_id)) facts.push(...domainFactsForService(root, {
       ...record, operation, envelope: { task_id: ids.taskId, execution_id: ids.executionId, operation_id: ids.correlationId },
     }, source, null, result));
     return facts;
@@ -859,7 +872,7 @@ function dedupeFacts(facts) {
   const semantic = (fact) => [
     fact.kind, fact.at, fact.taskId, fact.executionId, fact.coreId, fact.operation,
     fact.summary?.material_id, fact.summary?.artifact_material_id, fact.summary?.check_result_id,
-    fact.correlationId, fact.summary?.tool, fact.summary?.phase, fact.summary?.outcome, fact.summary?.event,
+    fact.correlationId, fact.summary?.bridge_call_id, fact.summary?.tool, fact.summary?.phase, fact.summary?.outcome, fact.summary?.event,
     fact.summary?.check_result?.check_result_id, fact.summary?.artifact_material_id,
     fact.summary?.workspace_revision, fact.summary?.material?.material_id,
   ].map((value) => value ?? '').join('|');
@@ -1364,6 +1377,7 @@ async function readRawFacts(root, projectIds, mode, intervals, errors) {
   for (const className of ['agent', 'bridge', 'runtime', 'service', 'judge']) {
     const result = await inventoryLogs(root, projectIds, className, []);
     const pending = new Map();
+    const bridgeIdentityCounts = new Map();
     const context = {
       coreId: null,
       findExecution: (coreId, at) => findExecution(intervals, coreId, at),
@@ -1371,6 +1385,30 @@ async function readRawFacts(root, projectIds, mode, intervals, errors) {
         const key = `${type}:${operation ?? '<none>'}`;
         if (!pending.has(key)) pending.set(key, []);
         pending.get(key).push({ record });
+        if (type === 'bridge') {
+          for (const field of ['bridge_call_id', 'operation_id']) {
+            if (!record[field]) continue;
+            const identity = `${operation}:${field}:${record[field]}`;
+            bridgeIdentityCounts.set(identity, (bridgeIdentityCounts.get(identity) ?? 0) + 1);
+          }
+        }
+      },
+      matchBridge: (operation, record, complete) => {
+        const key = `bridge:${operation ?? '<none>'}`;
+        const queue = pending.get(key) ?? [];
+        const field = record.bridge_call_id ? 'bridge_call_id' : record.operation_id ? 'operation_id' : null;
+        const candidates = field ? queue.filter(item => item.record[field] === record[field]) : queue;
+        const uniqueIdentity = !field || bridgeIdentityCounts.get(`${operation}:${field}:${record[field]}`) === 1;
+        const candidate = candidates.length === 1 && uniqueIdentity ? candidates[0] : null;
+        const reusedLegacyId = !field && candidate?.record.operation_id && bridgeIdentityCounts.get(`${operation}:operation_id:${candidate.record.operation_id}`) > 1;
+        const conflictingOwner = candidate && ['task_id', 'execution_id', 'operation_id'].some(field => record[field] && candidate.record[field] && record[field] !== candidate.record[field]);
+        // A response without complete stays pending. It blocks later legacy
+        // FIFO guesses while exact identities can still close the real call.
+        if (!candidate || conflictingOwner || reusedLegacyId || (!field && candidate.responseSent)) return { pending: null, basis: 'unknown' };
+        if (complete) queue.splice(queue.indexOf(candidate), 1);
+        else if (record.event === 'bridge.response_sent' || record.type === 'bridge.response_sent') candidate.responseSent = true;
+        if (!queue.length) pending.delete(key);
+        return { pending: candidate, basis: field ?? 'unique_legacy_start' };
       },
       takePending: (type, operation) => {
         const key = `${type}:${operation ?? '<none>'}`;
@@ -1381,6 +1419,8 @@ async function readRawFacts(root, projectIds, mode, intervals, errors) {
       },
     };
     for (const path of result.files) {
+      pending.clear();
+      bridgeIdentityCounts.clear();
       const coreId = basename(path, '.ndjson');
       const effectiveClass = path.endsWith('/judge-service.ndjson') ? 'judge-service' : className === 'judge' ? 'checker' : className;
       // A single Core log can produce more facts than a function call can
@@ -1610,8 +1650,10 @@ function buildWindows(execution, facts, experimentEnd, maxWindowMs = DEFAULT_MAX
     const at = timeMs(fact.at);
     const previousAt = timeMs(timed[index - 1].at);
     const gap = at - previousAt;
-    const phaseChanged = semanticPhase(current) !== semanticPhase([...current, fact]);
-    const boundary = isSemanticBoundary(fact) && phaseChanged && at - currentStart > 1000;
+    // Only a semantic boundary after the minimum interval can split this
+    // window. Avoid rescanning it for every Agent delta or heartbeat.
+    const boundary = isSemanticBoundary(fact) && at - currentStart > 1000
+      && semanticPhase(current) !== semanticPhase([...current, fact]);
     if (gap >= SILENT_GAP_MS) {
       windows.push(makeWindow(current, currentStart, previousAt, { previousWindow: windows.at(-1) ?? null }));
       windows.push(makeWindow([], previousAt, at, { gap: true }));

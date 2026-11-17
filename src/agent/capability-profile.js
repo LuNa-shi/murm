@@ -20,7 +20,7 @@ const CURRENT_AGENT_OPERATIONS = new Set([
   'list_services', 'get_service_metadata', 'list_tools',
   'list_tasks', 'list_executions',
   'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
-  'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_cancel', 'task_dependency_replace',
+  'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_revise', 'task_cancel', 'task_dependency_replace',
   'read_materials', 'consume_materials',
   'context_search_materials', 'context_get_material', 'context_publish_material', 'material_dispute', 'material_supersede', 'material_unsupersede',
   'workspace_check', 'get_check_result', 'get_execution',

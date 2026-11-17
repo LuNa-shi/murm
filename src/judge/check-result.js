@@ -136,7 +136,7 @@ export function agentCheckResult(result) {
     'infrastructure_attempt_count', 'retry_exhausted'].map(key => [key, result[key]])),
     ...result.process_evidence, diagnostic: result.diagnostic_excerpt,
     diagnostic_location: result.diagnostic_location, checker_started: result.checker_started, workspace_input: result.workspace_input,
-    ...(result.build ? { checked_paths: result.build.checked_paths, checked_count: result.build.checked_count, build_warnings: result.build.warnings } : {}) };
+    ...(result.build ? { checked_paths: result.build.checked_paths, checked_count: result.build.checked_count, build_warnings: result.build.warnings, build_scope: result.build.scope, requested_path: result.build.requested_path, build_cache: result.build.cache } : {}) };
   const safeEvidence = boundedEvidence(evidence);
   const storedClass = result.result_class ?? evidence.result_class;
   const storedProcessStatus = result.checker_process_status ?? evidence.checker_process_status;
@@ -162,7 +162,11 @@ export function agentCheckResult(result) {
     execution_id: result.execution_id ?? null,
     workspace_input: evidence.workspace_input ? Object.fromEntries(['workspace_id', 'revision', 'path', 'git_commit', 'git_tree', 'tree_content_hash', 'content_hash', 'check_mode']
       .filter(key => typeof evidence.workspace_input[key] === 'string').map(key => [key, evidence.workspace_input[key]])) : null,
-    ...(evidence.workspace_input?.check_mode === 'lean-project' ? { build: {
+    ...(['lean-project', 'lean-module'].includes(evidence.workspace_input?.check_mode) ? { build: {
+      scope: evidence.build_scope ?? 'project',
+      requested_path: evidence.requested_path ?? null,
+      cache: evidence.build_cache ?? null,
+      checked_paths_truncated: (evidence.checked_paths?.length ?? 0) > 100,
       checked_count: evidence.checked_count ?? evidence.checked_paths?.length ?? 0,
       checked_paths: (evidence.checked_paths ?? []).slice(0, 100),
       warnings: (evidence.build_warnings ?? []).map(warning => boundedAgent(redactDiagnostic(warning))),
@@ -176,7 +180,7 @@ export function agentCheckResult(result) {
     checker_process_status: checkerProcessStatus,
     checker_started: evidence.checker_started ?? ['started', 'completed', 'timeout', 'crashed'].includes(checkerProcessStatus),
     result_class: resultClass,
-    mathematical_outcome: evidence.workspace_input?.check_mode === 'lean-project' ? 'unassessed' : mathematicalOutcome,
+    mathematical_outcome: ['lean-project', 'lean-module'].includes(evidence.workspace_input?.check_mode) ? 'unassessed' : mathematicalOutcome,
     retryable: result.retryable ?? Boolean(evidence.retryable),
     diagnostic_code: result.diagnostic_code ?? evidence.diagnostic_code ?? null,
     diagnostic_excerpt: diagnosticExcerpt,
@@ -262,7 +266,7 @@ export function normalizeCheckerResult(result = {}) {
   const retryable = result.retryable !== undefined
     ? Boolean(result.retryable)
     : resultClass === 'infrastructure_failure';
-  const mathematicalOutcome = evidence.workspace_input?.check_mode === 'lean-project' ? 'unassessed' : resultClass === 'PASS'
+  const mathematicalOutcome = ['lean-project', 'lean-module'].includes(evidence.workspace_input?.check_mode) ? 'unassessed' : resultClass === 'PASS'
     ? 'PASS'
     : resultClass === 'source_failure'
       ? 'FAIL'

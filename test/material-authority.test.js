@@ -28,7 +28,7 @@ function fixture(t, database = ':memory:', contextDatabase = null) {
         specVersion: e?.spec_version, stateVersion: e?.state_version, fencingVersion: e?.fencing_version });
     };
     if (take) {
-      const task = tasks.createTask({ mission_id: missionId, summary: `Investigate the independent question for ${id}`, expected_output: 'Reusable research note', acceptance_conditions: ['Explain evidence and limitations'] }, envelope(`propose:${id}`)).task;
+      const task = tasks.createTask({ mission_id: missionId, summary: `Investigate the independent question for ${id}`, gap: `The Mission needs an independently scoped conclusion from ${id}`, priority: 'medium', expected_output: 'Reusable research note', acceptance_conditions: ['Explain evidence and limitations'] }, envelope(`propose:${id}`)).task;
       execution = tasks.takeTask(task.task_id, { owner_ref: id, core_id: id, take_key: `take:${id}` }).execution;
       if (start) execution = tasks.dispatch('start_execution', {}, envelope(`start:${id}`)).execution;
     }
@@ -246,7 +246,7 @@ test('durable public changes wake no-work discovery even with lost hints and an 
     expected_version: relation.version, reason: 'Replacement was mistaken' }, producer.envelope('wake-unsupersede'));
   revoke(); await poll(1); assert.equal(discoveries, 6);
   revoke(); await poll(0);
-  tasks.createTask({ mission_id: 'mission:a', summary: 'Inspect a new responsibility dependent on existing research', expected_output: 'A follow-up conclusion',
+  tasks.createTask({ mission_id: 'mission:a', summary: 'Inspect a new responsibility dependent on existing research', gap: 'The Mission needs a follow-up conclusion after the prerequisite evidence', priority: 'medium', expected_output: 'A follow-up conclusion',
     acceptance_conditions: ['Use the prerequisite result'], depends_on: [producer.execution.task_id] }, producer.envelope('blocked-proposal'));
   assert.deepEqual(tasks.listEligibleTasks({ missionId: 'mission:a' }), []);
   await poll(1); assert.equal(discoveries, 7);

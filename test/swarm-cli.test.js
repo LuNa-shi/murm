@@ -29,7 +29,9 @@ for (const timeoutMs of [undefined, 2_430_000]) test(`swarm take preserves its r
     assert.equal(invocation.operation, 'task_take');
     assert.match(invocation.operation_id, /^cli:take:/);
     assert.equal(error.details.request_id, invocation.operation_id);
-    assert.equal(error.details.notice, `请求 ${invocation.operation_id} 结果未明。查询或重试同一请求；不要以新 ID 认领其他 Task。`);
+    assert.equal(error.details.request_outcome, 'unknown');
+    assert.equal(error.details.operation, 'task_take');
+    assert.ok(error.details.notice.includes(invocation.operation_id));
     return true;
   });
 });

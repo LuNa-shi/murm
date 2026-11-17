@@ -2,7 +2,7 @@ import { isSoftCloseout } from '../task/execution-budget.js';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 
-export const BOT_PROTOCOL_VERSION = 'swarm-bot-v1-draft.2';
+export const BOT_PROTOCOL_VERSION = 'swarm-bot-v1-draft.3';
 export const BOT_TOOL_NAMES = Object.freeze(['read', 'write', 'edit', 'bash']);
 const body = name => readFileSync(new URL(`./bot-contract/${name}`, import.meta.url), 'utf8');
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -11,7 +11,7 @@ export const BOT_SYSTEM_HASH = hash(BOT_SYSTEM_PROMPT);
 export const BOT_SYSTEM_RESOURCE = Object.freeze({ path: '/opt/swarmenv/src/agent/bot-contract/system.txt', sha256: hash(body('system.txt')) });
 export const BOT_SKILLS = Object.freeze(['plan-task', 'use-material', 'use-workspace', 'finish-task'].map(name => {
   const content = body(`${name}.md`);
-  return Object.freeze({ name, version: 'draft.2', path: `/opt/swarmenv/src/agent/bot-contract/${name}.md`,
+  return Object.freeze({ name, version: 'draft.3', path: `/opt/swarmenv/src/agent/bot-contract/${name}.md`,
     description: content.match(/^description: (.+)$/m)[1], sha256: hash(content) });
 }));
 
@@ -30,7 +30,7 @@ export function buildBotStartupMessage({ mission, bot, workspace, sessionId, bud
     project, services, skills: BOT_SKILLS,
     eligible_task_page: { tasks: eligibleTasks, complete_history: false },
   };
-  return (firstTurn ? '你已在全新的 sandbox/Pi Session 启动，尚无 Execution。' : '你仍处于当前 Bot 的选工阶段，尚无 Execution。') + '通过 swarm CLI 读取相关公开工作，在预算内优先选择合适的已有 Task。下方只是一页当前可领 Task。若无合适项且 Mission 仍开放、选工仍有额度，查询 swarm mission submission view，从当前 main 和公开成果定位一个具体缺口，提出可验证的局部 Task 再 take。\n\n' + JSON.stringify(context, null, 2);
+  return (firstTurn ? '你已在全新的 sandbox/Pi Session 启动，尚无 Execution。' : '你仍处于当前 Bot 的选工阶段，尚无 Execution。') + '通过 swarm CLI 读取相关公开工作，在预算内优先选择合适的已有 Task。下方只是一页当前可领 Task。若无合适项且 Mission 仍开放、选工仍有额度，查询 swarm mission submission view，从当前 main 和公开成果定位一个具体缺口，可提出多个有 gap、交付、完成条件和明确 priority 的独立责任供后继选择；也可直接 take 合适已有 Task，不要求自提自领。\n\n' + JSON.stringify(context, null, 2);
 }
 
 export const BOT_CONTINUATION_MESSAGE = '继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。';
@@ -66,7 +66,7 @@ export function botServiceDirectory(profile) {
     for (const name of namespaces) entries.push({ name, provider_service: id, provider_version: service.provider_version ?? null, manifest_hash: service.manifest_hash ?? null,
       help: `swarm ${name} --help`, manifest_help: `swarm service view ${id} --json`,
       documentation: service.documentation ?? [],
-      permission: ({ mission: 'read public acceptance state; submit fixed main and explicit Materials only with a Mission coordination grant', task: 'Mission reads, propose and take; finish and feedback require current E; unowned cancel and dependency repair require explicit coordination grants', workspace: 'public view/history/files/read/search and revision-pair diff before take; status/current-E diff/save/apply and checked merge require current E', material: 'Mission reads/search; publication, use and correction require current E; explicitly granted coordination can only revoke a matching supersession', judge: 'checks and result reads require current active E', bot: 'exit only when unbound with no pending take', service: 'configured service metadata only' })[name] ?? 'consult registered operation metadata; Bridge enforces current binding',
+      permission: ({ mission: 'read public acceptance state; submit fixed main and explicit Materials only with a Mission coordination grant', task: 'Mission reads and direct take; UNBOUND/ACTIVE may propose; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; legacy dependency repair requires a coordination grant', workspace: 'public view/history/files/read/search and revision-pair diff before take; status/current-E diff/save/apply and checked merge require current E', material: 'Mission reads/search; publication, use and correction require current E; explicitly granted coordination can only revoke a matching supersession', judge: 'checks and result reads require current active E', bot: 'exit only when unbound with no pending take', service: 'configured service metadata only' })[name] ?? 'consult registered operation metadata; Bridge enforces current binding',
     });
   }
   return entries;

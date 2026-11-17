@@ -16,7 +16,7 @@ function fixture(t, database = ':memory:') {
   const actor = id => {
     tasks.registerBot({ botId: id, missionId: 'corrections', coreId: id, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
     tasks.recordBotSandbox(id, { provider: 'controlled', sandboxId: id }); tasks.markBotReady(id);
-    const task = tasks.createTask({ mission_id: 'corrections', summary: `Check a separate claim ${id}`, expected_output: 'A complete note', acceptance_conditions: ['Evidence explained'] }, makeEnvelope({ actorRef: id })).task;
+    const task = tasks.createTask({ mission_id: 'corrections', summary: `Check a separate claim ${id}`, gap: `The Mission needs evidence for independent claim ${id}`, priority: 'medium', expected_output: 'A complete note', acceptance_conditions: ['Evidence explained'] }, makeEnvelope({ actorRef: id })).task;
     const { execution } = tasks.takeTask(task.task_id, { owner_ref: id, core_id: id, take_key: id });
     const envelope = operationId => {
       const e = tasks.getExecution(execution.execution_id);

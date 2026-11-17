@@ -58,7 +58,7 @@ for (const loseResponse of [false, true]) test(`independent Context preserves re
   t.after(() => bridge.stop());
   tasks.recordBotSandbox('bot:one', { provider: 'controlled', sandboxId: 'sandbox:one' });
   tasks.markBotReady('bot:one');
-  const task = tasks.createTask({ mission_id: 'mission:one', summary: 'Investigate a bounded question', expected_output: 'A Material with evidence', acceptance_conditions: ['Explain the finding'] }, makeEnvelope({ actorRef: 'bot:one' })).task;
+  const task = tasks.createTask({ mission_id: 'mission:one', summary: 'Investigate a bounded question', gap: 'The Mission needs scoped evidence for this bounded question', priority: 'medium', expected_output: 'A Material with evidence', acceptance_conditions: ['Explain the finding'] }, makeEnvelope({ actorRef: 'bot:one' })).task;
   const taken = tasks.takeTask(task.task_id, { owner_ref: 'bot:one', core_id: 'core:one', take_key: 'take:one' });
   const env = id => {
     const e = tasks.getExecution(taken.execution.execution_id);

@@ -28,7 +28,7 @@ function resultFromRow(row) {
     result_class: resultClass,
     checker_process_status: checkerProcessStatus,
     process_status: checkerProcessStatus,
-    mathematical_outcome: evidence?.workspace_input?.check_mode === 'lean-project' ? 'unassessed'
+    mathematical_outcome: ['lean-project', 'lean-module'].includes(evidence?.workspace_input?.check_mode) ? 'unassessed'
       : resultClass === 'PASS' ? 'PASS' : resultClass === 'source_failure' ? 'FAIL' : 'unassessed',
     retryable: Boolean(row.retryable),
     evidence,
@@ -237,7 +237,7 @@ export class JudgeService {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace_check requires a bound Task and Execution');
     }
     const requestedSource = payload.source ?? payload.workspace_source ?? null;
-    const project = requestedSource?.check_mode === 'lean-project'
+    const project = ['lean-project', 'lean-module'].includes(requestedSource?.check_mode)
       ? await this.#readProject(requestedSource, envelope) : null;
     if (this.readProjectRevision && !project && this.taskService?.getBot(envelope.actor_ref)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Registered Bot checks require a trusted public project revision');
@@ -253,7 +253,7 @@ export class JudgeService {
         ...(project && source.path === undefined ? {} : { path: required(source.path, 'source.path') }),
         ...(source.git_commit ? { git_commit: source.git_commit, git_tree: source.git_tree, tree_content_hash: source.tree_content_hash,
           ...(source.path === undefined ? {} : { content_hash: contentHash(source.content) }) } : {}),
-        ...(project ? { check_mode: 'lean-project' } : {}),
+        ...(project ? { check_mode: source.check_mode } : {}),
       }
       : null;
     const sourceHash = contentHash(source.content);
@@ -309,7 +309,7 @@ export class JudgeService {
       workspace_revision: source.workspace_revision ?? source.revision ?? null,
     };
     const sourceId = workspaceSourceRef
-      ? `workspace:${workspaceSourceRef.workspace_id}:${workspaceSourceRef.revision}:${project ? 'lean-project:' : ''}${workspaceSourceRef.path ?? ''}`
+      ? `workspace:${workspaceSourceRef.workspace_id}:${workspaceSourceRef.revision}:${project ? `${source.check_mode}:` : ''}${workspaceSourceRef.path ?? ''}`
       : `workspace:${envelope.execution_id}:${source.path ?? 'source'}:${sourceHash}`;
     const result = await this.#checkWorkspaceSourceRequest({
       fixture_manifest: fixtureManifest,
@@ -355,6 +355,7 @@ export class JudgeService {
     }
     const allowed = new Set(['workspace_id', 'revision', 'path', 'check_mode']);
     if (Object.keys(reference).some(key => !allowed.has(key)) || !/^\d+\.\d+$/.test(reference.revision ?? '') ||
+        (reference.check_mode === 'lean-module' && reference.path === undefined) ||
         (reference.path !== undefined && (typeof reference.path !== 'string' || !reference.path.endsWith('.lean')))) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Lean project check requires one fixed revision and an optional Lean source path');
     }
@@ -379,7 +380,7 @@ export class JudgeService {
     if (!Buffer.from(content).equals(bytes) || bytes.includes(0)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Lean project receipt requires a complete UTF-8 file');
     }
-    return { files: snapshot.files, source: { ...reference, content, git_commit: snapshot.git_commit, git_tree: snapshot.git_tree,
+    return { missionId: task.mission_id, files: snapshot.files, source: { ...reference, content, git_commit: snapshot.git_commit, git_tree: snapshot.git_tree,
       tree_content_hash: snapshot.content_hash } };
   }
 
@@ -488,7 +489,7 @@ export class JudgeService {
         const launch = startProcess('source');
         checked = project
           ? await this.checker.checkProject({ files: project.files, tree: project.source.git_tree, path: project.source.path,
-            content: project.source.content, startProcess: launch })
+            content: project.source.content, checkMode: project.source.check_mode, missionId: project.missionId, startProcess: launch })
           : await this.checker.check({ workspace_source: normalized.workspace_source, targetTask: normalized.target_task, workspace: normalized.workspace, fixtureManifest: normalized.fixture_manifest, assertCanStart, startProcess: launch });
       } catch (error) {
         admissionFailure = executionRejection(error);

@@ -48,7 +48,9 @@ test('four Core discovery send paths carry current durable identity and pinned p
   assert.ok(results.every(result => result.no_work));
   assert.equal(taskService.listMissionTasks({ mission_id: 'M-prompt' }).length, 0);
   for (const { index, message } of sent) {
-    assert.match(message.slice(0, message.indexOf('{')), /若无合适项.*swarm mission submission view.*提出可验证的局部 Task 再 take/);
+    assert.match(message.slice(0, message.indexOf('{')), /swarm mission submission view/);
+    assert.match(message.slice(0, message.indexOf('{')), /gap/);
+    assert.match(message.slice(0, message.indexOf('{')), /priority/);
     const input = JSON.parse(message.slice(message.indexOf('{')));
     const bot = taskService.getBot(`B-${index}`);
     assert.equal(input.bot.bot_id, bot.bot_id);
@@ -103,12 +105,12 @@ test('the first Mission proposal remains visible in ready and running work accou
   const service = new TaskService();
   try {
     const mission = service.createMission({ mission_id: 'M-first-proposal', goal: 'Build independent CSV features' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
-    const first = service.createTask({ mission_id: mission.mission_id, summary: 'Implement a reusable CSV filter with documented edge cases', expected_output: 'Filter implementation and evidence', acceptance_conditions: ['Test the documented input cases'] }, makeEnvelope({ actorRef: 'bot:first' })).task;
+    const first = service.createTask({ mission_id: mission.mission_id, gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Implement a reusable CSV filter with documented edge cases', expected_output: 'Filter implementation and evidence', acceptance_conditions: ['Test the documented input cases'] }, makeEnvelope({ actorRef: 'bot:first' })).task;
     const state = { taskService: service, missionId: mission.mission_id };
     assert.equal(observedEligibleWorkCount(state, service.listEligibleTasks({ missionId: mission.mission_id })), 1);
     service.takeTask(first.task_id, { owner_ref: 'bot:first', core_id: 'core-1', take_key: 'first', workspace_mode: 'clean' });
     assert.equal(observedEligibleWorkCount(state, []), 1);
-    service.createTask({ mission_id: mission.mission_id, summary: 'Implement JSON output independently of CSV filtering', expected_output: 'JSON output and examples', acceptance_conditions: ['Output matches documented format'] }, makeEnvelope({ actorRef: 'bot:second' }));
+    service.createTask({ mission_id: mission.mission_id, gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Implement JSON output independently of CSV filtering', expected_output: 'JSON output and examples', acceptance_conditions: ['Output matches documented format'] }, makeEnvelope({ actorRef: 'bot:second' }));
     assert.equal(observedEligibleWorkCount(state, service.listEligibleTasks({ missionId: mission.mission_id })), 2);
   } finally { service.close(); }
 });
@@ -120,7 +122,7 @@ test('proposal-only report counts more than one page exactly without claiming pr
     const mission = service.createMission({ mission_id: 'M-large-proposals', goal: 'Inspect a bounded set of independent cases' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
     let last;
     for (let index = 0; index < 105; index++) last = service.createTask({ mission_id: mission.mission_id,
-      summary: `Investigate independent documented input case ${index}`, expected_output: 'Reproducible case result', acceptance_conditions: ['Publish evidence for this case'] }, makeEnvelope({ actorRef: 'bot:proposer' })).task;
+      gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: `Investigate independent documented input case ${index}`, expected_output: 'Reproducible case result', acceptance_conditions: ['Publish evidence for this case'] }, makeEnvelope({ actorRef: 'bot:proposer' })).task;
     const state = { taskService: service, missionId: mission.mission_id, cores: [], initialTaskIds: [],
       contextService: { readMaterials: () => [], listMaterialConsumptions: () => [] },
       judgeService: { listCheckerPreflights: () => [], getMissionCheckBudget: () => null }, capabilityRegistry: { listServices: () => [] },
@@ -163,7 +165,7 @@ test('report distinguishes budget expiry before activation from missing or share
   try {
     const mission = service.createMission({ mission_id: 'M-budget-report', goal: 'Check preparation deadline reporting' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
     const taken = Array.from({ length: 2 }, (_, index) => {
-      const task = service.createTask({ mission_id: mission.mission_id, summary: `Inspect deadline case ${index}`, expected_output: 'Evidence', acceptance_conditions: ['Record result'] }, makeEnvelope({ actorRef: `bot:${index}` })).task;
+      const task = service.createTask({ mission_id: mission.mission_id, gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: `Inspect deadline case ${index}`, expected_output: 'Evidence', acceptance_conditions: ['Record result'] }, makeEnvelope({ actorRef: `bot:${index}` })).task;
       return service.takeTask(task.task_id, { owner_ref: `bot:${index}`, core_id: `core-${index}`, take_key: `take:${index}` });
     });
     const state = { taskService: service, missionId: mission.mission_id, initialTaskIds: [],

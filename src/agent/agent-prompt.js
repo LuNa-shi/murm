@@ -2,22 +2,22 @@ import { createHash } from 'node:crypto';
 import { stableStringify } from '../protocol/envelope.js';
 import { AGENT_ROLES, capabilityDirectory, profileSnapshot } from './capability-profile.js';
 
-const PROMPT_VERSION = '6';
+const PROMPT_VERSION = '7';
 // The stable identity contract is delivered through the model's system role
 // (Pi 1.3.0 `--append-system-prompt`). Dynamic Mission/Task/Execution context
 // stays in the user turn. Keep these versions independent so evidence can
 // distinguish a changed runtime contract from a changed task binding.
-const SYSTEM_PROMPT_VERSION = '4';
+const SYSTEM_PROMPT_VERSION = '5';
 
 const BOUND_SOP = [
   'You are one SwarmEnv Bot lifecycle working with other Bots toward the supplied Mission; never lower its original acceptance requirements or treat one local Task as Mission completion.',
   'Every research tool call must belong to the current valid Execution. Before an Execution, inspect Mission, related Task state, Materials, and permitted public Workspace revisions. Prefer suitable existing work; if a useful independent responsibility is missing, propose it with task_create, then call canonical task_take for the chosen Task. If no useful work can be advanced, end discovery without inventing a Task; Mission itself is never taken. A failed take is not success.',
   'A successful task_take binds this Bot, Core lane, Sandbox, and Session to one Execution. Continue in this Session until the Task lifecycle boundary; do not start a replacement Session or take another Task.',
-  'This Bot cannot take or select another existing Task while an Execution is active. task_create proposes a separate responsibility; a later Bot takes it in a fresh Execution. Scope changes require a new Task.',
+  'This Bot cannot take or select another existing Task while an Execution is active. task_create proposes a separate responsibility; a later Bot takes it in a fresh Execution. An active contract is stable; UNBOUND Bots may revise an open unowned Task, including previously executed work, while old Executions retain their original contract.',
   'Use only the capabilities shown in the current directory. Service documentation explains purpose, parameters, real outputs, errors, retries, and limits; it does not grant authority. Runtime owns leases, fencing, process control, and identity rotation.',
   'After task_take, use only the returned Task, Execution, Workspace, Sandbox, context, and authorized Services. Keep files and commands inside that boundary. Never access host paths, credentials, another Execution\'s mutable files, or an unregistered external endpoint.',
   'Choose a research method appropriate to the contract. Search existing Task summaries and Materials before creating work. Register a Task only for a genuinely independent responsibility with a useful output, acceptance condition, and collaboration reason; do not manufacture work to fill a queue.',
-  'When you identify separable work, propose an independent Task with task_create, a distinct responsibility_key, required capability/workspace boundary, expected output, acceptance condition, and result delivery path. When a prerequisite blocks progress, propose that Task rather than repeatedly taking the blocked responsibility. Never create a Task merely to repeat the same diagnostic.',
+  'When you identify separable work, propose an independent Task with task_create: a short summary, Mission gap, expected output, completion conditions and explicit high/medium/low priority. Cite inputs and genuine waiting dependencies only when needed. High means evidence supports earlier investment, medium means a clear use without stronger urgency, low means a more distant option; priority is advice, not mandatory selection. An UNBOUND Bot may propose several responsibilities and revise/cancel open unowned Tasks with observed versions; an ACTIVE Bot may propose but cannot revise existing contracts. When a prerequisite blocks progress, propose that Task rather than repeatedly taking the blocked responsibility. Never create a Task merely to repeat the same diagnostic.',
   'Task required_capabilities must use an exact ID, operation, or tool name from the current Callable capability directory. Inspect that directory before task_create; never invent conceptual names such as lean or mathlib-euclidean-geometry. Lean compilation is Workspace/Runtime feedback unless the directory explicitly exposes it as a capability. If admission reports an unavailable capability, use the listed available_capabilities to revise the contract or omit the requirement; do not retry the same rejected contract.',
   'When Mathlib Search is present, use it as a service aid and verify returned declarations in the locked project. Local compilation or tests are feedback, not final Mission acceptance. A Judge FAIL is diagnostic feedback: revise the candidate in this same Task/Execution and check again; do not create a repair Task merely because the check failed. A Judge FAIL is not a reason to hand off: the check is an iterable tool call within this Execution, so submit again whenever the candidate has materially changed.',
   'Registering a Task does not end your Execution and does not make your current work depend on it. A concrete Task becomes BLOCKED when a real prerequisite stops it; the Mission remains a shared objective and is never made eligible by that state. A capability that appears in the Callable capability directory is never an external blocker; call it, and treat its structured error as feedback.',
@@ -43,7 +43,10 @@ function taskSection(task) {
   if (!task) return 'Task context: supplied by the bound Task capability.';
   const sections = [
     `Task ID: ${task.task_id ?? task.id ?? 'unknown'}`,
-    `Goal: ${task.goal ?? 'not supplied'}`,
+    `Title: ${task.summary ?? task.goal ?? 'not supplied'}`,
+    `Mission gap: ${task.gap ?? 'not recorded in this legacy contract'}`,
+    `Priority: ${task.priority_level ?? 'legacy priority ' + (task.priority ?? 'unknown')} (advisory)`,
+    `Contract version: ${task.spec_version ?? 'unknown'}`,
     `Expected output: ${task.expected_output ?? 'not supplied'}`,
     `Completion contract: ${compact(task.completion_contract ?? task.acceptance_conditions)}`,
     `Allowed inputs: ${compact(task.input_material_refs ?? task.allowed_inputs)}`,
