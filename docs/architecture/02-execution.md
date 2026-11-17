@@ -200,7 +200,7 @@ These recovery APIs remain executable for unregistered local compatibility Sessi
 
 | Boundary | Durable effect | Physical effect |
 |---|---|---|
-| `releaseExecution` | None; a service already reached terminal state | Mark Core CLOSING; drain saves; confirm Session and sandbox stop; reconcile/release Workspace; only then mark Core IDLE |
+| `releaseExecution` | Compatibility: service already terminal. Registered accepted finish: finalize the durable `CLOSING` intent after isolation, then release occupancy | Mark Core CLOSING; drain saves; confirm Session and sandbox stop; reconcile/release Workspace; only then mark Core IDLE |
 | `stopExecution` | After confirmed process/sandbox stop, record terminal state/reason; retries preserve an existing terminal result | Same physical release |
 | `fenceExecution` | `FENCED`, fence increment, generation/reason | Confirm worker and sandbox stop, commit fence, reconcile Workspace fence and release binding/Core |
 | `detachSwitchedExecution` | None; old fence/new take already committed | Use previous fence to revoke old Workspace, detach old binding for same-Session rebind |
