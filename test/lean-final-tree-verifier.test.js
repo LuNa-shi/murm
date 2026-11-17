@@ -220,10 +220,14 @@ test('Lake diagnostics distinguish source names from late split resource diagnos
     ['kernel-heartbeat', 'error: source/Killed.lean:3:1: (kernel) deterministic timeout, maximum number of heartbeats (1) has been reached'],
     ['panic', 'error: source/Killed.lean:3:1: PANIC at test: internal checker error'],
     ['recursion-depth', 'error: source/Killed.lean:3:1: maximum recursion depth has been reached'],
+    ['nested-recursion', 'error: source/Killed.lean:3:1: Tactic `simp` failed with a nested error:\nmaximum recursion depth has been reached'],
+    ['nested-heartbeat', 'error: source/Killed.lean:3:1: Tactic `simp` failed with a nested error:\n(deterministic) timeout at `isDefEq`, maximum number of heartbeats (1) has been reached'],
+    ['double-nested', 'error: source/Killed.lean:3:1: Tactic `first` failed with a nested error:\nTactic `simp` failed with a nested error:\nmaximum recursion depth has been reached'],
+    ['goal-resource-words', 'error: source/Killed.lean:3:1: unsolved goals\nTactic `simp` failed with a nested error:\nmaximum recursion depth has been reached'],
     ['kernel-memory', 'error: source/Killed.lean:3:1: (kernel) excessive memory consumption detected'],
   ]) {
-    const resourceFailure = name !== 'source-failure';
-    const leanLimit = ['heartbeat', 'kernel-heartbeat', 'recursion-depth', 'panic'].includes(name);
+    const resourceFailure = !['source-failure', 'goal-resource-words'].includes(name);
+    const leanLimit = ['heartbeat', 'kernel-heartbeat', 'recursion-depth', 'panic', 'nested-recursion', 'nested-heartbeat', 'double-nested'].includes(name);
     const bubblewrap = join(directory, name);
     await writeFile(bubblewrap, `#!${process.execPath}
       const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -266,7 +270,7 @@ test('Lake diagnostics distinguish source names from late split resource diagnos
       if (['out-of-memory', 'kernel-memory'].includes(name)) assert.equal(result.diagnostic_code, 'checker_memory_limit');
       if (!resourceFailure) {
         assert.match(result.diagnostic, /src\/Killed\.lean:2:1: unsolved goals/);
-        if (name !== 'source-failure') assert.ok(result.diagnostic.includes(resourceMessage.replace('error: source/', 'src/')));
+        if (!['source-failure', 'goal-resource-words'].includes(name)) assert.ok(result.diagnostic.includes(resourceMessage.replace('error: source/', 'src/')));
       }
       assert.doesNotMatch(result.diagnostic, /a{64}/);
     }
@@ -280,6 +284,9 @@ test('locked raw and JSON Lean diagnostics keep source limits and goal words sep
     '(deterministic) timeout at `isDefEq`, maximum number of heartbeats (1) has been reached',
     '(kernel) deterministic timeout, maximum number of heartbeats (1) has been reached',
     'maximum recursion depth has been reached',
+    'Tactic `simp` failed with a nested error:\nmaximum recursion depth has been reached',
+    'Tactic `first` failed with a nested error:\nTactic `simp` failed with a nested error:\n(deterministic) timeout at `isDefEq`, maximum number of heartbeats (1) has been reached',
+    'unsolved goals\nTactic `simp` failed with a nested error:\nmaximum recursion depth has been reached',
     'unsolved goals\nheartbeats : Nat\nkilled : True\nout_of_memory : True\n⊢ False',
     'PANIC at test: internal checker error',
     'out of memory',
@@ -312,6 +319,33 @@ test('locked raw and JSON Lean diagnostics keep source limits and goal words sep
       assert.match(final.diagnostic, /^Toy\.lean:3:1:/);
     }
   }
+});
+
+test('real nested tactic limits stay unassessed in local, project and final checks', lean, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-nested-resource-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = 'set_option maxRecDepth 32\nexample (n : Nat) : n + 0 = n := by\n  simp only [← Nat.add_zero]\ntheorem toy : True := trivial\n';
+  const file = join(directory, 'Nested.lean');
+  await writeFile(file, source);
+  const verifier = fixture(undefined, { projectChecks: true });
+  const raw = await verifier.runSourceDiagnostic('lake', ['env', 'lean', file], { timeoutMs: 30000 });
+  assert.equal(raw.diagnostic_code, 'lean_resource_limit', JSON.stringify(raw));
+  assert.equal(raw.retryable, false);
+  for (const checkMode of ['lean-module', 'lean-project']) {
+    const checker = new LeanChecker({ projectChecker: verifier.checkProject.bind(verifier), timeoutMs: 30000 });
+    const result = normalizeCheckerResult(await checker.checkProject({ files: { 'Toy.lean': source }, tree: checkMode,
+      path: 'Toy.lean', checkMode, missionId: 'nested-resource', startProcess: launch => launch() }));
+    const feedback = agentCheckResult(result);
+    assert.equal(result.verdict, 'ERROR', JSON.stringify(result));
+    assert.equal(feedback.diagnostic_code, 'lean_resource_limit');
+    assert.equal(feedback.mathematical_outcome, 'unassessed');
+    assert.equal(feedback.retryable, false);
+    assert.equal(feedback.checker_process_status, 'completed');
+    assert.match(feedback.diagnostic_excerpt, /maximum recursion depth/);
+  }
+  const final = await verifier.check({ files: { 'Toy.lean': source }, tree: 'nested-final' });
+  assert.equal(final.verdict, 'ERROR', JSON.stringify(final));
+  assert.equal(final.diagnostic_code, 'lean_resource_limit');
 });
 
 test('project process signals, wallclock deadlines and unknown exits remain infrastructure errors', async t => {

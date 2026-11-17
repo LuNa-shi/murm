@@ -19,7 +19,16 @@ const sourceFailureStatus = 21;
 // Lean limits identify source work whose checking remains unassessed.
 const infrastructureDiagnostic = /^(?:out of memory\b|excessive memory consumption\b|memory (?:consumption exceeded|limit exceeded|exhausted)\b|cannot allocate memory\b|stack overflow\b|\(kernel\) excessive memory consumption detected\b|resource temporarily unavailable\b|killed\s*$)/i;
 
-function leanFailureCode(message) {
+const nestedTacticHeader = /^Tactic `[^`\n]+` failed with a nested error:$/;
+
+function leanFailureCode(message, kind = '') {
+  // Lean's structured tag survives tactic wrappers. Plain diagnostic output
+  // omits that tag, so unwrap only the known leading tactic-error envelope.
+  if (/^(?:nested\.)*runtime\.maxRecDepth$/.test(kind)) return 'lean_resource_limit';
+  const lines = message.split('\n', 10);
+  let index = 0;
+  while (index < 8 && nestedTacticHeader.test(lines[index]?.trim())) index++;
+  message = lines[index]?.trimStart() ?? '';
   if (/^(?:\(deterministic\) timeout\b|\(kernel\) deterministic timeout\b|maximum (?:number of heartbeats|recursion depth)\b)/.test(message)) return 'lean_resource_limit';
   if (/^(?:PANIC(?: at)?[:! ]|\(kernel\) panic\b)/i.test(message)) return 'lean_panic';
   return null;
@@ -40,8 +49,8 @@ function sourceDiagnostics(stderr) {
   };
   const runtime = errors.find(({ data }) => typeof data === 'string' && infrastructureDiagnostic.test(data));
   if (runtime) return { diagnostic_code: /memory/i.test(runtime.data) ? 'checker_memory_limit' : 'checker_runtime_failure', diagnostic: excerpt(runtime) };
-  const limited = errors.find(({ data }) => typeof data === 'string' && leanFailureCode(data));
-  return limited ? { diagnostic_code: leanFailureCode(limited.data), diagnostic: excerpt(limited) } : { diagnostic: errors.slice(0, 8).map(excerpt).join('\n') };
+  const limited = errors.find(({ data, kind }) => typeof data === 'string' && leanFailureCode(data, kind));
+  return limited ? { diagnostic_code: leanFailureCode(limited.data, limited.kind), diagnostic: excerpt(limited) } : { diagnostic: errors.slice(0, 8).map(excerpt).join('\n') };
 }
 
 function leanFailureResult(failure) {
@@ -240,7 +249,15 @@ function collectProjectDiagnostics(sources) {
   let resourceFailure = false;
   let leanFailure = null;
   let infrastructureFailure = null;
+  let nestedError = null;
   function finishLine(line) {
+    if (nestedError) {
+      const diagnosticCode = leanFailureCode(line.trimStart());
+      if (diagnosticCode) leanFailure ??= { diagnostic_code: diagnosticCode,
+        diagnostic: `${nestedError.location}: ${line.trimStart()}`.slice(0, 320) };
+      if (nestedTacticHeader.test(line.trim()) && nestedError.depth < 8) nestedError.depth++;
+      else nestedError = null;
+    }
     // Lake reports worker exit codes even when its log level hides raw stderr.
     const workerExit = /^error: Lean exited with code (\d+)\s*$/.exec(line);
     if (workerExit && Number(workerExit[1]) !== 1) resourceFailure = true;
@@ -258,6 +275,9 @@ function collectProjectDiagnostics(sources) {
     if (infrastructureDiagnostic.test(match[4].trimStart())) infrastructureFailure.diagnostic = `${paths.get(match[2])}:${match[3]}:${match[4]}`.slice(0, 320);
     const diagnosticCode = match[1] === 'error' ? leanFailureCode(match[4].trimStart()) : null;
     if (diagnosticCode) leanFailure ??= { diagnostic_code: diagnosticCode, diagnostic: `${paths.get(match[2])}:${match[3]}:${match[4]}`.slice(0, 320) };
+    if (match[1] === 'error' && nestedTacticHeader.test(match[4].trim())) {
+      nestedError = { location: `${paths.get(match[2])}:${match[3]}`, depth: 1 };
+    }
     if (findings[match[1]].length >= 8) return;
     findings[match[1]].push(`${paths.get(match[2])}:${match[3]}:${match[4]}`.slice(0, 320));
   }
@@ -445,12 +465,19 @@ export class LeanFinalTreeVerifier {
       // the locked source path count as an ordinary source failure.
       const stdout = result.output.toString();
       const stderr = result.stderr;
-      const sourceHeaders = [...`${stdout}\n${stderr}`.matchAll(/^\/input\/WorkspaceSource\.lean:\d+:\d+: error(?:\([^\n]*\))?:\s*(.*)$/gm)];
+      const output = `${stdout}\n${stderr}`;
+      const sourceHeaders = [...output.matchAll(/^\/input\/WorkspaceSource\.lean:\d+:\d+: error(?:\([^\n]*\))?:[^\S\n]*(.*)$/gm)];
       if (result.code !== 0 && (version || result.code !== 1 || result.stderrTruncated ||
           sourceHeaders.length === 0)) {
         return { exit_code: null, error: 'Locked Lean diagnostic process did not complete', checker_started: false };
       }
-      const failure = sourceHeaders.map(([, message]) => leanFailureCode(message) ?? (infrastructureDiagnostic.test(message) ? (/memory/i.test(message) ? 'checker_memory_limit' : 'checker_runtime_failure') : null)).find(Boolean);
+      const failure = sourceHeaders.map(header => {
+        const message = header[1];
+        const nested = nestedTacticHeader.test(message.trim())
+          ? message + output.slice(header.index + header[0].length, header.index + header[0].length + diagnosticLimit)
+          : message;
+        return leanFailureCode(nested) ?? (infrastructureDiagnostic.test(message) ? (/memory/i.test(message) ? 'checker_memory_limit' : 'checker_runtime_failure') : null);
+      }).find(Boolean);
       return { exit_code: result.code, stdout, stderr, stderr_truncated: result.stderrTruncated, checker_started: true,
         ...(failure ? { diagnostic_code: failure, checker_process_status: 'completed', retryable: false } : {}) };
     } catch (error) {
