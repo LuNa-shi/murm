@@ -257,3 +257,7 @@ The analyzer reads raw Pi `tool_execution_end`/`tool_result` events and hashes t
 ## Independent service evidence
 
 The coordinator logs remote Context/Judge request start/completion and records the peer PIDs and HTTP deployment mode. Judge peers currently do not receive the coordinator's stage logger. Their durable CheckResult database, phase receipts, private stderr log and checker resource ledger establish peer-side outcomes; a per-stage checker NDJSON stream must not be inferred from coordinator completion records. Raw databases, logs and resource identities stay in ignored experiment storage. Checker cleanup is verified before terminal report eligibility; peer shutdown subsequently remains part of store close, and a shutdown failure propagates instead of silently confirming process cleanup.
+
+## Independent-attempt evidence
+
+Pass@K preserves each attempt's normal Mission, Task, Bot, Execution, Workspace, Judge and model-budget evidence. Artifact directory keys append `-attempt-N`; `problem_id` remains the actual benchmark problem. The aggregate `pass_k` section records the group observation window separately from each Mission's active duration, attempt validity, accepted timestamps and late results. `first_success_ms` is measured from the common group start including preparation. One successful, valid attempt establishes the observed group success; validity of all K attempts is reported separately, so a partially invalid group is not a complete valid comparison. A single group is not a statistical estimate over a problem distribution.

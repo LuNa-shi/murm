@@ -487,6 +487,15 @@
       "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
     },
     {
+      "path": "src/agent/bot-contract/solver-system.txt",
+      "category": "agent prompts and tools",
+      "chapters": [
+        "docs/architecture/01-agent-core.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Immutable independent solver system addendum without collaboration skills"
+    },
+    {
       "path": "src/agent/bot-contract/system.txt",
       "category": "Agent and prompts",
       "chapters": [
@@ -620,6 +629,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Core/turn intervals, readiness samples, utilization and work-unit projections"
+    },
+    {
+      "path": "src/benchmark/pass-k.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/06-observability-experiments.md"
+      ],
+      "role": "Compose K independent one-Core Mission runs with a fixed observation window and trusted acceptance aggregation"
     },
     {
       "path": "src/benchmark/putnam-runner.js",

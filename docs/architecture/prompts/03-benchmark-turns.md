@@ -199,6 +199,22 @@ Body SHA-256: `5b83d8a03cd086b042fdb6cfcbf7ac7967a5187ed37d0d5e6fd854dd581b1cd6`
   }
 }
 ````
+## Independent solver continuation
+
+Pass@K initial user message appends problem ID, target path, fixed project path and ISO deadline from the current run. Continuations and compaction follow-up use this text; soft closeout uses the following message. No model-selected Task discovery is sent.
+
+Body SHA-256: `c09dbeae76fc406248efd191a40324366cbf6600130d125c24f43172e184b672`
+
+````text
+Continue solving the original Lean problem in /workspace/project. Inspect your current source and actual check results, repair the proof and submit a complete solution using swarm solution submit. Stay within the supplied deadline; save useful work before it expires.
+````
+## Independent solver closeout
+
+Body SHA-256: `7437bffcb5516db5e64e00ba8a35574f068c4b4206e9760f0bc751337d83b498`
+
+````text
+The execution is closing. Stop new computation and submissions. Save useful existing files with swarm workspace save; the controller will finish and clean up this attempt. Report only observed results.
+````
 ## Current bound continuation
 
 Both bound continuation send paths reread durable Execution state after Session readiness. Before soft closeout they use this ordinary message; after the deadline or an early reminder they send the closeout body below. Closing or expired identities do not receive another research turn.

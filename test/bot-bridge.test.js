@@ -371,3 +371,19 @@ test('Bridge start settles when stop wins before the listening event', async t =
   await pending.stop(); await rejected;
   assert.equal(pending.server, null);
 });
+
+test('solver Bridge denies Task and Material services over the actual authenticated transport', async t => {
+  const { bridge, start } = await fixture(t, { agentMode: 'solver' });
+  const env = start('bot:solver');
+  for (const operation of ['task_list', 'task_view', 'task_create', 'task_take', 'task_finish', 'context_search_materials', 'context_publish_material', 'list_services']) {
+    const response = await fetch(`${env.SWARMENV_BRIDGE_URL}/call`, {
+      method: 'POST', headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ operation, payload: {}, control: true, agentMode: 'swarm' }),
+    });
+    const result = await response.json();
+    assert.equal(result.ok, false, operation);
+    assert.equal(result.error.code, 'NOT_ALLOWED', operation);
+  }
+  const profile = bridge.getCapabilityProfile();
+  assert.ok(profile.capabilities.every(c => !c.operation.startsWith('task_') && c.service_id !== 'context'));
+});

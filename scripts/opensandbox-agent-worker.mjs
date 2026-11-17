@@ -142,12 +142,13 @@ async function startAgent(input) {
     initialized = true;
     projectQuota = { bytes, inodes };
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
-  const expectedNames = ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
-  if (input.contract_version !== 'swarm-bot-v1-draft.2' || !Array.isArray(input.resources) || input.resources.length !== 5 ||
-      new Set(input.resources.map(resource => resource?.path)).size !== 5 ||
+  const solver = input.contract_version === 'swarm-solver-v1';
+  const expectedNames = solver ? ['solver-system.txt'] : ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
+  if ((!solver && input.contract_version !== 'swarm-bot-v1-draft.2') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
+      new Set(input.resources.map(resource => resource?.path)).size !== expectedNames.length ||
       !expectedNames.every(name => input.resources.some(resource => resource?.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw startupContractError('complete versioned Bot contract resources are required');
   for (const resource of input.resources) {
-    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw startupContractError('unsupported Bot contract resource');
+    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(solver-system\.txt|system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw startupContractError('unsupported Bot contract resource');
     const info = await readPinnedStartupPath(lstat, resource.path);
     if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) || !(info.mode & 0o004) || await readPinnedStartupPath(realpath, resource.path) !== resource.path) throw startupContractError('Bot contract resource must be immutable to the Bot');
     for (let parent = dirname(resource.path); parent !== '/'; parent = dirname(parent)) {

@@ -4,7 +4,7 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
 import { assertNewExecutionWork } from '../task/execution-budget.js';
-import { BOT_COMPACTION_MESSAGE, buildBotNotification, buildBotContinuationMessage, buildBotSoftCloseoutNotice } from '../agent/bot-contract.js';
+import { buildSolverContinuationMessage, SOLVER_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, buildBotNotification, buildBotContinuationMessage, buildBotSoftCloseoutNotice } from '../agent/bot-contract.js';
 import { BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT, buildPromptSnapshot, composeAgentPrompt } from '../agent/agent-prompt.js';
 import { runtimeCapabilityList } from './runtime-capabilities.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
@@ -138,7 +138,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ agentMode = 'swarm', taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -150,6 +150,7 @@ export class Runtime {
     this.missionWorkspaceId = missionWorkspaceId;
     this.workspaceProjectCheck = workspaceProjectCheck;
     this.missionSubmissionStore = missionSubmissionStore;
+    this.agentMode = agentMode;
     this.coordinationPermissions = Object.freeze([...coordinationPermissions]);
     if (workspaceMergeChecker && (typeof workspaceMergeChecker.check !== 'function' ||
         !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof workspaceMergeChecker.identity?.[key] === 'string' && workspaceMergeChecker.identity[key]) ||
@@ -2575,7 +2576,7 @@ export class Runtime {
       }
       this.taskService.recordNotificationAttempt?.(notification.notification_id);
       try {
-        await active.session.prompt?.(this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {
+        await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {
           timeoutMs: 30_000,
           streamingBehavior: 'followUp',
         });
@@ -2844,15 +2845,17 @@ export class Runtime {
     if (record.type === 'compaction_start') {
       this.logger?.append({
         event: 'runtime.compaction_started', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
+        compaction_count: active.compactionCount, max_compactions: this.agentMode === 'solver' ? null : this.maxCompactions,
         context_window: usage?.context_window ?? active.session.contextWindow ?? null,
         window_ratio: usage?.ratio ?? null, usage_source: usage ? 'event' : 'unknown',
       });
-      // The fourth compaction is prohibited at the adapter boundary.  A
+      // Swarm bounds compactions before replacing an identity. An independent
+      // solver retains the same sample/Session until its existing hard deadline.
+      // For Swarm the fourth compaction is prohibited at the adapter boundary.  A
       // start record is the earliest portable signal before Pi mutates its
       // context; fence/restart the identity immediately instead of waiting
       // for a later report to discover that the limit was crossed.
-      if (active.compactionCount >= this.maxCompactions) {
+      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_limit',
           windowRatio: usage?.ratio ?? null,
@@ -2892,7 +2895,7 @@ export class Runtime {
         : usage ?? contextWindowRatio(record.result, active.session);
       this.logger?.append({
         event: 'runtime.compaction_completed', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
+        compaction_count: active.compactionCount, max_compactions: this.agentMode === 'solver' ? null : this.maxCompactions,
         context_window: postCompactionUsage?.context_window ?? active.session.contextWindow ?? null,
         window_ratio: postCompactionUsage?.ratio ?? null,
         usage_source: postCompactionUsage ? 'event' : 'unknown',
@@ -2902,20 +2905,20 @@ export class Runtime {
       // it never starts a concurrent prompt or blocks identity rotation on a
       // failed filesystem/checkpoint write.
       this.#queueCompactionCheckpoint(active, record);
-      if (active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
+      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_window_unknown', usageSource: 'unknown', windowRatio: null,
         });
         return;
       }
-      if (active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
+      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: postCompactionUsage.ratio,
         });
         return;
       }
     }
-    if (record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
+    if (this.agentMode !== 'solver' && record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
       if (!usage) {
         this.logger?.append({ event: 'runtime.compaction_window_unknown', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, action: 'continue_until_boundary' });
       } else if (usage.ratio >= this.handoffWindowRatio) {
@@ -2960,7 +2963,7 @@ export class Runtime {
           // Pi's private compaction is not a public Workspace save. In the
           // Bot path, only the explicit stable-snapshot API can publish files.
           if (this.compactionCheckpointReminder && !active.closing && !active.rotationPromise) {
-            await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });
+            await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });
           }
           this.logger?.append({ event: 'runtime.bot_compaction_recorded', execution_id: executionId, compaction_count: active.compactionCount, public_save: false });
           return { status: 'not_saved', execution: current };

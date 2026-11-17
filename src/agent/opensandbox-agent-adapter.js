@@ -3,7 +3,7 @@ import { PassThrough } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { AgentCoreSession, resolveAgentCoreRoute } from './pi-adapter.js';
-import { BOT_SYSTEM_PROMPT, BOT_SYSTEM_RESOURCE, BOT_SYSTEM_HASH, BOT_SKILLS, BOT_TOOL_NAMES, BOT_PROTOCOL_VERSION } from './bot-contract.js';
+import { agentContract, BOT_SYSTEM_PROMPT, BOT_SYSTEM_RESOURCE, BOT_SYSTEM_HASH, BOT_SKILLS, BOT_TOOL_NAMES, BOT_PROTOCOL_VERSION } from './bot-contract.js';
 import { createVersionManifest } from './version-manifest.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
@@ -189,11 +189,14 @@ class RemoteAgentChild extends EventEmitter {
  * messages over the provider endpoint and never spawns the Agent command.
  */
 export class OpenSandboxAgentAdapter {
-  constructor({ sandboxManager, modelAccess = null, networkIsolation = null, diskIsolation = null, modelCatalogResource = null, command = 'nurouter', provider, model, account, group, env = {}, agentEnvironment = {}, secretEnv = {}, systemPrompt = null, extensionPath = null, sessionDir = '/workspace/runtime/pi-session', manifestVersions = {} } = {}) {
+  constructor({ agentMode = 'swarm', sandboxManager, modelAccess = null, networkIsolation = null, diskIsolation = null, modelCatalogResource = null, command = 'nurouter', provider, model, account, group, env = {}, agentEnvironment = {}, secretEnv = {}, systemPrompt = null, extensionPath = null, sessionDir = '/workspace/runtime/pi-session', manifestVersions = {} } = {}) {
     if (!sandboxManager) throw new TypeError('OpenSandboxAgentAdapter requires sandboxManager');
-    if (systemPrompt && systemPrompt !== BOT_SYSTEM_PROMPT) throw new TypeError('registered Bots require the versioned Bot system contract');
+    const contract = agentContract(agentMode);
+    this.contract = contract;
+    this.agentMode = agentMode;
+    if (systemPrompt && systemPrompt !== contract.systemPrompt) throw new TypeError('registered Bots require the versioned Bot system contract');
     if (extensionPath) throw new TypeError('registered Bots use four native Pi tools and the swarm CLI; Service tool extensions are retired');
-    systemPrompt = BOT_SYSTEM_PROMPT;
+    systemPrompt = contract.systemPrompt;
     this.sandboxManager = sandboxManager;
     this.modelAccess = modelAccess;
     this.networkIsolation = networkIsolation;
@@ -219,8 +222,8 @@ export class OpenSandboxAgentAdapter {
     args.push('--mode', 'rpc', '--session-dir', sessionDir, '--session-id', sessionId,
       '--tools', BOT_TOOL_NAMES.join(','), '--no-extensions',
       '--no-skills', '--no-prompt-templates', '--no-context-files',
-      ...BOT_SKILLS.flatMap(skill => ['--skill', skill.path]),
-      '--append-system-prompt', BOT_SYSTEM_RESOURCE.path,
+      ...this.contract.skills.flatMap(skill => ['--skill', skill.path]),
+      '--append-system-prompt', this.contract.systemResource.path,
       ...(placement === 'pi' ? ['--provider', this.config.provider, '--model', this.config.model] : []));
     return args;
   }
@@ -331,9 +334,10 @@ export class OpenSandboxAgentAdapter {
       command: this.command,
       args: launchArgs,
       cwd: '/workspace/project',
-      env: workerEnvironment,
+      env: { ...workerEnvironment, SWARMENV_AGENT_MODE: this.agentMode },
       sessionDir: guestSessionDir,
-      resources: [BOT_SYSTEM_RESOURCE, ...BOT_SKILLS.map(({ path, sha256 }) => ({ path, sha256 }))],
+      resources: this.contract.resources,
+      agentMode: this.agentMode,
       secretEnvironment: workerSecretEnvironment,
       ...(projectQuota ? { projectQuota } : {}),
       ...(this.modelCatalogResource ? { modelCatalogResource: this.modelCatalogResource } : {}),
@@ -346,7 +350,7 @@ export class OpenSandboxAgentAdapter {
       piVersion: explicitVersions.piVersion ?? guestVersions?.piVersion,
       nurouterVersion: explicitVersions.nurouterVersion === null ? null : (explicitVersions.nurouterVersion ?? guestVersions?.nurouterVersion),
       nodeVersion: explicitVersions.nodeVersion ?? guestVersions?.nodeVersion,
-    }), bot_contract: { protocol_version: BOT_PROTOCOL_VERSION, system_prompt_sha256: BOT_SYSTEM_HASH, system_resource: BOT_SYSTEM_RESOURCE, skills: BOT_SKILLS, tools: BOT_TOOL_NAMES } };
+    }), bot_contract: { protocol_version: this.contract.protocolVersion, system_prompt_sha256: this.contract.systemHash, system_resource: this.contract.systemResource, skills: this.contract.skills, tools: BOT_TOOL_NAMES } };
     const observedExecutionId = bot ? null : (observationContext.executionId ?? executionId);
     session = new AgentCoreSession(child, { executionId: observedExecutionId, sessionId, launchArgs, manifest, logger, observation, coreId: observationContext.coreId ?? null, taskId: observationContext.taskId ?? null });
     session.on('close', () => this.modelAccess?.revokeBot(bot?.bot_id));

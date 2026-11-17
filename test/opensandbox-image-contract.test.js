@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import { BOT_PROTOCOL_VERSION, BOT_RESOURCES } from '../src/agent/bot-contract.js';
+import { agentContract, BOT_PROTOCOL_VERSION, BOT_RESOURCES } from '../src/agent/bot-contract.js';
 
 test('OpenSandbox image carries the direct Pi model catalog without NuRouter', async () => {
   const dockerfile = await readFile(new URL('../services/opensandbox-agent/Dockerfile', import.meta.url), 'utf8');
@@ -92,9 +92,9 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
   `;
   const runProbe = input => promisify(execFile)('docker', ['run', '--rm', '--network', 'none', '--entrypoint', 'node',
     agentImage, '--input-type=module', '-e', probe, JSON.stringify(input)], { timeout: 25_000 });
-  const input = { contract_version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES, model_catalog_resource: modelCatalogResource };
-  await Promise.all([
-    runProbe(input),
-    runProbe({ ...input, expect_rejection: true, resources: BOT_RESOURCES.map(resource => ({ ...resource, sha256: '0'.repeat(64) })) }),
-  ]);
+  for (const mode of ['swarm', 'solver']) {
+    const contract = agentContract(mode);
+    const input = { contract_version: contract.protocolVersion, resources: contract.resources, model_catalog_resource: modelCatalogResource, env: { SWARMENV_AGENT_MODE: mode } };
+    await Promise.all([runProbe(input), runProbe({ ...input, expect_rejection: true, resources: contract.resources.map(resource => ({ ...resource, sha256: '0'.repeat(64) })) })]);
+  }
 });
