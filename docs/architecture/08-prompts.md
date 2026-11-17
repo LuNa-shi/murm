@@ -4,11 +4,13 @@ A research Agent does not receive one fixed paragraph called “the prompt.” I
 
 **Coverage boundary:** every static prompt/message producer and direct `session.prompt` send site found in the reviewed `src/` tree is mapped here. Mission text, Task instructions created during a run, candidates, Materials, arbitrary registered provider documentation and tool results are runtime data. A fixed architecture document cannot contain every future value of those inputs. It records their fields, insertion rules and evidence locations. The generated examples use explicit synthetic values and are not presented as actual run transcripts. Pi/provider-owned base prompts, tool rendering, retry messages and compaction summaries are outside this repository's implementation.
 
+The CLI and compatibility extension now send service requests through the shared native HTTP(S) transport described in [04 Services](04-services.md#http-waiting-and-cancellation). This changes waiting/cancellation behavior, not prompt composition, tool schemas or the selected public benchmark context. The CLI retains its 30-second default; explicit longer deadlines may extend to the timer-safe range.
+
 ## 1. Complete text catalog
 
 | Appendix | Complete content |
 |---|---|
-| [01 Stable identity](prompts/01-system-identity.md) | The registered Bot draft.2 system addendum, followed by the separate compatibility SDK aliases (system version `4`, composition version `6`) |
+| [01 Stable identity](prompts/01-system-identity.md) | The registered Bot draft.3 system addendum, followed by the separate compatibility SDK aliases (system version `5`, composition version `7`) |
 | [08 Bot skills](prompts/08-bot-skills.md) | The four immutable default skill files, their guest paths, versions and content hashes |
 | [02 Tool instructions](prompts/02-task-loop-and-tools.md) | Exact Task-loop guides for built-ins, Sandbox, and Sandbox plus Mathlib; full built-in capability-directory text; all extension description/snippet/guidance fields; full Mathlib `SKILL.md` and reference text |
 | [03 Benchmark turns](prompts/03-benchmark-turns.md) | Complete registered Bot discovery example, bound continuation, compaction and lifecycle notification bodies; compatibility take default |
@@ -41,17 +43,17 @@ Full registered bodies appear in [01](prompts/01-system-identity.md), [03](promp
 
 ## 3. The stable identity contract
 
-`src/agent/bot-contract/system.txt` contains the approved phase 06 stable text, identified as `swarm-bot-v1-draft.2`. Every registered Bot gets this same addendum. It defines Mission/Task/E responsibility, bounded discovery, same-Sandbox take, protected initial project, explicit save/apply/merge, Material provenance/corrections, final submission and terminal cleanup. It also states that the Sandbox has general tools but no Lean/Lake/Mathlib runtime: all compilation goes through saved-revision Judge checks, and local toolchain installation is not the development path. The Workspace skill explains source-error repair, bounded busy retries, exact-request replay and budget exhaustion. Skills cannot grant permissions or replace this mandatory contract.
+`src/agent/bot-contract/system.txt` contains the approved phase 06 stable text, identified as `swarm-bot-v1-draft.3`. Every registered Bot gets this same addendum. It defines Mission/Task/E responsibility, bounded discovery, same-Sandbox take, protected initial project, explicit save/apply/merge, Material provenance/corrections, final submission and terminal cleanup. It also states that the Sandbox has general tools but no Lean/Lake/Mathlib runtime: all compilation goes through saved-revision Judge checks, and local toolchain installation is not the development path. The Workspace skill explains source-error repair, bounded busy retries, exact-request replay and budget exhaustion. Skills cannot grant permissions or replace this mandatory contract.
 
 The file and four skill resources are baked into the image, root-owned and not writable by UID 10001. The adapter passes expected resource hashes through manager `/start`; the worker rejects absent, changed, symlinked or writable files before Pi starts. Startup failure cleans up the Bot; a deterministic contract/resource mismatch additionally aborts the formal project rather than repeatedly replacing Bots with the same invalid image. Custom system replacements and the old per-Service extension option reject in `OpenSandboxAgentAdapter`; the runner always selects this versioned contract. Resource hashes describe image bytes; the system body hash excludes the final newline. A matching hash is not proof of model compliance.
 
 The installed Pi 1.3.0 loader keeps explicit `--skill` resources even with `--no-skills`, which disables ambient discovery. Metadata is available initially; full bodies enter the conversation through actual `read` tool output when requested. The four defaults are plan-task, use-material, use-workspace and finish-task. The local network-disabled `bot-contract-probe.mjs` captures the actual Pi request against a scripted in-container endpoint and verifies the four native tool definitions, complete system text, all four skill reads and Bash invoking the authenticated CLI. This controlled transport evidence does not establish compatibility or success of the real configured model/provider.
 
-The plan-task resource includes Bash examples for selecting a public revision and path, listing one state or a JSON array of states, proposing with the three required JSON fields, and taking by the returned positional Task ID. Discovery Bots can also get these argument forms from command-specific `swarm … --help`, which reads local command definitions without calling a Service. Propose and take use separate request IDs, and recovery of an unknown take response uses the original ID and Task. When no suitable ready Task remains, including when relevant Tasks are all done, the skill directs the Bot to query Mission submission state within the remaining selection budget. The no-ID view returns current Mission state, main, active submission and submission records; the ID view returns the selected submission's fixed inputs and result. The guidance distinguishes acceptance, an in-progress check, failure and infrastructure timeout/error. It leaves retry and submission admission to the existing policy and grant. For an open Mission with remaining selection budget, the system and the skill require the Bot to diagnose a public gap and propose and take a bounded responsibility when no existing Task fits. A useful investigation may document what evidence for an acceptance criterion is missing. Before proposing and again before taking, the Bot refreshes its relevant Task query to catch concurrent proposals or new results. Existing suitable work retains priority. Overlapping work needs independently useful validation, supplementation or integration. Retiring a redundant unclaimed Task requires its existing coordination grant, and a bound Bot can cancel its own responsibility through finish. The reads reduce stale choices. Request replay and an explicitly matching responsibility_key apply to exact declared identities. Different concurrent proposals can still express overlapping work. Lack of ready work does not justify a no-work exit. Budget expiry with no pending take uses selection-budget. A bound Bot that cannot meet its current responsibility finishes incomplete when no blocking dependency or cancellation applies. A successor reads public results and selects work independently. The use-material resource and offline consume help show the same shell-quoted JSON array example and list the four accepted actions. Consume records an actual impact in the current E, and an unknown response can be recovered with the same payload and request ID. The Bundle hashes for plan-task and use-material change with their content. [Source: plan-task resource](../../src/agent/bot-contract/plan-task.md) · [CLI help](../../src/cli/swarm-cli.js).
+The plan-task resource includes Bash examples for selecting a public revision and path, listing one state or a JSON array of states, proposing with the required summary, Mission gap, output, completion conditions and explicit high/medium/low priority, and taking by the returned positional Task ID. Discovery Bots can also get these argument forms from command-specific `swarm … --help`, which reads local command definitions without calling a Service. Propose and take use separate request IDs, and recovery of an unknown take response uses the original ID and Task. When no suitable ready Task remains, including when relevant Tasks are all done, the skill directs the Bot to query Mission submission state within the remaining selection budget. The no-ID view returns current Mission state, main, active submission and submission records; the ID view returns the selected submission's fixed inputs and result. The guidance distinguishes acceptance, an in-progress check, failure and infrastructure timeout/error. It leaves retry and submission admission to the existing policy and grant. For an open Mission with remaining selection budget, the system and the skill require the Bot to diagnose a public gap and propose independently useful responsibilities when no existing Task fits. UNBOUND Bots may propose several Tasks and take suitable existing work directly; proposing does not require self-claiming. ACTIVE Bots may also propose further work. Priority is advisory and does not preempt an Execution. A useful investigation may document what evidence for an acceptance criterion is missing. Before proposing and again before taking, the Bot refreshes its relevant Task query to catch concurrent proposals or new results. Existing suitable work retains priority. Overlapping work needs independently useful validation, supplementation or integration. An UNBOUND Bot may revise or cancel an open, unowned Task in its Mission using observed contract/state versions and a reason, including previously executed Tasks reopened after cleanup. No coordination grant is required for these two operations. Preparing, active or closing work remains protected. A bound Bot ends its own responsibility through finish. The plan-task resource and CLI help show revision JSON and contract-history pagination; these details enter the model context only if read or invoked. The reads reduce stale choices. Request replay and an explicitly matching responsibility_key apply to exact declared identities. Different concurrent proposals can still express overlapping work. Lack of ready work does not justify a no-work exit. Budget expiry with no pending take uses selection-budget. A bound Bot that cannot meet its current responsibility finishes incomplete when no blocking dependency or cancellation applies. A successor reads public results and selects work independently. The use-material resource and offline consume help show the same shell-quoted JSON array example and list the four accepted actions. Consume records an actual impact in the current E, and an unknown response can be recovered with the same payload and request ID. The Bundle hashes for plan-task and use-material change with their content. [Source: plan-task resource](../../src/agent/bot-contract/plan-task.md) · [CLI help](../../src/cli/swarm-cli.js).
 
 The finish-task resource shows how to publish, link and cite one Material with the protected Bot CLI. Publication records producer provenance. Before explicitly citing a Material in a done outcome, the current Bot links it to its Task. The offline publish, link and finish help explains these separate operations. A finish rejection identifies unlinked Material IDs and points to the link command. The resource also explains when a checked revision and other completion evidence allow the optional Material ID list to be omitted. Available CLI help becomes model input if the Bot calls it through Bash. The finish-task body becomes model input if the Bot reads that resource. [Source: finish-task resource](../../src/agent/bot-contract/finish-task.md) · [CLI help](../../src/cli/swarm-cli.js).
 
-`agent-prompt.js` retains the compatibility SDK string aliases and composers explained in sections 5–6. The registered runner no longer dispatches these strings or the old per-Service task-loop guide. The generic SDK's `PROMPT_VERSION=6` and `SYSTEM_PROMPT_VERSION=4` therefore are not the version labels of the registered Bot contract.
+`agent-prompt.js` retains the compatibility SDK string aliases and composers explained in sections 5–6. The registered runner no longer dispatches these strings or the old per-Service task-loop guide. The generic SDK's `PROMPT_VERSION=7` and `SYSTEM_PROMPT_VERSION=5` therefore are not the version labels of the registered Bot contract.
 
 ## 4. Discovery and benchmark Task instructions
 
@@ -128,7 +130,7 @@ The outer context contains the current Mission; up to 32 Mission Task summaries 
 
 There are two easily missed details:
 
-- `modernTaskPromptProjection` supplies Task identity, goal, output, acceptance conditions and validation flags, but omits `completion_contract` and `task_instructions`. Thus the outer Task text falls back to acceptance conditions; the fuller contract/instructions can already be inside the inner snapshot.
+- `modernTaskPromptProjection` supplies Task identity, short summary, gap, numeric and named priority, contract version, goal, output, acceptance conditions and validation flags, but omits `completion_contract` and `task_instructions`. Thus the outer Task text falls back to acceptance conditions; the fuller contract/instructions can already be inside the inner snapshot.
 - The outer composer invocation does not pass an `execution` argument. Its Execution section therefore prints the default “supplied by Runtime” text even when the inner snapshot already printed an exact ID. Recovery reason is similarly present in the inner snapshot, while the outer invocation prints its default recovery section. The outer Runtime profile always resolves to `bound`; it does not select a recovery launch.
 
 The generated [full examples](prompts/05-composed-context-examples.md) deliberately retain these duplicated blocks. They are not cleaned-up mockups. The actual final message may be much longer when Workspace, Tasks, Materials or provider documents contain substantial data.
@@ -218,7 +220,7 @@ The apply conflict README is repository-controlled guidance delivered as an ordi
 
 Both benchmark continuation paths call `buildBotContinuationMessage`; `runTurn` rereads the original E after `waitForReady` and replaces any earlier ordinary body if the durable soft boundary has been reached. A changed Session/E, stopping Core, non-RUNNING E, durable Bot other than ACTIVE or with a different E, or elapsed Bot hard deadline prevents the send. Registered compaction follow-up uses the same phase selector with the normal compaction text as its ordinary body. The selector reads only `handoff_deadline`, `handoff_reminder_sent_at` and current time; no model-written field decides the phase. The generated benchmark-message reference includes the complete closeout body. It directs save/publish/finish, forbids new proposals/apply/check/merge, and distinguishes accepted request replay from new work. It does not claim OS enforcement from a prompt alone.
 
-Trusted startup context includes the Bot’s actual `coordination_permissions`. Service-directory prose advertises the implemented Mission submission, checked merge and narrow correction/Task repair routes, while requiring those grants. A soft-closeout continuation explicitly prohibits new Mission acceptance work as well as Judge/apply/merge work. Actual continuation dispatch also checks the durable Mission stop gate after Session readiness, so accepted Missions do not receive another research turn.
+Trusted startup context includes the Bot’s actual `coordination_permissions`. Service-directory prose advertises the implemented Mission submission, checked merge and narrow correction/Task repair routes, with the applicable grants for submission, merge and Material correction. Open unowned Task revise/cancel instead use the UNBOUND and version guards described above. A soft-closeout continuation explicitly prohibits new Mission acceptance work as well as Judge/apply/merge work. Actual continuation dispatch also checks the durable Mission stop gate after Session readiness, so accepted Missions do not receive another research turn.
 
 ## Lifecycle and result feedback
 
@@ -233,8 +235,64 @@ The registered Bot Bridge sends Chinese `notice` fields on the same CLI response
 | Mission submission | The submit and submission-view responses include the fixed submitted revision and Material IDs, the durable verdict and, on failure, the observed current main and freeze owner. See [Mission submission](03-mission-task.md). |
 | Soft closeout and finish | The soft-closeout body names the E and the milliseconds remaining against its persisted deadline at composition. It is available in an already scheduled continuation or handoff notification. A finish response identifies the durable request and E admitted to closing before physical release. |
 
-The `use-workspace` skill now describes conditional project checking: save a fixed revision, use a revision-only Judge call for project diagnostics, and add `--path` when a Task requires file-specific delivery evidence. It explains imports under the locked source directory, actual module coverage, warnings and the separate Mission proof check. The skill remains an image resource discovered through the existing manifest and sent through the existing skill-read path; it does not grant new authority or require a particular research decomposition. The command help distinguishes deployments with project checking from compatibility source-only deployments.
+The `use-workspace` skill directs ordinary local-proposition iteration to save a fixed revision and select `--check-mode lean-module --path P`. It explains that P selects a complete module and its dependencies, rather than an individual declaration within a multi-declaration file, and permits independently useful lemmas/definitions to be organized in imported modules. A revision-only call still requests full-project diagnostics; a full-mode path binds Task delivery evidence. Local receipts do not satisfy a full delivery requirement. It explains imports under the locked source directory, actual module coverage, warnings and the separate Mission proof check. The skill remains an image resource discovered through the existing manifest and sent through the existing skill-read path; it does not grant new authority or require a particular research decomposition. The command help distinguishes deployments with project checking from compatibility source-only deployments.
+
+### FLT10 Mission context
+
+The benchmark runner retains the ordinary Swarm Mission goal template
+`Solve ${problem.id} through independent, shared Task work.` Explicit solver mode uses
+`Solve ${problem.id} independently.` Both append the same optional instruction pointer. When `instructions_path` is configured it appends ` Read ${config.instructions_path} for the benchmark task and input contract.` This goal enters the same Mission
+and discovery context paths described above. The README is verified public
+Workspace input and explains the pinned original target, proof-placeholder
+restriction, complete compressed statement graph queries and safe definition
+references. It is not automatically expanded into every turn. No ContextSwarm
+Agent prompt, collaboration policy or scheduler instruction is imported.
+
+## Root-only benchmark task instructions
+
+The generic Mission goal appends `Read <instructions_path> for the benchmark
+task and input contract.` only when the benchmark config supplies that path.
+The value is validated during config loading. The startup composer includes the
+Mission goal in its ordinary discovery message; no new model send path or Core
+role assignment is introduced. The README body is delivered only if the Bot
+reads the corresponding Workspace file, and that read is ordinary tool evidence.
+For `flt10-subtree-v1`, the complete repository-controlled body is
+[the root-only task instruction file](../../benchmarks/flt10/subtree-instructions.md).
+Preparation replaces the single `{{target_path}}` field with the configured
+checkpoint path (`q20/Target.lean` for Q20) before hashing the public README. It permits new
+definitions/lemmas/modules, explains the existing save/check/integrate workflow,
+and states final correctness constraints without listing a decomposition.
+
+The complete root-only README template is:
+
+```markdown
+# Formal proof project
+
+Prove the target theorem in `{{target_path}}`. Its original mathematical statement
+and the supplied foundation are fixed. The initial proof contains `sorry`; this
+makes the starting project elaboratable but is not a completed proof.
+
+You may develop your own definitions, intermediate lemmas and Lean modules in
+the target directory and its subdirectories. Import those modules from the
+root proof as needed. Use public Mathlib and the supplied foundation; readable
+foundation source is under `benchmark/foundation/`. The Judge provides the
+pinned compiled dependencies. The Bot does not have a local Lean installation.
+
+Use Task to coordinate responsibilities and Material to share explanations,
+evidence and references to exact Workspace revisions and paths. Save your code
+before asking Judge to check a revision. Incomplete intermediate revisions can
+be used for diagnostics. Integrate the needed files into Workspace main before
+Mission submission; source compilation alone is not final acceptance.
+
+Final acceptance checks the unchanged mathematical target against its trusted
+challenge, checks proof assumptions, and replays the proof through the kernel.
+The final project must have no remaining proof holes or extra axioms. Private
+answers, previous runs and external network access are unavailable. There is no
+prescribed decomposition, list of helper lemmas or assignment of Core roles.
+```
 
 ## Pass@K prompt delivery
 
 The generated [system reference](prompts/01-system-identity.md) includes the complete independent solver addendum, and [benchmark reference](prompts/03-benchmark-turns.md) includes its continuation and soft-closeout text. The adapter selects these only for explicit solver mode and verifies the pinned worker resource. Swarm's skills are not loaded. After the host binds the real Execution, the initial user prompt appends JSON containing `problem` and `target_path` from the verified fixture, the fixed `/workspace/project` path and the group deadline from run state. These are actual send inputs, unlike any unsent legacy prompt snapshot composed during Runtime binding. The next ordinary turns and compaction follow-up reuse solver continuation; soft closeout substitutes save-only guidance. No Task/Material tool instructions are sent by these solver paths.
+
+The Workspace skill also distinguishes the default 30-second CLI HTTP wait from the checker execution limit. Its 630000 ms example assumes an already-ready preflight, no queue wait and a ten-minute source allowance; queue/cold-preflight time is additional, and no client timeout extends lifecycle deadlines. This text is included through the same protected skill read path.

@@ -17,7 +17,7 @@ function fixture(t) {
     taskService.recordBotSandbox(name, { provider: 'controlled', sandboxId: name });
     taskService.markBotReady(name);
     if (!active) return () => makeEnvelope({ actorRef: name });
-    const task = taskService.createTask({ mission_id: mission, summary: 'Inspect a research claim', expected_output: 'Evidence',
+    const task = taskService.createTask({ mission_id: mission, summary: 'Inspect a research claim', gap: 'The Mission needs reproducible evidence for the shared claim', priority: 'medium', expected_output: 'Evidence',
       acceptance_conditions: ['Reproducible explanation'] }, makeEnvelope({ actorRef: name })).task;
     const taken = taskService.takeTask(task.task_id, { owner_ref: name, core_id: name, take_key: name }).execution;
     const envelope = () => {

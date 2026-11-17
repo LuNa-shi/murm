@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 
-test('swarm take reports the actual transmitted request ID after transport loss', async t => {
+for (const timeoutMs of [undefined, 2_430_000]) test(`swarm take preserves its request ID after transport loss (timeout: ${timeoutMs ?? 'default'})`, async t => {
   let invocation;
   const server = createServer(async request => {
     let body = '';
@@ -24,11 +24,14 @@ test('swarm take reports the actual transmitted request ID after transport loss'
   });
   process.env.SWARMENV_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.SWARMENV_BRIDGE_TOKEN = 'local-test-credential';
-  await assert.rejects(runSwarmCli(['task', 'take', 'task-1']), error => {
+  const args = ['task', 'take', 'task-1', ...(timeoutMs ? ['--timeout-ms', String(timeoutMs)] : [])];
+  await assert.rejects(runSwarmCli(args), error => {
     assert.equal(invocation.operation, 'task_take');
     assert.match(invocation.operation_id, /^cli:take:/);
     assert.equal(error.details.request_id, invocation.operation_id);
-    assert.equal(error.details.notice, `请求 ${invocation.operation_id} 结果未明。查询或重试同一请求；不要以新 ID 认领其他 Task。`);
+    assert.equal(error.details.request_outcome, 'unknown');
+    assert.equal(error.details.operation, 'task_take');
+    assert.ok(error.details.notice.includes(invocation.operation_id));
     return true;
   });
 });
@@ -110,6 +113,35 @@ test('swarm CLI gives a checker business FAIL its distinct exit code', async () 
     });
     assert.equal(result, 3);
     assert.match(output.join(''), /source_failure/);
+  } finally {
+    if (previous === undefined) delete process.env.SWARMENV_JUDGE_SERVICE_URL;
+    else process.env.SWARMENV_JUDGE_SERVICE_URL = previous;
+    server.close();
+  }
+});
+
+test('swarm CLI retains resource-limit diagnosis, location and nonretryable guidance', async () => {
+  const feedback = { verdict: 'ERROR', result_class: 'infrastructure_failure', mathematical_outcome: 'unassessed',
+    diagnostic_code: 'lean_resource_limit', retryable: false,
+    diagnostic_location: { file: 'src/Toy.lean', line: 3, column: 1 }, diagnostic_excerpt: 'maximum number of heartbeats reached' };
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ ok: true, result: request.url === '/v1/manifest'
+      ? { service_id: 'judge', endpoint: { url: `http://127.0.0.1:${server.address().port}` },
+        capabilities: [{ name: 'get_check_result', operation: 'get_check_result', method: 'POST', path: '/v1/get_check_result' }] }
+      : feedback }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  const previous = process.env.SWARMENV_JUDGE_SERVICE_URL;
+  process.env.SWARMENV_JUDGE_SERVICE_URL = `http://127.0.0.1:${server.address().port}`;
+  const output = [];
+  try {
+    const exitCode = await runSwarmCli(['judge', 'result', '--check-result-id', 'check-resource'], {
+      stdout: { write: value => output.push(value) },
+    });
+    assert.notEqual(exitCode, 3);
+    assert.deepEqual(JSON.parse(output.join('')), feedback);
   } finally {
     if (previous === undefined) delete process.env.SWARMENV_JUDGE_SERVICE_URL;
     else process.env.SWARMENV_JUDGE_SERVICE_URL = previous;

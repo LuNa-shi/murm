@@ -21,6 +21,10 @@ Workspace 在 sandbox 外由 Runtime 管理 Git。你只修改当前 E 的 /work
 
 Mission 验证期间 main merge 会冻结。查询现有 submission，不用其他接口绕过；save/apply 本身不改变被验收快照。
 
-Lean 项目检查先看 `swarm judge check --help`。配置启用项目检查时，save 后用 `swarm judge check --revision R` 检查整个固定版本；模块文件放在锁定题目所在源码目录下，按 Lean 模块名相互 import，无需复制证明正文。需要给 Task 的指定文件提交检查回执时加 `--path P`：仍编译同一项目，并将回执绑定到该文件。核对实际覆盖文件与警告；编译成功不等于 Mission 已证明，部分证明的占位符只能作为诊断状态保留，最终提交仍须通过独立验收。没有启用项目检查的部署仍要求 `--path`，不要假定它能读取相邻模块。
+Lean 项目检查先看 `swarm judge check --help`。配置支持局部检查时，日常迭代先 save 固定 revision，再用 `swarm judge check --revision R --check-mode lean-module --path P` 检查当前修改的模块及必要依赖，避免每次编译无关项目文件。可将有独立用途的局部命题及辅助 definitions 组织到 Lean 模块中，按实际实现范围选择 P；文件有多个声明时，检查范围仍是整个文件，不是只检查其中某个声明。模块放在锁定题目所在源码目录下，按模块名 import，不必复制前人证明正文。
+
+读取实际 checked scope、依赖范围、警告和缓存信息，不把局部 PASS 当作全项目或 Mission 通过。集中服务依据 Mission、源码、传递依赖、工具链和选项管理缓存；不能提交预编译文件供服务复用。需要整体集成诊断时用 `swarm judge check --revision R`；在默认全量模式加 `--path P` 仍编译同一项目，并将回执绑定到该交付文件。Task 要求全量 Workspace delivery 时，局部回执不能代替它。merge 检查最终合成树，Mission 提交另走固定目标的独立验收。部分证明的占位符只能作为诊断状态保留。没有启用项目检查的部署仍要求 `--path`，不要假定它能读取相邻模块。
 
 Sandbox 没有本地 Lean/Lake/Mathlib。日常开发也使用上述 Judge 路径：编辑 → save → check 固定 revision → 阅读错误位置/诊断 → 修复 → save/check。含编译错误或部分证明的中间版本不必先 merge，源码 FAIL 是可用于修复的反馈。普通 Judge 检查不设累计次数上限，默认每 Mission 同时运行 4 个、FIFO 等待最多 8 个，等待最长 120 秒。网络响应未知时沿用原 request ID 查询或重放，不能用新请求并发轰炸；收到明确的 CHECKER_BUSY（队列满或等待超时）后退避，再以新 request ID 重试。排队不会延长 Execution 的有效期；检查前仍会验证当前授权。不要把尚在排队或未检查的源码称为 PASS。
+
+局部冷检查也可能耗时数分钟。CLI 默认只等 30 秒，检查前按服务预算显式设置 `--timeout-ms`；例如已完成 preflight 且无需排队的 10 分钟 source 检查可用 `--timeout-ms 630000`，冷 preflight 和排队还需额外等待时间。HTTP 等待不会延长 Task/E 或 checker 的期限；超时只表示响应未知，先查原 request ID 的结果，不重复启动同一工作。

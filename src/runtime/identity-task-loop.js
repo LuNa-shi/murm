@@ -10,7 +10,7 @@ export const IDENTITY_LOOP_STATES = Object.freeze({
   FAILED: 'FAILED',
 });
 
-export const IDENTITY_TAKE_PROMPT = 'Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work. If the Mission is unfinished and no suitable Task exists, identify a concrete gap and propose a bounded Task with a verifiable deliverable. Call canonical task_take and continue in the same Bot Session after success. An empty queue does not end discovery. Respect actual Bot and run deadlines; stop expanding work after Mission acceptance or stop.';
+export const IDENTITY_TAKE_PROMPT = 'Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work. If the Mission is unfinished and no suitable Task exists, identify a concrete gap and propose an independently useful Task with a short title, output, completion conditions and explicit high/medium/low priority. UNBOUND Bots may propose several Tasks and revise or cancel open unowned Tasks with observed versions; ACTIVE Bots may propose further work. Priority is advice. Take existing work directly when suitable; proposing does not require taking your own proposal. Call canonical task_take and continue in the same Bot Session after success. An empty queue does not end discovery. Respect actual Bot and run deadlines; stop expanding work after Mission acceptance or stop.';
 
 const CONFLICT_CODE = ERROR_CODES.CONFLICT ?? 'CONFLICT';
 

@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { MISSION_WORKSPACE_READS } from '../sdk/builtin-registry.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
@@ -25,7 +26,7 @@ const WORKSPACE_OPERATIONS = new Set([
 // owns an Execution. Requiring an Execution for these operations makes a
 // zero-Task Mission impossible to bootstrap.
 const UNBOUND_OPERATIONS = new Set([
-  'bot_exit', 'get_check_result', 'material_unsupersede', 'task_cancel', 'task_dependency_replace',
+  'bot_exit', 'get_check_result', 'material_unsupersede', 'task_revise', 'task_cancel', 'task_dependency_replace',
   'task_list', 'task_view', 'task_status', 'task_create',
   'read_materials', 'context_search_materials', 'context_get_material',
   'material_read', 'material_search', 'material_get',
@@ -33,7 +34,7 @@ const UNBOUND_OPERATIONS = new Set([
   'mission_get', 'mission_submit', 'mission_submission_get',
 ]);
 const COORDINATION_OPERATION_GRANTS = new Map([
-  ['material_unsupersede', 'unsupersede'], ['task_cancel', 'task_cancel'],
+  ['material_unsupersede', 'unsupersede'],
   ['task_dependency_replace', 'task_dependency_replace'], ['mission_submit', 'mission_submit'],
 ]);
 
@@ -186,6 +187,7 @@ export class ServicesBridge {
     this.agentMode = agentMode;
     this.pendingCalls = new Set();
     this.pendingHandlers = new Set();
+    this.publicReadAbortController = new AbortController();
     this.taskService = taskService;
     this.contextService = contextService;
     this.runtime = runtime;
@@ -425,6 +427,7 @@ export class ServicesBridge {
         fencingVersion: currentExecution?.fencing_version ?? null,
       }),
       role: this.role,
+      signal: Object.hasOwn(MISSION_WORKSPACE_READS, capability.operation) ? this.publicReadAbortController.signal : undefined,
     });
   }
 
@@ -485,6 +488,7 @@ export class ServicesBridge {
   stop() {
     if (this.stopPromise) return this.stopPromise;
     this.stopping = true;
+    this.publicReadAbortController.abort(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping'));
     this.stopPromise = this.#stop();
     return this.stopPromise;
   }
@@ -540,6 +544,7 @@ export class ServicesBridge {
     let input;
     try {
       input = await readBody(request);
+      if (input && typeof input === 'object' && !Array.isArray(input)) input.operation_id ??= `bridge:${input.operation}:${randomUUID()}`;
       if (authenticatedToken !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed while reading the request');
       const registeredBot = Boolean(this.taskService?.getBot?.(this.actorRef));
       const result = await this.call(input);
@@ -549,7 +554,7 @@ export class ServicesBridge {
         receipt.notice = `来源 ${result.source_revision} 与当前工作状态存在冲突，main 未改变。冲突文件为 ${paths.join(', ')}；可在当前 E 解决并 save --resolved，初始输入记录不变。`;
       }
       send(response, 200, { ok: true, result: receipt });
-      this.logger?.append({ event: 'bridge.response_sent', operation: input.operation });
+      this.logger?.append({ event: 'bridge.response_sent', operation: input.operation, operation_id: input.operation_id });
       if (this.deferredLifecycle && !this.deferredLifecyclePromise) {
         const deferredPromise = Promise.resolve().then(() => this.flushDeferredLifecycle()).catch((error) => {
           this.logger?.append({ event: 'bridge.lifecycle_error', operation: 'deferred_block', ok: false, error: { name: error.name, code: error.code, message: error.message } });
@@ -576,7 +581,7 @@ export class ServicesBridge {
           } else if (details.phase === 'hard_stop') {
             notice = '已达到硬上限或发生强制停止，当前 E 不再有发布机会。此前未保存/发布的内容不视为已交接。';
           } else if (operation === 'bot_exit' && details.phase === 'discovery_required') {
-            notice = 'Mission 尚未结束且选工时间仍有剩余。优先查看并领取已有可推进 Task；若没有，核对最新验收、公开 Workspace 和材料，找出具体缺口并提出有可核验交付的新 Task，再领取执行。不要创建占位 Task。';
+            notice = 'Mission 尚未结束且选工时间仍有剩余。优先查看并领取已有可推进 Task；若没有，核对最新验收、公开 Workspace 和材料，找出具体缺口并提出有可核验交付的新 Task；可直接领取任何合适的已有责任，不必自提自领。不要创建占位 Task。';
           } else if (details.phase === 'selection_budget') {
             notice = '选工额度已到时间上限。尚未绑定 E 时使用 bot exit --reason selection-budget；不能为保持运行制造任务。';
           } else if (operation === 'task_take' && body.code === 'CONFLICT' && details.parallel_quota !== undefined) {
@@ -589,6 +594,7 @@ export class ServicesBridge {
               : ['active', 'unbound'].includes(phase)
               ? this.getCapabilityProfile().capabilities.map(item => item.operation).filter(item =>
                 typeof item === 'string' && (phase !== 'unbound' || item === 'task_take' || UNBOUND_OPERATIONS.has(item)) &&
+                (phase === 'unbound' || !['task_revise', 'task_cancel'].includes(item)) &&
                 (!COORDINATION_OPERATION_GRANTS.has(item) || bot.coordination_permissions.includes(COORDINATION_OPERATION_GRANTS.get(item))))
               : [];
             const allowedOperations = [...new Set(allowed)];
@@ -653,7 +659,9 @@ export class ServicesBridge {
       }
     };
     const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
-    this.logger?.append({ event: 'bridge.start', operation, ...(control ? { caller: 'host-control' } : {}), operation_id: bridgeOperationId, task_id: this.taskId, execution_id: this.executionId, payload });
+    const bridgeCallId = randomUUID();
+    const log = (event) => this.logger?.append({ ...event, operation_id: bridgeOperationId, bridge_call_id: bridgeCallId });
+    log({ event: 'bridge.start', operation, ...(control ? { caller: 'host-control' } : {}), operation_id: bridgeOperationId, task_id: this.taskId, execution_id: this.executionId, payload });
     try {
       const profile = this.getCapabilityProfile({ control });
       const capability = this.#profileCapability(profile, operation, { serviceId, capabilityId });
@@ -698,9 +706,9 @@ export class ServicesBridge {
             { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution.fencing_version, requestId: bridgeOperationId });
           if (operation === 'workspace_save') {
             try { await this.onWorkUnit?.({ operation, taskId: execution.task_id, executionId: execution.execution_id, payload, result }); }
-            catch (error) { this.logger?.append({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
+            catch (error) { log({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
           }
-          this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
+          log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return { ...result, request_id: bridgeOperationId };
         }
         if (operation === 'workspace_merge') {
@@ -708,8 +716,8 @@ export class ServicesBridge {
           const result = await this.runtime.mergeExecutionWorkspace(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution?.fencing_version, requestId: bridgeOperationId });
           assertIdentity();
           try { await this.onWorkUnit?.({ operation, taskId: execution.task_id, executionId: execution.execution_id, payload, result }); }
-          catch (error) { this.logger?.append({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
-          this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
+          catch (error) { log({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
+          log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return { ...result, request_id: bridgeOperationId };
         }
         if (WORKSPACE_OPERATIONS.has(operation) || operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy private Workspace and Execution APIs are unavailable to registered Bots');
@@ -721,9 +729,9 @@ export class ServicesBridge {
             actorRef: bot.bot_id, taskId: this.taskId ?? null, executionId: this.executionId ?? null,
             materialIds: payload.material_ids, requestId: bridgeOperationId,
             fencingVersion: this.executionId ? this.taskService.getExecution(this.executionId)?.fencing_version : null });
-          this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           const observed = await this.runtime.describeMissionSubmission({ missionId: bot.mission_id, submissionId: result.submission_id });
           assertIdentity();
+          log({ event: 'bridge.complete', operation, ok: true, result: observed ?? result });
           return observed ?? result;
         }
         if (payload.mission_id !== undefined && payload.mission_id !== bot.mission_id) {
@@ -732,12 +740,13 @@ export class ServicesBridge {
         if (operation === 'mission_submission_get') {
           const result = await this.runtime.describeMissionSubmission({ missionId: bot.mission_id, submissionId: payload.submission_id ?? null });
           assertIdentity();
+          log({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
         if (['mission_get', 'mission_submit', 'mission_submission_get', 'task_create', 'task_list', 'task_status', 'list_tasks', 'read_materials', 'context_search_materials'].includes(operation)) {
           payload = { ...payload, mission_id: bot.mission_id };
         }
-        if (['task_view', 'task_take', 'list_executions', 'task_cancel', 'task_dependency_replace'].includes(operation) && payload.task_id !== undefined) {
+        if (['task_view', 'task_take', 'list_executions', 'task_revise', 'task_cancel', 'task_dependency_replace'].includes(operation) && payload.task_id !== undefined) {
           const target = this.taskService.getTask(payload.task_id);
           if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is not readable in the Bot Mission');
         }
@@ -745,12 +754,12 @@ export class ServicesBridge {
           const target = this.contextService.getMaterial(payload.material_id);
           if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material is not readable in the Bot Mission');
         }
-        if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history'].includes(operation)) {
+        if (Object.hasOwn(MISSION_WORKSPACE_READS, operation)) {
           const workspaceId = this.runtime?.missionWorkspaceId;
           if (!workspaceId || (payload.workspace_id !== undefined && payload.workspace_id !== workspaceId)) {
             throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace must match the configured Mission Workspace');
           }
-          const workspace = await this.runtime.missionWorkspace.get({ workspaceId });
+          const workspace = await this.runtime.missionWorkspace.get({ workspaceId, signal: this.publicReadAbortController.signal });
           assertIdentity(true);
           if (workspace.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace belongs to another Mission');
           payload = { ...payload, workspace_id: workspaceId };
@@ -758,7 +767,7 @@ export class ServicesBridge {
       }
       if (operation === 'task_take' && this.acceptedTake?.operation_id === bridgeOperationId) {
         if (this.acceptedTake.fingerprint !== stableStringify({ capability: capability.id, payload })) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'take request ID was reused with another payload');
-        this.logger?.append({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, replayed: true, result: this.acceptedTake.result });
+        log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, replayed: true, result: this.acceptedTake.result });
         return structuredClone(this.acceptedTake.result);
       }
       if (operation === 'bot_exit') {
@@ -769,7 +778,7 @@ export class ServicesBridge {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
       }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_execution', 'list_tasks', 'list_executions', 'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish', 'task_status', 'task_take', 'task_feedback', 'execution_progress'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        if (['get_execution', 'list_tasks', 'list_executions', 'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish', 'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_revise', 'task_cancel', 'task_dependency_replace'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
       if (operation === 'execution_progress') {
@@ -782,7 +791,7 @@ export class ServicesBridge {
         const result = await this.runtime.executionProgress(this.executionId, { ...payload, actorRef: this.actorRef });
         await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
         if (payload.kind === 'handoff') await this.releaseTake({ result });
-        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        log({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
       const isCatalogDiscovery = capability.service_id === 'catalog' && ['list_services', 'get_service_metadata', 'list_tools'].includes(operation);
@@ -795,7 +804,7 @@ export class ServicesBridge {
           const result = await (this.onSchedulerStatus
             ? this.onSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId })
             : this.runtime.getSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId }));
-          this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+          log({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
         const discoveryPayload = operation === 'task_status' && payload.mission_id === undefined && modernBoundTask?.mission_id
@@ -811,7 +820,7 @@ export class ServicesBridge {
             operationId: bridgeOperationId,
             actorRef: this.actorRef,
           }));
-        this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+        log({ event: 'bridge.complete', operation, ok: true, result });
         return result;
       }
       let registeredService = null;
@@ -865,7 +874,7 @@ export class ServicesBridge {
             const source = bot
               ? await this.runtime.readWorkspaceCheckSource(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: currentExecution?.fencing_version })
               : await this.runtime.readWorkspaceFile(this.executionId, { path: payload.path, maxBytes: payload.max_bytes });
-            if (source.check_mode === 'lean-project') {
+            if (['lean-project', 'lean-module'].includes(source.check_mode)) {
               assertIdentity(true);
               return this.#invokeRegistered(capability, { source, request_key: payload.request_key ?? bridgeOperationId }, bridgeOperationId);
             }
@@ -914,14 +923,14 @@ export class ServicesBridge {
         // Judge can settle an admitted check after the Bot closes. Observe the
         // receipt under its original binding before fencing the tool response.
         if (bot && operation === 'workspace_check' && this.onWorkUnit &&
-            (result?.workspace_input ?? result?.evidence?.workspace_input)?.check_mode === 'lean-project' &&
+            ['lean-project', 'lean-module'].includes((result?.workspace_input ?? result?.evidence?.workspace_input)?.check_mode) &&
             result.target_task_id === currentExecution?.task_id && result.execution_id === currentExecution?.execution_id &&
             result.check_result_id && ['RECEIVED', 'APPLIED'].includes(result.status)) {
           try {
             await this.onWorkUnit({ operation, taskId: result.target_task_id, executionId: result.execution_id,
               payload, result: agentCheckResult(result) });
           } catch (error) {
-            this.logger?.append({ event: 'bridge.observation_failed', operation, code: error?.code ?? 'OBSERVATION_ERROR' });
+            log({ event: 'bridge.observation_failed', operation, code: error?.code ?? 'OBSERVATION_ERROR' });
           }
         }
         assertIdentity();
@@ -940,13 +949,13 @@ export class ServicesBridge {
             ? { request_id: bridgeOperationId, notice: `结束请求 ${bridgeOperationId} 已持久受理，E ${result.execution.execution_id} 正在 closing。不得再 save/publish；Runtime 停止全部进程，连接可能断开。` } : {};
           result = await this.#afterAcceptedFinish(result, payload);
           result = { ...result, ...finish };
-          this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
+          log({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
           return result;
         }
         if (this.onWorkUnit && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_take', 'task_link_material', 'task_finish'].includes(operation)) {
           await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
         }
-        this.logger?.append({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
+        log({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
         return result;
       }
 
@@ -973,7 +982,7 @@ export class ServicesBridge {
         case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'task_list': result = sdk.listMissionTasks(payload); break;
         case 'task_status': result = sdk.taskStatus(payload); break;
-        case 'task_view': result = sdk.viewTask(payload.task_id ?? this.taskId); break;
+        case 'task_view': result = service.dispatch('task_view', { ...payload, task_id: payload.task_id ?? this.taskId }, makeEnvelope({ actorRef: this.actorRef, operationId: bridgeOperationId })); break;
         case 'task_create':
           {
             const createTask = async () => {
@@ -999,6 +1008,7 @@ export class ServicesBridge {
           await this.bindTake(result);
           this.lastTakeOutcome = { attempted: true, ok: true, task_id: result.task.task_id, execution_id: result.execution.execution_id };
           break;
+        case 'task_revise':
         case 'task_cancel':
         case 'task_dependency_replace': result = service.dispatch(operation, payload, { ...sdk.context, operation_id: bridgeOperationId }); break;
         case 'task_link_material': result = sdk.linkMaterial(payload, options); break;
@@ -1077,7 +1087,7 @@ export class ServicesBridge {
       if (this.onWorkUnit && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'publish_material', 'context_publish_material', 'task_create', 'task_link_material'].includes(operation)) {
         await this.onWorkUnit({ operation, taskId: boundTaskId, executionId: boundExecutionId, payload, result });
       }
-      this.logger?.append({ event: 'bridge.complete', operation, ok: true, result });
+      log({ event: 'bridge.complete', operation, ok: true, result });
       return result;
     } catch (error) {
       if (operation === 'task_take' && this.token === identityToken) {
@@ -1092,7 +1102,7 @@ export class ServicesBridge {
         // Preserve the original Agent-visible Service error if audit delivery
         // itself fails.
       }
-      this.logger?.append({
+      log({
         event: 'bridge.complete',
         operation,
         ok: false,

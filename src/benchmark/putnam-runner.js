@@ -25,6 +25,7 @@ import { ServicesSDK } from '../sdk/services-sdk.js';
 import { TaskService, fixedExecutionInputHash } from '../task/task-service.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 import { verifyBenchmarkFixtureCheckout, readBenchmarkFixture, verifyBenchmarkRunFixture, assertTimedServiceComposition } from './benchmark-fixture.js';
+import { assertBenchmarkReady, readBenchmarkContext } from './benchmark-context.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
 import { ObservationStore } from '../observability/observation-store.js';
@@ -109,8 +110,13 @@ function flatHandoffReminderMs(options) {
 // FAILED. r15: a rejected workspace_revision on task_take invalidated the
 // whole run as a workspace boundary violation.
 export function isPreparationFailure(execution) {
-  return ['FAILED', 'FENCED'].includes(execution?.state)
-    && ['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason);
+  if (!['FAILED', 'FENCED'].includes(execution?.state)) return false;
+  if (['task_take_bind_failed', 'startup_prepare_failed', 'bind_prepare_failed', 'startup_failed'].includes(execution.terminal_reason)) return true;
+  // A deadline may stop a taken Execution while its Workspace is still being
+  // prepared. Only a durable, never-started budget stop gets this exception;
+  // a previously activated Execution must retain its Workspace reference.
+  return execution.state === 'FAILED' && execution.started_at === null
+    && ['bot-lifetime-budget', 'execution-timebox', 'selection-budget', 'benchmark_deadline_cleanup'].includes(execution.terminal_reason);
 }
 
 function sha256(value) {
@@ -305,7 +311,9 @@ function sdk(router, context) {
 
 function fixtureManifest(problem, sourceHash, leanProjectRoot, config) {
   return {
-    fixture_id: `putnam-${problem.id}`,
+    fixture_id: `${config.benchmark ?? 'putnam'}-${problem.id}`,
+    benchmark: config.benchmark ?? 'putnambench',
+    fixture_commit: config.fixture_commit ?? config.putnambench_commit,
     putnambench_commit: config.putnambench_commit,
     problem_file: problem.problem_file,
     problem_file_hash: sourceHash,
@@ -366,11 +374,19 @@ function observationLogger(observationStore, experimentId, source) {
 export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyPinnedCheckout = false } = {}) {
   const config = JSON.parse(await readFile(resolve(configPath), 'utf8'));
   required(putnamBenchRoot, 'putnamBenchRoot');
-  if (!Array.isArray(config.problems) || config.problems.length !== 12) {
-    throw new TypeError('benchmark config must contain exactly 12 problems');
+  if (config.benchmark != null && !SAFE_PROJECT_ID.test(config.benchmark)) {
+    throw new TypeError('invalid benchmark name');
   }
+  if (!Array.isArray(config.problems) || !config.problems.length || config.problems.length > 1000) {
+    throw new TypeError('benchmark config requires between 1 and 1000 problems');
+  }
+  if (config.instructions_path != null && (typeof config.instructions_path !== 'string' ||
+      !/^benchmark\/[A-Za-z0-9_./-]+$/.test(config.instructions_path) || config.instructions_path.split('/').includes('..'))) {
+    throw new TypeError('invalid benchmark instructions path');
+  }
+  const commit = config.fixture_commit ?? config.putnambench_commit;
   const root = resolve(putnamBenchRoot);
-  if (verifyPinnedCheckout) await verifyBenchmarkFixtureCheckout({ root, commit: config.putnambench_commit });
+  if (verifyPinnedCheckout) await verifyBenchmarkFixtureCheckout({ root, commit });
   const leanProjectRoot = resolve(root, 'lean4');
   const projectRoot = await readFile(join(leanProjectRoot, 'lean-toolchain'), 'utf8')
     .then(() => leanProjectRoot)
@@ -380,8 +396,12 @@ export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyP
   for (const problem of config.problems) {
     if (seen.has(problem.id)) throw new TypeError(`duplicate problem id: ${problem.id}`);
     seen.add(problem.id);
-    const { sourcePath, source, sourceHash } = await readBenchmarkFixture({ root, path: problem.problem_file, commit: verifyPinnedCheckout ? config.putnambench_commit : null });
+    const { sourcePath, source, sourceHash } = await readBenchmarkFixture({ root, path: problem.problem_file, commit: verifyPinnedCheckout ? commit : null });
     validateProblemInput(problem, source);
+    if (problem.source_sha256 != null && sourceHash !== problem.source_sha256) throw new TypeError(`benchmark source digest mismatch: ${problem.id}`);
+    if (problem.declaration_name != null && !/^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*$/.test(problem.declaration_name)) {
+      throw new TypeError('invalid Lean declaration name');
+    }
     problems.push({
       ...problem,
       source_path: sourcePath,
@@ -670,6 +690,7 @@ export async function takeTaskWithAgent(core, candidates) {
     return bot && !bot.execution_id && ['CLOSING', 'CLOSED'].includes(bot.state) && ['no-work', 'selection-budget', 'bot-lifetime-budget'].includes(bot.exit_reason);
   };
   const sequence = session.rpcRecords?.length ?? 0;
+  core.discoveryTurn = { session, afterSequence: sequence };
   core.takeResult = null;
   core.takeActive = true;
   core.dispatchReserved = true;
@@ -1467,6 +1488,10 @@ export function projectReport(state, startedAt, deadline) {
 async function createProjectState(problem, config, options) {
   const assertInitializing = () => { if (options.signal?.aborted) throw operatorStop(); };
   assertInitializing();
+  if ((options.timeboxMs ?? 60 * 60_000) > 0) {
+    await assertBenchmarkReady(problem, config, options.finalTreeCheckerConfig ?? config.final_tree_checker);
+    assertInitializing();
+  }
   // The Mission-scoped Task lifecycle is the only supported model.
   // Reject removed programmatic mode toggles rather than silently ignoring them.
   if (Object.hasOwn(options, 'taskModel') || Object.hasOwn(options, 'taskOriented')) {
@@ -1700,12 +1725,12 @@ async function createProjectState(problem, config, options) {
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
     const mission = taskService.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
-      goal: solver ? `Solve ${problem.id} independently.` : `Solve ${problem.id} through independent, shared Task work.`,
+      goal: `${solver ? `Solve ${problem.id} independently.` : `Solve ${problem.id} through independent, shared Task work.`}${config.instructions_path ? ` Read ${config.instructions_path} for the benchmark task and input contract.` : ''}`,
       ...(workspaceMergeChecker ? { merge_required_check: workspaceMergeChecker.identity } : {}),
       acceptance_conditions: {
         project: problem.id,
         source_hash: problem.source_hash,
-        theorem: problem.id,
+        theorem: problem.declaration_name ?? problem.id,
         target_path: problem.problem_file,
         required_check: finalTreeChecker?.identity ?? null,
       },
@@ -1714,7 +1739,7 @@ async function createProjectState(problem, config, options) {
     const publicWorkspace = await missionWorkspace.create({
       missionId: mission.mission_id,
       workspaceId,
-      initialFiles: { [problem.problem_file]: problem.source },
+      initialFiles: { ...await readBenchmarkContext(problem, config), [problem.problem_file]: problem.source },
       metadata: { input_snapshot_hash: problem.source_hash, checker: fixture.checker_ref, environment: fixture.environment_ref },
     });
     missionSubmissionStore = createMissionCoordination({ taskService, contextService, workspace: missionWorkspace,
@@ -2023,6 +2048,8 @@ async function createProjectState(problem, config, options) {
           core.take = take;
           const workerSession = core.session;
           if (!workerSession) throw new Error('Agent took a Task before its session was registered');
+          const boundAfterSequence = core.discoveryTurn?.session === workerSession
+            ? core.discoveryTurn.afterSequence : (workerSession.rpcRecords?.length ?? 0);
           // Deterministic compatibility adapters expose a `bound` marker to
           // choose their scripted prompt path.  The real Pi Session has no such
           // field; updating it here preserves the same-identity transition
@@ -2081,7 +2108,7 @@ async function createProjectState(problem, config, options) {
             let boundTurnPromise;
             boundTurnPromise = (async () => {
               try {
-                if (typeof boundSession.waitForSettled === 'function') await boundSession.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
+                if (typeof boundSession.waitForSettled === 'function') await boundSession.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: boundAfterSequence });
                 // A settled Agent turn does not necessarily release its
                 // Execution: source-level checker feedback, incremental edits,
                 // and ordinary progress may leave the Task RUNNING. Continue
@@ -2620,7 +2647,7 @@ async function runProject(problem, config, options) {
   if ((options.timeboxMs ?? 60 * 60_000) > 0) {
     problem = { ...problem };
     config = { ...config };
-    const verified = await verifyBenchmarkRunFixture({ root: config.putnam_bench_root, commit: config.putnambench_commit, problem })
+    const verified = await verifyBenchmarkRunFixture({ root: config.putnam_bench_root, commit: config.fixture_commit ?? config.putnambench_commit, problem })
       .catch(error => {
         if (options.signal?.aborted) throw operatorStop();
         throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Timed benchmarks require a verified committed fixture', {}, { cause: error });

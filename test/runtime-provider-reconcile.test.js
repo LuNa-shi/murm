@@ -58,7 +58,7 @@ test('restart persists a discovered Bot resource before delete and only frees a 
   previous.recordBotSandboxDispatch('unknown', { provider: 'opensandbox', timeoutSeconds: 60 });
   previous.markBotReady('taken');
   previous.recordBotSandbox('foreign', { provider: 'opensandbox', sandboxId: 'foreign' });
-  const task = previous.createTask({ mission_id: 'M', summary: 'Check exact behavior for a boundary example', expected_output: 'A self-contained technical note', acceptance_conditions: ['Explain accompanying output'] }, makeEnvelope({ actorRef: 'taken' })).task;
+  const task = previous.createTask({ mission_id: 'M', summary: 'Check exact behavior for a boundary example', gap: 'The Mission needs an exact boundary observation', priority: 'medium', expected_output: 'A self-contained technical note', acceptance_conditions: ['Explain accompanying output'] }, makeEnvelope({ actorRef: 'taken' })).task;
   const { execution } = previous.takeTask(task.task_id, { owner_ref: 'taken', core_id: 'two', take_key: 'take' });
   previous.close();
 

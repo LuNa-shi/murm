@@ -84,7 +84,7 @@ test('a queued Task proposal cannot acquire a successor Bot identity', async t =
   const gate = new Promise(resolve => { resume = resolve; });
   const { service, bridge, start, close } = await fixture(t, { taskCreateMutex: { run: async fn => { entered(); await gate; return fn(); } } });
   start('bot:first');
-  const proposal = bridge.call({ operation: 'task_create', payload: { mission_id: 'mission:auth', summary: 'Inspect one independently useful question', expected_output: 'Note', acceptance_conditions: ['Reviewed'] } });
+  const proposal = bridge.call({ operation: 'task_create', payload: { mission_id: 'mission:auth', gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect one independently useful question', expected_output: 'Note', acceptance_conditions: ['Reviewed'] } });
   const rejected = assert.rejects(proposal, /credentials changed/);
   await queued;
   close('bot:first');
@@ -110,7 +110,7 @@ test('Bridge refuses an expired Bot credential before the cleanup timer runs', a
   start('bot:expired');
   service.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(new Date(Date.now() - 1).toISOString(), 'bot:expired');
   assert.equal(service.getBot('bot:expired').state, 'UNBOUND');
-  await assert.rejects(bridge.call({ operation: 'task_create', payload: { summary: 'A late proposal at the real Bridge boundary', expected_output: 'Note', acceptance_conditions: ['Note'] } }), /hard deadline elapsed/);
+  await assert.rejects(bridge.call({ operation: 'task_create', payload: { gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'A late proposal at the real Bridge boundary', expected_output: 'Note', acceptance_conditions: ['Note'] } }), /hard deadline elapsed/);
 });
 
 
@@ -120,12 +120,12 @@ test('Bridge withholds contribution binding until the activation and grant callb
   const gate = new Promise(resolve => { release = resolve; });
   const { service, bridge, start } = await fixture(t, { onTake: async () => { entered(); await gate; } });
   start('bot:preparing-grant');
-  const task = service.createTask({ mission_id: 'mission:auth', summary: 'Inspect the protected binding boundary', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: 'bot:preparing-grant' })).task;
+  const task = service.createTask({ mission_id: 'mission:auth', gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect the protected binding boundary', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: 'bot:preparing-grant' })).task;
   const taken = service.takeTask(task.task_id, { owner_ref: 'bot:preparing-grant', core_id: 'core-1', take_key: 'bridge-grant' });
   const binding = bridge.bindTake(taken);
   await started;
   try {
-    await assert.rejects(bridge.call({ operation: 'task_create', payload: { summary: 'A proposal before grant completes', expected_output: 'Note', acceptance_conditions: ['Note'] } }), /binding is still being prepared/);
+    await assert.rejects(bridge.call({ operation: 'task_create', payload: { gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'A proposal before grant completes', expected_output: 'Note', acceptance_conditions: ['Note'] } }), /binding is still being prepared/);
   } finally { release(); }
   await binding;
   assert.equal(bridge.bindingPending, false);
@@ -166,7 +166,7 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
   assert.equal(file.content, 'x=y=z');
   assert.equal(file.revision, '0.1');
   const proposalPath = join(root, 'proposal.json');
-  await writeFile(proposalPath, JSON.stringify({ summary: 'Check one independently useful boundary', expected_output: 'A reproducible result', acceptance_conditions: ['Result is readable'] }));
+  await writeFile(proposalPath, JSON.stringify({ gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Check one independently useful boundary', expected_output: 'A reproducible result', acceptance_conditions: ['Result is readable'] }));
   const task = (await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-propose')).task;
   assert.equal(task.mission_id, 'mission:auth');
   const assertFlat = value => {
@@ -217,7 +217,7 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
     specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version }));
   assert.deepEqual(await run('material', 'publish', '--input', materialPath, '--request-id', 'cli-material'), published);
   assert.equal((await run('material', 'view', published.material.material_id)).material.content, published.material.content);
-  await writeFile(proposalPath, JSON.stringify({ summary: 'Inspect the replacement responsibility and its boundary', expected_output: 'A new bounded result', acceptance_conditions: ['Result is readable'] }));
+  await writeFile(proposalPath, JSON.stringify({ gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect the replacement responsibility and its boundary', expected_output: 'A new bounded result', acceptance_conditions: ['Result is readable'] }));
   const replacement = (await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-replacement')).task;
   const replacementDetail = (await run('task', 'view', replacement.task_id)).task;
   assert.equal(replacementDetail.creation.task_id, task.task_id);
@@ -234,7 +234,7 @@ test('Bot public discovery refuses foreign Mission/Task identities and does not 
   const { service, bridge, start } = await fixture(t);
   const env = start('bot:scoped-read');
   service.createMission({ mission_id: 'mission:foreign', goal: 'Private foreign work' }, makeEnvelope({ actorRef: 'operator:test' }));
-  const foreign = service.createTask({ mission_id: 'mission:foreign', summary: 'Inspect a distinct question in the foreign Mission', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
+  const foreign = service.createTask({ mission_id: 'mission:foreign', gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect a distinct question in the foreign Mission', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
   await assert.rejects(bridge.call({ operation: 'task_view', payload: { task_id: foreign.task_id } }), /not readable/);
   await assert.rejects(bridge.call({ operation: 'task_list', payload: { mission_id: 'mission:foreign' } }), /Bot Mission/);
   service.takeTask(foreign.task_id, { owner_ref: 'operator:foreign', core_id: 'foreign-core', take_key: 'foreign-take' });
@@ -293,7 +293,7 @@ test('same-ID take retry joins preparation while altered payload and other write
     result.execution = service.dispatch('start_execution', {}, makeEnvelope({ operationId: `activate:${e.execution_id}`, actorRef: e.owner_ref, taskId: e.task_id, executionId: e.execution_id, specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version })).execution;
   } });
   start('bot:retry-preparing');
-  const task = (await bridge.call({ operation: 'task_create', payload: { summary: 'Inspect a slow preparation and retry boundary', expected_output: 'A result', acceptance_conditions: ['Verified'] } })).task;
+  const task = (await bridge.call({ operation: 'task_create', payload: { gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect a slow preparation and retry boundary', expected_output: 'A result', acceptance_conditions: ['Verified'] } })).task;
   const request = { operation: 'task_take', operation_id: 'slow-take', payload: { task_id: task.task_id } };
   const first = bridge.call(request);
   await started;
@@ -312,7 +312,7 @@ test('same-ID take retry joins preparation while altered payload and other write
 test('registered Bots cannot discover foreign Tasks through retired list aliases', async t => {
   const { service, bridge, start } = await fixture(t);
   service.createMission({ mission_id: 'mission:foreign', goal: 'Private independent project' }, makeEnvelope({ actorRef: 'operator:test' }));
-  service.createTask({ mission_id: 'mission:foreign', summary: 'Foreign responsibility', expected_output: 'Result', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: 'operator:test' }));
+  service.createTask({ mission_id: 'mission:foreign', gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Foreign responsibility', expected_output: 'Result', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: 'operator:test' }));
   start('bot:scoped-discovery');
   for (const operation of ['list_tasks', 'list_eligible_tasks', 'list_executions', 'task_discover']) {
     await assert.rejects(bridge.call({ operation, payload: {} }), { code: 'NOT_ALLOWED' });
@@ -349,7 +349,7 @@ test('Bridge stop drains an admitted real HTTP call after its connection is gone
   const env = start('bot:admitted-stop');
   const req = httpRequest(`${env.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}` } });
   const disconnected = new Promise(resolve => { req.on('error', resolve); req.on('close', resolve); });
-  req.end(JSON.stringify({ operation: 'task_create', payload: { summary: 'Inspect one independent research responsibility', expected_output: 'Readable note', acceptance_conditions: ['Answer the question'] } }));
+  req.end(JSON.stringify({ operation: 'task_create', payload: { gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect one independent research responsibility', expected_output: 'Readable note', acceptance_conditions: ['Answer the question'] } }));
   await accepted;
   let stopFinished = false;
   const stopping = bridge.stop().then(() => { stopFinished = true; });
@@ -370,6 +370,95 @@ test('Bridge start settles when stop wins before the listening event', async t =
   const rejected = assert.rejects(starting, /stopped/);
   await pending.stop(); await rejected;
   assert.equal(pending.server, null);
+});
+
+
+test('stopping one Bridge cancels its queued public reads without disturbing another Bridge or writes', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-bridge-read-stop-'));
+  const workspace = new MissionWorkspace({ rootDir: root });
+  const workspaceId = 'workspace-read-stop';
+  await workspace.create({ missionId: 'mission:auth', workspaceId, initialFiles: { 'notes.txt': 'public input' } });
+  const runtime = { missionWorkspace: workspace, missionWorkspaceId: workspaceId };
+  const first = await fixture(t, { runtime });
+  const second = await fixture(t, { runtime });
+  first.start('bot:cancel-reader');
+  second.start('bot:surviving-reader');
+  let release, entered, queued;
+  const gate = new Promise(resolve => { release = resolve; });
+  const held = new Promise(resolve => { entered = resolve; });
+  const admitted = new Promise(resolve => { queued = resolve; });
+  const lock = workspace.repository.locked.bind(workspace.repository);
+  const holding = lock(workspace.workspacePath(workspaceId), async () => { entered(); await gate; });
+  await held;
+  let queuedCount = 0;
+  workspace.repository.locked = (...args) => { const result = lock(...args); if (++queuedCount === 3) queued(); return result; };
+  const read = bridge => bridge.call({ operation: 'workspace_public_read', payload: { path: 'notes.txt' } });
+  const canceled = [read(first.bridge), read(first.bridge)];
+  const rejected = canceled.map(promise => assert.rejects(promise, { code: 'NOT_ALLOWED' }));
+  let survivingFinished = false, writeFinished = false;
+  const surviving = read(second.bridge).then(result => { survivingFinished = true; return result; });
+  const saved = workspace.save({ workspaceId, baseRevision: '0.1', files: { 'notes.txt': 'retained write' } }).then(result => { writeFinished = true; return result; });
+  try {
+    await admitted;
+    const stoppedBeforeRelease = await Promise.race([
+      first.bridge.stop().then(() => true),
+      new Promise(resolve => { const timer = setTimeout(() => resolve(false), 1000); timer.unref?.(); }),
+    ]);
+    assert.equal(stoppedBeforeRelease, true, 'stopped public reads must not wait behind the held real Workspace lock');
+    await Promise.all(rejected);
+    assert.equal(survivingFinished, false, 'cancellation must not bypass the live predecessor lock');
+    assert.equal(writeFinished, false, 'queued writes retain their original lock order');
+    release(); await holding;
+    assert.equal((await surviving).content, 'public input');
+    const revision = await saved;
+    assert.equal((await workspace.read({ workspaceId, revision: revision.revision, path: 'notes.txt' })).content, 'retained write');
+    assert.equal((await second.bridge.call({ operation: 'workspace_public_view', payload: {} })).main_revision, '0.1');
+  } finally {
+    release();
+    await Promise.allSettled([holding, ...canceled, surviving, saved]);
+    await first.bridge.stop(); await second.bridge.stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test('Bridge stop cancels a public read queued after Registry authorization', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-bridge-read-dispatch-'));
+  const workspace = new MissionWorkspace({ rootDir: root });
+  const workspaceId = 'workspace-read-dispatch';
+  await workspace.create({ missionId: 'mission:auth', workspaceId, initialFiles: { 'notes.txt': 'public input' } });
+  const { bridge, start } = await fixture(t, { runtime: { missionWorkspace: workspace, missionWorkspaceId: workspaceId } });
+  start('bot:dispatch-reader');
+  let release, queued;
+  const gate = new Promise(resolve => { release = resolve; });
+  const admitted = new Promise(resolve => { queued = resolve; });
+  let holding;
+  const read = workspace.read.bind(workspace);
+  workspace.read = async options => {
+    let entered;
+    const held = new Promise(resolve => { entered = resolve; });
+    holding = workspace.repository.locked(workspace.workspacePath(workspaceId), async () => { entered(); await gate; });
+    await held;
+    const result = read(options);
+    queued();
+    return result;
+  };
+  const reading = bridge.call({ operation: 'workspace_public_read', payload: { path: 'notes.txt' } });
+  const rejected = assert.rejects(reading, { code: 'NOT_ALLOWED' });
+  try {
+    await admitted;
+    const stoppedBeforeRelease = await Promise.race([
+      bridge.stop().then(() => true),
+      new Promise(resolve => { const timer = setTimeout(() => resolve(false), 1000); timer.unref?.(); }),
+    ]);
+    assert.equal(stoppedBeforeRelease, true, 'the Registry must propagate cancellation to the actual read lock');
+    await rejected;
+  } finally {
+    release();
+    await Promise.allSettled([reading, holding]);
+    await bridge.stop();
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test('solver Bridge denies Task and Material services over the actual authenticated transport', async t => {

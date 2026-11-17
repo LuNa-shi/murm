@@ -144,7 +144,7 @@ async function startAgent(input) {
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
   const solver = input.contract_version === 'swarm-solver-v1';
   const expectedNames = solver ? ['solver-system.txt'] : ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
-  if ((!solver && input.contract_version !== 'swarm-bot-v1-draft.2') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
+  if ((!solver && input.contract_version !== 'swarm-bot-v1-draft.3') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
       new Set(input.resources.map(resource => resource?.path)).size !== expectedNames.length ||
       !expectedNames.every(name => input.resources.some(resource => resource?.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw startupContractError('complete versioned Bot contract resources are required');
   for (const resource of input.resources) {
@@ -325,7 +325,7 @@ const server = createServer(async (request, response) => {
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request)) }); return; }
     if (url.pathname.startsWith('/project/') && !initialized) throw new Error('Bot workspace is not initialized');
-    if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request, 32 * 1024 * 1024)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.grant(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/snapshot') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.snapshot(input)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/install') { const input = await body(request, 32 * 1024 * 1024); send(response, 200, { ok: true, result: await withBotPaused(pids => project.install(input, pids)) }); return; }

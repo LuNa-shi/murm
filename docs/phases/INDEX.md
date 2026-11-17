@@ -9,6 +9,8 @@
 | 01 | 第三方 Sandbox、独立 Services 与 Bash CLI | [前置阶段边界](0001-sandbox-services-cli.md) · [Issue #119](https://github.com/LuNa-shi/SwarmEnv/issues/119) | OpenSandbox 与 Bash CLI 已进入正常路径；`755c72e` 的正式 runner 仍使用同进程三库，独立 HTTP host 不构成完整生命周期部署。后续工程见 #130 |
 | 02 | Task–Material–Workspace 协作模型与 Bot 协议 | [完整设计](0002-task-material-workspace/README.md) · [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) · [讨论 #120](https://github.com/LuNa-shi/SwarmEnv/issues/120) | 核心模型及 whole-Workspace 检查已由 PR #124/#126/#128 实现；本目录保留批准的设计与固定版本附件，当前 API、兼容路径和限制见 Architecture |
 
+Phase 03: [FLT root-only proof reconstruction](0003-flt-subtree-benchmark/README.md), linked to [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135). Target design; current execution focus is Q20.
+
 ## 如何审阅和维护
 
 1. 先读 Issue 的问题、范围、决定与验收，再读该阶段的总览和分章。具体文档 PR 由 Issue 链接，避免本目录维护一份动态 PR 状态表。

@@ -41,7 +41,7 @@ const MODERN_OPERATION_ALIASES = Object.freeze({
   'execution.progress': 'execution_progress',
 });
 const COORDINATION_PERMISSIONS = new Set(['unsupersede', 'task_cancel', 'task_dependency_replace', 'mission_submit']);
-const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'finish_task', 'task_feedback', 'task_cancel', 'task_dependency_replace']);
+const MODERN_MUTATING_OPERATIONS = new Set(['create_mission', 'create_task', 'link_material', 'finish_task', 'task_feedback', 'task_revise', 'task_cancel', 'task_dependency_replace']);
 const MODERN_READ_OPERATIONS = new Set(['get_mission', 'list_task', 'view_task', 'list_task_materials']);
 const TASK_MUTATING_OPERATIONS = new Set([
   'bot_exit',
@@ -52,6 +52,7 @@ const TASK_MUTATING_OPERATIONS = new Set([
   'execution_progress',
 ]);
 const TASK_EVENT_OPERATIONS = new Set([
+  'task_revise',
   'reconcile_task', 'recover_execution', 'reopen_task', 'start_execution', 'stop_execution', 'fence_execution', 'save_checkpoint', 'save_workspace_revision', 'handoff_execution',
   'create_task', 'expire_execution', 'task_cancel', 'task_dependency_replace',
   'link_material', 'finish_task',
@@ -98,6 +99,14 @@ function taskCancellationState(task) {
 
 function hash(value) {
   return createHash('sha256').update(stableStringify(value)).digest('hex');
+}
+
+function contractPriority(value) {
+  const encoded = typeof value === 'string' ? { low: 0, medium: 1, high: 2 }[value] : value;
+  if (!Number.isInteger(encoded) || encoded < 0 || encoded > 2) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'priority must explicitly select low, medium, or high (0, 1, or 2)');
+  }
+  return encoded;
 }
 
 function rowToTask(row) {
@@ -184,6 +193,14 @@ function requireString(value, field) {
   return value;
 }
 
+function normalizeTaskContractText(payload) {
+  const normalized = { ...payload };
+  for (const field of ['summary', 'gap', 'expected_output']) {
+    if (typeof normalized[field] === 'string') normalized[field] = normalized[field].trim();
+  }
+  return normalized;
+}
+
 function positiveLimit(value, fallback) {
   if (value === undefined || value === null) return fallback;
   if (!Number.isInteger(value) || value < 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'admission limits must be positive integers');
@@ -242,6 +259,7 @@ export class TaskService {
     if (!provenanceColumns.has('collaboration_reason_json')) this.db.exec('ALTER TABLE task_creation_provenance ADD COLUMN collaboration_reason_json TEXT');
     const modernTaskColumns = new Set(this.db.prepare('PRAGMA table_info(modern_task_records)').all().map((column) => column.name));
     if (!modernTaskColumns.has('registration_hash')) this.db.exec('ALTER TABLE modern_task_records ADD COLUMN registration_hash TEXT');
+    if (!modernTaskColumns.has('gap')) this.db.exec('ALTER TABLE modern_task_records ADD COLUMN gap TEXT');
     const taskTableSql = this.db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get()?.sql ?? '';
     const needsTaskStateMigration = !taskTableSql.includes("'DONE'") || !taskTableSql.includes("'CLOSED'") || !taskTableSql.includes("'CANCELED'");
     // Older MVP databases made execution_id unique in take_keys. A waiting
@@ -676,7 +694,7 @@ export class TaskService {
           // after a lost response; a new request still checks current fences.
           const fingerprintEnvelope = normalizedOperation === 'finish_task'
             ? { ...envelope, state_version: null, fencing_version: null }
-            : (normalizedOperation === 'create_task' || ['task_cancel', 'task_dependency_replace'].includes(normalizedOperation)) && this.getBot(envelope.actor_ref)
+            : (normalizedOperation === 'create_task' || ['task_revise', 'task_cancel', 'task_dependency_replace'].includes(normalizedOperation)) && this.getBot(envelope.actor_ref)
               ? { ...envelope, state_version: null } : envelope;
           const fingerprint = operationPayload(normalizedOperation, payload, fingerprintEnvelope);
           const replay = this.#replay(envelope.operation_id, fingerprint, fingerprintEnvelope !== envelope ? operationPayload(normalizedOperation, payload, envelope) : null);
@@ -1348,6 +1366,9 @@ export class TaskService {
       ...task,
       mission_id: modern.mission_id,
       summary: modern.summary,
+      gap: modern.gap ?? null,
+      contract_format: modern.gap == null ? 'legacy' : 'mission-gap-v1',
+      priority_level: modern.gap == null ? null : ['low', 'medium', 'high'][task.priority] ?? null,
       timebox_ms: modern.timebox_ms,
       relations: this.#modernRelations(task.task_id),
       materials: this.#taskMaterialLinks(task.task_id),
@@ -1361,17 +1382,17 @@ export class TaskService {
   }
 
   #publicTask(task) {
-    const { task_id, mission_id, summary, goal, expected_output, acceptance_conditions, task_instructions,
+    const { task_id, mission_id, summary, gap, contract_format, priority_level, goal, expected_output, acceptance_conditions, task_instructions,
       completion_contract, input_material_refs, workspace, timebox_ms, priority, state, block_reason,
-      spec_version, state_version, eligible_at, created_at, updated_at, relations, materials, blockers } = task;
+      spec_version, spec_hash, state_version, eligible_at, created_at, updated_at, relations, materials, blockers } = task;
     const source = this.db.prepare(`SELECT creator_actor_ref, creator_task_id, creator_execution_id,
       collaboration_reason_json, created_at FROM task_creation_provenance WHERE task_id = ?`).get(task_id);
     const creation = source ? { actor_ref: source.creator_actor_ref, task_id: source.creator_task_id,
       execution_id: source.creator_execution_id, reason: parse(source.collaboration_reason_json),
       created_at: source.created_at } : null;
-    return { task_id, mission_id, summary, goal, expected_output, acceptance_conditions, task_instructions,
+    return { task_id, mission_id, summary, gap, contract_format, priority_level, goal, expected_output, acceptance_conditions, task_instructions,
       completion_contract, input_material_refs, workspace, base_revision: workspace?.revision ?? null, timebox_ms, priority, state, block_reason,
-      spec_version, state_version, eligible_at, created_at, updated_at, creation,
+      spec_version, spec_hash, state_version, eligible_at, created_at, updated_at, creation,
       relations: this.#publicTaskRelations(relations), materials, blockers };
   }
 
@@ -1411,18 +1432,16 @@ export class TaskService {
     requireString(payload.mission_id, 'mission_id');
     requireString(payload.summary, 'summary');
     requireString(payload.expected_output, 'expected_output');
+    if (!payload.summary.trim() || payload.summary.length > 240) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'summary must be a nonblank short title of at most 240 characters');
+    if (!payload.expected_output.trim() || payload.expected_output.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'expected_output must be nonblank and at most 4000 characters');
     if (payload.acceptance_conditions === undefined || payload.acceptance_conditions === null ||
       (typeof payload.acceptance_conditions !== 'object' && !Array.isArray(payload.acceptance_conditions))) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must be an object or array');
-    }
-    if (payload.summary.trim().length < 20) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'summary must describe a substantial question and boundary');
     }
     if ((Array.isArray(payload.acceptance_conditions) && payload.acceptance_conditions.length === 0) ||
       (!Array.isArray(payload.acceptance_conditions) && Object.keys(payload.acceptance_conditions).length === 0)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'acceptance_conditions must contain at least one condition');
     }
-    if (payload.summary.length > 4_000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'summary must be at most 4000 characters');
     const timebox = payload.timebox_ms ?? payload.timeboxMs ?? 60 * 60 * 1000;
     if (!Number.isInteger(timebox) || timebox <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timebox_ms must be a positive integer');
     const responsibilityKey = payload.responsibility_key ?? payload.responsibilityKey ?? null;
@@ -1470,6 +1489,9 @@ export class TaskService {
   }
 
   #createModernTask(payload, envelope) {
+    payload = normalizeTaskContractText(payload);
+    const callerBot = this.getBot(envelope.actor_ref);
+    if (payload.mission_id === undefined && callerBot) payload = { ...payload, mission_id: callerBot.mission_id };
     const { timebox_ms: timeboxMs } = this.#assertModernTaskInput(payload);
     if (Object.hasOwn(payload, 'spawned_from') || Object.hasOwn(payload, 'spawnedFrom')) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'spawned_from is retired; Task creator and Execution record proposal provenance');
@@ -1479,6 +1501,11 @@ export class TaskService {
     if (!mission) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown mission: ${missionId}`);
     this.#assertMissionOpen(missionId);
     const bot = this.getBot(envelope.actor_ref);
+    if (bot || payload.gap !== undefined) {
+      requireString(payload.gap, 'gap');
+      if (!payload.gap.trim() || payload.gap.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'gap must describe a concrete Mission contribution in at most 4000 characters');
+      contractPriority(payload.priority);
+    }
     if (bot) {
       if (!['UNBOUND', 'ACTIVE'].includes(bot.state) || bot.mission_id !== missionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task proposal requires a live Bot in its own Mission');
       if (bot.state === 'ACTIVE' && (!envelope.execution_id || bot.execution_id !== envelope.execution_id)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bound Task proposal must include the current Bot Execution');
@@ -1541,7 +1568,7 @@ export class TaskService {
     const taskTypeVersion = payload.task_type_version ?? '1.0';
     const ownerRef = payload.owner_ref ?? envelope.actor_ref;
     requireString(ownerRef, 'owner_ref');
-    const priority = payload.priority ?? 0;
+    const priority = bot || payload.gap !== undefined ? contractPriority(payload.priority) : payload.priority ?? 0;
     if (!Number.isInteger(priority) || priority < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'priority must be a non-negative integer');
     const completionContract = { ...(payload.completion_contract ?? {}) };
     if (!completionContract || typeof completionContract !== 'object' || Array.isArray(completionContract)) {
@@ -1562,7 +1589,7 @@ export class TaskService {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${retiredContractField} is retired from the Mission Task contract`);
     }
     const spec = {
-      task_id: taskId, mission_id: missionId, summary: payload.summary, task_type: taskType,
+      task_id: taskId, mission_id: missionId, summary: payload.summary, ...(payload.gap !== undefined ? { gap: payload.gap } : {}), task_type: taskType,
       task_type_version: taskTypeVersion, goal: payload.goal ?? payload.summary, expected_output: payload.expected_output,
       acceptance_conditions: payload.acceptance_conditions, completion_contract: completionContract,
       timebox_ms: timeboxMs, owner_ref: ownerRef, priority, responsibility_key: responsibilityKey,
@@ -1614,8 +1641,8 @@ export class TaskService {
         json(inputMaterialRefs), 1, hash(fixedSpec),
         json(completionContract), createdAt, envelope.actor_ref, createdAt, createdAt);
     this.db.prepare(`INSERT INTO modern_task_records
-      (task_id, mission_id, summary, timebox_ms, registration_hash, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)`).run(taskId, missionId, payload.summary, timeboxMs, registrationHash, createdAt, createdAt);
+      (task_id, mission_id, summary, gap, timebox_ms, registration_hash, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(taskId, missionId, payload.summary, payload.gap ?? null, timeboxMs, registrationHash, createdAt, createdAt);
     this.db.prepare('UPDATE tasks SET responsibility_key = ? WHERE task_id = ?').run(responsibilityKey, taskId);
     const relationStatement = this.db.prepare(`INSERT INTO task_relations
       (relation_id, mission_id, task_id, relation_kind, related_task_id,
@@ -1631,6 +1658,7 @@ export class TaskService {
       collaborationReason: payload.collaboration_reason ?? payload.collaborationReason ?? null,
       createdAt,
     });
+    this.#recordContractRevision(this.getTask(taskId), envelope.actor_ref, 'Initial Task proposal');
     return {
       task: this.#decorateModernTask(rowToTask(this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId))),
       created_from_execution_id: currentExecution?.execution_id ?? null,
@@ -1711,16 +1739,17 @@ export class TaskService {
     // The Mission-only index includes rowid implicitly, so sparse matches do
     // not force sorting or scanning the rest of the Mission on every page.
     const rows = this.db.prepare(`WITH page AS MATERIALIZED (
-      SELECT task_id, mission_id, summary, timebox_ms, rowid AS creation_sequence
+      SELECT task_id, mission_id, summary, gap, timebox_ms, rowid AS creation_sequence
       FROM modern_task_records WHERE rowid > ? AND rowid <= ? ${scopeSql} ORDER BY rowid LIMIT 501
     ) SELECT t.task_id, t.state, t.spec_version, t.state_version, t.priority, t.created_at, t.updated_at,
       substr(t.block_reason, 1, 1000) AS block_reason, length(t.block_reason) AS block_reason_length,
       substr(t.expected_output, 1, 1000) AS expected_output, length(t.expected_output) AS expected_output_length,
       page.mission_id, page.timebox_ms, page.creation_sequence,
       substr(page.summary, 1, 1000) AS summary, length(page.summary) AS summary_length,
-      (? IS NULL OR page.summary LIKE ? OR t.goal LIKE ? OR t.expected_output LIKE ?) AS query_matches
+      substr(page.gap, 1, 1000) AS gap, length(page.gap) AS gap_length,
+      (? IS NULL OR page.summary LIKE ? OR t.goal LIKE ? OR t.expected_output LIKE ? OR page.gap LIKE ?) AS query_matches
       FROM page JOIN tasks t ON t.task_id = page.task_id ORDER BY page.creation_sequence`).all(
-      after, ceiling, ...(missionId === null ? [] : [missionId]), query, ...Array(3).fill(query === null ? null : `%${query}%`));
+      after, ceiling, ...(missionId === null ? [] : [missionId]), query, ...Array(4).fill(query === null ? null : `%${query}%`));
     const dependencySummary = this.db.prepare(`SELECT
       EXISTS(SELECT 1 FROM task_relations WHERE task_id = ? AND relation_kind = 'depends_on'
         UNION ALL SELECT 1 FROM task_structure_dependencies WHERE task_id = ? AND retired_at IS NULL) AS present`);
@@ -1739,10 +1768,12 @@ export class TaskService {
             FROM executions e JOIN execution_finish_intents f ON f.execution_id = e.execution_id
             WHERE e.task_id = ? AND f.outcome = 'cancelled' AND f.closed_at IS NOT NULL
             ORDER BY f.closed_at DESC, e.execution_id DESC LIMIT 1`).get(row.task_id) : null;
-      const truncated = ['summary', 'expected_output', 'block_reason'].filter(field => row[`${field}_length`] > 1000);
+      const truncated = ['summary', 'gap', 'expected_output', 'block_reason'].filter(field => row[`${field}_length`] > 1000);
       if (cancelled?.reason_length > 1000) truncated.push('cancellation_reason');
       const owner = this.db.prepare(`SELECT execution_id, owner_ref, state FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'CLOSING') ORDER BY created_at DESC LIMIT 1`).get(row.task_id) ?? null;
       tasks.push({ task_id: row.task_id, mission_id: row.mission_id, summary: row.summary,
+        gap: row.gap, contract_format: row.gap == null ? 'legacy' : 'mission-gap-v1',
+        priority_level: row.gap == null ? null : ['low', 'medium', 'high'][row.priority] ?? null,
         expected_output: row.expected_output, truncated_fields: truncated, state: row.state,
         spec_version: row.spec_version, state_version: row.state_version, priority: row.priority, timebox_ms: row.timebox_ms,
         created_at: row.created_at, updated_at: row.updated_at, available: ready, current_execution: owner,
@@ -1757,19 +1788,28 @@ export class TaskService {
       guidance: 'Read relevant continuation pages and Task detail before proposing or taking. New Tasks after this scan began require a fresh query.' };
   }
 
-  #viewModernTask(taskId, envelope) {
+  #viewModernTask(taskId, envelope, payload = {}) {
     const task = this.#decorateModernTask(rowToTask(this.db.prepare('SELECT * FROM tasks WHERE task_id = ?').get(taskId)));
     if (!task?.mission_id) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown modern Task: ${taskId}`);
+    const bot = this.getBot(envelope.actor_ref);
+    if (bot && bot.mission_id !== task.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task detail is limited to the Bot Mission');
     const history = this.listExecutions(taskId).map(execution => {
       const { execution_id, owner_ref, core_id, attempt_no, state, terminal_reason, workspace_input,
-        created_at, updated_at } = execution;
+        created_at, updated_at, spec_version, spec_hash } = execution;
       return { execution_id, owner_ref, core_id, attempt_no, state, terminal_reason, workspace_input,
-        created_at, updated_at, finish: this.getExecutionFinish(execution_id) };
+        created_at, updated_at, spec_version, spec_hash, finish: this.getExecutionFinish(execution_id) };
     });
     const finishes = history.map(execution => execution.finish).filter(Boolean);
     const cancellation = this.db.prepare('SELECT * FROM task_cancellations WHERE task_id = ?').get(taskId) ?? null;
     const relations = this.getBot(envelope.actor_ref) ? this.#publicTaskRelations(task.relations) : task.relations;
+    const after = payload.contract_history_after_version ?? 0;
+    const limit = payload.contract_history_limit ?? 50;
+    if (!Number.isSafeInteger(after) || after < 0 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Contract history requires a nonnegative after version and limit 1..100');
+    const versions = this.db.prepare('SELECT * FROM task_contract_revisions WHERE task_id = ? AND spec_version > ? ORDER BY spec_version LIMIT ?').all(taskId, after, limit + 1);
+    const historyPage = versions.slice(0, limit).map(({ contract_json, ...row }) => ({ ...row, contract: parse(contract_json) }));
     return { task, mission: this.#getMission(task.mission_id), relations, blockers: task.blockers,
+      contract_history: historyPage, contract_history_page: { complete: versions.length <= limit,
+        next_after_version: versions.length > limit ? historyPage.at(-1).spec_version : null },
       materials: task.materials, executions: history, finishes, cancellation };
   }
 
@@ -2299,7 +2339,7 @@ export class TaskService {
     if (operation === 'get_mission') return this.#getMission(requireString(payload.mission_id, 'mission_id'));
     if (operation === 'task_status') return this.#taskStatus(payload, envelope);
     if (operation === 'list_task') return this.#listTaskPage(payload, envelope);
-    if (operation === 'view_task') return this.#viewModernTask(requireString(payload.task_id ?? envelope.task_id, 'task_id'), envelope);
+    if (operation === 'view_task') return this.#viewModernTask(requireString(payload.task_id ?? envelope.task_id, 'task_id'), envelope, payload);
     if (operation === 'list_task_materials') {
       const taskId = requireString(payload.task_id ?? envelope.task_id, 'task_id');
       if (!this.getTask(taskId)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown Task: ${taskId}`);
@@ -2338,6 +2378,7 @@ export class TaskService {
       case 'bot_exit': return this.#exitBot(payload, envelope);
       case 'create_mission': return this.#createMission(payload, envelope);
       case 'create_task': return this.#createModernTask(payload, envelope);
+      case 'task_revise': return this.#reviseTask(payload, envelope);
       case 'task_cancel': return this.#cancelUnownedTask(payload, envelope);
       case 'task_dependency_replace': return this.#replaceInvalidTaskDependency(payload, envelope);
       case 'link_material': return this.#linkMaterial(payload, envelope);
@@ -2470,7 +2511,13 @@ export class TaskService {
   }
 
   #coordinationTarget(payload, envelope, operation, allowedStates) {
-    const scope = this.assertMissionCoordination(envelope, operation);
+    let scope;
+    if (operation === 'task_revise' || operation === 'task_cancel') {
+      const bot = this.getBot(envelope.actor_ref);
+      if (bot?.state !== 'UNBOUND') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task revision and cancellation require an UNBOUND Bot');
+      this.#assertMissionOpen(bot.mission_id);
+      scope = this.materialScope(envelope);
+    } else scope = this.assertMissionCoordination(envelope, operation);
     const taskId = requireString(payload.task_id, 'task_id');
     const task = this.getTask(taskId);
     if (!task || task.mission_id !== scope.mission_id) {
@@ -2485,15 +2532,95 @@ export class TaskService {
       });
     }
     const owned = this.db.prepare("SELECT 1 FROM executions WHERE task_id = ? AND state IN ('CREATED', 'RUNNING', 'CLOSING', 'WAITING') LIMIT 1").get(taskId);
-    if (owned || !allowedStates.includes(task.state)) {
+    const cleaning = this.db.prepare(`SELECT 1 FROM executions e LEFT JOIN bots b ON b.execution_id = e.execution_id
+      LEFT JOIN execution_finish_intents f ON f.execution_id = e.execution_id
+      WHERE e.task_id = ? AND (b.state IN ('ACTIVE', 'CLOSING') OR (f.execution_id IS NOT NULL AND f.closed_at IS NULL)) LIMIT 1`).get(taskId);
+    if (owned || cleaning || !allowedStates.includes(task.state)) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task coordination requires an unowned Task in an eligible state');
     }
     return { task, scope };
   }
 
+  #recordContractRevision(task, actorRef, reason) {
+    const fields = ['task_id', 'mission_id', 'summary', 'gap', 'contract_format', 'goal', 'expected_output',
+      'acceptance_conditions', 'completion_contract', 'priority', 'priority_level', 'timebox_ms', 'task_instructions',
+      'workspace', 'input_material_refs', 'spec_version', 'spec_hash', 'task_type', 'task_type_version', 'owner_ref', 'responsibility_key'];
+    const contract = Object.fromEntries(fields.map(field => [field, task[field]]));
+    contract.depends_on = task.relations.depends_on.map(row => row.related_task_id).sort();
+    this.db.prepare(`INSERT OR IGNORE INTO task_contract_revisions
+      (task_id, spec_version, spec_hash, actor_ref, reason, contract_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+      .run(task.task_id, task.spec_version, task.spec_hash, actorRef, reason, json(contract), now());
+    return { ...this.db.prepare('SELECT * FROM task_contract_revisions WHERE task_id = ? AND spec_version = ?').get(task.task_id, task.spec_version), contract };
+  }
+
+  #reviseTask(payload, envelope) {
+    const { task } = this.#coordinationTarget(payload, envelope, 'task_revise', ['OPEN', 'BLOCKED']);
+    const reason = requireString(payload.reason, 'reason');
+    if (!reason.trim() || reason.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Revision reason must be nonblank and at most 4000 characters');
+    const changes = payload.changes;
+    const allowed = new Set(['summary', 'gap', 'expected_output', 'acceptance_conditions', 'priority', 'depends_on',
+      'input_material_refs', 'workspace', 'base_revision', 'task_instructions']);
+    if (!changes || typeof changes !== 'object' || Array.isArray(changes) || !Object.keys(changes).length || Object.keys(changes).some(key => !allowed.has(key))) {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task changes must contain supported contract fields');
+    }
+    const next = normalizeTaskContractText({ ...task, ...changes });
+    this.#assertModernTaskInput(next);
+    requireString(next.gap, 'gap');
+    if (!next.gap.trim() || next.gap.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'gap must describe a concrete Mission contribution in at most 4000 characters');
+    const priority = contractPriority(next.priority);
+    if (task.contract_format === 'legacy' && !Object.hasOwn(changes, 'priority')) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Revising a legacy Task requires explicitly selecting its priority');
+    if (!Array.isArray(next.input_material_refs) || next.input_material_refs.length > 100 || next.input_material_refs.some(id => typeof id !== 'string' || !id)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task input Materials must contain at most 100 IDs');
+    if (typeof next.task_instructions !== 'string' || !next.workspace || typeof next.workspace !== 'object' || Array.isArray(next.workspace)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Task instructions and Workspace inputs have invalid types');
+    const workspace = { ...next.workspace };
+    if (Object.hasOwn(changes, 'base_revision')) {
+      if (typeof changes.base_revision !== 'string' || !/^\d+\.\d+$/.test(changes.base_revision)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'base_revision must name a fixed public revision');
+      if (changes.workspace?.revision !== undefined && changes.workspace.revision !== changes.base_revision) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'base_revision conflicts with workspace.revision');
+      workspace.revision = changes.base_revision;
+    }
+    const dependsOn = Object.hasOwn(changes, 'depends_on') ? changes.depends_on : task.relations.depends_on.map(row => row.related_task_id);
+    const existingPrerequisites = new Set(task.relations.depends_on.map(row => row.related_task_id));
+    if (!Array.isArray(dependsOn) || dependsOn.length > 100 || dependsOn.some(id => typeof id !== 'string' || !id)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'depends_on must contain at most 100 Task IDs');
+    for (const id of new Set(dependsOn)) {
+      const prerequisite = this.getTask(id);
+      if (!prerequisite || prerequisite.mission_id !== task.mission_id ||
+          (['CANCELLED', 'CANCELED'].includes(prerequisite.state) && !existingPrerequisites.has(id))) {
+        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'New prerequisites require non-cancelled Tasks in the same Mission');
+      }
+      this.#assertModernDependencyCycle(task.task_id, id);
+    }
+    this.#recordContractRevision(task, task.created_by, 'Contract preserved before first revision');
+    const at = now();
+    if (Object.hasOwn(changes, 'depends_on')) {
+      this.db.prepare("DELETE FROM task_relations WHERE task_id = ? AND relation_kind = 'depends_on'").run(task.task_id);
+      const insert = this.db.prepare(`INSERT INTO task_relations (relation_id, mission_id, task_id, relation_kind, related_task_id, created_by, created_at)
+        VALUES (?, ?, ?, 'depends_on', ?, ?, ?)`);
+      for (const id of new Set(dependsOn)) insert.run(randomUUID(), task.mission_id, task.task_id, id, envelope.actor_ref, at);
+    }
+    const creation = this.db.prepare('SELECT collaboration_reason_json FROM task_creation_provenance WHERE task_id = ?').get(task.task_id);
+    const spec = { summary: next.summary, gap: next.gap, expected_output: next.expected_output,
+      task_type: task.task_type, task_type_version: task.task_type_version,
+      goal: Object.hasOwn(changes, 'summary') ? next.summary : next.goal, owner_ref: task.owner_ref,
+      responsibility_key: task.responsibility_key, collaboration_reason: parse(creation?.collaboration_reason_json),
+      acceptance_conditions: next.acceptance_conditions, completion_contract: next.completion_contract,
+      priority, workspace, depends_on: [...new Set(dependsOn)].sort(), input_material_refs: [...new Set(next.input_material_refs)].sort(),
+      task_instructions: next.task_instructions, timebox_ms: next.timebox_ms, task_id: task.task_id, mission_id: task.mission_id };
+    this.db.prepare(`UPDATE tasks SET goal = ?, expected_output = ?, acceptance_conditions_json = ?, priority = ?,
+      workspace_json = ?, input_material_refs_json = ?, task_instructions = ?, spec_version = spec_version + 1,
+      spec_hash = ?, state_version = state_version + 1, updated_at = ? WHERE task_id = ?`)
+      .run(Object.hasOwn(changes, 'summary') ? next.summary : next.goal, next.expected_output, json(next.acceptance_conditions), priority,
+        json(workspace), json(next.input_material_refs), next.task_instructions, hash(spec), at, task.task_id);
+    this.db.prepare('UPDATE modern_task_records SET summary = ?, gap = ?, registration_hash = ?, updated_at = ? WHERE task_id = ?')
+      .run(next.summary, next.gap, hash({ ...spec, task_id: null }), at, task.task_id);
+    this.#reconcileTask({ task_id: task.task_id }, makeEnvelope({ actorRef: 'runtime:contract-reconciliation' }));
+    const revised = this.getTask(task.task_id);
+    const { contract_json: _stored, ...revision } = this.#recordContractRevision(revised, envelope.actor_ref, reason);
+    return { task: revised, revision };
+  }
+
   #cancelUnownedTask(payload, envelope) {
     const { task } = this.#coordinationTarget(payload, envelope, 'task_cancel', ['OPEN', 'BLOCKED']);
     const reason = requireString(payload.reason, 'reason');
+    if (!reason.trim() || reason.length > 4000) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Cancellation reason must be nonblank and at most 4000 characters');
     const replacementTaskId = payload.replacement_task_id ?? null;
     this.#assertTaskReplacement(task.task_id, replacementTaskId);
     const at = now();
@@ -3572,7 +3699,7 @@ export class TaskService {
     const matches = identity => Object.entries(delivery.check).every(([key, value]) => identity?.[key] === value);
     if (delivery.check && delivery.require_main) {
       const proof = metadata.check;
-      if (proof?.verdict !== 'PASS' || proof.checked_tree !== metadata.git_tree || !matches(proof.checker) ||
+      if (proof?.check_mode === 'lean-module' || proof?.scope === 'module' || proof?.verdict !== 'PASS' || proof.checked_tree !== metadata.git_tree || !matches(proof.checker) ||
           proof.policy?.task?.spec_version !== task.spec_version) {
         throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Declared final-tree delivery check did not pass');
       }
@@ -3587,7 +3714,8 @@ export class TaskService {
       const result = checkResultId ? this.getCheckResult(checkResultId) : null;
       const input = result?.evidence?.workspace_input;
       const file = files[0];
-      if (result?.verdict !== 'PASS' || !['RECEIVED', 'APPLIED'].includes(result.status) || result.execution_id !== execution.execution_id ||
+      if (input?.check_mode === 'lean-module' || result?.evidence?.build_scope === 'module' ||
+          result?.verdict !== 'PASS' || !['RECEIVED', 'APPLIED'].includes(result.status) || result.execution_id !== execution.execution_id ||
           result.target_task_id !== task.task_id || result.target_spec_version !== task.spec_version ||
           !matches(result) || input?.workspace_id !== workspaceId || input.revision !== revision ||
           input.path !== file.path || input.content_hash !== file.content_hash ||

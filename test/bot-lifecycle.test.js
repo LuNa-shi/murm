@@ -29,7 +29,7 @@ test('a registered Bot binds exactly one Execution and never takes a second Task
   const bot = start('bot:one-task');
   service.recordBotSandbox(bot.bot_id, { provider: 'controlled', sandboxId: 'sandbox:one-task' });
   service.markBotReady(bot.bot_id);
-  const create = (id) => service.createTask({ mission_id: bot.mission_id, task_id: id, summary: `Investigate local question ${id}`,
+  const create = (id) => service.createTask({ mission_id: bot.mission_id, task_id: id, gap: `The Mission needs an answer to independent question ${id}`, priority: 'medium', summary: `Investigate local question ${id}`,
     goal: `Resolve ${id}`, expected_output: 'Reusable conclusion', acceptance_conditions: ['Question answered'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const first = create('task:first');
   const second = create('task:second');
@@ -95,7 +95,7 @@ test('expired durable deadline denies a fresh Bot write even before a timer chan
   const past = new Date(Date.now() - 1).toISOString();
   service.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(past, bot.bot_id);
   assert.equal(service.getBot(bot.bot_id).state, 'UNBOUND');
-  assert.throws(() => service.createTask({ mission_id: bot.mission_id, summary: 'Late proposal must be rejected at the write boundary', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })), /hard deadline elapsed/);
+  assert.throws(() => service.createTask({ mission_id: bot.mission_id, gap: 'The Mission still lacks this late boundary observation', priority: 'medium', summary: 'Late proposal must be rejected at the write boundary', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })), /hard deadline elapsed/);
 });
 
 test('trusted Runtime activation rechecks the Bot deadline inside the Task write transaction', t => {
@@ -103,7 +103,7 @@ test('trusted Runtime activation rechecks the Bot deadline inside the Task write
   const bot = start('bot:activate-expired');
   service.recordBotSandbox(bot.bot_id, { provider: 'controlled', sandboxId: 'sandbox:activate-expired' });
   service.markBotReady(bot.bot_id);
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Verify the activation write boundary', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ mission_id: bot.mission_id, gap: 'The Mission needs evidence that expired activation is denied', priority: 'medium', summary: 'Verify the activation write boundary', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'expired-activation' });
   service.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(new Date(Date.now() - 1).toISOString(), bot.bot_id);
   assert.throws(() => service.dispatch('start_execution', {}, makeEnvelope({ actorRef: 'runtime:trusted', taskId: task.task_id, executionId: execution.execution_id,
@@ -117,7 +117,7 @@ test('a queued Runtime heartbeat cannot renew a registered Bot lease after expir
   const bot = start('bot:late-heartbeat');
   service.recordBotSandbox(bot.bot_id, { provider: 'controlled', sandboxId: 'sandbox:late-heartbeat' });
   service.markBotReady(bot.bot_id);
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Observe delayed heartbeat admission',
+  const task = service.createTask({ mission_id: bot.mission_id, gap: 'The Mission needs evidence that expired heartbeats cannot renew leases', priority: 'medium', summary: 'Observe delayed heartbeat admission',
     expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution: preparing } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'late-heartbeat' });
   const envelope = (execution, actorRef = 'runtime:core-1') => makeEnvelope({ actorRef, taskId: execution.task_id,

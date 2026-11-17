@@ -8,7 +8,18 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261117-06` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) | **B1 accepted; protocol/cleanup PASS; natural resource-error recovery** | `ccdd5c7` | [Nested-resource acceptance](EXP-20261117-06-nested-resource-acceptance.md) |
+| `EXP-20261117-05` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) | **B1 accepted, protocol/cleanup PASS; diagnostic repair incomplete** | `30908fc` | [Issue137 Putnam acceptance](EXP-20261117-05-issue137-putnam-acceptance.md) |
 | `EXP-20261117-04` | [Issue #138](https://github.com/LuNa-shi/SwarmEnv/issues/138) | **PASS · legacy cleanup; accepted in 18m28s, protocol valid** | `e8fd842` | [Legacy cleanup Putnam acceptance](EXP-20261117-04-legacy-cleanup-putnam.md) |
+| `EXP-20261117-03` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · 8h UNSOLVED; protocol INVALID, analyzer failed** | `d60b6b0` | [Q20 eight-hour retry](EXP-20261117-03-q20-subtree-8h.md) |
+| `EXP-20261117-02` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · STOPPED; align settlement wait** | `d60b6b0` | [Q20 eight-hour retry](EXP-20261117-02-q20-subtree-8h.md) |
+| `EXP-20261117-01` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · STARTUP_BLOCKED; zero model calls** | `2dc4a16` | [Q20 eight-hour](EXP-20261117-01-q20-subtree-8h.md) |
+| `EXP-20261116-14` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · COMPLETED; unsolved, audit misclassification diagnosed** | `d79ace7` | [Q20 root-only one-hour](EXP-20261116-14-q20-subtree-1h.md) |
+| `EXP-20261116-13` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · COMPLETED; unsolved, protocol valid** | `d79ace7` | [Q20 root-only health](EXP-20261116-13-q20-subtree-health-15m.md) |
+| `EXP-20261116-12` | [Issue #133](https://github.com/LuNa-shi/SwarmEnv/issues/133) | **FLT10 Q20 · HELD BEFORE LAUNCH; actual-target positive control pending** | `7f1f089` | [Q20 observation](EXP-20261116-12-flt-q20-after-q10-1h.md) |
+| `EXP-20261116-11` | [Issue #133](https://github.com/LuNa-shi/SwarmEnv/issues/133) | **FLT10 Q10 repair, 4 Core · PASS; accepted in 9m18s including deployment** | `7f1f089` | [Q10 repair observation](EXP-20261116-11-flt-q10-repair-1h.md) |
+| `EXP-20261116-10` | [Issue #133](https://github.com/LuNa-shi/SwarmEnv/issues/133) | **FLT10 Q20, 4 Core · INTERRUPTED; Q10-first correction** | `361a964` | [FLT Q20 observation](EXP-20261116-10-flt-q20-1h.md) |
+| `EXP-20261116-09` | [Issue #133](https://github.com/LuNa-shi/SwarmEnv/issues/133) | **FLT10 Q10, 4 Core · BLOCKED after 14m15s including deployment** | `361a964` | [FLT Q10 observation](EXP-20261116-09-flt-q10-1h.md) |
 | `EXP-20261116-08` | [Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) | **PASS · accepted in 20m28s from startup, within 1h maximum** | `1c2d5d5` | [Judge queue repeat](EXP-20261116-08-judge-queue-1h.md) |
 | `EXP-20261116-07` | [Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) | **PASS with recorded limits/interruption · accepted in 19m10s of 1h maximum** | `e18c7ae` | [Centralized Judge repeat](EXP-20261116-07-centralized-judge-1h.md) |
 | `EXP-20261116-05` | [Issue #129](https://github.com/LuNa-shi/SwarmEnv/issues/129) | **Trusted proof accepted; protocol INVALID; owner ended observation** | `2edb9b0` | [Independent Pass@1](EXP-20261116-05-pass-k-1-1h.md) |

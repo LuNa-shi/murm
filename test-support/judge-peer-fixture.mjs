@@ -1,7 +1,9 @@
 import { createJudgeServicePeer } from '../src/sdk/judge-service-peer.js';
-import { runProcess } from '../src/judge/lean-adapter.js';
+import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js';
+import { readFile } from 'node:fs/promises';
+import { runProcess, LeanChecker } from '../src/judge/lean-adapter.js';
 const config = JSON.parse(process.env.JUDGE_PEER_FIXTURE);
-const checker = {
+let checker = {
   timeoutMs: config.processTimeoutMs ?? 2000,
   preflight: async ({ startProcess, assertCanStart }) => {
     assertCanStart();
@@ -15,6 +17,16 @@ const checker = {
     return { verdict: process.exit_code === 0 ? 'PASS' : 'ERROR', evidence: { checker_started: true, exit_code: process.exit_code } };
   },
 };
+if (config.realLeanRoot) {
+  const fixtureSource = await readFile(`${config.fixtureManifest.project_root}/Target.lean`, 'utf8');
+  const verifier = new LeanFinalTreeVerifier({ identity: config.fixtureManifest, leanRoot: config.realLeanRoot,
+    libraryRoots: [], comparatorLibraryRoots: ['/unused', '/unused'], exporterPath: '/unused/export',
+    targetPath: 'Target.lean', declarationName: 'target', fixtureSource,
+    fixtureSha256: config.fixtureManifest.problem_file_hash, projectChecks: true,
+    allowUnboundedDiagnostics: true, timeoutMs: 30000 });
+  checker = new LeanChecker({ command: `${config.realLeanRoot}/bin/lake`, checkerVersion: 'fixture',
+    timeoutMs: 30000, projectChecker: input => verifier.checkProject(input) });
+}
 const peer = createJudgeServicePeer({ ...config, checker });
 console.log(JSON.stringify(await peer.start()));
 process.once('SIGTERM', async () => { await peer.stop(); process.exit(0); });

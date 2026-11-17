@@ -409,7 +409,9 @@ test('accepted incomplete finish keeps the Task occupied through failed cleanup 
   assert.equal(service.getTask(execution.task_id).state, 'RUNNING');
 });
 
-test('Runtime completes an accepted finish without a live CLI caller', { timeout: 3000 }, async (t) => {
+// These integration tests create and remove real Git worktrees. The outer
+// watchdog bounds a hung test; lifecycle events and retry counts are the oracle.
+test('Runtime completes an accepted finish without a live CLI caller', { timeout: 30000 }, async (t) => {
   const { service, runtime, session, executionId } = await fixture(t);
   const closed = deferred();
   service.subscribeTaskEvents((event) => { if (event.kind === 'task_finish_closed') closed.resolve(); });
@@ -519,7 +521,7 @@ test('concurrent Bridge and benchmark cleanup release only their original bindin
 });
 
 
-test('Runtime retries a transient finish cleanup failure without CLI or benchmark assistance', { timeout: 3000 }, async (t) => {
+test('Runtime retries a transient finish cleanup failure without CLI or benchmark assistance', { timeout: 30000 }, async (t) => {
   let attempts = 0;
   const { service, runtime, executionId } = await fixture(t, {
     removeSandbox: async () => new Response('{}', { status: ++attempts === 1 ? 503 : 200 }),
@@ -531,13 +533,13 @@ test('Runtime retries a transient finish cleanup failure without CLI or benchmar
   service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
     executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
   await closed.promise;
-  await runtime.waitForExecutionRelease(executionId, { timeoutMs: 1000 });
+  await runtime.waitForExecutionRelease(executionId, { timeoutMs: 10000 });
   assert.equal(attempts, 2);
   assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
-test('automatic finish cleanup has a retry bound and retains ownership when exhausted', { timeout: 3000 }, async (t) => {
+test('automatic finish cleanup has a retry bound and retains ownership when exhausted', { timeout: 30000 }, async (t) => {
   let attempts = 0;
   let fail = true;
   const retried = deferred();
@@ -563,7 +565,7 @@ test('automatic finish cleanup has a retry bound and retains ownership when exha
   assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
 });
 
-test('maintenance retries retained Workspace cleanup after finish is already terminal', { timeout: 3000 }, async (t) => {
+test('maintenance retries retained Workspace cleanup after finish is already terminal', { timeout: 30000 }, async (t) => {
   const exhausted = deferred();
   const { service, runtime, executionId } = await fixture(t, { runtimeOptions: {
     finishCleanupRetryMs: 10, maxFinishCleanupRetries: 1,

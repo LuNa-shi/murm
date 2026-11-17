@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
@@ -38,6 +38,22 @@ import { TaskService } from '../src/task/task-service.js';
 import { ServiceCommitGate } from '../src/sdk/service-commit-gate.js';
 import { startIndependentServices } from '../src/sdk/independent-services.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
+
+test('independent Judge rejects an overflowing composed HTTP deadline before peer startup', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'judge-http-deadline-'));
+  const tasks = new TaskService();
+  let services;
+  t.after(async () => { await services?.close(); tasks.close(); await rm(root, { recursive: true, force: true }); });
+  const logRoot = join(root, 'logs');
+  await assert.rejects(async () => {
+    services = await startIndependentServices({ taskService: tasks, projectDir: root, logRoot,
+      fixtureManifest: { fixture_id: 'overflow', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
+        problem_file_hash: 'b'.repeat(64), lean_toolchain: 'controlled', mathlib_version: 'controlled',
+        checker_ref: 'controlled', checker_version: '1', environment_ref: 'controlled' },
+      checkerTimeoutMs: 600_000, missionBudget: { queueWaitMs: 2_147_483_647 } });
+  }, /Judge HTTP deadline must fit the timer range/);
+  await assert.rejects(access(logRoot), { code: 'ENOENT' });
+});
 
 test('startup routes an interrupted Judge gate to the new locked Judge generation', { timeout: 15000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'independent-recovery-'));

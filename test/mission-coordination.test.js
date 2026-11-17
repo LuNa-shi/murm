@@ -30,7 +30,7 @@ async function fixture(t) {
     taskService.markBotReady(id);
   };
   const bind = id => {
-    const task = taskService.createTask({ mission_id: missionId, summary: 'Investigate an independent claim', expected_output: 'A note',
+    const task = taskService.createTask({ mission_id: missionId, summary: 'Investigate an independent claim', gap: 'The Mission needs evidence for this independent claim', priority: 'medium', expected_output: 'A note',
       acceptance_conditions: ['Explain result'] }, makeEnvelope({ actorRef: id })).task;
     const { execution } = taskService.takeTask(task.task_id, { owner_ref: id, core_id: id, take_key: id });
     const envelope = () => {

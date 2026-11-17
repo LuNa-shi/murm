@@ -6,7 +6,8 @@ import { finished } from 'node:stream/promises';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createCheckerProcessLimits } from './checker-process-limits.js';
+import { LeanModuleChecker } from './lean-module-checker.js';
+import { checkerResourceProfile, createCheckerProcessLimits } from './checker-process-limits.js';
 
 const verifierSource = fileURLToPath(new URL('./final-tree-proof.lean', import.meta.url));
 // Mathlib theorem statements can export hundreds of MiB of transitive declarations.
@@ -14,14 +15,46 @@ const exportLimit = 768 * 1024 * 1024;
 const inputLimit = 128 * 1024 * 1024;
 const diagnosticLimit = 8192;
 const sourceFailureStatus = 21;
-const resourceDiagnostic = /out of memory|memory (?:consumption|limit|exhausted)|cannot allocate|stack overflow|heartbeats|timed? out|time limit|resource temporarily unavailable|killed/i;
+// Match runtime failure headers, never arbitrary words in source names or goals.
+// Lean limits identify source work whose checking remains unassessed.
+const infrastructureDiagnostic = /^(?:out of memory\b|excessive memory consumption\b|memory (?:consumption exceeded|limit exceeded|exhausted)\b|cannot allocate memory\b|stack overflow\b|\(kernel\) excessive memory consumption detected\b|resource temporarily unavailable\b|killed\s*$)/i;
 
-function isSourceDiagnostic(stderr) {
-  if (resourceDiagnostic.test(stderr)) return false;
-  return stderr.split('\n').some(line => {
-    try { return JSON.parse(line)?.severity === 'error'; }
-    catch { return false; }
+const nestedTacticHeader = /^Tactic `[^`\n]+` failed with a nested error:$/;
+
+function leanFailureCode(message, kind = '') {
+  // Lean's structured tag survives tactic wrappers. Plain diagnostic output
+  // omits that tag, so unwrap only the known leading tactic-error envelope.
+  if (/^(?:nested\.)*runtime\.maxRecDepth$/.test(kind)) return 'lean_resource_limit';
+  const lines = message.split('\n', 10);
+  let index = 0;
+  while (index < 8 && nestedTacticHeader.test(lines[index]?.trim())) index++;
+  message = lines[index]?.trimStart() ?? '';
+  if (/^(?:\(deterministic\) timeout\b|\(kernel\) deterministic timeout\b|maximum (?:number of heartbeats|recursion depth)\b)/.test(message)) return 'lean_resource_limit';
+  if (/^(?:PANIC(?: at)?[:! ]|\(kernel\) panic\b)/i.test(message)) return 'lean_panic';
+  return null;
+}
+
+function sourceDiagnostics(stderr) {
+  const errors = stderr.split('\n').flatMap(line => {
+    try {
+      const diagnostic = JSON.parse(line);
+      return diagnostic?.severity === 'error' ? [diagnostic] : [];
+    } catch { return []; }
   });
+  if (!errors.length) return null;
+  const excerpt = entry => {
+    const location = typeof entry.fileName === 'string' && Number.isInteger(entry.pos?.line) && Number.isInteger(entry.pos?.column)
+      ? `${entry.fileName}:${entry.pos.line}:${entry.pos.column}: ` : '';
+    return `${location}${entry.data}`.slice(0, 320);
+  };
+  const runtime = errors.find(({ data }) => typeof data === 'string' && infrastructureDiagnostic.test(data));
+  if (runtime) return { diagnostic_code: /memory/i.test(runtime.data) ? 'checker_memory_limit' : 'checker_runtime_failure', diagnostic: excerpt(runtime) };
+  const limited = errors.find(({ data, kind }) => typeof data === 'string' && leanFailureCode(data, kind));
+  return limited ? { diagnostic_code: leanFailureCode(limited.data, limited.kind), diagnostic: excerpt(limited) } : { diagnostic: errors.slice(0, 8).map(excerpt).join('\n') };
+}
+
+function leanFailureResult(failure) {
+  return { diagnostic_code: failure.diagnostic_code, checker_process_status: 'completed', retryable: false };
 }
 const primitives = [
   'Nat.add', 'Nat.sub', 'Nat.mul', 'Nat.pow', 'Nat.gcd', 'Nat.div', 'Nat.mod', 'Nat.beq', 'Nat.ble',
@@ -29,6 +62,9 @@ const primitives = [
   'List', 'eagerReduce',
 ];
 const axioms = ['propext', 'Quot.sound', 'Classical.choice'];
+// FLT10's final-source contract is additional to theorem/kernel verification.
+// Diagnostic probes may use these constructs; final submitted Lean files may not.
+const fltForbiddenSource = /\b(?:sorry|sorryAx|admit|axiom|unsafe|native_decide|trustCompiler|extern|implemented_by|run_tac|run_elab|lift_meta_tactic|evalTactic|trace_state|initialize|builtin_initialize|macro|elab)\b|#(?:eval|check|print)\b/;
 
 function sandboxArgs(leanRoot) {
   return [
@@ -55,10 +91,10 @@ function assertWithinDeadline({ signal, deadline }) {
   if (!Number.isFinite(deadline) || deadline <= Date.now()) throw new Error('Final-tree checker deadline elapsed');
 }
 
-async function execute(command, args, { signal, deadline, maxOutput, stdoutPath, resourceLimits, onStderr }) {
+async function execute(command, args, { signal, deadline, maxOutput, stdoutPath, resourceLimits, resources, onStderr }) {
   assertWithinDeadline({ signal, deadline });
   return new Promise((resolve, reject) => {
-    const limits = resourceLimits ? createCheckerProcessLimits({ runtimeMs: Math.max(1, deadline - Date.now()) }) : null;
+    const limits = resourceLimits ? createCheckerProcessLimits({ runtimeMs: Math.max(1, deadline - Date.now()), resources }) : null;
     const child = spawn(limits?.command ?? command, limits?.argsFor(command, args) ?? args,
       { detached: true, env: limits?.environment ?? {}, stdio: ['ignore', 'pipe', 'pipe'] });
     let clientSettled = false;
@@ -211,19 +247,38 @@ function collectProjectDiagnostics(sources) {
   const findings = { warning: [], error: [] };
   let partialLine = '';
   let resourceFailure = false;
+  let leanFailure = null;
+  let infrastructureFailure = null;
+  let nestedError = null;
   function finishLine(line) {
+    if (nestedError) {
+      const diagnosticCode = leanFailureCode(line.trimStart());
+      if (diagnosticCode) leanFailure ??= { diagnostic_code: diagnosticCode,
+        diagnostic: `${nestedError.location}: ${line.trimStart()}`.slice(0, 320) };
+      if (nestedTacticHeader.test(line.trim()) && nestedError.depth < 8) nestedError.depth++;
+      else nestedError = null;
+    }
     // Lake reports worker exit codes even when its log level hides raw stderr.
     const workerExit = /^error: Lean exited with code (\d+)\s*$/.exec(line);
     if (workerExit && Number(workerExit[1]) !== 1) resourceFailure = true;
-    const diagnostic = /^(?:error: )?(?:(?:\/project\/)?source\/[^:]+:\d+:\d+:\s*)?(.*)$/.exec(line)?.[1] ?? '';
-    // Inspect diagnostic headers, never source paths, quoted terms or goal contexts.
-    if (/^(?:out of memory\b|memory (?:consumption exceeded|limit exceeded|exhausted)\b|cannot allocate memory\b|stack overflow\b|\(deterministic\) timeout\b|\(kernel\) (?:deterministic timeout|excessive memory consumption detected)\b|resource temporarily unavailable\b|killed\s*$)/i.test(diagnostic)) resourceFailure = true;
+    const header = /^(?:warning|error): (?:(?:\/project\/)?source\/[^:]+:\d+:\d+:\s*)?(.*)$/.exec(line);
+    if (header && infrastructureDiagnostic.test(header[1])) {
+      resourceFailure = true;
+      infrastructureFailure = { diagnostic_code: /memory/i.test(header[1]) ? 'checker_memory_limit' : 'checker_runtime_failure', diagnostic: line.slice(0, 320) };
+    }
     if (findings.error.length < 8 && /^error: (?:build )?cycle detected:/.test(line)) {
       findings.error.push('Lean project imports contain a cycle');
       return;
     }
     const match = /^(warning|error): (?:\/project\/)?(source\/[^:]+):(\d+:\d+):(.*)$/.exec(line);
-    if (!match || !paths.has(match[2]) || findings[match[1]].length >= 8) return;
+    if (!match || !paths.has(match[2])) return;
+    if (infrastructureDiagnostic.test(match[4].trimStart())) infrastructureFailure.diagnostic = `${paths.get(match[2])}:${match[3]}:${match[4]}`.slice(0, 320);
+    const diagnosticCode = match[1] === 'error' ? leanFailureCode(match[4].trimStart()) : null;
+    if (diagnosticCode) leanFailure ??= { diagnostic_code: diagnosticCode, diagnostic: `${paths.get(match[2])}:${match[3]}:${match[4]}`.slice(0, 320) };
+    if (match[1] === 'error' && nestedTacticHeader.test(match[4].trim())) {
+      nestedError = { location: `${paths.get(match[2])}:${match[3]}`, depth: 1 };
+    }
+    if (findings[match[1]].length >= 8) return;
     findings[match[1]].push(`${paths.get(match[2])}:${match[3]}:${match[4]}`.slice(0, 320));
   }
   return {
@@ -238,7 +293,7 @@ function collectProjectDiagnostics(sources) {
     },
     finish() {
       finishLine(partialLine);
-      return { ...findings, resourceFailure };
+      return { ...findings, resourceFailure, leanFailure, infrastructureFailure };
     },
   };
 }
@@ -246,7 +301,7 @@ function collectProjectDiagnostics(sources) {
 export class LeanFinalTreeVerifier {
   constructor({
     identity, leanRoot, libraryRoots = [], comparatorLibraryRoots, exporterPath, targetPath,
-    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, timeoutMs = 120_000, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
+    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, projectJobs = 1, resources, preserveFixturePrefix = false, requireCompleteProject = false, timeoutMs = 120_000, moduleCacheBytes = 128 * 1024 ** 2, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
   }) {
     if (!identity || !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof identity[key] === 'string' && identity[key])) {
       throw new TypeError('Final-tree verifier requires a fixed checker identity');
@@ -258,6 +313,10 @@ export class LeanFinalTreeVerifier {
       throw new TypeError('Final-tree verifier source differs from the locked fixture hash');
     }
     if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new TypeError('Invalid verifier timeout');
+    if (!Number.isSafeInteger(projectJobs) || projectJobs < 1 || projectJobs > 256) throw new TypeError('Invalid project build concurrency');
+    checkerResourceProfile(resources);
+    this.resources = resources === undefined ? undefined : Object.freeze({ ...resources });
+    this.projectJobs = projectJobs;
     this.identity = Object.freeze({ ...identity });
     this.leanRoot = pinnedPath(leanRoot);
     this.libraryRoots = Object.freeze(libraryRoots.map(pinnedPath));
@@ -275,9 +334,18 @@ export class LeanFinalTreeVerifier {
       throw new TypeError('Project checks require automatic module discovery without a manual build order');
     }
     this.projectChecks = projectChecks;
+    if (typeof requireCompleteProject !== 'boolean') throw new TypeError('Invalid complete project policy');
+    this.requireCompleteProject = requireCompleteProject;
     this.targetPath = targetPath;
     this.declarationName = declarationName;
     this.fixtureSource = Buffer.from(fixtureSource);
+    if (typeof preserveFixturePrefix !== 'boolean') throw new TypeError('Invalid fixture prefix policy');
+    const placeholder = this.fixtureSource.toString().match(/\bsorry\b/g);
+    if (preserveFixturePrefix && (placeholder?.length !== 1 || !/\bsorry\s*$/.test(this.fixtureSource.toString()))) {
+      throw new TypeError('Proof-placeholder fixture requires one terminal sorry');
+    }
+    this.fixturePrefix = preserveFixturePrefix
+      ? this.fixtureSource.toString().slice(0, this.fixtureSource.toString().lastIndexOf('sorry')) : null;
     this.timeoutMs = timeoutMs;
     this.resourceLimits = allowUnboundedDiagnostics !== true;
     // The systemd cgroup remains the production memory authority. Lean's
@@ -285,6 +353,15 @@ export class LeanFinalTreeVerifier {
     // below that physical limit. Keep its guard only for opt-in diagnostics
     // that do not use the production cgroup wrapper.
     this.leanMemoryArgument = this.resourceLimits ? '-M0' : '-M4096';
+    const libraryPaths = libraryRoots.map((_, index) => `/library/${index}`);
+    this.moduleChecker = new LeanModuleChecker({ cacheBytes: moduleCacheBytes,
+      environmentKey: JSON.stringify([identity, leanRoot, libraryRoots, this.leanMemoryArgument, resources, projectJobs]),
+      sandbox: () => { const args = sandboxArgs(this.leanRoot); libraries(this.libraryRoots, 'library', args); return args; },
+      execute: (args, options) => execute(this.bubblewrap, args, { ...options, resourceLimits: this.resourceLimits, resources: this.resources }),
+      classify: stderr => sourceDiagnostics(stderr.replaceAll('/input/source/', posix.dirname(this.targetPath) === '.' ? '' : `${posix.dirname(this.targetPath)}/`)),
+    });
+    this.moduleChecker.libraryPaths = libraryPaths;
+    this.moduleChecker.memoryArgument = this.leanMemoryArgument;
   }
 
   async #projectSources(files) {
@@ -317,7 +394,7 @@ export class LeanFinalTreeVerifier {
     });
     args.push('--ro-bind', input, '/project', '--size', '268435456', '--tmpfs', '/project/.lake',
       ...dependencyPaths.flatMap(([root, destination]) => ['--ro-bind', root, destination]),
-      '--ro-bind', '/usr/bin/dash', '/bin/sh', '--setenv', 'LEAN_NUM_THREADS', '1', '--chdir', '/project');
+      '--ro-bind', '/usr/bin/dash', '/bin/sh', '--setenv', 'LEAN_NUM_THREADS', String(this.projectJobs), '--chdir', '/project');
     if (targetModule) args.push('--ro-bind', this.exporterPath, '/bin/lean4export', '--setenv', 'LEAN_PATH',
       ['/project/.lake/build/lib/lean', ...dependencyPaths.map(([, dest]) => dest)].join(':'));
     args.push('/bin/sh', '-eu', '-c',
@@ -327,12 +404,12 @@ export class LeanFinalTreeVerifier {
     if (targetModule) args.push(targetModule, '--', this.declarationName, ...axioms, ...primitives);
     const diagnostics = collectProjectDiagnostics(sources);
     const built = await startProcess(() => execute(this.bubblewrap, args, { signal, deadline,
-      maxOutput: targetModule ? exportLimit : diagnosticLimit, stdoutPath, resourceLimits: this.resourceLimits,
+      maxOutput: targetModule ? exportLimit : diagnosticLimit, stdoutPath, resourceLimits: this.resourceLimits, resources: this.resources,
       onStderr: diagnostics.write }));
     return { ...built, diagnostics: diagnostics.finish() };
   }
 
-  async checkProject({ files, tree, signal, deadline = Date.now() + this.timeoutMs, startProcess }) {
+  async checkProject({ files, tree, path, checkMode = 'lean-project', missionId, signal, deadline = Date.now() + this.timeoutMs, startProcess }) {
     if (!this.projectChecks) return { verdict: 'ERROR', diagnostic: 'Workspace project checking is not configured', checked_tree: tree, checked_paths: [] };
     deadline = Math.min(deadline, Date.now() + this.timeoutMs);
     const budget = { signal, deadline };
@@ -343,11 +420,16 @@ export class LeanFinalTreeVerifier {
       let sources;
       try { sources = await this.#projectSources(files); }
       catch (error) { if (error instanceof TypeError) return result('FAIL', error.message); throw error; }
+      if (checkMode === 'lean-module') return await this.moduleChecker.check({ files, sources, path, missionId, tree, budget, startProcess });
       directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-check-'));
       await this.#materializeProject(directory, files, sources, budget);
       const built = await this.#buildProject(directory, { ...budget, sources, startProcess });
       const findings = built.diagnostics;
       if (built.code === 0) return result('PASS', null, { checked_paths: sources.map(({ path }) => path), warnings: findings.warning });
+      if (built.code === sourceFailureStatus && findings.infrastructureFailure) return result('ERROR', findings.infrastructureFailure.diagnostic, { diagnostic_code: findings.infrastructureFailure.diagnostic_code, retryable: false });
+      if (built.code === sourceFailureStatus && !findings.resourceFailure && findings.leanFailure) {
+        return result('ERROR', findings.leanFailure.diagnostic, leanFailureResult(findings.leanFailure));
+      }
       if (built.code === sourceFailureStatus && !findings.resourceFailure && findings.error.length) {
         return result('FAIL', findings.error.join('\n'), { warnings: findings.warning });
       }
@@ -355,6 +437,7 @@ export class LeanFinalTreeVerifier {
     } catch (error) {
       // The lifecycle guard at process start returns its typed rejection to Judge.
       if (error.code && ['NOT_ALLOWED', 'FENCED', 'STALE_VERSION', 'SERVICE_NOT_READY'].includes(error.code)) throw error;
+      if (error instanceof TypeError) return result('FAIL', error.message);
       const timedOut = /deadline elapsed/.test(error.message);
       return result('ERROR', timedOut ? 'Lake project check deadline elapsed' : 'Locked Lake project build did not complete', { timed_out: timedOut });
     } finally {
@@ -376,17 +459,27 @@ export class LeanFinalTreeVerifier {
     try {
       const result = await execute(this.bubblewrap, args, {
         deadline: Date.now() + Math.min(timeoutMs, this.timeoutMs),
-        maxOutput: Math.min(maxOutputBytes, 1_000_000), resourceLimits: this.resourceLimits,
+        maxOutput: Math.min(maxOutputBytes, 1_000_000), resourceLimits: this.resourceLimits, resources: this.resources,
       });
       // bwrap can also return 1 on setup failure. Only Lean diagnostics using
       // the locked source path count as an ordinary source failure.
       const stdout = result.output.toString();
       const stderr = result.stderr;
+      const output = `${stdout}\n${stderr}`;
+      const sourceHeaders = [...output.matchAll(/^\/input\/WorkspaceSource\.lean:\d+:\d+: error(?:\([^\n]*\))?:[^\S\n]*(.*)$/gm)];
       if (result.code !== 0 && (version || result.code !== 1 || result.stderrTruncated ||
-          resourceDiagnostic.test(`${stdout}\n${stderr}`) || !/^\/input\/WorkspaceSource\.lean:\d+:\d+: error(?:\([^\n]*\))?:/m.test(`${stdout}\n${stderr}`))) {
+          sourceHeaders.length === 0)) {
         return { exit_code: null, error: 'Locked Lean diagnostic process did not complete', checker_started: false };
       }
-      return { exit_code: result.code, stdout, stderr, stderr_truncated: result.stderrTruncated, checker_started: true };
+      const failure = sourceHeaders.map(header => {
+        const message = header[1];
+        const nested = nestedTacticHeader.test(message.trim())
+          ? message + output.slice(header.index + header[0].length, header.index + header[0].length + diagnosticLimit)
+          : message;
+        return leanFailureCode(nested) ?? (infrastructureDiagnostic.test(message) ? (/memory/i.test(message) ? 'checker_memory_limit' : 'checker_runtime_failure') : null);
+      }).find(Boolean);
+      return { exit_code: result.code, stdout, stderr, stderr_truncated: result.stderrTruncated, checker_started: true,
+        ...(failure ? { diagnostic_code: failure, checker_process_status: 'completed', retryable: false } : {}) };
     } catch (error) {
       const timedOut = /deadline elapsed/.test(error.message);
       return { exit_code: null, ...(timedOut ? { timed_out: true } : { error: 'Locked Lean diagnostic process did not complete' }),
@@ -419,19 +512,30 @@ export class LeanFinalTreeVerifier {
       'swarmenv-export', ...localModules.flatMap(module => [
         `/output/${module.name.replaceAll('.', '/')}.olean`, `/input/${module.path}`,
       ]), '--', `/input/${this.targetPath}`, this.declarationName, ...axioms, ...primitives);
-    return execute(this.bubblewrap, args, { signal, deadline, maxOutput: exportLimit, stdoutPath, resourceLimits: this.resourceLimits });
+    return execute(this.bubblewrap, args, { signal, deadline, maxOutput: exportLimit, stdoutPath, resourceLimits: this.resourceLimits, resources: this.resources });
   }
 
   async check({ files, tree, signal, deadline = Date.now() + this.timeoutMs }) {
     deadline = Math.min(deadline, Date.now() + this.timeoutMs);
     const check_result_id = `treecheck:${randomUUID()}`;
-    const result = (verdict, diagnostic) => ({ verdict, check_result_id, diagnostic, checked_tree: tree });
+    const result = (verdict, diagnostic, extra = {}) => ({ verdict, check_result_id, diagnostic, checked_tree: tree, ...extra });
     let directory;
     let timer;
     let budget;
     try {
       assertWithinDeadline({ signal, deadline });
       if (!files || !Object.hasOwn(files, this.targetPath)) return result('FAIL', 'Final tree lacks the locked theorem source path');
+      if (this.requireCompleteProject && Object.entries(files).some(([path, bytes]) =>
+        path.endsWith('.lean') && /\b(?:sorry|sorryAx|admit|axiom)\b/.test(bytes.toString()))) {
+        return result('FAIL', 'Final project contains an incomplete proof or an added axiom');
+      }
+      if (this.fixturePrefix !== null && !files[this.targetPath].toString().startsWith(this.fixturePrefix)) {
+        return result('FAIL', 'Benchmark fixture prefix (imports and theorem statement) changed');
+      }
+      if (this.fixturePrefix !== null && Object.entries(files).some(([path, bytes]) =>
+        path.endsWith('.lean') && fltForbiddenSource.test(bytes.toString()))) {
+        return result('FAIL', 'FLT final source policy rejects diagnostic, incomplete or proof-bypass constructs');
+      }
       if (this.localModules.some(module => !Object.hasOwn(files, module.path))) {
         return result('FAIL', 'Final tree lacks a configured local Lean module source');
       }
@@ -459,10 +563,14 @@ export class LeanFinalTreeVerifier {
       if (candidate.code !== 0 || !candidate.stdoutBytes) {
         if (candidate.code === sourceFailureStatus) {
           if (sources) {
-            const { error, resourceFailure } = candidate.diagnostics;
-            if (!resourceFailure && error.length) return result('FAIL', error[0]);
-          } else if (!candidate.stderrTruncated && isSourceDiagnostic(candidate.stderr)) {
-            return result('FAIL', 'Final-tree theorem source did not compile with the locked Lean dependencies');
+            const { error, resourceFailure, leanFailure, infrastructureFailure } = candidate.diagnostics;
+            if (infrastructureFailure) return result('ERROR', infrastructureFailure.diagnostic, { diagnostic_code: infrastructureFailure.diagnostic_code, retryable: false });
+            if (!resourceFailure && leanFailure) return result('ERROR', leanFailure.diagnostic, leanFailureResult(leanFailure));
+            if (!resourceFailure && error.length) return result('FAIL', error.join('\n'));
+          } else if (!candidate.stderrTruncated) {
+            const diagnostics = sourceDiagnostics(candidate.stderr);
+            if (diagnostics?.diagnostic_code) return result('ERROR', diagnostics.diagnostic, leanFailureResult(diagnostics));
+            if (diagnostics) return result('FAIL', 'Final-tree theorem source did not compile with the locked Lean dependencies');
           }
         }
         return result('ERROR', 'Final-tree proof export did not complete');
@@ -476,7 +584,7 @@ export class LeanFinalTreeVerifier {
         '--setenv', 'LEAN_PATH', trustedLibraries.join(':'), '--chdir', '/verifier',
         '/toolchain/bin/lean', '-j1', this.leanMemoryArgument, '--run', '/verifier/Verify.lean',
         this.declarationName, '/verifier/original.jsonl', '/verifier/candidate.jsonl');
-      const validation = await execute(this.bubblewrap, args, { ...budget, maxOutput: diagnosticLimit, resourceLimits: this.resourceLimits });
+      const validation = await execute(this.bubblewrap, args, { ...budget, maxOutput: diagnosticLimit, resourceLimits: this.resourceLimits, resources: this.resources });
       if (validation.code === 0 && validation.output.toString().trim() === 'SWARMENV_FINAL_TREE_VERIFIED') {
         return result('PASS', null);
       }

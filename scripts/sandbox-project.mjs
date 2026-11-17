@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { chmod, chown, lstat, mkdir, opendir, readFile, readdir } from 'node:fs/promises';
-import { join } from 'node:path';
-import { ProjectInstaller } from './project-install.mjs';
+import { chmod, chown, lstat, mkdir, opendir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { ProjectInstaller, decodeProjectFiles, canonical } from './project-install.mjs';
 
 export const BOT_UID = 10001;
 export const PROJECT_DIR = '/workspace/project';
@@ -64,11 +64,27 @@ export class SandboxProject {
         if (!entry || !/^[0-9a-f]{64}$/.test(entry.content_hash) || !Number.isInteger(entry.bytes) || entry.bytes < 0 || entry.bytes > 2 * 1024 * 1024) throw new Error('invalid project manifest entry');
         return [path, { content_hash: entry.content_hash, bytes: entry.bytes }];
       }));
+      const supplied = input.files === undefined ? null : decodeProjectFiles(input.files);
+      if (supplied && canonical(supplied.manifest) !== canonical(manifest)) throw new Error('supplied project bytes differ from pinned input manifest');
       const fingerprint = JSON.stringify({ ...identity, manifest });
       if (this.binding) {
         if (this.binding.fingerprint !== fingerprint) throw new Error('project already belongs to another input or Execution');
         if (this.state !== 'PREPARED') throw new Error('project preparation is already closed');
         return { state: this.state, ...identity };
+      }
+      if (supplied) {
+        if ((await readdir(PROJECT_DIR)).length) throw new Error('new Bot project input must be empty');
+        try {
+          for (const [path, content] of Object.entries(supplied.bytes)) {
+            this.#open();
+            const target = join(PROJECT_DIR, path);
+            await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+            await writeFile(target, content, { flag: 'wx', mode: 0o400 });
+          }
+        } catch (error) {
+          for (const name of await readdir(PROJECT_DIR)) await rm(join(PROJECT_DIR, name), { recursive: true, force: true });
+          throw error;
+        }
       }
       const actual = Object.create(null);
       let bytes = 0;

@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS } from '../src/judge/final-tree-deployment.js';
+import { createFinalTreeArtifactLock, createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS } from '../src/judge/final-tree-deployment.js';
 import { stableStringify } from '../src/protocol/envelope.js';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -13,6 +13,24 @@ const configuration = {
   identity, leanRoot: '/not-installed', libraryRoots: ['/nominal-dependency'],
   comparatorLibraryRoots: ['/nominal-comparator', '/nominal-export-lib'], exporterPath: '/nominal-export',
 };
+
+test('checker lock rejects unknown benchmark profiles before tool invocation', async () => {
+  await assert.rejects(createFinalTreeArtifactLock({ configuration: { ...configuration, benchmarkProfile: 'arbitrary' } }), /benchmark profile/);
+});
+
+test('root-only deployment binds the target and declaration to its foundation manifest', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-foundation-target-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bytes = JSON.stringify({ target_sha256: 'a'.repeat(64), declaration_name: 'Target.goal' });
+  await writeFile(join(root, 'foundation-manifest.json'), bytes);
+  const deployment = { ...configuration, benchmarkProfile: 'flt10-subtree-v1', checkpoint: 20,
+    projectionRoot: root, foundationSha256: sha256(bytes) };
+  const problem = { checkpoint: 20, source_hash: 'a'.repeat(64), declaration_name: 'Target.goal' };
+  for (const altered of [{ ...problem, source_hash: 'b'.repeat(64) }, { ...problem, declaration_name: 'Helper.goal' }]) {
+    await assert.rejects(createLockedFinalTreeVerifier({ configuration: deployment, problem: altered }), /locked foundation target/);
+  }
+  await assert.rejects(createLockedFinalTreeVerifier({ configuration: deployment, problem }), /artifact lock is required/);
+});
 
 test('deployment gate requires the lock and rejects altered content or selection before invoking tools', async () => {
   await assert.rejects(createLockedFinalTreeVerifier({ configuration }), /artifact lock is required/);
@@ -27,6 +45,9 @@ test('deployment gate requires the lock and rejects altered content or selection
   await assert.rejects(createLockedFinalTreeVerifier({
     configuration: { ...configuration, libraryRoots: ['/different'], artifactLock: lock },
   }), /lock does not match/);
+  for (const altered of [{ resources: { memory_bytes: 8 * 1024 ** 3 } }, { projectJobs: 4 }]) {
+    await assert.rejects(createLockedFinalTreeVerifier({ configuration: { ...configuration, ...altered, artifactLock: lock } }), /lock does not match/);
+  }
 });
 
 test('nested artifact bytes, paths and modes are pinned, and symlink escapes fail closed', async t => {

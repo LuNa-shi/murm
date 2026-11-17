@@ -1,25 +1,27 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { requestHttp } from '../protocol/http-request.js';
 
 const SERVICE_NAMES = ['task', 'bot', 'material', 'workspace', 'mission', 'judge', 'catalog'];
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-const MAX_REQUEST_TIMEOUT_MS = 10 * 60_000;
+const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
 const ALIASES = Object.freeze({
   solution: { submit: 'mission_submit', status: 'mission_submission_get' },
   'mathlib-search': { search: 'mathlib_search' },
   bot: { exit: 'bot_exit' },
   // complete/block/close remain transport aliases for old clients; finish is
   // the single public Task lifecycle command.
-  task: { list: 'task_list', discover: 'task_list', view: 'task_view', create: 'task_create', propose: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
+  task: { list: 'task_list', discover: 'task_list', view: 'task_view', create: 'task_create', propose: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', revise: 'task_revise', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
   material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials', dispute: 'material_dispute', supersede: 'material_supersede', unsupersede: 'material_unsupersede' },
   workspace: { view: 'workspace_public_view', history: 'workspace_public_history', status: 'workspace_status', diff: 'workspace_current_diff', apply: 'workspace_public_apply', files: 'workspace_public_files', list: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
   mission: { view: 'mission_get', submit: 'mission_submit', status: 'mission_submission_get', finish: 'mission_submission_finish' },
   judge: { check: 'workspace_check', submit: 'workspace_check', result: 'get_check_result', get: 'get_check_result' },
 });
 const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'operation-id', 'request-id', 'timeout-ms']);
-const TASK_PROPOSAL_HELP = `Propose one Task with --input <file> or --stdin. Required JSON fields: summary (at least 20 characters after trimming, at most 4000), expected_output (string), acceptance_conditions (nonempty array or object). Optional --base-revision R pins a public Workspace revision. The Bot Bridge provides creator and Mission.
-Example (replace the responsibility and completion evidence with your own):
-  printf '%s\\n' '{"summary":"Check a boundary case","expected_output":"A reproducible result","acceptance_conditions":["The result includes a reproducible check"]}' | swarm task propose --stdin --request-id propose-boundary`;
+const TASK_PROPOSAL_HELP = `Propose an independently useful responsibility with --input <file> or --stdin. Required: summary (short title, 1-240 trimmed characters), gap (specific Mission problem/use, 1-4000), expected_output (deliverable, 1-4000), acceptance_conditions (nonempty array/object), priority (high, medium or low). Mission, creator and time come from the service.
+High: evidence supports earlier investment; medium: a clear use without stronger urgency; low: a more distant or less urgent option. Priority is advice, not a take restriction. Multiple proposals are allowed during selection; ACTIVE Bots can also propose. Take existing work directly when it fits. Optional --base-revision pins a public input revision. Other optional inputs and dependencies are described by service metadata; a dependency means work must wait, not just that results are related.
+Example:
+  printf '%s\\n' '{"summary":"Check boundary case","gap":"The current argument leaves the boundary case undecided","expected_output":"A reproducible boundary result","acceptance_conditions":["The result includes a reproducible check"],"priority":"medium"}' | swarm task propose --stdin --request-id propose-boundary`;
 const WORKSPACE_FILES_HELP = 'List public paths. Use --at R (main is allowed), an optional positional path prefix, --limit or --cursor. Example: swarm workspace files --at 0.1 --limit 20';
 const COMMAND_HELP = Object.freeze({
   bot: { exit: 'End an unbound Bot with no pending take after the selection budget expires. Use --reason selection-budget. For an open Mission with selection time left, inspect the public gap and propose work if no Task fits. The Core is released after cleanup.' },
@@ -27,8 +29,8 @@ const COMMAND_HELP = Object.freeze({
     list: `Search Task summaries using --query, --limit (1-100) and --cursor. Omit the state filter to include all states, use --state for one state, or pass a quoted JSON array to --states.
   swarm task list --state ready
   swarm task list --states '["ready","running","blocked","done","cancelled"]'
-Follow next_cursor even after an empty page, then view Task details before proposing or taking. Creation order is stable within a scan; state and readiness are live at each page.`,
-    view: 'Read one Task. Required: <task-id> (or --task-id). Output: authoritative Task, state, relations and Material links.',
+Candidate summaries include gap and priority; inspect their relevance and choose freely. Follow next_cursor even after an empty page, then view Task details before proposing or taking. Creation order is stable within a scan; state and readiness are live at each page.`,
+    view: 'Required: <task-id> (or --task-id). Read a Task contract, gap, priority, versions, dependencies, Materials and Executions. Use --contract-history-after-version and --contract-history-limit (1-100) to continue contract_history_page.next_after_version.',
     propose: TASK_PROPOSAL_HELP,
     create: TASK_PROPOSAL_HELP,
     take: 'Take an eligible Task by its positional ID. Example: swarm task take T1 --request-id take-t1 (replace T1 with the returned task_id). The result includes the Execution and pinned inputs. If the response is unknown, reuse the same request ID with the same Task.',
@@ -41,7 +43,8 @@ Replace T1 and M1 with the current task_id and the published material_id. Respon
 Publication records who produced a Material. To explicitly cite that Material in a done result, first create a Task link with swarm task link.
 Example after linking: swarm task finish --outcome done --material-ids '["M1"]' --request-id finish-t1
 Use a quoted JSON array of actual Material IDs. Omit this optional list when your checked Workspace revision and other evidence already satisfy the Task's completion contract. Required deliverables still apply.`,
-    cancel: 'Cancel an unowned Task. Required: <task-id> --expected-spec-version --expected-state-version --reason. Optional --replacement. Requires a Mission coordination grant.',
+    revise: 'An UNBOUND Bot can revise an open, unowned Task, including a previously executed Task. Use <task-id> --expected-spec-version N --expected-state-version N --reason TEXT --changes JSON (or --input/--stdin). Changes include summary, gap, expected_output, acceptance_conditions, priority and optional inputs/dependencies. Example: --changes \'{"priority":"high"}\'. Read current versions first; running, preparing, cleaning up and closed responsibilities are protected. Old Executions retain their original contract.',
+    cancel: 'An UNBOUND Bot can cancel an open, unowned Task with <task-id> --expected-spec-version --expected-state-version --reason and optional --replacement. Cancellation preserves history and does not satisfy dependencies. No extra coordination grant is required.',
     'dependency-replace': 'Repair a cancelled prerequisite of an unowned blocked Task. Required: <task-id> --from-task-id --to-task-id --expected-spec-version --expected-state-version --reason. Requires a Mission coordination grant.',
     feedback: 'Record feedback for the current Task. Use --input or --stdin for the feedback contract.',
   },
@@ -81,16 +84,16 @@ Replace M1 with an actual Material ID. After an unknown response, reuse the same
   },
   judge: {
     check: `Check a saved public Workspace revision with --revision R. When the project checker is configured, Lake builds the revision's Lean modules, including local imports. Find the locked target path with swarm mission view. Keep Lean sources under the target's source directory, and import siblings by module name relative to that directory. Example: if the target is lean4/src/Main.lean, save lean4/src/Proof/Geometry.lean and write import Proof.Geometry. Judge uses its trusted project configuration.
-Add --path P to identify a particular Lean delivery file in the receipt. This still builds the whole project. The selected file must satisfy the delivery source policy. Legacy single-file checkers require --path.
+For iteration on a local proposition, save its module and use --revision R --check-mode lean-module --path P. This checks that whole module and its necessary dependencies, with actual scope and cache evidence in the receipt; it does not select an individual declaration within a multi-declaration file. Independently useful lemmas and definitions may live in separate imported modules to keep iteration focused. A local PASS is not a whole-project or Mission PASS. Without this mode, --path P identifies a delivery file and still builds the whole project. The selected file must satisfy the delivery source policy. Legacy single-file checkers require --path.
 A build result is diagnostic. A check without --path does not supply a Task delivery file receipt. Mission acceptance separately validates the locked target proof on a fixed tree.
---timeout-ms controls how long the CLI waits for HTTP. The service controls the checker's execution limit. For a 3-minute source check with preflight already ready, use --timeout-ms 210000 to allow extra response time.
+--timeout-ms controls how long the CLI waits for HTTP. The service controls the checker's execution limit. The default HTTP wait is 30 seconds and may be too short for a cold module build. For a 10-minute source phase with preflight already ready and no queue wait, use --timeout-ms 630000. Allow additional time for queue waiting and cold preflight; changing HTTP wait never extends Execution or checker deadlines.
 Use a stable --request-id. After a lost response, use swarm judge result --request-key with the original ID, or repeat the same request with the same ID.`,
     result: 'Read one CheckResult. Use --check-result-id or --request-key; request-key lookup survives a lost submit response.',
   },
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|revise|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
   if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${DEFAULT_REQUEST_TIMEOUT_MS})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Task and Material IDs and file paths use the documented positional arguments.\nBot identity always comes from the protected Bridge binding.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
@@ -196,8 +199,8 @@ async function request(url, { method = 'GET', token = null, body = undefined, ti
   if (body !== undefined) headers['content-type'] = 'application/json';
   if (token) headers.authorization = `Bearer ${token}`;
   try {
-    const response = await fetch(url, { method, headers, signal: controller.signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    const text = await response.text();
+    const response = await requestHttp(url, { method, headers, signal: controller.signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const text = response.text;
     let parsed = {};
     try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
     if (!response.ok || parsed.ok === false) {
@@ -206,6 +209,8 @@ async function request(url, { method = 'GET', token = null, body = undefined, ti
       failure.code = error.code ?? `HTTP_${response.status}`;
       failure.status = response.status;
       failure.details = error.details;
+      if (typeof error.retryable === 'boolean') failure.retryable = error.retryable;
+      if (error.request_id !== undefined) failure.request_id = error.request_id;
       throw failure;
     }
     return parsed.result ?? parsed;
@@ -248,14 +253,14 @@ async function listServices() {
 async function bridgeCall(operation, payload, options = {}, serviceId = undefined) {
   const token = process.env.SWARMENV_BRIDGE_TOKEN;
   if (!token) throw new Error('SWARMENV_BRIDGE_TOKEN is required for Bot operations');
-  const requestId = options['request-id'] ?? options['operation-id'] ?? (operation === 'task_take' ? `cli:take:${randomUUID()}` : undefined);
+  const requestId = options['request-id'] ?? options['operation-id'] ?? `cli:${operation === 'task_take' ? 'take' : operation}:${randomUUID()}`;
   try { return await request(`${process.env.SWARMENV_BRIDGE_URL.replace(/\/$/, '')}/call`, {
     method: 'POST', token, timeoutMs: parseScalar(options['timeout-ms']) ?? DEFAULT_REQUEST_TIMEOUT_MS,
     body: { operation, service_id: serviceId, operation_id: requestId, payload },
   }); } catch (error) {
-    if (operation === 'task_take' && requestId && (error.code === 'SERVICE_TIMEOUT' || !error.code)) {
-      error.details = { ...error.details, request_id: requestId,
-        notice: `请求 ${requestId} 结果未明。查询或重试同一请求；不要以新 ID 认领其他 Task。` };
+    if (requestId && (error.code === 'SERVICE_TIMEOUT' || !error.code || /^(ECONN|EPIPE|ENET|EHOST|EAI_)/.test(error.code))) {
+      error.details = { ...error.details, request_id: requestId, operation, request_outcome: 'unknown',
+        notice: `请求 ${requestId} 结果未明。查询或重试同一请求；仅用相同 ID 和相同参数恢复原请求；修改参数应使用新请求。` };
     }
     throw error;
   }
@@ -263,7 +268,7 @@ async function bridgeCall(operation, payload, options = {}, serviceId = undefine
 
 function commandInput(service, command, options, args, input) {
   const fields = {
-    task: { view: 'task_id', take: 'task_id', cancel: 'task_id', 'dependency-replace': 'task_id' },
+    task: { view: 'task_id', take: 'task_id', revise: 'task_id', cancel: 'task_id', 'dependency-replace': 'task_id' },
     material: { view: 'material_id', read: 'material_id', get: 'material_id', search: 'query', dispute: 'material_id', supersede: 'material_id', unsupersede: 'material_id' },
     workspace: { files: 'path', list: 'path', read: 'path', search: 'query' },
     judge: { result: 'check_result_id', get: 'check_result_id' },

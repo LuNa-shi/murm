@@ -21,6 +21,8 @@ The Task-owned `service_commit_gate` holds one unresolved exact command and dige
 
 ## How to interpret the tables
 
+`modern_task_records.gap` is nullable for historical records. Constructor migration adds the nullable column without rewriting legacy descriptions or priorities. New registered Bot contracts require a real gap and explicit three-level priority; reads identify legacy contracts instead of fabricating either value. `task_contract_revisions` stores immutable per-Task spec-version snapshots, spec hash, actor, reason and timestamp. Initial new proposals create their first snapshot; revision preserves an existing legacy contract before appending the replacement. Both snapshots, changed Task fields/dependencies and the idempotency receipt commit in the same Task transaction. Existing Executions retain their original spec version/hash, so their checks and artifacts remain historical evidence for that contract. Task view exposes bounded version-ordered continuation rather than loading all revisions.
+
 | Table(s) | Meaning and important fields |
 |---|---|
 | `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `merge_required_check_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
@@ -203,7 +205,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `369543a78166e16b954674a9ea992eeb8baceebba5f74e17f8bb364e774589ea`.
+Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `a5555a8ce7bc5ff9269767bf2bf097584763fcaea94e6d33cc42b95bf44a072c`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -227,6 +229,7 @@ CREATE TABLE IF NOT EXISTS modern_task_records (
   task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
   mission_id TEXT NOT NULL REFERENCES missions(mission_id),
   summary TEXT NOT NULL,
+  gap TEXT,
   timebox_ms INTEGER NOT NULL CHECK (timebox_ms > 0),
   registration_hash TEXT,
   created_at TEXT NOT NULL,
@@ -239,6 +242,17 @@ CREATE INDEX IF NOT EXISTS modern_task_records_mission
 -- SQLite indexes carry rowid as their tie breaker: this supports bounded
 -- Mission creation-window scans without sorting every Mission record.
 CREATE INDEX IF NOT EXISTS modern_task_records_mission_scan ON modern_task_records(mission_id);
+
+CREATE TABLE IF NOT EXISTS task_contract_revisions (
+  task_id TEXT NOT NULL REFERENCES tasks(task_id),
+  spec_version INTEGER NOT NULL,
+  spec_hash TEXT NOT NULL,
+  actor_ref TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  contract_json TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (task_id, spec_version)
+);
 
 CREATE TABLE IF NOT EXISTS task_relations (
   relation_id TEXT PRIMARY KEY,
@@ -907,7 +921,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `9253d9ef9e2743ab9f5a51f40ca79291ccd5a18445e785d21cf081b2bad75875`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `05e307d72e815db99b20a83da6c1ef95c09d0c7bef9a044c9d52d968cc4496c9`.
 
 #### executions_active_core
 

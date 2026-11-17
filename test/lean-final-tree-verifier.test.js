@@ -4,6 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { LeanChecker } from '../src/judge/lean-adapter.js';
+import { agentCheckResult, normalizeCheckerResult } from '../src/judge/check-result.js';
 import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js';
 
 const comparatorRoot = process.env.SWARMENV_TEST_COMPARATOR_ROOT;
@@ -29,6 +31,83 @@ test('final-tree verifier fixes the source identity and rejects missing source b
 });
 
 const lean = { skip: !leanRoot || !comparatorRoot };
+
+test('locked project forwards configured build concurrency and preserves final checking', lean, async () => {
+  const verifier = fixture(undefined, { projectChecks: true, projectJobs: 4,
+    resources: { memory_bytes: 8 * 1024 ** 3, cpu_percent: 400 } });
+  const result = await verifier.check({ files: {
+    'Toy.lean': 'import Helper\ntheorem toy : True := helper\n',
+    'Helper.lean': 'def checkBuildThreads : IO Unit := do\n  unless (← IO.getEnv "LEAN_NUM_THREADS") == some "4" do\n    throw (IO.userError "build concurrency not propagated")\n#eval checkBuildThreads\ntheorem helper : True := trivial\n',
+  }, tree: 'configured-project-build' });
+  assert.equal(result.verdict, 'PASS', result.diagnostic);
+  assert.throws(() => fixture(undefined, { projectJobs: 0 }), /build concurrency/);
+  assert.throws(() => fixture(undefined, { resources: { memory_bytes: -1 } }), /Checker resources/);
+});
+
+test('complete-project policy rejects a hole in an unused helper before final dispatch', async () => {
+  const verifier = fixture(undefined, { projectChecks: true, requireCompleteProject: true });
+  const result = await verifier.check({ files: {
+    'Toy.lean': 'theorem toy : True := by trivial\n',
+    'Unused.lean': 'theorem later : True := by sorry\n',
+  }, tree: 'unfinished-project' });
+  assert.equal(result.verdict, 'FAIL');
+  assert.match(result.diagnostic, /incomplete|axiom/);
+});
+
+test('root-only final checking accepts a new definition and helper import but rejects a changed goal', lean, async () => {
+  const verifier = fixture('theorem toy (n : Nat) : n = n := by sorry\n',
+    { projectChecks: true, requireCompleteProject: true });
+  const files = {
+    'Toy.lean': 'import Research.Helpers\ntheorem toy (n : Nat) : n = n := by exact helper n\n',
+    'Research/Helpers.lean': 'def identityNat (n : Nat) : Nat := n\ntheorem helper (n : Nat) : identityNat n = n := by rfl\n',
+  };
+  const accepted = await verifier.check({ files, tree: 'new-definitions-and-import' });
+  assert.equal(accepted.verdict, 'PASS', accepted.diagnostic);
+  const changed = await verifier.check({ files: { ...files,
+    'Toy.lean': 'import Research.Helpers\ntheorem toy (n : Nat) (h : False) : n = n := by exact helper n\n',
+  }, tree: 'extra-hypothesis' });
+  assert.equal(changed.verdict, 'FAIL', changed.diagnostic);
+  const hidden = await verifier.check({ files: { ...files,
+    'Toy.lean': 'import P2M.Sol.Hidden\ntheorem toy (n : Nat) : n = n := by rfl\n',
+  }, tree: 'hidden-library' });
+  assert.equal(hidden.verdict, 'FAIL', hidden.diagnostic);
+});
+
+test('benchmark proof-placeholder contract rejects changed imports or statement before dispatch', async () => {
+  const source = 'import FLT10.DAG_q10\ntheorem FLT10Bench.target : True := by\n  sorry\n';
+  const verifier = fixture(source, { declarationName: 'FLT10Bench.target', preserveFixturePrefix: true });
+  for (const candidate of [source.replace('FLT10.DAG_q10', 'Mathlib'), source.replace(': True', ': False')]) {
+    const result = await verifier.check({ files: { 'Toy.lean': candidate }, tree: 'fixed' });
+    assert.equal(result.verdict, 'FAIL');
+    assert.match(result.diagnostic, /fixture prefix/);
+  }
+});
+
+test('FLT final source policy rejects diagnostic and bypass constructs in target and helper files', async () => {
+  const source = 'import Lean\ntheorem toy : True := by\n  sorry\n';
+  const verifier = fixture(source, { preserveFixturePrefix: true });
+  for (const token of ['trace_state', 'run_tac', 'unsafe', 'native_decide', 'axiom', 'sorryAx', 'admit', '#eval']) {
+    const result = await verifier.check({ files: {
+      'Toy.lean': source.replace('sorry', `${token}\n  trivial`),
+    }, tree: 'fixed' });
+    assert.equal(result.verdict, 'FAIL', token);
+    assert.match(result.diagnostic, /source policy/);
+  }
+  const helper = await verifier.check({ files: {
+    'Toy.lean': source.replace('sorry', 'trivial'),
+    'Unused.lean': 'unsafe def unused : Nat := 1\n',
+  }, tree: 'fixed' });
+  assert.equal(helper.verdict, 'FAIL');
+  assert.match(helper.diagnostic, /source policy/);
+});
+
+test('FLT final source policy accepts a valid proof through real kernel replay', lean, async () => {
+  const source = 'import Lean\ntheorem toy : True := by\n  sorry\n';
+  const result = await fixture(source, { preserveFixturePrefix: true }).check({
+    files: { 'Toy.lean': source.replace('sorry', 'trivial') }, tree: 'fixed',
+  });
+  assert.equal(result.verdict, 'PASS', JSON.stringify(result));
+});
 
 test('production locked source diagnostics compile the full Mathlib import', {
   skip: !leanRoot || !process.env.SWARMENV_TEST_PUTNAM_ROOT || !process.env.SWARMENV_TEST_CHECKER_CGROUP,
@@ -136,10 +215,19 @@ test('Lake diagnostics distinguish source names from late split resource diagnos
     ['source-failure', 'error: Lean exited with code 1'],
     ['out-of-memory', 'error: out of memory'],
     ['killed-worker', 'error: Lean exited with code 137'],
+    ['unknown-worker', 'error: Lean exited with code 2'],
     ['heartbeat', 'error: source/Killed.lean:3:1: (deterministic) timeout at `isDefEq`, maximum number of heartbeats (1) has been reached'],
+    ['kernel-heartbeat', 'error: source/Killed.lean:3:1: (kernel) deterministic timeout, maximum number of heartbeats (1) has been reached'],
+    ['panic', 'error: source/Killed.lean:3:1: PANIC at test: internal checker error'],
+    ['recursion-depth', 'error: source/Killed.lean:3:1: maximum recursion depth has been reached'],
+    ['nested-recursion', 'error: source/Killed.lean:3:1: Tactic `simp` failed with a nested error:\nmaximum recursion depth has been reached'],
+    ['nested-heartbeat', 'error: source/Killed.lean:3:1: Tactic `simp` failed with a nested error:\n(deterministic) timeout at `isDefEq`, maximum number of heartbeats (1) has been reached'],
+    ['double-nested', 'error: source/Killed.lean:3:1: Tactic `first` failed with a nested error:\nTactic `simp` failed with a nested error:\nmaximum recursion depth has been reached'],
+    ['goal-resource-words', 'error: source/Killed.lean:3:1: unsolved goals\nTactic `simp` failed with a nested error:\nmaximum recursion depth has been reached'],
     ['kernel-memory', 'error: source/Killed.lean:3:1: (kernel) excessive memory consumption detected'],
   ]) {
-    const resourceFailure = name !== 'source-failure';
+    const resourceFailure = !['source-failure', 'goal-resource-words'].includes(name);
+    const leanLimit = ['heartbeat', 'kernel-heartbeat', 'recursion-depth', 'panic', 'nested-recursion', 'nested-heartbeat', 'double-nested'].includes(name);
     const bubblewrap = join(directory, name);
     await writeFile(bubblewrap, `#!${process.execPath}
       const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -151,6 +239,9 @@ test('Lake diagnostics distinguish source names from late split resource diagnos
         process.stderr.write('begin ' + 'a'.repeat(24_000) + '\\nerror: source/Killed.le');
         await delay(40);
         process.stderr.write('an:2:1: unsolved goals\\nheartbeats : Nat\\nkilled : True\\n⊢ False\\n');
+        if (${JSON.stringify(name)} === 'heartbeat') {
+          for (let i = 0; i < 8; i++) process.stderr.write('error: source/Killed.lean:2:1: earlier source error\\n');
+        }
         process.stderr.write(${JSON.stringify(resourceMessage.slice(0, -3))});
         await delay(40);
         process.stderr.write(${JSON.stringify(resourceMessage.slice(-3) + '\n')});
@@ -159,13 +250,120 @@ test('Lake diagnostics distinguish source names from late split resource diagnos
       void run();
     `, { mode: 0o700 });
     const verifier = fixture(undefined, { projectChecks: true, targetPath: 'src/Killed.lean', bubblewrap, allowUnboundedDiagnostics: true });
+    const checker = new LeanChecker({ projectChecker: verifier.checkProject.bind(verifier) });
+    const adapted = normalizeCheckerResult(await checker.checkProject({ files, tree: 'fixed', startProcess: launch => launch() }));
+    const feedback = agentCheckResult({ ...adapted, evidence: { ...adapted.evidence, workspace_input: { check_mode: 'lean-project' } } });
     const project = await verifier.checkProject({ files, tree: 'fixed' });
     const final = await verifier.check({ files, tree: 'fixed' });
     for (const result of [project, final]) {
       assert.equal(result.verdict, resourceFailure ? 'ERROR' : 'FAIL', result.diagnostic);
-      if (!resourceFailure) assert.equal(result.diagnostic, 'src/Killed.lean:2:1: unsolved goals');
+      if (leanLimit) {
+        assert.equal(result.diagnostic_code, name === 'panic' ? 'lean_panic' : 'lean_resource_limit');
+        assert.equal(feedback.diagnostic_code, result.diagnostic_code);
+        assert.equal(feedback.verdict, 'ERROR');
+        assert.equal(feedback.mathematical_outcome, 'unassessed');
+        assert.equal(feedback.retryable, false);
+        assert.equal(feedback.diagnostic_location.file, 'src/Killed.lean');
+        assert.equal(result.retryable, false);
+        assert.match(result.diagnostic, /src\/Killed\.lean:3:1:/);
+      }
+      if (['out-of-memory', 'kernel-memory'].includes(name)) assert.equal(result.diagnostic_code, 'checker_memory_limit');
+      if (!resourceFailure) {
+        assert.match(result.diagnostic, /src\/Killed\.lean:2:1: unsolved goals/);
+        if (!['source-failure', 'goal-resource-words'].includes(name)) assert.ok(result.diagnostic.includes(resourceMessage.replace('error: source/', 'src/')));
+      }
       assert.doesNotMatch(result.diagnostic, /a{64}/);
     }
+  }
+});
+
+test('locked raw and JSON Lean diagnostics keep source limits and goal words separate from runtime failures', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-source-limit-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const messages = [
+    '(deterministic) timeout at `isDefEq`, maximum number of heartbeats (1) has been reached',
+    '(kernel) deterministic timeout, maximum number of heartbeats (1) has been reached',
+    'maximum recursion depth has been reached',
+    'Tactic `simp` failed with a nested error:\nmaximum recursion depth has been reached',
+    'Tactic `first` failed with a nested error:\nTactic `simp` failed with a nested error:\n(deterministic) timeout at `isDefEq`, maximum number of heartbeats (1) has been reached',
+    'unsolved goals\nTactic `simp` failed with a nested error:\nmaximum recursion depth has been reached',
+    'unsolved goals\nheartbeats : Nat\nkilled : True\nout_of_memory : True\n⊢ False',
+    'PANIC at test: internal checker error',
+    'out of memory',
+  ];
+  for (const [index, message] of messages.entries()) {
+    const bubblewrap = join(directory, String(index));
+    await writeFile(bubblewrap, `#!${process.execPath}
+      const args = process.argv.slice(2);
+      if (args.some(arg => arg.includes('/original'))) { process.stdout.write('{}\\n'); }
+      else if (args.includes('/bin/sh')) {
+        process.stderr.write(${JSON.stringify(JSON.stringify({ severity: 'error', data: message, fileName: 'Toy.lean', pos: { line: 3, column: 1 } }) + '\n')});
+        process.exitCode = 21;
+      } else {
+        process.stdout.write(${JSON.stringify('/input/WorkspaceSource.lean:3:1: error: ' + message + '\n')});
+        process.exitCode = 1;
+      }
+    `, { mode: 0o700 });
+    const verifier = fixture(undefined, { bubblewrap, allowUnboundedDiagnostics: true });
+    const raw = await verifier.runSourceDiagnostic('lake', ['env', 'lean', '/unused/source.lean'],
+      { timeoutMs: 5000, maxOutputBytes: 10000 });
+    const final = await verifier.check({ files: { 'Toy.lean': 'theorem toy : True := trivial' }, tree: 'fixed' });
+    const failedCheck = !message.startsWith('unsolved goals');
+    assert.equal(raw.exit_code, 1, JSON.stringify(raw));
+    assert.ok(raw.stdout.includes(message));
+    assert.equal(final.verdict, failedCheck ? 'ERROR' : 'FAIL', final.diagnostic);
+    if (failedCheck) {
+      assert.equal(raw.retryable, false);
+      assert.equal(final.retryable, false);
+      assert.equal(raw.diagnostic_code, final.diagnostic_code);
+      assert.match(final.diagnostic, /^Toy\.lean:3:1:/);
+    }
+  }
+});
+
+test('real nested tactic limits stay unassessed in local, project and final checks', lean, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-nested-resource-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const source = 'set_option maxRecDepth 32\nexample (n : Nat) : n + 0 = n := by\n  simp only [← Nat.add_zero]\ntheorem toy : True := trivial\n';
+  const file = join(directory, 'Nested.lean');
+  await writeFile(file, source);
+  const verifier = fixture(undefined, { projectChecks: true });
+  const raw = await verifier.runSourceDiagnostic('lake', ['env', 'lean', file], { timeoutMs: 30000 });
+  assert.equal(raw.diagnostic_code, 'lean_resource_limit', JSON.stringify(raw));
+  assert.equal(raw.retryable, false);
+  for (const checkMode of ['lean-module', 'lean-project']) {
+    const checker = new LeanChecker({ projectChecker: verifier.checkProject.bind(verifier), timeoutMs: 30000 });
+    const result = normalizeCheckerResult(await checker.checkProject({ files: { 'Toy.lean': source }, tree: checkMode,
+      path: 'Toy.lean', checkMode, missionId: 'nested-resource', startProcess: launch => launch() }));
+    const feedback = agentCheckResult(result);
+    assert.equal(result.verdict, 'ERROR', JSON.stringify(result));
+    assert.equal(feedback.diagnostic_code, 'lean_resource_limit');
+    assert.equal(feedback.mathematical_outcome, 'unassessed');
+    assert.equal(feedback.retryable, false);
+    assert.equal(feedback.checker_process_status, 'completed');
+    assert.match(feedback.diagnostic_excerpt, /maximum recursion depth/);
+  }
+  const final = await verifier.check({ files: { 'Toy.lean': source }, tree: 'nested-final' });
+  assert.equal(final.verdict, 'ERROR', JSON.stringify(final));
+  assert.equal(final.diagnostic_code, 'lean_resource_limit');
+});
+
+test('project process signals, wallclock deadlines and unknown exits remain infrastructure errors', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-project-runtime-test-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  for (const mode of ['signal', 'deadline', 'unknown', 'spawn']) {
+    const bubblewrap = join(directory, mode);
+    if (mode !== 'spawn') await writeFile(bubblewrap, `#!${process.execPath}
+      process.stderr.write('error: source/Toy.lean:3:1: unsolved goals\\n');
+      if (${JSON.stringify(mode)} === 'signal') process.kill(process.pid, 'SIGTERM');
+      else if (${JSON.stringify(mode)} === 'deadline') setInterval(() => {}, 1000);
+      else process.exitCode = 23;
+    `, { mode: 0o700 });
+    const verifier = fixture(undefined, { projectChecks: true, bubblewrap, allowUnboundedDiagnostics: true,
+      timeoutMs: mode === 'deadline' ? 200 : 5000 });
+    const result = await verifier.checkProject({ files: { 'Toy.lean': 'theorem toy : True := trivial' }, tree: 'fixed' });
+    assert.equal(result.verdict, 'ERROR', mode);
+    if (mode === 'deadline') assert.equal(result.timed_out, true);
   }
 });
 
@@ -271,7 +469,7 @@ test('candidate launcher, signal, OOM, and malformed export never become cacheab
   t.after(() => rm(directory, { recursive: true, force: true }));
   for (const [code, diagnostic] of [
     [126, ''], [127, ''], [137, ''],
-    [21, '{"severity":"error","data":"excessive memory consumption"}'],
+
     [0, ''],
   ]) {
     const bubblewrap = join(directory, `test-launcher-${code}`);

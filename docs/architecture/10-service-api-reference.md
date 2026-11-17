@@ -30,16 +30,16 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `951de6a9e5ef0bdfee80f36263b508783256c55f5834b28ed1485e3385983e7b` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `528c5679002a17c048332291f2c5a51a4c7c9160467379dc1198cc604e667a6d` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `c9f93455ebb8a1daefc21ced84f98f95f4d4df1d72cf70e120c00607ed283b8c` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `92db5cc14ac74c89e080b766f2cfe415898fe7d1cf0713c45a99344f5bda9743` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `5be1832ad5b7e08437ded98d21f98445874a683c7127b97305b8ca370e3421b6` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `87073a340338c492b099745fbbaf171167936e96b18d7ca366705d3169bbb52b` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `5e9a40a7624518d0b9ca1e81ff65a75f99d798e08476b4320fbe8148e594031d` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `496a3d1a99d7413f0c119fac9574d525700a5c0005eda2446c4376344253310e` |
 | [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
 | [src/sdk/service-router.js](../../src/sdk/service-router.js) | `c26e5b1047fb77a779564462962131fbe7af4437edacbedf1e1096f19183bf22` |
 | [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `536bb0ee0b7677e1610970c06e8b1114e23803f0f8a734976ef0612a527af2ab` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `063d4bc085c0efb18accc75cd62146c0fe43fbfb099e1eae937cc559b502c168` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 
@@ -82,6 +82,7 @@ The two profile columns describe the compatibility extension surface after Sandb
 | `task.task_finish` | `swarmenv_task_finish` | `swarmenv_task_finish` |
 | `task.task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` |
 | `task.task_list` | `swarmenv_task_list` | `swarmenv_task_list` |
+| `task.task_revise` | `swarmenv_task_revise` | `swarmenv_task_revise` |
 | `task.task_status` | `swarmenv_task_status` | `swarmenv_task_status` |
 | `task.task_take` | `swarmenv_task_take` | `swarmenv_task_take` |
 | `task.task_view` | `swarmenv_task_view` | `swarmenv_task_view` |
@@ -269,7 +270,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 26 registered capabilities
+### Task Service: 27 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -292,7 +293,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af"
+  "manifest_hash": "9b11fe22659c7c78ec7f7e8e1f23170da5a695feb548fd8a2c1c1ba90ca22a52"
 }
 ```
 
@@ -702,18 +703,27 @@ Search bounded Task summaries across states; follow next_cursor and read Task de
 
 #### task.task_view
 
-Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.
+Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version.
 
 ```json
 {
   "name": "task_view",
   "operation": "task_view",
-  "description": "Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
+  "description": "Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version.",
   "input_schema": {
     "type": "object",
     "properties": {
       "task_id": {
         "type": "string"
+      },
+      "contract_history_after_version": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "contract_history_limit": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 100
       }
     },
     "additionalProperties": false
@@ -741,9 +751,9 @@ Read a Task contract, proposal provenance, dependencies, Execution history, and 
   "requires_binding": false,
   "scope": "task-read",
   "help": {
-    "when": "Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.",
+    "when": "Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version.",
     "ref": "service://task/task_view",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_view",
@@ -753,26 +763,93 @@ Read a Task contract, proposal provenance, dependencies, Execution history, and 
 
 #### task.task_create
 
-Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.
+Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.
 
 ```json
 {
   "name": "task_create",
   "operation": "task_create",
-  "description": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
+  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.",
   "input_schema": {
     "type": "object",
     "required": [
-      "mission_id",
       "summary",
+      "gap",
       "expected_output",
-      "acceptance_conditions"
+      "acceptance_conditions",
+      "priority"
     ],
     "properties": {
       "mission_id": {
         "type": "string"
       },
       "summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      },
+      "gap": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "expected_output": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "acceptance_conditions": {
+        "oneOf": [
+          {
+            "type": "array",
+            "minItems": 1
+          },
+          {
+            "type": "object",
+            "minProperties": 1
+          }
+        ]
+      },
+      "priority": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          }
+        ]
+      },
+      "depends_on": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "input_material_refs": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxItems": 100
+      },
+      "workspace": {
+        "type": "object",
+        "description": "Compatibility input. If both workspace.revision and base_revision are supplied, they must match."
+      },
+      "base_revision": {
+        "type": "string",
+        "pattern": "^[0-9]+[.][0-9]+$"
+      },
+      "task_instructions": {
         "type": "string"
       },
       "goal": {
@@ -780,22 +857,6 @@ Create one substantial ordinary Task with a summary, expected output, acceptance
       },
       "task_type": {
         "type": "string"
-      },
-      "task_instructions": {
-        "type": "string"
-      },
-      "expected_output": {
-        "type": "string"
-      },
-      "acceptance_conditions": {
-        "oneOf": [
-          {
-            "type": "array"
-          },
-          {
-            "type": "object"
-          }
-        ]
       },
       "required_capabilities": {
         "type": "array",
@@ -807,36 +868,10 @@ Create one substantial ordinary Task with a summary, expected output, acceptance
       "completion_contract": {
         "type": "object"
       },
-      "workspace": {
-        "type": "object",
-        "description": "Compatibility input. If both workspace.revision and base_revision are supplied, they must match."
-      },
-      "base_revision": {
-        "type": "string",
-        "pattern": "^[0-9]+[.][0-9]+$"
-      },
-      "input_material_refs": {
-        "type": "array",
-        "items": {
-          "type": "string",
-          "minLength": 1
-        },
-        "maxItems": 100
-      },
       "responsibility_key": {
         "type": "string",
         "minLength": 1,
         "maxLength": 256
-      },
-      "priority": {
-        "type": "integer",
-        "minimum": 0
-      },
-      "depends_on": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
       },
       "timebox_ms": {
         "type": "integer",
@@ -868,12 +903,157 @@ Create one substantial ordinary Task with a summary, expected output, acceptance
   "requires_binding": false,
   "scope": "task-write",
   "help": {
-    "when": "Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.",
+    "when": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.",
     "ref": "service://task/task_create",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_create",
+  "errors": []
+}
+```
+
+#### task.task_revise
+
+An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.
+
+```json
+{
+  "name": "task_revise",
+  "operation": "task_revise",
+  "description": "An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.",
+  "input_schema": {
+    "type": "object",
+    "required": [
+      "task_id",
+      "expected_spec_version",
+      "expected_state_version",
+      "reason",
+      "changes"
+    ],
+    "properties": {
+      "task_id": {
+        "type": "string"
+      },
+      "expected_spec_version": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "expected_state_version": {
+        "type": "integer",
+        "minimum": 0
+      },
+      "reason": {
+        "type": "string",
+        "minLength": 1
+      },
+      "changes": {
+        "type": "object",
+        "minProperties": 1,
+        "properties": {
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "gap": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "expected_output": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "acceptance_conditions": {
+            "oneOf": [
+              {
+                "type": "array",
+                "minItems": 1
+              },
+              {
+                "type": "object",
+                "minProperties": 1
+              }
+            ]
+          },
+          "priority": {
+            "oneOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 2
+              }
+            ]
+          },
+          "depends_on": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "input_material_refs": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "maxItems": 100
+          },
+          "workspace": {
+            "type": "object"
+          },
+          "base_revision": {
+            "type": "string",
+            "pattern": "^[0-9]+[.][0-9]+$"
+          },
+          "task_instructions": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "additionalProperties": false
+  },
+  "output_schema": {
+    "type": [
+      "object",
+      "array",
+      "string",
+      "number",
+      "boolean",
+      "null"
+    ]
+  },
+  "audience": [
+    "bound",
+    "recovery"
+  ],
+  "side_effect": "write",
+  "idempotent": false,
+  "context": [
+    "task",
+    "execution"
+  ],
+  "requires_binding": false,
+  "scope": "task-write",
+  "help": {
+    "when": "An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.",
+    "ref": "service://task/task_revise",
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+  },
+  "method": "POST",
+  "path": "/v1/task_revise",
   "errors": []
 }
 ```
@@ -1044,13 +1224,13 @@ Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup close
 
 #### task.task_cancel
 
-Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.
+An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.
 
 ```json
 {
   "name": "task_cancel",
   "operation": "task_cancel",
-  "description": "Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
+  "description": "An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -1103,9 +1283,9 @@ Cancel an unowned ready or blocked Task using an explicit Mission coordination g
   "requires_binding": false,
   "scope": "mission-write",
   "help": {
-    "when": "Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.",
+    "when": "An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.",
     "ref": "service://task/task_cancel",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_cancel",
@@ -2682,7 +2862,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "34476ca30e7dfd2fa5ee3d63e04d69a4b2acdee2ca9fd13a4667543105a7a497"
+  "manifest_hash": "21ea5bda4e91d3c46e7221d5d617ac9a3653d7ffefa0614e08c496903d81bafd"
 }
 ```
 
@@ -2712,6 +2892,13 @@ Build a fixed public Lean Workspace revision when project checking is configured
       "path": {
         "type": "string",
         "minLength": 1
+      },
+      "check_mode": {
+        "type": "string",
+        "enum": [
+          "lean-project",
+          "lean-module"
+        ]
       },
       "request_key": {
         "type": "string",

@@ -69,13 +69,14 @@ function observed(task) {
   return { task_id: task.task_id, expected_spec_version: task.spec_version, expected_state_version: task.state_version };
 }
 
-test('narrow grants are Mission bound, cannot be self-assigned, and end when the Bot closes', t => {
+test('Task cancellation needs UNBOUND Mission authority while other coordination retains narrow grants', t => {
   const { service, create, coordinator } = fixture(t);
   const ordinary = coordinator('ordinary');
   const granted = coordinator('granted', ['task_cancel', 'unsupersede']);
   const task = create('task:cancel-target');
   const input = { ...observed(task), reason: 'Withdraw obsolete responsibility' };
-  assert.throws(() => service.dispatch('task_cancel', { ...input, coordination_permissions: ['task_cancel'] }, ordinary('ordinary')), { code: 'NOT_ALLOWED' });
+  const ordinaryTarget = create('task:ordinary-cancel');
+  assert.equal(service.dispatch('task_cancel', { ...observed(ordinaryTarget), reason: input.reason }, ordinary('ordinary')).task.state, 'CANCELLED');
   assert.throws(() => service.dispatch('task_cancel', input, makeEnvelope({ actorRef: 'operator:unverified' })), { code: 'NOT_ALLOWED' });
   service.createMission({ mission_id: 'foreign', goal: 'Separate Mission' }, makeEnvelope({ actorRef: 'operator:test' }));
   const foreign = coordinator('foreign-bot', ['task_cancel'], 'foreign');

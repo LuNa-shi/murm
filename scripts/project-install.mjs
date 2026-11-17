@@ -26,7 +26,7 @@ function writeReceipt(path, receipt, fault = null) {
   } finally { try { unlinkSync(temporary); } catch {} }
 }
 
-function decode(files) {
+export function decodeProjectFiles(files) {
   if (!files || typeof files !== 'object' || Array.isArray(files) || Object.keys(files).length > 10_000) throw invalid('Install requires a bounded complete file map');
   const bytes = Object.create(null), manifest = Object.create(null);
   let total = 0;
@@ -179,7 +179,7 @@ export class ProjectInstaller {
   async install(input, pids) {
     this.assertOpen(input);
     const key = this.#key(input);
-    const target = decode(input.files);
+    const target = decodeProjectFiles(input.files);
     if (target.content_hash !== input.content_hash || !/^[a-f0-9]{64}$/.test(input.expected_content_hash)) throw invalid('Install manifest hashes disagree');
     const fingerprint = hash(canonical({ expected_content_hash: input.expected_content_hash, content_hash: target.content_hash }));
     if (existsSync(key)) {
@@ -224,7 +224,7 @@ export class ProjectInstaller {
     catch (error) { try { unlinkSync(`${key}.capture`); } catch {} throw error; }
     try {
       this.fault?.('before_write');
-      await this.#writeTree(decode(original.files).bytes, target.bytes, changed, modes);
+      await this.#writeTree(decodeProjectFiles(original.files).bytes, target.bytes, changed, modes);
       this.fault?.('after_write');
       this.assertOpen(input);
       const observed = await this.snapshot(input);
@@ -239,7 +239,7 @@ export class ProjectInstaller {
       try {
         // Writers are still paused. Restore all changed paths, including a
         // partial write, and verify bytes before permitting any resume.
-        const old = decode(original.files);
+        const old = decodeProjectFiles(original.files);
         const actual = Object.fromEntries(changed.map(path => [path, true]));
         await this.#writeTree(actual, old.bytes, changed, modes);
         await this.#restoreDirectories(directories);

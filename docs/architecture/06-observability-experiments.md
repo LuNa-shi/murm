@@ -129,6 +129,21 @@ Sources: [Workspace provider](../../src/observability/workspace-provider.js), [r
 
 The runner finalizes its report from Task/Execution/Material/check data, Core accounting, cleanup evidence and protocol checks. Important meanings are:
 
+The Workspace audit reads every taken Execution from Task Service after cleanup.
+Each materialized Workspace reference must be unique. A missing Execution or a
+missing reference invalidates the report, except for the known preparation
+failures and a durable `FAILED` budget stop before activation. The latter requires
+`started_at` to be explicitly null and the terminal reason to be
+`bot-lifetime-budget`, `execution-timebox`, `selection-budget` or
+`benchmark_deadline_cleanup`. The selection timer can also stop a taken Bot still
+in PREPARING; this does not imply that its Execution reached activation.
+A deadline can expire while Workspace creation or binding is still pending;
+that path legitimately has no materialized reference. Once activation has been
+recorded, those budget reasons do not excuse a missing reference. Duplicate
+references remain invalid even for preparation failures. This read-only report
+classification does not change admission, timers, cleanup or Agent visibility,
+and does not rewrite reports produced by older revisions.
+
 | Report field/family | Current implementation meaning and limit |
 |---|---|
 | `solved` | The Mission submission coordinator has a persisted accepted submission for the fixed public main and input manifest. This scientific outcome is independent of protocol validity or ordinary source diagnostics; pending cleanup still invalidates the run evidence. See [04](04-services.md). |
@@ -165,6 +180,10 @@ Material “downstream effect” inference checks that a later Workspace/candida
 Analysis opens each project's available Task, Context and Judge databases read-only. Historical projects can store all three domains in `project.sqlite`. Modern operation receipts provide the public Workspace revision, Material producer IDs and the Material IDs on the returned page, while the bounded Observer lifecycle event records the Task finish disposition separately from Execution termination.
 
 The analyzer caps retained source errors at 20 and bounds many displayed evidence lists. Automated recommendation text can contain compatibility-era concepts; the current approved Issue and architecture remain the review standard. Formal experiment reports should distinguish observed result, explanation and next-step decision, with source code/test/probe/real-Agent evidence identified separately.
+
+Raw Bridge attribution keeps pending starts within each input file. A completion first matches its physical `bridge_call_id`, then its `operation_id` when that ID identifies one start in the file observed so far. A supplied physical ID with no match remains unknown. Reused logical IDs require physical identity to distinguish retries. Historical completions without either ID inherit a start only when a single pending request exists, its logical ID has no recorded reuse, and no response has already been sent for it. Conflicting explicit Task, Execution or operation identities prevent inheritance. A `bridge.response_sent` fact records delivery and keeps the pending start available for an exact completion, while blocking later identity-free matches. Unmatched completions retain their own explicit identities and bounded result/error evidence, with `bridge_pairing=unknown`; they borrow no Task or Execution and generate domain mutation facts only when the completion itself supplies Task or Execution identity. Fact deduplication includes physical call identity. Consequently a corrected offline analysis may reduce historical per-Execution attribution or inferred mutation counts where old logs are ambiguous. Previously written reports remain version-bound evidence.
+
+Raw log ingestion retains every normalized fact in file order before attribution and semantic deduplication. File discovery and per-file fact collection append items iteratively, including recursively discovered log/summary files; they do not pass an entire run-sized array as function arguments. A single Core log can therefore exceed the JavaScript argument-count limit without losing records or aborting with a call-stack overflow. NDJSON inventory validation, raw fact normalization and runtime interval reconstruction read decoded UTF-8 chunks and split complete lines incrementally, preserving CRLF/LF line numbers, blank lines and a final record without a newline. They do not construct a whole-file string, so logs larger than the V8 string limit remain readable. Each JSON record is still parsed in full; a single record beyond the string limit fails rather than being truncated. An unreadable inventory source produces a bounded source warning instead of being silently treated as an empty file. Per-record normalization, Pi returned-content hashes and malformed-line diagnostics are unchanged. The analyzer retains the accumulated facts and runtime records in memory, so available memory and later aggregation costs still constrain very large runs. It does not sample or impose a new evidence cap. Window construction compares semantic phases only when the incoming fact is an eligible semantic boundary beyond the minimum interval; text deltas and heartbeats retain their facts and supporting counts without repeatedly rescanning the current window for a split they cannot trigger. Window phases, timing and report structure remain unchanged. Reanalysis can write a separate report through `--output`; preserving a failed run's original report and process log requires choosing a new output path and a separate shell log destination.
 
 Sources: [analysis entry](../../scripts/analyze-experiment.mjs), [analysis engine](../../src/analysis/experiment-analysis.js), [analysis tests](../../test/experiment-analysis.test.js), [formal workflow](../workflows/experiment.md), [report template](../experiments/TEMPLATE.md).
 
@@ -259,6 +278,46 @@ The analyzer reads raw Pi `tool_execution_end`/`tool_result` events and hashes t
 ## Independent service evidence
 
 The coordinator logs remote Context/Judge request start/completion and records the peer PIDs and HTTP deployment mode. Judge peers currently do not receive the coordinator's stage logger. Their durable CheckResult database, phase receipts, private stderr log and checker resource ledger establish peer-side outcomes; a per-stage checker NDJSON stream must not be inferred from coordinator completion records. Raw databases, logs and resource identities stay in ignored experiment storage. Checker cleanup is verified before terminal report eligibility; peer shutdown subsequently remains part of store close, and a shutdown failure propagates instead of silently confirming process cleanup.
+
+## FLT10 benchmark inputs
+
+Issue #133 adds the complete ten-checkpoint FLT10 ladder as benchmark inputs;
+its first authorized observations select Q10 and Q20 individually. The existing
+runner and Swarm organization execute them. `config/flt10.json` names the pinned
+ContextSwarm fixture commit and original paths, original baseline digests, and
+explicit Lean declaration names. Project IDs remain filesystem-safe identifiers;
+`declaration_name` selects the namespaced theorem for Mission acceptance and
+independent kernel replay. Legacy Putnam manifests still use the project ID.
+
+The loader requires ten entries for `benchmark=flt10` and twelve for the default
+Putnam profile, rejects unknown profiles, duplicates, malformed FLT names and
+source hash changes, and checks each original file against the pinned Git blob.
+Timed execution repeats the fixture check. Generic `fixture_commit` records the
+input revision; `putnambench_commit` remains readable for old inputs and reports.
+
+Before initial Workspace creation, `readBenchmarkContext` verifies a host-bound
+context manifest and every file digest, rejects traversal, symlinks, duplicates,
+Lean source destinations and files outside `benchmark/`, and enforces 2 MiB per
+file and 14 MiB total. Failures stop setup and trigger normal project cleanup.
+The verified bytes seed the public Workspace with the original target source.
+Full graph metadata is split into independently compressed XZ shards. The Python
+reader checks each shard and searches statements in memory without extracting the
+whole graph to Bot disk. Cut metadata and safe definition text accompany it.
+These are public input files, not Tasks or Materials; the usual Workspace revision
+history records subsequent research changes. The seeded README explains the exact
+target path and metadata query commands. No completed proof or historical run is
+seeded. Core scheduling, Task selection and collaboration rules are unchanged.
+
+Root-only FLT preparation and formal readiness are separate observations. The
+operator records initial compilation, root identity, a private complete-target
+witness and visibility validation per checkpoint. A root `sorry` warning is an
+expected initial-state observation, never a solution. A validated private
+reference project is engineering evidence and is not Swarm research output.
+A timed run requires a receipt bound to its target/context/checker; missing
+validation fails before Bot creation. Earlier full-graph FLT reports retain their
+original profile. Current root-only work focuses on Q20; Q100 complete-proof
+validation and model experiments are deferred. See [run configuration](07-run-configuration.md)
+for the receipt and public/private file boundaries.
 
 ## Independent-attempt evidence
 

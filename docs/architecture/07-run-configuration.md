@@ -84,6 +84,8 @@ Direct Pi routing uses `PI_PROVIDER` and `PI_MODEL` (with the older `NUROUTER_PI
 5. **Create Mission and public input.** Create a Mission with the locked problem identity, target path/source hash, final acceptance checker and optional separate merge checker. Create its distinct public Workspace with the original unsolved file as the initial revision, then wire and reconcile the durable Mission submission store. There is no initial/shared/root Task. Bots later propose ordinary Tasks; the Mission is never taken.
 6. **Build the registries and resolve Mathlib Search.** Build the Agent-facing Registry from the Mission-aware providers, then register configured bundles and Mathlib Search. Prefer a configured external URL/provider. Otherwise, if the pinned project's Mathlib source tree exists, register the local source provider. Missing source in a synthetic fixture leaves the capability absent; admission can then reject a Task needing it. Registration does not create a hidden alternative search service. Finally construct the local owner/controller Registry and router.
 7. **Optional preparation hook.** Await `prepareProject` with `root: null`, the Mission/public Workspace and domain services. Deterministic callers may seed Tasks through those services; normal runs start with an empty Task pool.
+The deployed worker accepts the current `swarm-bot-v1-draft.3` startup contract (or the separate `swarm-solver-v1` contract), validates the complete immutable resource set and rejects older Bot protocol versions before starting Pi. Rebuild the image when changing the host contract; a host-only update fails startup rather than silently using stale guidance.
+
 8. **Create four Core environments.** Each Core receives a registered-Bot adapter, one-worker Runtime, authenticated Bridge, private raw log and observation hooks. Domain state and public Workspace are shared; each Bot has its own Sandbox and guest project. Native Pi read/write/edit/bash and the protected `swarm` CLI are the research tool surface.
 9. **Start supervisors under the existing deadline.** Build Task Controller and four identity loops, subscribe to public changes and start independent discovery with the configured first-Bot stagger. The project deadline was fixed before setup; starting the active loop resets only its observation tracker, not the budget. Successors start after prior resource cleanup and do not repeat the initial stagger.
 
@@ -235,9 +237,21 @@ Worker startup claims the single start slot before awaiting resource reads. All 
 
 A positive-duration Putnam run requires `final_tree_checker` in its trusted host configuration. It contains the fixed checker identity, toolchain/library/exporter paths and `artifactLock`; the loader verifies full mounted artifacts, pinned sources, isolated Lean version and actual cgroup limits before provider creation or model startup. The lock-generating tool takes the trusted build configuration and source checkout paths, verifies the fixed source revisions, and stores only the local deployment lock at the requested local path. A changed verifier, harness, dependency or executable requires regenerating and validating the lock. The final environment identity includes its digest. The diagnostic source checker keeps its separate fixture configuration. Programmatic controlled tests may inject a final-tree adapter explicitly. The CLI accepts the locked deployment.
 
+The `lean-module` development path parses headers with the pinned Lean parser and builds the selected local dependency closure one module at a time. Each build mounts only that source and the immutable transitive dependency artifacts, using the normal cgroup deadline and process cleanup. The new parser/compiler implementation and the mounted base64 encoder participate in the artifact lock. Full project, merge and Mission checks retain their independent full-build paths; a module receipt cannot substitute for them.
+
+The module checker retains a process-local, Mission-separated artifact cache bounded by `moduleCacheBytes` (128 MiB default, up to 1 GiB). Keys include the module source, recursive dependency keys and locked checker environment/options. A cache miss compiles in a fresh namespace, then validates the resulting artifacts in a separate namespace before admitting immutable bytes to the host-owned LRU. A hit reuses that previously validated artifact and its warnings; it is not a newly executed proof check. Source-only caching does not promise to rerun metaprograms that observe time or other nondeterministic external state. Candidate precompiled files never populate the cache. The existing artifact lock now covers `lean-module-checker.js`, `lean-module-build.lean`, `lean-module-verify.lean` and the mounted base64 encoder. The system `mkdir` and `base64` executables may be symlinks only into the existing read-only host library mounts; the lock records both the invoked path/link and canonical target bytes. Renew the deployment lock after changing these inputs; its environment identity separates old cached artifacts.
+
+The build driver enables normal imported Lean extensions, reads the fixed source and calls `Elab.runFrontend`. Only a successful returned Environment receives the module-specific completion definition containing the source/dependency/environment key; the driver then serializes that Environment. Exit zero or a nonempty output alone is insufficient for a PASS; the separate verifier must also accept the artifact. The independent verifier loads the resulting olean parts and fixed dependencies with candidate extensions/initializers disabled, checks the expected completion definition and replays the current module's safe declarations into the imported environment. It does not recheck the whole Mathlib library. Lean's replay intentionally skips unsafe/partial program constants; newly declared axioms are reported as warnings, and frontend `sorry` warnings remain visible. Damaged, missing or mismatched artifacts return scoped ERROR and are not cached. A failed build does not consume another request's cached result.
+
+This is development diagnostic validation under Lean's ordinary frontend/metaprogram trust assumptions. The completion definition is not a cryptographic attestation against code intentionally forging the driver protocol or compromising the compiler process. Independent artifact replay also does not establish the intended meaning of an arbitrary new theorem. The local receipt remains mathematically unassessed and cannot satisfy full Workspace delivery, merge or Mission acceptance. The final fixed-target/type/axiom/portable-kernel path is unchanged. These distinctions follow the [Lean proof-validation guidance](https://lean-lang.org/doc/reference/latest/ValidatingProofs/); arbitrary in-process native attacks are not claimed to be prevented by the local diagnostic path.
+
+Lean diagnostics distinguish compiler source rejection from incomplete checking. A Lake worker exiting with code 1 and mapped ordinary source error headers returns `FAIL` with up to eight bounded source diagnostics. Located Lean deterministic heartbeat timeout, maximum recursion depth and panic headers instead return `ERROR`, retaining the bounded diagnostic and source location. JSON error records also recognize Lean's `runtime.maxRecDepth` tag through nested tags. For plain output, only a leading known `Tactic … failed with a nested error:` envelope is unwrapped, up to eight levels; the project stream retains the original located error while reading its immediate nested continuation across chunks. Arbitrary resource words later in a goal or ordinary error body do not trigger this classification. `lean_resource_limit` and `lean_panic` identify these cases; their compiler process completed, their mathematical outcome remains `unassessed`, and `retryable=false` discourages repeating unchanged input. Explicit memory/runtime failure headers retain `ERROR` with `checker_memory_limit` or `checker_runtime_failure`. These codes and retry guidance pass through the source/project adapter, Judge result and Agent feedback using the existing evidence fields and result classes. For these diagnosed completed invocations, Judge preserves the nonretryable guidance instead of declaring the checker unavailable and replacing it with the infrastructure retry gate. The same preservation applies to `module_verification_failed`: independent module artifact validation completed and rejected the candidate bytes, so the result stays `ERROR`/`unassessed` with `retryable=false`, no cache insertion and no checker-health degradation. A corrected revision remains eligible for normal checking. Actual process/infrastructure failures keep that gate. No new database result class is introduced.
+
+The collector parses complete streamed headers, including headers split across chunks or emitted after the retained stderr prefix. It does not classify ordinary words in source paths, quoted terms or goal contexts. The direct source diagnostic adapter likewise examines located error headers; the non-project final export path examines JSON error records. Abnormal worker exit codes, process signals, launch failures and unknown build failures remain infrastructure errors without being guessed to be OOM; external wallclock deadline expiry retains its distinct timeout flag. This feedback classification does not change Lean resource defaults, proof acceptance, kernel replay or the final-tree trust boundary. Existing experiment records are not reclassified.
+
 The trusted `final_tree_checker.timeoutMs` field defaults to 120,000 ms and participates in the artifact lock. Renew the lock after changing it. Mission coordination takes the verifier timeout and clips it to the remaining Mission deadline. The source diagnostic process bound is the smaller of `checkerTimeoutMs` and the locked timeout when using the locked adapter. The launch manifest and aggregate protocol record the resolved source and final bounds as `source_checker_timeout_ms` and `final_tree_checker_timeout_ms`; the project report includes the effective source process bound under `judge_check_budget.process_timeout_ms` and the verified final-tree bound under `run.final_tree_checker.timeout_ms`.
 
-`mission_coordination_permissions` is an explicit allowlist from `unsupersede`, `task_cancel`, `task_dependency_replace`, `mission_submit`; omitted means no grants in general compositions; positive-duration validation requires an explicit `mission_submit` grant. Runtime freezes the list at Bot registration. The research Bot cannot change it. The runner always stops new research after trusted Mission acceptance; an older stop-on-solved flag cannot override the accepted Mission lifecycle. `maxInfrastructureRetries` caps final acceptance infrastructure retries and defaults to zero; exact scientific outcomes reuse their original result. Per-Bot, selection, E and run timeboxes continue to bound work independently.
+`mission_coordination_permissions` is an explicit allowlist from `unsupersede`, `task_cancel`, `task_dependency_replace`, `mission_submit`; omitted means no grants in general compositions; positive-duration validation requires an explicit `mission_submit` grant. Runtime freezes the list at Bot registration. The research Bot cannot change it. The historical `task_cancel` spelling remains accepted for configuration compatibility; it grants no additional permission. Cancellation now uses ordinary UNBOUND authority plus Task ownership/version guards, including when that legacy grant is absent. The runner always stops new research after trusted Mission acceptance; an older stop-on-solved flag cannot override the accepted Mission lifecycle. `maxInfrastructureRetries` caps final acceptance infrastructure retries and defaults to zero; exact scientific outcomes reuse their original result. Per-Bot, selection, E and run timeboxes continue to bound work independently.
 
 ## Host-gated model access and concrete network deployment
 
@@ -273,7 +287,10 @@ The review command displays identities and acceptance criteria. To inspect the f
 
 ### Local checker admission budgets
 
-`judge_mission_budget` (or `options.judgeMissionBudget`) accepts trusted `maxConcurrent` (default 4, integer 1–64), `maxQueued` (default 8, integer 0–1024), and `queueWaitMs` (default 120000, integer 1–120000). Ordinary checks have no cumulative quota; omitted/null `maxRequests` is accepted for compatibility, while a finite legacy setting is rejected explicitly rather than silently enforcing an old cap. A fixed persisted Mission policy cannot change mid-run; old finite Mission policies are preserved and require a fresh Mission for the new policy. A newly admitted request reserves at most one preflight and one source process. The project report's `judge_check_budget` includes running/queued/admitted counts, retries, cached aliases, process starts, queue capacity/deadline and null cumulative/process-total bounds. Exact same-ID replays do not increment a counter. Queue waiting never extends the Mission or Execution deadline. The independent launcher sizes its HTTP deadline to at least the configured queue wait plus two checker timeouts and 30 seconds of transport margin (or the prior four-timeout margin if larger). The default standalone RemoteJudgeService deadline remains 300 seconds; external deployers must choose a deadline covering their configured queue and checker durations. Separate merge checks and final Mission acceptance retain their own policies; ordinary queue capacity does not expand them.
+`judge_mission_budget` (or `options.judgeMissionBudget`) accepts trusted `maxConcurrent` (default 4, integer 1–64), `maxQueued` (default 8, integer 0–1024), and `queueWaitMs` (default 120000, integer 1–2147483647). Ordinary checks have no cumulative quota; omitted/null `maxRequests` is accepted for compatibility, while a finite legacy setting is rejected explicitly rather than silently enforcing an old cap. A fixed persisted Mission policy cannot change mid-run; old finite Mission policies are preserved and require a fresh Mission for the new policy. A newly admitted request reserves at most one preflight; its source phase permits one process for full-project/single-file checks or the bounded serial module plan described below. The project report's `judge_check_budget` includes running/queued/admitted counts, retries, cached aliases, process starts, queue capacity/deadline and null cumulative/process-total bounds. Exact same-ID replays do not increment a counter. Queue waiting never extends the Mission or Execution deadline. The independent launcher sizes its HTTP deadline to at least the configured queue wait plus two checker timeouts and 30 seconds of transport margin (or the prior four-timeout margin if larger). The combined HTTP deadline must itself fit a positive timer-safe integer (at most 2147483647 ms); the independent launcher rejects overflow before creating directories or starting peer processes. Thus the largest individual queue value is not necessarily deployable with a positive checker allowance. The default standalone RemoteJudgeService deadline remains 300 seconds; external deployers must choose a deadline covering their configured queue and checker durations. Separate merge checks and final Mission acceptance retain their own policies; ordinary queue capacity does not expand them.
+
+
+Ordinary module checks use the same configured request concurrency, queue and checker timeout as full project checks. Their source phase supports a bounded serial plan: Judge derives `2 × N + 1` launch callbacks from the canonical fixed snapshot's `N` Lean files (excluding root `lakefile.lean`), for header parsing plus compile/independent-validation work. This is not a new configurable Agent budget. Each launch has fresh lifecycle/fencing authority and an atomic actual-process count; overlapping callbacks and launches above the fixed limit are refused. `source_process_starts` can therefore exceed the number of module check requests. Full project/single-file source phases and each preflight remain single-launch. The whole source sequence shares one existing checker slot and one source deadline, and prior descendants/cgroup cleanup must finish before a later launch. Queue, Mission, Execution and transport deadlines remain unchanged. This admission extension alone makes no claim that module artifacts meet the independent trusted-validation contract.
 
 `mission_final_check_budget` accepts trusted `maxChecks` and `maxConcurrent`, defaulting to four and one. These govern the separate machine submission verifier. The report's `mission_final_check_budget` records configured and actual admissions. Both budgets retain unresolved active reservations across process restart. The normal benchmark shares each project Judge database across its four Cores. An explicitly configured merge policy is independent of final acceptance.
 
@@ -284,6 +301,179 @@ The trusted final-tree deployment accepts `projectChecks: true` (default false).
 No new dependency is downloaded at check time. The configured, locked library roots become synthetic offline Lake path dependencies; the toolchain and library artifact fingerprints cover the executable inputs. Project source roots derive from the fixed target path, not a caller flag. See [Services](04-services.md#locked-lake-project-preparation-and-compilation) for module coverage, build outputs and error handling. Rebuild the Agent image after changing CLI help or the Workspace skill; the benchmark verifies their hashes before starting a Bot.
 
 Independent deployment additionally writes private `judge-peer-config.json` (including its coordinator credential), per-service `*.instance-lock` files, and `judge-checker-resources.ndjson` under project state. These are operator-owned deployment/recovery evidence, never Bot/public output.
+
+## FLT10 preparation and checker deployment
+
+`scripts/benchmarks/prepare_flt10.py` consumes a clean FLT source checkout at
+`aa2d8b34692b16c70f699536de0d8e75b9a3e9ef`, Mathlib at
+`db584cd6d46c92f209a44c0f1c829460d327499d`, and the existing Lean 4.33.1 toolchain.
+It uses the upstream statement graph builder to preserve all declaration/import
+metadata while cutting each target's transitive proof cone. Safe definition
+imports are traversed in dependency order; any proof-module import or cycle
+aborts preparation. Each checkpoint compiles its own safe sources and generated
+`FLT10.DAG_qN` with only that projection plus Mathlib dependencies on the search
+path. Compiler failure is bounded to 180 seconds per module and leaves a local
+build log. No Agent or provider is started by preparation. Source-only mode is
+explicitly non-runnable. Existing output directories are rejected.
+
+The generated source and cut identities must match the tracked
+`benchmarks/flt10/projection-contract.json`. Public context shards and manifests
+are prepared for all ten inputs; each problem is bound to its context manifest
+SHA-256. The output config is a private setup input. Supply the existing sandbox,
+model gateway, Mission grant and ordinary Judge policies from the approved local
+deployment. Use one checkpoint-specific `final_tree_checker` per selected run,
+with `benchmarkProfile=flt10-dag-v1`, `checkpoint`, `projectionRoot`, and that
+projection's `lib` alongside the pinned Mathlib package libraries. Do not include
+other checkpoints or the original full FLT build directory. Mathlib search uses
+`MATHLIB_SEARCH_SOURCE_ROOT` pointing only at the same Mathlib source tree.
+
+The artifact-lock creator recognizes only the legacy default profile and the
+FLT profile. The latter pins the separate Mathlib and FLT source revisions,
+checks source cleanliness, verifies safe projected source bytes against the
+tracked contract and rejects extra/missing compiled modules in the projection.
+The lock fingerprints all mounted artifacts plus the FLT contract. Launch checks
+these fingerprints and the normal cgroup/toolchain requirements again. Unknown
+profiles or altered artifacts fail before any research execution. Comparator,
+lean4export, namespace isolation, theorem-type comparison, axiom policy and kernel
+replay are unchanged. FLT additionally fixes the original source prefix before
+its single terminal `sorry`, rejecting changed imports or statement before final
+checking. Ordinary diagnostics still report source errors separately from final
+Mission acceptance.
+
+The existing CLI accepts `--benchmark-root` as a clearer alias of
+`--putnambench-root`; its entry script remains `run-putnambench-benchmark.mjs` for
+compatibility. Metadata records `benchmark` and `fixture_commit` in addition to
+legacy Putnam fields. Select a problem explicitly, use four Cores and project
+parallelism one for the first Q10/Q20 observations, and give each run a fresh
+EXP ID. Time limits and paid-run authorization are owned by Issue #133, not by
+this setup tool. The ordinary shutdown, peer cleanup, checker ownership and
+reporting paths remain the same as other Swarm benchmark runs.
+
+FLT preparation enumerates committed Git tree paths and verifies the complete
+framework digest, so untracked or ignored local Lean files cannot enter public
+metadata. The final FLT source restriction scans all submitted `.lean` files for
+incomplete proofs, unsafe/native bypass and elaborator/diagnostic constructs
+(including `run_tac`, `trace_state`, `#eval`, `#check` and `#print`). This is a
+lexical final-delivery policy, including occurrences in comments, in addition to
+kernel replay; ordinary development diagnostics retain their existing behavior.
+
+The complete graph remains regular public Workspace input, not a cached image
+asset. For registered Bots, `OpenSandboxManager.syncWorkspace` validates each
+manifest path and source digest, enforces the existing 2 MiB/file and 16 MiB/tree
+bounds, then sends the full base64 file map through the authenticated worker
+`/project/prepare` endpoint. This removes the serial shell invocation for every
+64 KiB segment without changing the public input snapshot or checker. Historical
+unregistered callers retain the bounded shell-copy path.
+
+The worker accepts at most 32 MiB of JSON at this endpoint, reuses the existing
+project-install decoder to reject malformed base64, unsafe paths, collisions
+and excess decoded bytes, and compares the complete map to the pinned manifest
+before writing. A new bulk input requires an empty root-owned project directory.
+Files are created exclusively with root-only read permission; partial write
+failure removes that attempt's input. The worker then checks the on-disk tree
+and makes it root-owned/read-only as before. Matching preparation replays are
+idempotent; another input/Execution, or preparation after activation, is rejected.
+The ordinary grant still occurs only after durable Execution activation. Old
+manifest-only preparation remains executable for the legacy copy composition.
+
+The initial Q10 observation exposed both transfer latency and a slow-binding
+lifecycle defect; see [EXP-20261116-09](../experiments/EXP-20261116-09-flt-q10-1h.md).
+The subsequent repair keeps the preparation lease alive and preserves the
+current discovery turn's settlement cursor across binding, as described in
+[Execution](02-execution.md). Neither resource budgets nor the core Swarm
+organization algorithm change. Tests and subsequent reports distinguish the
+repair's verification from the original blocked observation.
+
+## Root-only FLT Workspace tasks
+
+`prepare_flt_subtrees.py` is an operator-side CLI for the distinct
+`flt10-subtree-v1` profile. Its required inputs are the pinned FLT source,
+Lean executable, pinned Prove2Me extraction-tool checkout, and a new output
+folder. `--checkpoints` defaults to Q20 and accepts any subset of Q10–Q100;
+`--jobs` is 1–4, default 4. It never launches a model or uploads to Prove2Me.
+The Prove2Me scripts are external pinned tooling; the repository does not vendor
+them or its collaboration harness.
+
+The command verifies source/tool revisions and hashes, compiles a private seed
+from the previously reviewed foundation sources, then obtains declaration
+facts and syntax ranges with Lean. For each selected root it follows statement
+dependencies, recursively retains actual foundation values, constructor fields
+and instances in participating modules, and preserves dependencies of lexical
+context outside declaration bodies. Source subtraction uses parser byte spans.
+Only simple validated import headers and the known target preamble are adjusted.
+It recompiles the reduced foundation and target, and compares the root's
+elaborated expression representation before/after. A mismatch or compile error
+aborts preparation. This structural identity check supports extraction; it does
+not replace the independent final theorem comparison.
+
+Outputs are separated: per-checkpoint `private/` and `private-facts/` hold the
+extraction/provenance; `source/`, `lib/` and `foundation-manifest.json` are trusted
+checker deployment inputs; `public/` contains the target, readable reduced
+foundation, neutral README, Apache license, applicable source notices and public
+context manifest. The complete upstream attribution table is not exported because
+it names hidden proof modules. Retained source copyright headers remain. A dedicated deterministic
+Git commit pins public inputs. `benchmark-config.json` points to that fixture
+checkout and public manifest. No proof graph or hidden helper source enters the
+public manifest. A failed run leaves private diagnostic artifacts and requires
+a fresh output folder for retry. Preparation does not delete unrelated state.
+
+The loader accepts a safe configured benchmark identifier and 1–1000 problems,
+with explicit Lean declaration names where needed. `instructions_path`, when
+present, must be under `benchmark/` without traversal; the Mission goal directs
+the Bot to read it through Workspace. Existing fixture checkout/digest checks
+and context byte/path/hash limits remain. Benchmark-specific coordination code
+is not inserted into the Core loop.
+
+The new final-check profile pins FLT/Mathlib revisions, the operator-approved
+foundation manifest digest and compiled artifacts. Lock creation verifies the
+reduced source inventory and rejects unexpected compiled artifacts. Candidates
+can create ordinary project modules and add imports; trusted namespace shadowing
+and source-layout restrictions still reject. `requireCompleteProject` rejects
+`sorry`, `sorryAx`, `admit` or `axiom` tokens in submitted Lean files (including
+comments). Unlike the older FLT profile, it does not freeze the textual import
+prefix. Original theorem/type comparison, transitive axiom checking and kernel
+replay still govern final PASS; ordinary project diagnostics remain unchanged.
+All existing checker resource limits, deadlines and cleanup apply.
+
+Configs with `validation_required: true` require a private operator receipt
+before timed project initialization. Its hash and safe relative path are checked
+under `benchmark_validation_root`. A complete-target PASS must attest initial
+compilation, statement identity and visibility, and bind the exact target hash,
+public context hash and checker artifact-lock SHA plus a final check result ID.
+A missing, helper-only, stale or mismatched receipt fails before creating a Bot.
+The receipt is trusted operator evidence, not a proof supplied by a research
+Agent; the locked deployment is still verified independently afterward. No
+receipt is manufactured by preparation: new problems start unvalidated. Private
+reference proof source is never a public input or an additional trusted library.
+
+`scripts/validate-benchmark-witness.mjs` receives six operator paths/values:
+deployment config, public fixture checkout, problem ID, private witness directory,
+visibility audit, and a new receipt path. It verifies the fixture/context and
+requires an audit bound to the exact target/context. It collects only Lean files,
+rejects hidden entries and symlinks, applies the Workspace 2 MiB/file and 16 MiB
+total limits, and hashes the sorted file manifest. It runs the actual locked
+final checker on the complete witness tree. Only a PASS for that tree creates
+a mode-0600 receipt, exclusively (an existing output is not overwritten). Failure
+prints the diagnostic and exits nonzero without creating a receipt. The receipt
+contains the full check result, witness tree hash, target/context/lock hashes and
+visibility audit digest; it does not contain proof source. Timed launch checks
+that the embedded PASS and checked tree match the receipt. The visibility audit
+is separate operator evidence; this command does not claim to perform an Agent
+sandbox audit itself. Checker timeouts and cleanup retain the production behavior.
+
+### Per-deployment checker resources
+
+A trusted `final_tree_checker` may set `resources: { memory_bytes, cpu_percent,
+max_tasks }` (all optional positive safe integers) and `projectJobs` (integer
+1–256, default 1). Defaults remain 4 GiB, 200 percent CPU and 64 tasks. Unknown
+resource fields and invalid values reject before process dispatch. No Agent
+payload selects these values. The artifact lock includes supplied overrides;
+changing them requires a new lock and complete-witness receipt. Startup reads
+back actual cgroup limits, and reports the effective profile and build jobs.
+`projectJobs` supplies Lake's `LEAN_NUM_THREADS`; each child compiler retains
+`-j1`. Compiler/export/replay stages share the chosen cgroup resource policy.
+Swap, termination grace, cleanup ownership and deadline clipping are unchanged.
+Research Core count is a separate setting and remains four in the Q20 study.
 
 ## Independent Pass@K execution (Issue #129)
 

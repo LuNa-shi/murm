@@ -54,6 +54,11 @@ function setup() {
       }),
       check: async ({ workspace_source }) => {
         checks += 1;
+        if (workspace_source.content.includes('heartbeat-limit')) return {
+          verdict: 'ERROR', checker_process_status: 'completed', result_class: 'infrastructure_failure', retryable: false,
+          evidence: { checker_started: true, exit_code: 1, diagnostic_code: 'lean_resource_limit',
+            diagnostic: 'workspace/proof.lean:3:1: (deterministic) timeout, maximum number of heartbeats (1) has been reached' },
+        };
         return workspace_source.content.includes('valid-proof')
           ? { verdict: 'PASS', evidence: { checker_started: true, exit_code: 0 } }
           : { verdict: 'FAIL', evidence: { checker_started: true, exit_code: 1, diagnostic: 'type mismatch' } };
@@ -169,4 +174,20 @@ test('direct Workspace check is idempotent and rejects unsafe paths or hashes', 
     await state.bridge.stop();
     state.judge.close();
   }
+});
+
+test('Judge and Bridge preserve located resource exhaustion without a mathematical verdict', async () => {
+  const state = setup();
+  try {
+    state.setContent('heartbeat-limit');
+    const result = await state.bridge.call({ operation: 'workspace_check', payload: { path: 'workspace/proof.lean', workspace_revision: 1 } });
+    assert.equal(result.verdict, 'ERROR');
+    assert.equal(result.mathematical_outcome, 'unassessed');
+    assert.equal(result.diagnostic_code, 'lean_resource_limit');
+    assert.equal(result.retryable, false);
+    assert.equal(result.checker_process_status, 'completed');
+    assert.equal(result.diagnostic_location.file, 'workspace/proof.lean');
+    assert.equal(result.diagnostic_location.line, 3);
+    assert.match(result.diagnostic_excerpt, /maximum number of heartbeats/);
+  } finally { await state.bridge.stop(); }
 });

@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { constants as bufferConstants } from 'node:buffer';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -142,6 +145,79 @@ async function createFixture({ agent = true, service = true, workspace = true, m
 
 async function cleanup(root) { await rm(root, { recursive: true, force: true }); }
 
+test('full analysis retains a raw-log batch larger than the JavaScript argument limit', async () => {
+  const root = await createFixture({ agent: false, service: false, workspace: false });
+  // EXP03 had up to 397,980 records in one Core log. Keep these unbound so
+  // this checks file ingestion rather than dense per-Execution window costs.
+  const count = 400_000;
+  try {
+    const path = join(root, 'logs', 'projects', 'demo', 'runtime', 'core-1.ndjson');
+    const records = Array.from({ length: count }, (_, index) => line({
+      timestamp: new Date(Date.parse(START) + index).toISOString(),
+      scope: 'runtime:core-1', event: 'runtime.heartbeat',
+    })).join('');
+    await writeFile(path, records);
+    const analysis = await analyzeExperiment(root);
+    const heartbeats = analysis.facts.filter(fact => fact.kind === 'heartbeat');
+    assert.equal(heartbeats.length, count);
+    assert.equal(heartbeats[0].at, START);
+    assert.equal(heartbeats.at(-1).at, new Date(Date.parse(START) + count - 1).toISOString());
+    assert.equal(analysis.inventory.errors.length, 0);
+    assert.ok((await readFile(analysis.reportPath, 'utf8')).includes('Execution'));
+  } finally { await cleanup(root); }
+});
+
+test('full analysis retains every record in an NDJSON file beyond the V8 string limit', async () => {
+  const root = await createFixture({ agent: false, service: false, workspace: false });
+  const count = Math.ceil(bufferConstants.MAX_STRING_LENGTH / (1024 * 1024)) + 1;
+  try {
+    const path = join(root, 'logs', 'projects', 'demo', 'runtime', 'core-1.ndjson');
+    const file = await open(path, 'w');
+    try {
+      const padding = 'x'.repeat(1024 * 1024);
+      for (let index = 0; index < count; index += 1) {
+        await file.write(line({ timestamp: new Date(Date.parse(START) + index).toISOString(),
+          scope: 'runtime:core-1', event: 'runtime.heartbeat', padding }));
+      }
+      // Exercise malformed-line diagnostics and a final record without a newline
+      // after crossing the old whole-file string boundary.
+      await file.write('invalid-json\r\n\r\n');
+      await file.write(JSON.stringify({ timestamp: END, scope: 'runtime:core-1', event: 'runtime.heartbeat' }));
+      assert.ok((await file.stat()).size > bufferConstants.MAX_STRING_LENGTH);
+    } finally { await file.close(); }
+    const analysis = await analyzeExperiment(root);
+    const heartbeats = analysis.facts.filter(fact => fact.kind === 'heartbeat');
+    assert.equal(heartbeats.length, count + 1);
+    assert.equal(heartbeats[0].at, START);
+    assert.equal(heartbeats.at(-1).at, END);
+    assert.ok(heartbeats.at(-1).sources.some(source => source.endsWith(`:${count + 3}`)));
+    assert.ok(analysis.inventory.errors.some(error => error.line === count + 1));
+    assert.equal(analysis.inventory.evidence.find(entry => entry.class === 'runtime').status, 'malformed');
+  } finally { await cleanup(root); }
+});
+
+test('dense non-boundary records retain all facts and finish within the analysis time budget', async () => {
+  const root = await createFixture({ agent: false, service: false, workspace: false });
+  const count = 100_000;
+  try {
+    await writeNdjson(join(root, 'logs', 'projects', 'demo', 'runtime', 'core-1.ndjson'),
+      Array.from({ length: count }, (_, index) => ({
+        timestamp: new Date(Date.parse(START) + index).toISOString(), scope: 'runtime:core-1',
+        event: 'runtime.heartbeat', execution_id: EXECUTION,
+      })));
+    // A child bounds the old synchronous quadratic loop: a test timeout alone
+    // cannot interrupt it. This uses the same public entry and bound Execution
+    // pattern as dense Agent delta/heartbeat logs in long formal runs.
+    const moduleUrl = new URL('../src/analysis/experiment-analysis.js', import.meta.url).href;
+    const script = `import { analyzeExperiment } from ${JSON.stringify(moduleUrl)};
+      const result = await analyzeExperiment(process.argv[1]);
+      console.log(JSON.stringify({ count: result.facts.filter(f => f.kind === 'heartbeat').length,
+        windowCount: result.executions.flatMap(e => e.windows).reduce((n, w) => n + (w.event_counts.heartbeat ?? 0), 0) }));`;
+    const { stdout } = await promisify(execFile)(process.execPath, ['--input-type=module', '-e', script, root], { timeout: 15_000 });
+    assert.deepEqual(JSON.parse(stdout), { count, windowCount: count });
+  } finally { await cleanup(root); }
+});
+
 test('analyzes a complete fixture into stable per-Execution windows without copying sensitive values', async () => {
   const root = await createFixture();
   const firstPath = join(root, 'analysis', 'first.md');
@@ -149,6 +225,10 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
   try {
     const first = await analyzeExperiment(root, { outputPath: firstPath });
     const second = await analyzeExperiment(root, { outputPath: secondPath });
+    // Fixed window ordering/evidence after adding explicit Bridge pairing
+    // metadata. Repeated public-entry analysis must remain deterministic.
+    assert.equal(createHash('sha256').update(JSON.stringify(first.executions.map(item => item.windows))).digest('hex'),
+      'fcf81a10f287df5db3f7124c2fba857a209f12793863e77800683a1064ef71ff');
     assert.equal(first.inventory.evidence.find((entry) => entry.class === 'agent').status, 'present');
     assert.equal(first.inventory.evidence.find((entry) => entry.class === 'workspace').status, 'present');
     assert.equal(first.executions.length, 1);
@@ -431,7 +511,8 @@ test('Workspace physical directories and unbound Bots do not create Execution ti
 test('analysis identifies actual Pi returned content without substituting structured output or inventing truncation', async () => {
   const root = await createFixture();
   try {
-    const content = [{ type: 'text', text: 'private returned tail' }];
+    // Cross UTF-8 stream chunk boundaries while hashing the exact Pi content.
+    const content = [{ type: 'text', text: `private returned tail ${'研究🙂\r\n'.repeat(20_000)}` }];
     await writeNdjson(join(root, 'logs', 'projects', 'demo', 'agents', 'core-1.ndjson'), [
       { timestamp: T1, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_execution_end', toolName: 'bash', toolCallId: 'pi-tail', result: { content, structuredContent: { output: 'different raw output', truncated: false }, details: { truncation: { truncated: true, totalBytes: 50000, outputBytes: 21 } } } } },
       { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_execution_end', toolName: 'read', toolCallId: 'pi-read', result: { content } } },
@@ -476,5 +557,102 @@ test('observation toolCallId correlation preserves raw returned evidence beside 
     assert.ok(analysis.facts.find(f => f.correlationId === 'exact-pi-call' && f.summary.outcome === 'started'));
     assert.equal(analysis.facts.find(f => f.correlationId === 'observation-only-call').summary.pi_result_sha256, exact[0].summary.pi_result_sha256);
     assert.ok(!JSON.stringify(analysis.facts).includes('private skill range'));
+  } finally { await cleanup(root); }
+});
+
+test('Bridge analysis correlates physical calls and keeps ambiguous historical completions unknown', async () => {
+  const root = await createFixture({ service: false });
+  const path = join(root, 'logs', 'projects', 'demo', 'bridge', 'core-1.ndjson');
+  const start = (operation, operationId, callId, executionId = EXECUTION) => ({
+    timestamp: T1, event: 'bridge.start', operation, operation_id: operationId,
+    bridge_call_id: callId, task_id: executionId === EXECUTION ? TASK : 'other-task', execution_id: executionId,
+  });
+  const complete = (operation, operationId, callId, revision, ok = true) => ({
+    timestamp: new Date(Date.parse(START) + revision * 10).toISOString(), event: 'bridge.complete', operation, operation_id: operationId,
+    bridge_call_id: callId, ok, result: { workspace_revision: revision },
+  });
+  try {
+    await writeNdjson(path, [
+      start('workspace_save', 'shared', 'physical-first'),
+      start('workspace_save', 'shared', 'physical-second', 'other-execution'),
+      complete('workspace_save', 'shared', 'physical-second', 201),
+      complete('workspace_save', 'shared', 'physical-first', 202),
+      start('workspace_save', 'unique-first'), start('workspace_save', 'unique-second', undefined, 'other-execution'),
+      complete('workspace_save', 'unique-second', undefined, 203),
+      complete('workspace_save', 'unique-first', undefined, 204),
+      start('workspace_save', 'retry'), start('workspace_save', 'retry'),
+      complete('workspace_save', 'retry', undefined, 205),
+      complete('workspace_save', 'retry', undefined, 206),
+      start('mission_submission_get', 'old-read'),
+      { timestamp: T2, event: 'bridge.response_sent', operation: 'mission_submission_get', operation_id: 'old-read' },
+      start('mission_submission_get', 'new-read', undefined, 'other-execution'),
+      { timestamp: T3, event: 'bridge.complete', operation: 'mission_submission_get', ok: false, error: { code: 'NOT_ALLOWED' } },
+      start('task_finish', 'missing-complete'),
+      start('task_finish', 'later-finish', undefined, 'other-execution'),
+      { timestamp: T3, event: 'bridge.complete', operation: 'task_finish', ok: true, result: { execution: { task_id: TASK, execution_id: EXECUTION, state: 'DONE' } } },
+      start('workspace_apply', 'legacy'),
+      { timestamp: T4, event: 'bridge.complete', operation: 'workspace_apply', ok: true, result: {} },
+    ]);
+    const analysis = await analyzeExperiment(root);
+    const finished = analysis.facts.filter(f => f.kind === 'service_call_finished' && f.summary.service === 'bridge');
+    const byRevision = revision => finished.find(f => f.summary.result?.workspace_revision === revision);
+    assert.equal(byRevision(201).executionId, 'other-execution');
+    assert.equal(byRevision(202).executionId, EXECUTION);
+    assert.equal(byRevision(203).executionId, 'other-execution');
+    assert.equal(byRevision(204).executionId, EXECUTION);
+    for (const revision of [205, 206]) {
+      assert.equal(byRevision(revision).executionId, null);
+      assert.equal(byRevision(revision).taskId, null);
+      assert.equal(byRevision(revision).summary.bridge_pairing, 'unknown');
+      assert.equal(analysis.facts.some(f => f.kind === 'workspace_revision' && f.summary.workspace_revision === revision), false);
+    }
+    const lateError = finished.find(f => f.operation === 'mission_submission_get' && f.summary.ok === false);
+    assert.equal(lateError.executionId, null);
+    assert.equal(lateError.taskId, null);
+    assert.equal(lateError.summary.error.code, 'NOT_ALLOWED');
+    const ambiguousFinish = finished.find(f => f.operation === 'task_finish');
+    assert.equal(ambiguousFinish.executionId, null);
+    assert.equal(analysis.facts.some(f => f.kind === 'execution_terminal' && f.operation === 'task_finish'), false);
+    assert.equal(finished.find(f => f.operation === 'workspace_apply').executionId, EXECUTION);
+  } finally { await cleanup(root); }
+});
+
+test('Bridge analysis isolates Core files and does not consume incomplete or reused identities', async () => {
+  const root = await createFixture({ service: false });
+  const folder = join(root, 'logs', 'projects', 'demo', 'bridge');
+  const start = (operation, operationId, callId) => ({ timestamp: T1, event: 'bridge.start', operation,
+    operation_id: operationId, bridge_call_id: callId, task_id: TASK, execution_id: EXECUTION });
+  const done = (operation, operationId, callId, revision) => ({ timestamp: T3, event: 'bridge.complete', operation,
+    operation_id: operationId, bridge_call_id: callId, ok: true, result: { workspace_revision: revision } });
+  try {
+    await writeNdjson(join(folder, 'core-1.ndjson'), [
+      start('workspace_save', 'abandoned'),
+      start('workspace_apply', 'delivered'),
+      { timestamp: T2, event: 'bridge.response_sent', operation: 'workspace_apply', operation_id: 'delivered' },
+      done('workspace_apply', undefined, undefined, 301),
+      start('workspace_merge', 'reused'), done('workspace_merge', 'reused', undefined, 302),
+      start('workspace_merge', 'reused'), done('workspace_merge', 'reused', undefined, 303),
+      start('workspace_check', 'same-logical', 'call-a'),
+      start('workspace_check', 'same-logical', 'call-b'),
+      done('workspace_check', 'same-logical', 'call-b', 304),
+      done('workspace_check', 'same-logical', 'call-a', 305),
+      done('workspace_check', 'same-logical', 'call-a', 306),
+      start('context_get_material', 'known-id', 'known-physical'),
+      done('context_get_material', 'known-id', 'different-physical', 307),
+      start('task_list'), start('task_list'), done('task_list', undefined, undefined, 308),
+    ]);
+    await writeNdjson(join(folder, 'core-2.ndjson'), [done('workspace_save', undefined, undefined, 309)]);
+    const analysis = await analyzeExperiment(root);
+    const finished = analysis.facts.filter(f => f.kind === 'service_call_finished' && f.summary.service === 'bridge' && f.summary.phase === 'finished');
+    const byRevision = revision => finished.find(f => f.summary.result?.workspace_revision === revision);
+    for (const revision of [301, 303, 306, 307, 308, 309]) {
+      assert.equal(byRevision(revision).executionId, null, `revision ${revision} must remain unassigned`);
+      assert.equal(byRevision(revision).summary.bridge_pairing, 'unknown');
+    }
+    for (const revision of [302, 304, 305]) assert.equal(byRevision(revision).executionId, EXECUTION);
+    assert.equal(byRevision(304).summary.bridge_call_id, 'call-b');
+    assert.equal(byRevision(305).summary.bridge_call_id, 'call-a');
+    assert.equal(analysis.facts.some(f => f.kind === 'workspace_revision' && f.summary.workspace_revision === 309), false);
+    assert.equal(finished.find(f => f.summary.result?.workspace_revision === 309).coreId, 'core-2');
   } finally { await cleanup(root); }
 });

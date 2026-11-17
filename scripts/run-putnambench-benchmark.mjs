@@ -175,6 +175,7 @@ function optionsFromArgs(argv) {
     const fields = {
       '--problems': 'configPath',
       '--putnambench-root': 'putnamBenchRoot',
+      '--benchmark-root': 'putnamBenchRoot',
       '--experiment-root': 'experimentRoot',
       '--experiment-dir': 'experimentDir',
       '--report-dir': 'reportDir',
@@ -334,6 +335,8 @@ const metadata = {
   repository_commit: repositoryCommit,
   repository_worktree_dirty: repositoryStatus.length > 0,
   putnambench_commit: config.putnambench_commit,
+  benchmark: config.benchmark ?? 'putnambench',
+  fixture_commit: config.fixture_commit ?? config.putnambench_commit,
   environment: {
     putnambench_root: config.putnam_bench_root,
     lean_project_root: config.lean_project_root,

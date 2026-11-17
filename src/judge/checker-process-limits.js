@@ -21,13 +21,24 @@ export const CHECKER_RESOURCE_PROFILE = Object.freeze({
   stop_grace_ms: 1_000,
 });
 
+/** Operator configuration only; cleanup and swap policy remain fixed. */
+export function checkerResourceProfile(resources) {
+  if (resources === undefined) return CHECKER_RESOURCE_PROFILE;
+  const fields = ['memory_bytes', 'cpu_percent', 'max_tasks'];
+  if (!resources || typeof resources !== 'object' || Array.isArray(resources) ||
+      Object.entries(resources).some(([key, value]) => !fields.includes(key) || !Number.isSafeInteger(value) || value <= 0)) {
+    throw new TypeError('Checker resources require positive integer memory_bytes, cpu_percent and max_tasks overrides');
+  }
+  return Object.freeze({ ...CHECKER_RESOURCE_PROFILE, ...resources, profile: 'systemd-user-config-v1' });
+}
+
 /** The client process is a transport only. The unit owns all checker processes. */
-export function createCheckerProcessLimits({ runtimeMs, ownerFile = process.env.SWARMENV_CHECKER_OWNER_FILE }) {
+export function createCheckerProcessLimits({ runtimeMs, resources, ownerFile = process.env.SWARMENV_CHECKER_OWNER_FILE }) {
   if (!Number.isFinite(runtimeMs) || runtimeMs <= 0 || runtimeMs > 2_147_483_647) throw new TypeError('Invalid checker resource deadline');
+  const limit = checkerResourceProfile(resources);
   const unit = `swarmenv-check-${randomUUID()}.service`;
   recordCheckerOwnership(ownerFile, unit, 'allocated');
   const environment = Object.freeze({ XDG_RUNTIME_DIR: `/run/user/${process.getuid()}` });
-  const limit = CHECKER_RESOURCE_PROFILE;
   const argsFor = (command, args) => {
     if (!isAbsolute(command)) throw new TypeError('Checker process must use an absolute executable path');
     const launchArgs = [
@@ -106,9 +117,10 @@ export function createCheckerProcessLimits({ runtimeMs, ownerFile = process.env.
   return { command: ownerFile ? '/usr/bin/flock' : launch, argsFor, environment, unit, stop, waitForEmpty };
 }
 
-/** Fail closed before dispatch if the host cannot enforce the fixed profile. */
-export async function verifyCheckerProcessLimits() {
-  const limits = createCheckerProcessLimits({ runtimeMs: 2_000 });
+/** Fail closed before dispatch if the host cannot enforce the selected profile. */
+export async function verifyCheckerProcessLimits(resources) {
+  const profile = checkerResourceProfile(resources);
+  const limits = createCheckerProcessLimits({ runtimeMs: 2_000, resources });
   const probe = [
     'read -r group </proc/self/cgroup',
     'cd "/sys/fs/cgroup${group#0::}" || exit 1',
@@ -133,7 +145,6 @@ export async function verifyCheckerProcessLimits() {
   finally { await limits.stop({ clientSettled: () => clientSettled }); }
   const [memory, swap, tasks, cpu] = stdout.join('').trim().split('\n');
   const [quota, period] = (cpu ?? '').split(' ').map(Number);
-  const profile = CHECKER_RESOURCE_PROFILE;
   if (code !== 0 || Number(memory) !== profile.memory_bytes || Number(swap) !== profile.swap_bytes ||
       Number(tasks) !== profile.max_tasks || quota / period !== profile.cpu_percent / 100) {
     throw new Error('Checker host does not enforce the configured cgroup limits');

@@ -1,3 +1,17 @@
+const TASK_PRIORITY = { oneOf: [{ type: 'string', enum: ['high', 'medium', 'low'] }, { type: 'integer', minimum: 0, maximum: 2 }] };
+const TASK_REVISION_FIELDS = {
+  summary: { type: 'string', minLength: 1, maxLength: 240 },
+  gap: { type: 'string', minLength: 1, maxLength: 4000 },
+  expected_output: { type: 'string', minLength: 1, maxLength: 4000 },
+  acceptance_conditions: { oneOf: [{ type: 'array', minItems: 1 }, { type: 'object', minProperties: 1 }] },
+  priority: TASK_PRIORITY,
+  depends_on: { type: 'array', items: { type: 'string' } },
+  input_material_refs: { type: 'array', items: { type: 'string', minLength: 1 }, maxItems: 100 },
+  workspace: { type: 'object' },
+  base_revision: { type: 'string', pattern: '^[0-9]+[.][0-9]+$' },
+  task_instructions: { type: 'string' },
+};
+
 const TOOL_DEFINITIONS = Object.freeze([
   {
     name: 'catalog_list_services', service: 'catalog', operation: 'list_services', version: '1.0',
@@ -99,7 +113,7 @@ const TOOL_DEFINITIONS = Object.freeze([
     name: 'judge_workspace_check', service: 'judge', operation: 'workspace_check', version: '1.0',
     description: 'Build a fixed public Lean Workspace revision when project checking is configured. An optional path identifies a checked delivery file. Legacy single-file checkers require a path.',
     scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['revision'], properties: { workspace_id: { type: 'string', minLength: 1 }, revision: { type: 'string', pattern: '^\\d+\\.\\d+$' }, path: { type: 'string', minLength: 1 }, request_key: { type: 'string', minLength: 1 } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['revision'], properties: { workspace_id: { type: 'string', minLength: 1 }, revision: { type: 'string', pattern: '^\\d+\\.\\d+$' }, path: { type: 'string', minLength: 1 }, check_mode: { type: 'string', enum: ['lean-project', 'lean-module'] }, request_key: { type: 'string', minLength: 1 } }, additionalProperties: false },
   },
   {
     name: 'judge_get_check_result', service: 'judge', operation: 'get_check_result', version: '1.0',
@@ -160,37 +174,39 @@ const publicTaskTools = [
   },
   {
     name: 'task_view', service: 'task', operation: 'task_view', version: '1.0',
-    description: 'Read a Task contract, proposal provenance, dependencies, Execution history, and linked Materials.',
+    description: 'Read a Task contract, gap and priority, dependencies, Executions and Materials. Continue contract history using contract_history_page.next_after_version.',
     scope: 'task-read', side_effect: false,
-    parameters: { type: 'object', properties: { task_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', properties: { task_id: { type: 'string' }, contract_history_after_version: { type: 'integer', minimum: 0 }, contract_history_limit: { type: 'integer', minimum: 1, maximum: 100 } }, additionalProperties: false },
   },
   {
     name: 'task_create', service: 'task', operation: 'task_create', version: '1.0',
-    description: 'Create one substantial ordinary Task with a summary, expected output, acceptance condition, and optional relations. Supply base_revision to require a fixed public Workspace revision; omitting a revision uses main at take.',
+    description: 'Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.',
     scope: 'task-write', side_effect: true,
     parameters: {
       type: 'object',
-      required: ['mission_id', 'summary', 'expected_output', 'acceptance_conditions'],
+      required: ['summary', 'gap', 'expected_output', 'acceptance_conditions', 'priority'],
       properties: {
         mission_id: { type: 'string' },
-        summary: { type: 'string' },
+        ...TASK_REVISION_FIELDS,
         goal: { type: 'string' },
         task_type: { type: 'string' },
-        task_instructions: { type: 'string' },
-        expected_output: { type: 'string' },
-        acceptance_conditions: { oneOf: [{ type: 'array' }, { type: 'object' }] },
         required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } },
         completion_contract: { type: 'object' },
         workspace: { type: 'object', description: 'Compatibility input. If both workspace.revision and base_revision are supplied, they must match.' },
-        base_revision: { type: 'string', pattern: '^[0-9]+[.][0-9]+$' },
-        input_material_refs: { type: 'array', items: { type: 'string', minLength: 1 }, maxItems: 100 },
         responsibility_key: { type: 'string', minLength: 1, maxLength: 256 },
-        priority: { type: 'integer', minimum: 0 },
-        depends_on: { type: 'array', items: { type: 'string' } },
         timebox_ms: { type: 'integer', minimum: 1 },
       },
       additionalProperties: false,
     },
+  },
+  {
+    name: 'task_revise', service: 'task', operation: 'task_revise', version: '1.0',
+    description: 'An UNBOUND Bot may revise an open, unowned Task in its Mission, including previously executed work. Supply observed contract/state versions and a reason. Running, preparing, cleaning up and closed responsibilities are protected; old Executions retain their original contract.',
+    scope: 'task-write', side_effect: true,
+    parameters: { type: 'object', required: ['task_id', 'expected_spec_version', 'expected_state_version', 'reason', 'changes'], properties: {
+      task_id: { type: 'string' }, expected_spec_version: { type: 'integer', minimum: 1 }, expected_state_version: { type: 'integer', minimum: 0 },
+      reason: { type: 'string', minLength: 1 }, changes: { type: 'object', minProperties: 1, properties: TASK_REVISION_FIELDS, additionalProperties: false },
+    }, additionalProperties: false },
   },
   {
     name: 'task_link_material', service: 'task', operation: 'task_link_material', version: '1.0',
@@ -211,7 +227,7 @@ const publicTaskTools = [
 
   {
     name: 'task_cancel', service: 'task', operation: 'task_cancel', version: '1.0',
-    description: 'Cancel an unowned ready or blocked Task using an explicit Mission coordination grant and observed versions. Never cancel another owner.',
+    description: 'An UNBOUND Bot may cancel an open, unowned Task in its Mission using observed versions and a reason. Historical contracts remain readable; cancellation does not satisfy dependencies.',
     scope: 'mission-write', side_effect: true,
     parameters: { type: 'object', required: ['task_id', 'expected_spec_version', 'expected_state_version', 'reason'], properties: {
       task_id: { type: 'string' }, expected_spec_version: { type: 'integer', minimum: 1 }, expected_state_version: { type: 'integer', minimum: 0 },

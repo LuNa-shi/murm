@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -18,6 +19,7 @@ const EVIDENCE_CLASSES = [
 
 const SENSITIVE_KEYS = /(?:^|_)(?:authorization|content|credential|formal_source|password|private_key|proof|raw_transcript|secret|stderr|stdout|task_instructions|token|api_key|agent_prompt|candidate_source)(?:$|_)/i;
 const SAFE_RESULT_KEYS = new Set([
+  'bridge_call_id', 'bridge_pairing', 'ok',
   'pi_result', 'pi_result_sha256', 'pi_result_json_bytes', 'pi_result_truncated', 'pi_result_limits', 'model_request_delivery',
   'task_id', 'root_id', 'parent_id', 'execution_id', 'owner_ref', 'task_type',
   'state', 'task_state', 'execution_state', 'state_version', 'attempt_no',
@@ -181,8 +183,9 @@ async function listFiles(path, suffix = null) {
   const files = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const child = join(path, entry.name);
-    if (entry.isDirectory()) files.push(...await listFiles(child, suffix));
-    else if (!suffix || entry.name.endsWith(suffix)) files.push(child);
+    if (entry.isDirectory()) {
+      for (const file of await listFiles(child, suffix)) files.push(file);
+    } else if (!suffix || entry.name.endsWith(suffix)) files.push(child);
   }
   return files;
 }
@@ -761,16 +764,28 @@ function normaliseRawRecord(root, path, line, record, context, mode) {
   if (sourceClass === 'bridge') {
     const event = record.event ?? record.type;
     const operation = canonicalOperation(record.operation ?? null);
-    const pending = event === 'bridge.complete' ? context.takePending('bridge', operation) : null;
-    const effective = pending?.record ?? record;
-    const ids = { taskId: effective.task_id ?? record.task_id ?? null, executionId: effective.execution_id ?? record.execution_id ?? null, correlationId: effective.operation_id ?? record.operation_id ?? null };
+    const terminal = event === 'bridge.complete';
+    const pairing = event === 'bridge.start' ? null : context.matchBridge(operation, record, terminal);
+    const start = pairing?.pending?.record;
+    const ids = {
+      taskId: record.task_id ?? start?.task_id ?? null,
+      executionId: record.execution_id ?? start?.execution_id ?? null,
+      correlationId: record.operation_id ?? start?.operation_id ?? null,
+    };
     const result = record.result;
     facts.push(makeFact(root, {
       kind: event === 'bridge.start' ? 'service_call_started' : 'service_call_finished', at, source, ...ids, coreId, operation,
-      summary: { service: 'bridge', operation, phase: event === 'bridge.start' ? 'started' : 'finished', ok: record.ok ?? null, result: mode === 'full' ? safeResult(result) : null }, priority: 2,
+      summary: {
+        service: 'bridge', operation,
+        phase: event === 'bridge.start' ? 'started' : event === 'bridge.response_sent' ? 'response_sent' : 'finished',
+        bridge_call_id: record.bridge_call_id ?? null,
+        bridge_pairing: event === 'bridge.start' ? 'start' : pairing.basis,
+        ok: record.ok ?? null, error: record.error ?? null,
+        result: mode === 'full' ? safeResult(result) : null,
+      }, priority: 2,
     }));
     if (event === 'bridge.start') context.addPending('bridge', operation, record);
-    if (event === 'bridge.complete' && record.ok === true) facts.push(...domainFactsForService(root, {
+    if (terminal && record.ok === true && (start || record.task_id || record.execution_id)) facts.push(...domainFactsForService(root, {
       ...record, operation, envelope: { task_id: ids.taskId, execution_id: ids.executionId, operation_id: ids.correlationId },
     }, source, null, result));
     return facts;
@@ -857,7 +872,7 @@ function dedupeFacts(facts) {
   const semantic = (fact) => [
     fact.kind, fact.at, fact.taskId, fact.executionId, fact.coreId, fact.operation,
     fact.summary?.material_id, fact.summary?.artifact_material_id, fact.summary?.check_result_id,
-    fact.correlationId, fact.summary?.tool, fact.summary?.phase, fact.summary?.outcome, fact.summary?.event,
+    fact.correlationId, fact.summary?.bridge_call_id, fact.summary?.tool, fact.summary?.phase, fact.summary?.outcome, fact.summary?.event,
     fact.summary?.check_result?.check_result_id, fact.summary?.artifact_material_id,
     fact.summary?.workspace_revision, fact.summary?.material?.material_id,
   ].map((value) => value ?? '').join('|');
@@ -884,22 +899,38 @@ function dedupeFacts(facts) {
   return [...map.values()].sort((a, b) => (timeMs(a.at) ?? Number.MAX_SAFE_INTEGER) - (timeMs(b.at) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
 }
 
-function parseLineRecords(root, path, sourceClass, context, mode, errors) {
-  return readFile(path, 'utf8').then((contents) => {
-    const facts = [];
-    const lines = contents.split(/\r?\n/);
-    lines.forEach((line, index) => {
-      if (!line.trim()) return;
-      let record;
-      try { record = JSON.parse(line); }
-      catch (error) {
-        errors.push({ path: sourcePath(root, path), line: index + 1, error: text(error.message, 160) });
-        return;
-      }
-      facts.push(...normaliseRawRecord(root, path, index + 1, record, { ...context, sourceClass }, mode));
-    });
-    return facts;
-  });
+// Preserve split(/\r?\n/) line numbering without materializing the whole log.
+// A record is still parsed in full; this does not truncate or sample evidence.
+async function* readLogLines(path) {
+  let pending = '';
+  for await (const chunk of createReadStream(path, { encoding: 'utf8' })) {
+    pending += chunk;
+    let start = 0;
+    let end;
+    while ((end = pending.indexOf('\n', start)) !== -1) {
+      yield pending.slice(start, end > start && pending[end - 1] === '\r' ? end - 1 : end);
+      start = end + 1;
+    }
+    pending = pending.slice(start);
+  }
+  yield pending;
+}
+
+async function parseLineRecords(root, path, sourceClass, context, mode, errors) {
+  const facts = [];
+  let index = 0;
+  for await (const line of readLogLines(path)) {
+    index += 1;
+    if (!line.trim()) continue;
+    let record;
+    try { record = JSON.parse(line); }
+    catch (error) {
+      errors.push({ path: sourcePath(root, path), line: index, error: text(error.message, 160) });
+      continue;
+    }
+    facts.push(...normaliseRawRecord(root, path, index, record, { ...context, sourceClass }, mode));
+  }
+  return facts;
 }
 
 function databaseTableNames(db) {
@@ -1188,7 +1219,11 @@ async function findSummaryFiles(root, metadata) {
   const files = [];
   for (const candidate of summaryPaths(root, metadata)) {
     if (await isRegularFile(candidate) && basename(candidate) === 'report.json') files.push(candidate);
-    else if (await isDirectory(candidate)) files.push(...await listFiles(candidate, '.json').then((items) => items.filter((path) => basename(path) === 'report.json' || basename(path) === 'aggregate-report.json')));
+    else if (await isDirectory(candidate)) {
+      for (const path of await listFiles(candidate, '.json')) {
+        if (basename(path) === 'report.json' || basename(path) === 'aggregate-report.json') files.push(path);
+      }
+    }
   }
   return [...new Set(files)];
 }
@@ -1253,7 +1288,7 @@ async function inventoryLogs(root, projectIds, className, errors, { validate = t
     const directoryName = { agent: 'agents', bridge: 'bridge', runtime: 'runtime', service: 'services', judge: 'judge' }[className] ?? className;
     const directory = join(base, projectId, directoryName);
     if (await isDirectory(directory)) directories.push(directory);
-    files.push(...await listFiles(directory, '.ndjson'));
+    for (const path of await listFiles(directory, '.ndjson')) files.push(path);
     if (className === 'judge') files.push(join(base, projectId, 'services', 'judge-service.ndjson'));
   }
   const uniqueFiles = [];
@@ -1263,14 +1298,20 @@ async function inventoryLogs(root, projectIds, className, errors, { validate = t
   let malformed = 0;
   if (!validate) return { files: uniqueFiles, malformed, directories };
   for (const path of uniqueFiles) {
-    const lines = (await readFile(path, 'utf8').catch(() => '')).split(/\r?\n/);
-    lines.forEach((line, index) => {
-      if (!line.trim()) return;
-      try { JSON.parse(line); } catch (error) {
-        malformed += 1;
-        if (errors.length < MAX_SOURCE_ERRORS) errors.push({ path: sourcePath(root, path), line: index + 1, error: text(error.message, 160) });
+    let index = 0;
+    try {
+      for await (const line of readLogLines(path)) {
+        index += 1;
+        if (!line.trim()) continue;
+        try { JSON.parse(line); } catch (error) {
+          malformed += 1;
+          if (errors.length < MAX_SOURCE_ERRORS) errors.push({ path: sourcePath(root, path), line: index, error: text(error.message, 160) });
+        }
       }
-    });
+    } catch (error) {
+      malformed += 1;
+      if (errors.length < MAX_SOURCE_ERRORS) errors.push({ path: sourcePath(root, path), error: text(error.message, 160) });
+    }
   }
   return { files: uniqueFiles, malformed, directories };
 }
@@ -1336,6 +1377,7 @@ async function readRawFacts(root, projectIds, mode, intervals, errors) {
   for (const className of ['agent', 'bridge', 'runtime', 'service', 'judge']) {
     const result = await inventoryLogs(root, projectIds, className, []);
     const pending = new Map();
+    const bridgeIdentityCounts = new Map();
     const context = {
       coreId: null,
       findExecution: (coreId, at) => findExecution(intervals, coreId, at),
@@ -1343,6 +1385,30 @@ async function readRawFacts(root, projectIds, mode, intervals, errors) {
         const key = `${type}:${operation ?? '<none>'}`;
         if (!pending.has(key)) pending.set(key, []);
         pending.get(key).push({ record });
+        if (type === 'bridge') {
+          for (const field of ['bridge_call_id', 'operation_id']) {
+            if (!record[field]) continue;
+            const identity = `${operation}:${field}:${record[field]}`;
+            bridgeIdentityCounts.set(identity, (bridgeIdentityCounts.get(identity) ?? 0) + 1);
+          }
+        }
+      },
+      matchBridge: (operation, record, complete) => {
+        const key = `bridge:${operation ?? '<none>'}`;
+        const queue = pending.get(key) ?? [];
+        const field = record.bridge_call_id ? 'bridge_call_id' : record.operation_id ? 'operation_id' : null;
+        const candidates = field ? queue.filter(item => item.record[field] === record[field]) : queue;
+        const uniqueIdentity = !field || bridgeIdentityCounts.get(`${operation}:${field}:${record[field]}`) === 1;
+        const candidate = candidates.length === 1 && uniqueIdentity ? candidates[0] : null;
+        const reusedLegacyId = !field && candidate?.record.operation_id && bridgeIdentityCounts.get(`${operation}:operation_id:${candidate.record.operation_id}`) > 1;
+        const conflictingOwner = candidate && ['task_id', 'execution_id', 'operation_id'].some(field => record[field] && candidate.record[field] && record[field] !== candidate.record[field]);
+        // A response without complete stays pending. It blocks later legacy
+        // FIFO guesses while exact identities can still close the real call.
+        if (!candidate || conflictingOwner || reusedLegacyId || (!field && candidate.responseSent)) return { pending: null, basis: 'unknown' };
+        if (complete) queue.splice(queue.indexOf(candidate), 1);
+        else if (record.event === 'bridge.response_sent' || record.type === 'bridge.response_sent') candidate.responseSent = true;
+        if (!queue.length) pending.delete(key);
+        return { pending: candidate, basis: field ?? 'unique_legacy_start' };
       },
       takePending: (type, operation) => {
         const key = `${type}:${operation ?? '<none>'}`;
@@ -1353,9 +1419,13 @@ async function readRawFacts(root, projectIds, mode, intervals, errors) {
       },
     };
     for (const path of result.files) {
+      pending.clear();
+      bridgeIdentityCounts.clear();
       const coreId = basename(path, '.ndjson');
       const effectiveClass = path.endsWith('/judge-service.ndjson') ? 'judge-service' : className === 'judge' ? 'checker' : className;
-      facts.push(...await parseLineRecords(root, path, effectiveClass, { ...context, coreId }, mode, errors));
+      // A single Core log can produce more facts than a function call can
+      // accept as arguments. Retain every fact without spreading the batch.
+      for (const fact of await parseLineRecords(root, path, effectiveClass, { ...context, coreId }, mode, errors)) facts.push(fact);
     }
   }
   return facts;
@@ -1580,8 +1650,10 @@ function buildWindows(execution, facts, experimentEnd, maxWindowMs = DEFAULT_MAX
     const at = timeMs(fact.at);
     const previousAt = timeMs(timed[index - 1].at);
     const gap = at - previousAt;
-    const phaseChanged = semanticPhase(current) !== semanticPhase([...current, fact]);
-    const boundary = isSemanticBoundary(fact) && phaseChanged && at - currentStart > 1000;
+    // Only a semantic boundary after the minimum interval can split this
+    // window. Avoid rescanning it for every Agent delta or heartbeat.
+    const boundary = isSemanticBoundary(fact) && at - currentStart > 1000
+      && semanticPhase(current) !== semanticPhase([...current, fact]);
     if (gap >= SILENT_GAP_MS) {
       windows.push(makeWindow(current, currentStart, previousAt, { previousWindow: windows.at(-1) ?? null }));
       windows.push(makeWindow([], previousAt, at, { gap: true }));
@@ -2143,10 +2215,12 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   if (mode === 'full') {
     for (const pathRef of runtimePaths) {
       const path = resolve(root, pathRef);
-      for (const line of (await readFile(path, 'utf8').catch(() => '')).split(/\r?\n/)) {
-        if (!line.trim()) continue;
-        try { rawRuntimeRecords.push(JSON.parse(line)); } catch { /* inventory has the error */ }
-      }
+      try {
+        for await (const line of readLogLines(path)) {
+          if (!line.trim()) continue;
+          try { rawRuntimeRecords.push(JSON.parse(line)); } catch { /* inventory has the error */ }
+        }
+      } catch { /* inventory has the read error */ }
     }
   }
   const intervals = buildExecutionIntervals(rawRuntimeRecords);

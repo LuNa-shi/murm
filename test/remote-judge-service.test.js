@@ -36,7 +36,7 @@ for (const closeDuringPreflight of [false, true]) test(`independent Judge preser
   tasks.registerBot({ botId: 'bot:one', missionId: 'mission:one', coreId: 'core:one', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
   tasks.recordBotSandbox('bot:one', { provider: 'controlled', sandboxId: 'sandbox:one' });
   tasks.markBotReady('bot:one');
-  const task = tasks.createTask({ mission_id: 'mission:one', summary: 'Investigate a bounded question', expected_output: 'A Material with evidence', acceptance_conditions: ['Explain the finding'] }, makeEnvelope({ actorRef: 'bot:one' })).task;
+  const task = tasks.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: 'mission:one', summary: 'Investigate a bounded question', expected_output: 'A Material with evidence', acceptance_conditions: ['Explain the finding'] }, makeEnvelope({ actorRef: 'bot:one' })).task;
   const taken = tasks.takeTask(task.task_id, { owner_ref: 'bot:one', core_id: 'core:one', take_key: 'take:one' });
   const env = id => {
     const e = tasks.getExecution(taken.execution.execution_id);
@@ -126,7 +126,7 @@ async function queuedJudge(t, { sourceDelay = 1200, missionBudget, interruptQueu
   tasks.registerBot({ botId: 'bot:queue', missionId: 'mission:queue', coreId: 'core:queue', selectionDeadline: new Date(Date.now() + 60000).toISOString() });
   tasks.recordBotSandbox('bot:queue', { provider: 'controlled', sandboxId: 'sandbox:queue' });
   tasks.markBotReady('bot:queue');
-  const task = tasks.createTask({ mission_id: 'mission:queue', summary: 'Check fixed revisions', expected_output: 'Checked source',
+  const task = tasks.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: 'mission:queue', summary: 'Check fixed revisions', expected_output: 'Checked source',
     acceptance_conditions: ['Record checker results'] }, makeEnvelope({ actorRef: 'bot:queue' })).task;
   const taken = tasks.takeTask(task.task_id, { owner_ref: 'bot:queue', core_id: 'core:queue', take_key: 'take:queue' });
   const envelope = operationId => {
@@ -152,7 +152,7 @@ async function queuedJudge(t, { sourceDelay = 1200, missionBudget, interruptQueu
 }
 
 for (const finishWhileQueued of [false, true]) test(`independent Judge bounds four active checks and one queued check (finish: ${finishWhileQueued})`, { timeout: 15000 }, async t => {
-  const service = await queuedJudge(t, { sourceDelay: finishWhileQueued ? 3000 : 1800, missionBudget: { maxConcurrent: 4, maxQueued: 1, queueWaitMs: 5000 } });
+  const service = await queuedJudge(t, { sourceDelay: finishWhileQueued ? 3000 : 1800, missionBudget: { maxConcurrent: 4, maxQueued: 1, queueWaitMs: 900_000 } });
   const { tasks, judge, envelope, submit, budget, until } = service;
   const running = [1, 2, 3, 4].map(revision => submit(revision));
   await until(() => budget().source_process_starts === 4);

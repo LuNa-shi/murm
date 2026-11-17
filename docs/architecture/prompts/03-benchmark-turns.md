@@ -7,22 +7,22 @@ The registered Bot path loads the stable system contract from the image, then di
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## IdentityTaskLoop default for compatibility callers
 
-Body SHA-256: `e82d91aa2907158ce4349ee6191107bd14a4d110bf1438697fca36744ec643d2`
+Body SHA-256: `81c9d7c7e276edc9d707d9d290e23ba34f6f4d54c669fb4adfa1d84a41f69c42`
 
 ````text
-Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work. If the Mission is unfinished and no suitable Task exists, identify a concrete gap and propose a bounded Task with a verifiable deliverable. Call canonical task_take and continue in the same Bot Session after success. An empty queue does not end discovery. Respect actual Bot and run deadlines; stop expanding work after Mission acceptance or stop.
+Read the Mission and relevant public Tasks, Materials, and Workspace files within the selection budget. Prefer suitable existing work. If the Mission is unfinished and no suitable Task exists, identify a concrete gap and propose an independently useful Task with a short title, output, completion conditions and explicit high/medium/low priority. UNBOUND Bots may propose several Tasks and revise or cancel open unowned Tasks with observed versions; ACTIVE Bots may propose further work. Priority is advice. Take existing work directly when suitable; proposing does not require taking your own proposal. Call canonical task_take and continue in the same Bot Session after success. An empty queue does not end discovery. Respect actual Bot and run deadlines; stop expanding work after Mission acceptance or stop.
 ````
 ## Registered Bot discovery: complete synthetic example
 
-Body SHA-256: `5b83d8a03cd086b042fdb6cfcbf7ac7967a5187ed37d0d5e6fd854dd581b1cd6`
+Body SHA-256: `d1ad82c983946cbca55436ab4de7f732893b7c58111c182b99aacd6241e0db90`
 
 ````text
-你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内优先选择合适的已有 Task。下方只是一页当前可领 Task。若无合适项且 Mission 仍开放、选工仍有额度，查询 swarm mission submission view，从当前 main 和公开成果定位一个具体缺口，提出可验证的局部 Task 再 take。
+你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内优先选择合适的已有 Task。下方只是一页当前可领 Task。若无合适项且 Mission 仍开放、选工仍有额度，查询 swarm mission submission view，从当前 main 和公开成果定位一个具体缺口，可提出多个有 gap、交付、完成条件和明确 priority 的独立责任供后继选择；也可直接 take 合适已有 Task，不要求自提自领。
 
 {
-  "protocol_version": "swarm-bot-v1-draft.2",
+  "protocol_version": "swarm-bot-v1-draft.3",
   "observed_at": "2026-11-14T00:00:00.000Z",
-  "system_prompt_sha256": "cf33113949f160c42bd07bd8cc59865cd1c204db3a311097e3aeb06db5ba0704",
+  "system_prompt_sha256": "5bb9a191d10fefc19d91f4b2abdcd80a4892de34d37b40788fe151848da4f5ec",
   "mission": {
     "mission_id": "<MISSION_ID>",
     "goal": "<MISSION_GOAL>",
@@ -87,7 +87,7 @@ Body SHA-256: `5b83d8a03cd086b042fdb6cfcbf7ac7967a5187ed37d0d5e6fd854dd581b1cd6`
       "name": "judge",
       "provider_service": "judge",
       "provider_version": "builtin-1",
-      "manifest_hash": "34476ca30e7dfd2fa5ee3d63e04d69a4b2acdee2ca9fd13a4667543105a7a497",
+      "manifest_hash": "21ea5bda4e91d3c46e7221d5d617ac9a3653d7ffefa0614e08c496903d81bafd",
       "help": "swarm judge --help",
       "manifest_help": "swarm service view judge --json",
       "documentation": [],
@@ -97,7 +97,7 @@ Body SHA-256: `5b83d8a03cd086b042fdb6cfcbf7ac7967a5187ed37d0d5e6fd854dd581b1cd6`
       "name": "mission",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af",
+      "manifest_hash": "9b11fe22659c7c78ec7f7e8e1f23170da5a695feb548fd8a2c1c1ba90ca22a52",
       "help": "swarm mission --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -107,17 +107,17 @@ Body SHA-256: `5b83d8a03cd086b042fdb6cfcbf7ac7967a5187ed37d0d5e6fd854dd581b1cd6`
       "name": "task",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af",
+      "manifest_hash": "9b11fe22659c7c78ec7f7e8e1f23170da5a695feb548fd8a2c1c1ba90ca22a52",
       "help": "swarm task --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
-      "permission": "Mission reads, propose and take; finish and feedback require current E; unowned cancel and dependency repair require explicit coordination grants"
+      "permission": "Mission reads and direct take; UNBOUND/ACTIVE may propose; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; legacy dependency repair requires a coordination grant"
     },
     {
       "name": "workspace",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af",
+      "manifest_hash": "9b11fe22659c7c78ec7f7e8e1f23170da5a695feb548fd8a2c1c1ba90ca22a52",
       "help": "swarm workspace --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -127,7 +127,7 @@ Body SHA-256: `5b83d8a03cd086b042fdb6cfcbf7ac7967a5187ed37d0d5e6fd854dd581b1cd6`
       "name": "bot",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "68fdfc90b1ac987bafde92f69e16a23b15529699a8d05d7ab108cb0c5920b2af",
+      "manifest_hash": "9b11fe22659c7c78ec7f7e8e1f23170da5a695feb548fd8a2c1c1ba90ca22a52",
       "help": "swarm bot --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -137,28 +137,28 @@ Body SHA-256: `5b83d8a03cd086b042fdb6cfcbf7ac7967a5187ed37d0d5e6fd854dd581b1cd6`
   "skills": [
     {
       "name": "plan-task",
-      "version": "draft.2",
+      "version": "draft.3",
       "path": "/opt/swarmenv/src/agent/bot-contract/plan-task.md",
       "description": "在有限选工预算内发现、提出或选择 Task，处理竞争、阻塞和正常退出。",
-      "sha256": "c369dce0c2f77d597d4f199c6b767c57ac4cea2b9b7bb5fdd069b7f8e77ef695"
+      "sha256": "e6f2fd8e8c7f7e89ada43a475a1dffa604981bbe1d93bcdffe0ee6d6e255b3f7"
     },
     {
       "name": "use-material",
-      "version": "draft.2",
+      "version": "draft.3",
       "path": "/opt/swarmenv/src/agent/bot-contract/use-material.md",
       "description": "发布、读取、复用或纠正研究内容，记录真实来源，并在整份 supersede 时保留有效知识。",
       "sha256": "53ff58a3a35baee7f03bd08e65334b6195ab94463ceafc3e9a2faa5bc08ccf80"
     },
     {
       "name": "use-workspace",
-      "version": "draft.2",
+      "version": "draft.3",
       "path": "/opt/swarmenv/src/agent/bot-contract/use-workspace.md",
       "description": "读取公开项目文件，保存不可变 revision，在同一 E 接续版本并请求合入 main。",
-      "sha256": "5e088f921ee9c5ca86bcd2a2b1543b03999821430d5530b9c257078f2ac4b061"
+      "sha256": "9f7c8fed6b1f4b1607a0328ffca09a67a2e83b547552a0bf276f48ae8631dcae"
     },
     {
       "name": "finish-task",
-      "version": "draft.2",
+      "version": "draft.3",
       "path": "/opt/swarmenv/src/agent/bot-contract/finish-task.md",
       "description": "软收尾、正常完成、动态阻塞、责任撤回或未完成交接时，先保存可用成果再终止执行。",
       "sha256": "cc3748aa4502013072a030fa84fe13f8cfaa82d6e1ea642661a5b6eeaeeb32a4"

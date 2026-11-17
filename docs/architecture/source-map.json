@@ -7,7 +7,8 @@
     "scripts",
     "config",
     "services",
-    "fixtures"
+    "fixtures",
+    "benchmarks"
   ],
   "scope_root_files": [
     "package.json",
@@ -54,6 +55,348 @@
       "role": "Raw evidence and credential retention boundary in the working tree"
     },
     {
+      "path": "benchmarks/flt10/ATTRIBUTION.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/LICENSE",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/NOTICE",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/README.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/projection-contract.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q10/baseline/q10.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q10/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q10/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q100/baseline/q100.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q100/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q100/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q20/baseline/q20.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q20/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q20/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q30/baseline/q30.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q30/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q30/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q40/baseline/q40.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q40/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q40/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q50/baseline/q50.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q50/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q50/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q60/baseline/q60.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q60/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q60/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q70/baseline/q70.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q70/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q70/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q80/baseline/q80.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q80/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q80/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q90/baseline/q90.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q90/metadata.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/q90/problem.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/read_context.py",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/subtree-instructions.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Neutral multi-file proof project instructions loaded through Workspace"
+    },
+    {
+      "path": "benchmarks/flt10/upstream-integrity.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
       "path": "components.json",
       "category": "dashboard and build",
       "chapters": [
@@ -61,6 +404,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "UI component generator aliases/theme configuration"
+    },
+    {
+      "path": "config/flt10.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
     },
     {
       "path": "config/putnambench-12.json",
@@ -133,6 +485,33 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Offline analysis CLI arguments and failure reporting"
+    },
+    {
+      "path": "scripts/benchmarks/build_flt10_statement_graph.py",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
+    },
+    {
+      "path": "scripts/benchmarks/prepare_flt10.py",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
+    },
+    {
+      "path": "scripts/benchmarks/prepare_flt_subtrees.py",
+      "category": "benchmark setup",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Root-only FLT extraction, private typed facts and public fixture generation"
     },
     {
       "path": "scripts/bot-filesystem-policy.c",
@@ -332,6 +711,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Executable swarm CLI entry point and exit-code boundary"
+    },
+    {
+      "path": "scripts/validate-benchmark-witness.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Private complete-witness validation and launch receipt generation"
     },
     {
       "path": "services/builtin/Dockerfile",
@@ -615,6 +1003,15 @@
       "role": "Offline evidence inventory, timeline reconstruction, metrics and report rendering"
     },
     {
+      "path": "src/benchmark/benchmark-context.js",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
+    },
+    {
       "path": "src/benchmark/benchmark-fixture.js",
       "category": "Execution and control",
       "chapters": [
@@ -645,6 +1042,7 @@
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
+        "docs/architecture/06-observability-experiments.md",
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Project composition, Agent take loop, Judge orchestration, stop and reports"
@@ -772,6 +1170,33 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Locked offline Lake project builds, isolated proof export, theorem comparison and kernel replay"
+    },
+    {
+      "path": "src/judge/lean-module-build.lean",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned Lean frontend driver recording completed fixed-source elaboration before module serialization"
+    },
+    {
+      "path": "src/judge/lean-module-checker.js",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Isolated module dependency compilation and Mission-scoped immutable artifact cache"
+    },
+    {
+      "path": "src/judge/lean-module-verify.lean",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers"
     },
     {
       "path": "src/observability/benchmark-report-importer.js",
@@ -979,6 +1404,16 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Identity/version envelope validation and stable serialization"
+    },
+    {
+      "path": "src/protocol/http-request.js",
+      "category": "service and Agent integration",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers"
     },
     {
       "path": "src/runtime/docker-bot-disk.js",

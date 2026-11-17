@@ -9,7 +9,7 @@ import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
-import { finishSolverTask, beginMissionCloseout, ensureAgentSession, sanitizedCheck, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
+import { finishSolverTask, beginMissionCloseout, ensureAgentSession, isPreparationFailure, sanitizedCheck, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
 import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
@@ -94,7 +94,7 @@ test('a quiet unfinished Mission discovers a new responsibility after all Tasks 
     checker: { identity, check: () => { throw new SwarmEnvError('SERVICE_TIMEOUT', 'controlled final-check timeout'); } },
   });
   runtime.missionSubmissionStore = store;
-  const create = (summary, actorRef) => service.createTask({ mission_id: missionId, summary,
+  const create = (summary, actorRef) => service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: missionId, summary,
     expected_output: 'Reproducible result', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef })).task;
   const former = create('Check a completed responsibility', 'operator:test');
   const done = service.takeTask(former.task_id, { owner_ref: 'agent:earlier', core_id: 'core-earlier', take_key: 'earlier' }).execution;
@@ -277,7 +277,7 @@ test('Execution binding rejects unregistered owners before preparing a Workspace
 test('taken Bot keeps its original Sandbox and closes before a successor can use the Core', async (t) => {
   const { service, runtime, manager, startSession, calls } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a local question', expected_output: 'Reusable note', acceptance_conditions: ['Question answered'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a local question', expected_output: 'Reusable note', acceptance_conditions: ['Question answered'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const taken = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:bound' });
   await assert.rejects(runtime.bindAgentExecution(taken.execution.execution_id, { stop() {} }, { coreId: bot.core_id }), /original Bot Session/);
   assert.equal(service.getExecution(taken.execution.execution_id).state, 'CREATED');
@@ -314,7 +314,7 @@ test('four Core Bots discover concurrently before any Task exists and can each p
   assert.equal(new Set(bots.map(({ bot }) => bot.bot_id)).size, 4);
   assert.equal(new Set(bots.map(({ bot }) => bot.sandbox_id)).size, 4);
   const taken = bots.map(({ bot }) => {
-    const task = service.createTask({ mission_id: bot.mission_id, summary: `Independent question from ${bot.core_id}`, expected_output: 'Local result', acceptance_conditions: ['Question answered'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+    const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: `Independent question from ${bot.core_id}`, expected_output: 'Local result', acceptance_conditions: ['Question answered'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
     return service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: `take:${bot.bot_id}` });
   });
   await Promise.all(taken.map(({ execution }, index) => runtime.bindAgentExecution(execution.execution_id, bots[index].session, { coreId: bots[index].bot.core_id, sendInitialPrompt: false })));
@@ -349,6 +349,7 @@ test('four real CLI Bot paths propose then take with overlapping E ownership and
   const initial = await Promise.all(lanes.map(lane => lane.command('task', 'list')));
   assert.ok(initial.every(page => page.tasks.length === 0));
   const proposals = await Promise.all(lanes.map(lane => lane.command('task', 'propose', '--summary', `Investigate the separate reproducible boundary for Core ${lane.index}`,
+    '--gap', `The Mission needs evidence for independent boundary ${lane.index}`, '--priority', 'medium',
     '--expected-output', `An independently useful note for boundary ${lane.index}`, '--acceptance-conditions', '["Explain the boundary and evidence"]', '--request-id', `propose-${lane.index}`)));
   const takes = await Promise.all(lanes.map((lane, index) => lane.command('task', 'take', proposals[index].task.task_id, '--request-id', `take-${lane.index}`)));
   assert.equal(runtime.getActiveProcessCount(), 4);
@@ -400,7 +401,7 @@ for (const cause of ['selection-budget', 'shutdown']) test(`startup ${cause} sto
 test('pre-alias rollback stops the retained Bot Session and Sandbox', async (t) => {
   const { service, runtime, manager, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect one question while preparation is pending', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect one question while preparation is pending', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:pre-alias' });
   const foreign = { stop: async () => assert.fail('foreign Session must not become cleanup owner') };
   await assert.rejects(runtime.bindAgentExecution(execution.execution_id, foreign, { coreId: 'core-1' }), /original Bot/);
@@ -414,7 +415,7 @@ test('pre-alias rollback stops the retained Bot Session and Sandbox', async (t) 
 test('another owner cannot reserve a Task on the Core occupied by an unbound Bot', async (t) => {
   const { service, runtime, startSession } = await fixture(t);
   const { bot } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect independent work on the occupied Core', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect independent work on the occupied Core', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   assert.throws(() => service.takeTask(task.task_id, { owner_ref: 'legacy:intruder', core_id: 'core-1', take_key: 'intruder' }), /another Bot/);
   assert.equal(service.listActiveExecutions().length, 0);
 });
@@ -422,7 +423,7 @@ test('another owner cannot reserve a Task on the Core occupied by an unbound Bot
 test('a Bot that closes during input preparation cannot become ACTIVE', async (t) => {
   const { service, runtime, manager, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a question with delayed preparation', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a question with delayed preparation', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:delayed' });
   let resume;
   let entered;
@@ -449,12 +450,12 @@ test('a Bot that closes during input preparation cannot become ACTIVE', async (t
 test('provider input-copy rejection fails preparation and cleans the original Bot resource', async (t) => {
   const { service, runtime, manager, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect one question with a rejected input copy', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect one question with a rejected input copy', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:copy-failed' });
   const providerFetch = manager.fetch;
-  manager.fetch = (url, options) => url.endsWith('/command')
-    ? Promise.resolve(new Response('event: execution_complete\ndata: {"exit_code":1}\n\n')) : providerFetch(url, options);
-  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }), /input copy failed/);
+  manager.fetch = (url, options) => url.endsWith('/project/prepare')
+    ? Promise.resolve(new Response(JSON.stringify({ message: 'project input rejected' }), { status: 400 })) : providerFetch(url, options);
+  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }), error => error.code === ERROR_CODES.INVALID_CONTRACT && error.details?.status === 400);
   assert.equal(session.closed, true);
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
   assert.equal(manager.snapshot().executions.length, 0);
@@ -464,7 +465,7 @@ test('provider input-copy rejection fails preparation and cleans the original Bo
 test('compaction limit closes a registered Bot instead of replacing Pi inside its Execution', async (t) => {
   const { service, runtime, startSession } = await fixture(t, { maxCompactions: 0 });
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect the bounded compaction lifecycle', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect the bounded compaction lifecycle', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:compact' });
   await runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
   session.emit('rpc', { type: 'compaction_start', reason: 'threshold' });
@@ -478,7 +479,7 @@ test('compaction limit closes a registered Bot instead of replacing Pi inside it
 test('preparing process exit retries a transient deletion failure without a bind caller', async (t) => {
   const { service, runtime, manager, startSession } = await fixture(t, { finishCleanupRetryMs: 10, maxFinishCleanupRetries: 2 });
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect pre-alias process failure cleanup', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect pre-alias process failure cleanup', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:retry' });
   const providerFetch = manager.fetch;
   let deletes = 0;
@@ -543,7 +544,7 @@ test('late factory Session is stopped even when it arrives inside a pending prov
 test('a new Bot finish cannot override a durable Runtime stop while provider deletion is pending', async (t) => {
   const { service, runtime, manager, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect competing terminal decisions safely', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect competing terminal decisions safely', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const taken = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:finish-race' });
   await runtime.bindAgentExecution(taken.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
   const execution = service.getExecution(taken.execution.execution_id);
@@ -569,7 +570,7 @@ test('a new Bot finish cannot override a durable Runtime stop while provider del
 test('prepare rollback joins the original stop and preserves its terminal reason', async (t) => {
   const { service, runtime, manager, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect prepare rollback joining an existing stop', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect prepare rollback joining an existing stop', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:stop-race' });
   let copied;
   let resumeCopy;
@@ -604,7 +605,7 @@ test('prepare rollback joins the original stop and preserves its terminal reason
 test('Bot lifetime is fixed before take and caps the active Execution deadline', async t => {
   const { service, runtime, startSession } = await fixture(t, { executionTimeoutMs: 60_000, handoffReminderMs: 50_000 });
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 5000, startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a bounded independent research question', expected_output: 'Note', acceptance_conditions: ['Note written'], timebox_ms: 60_000 }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a bounded independent research question', expected_output: 'Note', acceptance_conditions: ['Note written'], timebox_ms: 60_000 }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'bounded-take' });
   await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
   assert.ok(Date.parse(service.getExecution(execution.execution_id).execution_deadline) <= Date.parse(bot.hard_deadline));
@@ -615,21 +616,59 @@ test('Bot lifetime is fixed before take and caps the active Execution deadline',
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'bot-lifetime-budget');
 });
 
-test('Bot lifetime stops a taken Bot even while Workspace preparation has not returned', async t => {
+for (const [budget, selectionFirst] of [['bot-lifetime-budget', false], ['bot-lifetime-budget', true], ['selection-budget', true]]) test(`${budget} stops a taken Bot while Workspace preparation has not returned (${selectionFirst ? 'selection' : 'hard'} callback first)`, async t => {
   const { service, runtime, startSession } = await fixture(t);
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 60_000, maxLifetimeMs: 250, startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Prepare inputs for an independent research question', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  // Git input export can take longer than the budget under load. Advance the
+  // real deadline callbacks only after the intended preparation barrier.
+  t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
+  const setTimer = globalThis.setTimeout;
+  const callbackOrder = [];
+  let armedTimers = 0;
+  globalThis.setTimeout = (callback, delay, ...args) => {
+    const index = armedTimers++;
+    const invoke = () => {
+      if (index < 2) callbackOrder.push(index === 0 ? 'hard' : 'selection');
+      return callback(...args);
+    };
+    // Model a one-millisecond timer-registration skew between callbacks that
+    // target the same persisted deadline; either callback may dispatch first.
+    return setTimer(invoke, index === 0 && selectionFirst ? delay + 1 : delay);
+  };
+
+  let started;
+  try {
+    started = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: budget === 'selection-budget' ? 1000 : 60_000, maxLifetimeMs: budget === 'bot-lifetime-budget' ? 1000 : 60_000, startSession });
+  } finally { globalThis.setTimeout = setTimer; }
+  const { bot, session } = started;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Prepare inputs for an independent research question', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'prepare-budget' });
   const create = runtime.workspaceManager.createWorkspace.bind(runtime.workspaceManager);
-  let release;
+  let release, enterPreparation, preparationEntered = false;
+  const entered = new Promise(resolve => { enterPreparation = resolve; });
   const gate = new Promise(resolve => { release = resolve; });
-  runtime.workspaceManager.createWorkspace = async options => { await gate; return create(options); };
+  runtime.workspaceManager.createWorkspace = async options => { preparationEntered = true; enterPreparation(); await gate; return create(options); };
   const binding = runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
   const rejected = assert.rejects(binding);
-  await new Promise(resolve => setTimeout(resolve, 350));
-  assert.equal(session.closed, true);
-  release();
-  await rejected;
+  try {
+    await Promise.race([entered, binding]);
+    assert.equal(preparationEntered, true);
+    t.mock.timers.tick(1001);
+    assert.equal(callbackOrder[0], selectionFirst ? 'selection' : 'hard');
+    // The budget callback has fired; cleanup polling uses ordinary timers.
+    t.mock.timers.reset();
+    const released = await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 5000 });
+    assert.equal(released.released, true);
+    assert.equal(preparationEntered, true, 'the deadline must interrupt a pending Workspace preparation');
+    assert.equal(session.closed, true);
+    const stopped = service.getExecution(execution.execution_id);
+    assert.equal(stopped.terminal_reason, budget);
+    assert.equal(stopped.started_at, null);
+    assert.equal(stopped.workspace_ref, null);
+    assert.equal(isPreparationFailure(stopped), true, 'the report accepts this real pre-activation budget stop');
+  } finally {
+    release();
+    await rejected;
+  }
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
 });
 
@@ -646,7 +685,7 @@ test('elapsed Mission deadline rejects Bot creation before a provider request', 
 for (const boundary of ['task', 'bot']) test(`registered Bot ${boundary} timeout sweep uses hard stop without synthesizing a checkpoint`, async t => {
   const { service, runtime, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 60_000, startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect an independent deadline boundary', expected_output: 'Note', acceptance_conditions: ['Note'], timebox_ms: boundary === 'task' ? 30_000 : 120_000 }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect an independent deadline boundary', expected_output: 'Note', acceptance_conditions: ['Note'], timebox_ms: boundary === 'task' ? 30_000 : 120_000 }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: `deadline:${boundary}` });
   await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
   runtime.workspaceManager.saveWorkspaceRevision = async () => assert.fail('hard stop must not create a new revision');
@@ -661,7 +700,7 @@ for (const boundary of ['task', 'bot']) test(`registered Bot ${boundary} timeout
 test('earlier Task hard deadline automatically stops a registered Bot without an external sweep', async t => {
   const { service, runtime, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 60_000, startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a locally bounded question', expected_output: 'Note', acceptance_conditions: ['Note'], timebox_ms: 150 }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a locally bounded question', expected_output: 'Note', acceptance_conditions: ['Note'], timebox_ms: 150 }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'automatic-short-task' });
   await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
   await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 1_000 });
@@ -679,7 +718,7 @@ test('registered take pins the complete public tree even when main advances duri
   runtime.missionWorkspace = publicStore;
   runtime.missionWorkspaceId = 'workspace-bots';
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect the full shared project input', expected_output: 'Note', acceptance_conditions: ['Inputs inspected'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect the full shared project input', expected_output: 'Note', acceptance_conditions: ['Inputs inspected'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'full-tree-input' });
   const create = runtime.workspaceManager.createWorkspace.bind(runtime.workspaceManager);
   runtime.workspaceManager.createWorkspace = async options => {
@@ -746,7 +785,7 @@ test('registered CLI take pins verified Material and warns when the trusted prev
   const material = context.dispatch('publish_material', { kind: 'fact', scope: 'mission', content: 'Immutable supporting note' },
     makeEnvelope({ actorRef: producer.owner_ref, taskId: producer.task_id, executionId: producer.execution_id,
       fencingVersion: producer.fencing_version, stateVersion: producer.state_version, specVersion: producer.spec_version })).material;
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Read the latest project and pinned input Material', expected_output: 'Independent note',
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Read the latest project and pinned input Material', expected_output: 'Independent note',
     acceptance_conditions: ['Uses fixed inputs'], input_material_refs: [material.material_id] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const command = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], { env: { PATH: process.env.PATH, ...env }, timeout: 15_000 })).stdout);
   const take = () => command('task', 'take', task.task_id, '--input-material-refs', '[]', '--request-id', 'take-fixed-inputs');
@@ -770,7 +809,7 @@ test('registered take fails closed when no authoritative Mission Workspace is wi
   const { service, runtime, startSession } = await fixture(t);
   runtime.missionWorkspace = null;
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Try taking work without a trusted public input', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Try taking work without a trusted public input', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'without-public-input' });
   await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { sendInitialPrompt: false }), { code: 'SERVICE_NOT_READY' });
   assert.equal(service.getExecution(execution.execution_id).workspace_input, null);
@@ -783,7 +822,7 @@ test('a Task cannot materialize another Mission public Workspace', async t => {
   runtime.missionWorkspaceId = null;
   await runtime.missionWorkspace.create({ missionId: 'mission:other', workspaceId: 'workspace-other', initialFiles: { 'other.txt': 'private to another Mission' } });
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Attempt a foreign project input', expected_output: 'Note', acceptance_conditions: ['Note'], workspace: { workspace_id: 'workspace-other' } }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Attempt a foreign project input', expected_output: 'Note', acceptance_conditions: ['Note'], workspace: { workspace_id: 'workspace-other' } }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'foreign-input' });
   await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false }), /must belong to the Bot Mission/);
   assert.equal(service.getExecution(execution.execution_id).workspace_input, null);
@@ -798,7 +837,7 @@ test('a Task explicit public revision is used instead of the current main', asyn
   await runtime.missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-selected', initialFiles: { 'input.txt': 'main' } });
   const saved = await runtime.missionWorkspace.save({ workspaceId: 'workspace-selected', files: { 'input.txt': 'selected saved revision' } });
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a specific public input revision', expected_output: 'Note', acceptance_conditions: ['Note'],
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a specific public input revision', expected_output: 'Note', acceptance_conditions: ['Note'],
     workspace: { workspace_id: 'workspace-selected' }, base_revision: saved.revision }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'selected-input' });
   const { workspace } = await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
@@ -813,7 +852,7 @@ test('a delayed project grant cannot return a successful binding after Bot stop'
   runtime.missionWorkspaceId = 'workspace-late-grant';
   await runtime.missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-late-grant', initialFiles: { 'input.txt': 'input' } });
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a late permission transition', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a late permission transition', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'late-grant' });
   let entered; let release;
   const started = new Promise(resolve => { entered = resolve; });
@@ -833,7 +872,7 @@ test('a delayed project grant cannot return a successful binding after Bot stop'
 test('registered Bot compaction sends CLI guidance without saving the controller private tree', async t => {
   const { service, runtime, startSession } = await fixture(t, { maxCompactions: 3 });
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect compaction without claiming file persistence', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect compaction without claiming file persistence', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:compact-message' });
   await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
   const before = service.getExecution(execution.execution_id);
@@ -865,7 +904,7 @@ async function workspaceFixture(t, options = {}) {
     session = await f.startSession(input);
     return session;
   } });
-  const task = f.service.createTask({ mission_id: bot.mission_id, summary: 'Produce a reusable project artifact', expected_output: 'Public files', acceptance_conditions: ['Artifact saved'], completion_contract: options.completionContract ?? {} }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = f.service.createTask({ mission_id: bot.mission_id, summary: 'Produce a reusable project artifact', gap: 'Produce the public artifact needed for the Mission', priority: 'medium', expected_output: 'Public files', acceptance_conditions: ['Artifact saved'], completion_contract: options.completionContract ?? {} }, makeEnvelope({ actorRef: bot.bot_id })).task;
   await bridge.call({ operation: 'task_take', payload: { task_id: task.task_id }, operationId: 'workspace-take' });
   const execution = f.service.getExecution(bridge.executionId);
   const identity = { actorRef: bot.bot_id, taskId: task.task_id, executionId: execution.execution_id, fencingVersion: execution.fencing_version };
@@ -1176,7 +1215,7 @@ test('apply conflict metadata survives save and a fresh E; resolved save checks 
   assert.deepEqual(unresolved.conflicts, applied.conflicts);
   await runtime.stopExecution(execution.execution_id);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Resolve recorded public Workspace conflicts', expected_output: 'Resolved revision', acceptance_conditions: ['Conflicts resolved'], workspace: { workspace_id: 'workspace-default', revision: unresolved.revision } }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Resolve recorded public Workspace conflicts', expected_output: 'Resolved revision', acceptance_conditions: ['Conflicts resolved'], workspace: { workspace_id: 'workspace-default', revision: unresolved.revision } }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const take = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'inherit-conflicts' });
   await runtime.bindAgentExecution(take.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
   const next = service.getExecution(take.execution.execution_id);
@@ -1402,12 +1441,12 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   let holdBuild;
   let judge;
   const createJudgeService = (service, runtime) => {
-    const checker = new LeanChecker({ projectChecker: async ({ files, tree, startProcess }) => {
+    const checker = new LeanChecker({ projectChecker: async ({ files, tree, path, checkMode, missionId, startProcess }) => {
       if (Object.hasOwn(files, 'Outside.lean')) return { verdict: 'FAIL', diagnostic: 'Lean source is outside the project source directory' };
       return startProcess(async () => {
-        builds.push({ files, tree });
+        builds.push({ files, tree, path, checkMode, missionId });
         await holdBuild?.();
-        return { verdict: 'PASS', checked_tree: tree, checked_paths: ['Helper.lean', 'Proof.lean'],
+        return { verdict: 'PASS', checked_tree: tree, ...(checkMode === 'lean-module' ? { scope: 'module', requested_path: path } : {}), checked_paths: ['Helper.lean', 'Proof.lean'],
           warnings: ['Helper.lean: provisional proof'] };
       });
     } });
@@ -1421,7 +1460,7 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
     service.setCheckResultReader(id => judge.getCheckResult(id));
     return judge;
   };
-  const { command, dispatch, guest, bridge, execution } = await workspaceFixture(t, { createJudgeService,
+  const { service, command, dispatch, guest, bridge, execution } = await workspaceFixture(t, { createJudgeService,
     runtimeOptions: { workspaceProjectCheck: true },
     completionContract: { workspace_delivery: { paths: ['Proof.lean'], check: checkerIdentity } },
     onWorkUnit: ({ operation, taskId, executionId, result }) => {
@@ -1438,7 +1477,7 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   assert.equal(project.workspace_input.git_tree, saved.git_tree);
   assert.equal(project.workspace_input.check_mode, 'lean-project');
   assert.equal(project.workspace_input.path, undefined);
-  assert.deepEqual(project.build, { checked_count: 2, checked_paths: ['Helper.lean', 'Proof.lean'],
+  assert.deepEqual(project.build, { scope: 'project', requested_path: null, cache: null, checked_paths_truncated: false, checked_count: 2, checked_paths: ['Helper.lean', 'Proof.lean'],
     warnings: ['Helper.lean: provisional proof'] });
   assert.deepEqual(observed, [{ taskId: execution.task_id, executionId: execution.execution_id, result: project }]);
   assert.equal(String(builds[0].files['Helper.lean']), 'theorem helper : True := True.intro');
@@ -1453,6 +1492,17 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   assert.equal(scoped.workspace_input.git_tree, saved.git_tree);
   assert.equal(builds.length, 2);
   assert.equal(String(builds[1].files['Helper.lean']), String(builds[0].files['Helper.lean']));
+
+  const module = await command('judge', 'check', '--revision', saved.revision, '--path', 'Proof.lean', '--check-mode', 'lean-module', '--request-id', 'module-check');
+  assert.equal(module.workspace_input.check_mode, 'lean-module');
+  assert.equal(module.build.scope, 'module');
+  assert.equal(module.build.requested_path, 'Proof.lean');
+  assert.equal(module.mathematical_outcome, 'unassessed');
+  assert.equal(builds.at(-1).checkMode, 'lean-module');
+  assert.equal(builds.at(-1).missionId, service.getTask(execution.task_id).mission_id);
+  assert.deepEqual(await command('judge', 'result', '--request-key', 'module-check'), module);
+  await assert.rejects(finish(module.check_result_id), /did not pass for this delivery/);
+  await assert.rejects(command('judge', 'check', '--revision', saved.revision, '--check-mode', 'lean-module'), /INVALID_CONTRACT/);
 
   guest.files['lakefile.lean'] = Buffer.from('-- Candidate Lake configuration is ignored');
   guest.files['Helper.lean'] = Buffer.from('theorem helper : True := by sorry');
@@ -1728,7 +1778,7 @@ test('Git merge publication survives SQLite confirmation failure and replays the
 test('shutdown revokes and stops an active Bot before a different Core startup returns', { timeout: 15_000 }, async t => {
   const { service, runtime, startSession } = await fixture(t, { maxWorkers: 2 });
   const active = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: 'mission:bots', summary: 'A bounded active responsibility', expected_output: 'Research note', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: active.bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: 'mission:bots', summary: 'A bounded active responsibility', expected_output: 'Research note', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: active.bot.bot_id })).task;
   const take = service.takeTask(task.task_id, { owner_ref: active.bot.bot_id, core_id: 'core-1', take_key: 'shutdown-active' });
   await runtime.bindAgentExecution(take.execution.execution_id, active.session, { coreId: 'core-1', sendInitialPrompt: false });
   let entered, release, stopped;
@@ -1744,7 +1794,7 @@ test('shutdown revokes and stops an active Bot before a different Core startup r
   try {
     assert.equal(service.getBot(active.bot.bot_id).state, 'CLOSING');
     assert.equal(service.getTask(task.task_id).state, 'RUNNING');
-    assert.throws(() => service.createTask({ mission_id: 'mission:bots', summary: 'Investigate another independent responsibility after shutdown', expected_output: 'Result', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: active.bot.bot_id })), { code: 'NOT_ALLOWED' });
+    assert.throws(() => service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: 'mission:bots', summary: 'Investigate another independent responsibility after shutdown', expected_output: 'Result', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: active.bot.bot_id })), { code: 'NOT_ALLOWED' });
     await activeStopped;
   } finally { release(); }
   await rejected;
@@ -1912,22 +1962,37 @@ test('actual Mission CLI fixes current main and explicit empty Material selectio
   const second = new TaskService(join(root, 'state.sqlite'));
   try {
     for (const connection of [service, second]) {
-      assert.throws(() => connection.createTask({ mission_id: 'mission:bots', summary: 'Late new research after accepted Mission', expected_output: 'Note', acceptance_conditions: ['Evidence'] },
+      assert.throws(() => connection.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: 'mission:bots', summary: 'Late new research after accepted Mission', expected_output: 'Note', acceptance_conditions: ['Evidence'] },
         makeEnvelope({ actorRef: bot.bot_id, taskId: current.task_id, executionId: current.execution_id, specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version })), { code: 'NOT_ALLOWED' });
     }
   } finally { second.db.close(); }
 });
 
-test('actual Task CLI can retire an unowned responsibility and repair only its cancelled dependency', async t => {
-  const { command } = await workspaceFixture(t, { runtimeOptions: { coordinationPermissions: ['task_cancel', 'task_dependency_replace'] } });
+test('actual Task CLI lets an UNBOUND Bot retire work while an ACTIVE Bot only repairs its cancelled dependency', async t => {
+  const { command, service, runtime, startSession, context } = await workspaceFixture(t, { runtimeOptions: { maxWorkers: 2, coordinationPermissions: ['task_dependency_replace'] } });
+  const editorBridge = new ServicesBridge({ taskService: service, contextService: context, runtime, coreId: 'core-2',
+    registry: createBuiltinServiceRegistry({ taskService: service, contextService: context }) });
+  await editorBridge.start();
+  t.after(() => editorBridge.stop());
+  let editorEnvironment;
+  await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-2', startSession: async input => {
+    editorEnvironment = editorBridge.startBotIdentity(input.bot.bot_id);
+    return startSession(input);
+  } });
+  const edit = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], {
+    env: { PATH: process.env.PATH, ...editorEnvironment }, timeout: 15000,
+  })).stdout);
   const propose = async (summary, dependencies = []) => (await command('task', 'create', '--summary', summary,
+    '--gap', 'Repair the prerequisite needed by the Mission', '--priority', 'medium',
     '--expected-output', 'A reusable account of the independent claim', '--acceptance-conditions', '["State evidence and limitations"]',
     '--depends-on', JSON.stringify(dependencies))).task;
   const old = await propose('Investigate the old prerequisite responsibility');
   const replacement = await propose('Investigate the corrected prerequisite responsibility');
   const other = await propose('Investigate another unaffected prerequisite responsibility');
   const dependent = await propose('Combine results after both prerequisites complete', [old.task_id, other.task_id]);
-  const cancelled = await command('task', 'cancel', old.task_id, '--expected-spec-version', String(old.spec_version), '--expected-state-version', String(old.state_version),
+  await assert.rejects(command('task', 'cancel', old.task_id, '--expected-spec-version', String(old.spec_version), '--expected-state-version', String(old.state_version),
+    '--reason', 'An ACTIVE Bot must not cancel another responsibility'), error => /NOT_ALLOWED/.test(error.stderr));
+  const cancelled = await edit('task', 'cancel', old.task_id, '--expected-spec-version', String(old.spec_version), '--expected-state-version', String(old.state_version),
     '--reason', 'The corrected responsibility supersedes this unowned proposal', '--replacement', replacement.task_id, '--request-id', 'cli-cancel-old');
   assert.equal(cancelled.task.state, 'CANCELLED');
   const view = await command('task', 'view', dependent.task_id);
@@ -1961,7 +2026,7 @@ test('Mission acceptance gates new work but permits actual CLI save publish fini
 test('Mission PASS while project preparation is pending prevents reserved execution activation and write grant', async t => {
   const { service, runtime, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a delayed project preparation', expected_output: 'An independent note', acceptance_conditions: ['State evidence'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a delayed project preparation', expected_output: 'An independent note', acceptance_conditions: ['State evidence'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'prepare-before-pass' });
   let enter;
   let proceed;
@@ -2158,6 +2223,73 @@ test('Task main project checks require build coverage of every declared delivery
   }
 });
 
+test('Workspace merge rejects module-scoped evidence even when all delivery paths appear', async t => {
+  const identity = mergeCheckerIdentity;
+  const { command, dispatch, guest } = await workspaceFixture(t, {
+    completionContract: { workspace_delivery: { paths: ['Proof.lean'], require_main: true, check: identity } },
+    runtimeOptions: { workspaceProjectCheck: true, workspaceMergeChecker: { identity, timeoutMs: 5000,
+      async check() { return { verdict: 'PASS', check_result_id: 'module-merge-check', check_mode: 'lean-module', scope: 'module', checked_paths: ['Proof.lean'] }; },
+    } },
+  });
+  guest.files['Proof.lean'] = Buffer.from('theorem proof : True := trivial');
+  const saved = await dispatch('save', 'module-main-save');
+  await assert.rejects(command('workspace', 'merge', '--from', saved.revision), /module-scoped evidence is insufficient/);
+});
+
+test('Bot input preparation sends exact binary bytes through one authenticated bounded request', async t => {
+  const uploads = [];
+  const { service, runtime, startSession } = await fixture(t, {}, { beforeFetch: (url, options) => {
+    if (url.endsWith('/command')) assert.fail('registered Bot input must not use per-chunk shell RPCs');
+    if (url.endsWith('/project/prepare')) uploads.push(JSON.parse(options.body));
+  } });
+  const bytes = Buffer.alloc(2 * 1024 * 1024, 171);
+  const saved = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', files: { 'binary.bin': bytes } });
+  await runtime.missionWorkspace.merge({ workspaceId: 'workspace-default', fromRevision: saved.revision, expectedMainRevision: '0.1' });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect complete binary reference input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:binary' });
+  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
+  const transfers = uploads.filter(input => input.files);
+  assert.equal(transfers.length, 1);
+  assert.deepEqual(Buffer.from(transfers[0].files['binary.bin'], 'base64'), bytes);
+  assert.equal(transfers[0].manifest['binary.bin'].content_hash, createHash('sha256').update(bytes).digest('hex'));
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+});
+
+test('slow Bot preparation keeps its reservation lease live before activation', async t => {
+  const { service, runtime, manager, startSession } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a slow public input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:slow-lease' });
+  let resume, entered;
+  const gate = new Promise(resolve => { resume = resolve; });
+  const copying = new Promise(resolve => { entered = resolve; });
+  const sync = manager.syncWorkspace.bind(manager);
+  manager.syncWorkspace = async input => { entered(); await gate; return sync(input); };
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: Date.now() });
+  const binding = runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
+  await copying;
+  try {
+    for (let step = 0; step < 4; step++) t.mock.timers.tick(10_000);
+    assert.ok(Date.parse(service.getExecution(execution.execution_id).lease_expires_at) > Date.now(), 'preparation must retain a live lease beyond its original 30 seconds');
+  } finally { resume(); }
+  await binding;
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+  assert.doesNotThrow(() => runtime.heartbeat(execution.execution_id));
+});
+
+test('binding cannot revive an already expired preparation lease', async t => {
+  const { service, runtime, startSession, manager } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect expired preparation ownership', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:expired-preparation' });
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse(execution.lease_expires_at) + 1 });
+  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }), /lease has expired/);
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+  assert.equal(manager.snapshot().executions.length, 0);
+  assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
+});
+
 for (const deployment of ['in-process', 'independent']) for (const accepted of [false, true]) test(`solver control completes real lifecycle with ${deployment} services and Mission acceptance=${accepted}`, async t => {
   const { root, service, runtime, startSession } = await fixture(t, { agentMode: 'solver' });
   const peers = deployment === 'independent' ? await startIndependentServices({
@@ -2258,7 +2390,7 @@ test('solver compaction preserves the same Bot and Execution beyond the Swarm ro
 test('slow Bot preparation keeps its reservation lease live before activation', async t => {
   const { service, runtime, manager, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a slow public input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a slow public input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:slow-lease' });
   let resume, entered;
   const gate = new Promise(resolve => { resume = resolve; });
@@ -2281,7 +2413,7 @@ test('slow Bot preparation keeps its reservation lease live before activation', 
 test('binding cannot revive an already expired preparation lease', async t => {
   const { service, runtime, startSession, manager } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect expired preparation ownership', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect expired preparation ownership', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:expired-preparation' });
   t.mock.timers.enable({ apis: ['Date'], now: Date.parse(execution.lease_expires_at) + 1 });
   await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }), /lease has expired/);
