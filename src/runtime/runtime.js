@@ -280,7 +280,10 @@ export class Runtime {
       binding.hardTimer.unref?.();
     };
     binding.armDeadline(hardDeadlineAt, 'bot-lifetime-budget');
-    binding.selectionTimer = setTimeout(() => stopUnbound('selection-budget'), Math.max(1, Date.parse(bot.selection_deadline) - Date.now()));
+    // Selection is capped by the hard deadline. Equal-deadline timers may
+    // dispatch in either order, so both must retain the hard-budget reason.
+    const selectionStopReason = Date.parse(bot.selection_deadline) === hardDeadlineAt ? 'bot-lifetime-budget' : 'selection-budget';
+    binding.selectionTimer = setTimeout(() => stopUnbound(selectionStopReason), Math.max(1, Date.parse(bot.selection_deadline) - Date.now()));
     binding.selectionTimer.unref?.();
     const assertRuntimeStartupOpen = () => {
       if (controller.signal.aborted) throw controller.signal.reason;

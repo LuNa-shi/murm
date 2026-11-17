@@ -65,7 +65,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "e7e129ce773bcb0cbe9392a181de8e049ed6a70b3a146085747861093f93881c"
+      "sha256": "335f9e2962ed78c716fa3ecd76404ccd17fdf2217ac9384310f5a1f37bafb05c"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
@@ -138,13 +138,13 @@
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #notificationText",
-      "line": 2255,
+      "line": 2258,
       "sha256": "91d762ef38719a12b9cfab2a135e6db814d9ef0d90609916d1e34374c39c9369"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "        const prompt = ",
-      "line": 1671,
+      "line": 1674,
       "sha256": "7324112e1ed5f71238d9bf5ac227047ab65eb0e32c8e609355b9959928503c2f"
     },
     {
@@ -172,22 +172,22 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1676,
+      "line": 1679,
       "expression": "active.promptChain = active.promptChain.catch(() => undefined).then(() => active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' }));"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2241,
+      "line": 2244,
       "expression": "await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2306,
+      "line": 2309,
       "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2642,
+      "line": 2645,
       "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     }
   ],

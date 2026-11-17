@@ -616,12 +616,30 @@ test('Bot lifetime is fixed before take and caps the active Execution deadline',
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'bot-lifetime-budget');
 });
 
-for (const budget of ['bot-lifetime-budget', 'selection-budget']) test(`${budget} stops a taken Bot while Workspace preparation has not returned`, async t => {
+for (const [budget, selectionFirst] of [['bot-lifetime-budget', false], ['bot-lifetime-budget', true], ['selection-budget', true]]) test(`${budget} stops a taken Bot while Workspace preparation has not returned (${selectionFirst ? 'selection' : 'hard'} callback first)`, async t => {
   const { service, runtime, startSession } = await fixture(t);
   // Git input export can take longer than the budget under load. Advance the
   // real deadline callbacks only after the intended preparation barrier.
   t.mock.timers.enable({ apis: ['Date', 'setTimeout'], now: Date.now() });
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: budget === 'selection-budget' ? 1000 : 60_000, maxLifetimeMs: budget === 'bot-lifetime-budget' ? 1000 : 60_000, startSession });
+  const setTimer = globalThis.setTimeout;
+  const callbackOrder = [];
+  let armedTimers = 0;
+  globalThis.setTimeout = (callback, delay, ...args) => {
+    const index = armedTimers++;
+    const invoke = () => {
+      if (index < 2) callbackOrder.push(index === 0 ? 'hard' : 'selection');
+      return callback(...args);
+    };
+    // Model a one-millisecond timer-registration skew between callbacks that
+    // target the same persisted deadline; either callback may dispatch first.
+    return setTimer(invoke, index === 0 && selectionFirst ? delay + 1 : delay);
+  };
+
+  let started;
+  try {
+    started = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: budget === 'selection-budget' ? 1000 : 60_000, maxLifetimeMs: budget === 'bot-lifetime-budget' ? 1000 : 60_000, startSession });
+  } finally { globalThis.setTimeout = setTimer; }
+  const { bot, session } = started;
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Prepare inputs for an independent research question', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'prepare-budget' });
   const create = runtime.workspaceManager.createWorkspace.bind(runtime.workspaceManager);
@@ -635,6 +653,7 @@ for (const budget of ['bot-lifetime-budget', 'selection-budget']) test(`${budget
     await Promise.race([entered, binding]);
     assert.equal(preparationEntered, true);
     t.mock.timers.tick(1001);
+    assert.equal(callbackOrder[0], selectionFirst ? 'selection' : 'hard');
     // The budget callback has fired; cleanup polling uses ordinary timers.
     t.mock.timers.reset();
     const released = await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 5000 });
