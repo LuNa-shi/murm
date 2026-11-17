@@ -1,64 +1,110 @@
-# Built-in Service host
+# Built-in service deployment
 
-Task, Context, Judge, and Catalog use the same Service Manifest and JSON HTTP
-host as user-defined providers. Run one process per service and register the
-advertised URL with `createBuiltinServiceRegistry({ serviceEndpoints })`:
+Positive-duration benchmark runs default to repository-owned independent Context
+and Judge processes. Task, Mission and Workspace remain one coordinator. Each
+peer owns its own SQLite database and exchanges authenticated private HTTP
+commands with the coordinator; it never opens the Task database.
+
+`startIndependentServices` in `src/sdk/independent-services.js` starts the peers
+under exclusive instance locks, provisions credentials and pinned checker
+configuration, records endpoints/PIDs, and owns shutdown. Judge startup verifies
+the complete artifact lock and resource profile before becoming ready. Context
+writes use durable Task-owned gates; Judge admission and process starts use
+short authorized phases. Restart reconciles receipts and interrupted work.
+The production checker ledger supports cleanup even after Judge process loss.
+See the complete [deployment and recovery contract](../../docs/architecture/04-services.md#independent-contextjudge-deployment)
+and [runner configuration](../../docs/architecture/07-run-configuration.md).
+
+`context-service-peer.mjs` and `judge-service-peer.mjs` are the peer entrypoints.
+The Judge container entrypoint `judge-peer-entrypoint.sh` supplies its mandatory
+instance lock. A separately operated deployment must provide its own process
+supervision, private endpoints, credentials, artifact mounts, and systemd/cgroup
+access; merely exposing a port does not establish those guarantees.
+
+## Compatibility standalone hosts
+
+`npm run service:builtin` and `compose.yaml` retain the older generic
+Task/Context/Judge/Catalog HTTP hosts. These are useful for manifest, read and
+transport compatibility tests. They do **not** compose the new durable coordinator
+protocol. Lifecycle-sensitive writes without local Task authority fail closed;
+a healthy HTTP endpoint or a mounted checker fixture does not make this compose
+file a supported positive-duration research deployment.
+
+
+## Host configuration and authentication
+
+Choose `SWARMENV_SERVICE_ID` from `task`, `context`, `judge`, `catalog`. The host
+binds `0.0.0.0:8787` by default; set `SWARMENV_SERVICE_HOST` and
+`SWARMENV_SERVICE_PORT` to override it. `SWARMENV_SERVICE_PUBLIC_URL` is the
+address advertised to clients. `SWARMENV_SERVICE_DATABASE` defaults to
+`./data/<service>.sqlite`.
+
+Every host exposes public `/healthz`, `/readyz` and `/v1/manifest` routes, plus
+named POST `/v1/<operation>` routes. Invocation requires
+`SWARMENV_SERVICE_PRINCIPALS`, a JSON array of operator-provisioned credentials:
+each entry has `token`, `actor_ref`, `role` (`bound` or `recovery`) and optionally
+an `operations` allowlist. The request bearer, envelope actor and role must
+match the principal. The default empty array denies all invocations. The old
+single `SWARMENV_SERVICE_TOKEN` does not configure built-in host authentication.
+Keep actual credential values in private deployment configuration.
+
+For an operator-configured principal array already exported in the environment:
 
 ```sh
 SWARMENV_SERVICE_ID=task \
+SWARMENV_SERVICE_HOST=127.0.0.1 \
 SWARMENV_SERVICE_DATABASE=/var/lib/swarmenv/task.sqlite \
-SWARMENV_SERVICE_PUBLIC_URL=http://task:8787 \
+SWARMENV_SERVICE_PUBLIC_URL=http://127.0.0.1:8787 \
 npm run service:builtin
 ```
 
-The container image can host any one of the four services by changing
-`SWARMENV_SERVICE_ID` to `task`, `context`, `judge`, or `catalog`. Mount a
-durable volume for the SQLite database and set the public URL to the address
-reachable by the Runtime. Every host exposes `/healthz`, `/readyz`,
-`/v1/manifest`, and the named `/v1/<operation>` routes; authorization is
-enabled when `SWARMENV_SERVICE_TOKEN` is set.
+Client endpoint configuration uses `SWARMENV_{TASK,CONTEXT,JUDGE,CATALOG}_SERVICE_URL`
+and its matching `_SERVICE_TOKEN`; those client credentials must match a
+principal on the target host. The Registry can also receive explicit
+`serviceEndpoints`. A registered Bot remains scoped to its durable Mission and
+Execution; a bearer token cannot assign another Task owner.
 
-Set `SWARMENV_SERVICE_ISOLATED=true` for the Issue 119 deployment shape. In
-that mode the process opens only its own service database and uses configured
-HTTP endpoints for the small cross-domain reads/writes needed by the existing
-synchronous domain handlers. `SWARMENV_CONTEXT_SERVICE_URL` supplies the
-Context endpoint to Task, and `SWARMENV_TASK_SERVICE_URL` supplies the Task
-endpoint to Context/Judge. If a required dependency endpoint is absent, the
-affected operation returns a typed service-unavailable error instead of
-silently opening a second local database.
+## Composition and readiness limits
 
-For a four-process local deployment, use
-[`compose.yaml`](compose.yaml):
+With `SWARMENV_SERVICE_ISOLATED=false` (default), the script constructs Task,
+Context and Judge on its selected database even when it exposes only one
+provider. Distinct host database paths do not share domain state automatically.
+Context gets a local Task authority and can report ready. Judge is not wired
+to Task authority by this standalone script, so its readiness and data routes
+remain unavailable even with a valid fixture manifest.
 
-```sh
-docker compose -f services/builtin/compose.yaml up --build -d
-```
+With `SWARMENV_SERVICE_ISOLATED=true`, each stateful host opens only its own
+database and Catalog opens none. Task can use the configured Context HTTP
+proxy. The historical HTTP domain proxy does not implement Context's required
+`materialScope` and lifecycle writer seam; isolated Context therefore reports
+not ready and rejects data operations with `SERVICE_NOT_READY`. Judge likewise
+requires a local Task lifecycle authority and trusted Workspace input. These
+checks deliberately prevent an HTTP caller from bypassing finish/stop fencing.
+Health, manifest availability and a running container do not establish usable
+Context/Judge operations or a complete research deployment.
 
-Task, Context and Judge receive separate named volumes; Catalog is stateless
-and discovers the other three through their service names. The published host
-ports default to 8781–8784 and can be overridden with
-`SWARMENV_{TASK,CONTEXT,JUDGE,CATALOG}_PORT`. Set `SWARMENV_SERVICE_TOKEN` to
-require one bearer token on every service. Judge starts with a healthy HTTP
-surface but reports checker input unavailable until
-`SWARMENV_JUDGE_FIXTURE_MANIFEST` points to a pinned manifest mounted inside
-the container together with its locked checker project and toolchain.
+The checked-in [Compose file](compose.yaml) selects isolated mode, separate
+Task/Context/Judge volumes and a stateless Catalog. Its host ports default to
+8781–8784; override with `SWARMENV_{TASK,CONTEXT,JUDGE,CATALOG}_PORT`.
+Per-service principal arrays use `SWARMENV_<SERVICE>_SERVICE_PRINCIPALS`.
+`docker compose -f services/builtin/compose.yaml up --build -d` starts those
+hosts with the limitations above; it is not the normal benchmark launch path.
+The repository-owned independent peers described above provide the supported
+positive-duration composition; this generic Compose recipe does not use them.
 
-The Judge checker can be prebuilt once into its persistent service volume:
+## Checker assets and shutdown
 
-```sh
-SWARMENV_JUDGE_PREBUILD=true \
-SWARMENV_JUDGE_PROJECT_ROOT=/checker \
-SWARMENV_JUDGE_PREBUILD_KEY=putnam-a1-v4.33.1 \
-SWARMENV_JUDGE_FIXTURE_MANIFEST=/etc/swarmenv/fixture.json \
-docker compose -f services/builtin/compose.yaml up --build -d judge
-```
+`SWARMENV_JUDGE_FIXTURE_MANIFEST` accepts inline JSON or a mounted manifest
+path. `SWARMENV_LEAN_COMMAND` defaults to `lake`, and
+`SWARMENV_JUDGE_WORK_ROOT` selects private checker output. The host image does
+not install Lean or its locked dependencies. The container entrypoint supports
+`SWARMENV_JUDGE_PREBUILD=true`, a mounted `SWARMENV_JUDGE_PROJECT_ROOT` and a
+`SWARMENV_JUDGE_PREBUILD_KEY`: a successful build records the key in the volume,
+and the same key skips rebuilding. These assets do not repair the missing
+lifecycle authority. Readiness does not execute Lean preflight.
 
-The deployment must mount the locked project at `/checker` and the matching
-Lean toolchain at the configured path before enabling this option. The entry
-point writes a key into the Judge volume after a successful build; later
-restarts with the same key skip the build. Changing the fixture or toolchain
-requires a new key.
-
-The HTTP boundary is independent even when local deployments mount one SQLite
-volume. A production deployment can replace the domain handler's persistence
-with its own store without changing the Agent-facing manifest or SDK flow.
+SIGINT/SIGTERM stops HTTP admission and closes domain services and the database.
+For the supported benchmark composition, admission, checker cleanup and deferred
+database close are owned by the coordinator. See [Services](../../docs/architecture/04-services.md)
+and [Run configuration](../../docs/architecture/07-run-configuration.md) for the
+complete current path, including its failure and cleanup boundaries.

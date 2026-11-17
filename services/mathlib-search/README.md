@@ -27,5 +27,4 @@ docker run --rm -p 8787:8787 \
 
 The SwarmEnv process registers the provider with a manifest and an
 `HttpJsonServiceAdapter`; it does not import Loogle or share the provider's
-process. See `docs/research/mathlib-search-service.md` for the upstream API and
-indexing research.
+process. See the maintained [Mathlib service implementation](../../docs/architecture/04-services.md#6-optional-mathlib-search) and [Loogle reference](references/loogle.md) for backend behavior and query guidance.

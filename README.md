@@ -32,6 +32,6 @@ Operational references: [Benchmark](docs/operations/benchmark.md), [built-in ser
 
 ## Evidence and history
 
-The [implementation manual](docs/architecture/INDEX.md) documents the pinned runtime baseline, while the [R16 retrospective example](docs/experiments/EXP-20261111-01-r16-example.md) records version-bound experimental activity. It does not establish mathematical success or a matched collaboration benefit. Implementation progress and outstanding checks belong in the relevant GitHub Issue/PR.
+The [implementation manual](docs/architecture/INDEX.md) documents the pinned runtime baseline, and the [experiment index](docs/experiments/INDEX.md) links version-bound observations. [EXP-20261116-04](docs/experiments/EXP-20261116-04-workspace-project-1h.md) records whole-Workspace collaboration and trusted acceptance for the implementation merged in PR #128. Its early success does not establish one-hour endurance or a matched collaboration benefit; older reports retain their own outcomes. Implementation progress and outstanding checks belong in the relevant GitHub Issue/PR.
 
 Obsolete documentation remains accessible from the [fixed Git history tree](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs). This working tree does not recreate an `archive/` directory. Ignored raw experiment data may not exist in Git history.

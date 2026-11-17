@@ -8,6 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261116-08` | [Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) | **PASS · accepted in 20m28s from startup, within 1h maximum** | `1c2d5d5` | [Judge queue repeat](EXP-20261116-08-judge-queue-1h.md) |
+| `EXP-20261116-07` | [Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) | **PASS with recorded limits/interruption · accepted in 19m10s of 1h maximum** | `e18c7ae` | [Centralized Judge repeat](EXP-20261116-07-centralized-judge-1h.md) |
 | `EXP-20261116-05` | [Issue #129](https://github.com/LuNa-shi/SwarmEnv/issues/129) | **Trusted proof accepted; protocol INVALID; owner ended observation** | `2edb9b0` | [Independent Pass@1](EXP-20261116-05-pass-k-1-1h.md) |
 | `EXP-20261116-06` | [Issue #129](https://github.com/LuNa-shi/SwarmEnv/issues/129) | **Pass@4 · CANCELED before launch by owner** | `2edb9b0` | [Independent Pass@4](EXP-20261116-06-pass-k-4-1h.md) |
 | `EXP-20261116-04` | [Issue #127](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716) | **Four criteria PASS; trusted acceptance in 9m24s of 1h limit** | `e00e246` | [Whole-Workspace 1h repeat](EXP-20261116-04-workspace-project-1h.md) |

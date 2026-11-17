@@ -2,7 +2,7 @@
 
 > Configuration for Matt Pocock's engineering skills · Single-context repository
 
-- Root [GLOSSARY.md](../../GLOSSARY.md) is the shared entry to SwarmEnv vocabulary. It labels the current runtime and links target terminology under review; do not rename existing behavior in prose as if the code had migrated. Do not create a competing `CONTEXT.md` for this single-context repository.
+- Root [GLOSSARY.md](../../GLOSSARY.md) is the shared entry to SwarmEnv vocabulary. It defines the approved Phase 02 vocabulary used by the current runtime; Architecture distinguishes the registered Bot path from retained compatibility APIs. Do not present pending Issue changes as implemented behavior. Do not create a competing `CONTEXT.md` for this single-context repository.
 - Accepted design and module boundaries live in [Architecture](../architecture/INDEX.md). Approved changes to those boundaries are specified by the relevant human-reviewed GitHub Issue or accepted Agent Brief.
 - Long-lived design rationale belongs in [ADRs](../adr/INDEX.md). ADRs do not replace the current approved Issue's acceptance criteria.
 - Numbered [phase designs](../phases/INDEX.md) are versioned attachments to their design Issues. They contain proposed models, protocols, prompt/skill text, validation and migration, with approval tied to an exact revision. They do not replace the current implementation manual.

@@ -30,7 +30,7 @@ async function fixture(t, fn, { timeBounds } = {}) {
     const chunks = [];
     for await (const chunk of req) chunks.push(chunk);
     requests.push({ url: req.url, headers: req.headers, body: JSON.parse(Buffer.concat(chunks).toString()) });
-    res.writeHead(200, { 'content-type': 'text/event-stream' });
+    res.setHeader('content-type', 'text/event-stream');
     if (fn) fn(req, res); else res.end(completion());
   });
   upstream.listen(0, '127.0.0.1');
@@ -225,4 +225,95 @@ test('locally installed Pi replays provider reasoning with empty content through
   assert.equal(continued.stopReason, 'stop', continued.errorMessage);
   assert.equal(requests.length, 2);
   assert.deepEqual(requests[1].body.input.find(item => item.type === 'reasoning'), reasoning);
+});
+
+
+test('rejected upstream HTTP responses retain safe diagnostics without changing Bot errors or unknown usage', async t => {
+  const { db, gateway, call } = await fixture(t, (_, response) => {
+    response.writeHead(503, { 'content-type': 'application/json', 'x-request-id': 'req_provider_fixture',
+      'retry-after': '12', 'x-private-header': 'sensitive-header' });
+    response.end('{"private":"sensitive-body"}');
+  }, { timeBounds: { requestTimeoutMs: 1000, maxOutputTokens: 64 } });
+  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+  const response = await call(token, 'http-rejected');
+  assert.equal(response.status, 502);
+  const error = await response.text();
+  assert.match(error, /upstream_rejected/);
+  assert.doesNotMatch(error, /sensitive|503|req_provider_fixture/);
+  const row = db.prepare(`SELECT state, reason, settled, input_tokens, output_tokens, cost, upstream_request_id,
+    upstream_status, upstream_content_type_valid, upstream_body_present, upstream_rejection_kind,
+    upstream_retry_after_seconds FROM responses_timed_attempts`).get();
+  assert.deepEqual({ ...row }, { state: 'unknown', reason: 'upstream_http_error', settled: 0,
+    input_tokens: null, output_tokens: null, cost: null, upstream_request_id: 'req_provider_fixture',
+    upstream_status: 503, upstream_content_type_valid: 0, upstream_body_present: 1,
+    upstream_rejection_kind: 'non_2xx', upstream_retry_after_seconds: 12 });
+  assert.equal(gateway.observedUsage('m').unknown_requests, 1);
+  assert.equal((await call(token, 'http-rejected')).status, 409);
+});
+
+
+test('successful HTTP with non-SSE content retains a distinct rejection and discards unsafe Retry-After', async t => {
+  const { db, gateway, call } = await fixture(t, (_, response) => {
+    response.writeHead(200, { 'content-type': 'application/json; private=sensitive-header',
+      'retry-after': 'sensitive-header' });
+    response.end('{"private":"sensitive-body"}');
+  }, { timeBounds: { requestTimeoutMs: 1000, maxOutputTokens: 64 } });
+  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+  const response = await call(token, 'wrong-content-type');
+  assert.equal(response.status, 502);
+  assert.doesNotMatch(await response.text(), /sensitive|content.type/);
+  assert.deepEqual({ ...db.prepare(`SELECT upstream_status, upstream_content_type_valid, upstream_body_present,
+    upstream_rejection_kind, upstream_retry_after_seconds, state, reason FROM responses_timed_attempts`).get() },
+  { upstream_status: 200, upstream_content_type_valid: 0, upstream_body_present: 1,
+    upstream_rejection_kind: 'invalid_content_type', upstream_retry_after_seconds: null,
+    state: 'unknown', reason: 'upstream_http_error' });
+});
+
+
+for (const scenario of [
+  { name: 'rate limit', status: 429, contentTypeValid: 1, bodyPresent: 1, kind: 'non_2xx', retry: '86401', clientStatus: 429 },
+  { name: 'missing response body', status: 204, contentTypeValid: 1, bodyPresent: 0, kind: 'missing_body',
+    retry: 'Wed, 21 Oct 2030 07:28:00 GMT', clientStatus: 502 },
+]) {
+  test(`financial gateway records ${scenario.name} without releasing its reservation`, async t => {
+    const { db, gateway, call } = await fixture(t, (_, response) => {
+      response.writeHead(scenario.status, { 'retry-after': scenario.retry });
+      response.end();
+    });
+    const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+    const response = await call(token, 'financial-rejected');
+    assert.equal(response.status, scenario.clientStatus);
+    await response.text();
+    const row = db.prepare(`SELECT upstream_status, upstream_content_type_valid, upstream_body_present,
+      upstream_rejection_kind, upstream_retry_after_seconds, state, reason, settled, cost FROM responses_budget_attempts`).get();
+    assert.deepEqual({ ...row }, { upstream_status: scenario.status, upstream_content_type_valid: scenario.contentTypeValid,
+      upstream_body_present: scenario.bodyPresent, upstream_rejection_kind: scenario.kind, upstream_retry_after_seconds: null,
+      state: 'unknown', reason: 'upstream_http_error', settled: 0, cost: 530 });
+  });
+}
+
+test('gateway reopens existing attempt tables with historical diagnostics explicitly unknown', async t => {
+  const { db, gateway, call, options } = await fixture(t);
+  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+  await (await call(token, 'historical')).text();
+  await gateway.stop();
+  const columns = ['upstream_status', 'upstream_content_type_valid', 'upstream_body_present',
+    'upstream_rejection_kind', 'upstream_retry_after_seconds'];
+  for (const table of ['responses_budget_attempts', 'responses_timed_attempts']) {
+    for (const column of columns) db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
+  }
+  const reopened = new ResponsesBudgetGateway(options);
+  const { baseUrl } = await reopened.start();
+  t.after(() => reopened.stop());
+  assert.deepEqual({ ...db.prepare(`SELECT ${columns.join(',')} FROM responses_budget_attempts`).get() },
+    Object.fromEntries(columns.map(name => [name, null])));
+  const nextToken = reopened.issueToken({ missionId: 'm', botId: 'c' });
+  const response = await fetch(`${baseUrl}/responses`, { method: 'POST',
+    headers: { authorization: `Bearer ${nextToken}`, 'content-type': 'application/json', 'x-swarmenv-request-id': 'new' },
+    body: JSON.stringify({ model, input: 'prove' }) });
+  assert.equal(response.status, 200);
+  await response.text();
+  assert.deepEqual({ ...db.prepare(`SELECT upstream_status, upstream_rejection_kind, state
+    FROM responses_budget_attempts WHERE request_id = 'new'`).get() },
+  { upstream_status: 200, upstream_rejection_kind: null, state: 'completed' });
 });

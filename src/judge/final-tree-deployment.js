@@ -118,6 +118,7 @@ async function artifacts(configuration, expected = null) {
     { label: 'validator', path: harness },
     { label: 'verifier', path: fileURLToPath(new URL('./lean-final-tree-verifier.js', import.meta.url)) },
     { label: 'resource-launcher', path: fileURLToPath(new URL('./checker-process-limits.js', import.meta.url)) },
+    { label: 'resource-owner', path: fileURLToPath(new URL('./checker-owner.js', import.meta.url)) },
     { label: 'dash', path: '/usr/bin/dash' },
     { label: 'mkdir', path: '/usr/bin/mkdir' },
     { label: 'systemd-run', path: '/usr/bin/systemd-run' },
