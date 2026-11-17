@@ -66,25 +66,43 @@ async function acquireWriter(root, lockName = '.swarm-writer.lock') {
 export class WorkspaceRepository {
   constructor({ fault = null } = {}) { this.fault = fault; }
 
-  async locked(root, operation) {
+  async locked(root, operation, { signal = null } = {}) {
+    signal?.throwIfAborted();
     const prior = writers.get(root) ?? Promise.resolve();
     let unlock;
     const pending = new Promise(resolve => { unlock = resolve; });
     writers.set(root, pending);
-    await prior;
-    let release = null;
-    try {
-      await mkdir(root, { recursive: true });
-      release = await acquireWriter(root);
-      this.recover(root);
-      return await operation();
-    } finally {
-      try { await release?.(); }
-      finally {
-        if (writers.get(root) === pending) writers.delete(root);
-        unlock();
+    let operationStarted = false;
+    const work = (async () => {
+      let release = null;
+      try {
+        await prior;
+        signal?.throwIfAborted();
+        await mkdir(root, { recursive: true });
+        release = await acquireWriter(root);
+        signal?.throwIfAborted();
+        // Cancellation only withdraws queued work. Once admitted under the
+        // lock, the operation and lock release must settle normally.
+        operationStarted = true;
+        this.recover(root);
+        return await operation();
+      } finally {
+        try { await release?.(); }
+        finally {
+          if (writers.get(root) === pending) writers.delete(root);
+          unlock();
+        }
       }
-    }
+    })();
+    if (!signal) return work;
+    return new Promise((resolve, reject) => {
+      const aborted = () => { if (!operationStarted) reject(signal.reason); };
+      signal.addEventListener('abort', aborted, { once: true });
+      // Keep the queue slot until its predecessor releases, even if its
+      // caller leaves early. Later writers must not overtake that predecessor.
+      work.then(resolve, reject).finally(() => signal.removeEventListener('abort', aborted));
+      if (signal.aborted) aborted();
+    });
   }
 
   async requestLocked(root, key, operation) {

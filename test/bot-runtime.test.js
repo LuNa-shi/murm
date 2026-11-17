@@ -602,9 +602,9 @@ test('Bot lifetime is fixed before take and caps the active Execution deadline',
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'bot-lifetime-budget');
 });
 
-test('Bot lifetime stops a taken Bot even while Workspace preparation has not returned', async t => {
+for (const budget of ['bot-lifetime-budget', 'selection-budget']) test(`${budget} stops a taken Bot while Workspace preparation has not returned`, async t => {
   const { service, runtime, startSession } = await fixture(t);
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 60_000, maxLifetimeMs: 1000, startSession });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: budget === 'selection-budget' ? 1000 : 60_000, maxLifetimeMs: budget === 'bot-lifetime-budget' ? 1000 : 60_000, startSession });
   const task = service.createTask({ mission_id: bot.mission_id, summary: 'Prepare inputs for an independent research question', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'prepare-budget' });
   const create = runtime.workspaceManager.createWorkspace.bind(runtime.workspaceManager);
@@ -619,7 +619,7 @@ test('Bot lifetime stops a taken Bot even while Workspace preparation has not re
     assert.equal(preparationEntered, true, 'the deadline must interrupt a pending Workspace preparation');
     assert.equal(session.closed, true);
     const stopped = service.getExecution(execution.execution_id);
-    assert.equal(stopped.terminal_reason, 'bot-lifetime-budget');
+    assert.equal(stopped.terminal_reason, budget);
     assert.equal(stopped.started_at, null);
     assert.equal(stopped.workspace_ref, null);
     assert.equal(isPreparationFailure(stopped), true, 'the report accepts this real pre-activation budget stop');

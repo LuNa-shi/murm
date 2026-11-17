@@ -2,6 +2,7 @@ import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { MISSION_WORKSPACE_READS } from '../sdk/builtin-registry.js';
 import { ServicesSDK } from '../sdk/services-sdk.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { GENERIC_AGENT_PROMPT } from './agent-prompt.js';
@@ -179,6 +180,7 @@ export class ServicesBridge {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.pendingCalls = new Set();
     this.pendingHandlers = new Set();
+    this.publicReadAbortController = new AbortController();
     this.taskService = taskService;
     this.contextService = contextService;
     this.runtime = runtime;
@@ -411,6 +413,7 @@ export class ServicesBridge {
         fencingVersion: currentExecution?.fencing_version ?? null,
       }),
       role: this.role,
+      signal: Object.hasOwn(MISSION_WORKSPACE_READS, capability.operation) ? this.publicReadAbortController.signal : undefined,
     });
   }
 
@@ -471,6 +474,7 @@ export class ServicesBridge {
   stop() {
     if (this.stopPromise) return this.stopPromise;
     this.stopping = true;
+    this.publicReadAbortController.abort(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping'));
     this.stopPromise = this.#stop();
     return this.stopPromise;
   }
@@ -725,12 +729,12 @@ export class ServicesBridge {
           const target = this.contextService.getMaterial(payload.material_id);
           if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Material is not readable in the Bot Mission');
         }
-        if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history'].includes(operation)) {
+        if (Object.hasOwn(MISSION_WORKSPACE_READS, operation)) {
           const workspaceId = this.runtime?.missionWorkspaceId;
           if (!workspaceId || (payload.workspace_id !== undefined && payload.workspace_id !== workspaceId)) {
             throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace must match the configured Mission Workspace');
           }
-          const workspace = await this.runtime.missionWorkspace.get({ workspaceId });
+          const workspace = await this.runtime.missionWorkspace.get({ workspaceId, signal: this.publicReadAbortController.signal });
           assertIdentity(true);
           if (workspace.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace belongs to another Mission');
           payload = { ...payload, workspace_id: workspaceId };

@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { constants as bufferConstants } from 'node:buffer';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
@@ -141,6 +142,57 @@ async function createFixture({ agent = true, service = true, workspace = true, m
 }
 
 async function cleanup(root) { await rm(root, { recursive: true, force: true }); }
+
+test('full analysis retains a raw-log batch larger than the JavaScript argument limit', async () => {
+  const root = await createFixture({ agent: false, service: false, workspace: false });
+  // EXP03 had up to 397,980 records in one Core log. Keep these unbound so
+  // this checks file ingestion rather than dense per-Execution window costs.
+  const count = 400_000;
+  try {
+    const path = join(root, 'logs', 'projects', 'demo', 'runtime', 'core-1.ndjson');
+    const records = Array.from({ length: count }, (_, index) => line({
+      timestamp: new Date(Date.parse(START) + index).toISOString(),
+      scope: 'runtime:core-1', event: 'runtime.heartbeat',
+    })).join('');
+    await writeFile(path, records);
+    const analysis = await analyzeExperiment(root);
+    const heartbeats = analysis.facts.filter(fact => fact.kind === 'heartbeat');
+    assert.equal(heartbeats.length, count);
+    assert.equal(heartbeats[0].at, START);
+    assert.equal(heartbeats.at(-1).at, new Date(Date.parse(START) + count - 1).toISOString());
+    assert.equal(analysis.inventory.errors.length, 0);
+    assert.ok((await readFile(analysis.reportPath, 'utf8')).includes('Execution'));
+  } finally { await cleanup(root); }
+});
+
+test('full analysis retains every record in an NDJSON file beyond the V8 string limit', async () => {
+  const root = await createFixture({ agent: false, service: false, workspace: false });
+  const count = Math.ceil(bufferConstants.MAX_STRING_LENGTH / (1024 * 1024)) + 1;
+  try {
+    const path = join(root, 'logs', 'projects', 'demo', 'runtime', 'core-1.ndjson');
+    const file = await open(path, 'w');
+    try {
+      const padding = 'x'.repeat(1024 * 1024);
+      for (let index = 0; index < count; index += 1) {
+        await file.write(line({ timestamp: new Date(Date.parse(START) + index).toISOString(),
+          scope: 'runtime:core-1', event: 'runtime.heartbeat', padding }));
+      }
+      // Exercise malformed-line diagnostics and a final record without a newline
+      // after crossing the old whole-file string boundary.
+      await file.write('invalid-json\r\n\r\n');
+      await file.write(JSON.stringify({ timestamp: END, scope: 'runtime:core-1', event: 'runtime.heartbeat' }));
+      assert.ok((await file.stat()).size > bufferConstants.MAX_STRING_LENGTH);
+    } finally { await file.close(); }
+    const analysis = await analyzeExperiment(root);
+    const heartbeats = analysis.facts.filter(fact => fact.kind === 'heartbeat');
+    assert.equal(heartbeats.length, count + 1);
+    assert.equal(heartbeats[0].at, START);
+    assert.equal(heartbeats.at(-1).at, END);
+    assert.ok(heartbeats.at(-1).sources.some(source => source.endsWith(`:${count + 3}`)));
+    assert.ok(analysis.inventory.errors.some(error => error.line === count + 1));
+    assert.equal(analysis.inventory.evidence.find(entry => entry.class === 'runtime').status, 'malformed');
+  } finally { await cleanup(root); }
+});
 
 test('analyzes a complete fixture into stable per-Execution windows without copying sensitive values', async () => {
   const root = await createFixture();
@@ -431,7 +483,8 @@ test('Workspace physical directories and unbound Bots do not create Execution ti
 test('analysis identifies actual Pi returned content without substituting structured output or inventing truncation', async () => {
   const root = await createFixture();
   try {
-    const content = [{ type: 'text', text: 'private returned tail' }];
+    // Cross UTF-8 stream chunk boundaries while hashing the exact Pi content.
+    const content = [{ type: 'text', text: `private returned tail ${'研究🙂\r\n'.repeat(20_000)}` }];
     await writeNdjson(join(root, 'logs', 'projects', 'demo', 'agents', 'core-1.ndjson'), [
       { timestamp: T1, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_execution_end', toolName: 'bash', toolCallId: 'pi-tail', result: { content, structuredContent: { output: 'different raw output', truncated: false }, details: { truncation: { truncated: true, totalBytes: 50000, outputBytes: 21 } } } } },
       { timestamp: T2, scope: 'agent:core-1', type: 'rpc_record', record: { type: 'tool_execution_end', toolName: 'read', toolCallId: 'pi-read', result: { content } } },

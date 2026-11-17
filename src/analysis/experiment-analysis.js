@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createReadStream } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { mkdir, readdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -181,8 +182,9 @@ async function listFiles(path, suffix = null) {
   const files = [];
   for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
     const child = join(path, entry.name);
-    if (entry.isDirectory()) files.push(...await listFiles(child, suffix));
-    else if (!suffix || entry.name.endsWith(suffix)) files.push(child);
+    if (entry.isDirectory()) {
+      for (const file of await listFiles(child, suffix)) files.push(file);
+    } else if (!suffix || entry.name.endsWith(suffix)) files.push(child);
   }
   return files;
 }
@@ -884,22 +886,38 @@ function dedupeFacts(facts) {
   return [...map.values()].sort((a, b) => (timeMs(a.at) ?? Number.MAX_SAFE_INTEGER) - (timeMs(b.at) ?? Number.MAX_SAFE_INTEGER) || a.id.localeCompare(b.id));
 }
 
-function parseLineRecords(root, path, sourceClass, context, mode, errors) {
-  return readFile(path, 'utf8').then((contents) => {
-    const facts = [];
-    const lines = contents.split(/\r?\n/);
-    lines.forEach((line, index) => {
-      if (!line.trim()) return;
-      let record;
-      try { record = JSON.parse(line); }
-      catch (error) {
-        errors.push({ path: sourcePath(root, path), line: index + 1, error: text(error.message, 160) });
-        return;
-      }
-      facts.push(...normaliseRawRecord(root, path, index + 1, record, { ...context, sourceClass }, mode));
-    });
-    return facts;
-  });
+// Preserve split(/\r?\n/) line numbering without materializing the whole log.
+// A record is still parsed in full; this does not truncate or sample evidence.
+async function* readLogLines(path) {
+  let pending = '';
+  for await (const chunk of createReadStream(path, { encoding: 'utf8' })) {
+    pending += chunk;
+    let start = 0;
+    let end;
+    while ((end = pending.indexOf('\n', start)) !== -1) {
+      yield pending.slice(start, end > start && pending[end - 1] === '\r' ? end - 1 : end);
+      start = end + 1;
+    }
+    pending = pending.slice(start);
+  }
+  yield pending;
+}
+
+async function parseLineRecords(root, path, sourceClass, context, mode, errors) {
+  const facts = [];
+  let index = 0;
+  for await (const line of readLogLines(path)) {
+    index += 1;
+    if (!line.trim()) continue;
+    let record;
+    try { record = JSON.parse(line); }
+    catch (error) {
+      errors.push({ path: sourcePath(root, path), line: index, error: text(error.message, 160) });
+      continue;
+    }
+    facts.push(...normaliseRawRecord(root, path, index, record, { ...context, sourceClass }, mode));
+  }
+  return facts;
 }
 
 function databaseTableNames(db) {
@@ -1188,7 +1206,11 @@ async function findSummaryFiles(root, metadata) {
   const files = [];
   for (const candidate of summaryPaths(root, metadata)) {
     if (await isRegularFile(candidate) && basename(candidate) === 'report.json') files.push(candidate);
-    else if (await isDirectory(candidate)) files.push(...await listFiles(candidate, '.json').then((items) => items.filter((path) => basename(path) === 'report.json' || basename(path) === 'aggregate-report.json')));
+    else if (await isDirectory(candidate)) {
+      for (const path of await listFiles(candidate, '.json')) {
+        if (basename(path) === 'report.json' || basename(path) === 'aggregate-report.json') files.push(path);
+      }
+    }
   }
   return [...new Set(files)];
 }
@@ -1253,7 +1275,7 @@ async function inventoryLogs(root, projectIds, className, errors, { validate = t
     const directoryName = { agent: 'agents', bridge: 'bridge', runtime: 'runtime', service: 'services', judge: 'judge' }[className] ?? className;
     const directory = join(base, projectId, directoryName);
     if (await isDirectory(directory)) directories.push(directory);
-    files.push(...await listFiles(directory, '.ndjson'));
+    for (const path of await listFiles(directory, '.ndjson')) files.push(path);
     if (className === 'judge') files.push(join(base, projectId, 'services', 'judge-service.ndjson'));
   }
   const uniqueFiles = [];
@@ -1263,14 +1285,20 @@ async function inventoryLogs(root, projectIds, className, errors, { validate = t
   let malformed = 0;
   if (!validate) return { files: uniqueFiles, malformed, directories };
   for (const path of uniqueFiles) {
-    const lines = (await readFile(path, 'utf8').catch(() => '')).split(/\r?\n/);
-    lines.forEach((line, index) => {
-      if (!line.trim()) return;
-      try { JSON.parse(line); } catch (error) {
-        malformed += 1;
-        if (errors.length < MAX_SOURCE_ERRORS) errors.push({ path: sourcePath(root, path), line: index + 1, error: text(error.message, 160) });
+    let index = 0;
+    try {
+      for await (const line of readLogLines(path)) {
+        index += 1;
+        if (!line.trim()) continue;
+        try { JSON.parse(line); } catch (error) {
+          malformed += 1;
+          if (errors.length < MAX_SOURCE_ERRORS) errors.push({ path: sourcePath(root, path), line: index, error: text(error.message, 160) });
+        }
       }
-    });
+    } catch (error) {
+      malformed += 1;
+      if (errors.length < MAX_SOURCE_ERRORS) errors.push({ path: sourcePath(root, path), error: text(error.message, 160) });
+    }
   }
   return { files: uniqueFiles, malformed, directories };
 }
@@ -1355,7 +1383,9 @@ async function readRawFacts(root, projectIds, mode, intervals, errors) {
     for (const path of result.files) {
       const coreId = basename(path, '.ndjson');
       const effectiveClass = path.endsWith('/judge-service.ndjson') ? 'judge-service' : className === 'judge' ? 'checker' : className;
-      facts.push(...await parseLineRecords(root, path, effectiveClass, { ...context, coreId }, mode, errors));
+      // A single Core log can produce more facts than a function call can
+      // accept as arguments. Retain every fact without spreading the batch.
+      for (const fact of await parseLineRecords(root, path, effectiveClass, { ...context, coreId }, mode, errors)) facts.push(fact);
     }
   }
   return facts;
@@ -2143,10 +2173,12 @@ export async function analyseExperiment(input, { mode = 'full', experimentsRoot 
   if (mode === 'full') {
     for (const pathRef of runtimePaths) {
       const path = resolve(root, pathRef);
-      for (const line of (await readFile(path, 'utf8').catch(() => '')).split(/\r?\n/)) {
-        if (!line.trim()) continue;
-        try { rawRuntimeRecords.push(JSON.parse(line)); } catch { /* inventory has the error */ }
-      }
+      try {
+        for await (const line of readLogLines(path)) {
+          if (!line.trim()) continue;
+          try { rawRuntimeRecords.push(JSON.parse(line)); } catch { /* inventory has the error */ }
+        }
+      } catch { /* inventory has the read error */ }
     }
   }
   const intervals = buildExecutionIntervals(rawRuntimeRecords);

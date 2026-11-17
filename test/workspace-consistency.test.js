@@ -267,3 +267,30 @@ test('failed materialization leaves the target empty and permits a complete retr
   assert.equal(await readFile(join(request.targetDir, 'second.txt'), 'utf8'), 'second');
   assert.equal((await readdir(root)).some(name => name.startsWith('.swarm-materialize-')), false);
 });
+
+test('aborting a Workspace read after lock admission drains it before the next writer', async t => {
+  const { store, workspaceId } = await fixture(t);
+  const controller = new AbortController();
+  let entered, release;
+  const admitted = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  let finished = false, writerFinished = false;
+  const reading = store.repository.locked(store.workspacePath(workspaceId), async () => {
+    entered(); await gate; finished = true; return 'read completed';
+  }, { signal: controller.signal });
+  await admitted;
+  const saved = store.save({ workspaceId, files: { 'initial.txt': 'written after read' } })
+    .then(result => { writerFinished = true; return result; });
+  try {
+    controller.abort(new Error('read owner stopped'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(finished, false);
+    assert.equal(writerFinished, false);
+    release();
+    assert.equal(await reading, 'read completed', 'an admitted operation keeps ownership through completion');
+    const revision = await saved;
+    assert.equal((await store.read({ workspaceId, revision: revision.revision, path: 'initial.txt' })).content, 'written after read');
+  } finally {
+    release(); await Promise.allSettled([reading, saved]);
+  }
+});

@@ -111,7 +111,7 @@ export function isPreparationFailure(execution) {
   // prepared. Only a durable, never-started budget stop gets this exception;
   // a previously activated Execution must retain its Workspace reference.
   return execution.state === 'FAILED' && execution.started_at === null
-    && ['bot-lifetime-budget', 'execution-timebox', 'benchmark_deadline_cleanup'].includes(execution.terminal_reason);
+    && ['bot-lifetime-budget', 'execution-timebox', 'selection-budget', 'benchmark_deadline_cleanup'].includes(execution.terminal_reason);
 }
 
 function sha256(value) {

@@ -371,3 +371,92 @@ test('Bridge start settles when stop wins before the listening event', async t =
   await pending.stop(); await rejected;
   assert.equal(pending.server, null);
 });
+
+
+test('stopping one Bridge cancels its queued public reads without disturbing another Bridge or writes', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-bridge-read-stop-'));
+  const workspace = new MissionWorkspace({ rootDir: root });
+  const workspaceId = 'workspace-read-stop';
+  await workspace.create({ missionId: 'mission:auth', workspaceId, initialFiles: { 'notes.txt': 'public input' } });
+  const runtime = { missionWorkspace: workspace, missionWorkspaceId: workspaceId };
+  const first = await fixture(t, { runtime });
+  const second = await fixture(t, { runtime });
+  first.start('bot:cancel-reader');
+  second.start('bot:surviving-reader');
+  let release, entered, queued;
+  const gate = new Promise(resolve => { release = resolve; });
+  const held = new Promise(resolve => { entered = resolve; });
+  const admitted = new Promise(resolve => { queued = resolve; });
+  const lock = workspace.repository.locked.bind(workspace.repository);
+  const holding = lock(workspace.workspacePath(workspaceId), async () => { entered(); await gate; });
+  await held;
+  let queuedCount = 0;
+  workspace.repository.locked = (...args) => { const result = lock(...args); if (++queuedCount === 3) queued(); return result; };
+  const read = bridge => bridge.call({ operation: 'workspace_public_read', payload: { path: 'notes.txt' } });
+  const canceled = [read(first.bridge), read(first.bridge)];
+  const rejected = canceled.map(promise => assert.rejects(promise, { code: 'NOT_ALLOWED' }));
+  let survivingFinished = false, writeFinished = false;
+  const surviving = read(second.bridge).then(result => { survivingFinished = true; return result; });
+  const saved = workspace.save({ workspaceId, baseRevision: '0.1', files: { 'notes.txt': 'retained write' } }).then(result => { writeFinished = true; return result; });
+  try {
+    await admitted;
+    const stoppedBeforeRelease = await Promise.race([
+      first.bridge.stop().then(() => true),
+      new Promise(resolve => { const timer = setTimeout(() => resolve(false), 1000); timer.unref?.(); }),
+    ]);
+    assert.equal(stoppedBeforeRelease, true, 'stopped public reads must not wait behind the held real Workspace lock');
+    await Promise.all(rejected);
+    assert.equal(survivingFinished, false, 'cancellation must not bypass the live predecessor lock');
+    assert.equal(writeFinished, false, 'queued writes retain their original lock order');
+    release(); await holding;
+    assert.equal((await surviving).content, 'public input');
+    const revision = await saved;
+    assert.equal((await workspace.read({ workspaceId, revision: revision.revision, path: 'notes.txt' })).content, 'retained write');
+    assert.equal((await second.bridge.call({ operation: 'workspace_public_view', payload: {} })).main_revision, '0.1');
+  } finally {
+    release();
+    await Promise.allSettled([holding, ...canceled, surviving, saved]);
+    await first.bridge.stop(); await second.bridge.stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test('Bridge stop cancels a public read queued after Registry authorization', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-bridge-read-dispatch-'));
+  const workspace = new MissionWorkspace({ rootDir: root });
+  const workspaceId = 'workspace-read-dispatch';
+  await workspace.create({ missionId: 'mission:auth', workspaceId, initialFiles: { 'notes.txt': 'public input' } });
+  const { bridge, start } = await fixture(t, { runtime: { missionWorkspace: workspace, missionWorkspaceId: workspaceId } });
+  start('bot:dispatch-reader');
+  let release, queued;
+  const gate = new Promise(resolve => { release = resolve; });
+  const admitted = new Promise(resolve => { queued = resolve; });
+  let holding;
+  const read = workspace.read.bind(workspace);
+  workspace.read = async options => {
+    let entered;
+    const held = new Promise(resolve => { entered = resolve; });
+    holding = workspace.repository.locked(workspace.workspacePath(workspaceId), async () => { entered(); await gate; });
+    await held;
+    const result = read(options);
+    queued();
+    return result;
+  };
+  const reading = bridge.call({ operation: 'workspace_public_read', payload: { path: 'notes.txt' } });
+  const rejected = assert.rejects(reading, { code: 'NOT_ALLOWED' });
+  try {
+    await admitted;
+    const stoppedBeforeRelease = await Promise.race([
+      bridge.stop().then(() => true),
+      new Promise(resolve => { const timer = setTimeout(() => resolve(false), 1000); timer.unref?.(); }),
+    ]);
+    assert.equal(stoppedBeforeRelease, true, 'the Registry must propagate cancellation to the actual read lock');
+    await rejected;
+  } finally {
+    release();
+    await Promise.allSettled([reading, holding]);
+    await bridge.stop();
+    await rm(root, { recursive: true, force: true });
+  }
+});

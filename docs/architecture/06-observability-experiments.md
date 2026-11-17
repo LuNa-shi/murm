@@ -132,7 +132,9 @@ Each materialized Workspace reference must be unique. A missing Execution or a
 missing reference invalidates the report, except for the known preparation
 failures and a durable `FAILED` budget stop before activation. The latter requires
 `started_at` to be explicitly null and the terminal reason to be
-`bot-lifetime-budget`, `execution-timebox` or `benchmark_deadline_cleanup`.
+`bot-lifetime-budget`, `execution-timebox`, `selection-budget` or
+`benchmark_deadline_cleanup`. The selection timer can also stop a taken Bot still
+in PREPARING; this does not imply that its Execution reached activation.
 A deadline can expire while Workspace creation or binding is still pending;
 that path legitimately has no materialized reference. Once activation has been
 recorded, those budget reasons do not excuse a missing reference. Duplicate
@@ -176,6 +178,8 @@ Material “downstream effect” inference checks that a later Workspace/candida
 Analysis opens each project's available Task, Context and Judge databases read-only. Historical projects can store all three domains in `project.sqlite`. Modern operation receipts provide the public Workspace revision, Material producer IDs and the Material IDs on the returned page, while the bounded Observer lifecycle event records the Task finish disposition separately from Execution termination.
 
 The analyzer caps retained source errors at 20 and bounds many displayed evidence lists. Automated recommendation text can contain compatibility-era concepts; the current approved Issue and architecture remain the review standard. Formal experiment reports should distinguish observed result, explanation and next-step decision, with source code/test/probe/real-Agent evidence identified separately.
+
+Raw log ingestion retains every normalized fact in file order before attribution and semantic deduplication. File discovery and per-file fact collection append items iteratively, including recursively discovered log/summary files; they do not pass an entire run-sized array as function arguments. A single Core log can therefore exceed the JavaScript argument-count limit without losing records or aborting with a call-stack overflow. NDJSON inventory validation, raw fact normalization and runtime interval reconstruction read decoded UTF-8 chunks and split complete lines incrementally, preserving CRLF/LF line numbers, blank lines and a final record without a newline. They do not construct a whole-file string, so logs larger than the V8 string limit remain readable. Each JSON record is still parsed in full; a single record beyond the string limit fails rather than being truncated. An unreadable inventory source produces a bounded source warning instead of being silently treated as an empty file. Per-record normalization, Pi returned-content hashes and malformed-line diagnostics are unchanged. The analyzer retains the accumulated facts and runtime records in memory, so available memory and later aggregation costs still constrain very large runs. It does not sample or impose a new evidence cap. Reanalysis can write a separate report through `--output`; preserving a failed run's original report and process log requires choosing a new output path and a separate shell log destination.
 
 Sources: [analysis entry](../../scripts/analyze-experiment.mjs), [analysis engine](../../src/analysis/experiment-analysis.js), [analysis tests](../../test/experiment-analysis.test.js), [formal workflow](../workflows/experiment.md), [report template](../experiments/TEMPLATE.md).
 

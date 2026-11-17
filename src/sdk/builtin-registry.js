@@ -125,29 +125,29 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
 }
 
 export const MISSION_WORKSPACE_READS = Object.freeze({
-  workspace_public_view: (workspace, input) => workspace.get({ workspaceId: input.workspace_id }),
-  workspace_public_history: (workspace, input) => workspace.history({ workspaceId: input.workspace_id, all: input.all,
+  workspace_public_view: (workspace, input, signal) => workspace.get({ signal, workspaceId: input.workspace_id }),
+  workspace_public_history: (workspace, input, signal) => workspace.history({ signal, workspaceId: input.workspace_id, all: input.all,
     sourceTask: input.source_task, sourceExecution: input.source_execution, materialId: input.material_id, path: input.path, limit: input.limit, cursor: input.cursor }),
-  workspace_public_diff: (workspace, input) => workspace.diff({ workspaceId: input.workspace_id, from: input.from, to: input.to,
+  workspace_public_diff: (workspace, input, signal) => workspace.diff({ signal, workspaceId: input.workspace_id, from: input.from, to: input.to,
     prefix: input.path, limit: input.limit, cursor: input.cursor }),
-  workspace_public_files: (workspace, input) => workspace.files({ workspaceId: input.workspace_id, revision: input.revision,
+  workspace_public_files: (workspace, input, signal) => workspace.files({ signal, workspaceId: input.workspace_id, revision: input.revision,
     prefix: input.path, limit: input.limit, cursor: input.cursor }),
-  workspace_public_read: (workspace, input) => workspace.read({ workspaceId: input.workspace_id, revision: input.revision,
+  workspace_public_read: (workspace, input, signal) => workspace.read({ signal, workspaceId: input.workspace_id, revision: input.revision,
     path: input.path, maxBytes: input.max_bytes }),
-  workspace_public_search: (workspace, input) => workspace.search({ workspaceId: input.workspace_id, revision: input.revision,
+  workspace_public_search: (workspace, input, signal) => workspace.search({ signal, workspaceId: input.workspace_id, revision: input.revision,
     prefix: input.path, query: input.query, maxResults: input.max_results, cursor: input.cursor }),
 });
 
-export async function dispatchMissionWorkspaceRead({ taskService, task, missionWorkspace }, operation, input = {}, envelope) {
+export async function dispatchMissionWorkspaceRead({ taskService, task, missionWorkspace }, operation, input = {}, envelope, { signal = null } = {}) {
   const bot = (taskService ?? task)?.getBot?.(envelope?.actor_ref);
-  if (bot && (await missionWorkspace.get({ workspaceId: input.workspace_id })).mission_id !== bot.mission_id) {
+  if (bot && (await missionWorkspace.get({ signal, workspaceId: input.workspace_id })).mission_id !== bot.mission_id) {
     throw Object.assign(new Error('Workspace belongs to another Mission'), { code: 'NOT_ALLOWED' });
   }
-  return MISSION_WORKSPACE_READS[operation](missionWorkspace, input);
+  return MISSION_WORKSPACE_READS[operation](missionWorkspace, input, signal);
 }
 
 function serviceDispatch(serviceId, services, registry) {
-  return ({ capability, input, envelope, role = null }) => {
+  return ({ capability, input, envelope, role = null, signal = null }) => {
     if (serviceId === 'catalog') {
       const allowed = (candidate) => role === null || candidate.audience.includes(role);
       if (capability.operation === 'list_services') {
@@ -167,7 +167,7 @@ function serviceDispatch(serviceId, services, registry) {
         error.code = 'SERVICE_UNAVAILABLE';
         throw error;
       }
-      if (capability.scope === 'mission-read') return dispatchMissionWorkspaceRead(services, capability.operation, input, envelope);
+      if (capability.scope === 'mission-read') return dispatchMissionWorkspaceRead(services, capability.operation, input, envelope, { signal });
       if (capability.operation === 'workspace_public_apply') throw Object.assign(new Error('Workspace apply requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
       if (capability.operation === 'workspace_save') throw Object.assign(new Error('Workspace save requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
       if (capability.operation === 'workspace_merge') throw Object.assign(new Error('Workspace merge requires authenticated Runtime integration'), { code: 'NOT_ALLOWED' });

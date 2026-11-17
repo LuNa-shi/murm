@@ -152,9 +152,9 @@ export class MissionWorkspace {
     });
   }
 
-  async get({ workspaceId }) {
+  async get({ signal = null, workspaceId }) {
     const root = this.workspacePath(workspaceId);
-    return this.repository.locked(root, async () => this.#public(await this.#read(root)));
+    return this.repository.locked(root, async () => this.#public(await this.#read(root)), { signal });
   }
 
   async publicChangeToken({ workspaceId }) {
@@ -173,7 +173,7 @@ export class MissionWorkspace {
     });
   }
 
-  async history({ workspaceId, all = false, sourceTask = null, sourceExecution = null, materialId = null, path = null, limit = 25, cursor = null }) {
+  async history({ signal = null, workspaceId, all = false, sourceTask = null, sourceExecution = null, materialId = null, path = null, limit = 25, cursor = null }) {
     if (typeof all !== 'boolean' || !Number.isInteger(limit) || limit < 1 || limit > 100) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'History requires boolean all and limit 1..100');
     for (const value of [sourceTask, sourceExecution, materialId]) if (value !== null) required(value, 'history source filter');
     const prefix = path === null ? null : safePath(path);
@@ -225,10 +225,10 @@ export class MissionWorkspace {
       if (offset > matched) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'History cursor is outside the snapshot');
       return { workspace_id: workspaceId, main_revision: main, as_of_revision: asOf, all, items,
         next_cursor: more ? Buffer.from(JSON.stringify({ filter, main_revision: main, as_of_revision: asOf, offset: offset + items.length })).toString('base64url') : null };
-    });
+    }, { signal });
   }
 
-  async read({ workspaceId, revision = undefined, path, maxBytes = 1_000_000 }) {
+  async read({ signal = null, workspaceId, revision = undefined, path, maxBytes = 1_000_000 }) {
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
       const record = await this.#read(root);
@@ -242,10 +242,10 @@ export class MissionWorkspace {
       return { workspace_id: record.workspace_id, revision: selected, path: relativePath,
         content: content.subarray(0, maxBytes).toString(binary ? 'base64' : 'utf8'), encoding: binary ? 'base64' : 'utf8',
         content_hash: textHash(content), bytes: content.length, truncated: content.length > maxBytes };
-    });
+    }, { signal });
   }
 
-  async files({ workspaceId, revision = undefined, prefix = '', limit = 100, cursor = null }) {
+  async files({ signal = null, workspaceId, revision = undefined, prefix = '', limit = 100, cursor = null }) {
     const normalized = prefix ? safePath(prefix) : '';
     const page = publicPage({ kind: 'files', workspaceId, selectors: { prefix: normalized }, limit, cursor, maxLimit: 100 });
     const root = this.workspacePath(workspaceId);
@@ -269,10 +269,10 @@ export class MissionWorkspace {
       const end = page.offset + window.length;
       return { workspace_id: record.workspace_id, revision: selected, files: window,
         next_cursor: end < sorted.length ? page.next(revisions, end) : null };
-    });
+    }, { signal });
   }
 
-  async search({ workspaceId, revision = undefined, query, prefix = '', maxResults = 100, cursor = null }) {
+  async search({ signal = null, workspaceId, revision = undefined, query, prefix = '', maxResults = 100, cursor = null }) {
     required(query, 'query');
     if (query.length > 1024) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace search query is too long');
     const normalized = prefix ? safePath(prefix) : '';
@@ -308,10 +308,10 @@ export class MissionWorkspace {
       }
       return { workspace_id: record.workspace_id, revision: selected, query, matches, truncated: more, binary_text_skipped: binaryFiles,
         next_cursor: more ? page.next(revisions, page.offset + matches.length) : null };
-    });
+    }, { signal });
   }
 
-  async diff({ workspaceId, from, to, prefix = '', limit = 100, cursor = null }) {
+  async diff({ signal = null, workspaceId, from, to, prefix = '', limit = 100, cursor = null }) {
     required(from, 'from');
     required(to, 'to');
     const normalized = prefix ? safePath(prefix) : '';
@@ -340,7 +340,7 @@ export class MissionWorkspace {
       const end = page.offset + changes.length;
       return { workspace_id: record.workspace_id, main_revision: mainRevision, from: info(before), to: info(after), changes,
         next_cursor: end < paths.length ? page.next(revisions, end) : null };
-    });
+    }, { signal });
   }
 
   async apply({ workspaceId, revision = undefined, targetDir }) {

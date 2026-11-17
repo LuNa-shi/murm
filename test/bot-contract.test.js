@@ -188,11 +188,11 @@ test('report distinguishes budget expiry before activation from missing or share
     set(1);
     const report = () => projectReport(state, Date.now() - 1000, Date.now());
     assert.equal(report().audit.invalid, false, 'a durable budget stop before activation needs no Workspace');
-    for (const reason of ['benchmark_deadline_cleanup', 'execution-timebox']) {
+    for (const reason of ['benchmark_deadline_cleanup', 'execution-timebox', 'selection-budget']) {
       set(1, { reason });
       assert.equal(report().audit.invalid, false);
     }
-    for (const changed of [{ started: new Date().toISOString() }, { state: 'RUNNING' }, { reason: 'unknown-stop' }]) {
+    for (const changed of [{ reason: 'selection-budget', started: new Date().toISOString() }, { reason: 'selection-budget', state: 'RUNNING' }, { started: new Date().toISOString() }, { state: 'RUNNING' }, { reason: 'unknown-stop' }]) {
       set(1, changed);
       assert.ok(report().audit.invalid_reasons.includes('workspace_boundary_violation'));
     }
