@@ -1,6 +1,7 @@
 # EXP-20261117-04: Putnam acceptance after legacy execution cleanup
 
-Status: REGISTERED — launch requires final full-suite and independent readiness gates.
+Status: COMPLETE — PASS; trusted Mission accepted, protocol valid, physical cleanup independently verified.
+Implementation PR: [#139](https://github.com/LuNa-shi/SwarmEnv/pull/139), stacked on unmerged [#134](https://github.com/LuNa-shi/SwarmEnv/pull/134).
 Approved GitHub Issue: [#138](https://github.com/LuNa-shi/SwarmEnv/issues/138), [owner-authorized repeated one-hour runs](https://github.com/LuNa-shi/SwarmEnv/issues/138#issuecomment-6944184596).
 Comparison to: [EXP-20261116-08](EXP-20261116-08-judge-queue-1h.md). This is engineering acceptance of the current registered lifecycle, not a causal performance comparison.
 
@@ -10,7 +11,7 @@ Acceptance requires a fresh natural-Agent run with `protocol_valid=true`, truste
 
 | Item | Fixed value |
 |---|---|
-| Implementation | `1eb4333a7e01e624c9599449b2960a97937105fd`, based on reviewed #134 integration `6136f079c1b1d04fb7cdabf02e57b79207d1e3b0`. Launch uses the clean preregistration descendant; exact revision is recorded by the CLI. |
+| Implementation | `1eb4333a7e01e624c9599449b2960a97937105fd`, based on reviewed #134 integration `6136f079c1b1d04fb7cdabf02e57b79207d1e3b0`. Clean launch commit: `e8fd8427dbd8c98386677f39384b376427db014e` (documentation-only descendant). |
 | Treatment | Remove obsolete Scheduler, local AgentCoreAdapter, unregistered execution startup and same-Execution Session replacement. Registered Bot/Workspace/Judge lifecycle remains. Observer server now defaults off; project-local evidence remains enabled. |
 | Problem | `putnam_2025_b1`, PutnamBench `a635813f5edf297d928f9bd5ef8324a26bdde09c`, input SHA256 `80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7`. Fresh input; no prior proof hints or operator-authored research Tasks. |
 | Toolchain | Lean 4.33.1 `819816b2e0a3bf405af45ae5c7af2491d8f5bee6`; Mathlib `0df444a360eaa60ab8c11dca51a86af692955474`; Comparator `3927ad383f208ae977c340a91c48ac9b497d2097`; exporter `15f6055e299ad5b89345e533cc2192f4cc00f659`. |
@@ -39,16 +40,38 @@ node scripts/run-putnambench-benchmark.mjs \
 
 ## Results
 
-Not launched at registration. Before launch, require full tests, independent Spec/Standards readiness and a clean tree. The committed worker passed startup/large-input tests and disk/inode confinement; a zero-model production registered Bot/Bridge/Workspace/independent Judge probe observed source FAIL, repaired PASS, exact request replay and confirmed peer/Sandbox cleanup. These controlled checks do not establish mathematical acceptance.
+| Observation | Result |
+|---|---|
+| Time boundary | CLI metadata start **09:42:31.388 UTC**, November 17; trusted acceptance observed at **10:00:59.816**; CLI ended **10:01:27.466**. Startup to acceptance **18m28.428s**; total including cleanup **18m56.078s**, below the one-hour maximum. |
+| Separate execution boundary | Parallel work began 09:44:54.383; work-start to acceptance **16m05.433s**. Project report elapsed **16m31.384s** excludes initial deployment; do not compare this with startup-inclusive durations. |
+| Acceptance | Submission `submit-complete-grid-proof`, final CheckResult `treecheck:1802414a-3e7b-4975-9dd3-b0d8b5ffce4d`: **accepted / PASS** against the original theorem/type, axiom policy and kernel replay. Fixed main revision `0.39`, commit `3686ac7bceffb1720a2b7d4097da57efdfd387bb`, tree `9474b7f36271dd42826bbc25dd4a5919259a20a0`. |
+| Protocol | `protocol_valid=true`, `invalid=false`, no invalid reasons; clean reviewed launch revision and pinned input hash match registration. |
+| Lifecycle | 9 Tasks, 9 SUCCEEDED Executions, 12 CLOSED Bots across four Cores; all Executions have Session generation 1. All nine done Finish intents are closed. This includes observed Core reuse after confirmed Sandbox deletion. |
+| Ordinary Judge | 32 admitted checks: **12 PASS / 19 source failures / 1 request rejection (`forbidden_placeholder`)**. Zero checker infrastructure failures. One separate final admission; no pending ordinary queue or final admission at shutdown. |
+| Materials | 13 persisted Materials and 11 consumption records. These are activity counts, not proof of causal collaboration value. |
+| Model usage | 268 requests, all with recorded terminal usage, none pending/unknown; **8,352,617 input / 50,020 output tokens**. Currency cost unknown. |
+| Operational errors | Six recorded tool errors in `MAIN_MOVED`, `NOT_ALLOWED` and `MISSION_SUBMITTING` classes; zero tool-protocol errors, heartbeat errors, watchdog errors, execution-timeout errors or unhandled rejections. The run is not claimed to be error-free. |
+| Observer default | `observability_enabled=false`, no observer metadata or newly launched observer server. Project-local storage retained **82,483 observation events**, alongside durable logs and authority stores. |
+| Cleanup | Reported cleanup **1,631 ms**. Independent live checks confirmed **12 Sandbox GET 404**, Context/Judge processes and process groups absent, and **64 owned checker units inactive with no cgroups**. No pending gate, Finish, final admission, live Bot, release or stop obligation remains. |
+
+Validation before launch: final full suite **681 total / 661 PASS / 20 environment-gated skips / 0 FAIL**; observer CLI subprocess checks **7 PASS**; committed image startup/large-input **3 PASS**, disk/inode confinement PASS, and real registered Bot/Bridge/Workspace/independent Judge FAIL→repair→PASS/replay/cleanup PASS with zero model calls. Independent Spec and Standards readiness passed, as did documentation generation/check and diff checks. The observer change does not alter any Docker COPY input from the tested image build.
+
+Full offline experiment analysis completed with **zero inventory warnings**, reconstructing all nine Executions. An independent final Spec audit re-read authoritative records and repeated live provider/process/unit checks, confirming acceptance and cleanup.
 
 ## Analysis
 
-Pending actual execution. Runtime, launcher and inherited #134 changes make this a versioned acceptance run; elapsed time alone cannot attribute performance to legacy removal. The existing FLT experiment is separate and its result is not this run's acceptance evidence.
+The combined evidence meets the cleanup PR's engineering acceptance: the registered lifecycle handled autonomous task selection, four active Cores, immutable Workspace checking, completion, subsequent Bot startup, final trusted acceptance and physical teardown after alternate execution paths were removed. All recorded Session generations remain 1; no retired same-Execution replacement path was needed. Controlled fault/race tests provide the evidence for failures that this natural run did not trigger.
+
+Disabling the observer server preserves offline evidence: the analyzer recovered the full execution inventory from local stores and logs without an observer metadata file. The CLI tests separately establish that default launch does not even probe configured observer metadata, and that explicit opt-in preserves the prior server path.
+
+Ordinary source failures and the placeholder rejection occurred before final acceptance and are retained as observations. Their existence does not make the final theorem PASS a proxy result: the separate locked final verifier accepted the original target on immutable main `0.39`. Material and consumption counts alone do not establish useful reuse or a speedup. Runtime, launcher and inherited #134 changes make this a versioned engineering acceptance run; this single successful observation cannot attribute performance to legacy removal or establish one-hour endurance.
 
 ## Next steps
 
-Complete the final gates, launch within the authorized allowance, analyze authoritative evidence and verify physical cleanup. Diagnose and repair in-scope failures before a separately registered repeat if needed. No PR merge is authorized.
+The requested first cleanup scope and final Putnam acceptance are complete; no additional model run is needed for the stated criteria. Keep #134 and #139 unmerged pending the owner's merge decision. Broader redesign candidates remain outside this cleanup scope.
 
 ## Evidence and limitations
 
-The full natural-Agent result, actual usage, Mission acceptance, protocol validity and cleanup remain unknown until completion. Environment-gated checks are reported separately from executed tests. Offline analysis must use the project-local observation store and authority logs because the persistent observer is disabled.
+Authoritative evidence: `metadata/experiment.json`; Task/Bot/Execution/Mission and local observation rows in `state/projects/putnam_2025_b1/project.sqlite`; separate Context/Judge/model-budget databases; immutable public Workspace revisions; Agent/Bridge/runtime/service logs; `analysis/experiment-analysis.md`, `analysis/analysis-completion.json` and `analysis/service-cleanup-verification.json`. Reports are supporting projections, not substitutes for authority records. Raw conversations, proof/candidate source, credentials and private paths remain ignored and are not exported here.
+
+The actual run binds the exact launch commit and image. Environment-gated unit checks remain explicitly skipped, while the listed production/image probes ran separately. Untriggered races, queue saturation and other fixtures are covered only by their stated controlled tests or remain unverified; this run does not cover every environment or claim a causal performance improvement.
