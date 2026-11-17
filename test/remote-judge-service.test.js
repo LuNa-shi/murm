@@ -152,7 +152,7 @@ async function queuedJudge(t, { sourceDelay = 1200, missionBudget, interruptQueu
 }
 
 for (const finishWhileQueued of [false, true]) test(`independent Judge bounds four active checks and one queued check (finish: ${finishWhileQueued})`, { timeout: 15000 }, async t => {
-  const service = await queuedJudge(t, { sourceDelay: finishWhileQueued ? 3000 : 1800, missionBudget: { maxConcurrent: 4, maxQueued: 1, queueWaitMs: 5000 } });
+  const service = await queuedJudge(t, { sourceDelay: finishWhileQueued ? 3000 : 1800, missionBudget: { maxConcurrent: 4, maxQueued: 1, queueWaitMs: 900_000 } });
   const { tasks, judge, envelope, submit, budget, until } = service;
   const running = [1, 2, 3, 4].map(revision => submit(revision));
   await until(() => budget().source_process_starts === 4);

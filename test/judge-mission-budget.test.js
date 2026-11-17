@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
-import { JudgeService } from '../src/judge/judge-service.js';
+import { JudgeService, normalizeJudgeMissionBudget } from '../src/judge/judge-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
 const fixtureManifest = { fixture_id: 'budget', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
@@ -72,11 +72,12 @@ test('Mission Judge reservations span independent connections, preflight, and un
   assert.equal(calls, 25);
 });
 
-test('Judge runs four checks and queues FIFO without consuming cumulative quota', async t => {
+for (const queueWaitMs of [120_000, 900_000]) test(`Judge preserves FIFO and authority with ${queueWaitMs}ms queue allowance`, async t => {
+  if (queueWaitMs > 120_000) t.mock.timers.enable({ apis: ['Date'], now: Date.now() });
   const dir = await mkdtemp(join(tmpdir(), 'judge-queue-'));
   const taskDb = new DatabaseSync(':memory:');
   const execution = { execution_id: 'execution:queue', task_id: 'task:queue', owner_ref: 'bot:queue', state_version: 1,
-    state: 'RUNNING', handoff_deadline: new Date(Date.now() + 60_000).toISOString(), execution_deadline: new Date(Date.now() + 120_000).toISOString() };
+    state: 'RUNNING', handoff_deadline: new Date(Date.now() + 1_200_000).toISOString(), execution_deadline: new Date(Date.now() + 1_500_000).toISOString() };
   const taskService = { db: taskDb, getBot: () => true, getExecution: () => execution,
     materialScope: () => ({ mission_id: 'mission:queue' }), assertMissionResearchOpen() {},
     withServiceLifecycleWrite: perform => perform() };
@@ -89,7 +90,7 @@ test('Judge runs four checks and queues FIFO without consuming cumulative quota'
       const release = Promise.withResolvers(); releases.push(release);
       return release.promise;
     }) };
-  const judge = new JudgeService(join(dir, 'judge.sqlite'), { checker, fixtureManifest, taskService, missionBudget: { maxQueued: 2 } });
+  const judge = new JudgeService(join(dir, 'judge.sqlite'), { checker, fixtureManifest, taskService, missionBudget: { maxQueued: 2, queueWaitMs } });
   const pending = [];
   t.after(async () => {
     for (const release of releases) release.resolve({ verdict: 'PASS' });
@@ -110,6 +111,11 @@ test('Judge runs four checks and queues FIFO without consuming cumulative quota'
   assert.equal((await submit(4)).check_result_id, judge.getByRequestKey('queue-4').check_result_id);
   await assert.rejects(submit(6), { code: 'CHECKER_BUSY', retryable: true });
   assert.equal(started.length, 4);
+  if (queueWaitMs > 120_000) {
+    t.mock.timers.tick(180_000);
+    await new Promise(resolve => setTimeout(resolve, 60));
+    assert.equal(judge.getMissionCheckBudget('mission:queue').queued_requests, 2, 'three minutes waiting must not hit the old two-minute cap');
+  }
   releases[0].resolve({ verdict: 'PASS' });
   await waitUntil(() => started.length === 5);
   assert.match(started[4], /q4/);
@@ -120,6 +126,14 @@ test('Judge runs four checks and queues FIFO without consuming cumulative quota'
   await Promise.all(pending);
   assert.equal(judge.getMissionCheckBudget('mission:queue').active_requests, 0);
   assert.equal(judge.getMissionCheckBudget('mission:queue').queued_requests, 0);
+});
+
+test('Judge queue allowance keeps defaults and rejects unsafe timer values', () => {
+  assert.equal(normalizeJudgeMissionBudget().queueWaitMs, 120_000);
+  assert.equal(normalizeJudgeMissionBudget({ queueWaitMs: 2_147_483_647 }).queueWaitMs, 2_147_483_647);
+  for (const queueWaitMs of [0, -1, 1.5, NaN, Infinity, 2_147_483_648]) {
+    assert.throws(() => normalizeJudgeMissionBudget({ queueWaitMs }), TypeError);
+  }
 });
 
 test('Judge preserves historical finite policy while migrating old stores', async t => {

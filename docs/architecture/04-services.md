@@ -37,6 +37,16 @@ The Bridge serves `GET /health` without its bearer token, and requires the token
 
 Sources: [Pi extension](../../src/agent/swarmenv-extension.mjs), [Bridge](../../src/agent/services-bridge.js), [Registry invocation](../../src/sdk/service-registry.js), [ServiceHost](../../src/sdk/service-host.js). Regression seams: [profile/Bridge tests](../../test/capability-profile-bridge.test.js), [Registry tests](../../test/service-registry.test.js), [hosted service](../../test/service-host-isolated.test.js).
 
+### HTTP waiting and cancellation
+
+The CLI, compatibility Pi extension and independent coordinator peer client use the shared `requestHttp` transport over native Node HTTP(S). Internal endpoint URLs are direct: this helper performs no redirect or automatic retry. It sends the existing authenticated JSON request and resolves with HTTP status, success flag and the complete UTF-8 body. This avoids the separate five-minute response-header ceiling imposed by native `fetch`, which could otherwise expire while a queued Judge request remained valid.
+
+The caller owns the absolute cancellation signal, covering both response headers and body. The CLI defaults to 30 seconds and accepts an explicit positive integer timeout up to 2147483647 ms; timeout still returns `SERVICE_TIMEOUT`. Coordinator peer calls default to 15 seconds, validate the same timer range before connecting, clear their timer in `finally`, and classify connection, aborted body and malformed JSON failures as retryable `SERVICE_UNAVAILABLE`. Structured service errors retain their code, details and retryable flag. The shared helper wraps socket/response errors with their cause, preserving the CLI's transport-loss replay-ID behavior. Cancellation closes the client connection; it does not itself revoke a Task or cancel an already admitted server operation. Existing service authority checks, deadlines and exact-ID recovery remain responsible for that work. The compatibility extension passes through its caller's signal and adds no new deadline.
+
+Independent Judge startup expands the peer deadline using the configured queue and checker allowances, as documented in [07 Run configuration](07-run-configuration.md). Queue waiting continues to refresh Execution authority and cannot extend Mission or Execution lifetime. A longer transport deadline is not a longer checker process allowance. Transport makes no durable writes; the existing service handlers and CLI replay receipts retain ownership of state.
+
+Sources: [shared HTTP transport](../../src/protocol/http-request.js), [peer client](../../src/sdk/coordinator-peer-client.js), [CLI](../../src/cli/swarm-cli.js), [compatibility extension](../../src/agent/swarmenv-extension.mjs). Tests cover delayed headers, partial-body cancellation and socket cleanup, domain errors, invalid deadlines, and CLI replay after lost responses. An opt-in real 310-second delayed-header test exercises the former five-minute limit.
+
 ### The envelope and replay contract
 
 | Field | Current meaning |

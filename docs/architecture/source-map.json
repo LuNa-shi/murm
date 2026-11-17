@@ -1360,6 +1360,16 @@
       "role": "Identity/version envelope validation and stable serialization"
     },
     {
+      "path": "src/protocol/http-request.js",
+      "category": "service and Agent integration",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers"
+    },
+    {
       "path": "src/runtime/docker-bot-disk.js",
       "category": "runtime and execution",
       "chapters": [

@@ -4,6 +4,8 @@ A research Agent does not receive one fixed paragraph called “the prompt.” I
 
 **Coverage boundary:** every static prompt/message producer and direct `session.prompt` send site found in the reviewed `src/` tree is mapped here. Mission text, Task instructions created during a run, candidates, Materials, arbitrary registered provider documentation and tool results are runtime data. A fixed architecture document cannot contain every future value of those inputs. It records their fields, insertion rules and evidence locations. The generated examples use explicit synthetic values and are not presented as actual run transcripts. Pi/provider-owned base prompts, tool rendering, retry messages and compaction summaries are outside this repository's implementation.
 
+The CLI and compatibility extension now send service requests through the shared native HTTP(S) transport described in [04 Services](04-services.md#http-waiting-and-cancellation). This changes waiting/cancellation behavior, not prompt composition, tool schemas or the selected public benchmark context. The CLI retains its 30-second default; explicit longer deadlines may extend to the timer-safe range.
+
 ## 1. Complete text catalog
 
 | Appendix | Complete content |

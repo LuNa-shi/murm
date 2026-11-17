@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 
-test('swarm take reports the actual transmitted request ID after transport loss', async t => {
+for (const timeoutMs of [undefined, 2_430_000]) test(`swarm take preserves its request ID after transport loss (timeout: ${timeoutMs ?? 'default'})`, async t => {
   let invocation;
   const server = createServer(async request => {
     let body = '';
@@ -24,7 +24,8 @@ test('swarm take reports the actual transmitted request ID after transport loss'
   });
   process.env.SWARMENV_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.SWARMENV_BRIDGE_TOKEN = 'local-test-credential';
-  await assert.rejects(runSwarmCli(['task', 'take', 'task-1']), error => {
+  const args = ['task', 'take', 'task-1', ...(timeoutMs ? ['--timeout-ms', String(timeoutMs)] : [])];
+  await assert.rejects(runSwarmCli(args), error => {
     assert.equal(invocation.operation, 'task_take');
     assert.match(invocation.operation_id, /^cli:take:/);
     assert.equal(error.details.request_id, invocation.operation_id);

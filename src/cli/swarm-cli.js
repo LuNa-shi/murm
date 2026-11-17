@@ -1,9 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
+import { requestHttp } from '../protocol/http-request.js';
 
 const SERVICE_NAMES = ['task', 'bot', 'material', 'workspace', 'mission', 'judge', 'catalog'];
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
-const MAX_REQUEST_TIMEOUT_MS = 10 * 60_000;
+const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
 const ALIASES = Object.freeze({
   bot: { exit: 'bot_exit' },
   // complete/block/close remain transport aliases for old clients; finish is
@@ -194,8 +195,8 @@ async function request(url, { method = 'GET', token = null, body = undefined, ti
   if (body !== undefined) headers['content-type'] = 'application/json';
   if (token) headers.authorization = `Bearer ${token}`;
   try {
-    const response = await fetch(url, { method, headers, signal: controller.signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-    const text = await response.text();
+    const response = await requestHttp(url, { method, headers, signal: controller.signal, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    const text = response.text;
     let parsed = {};
     try { parsed = text ? JSON.parse(text) : {}; } catch { parsed = { raw: text }; }
     if (!response.ok || parsed.ok === false) {

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { RemoteContextService } from './remote-context-service.js';
 import { RemoteJudgeService } from './remote-judge-service.js';
+import { normalizeJudgeMissionBudget } from '../judge/judge-service.js';
 
 const exec = promisify(execFile);
 const repository = fileURLToPath(new URL('../../', import.meta.url));
@@ -79,6 +80,12 @@ async function startPeer(command, args, env, logPath) {
 export async function startIndependentServices({ taskService, projectDir, logRoot, fixtureManifest,
   finalTreeConfiguration, problem, missionBudget, maxInfrastructureRetries, checkerTimeoutMs,
   readProjectRevision, leanCommand = 'lake', contextLogger = null, judgeLogger = null }) {
+  const judgeBudget = normalizeJudgeMissionBudget(missionBudget);
+  const judgeTimeoutMs = Math.max((checkerTimeoutMs ?? 120_000) * 4,
+    judgeBudget.queueWaitMs + 2 * (checkerTimeoutMs ?? 120_000)) + 30_000;
+  if (!Number.isSafeInteger(judgeTimeoutMs) || judgeTimeoutMs < 1 || judgeTimeoutMs > 2_147_483_647) {
+    throw new TypeError('Judge HTTP deadline must fit the timer range including queue, checker and transport allowances');
+  }
   const token = randomBytes(32).toString('hex');
   const peers = [];
   let judge;
@@ -103,10 +110,10 @@ export async function startIndependentServices({ taskService, projectDir, logRoo
     taskService.contextService = context;
     if (context.gate.pending()?.command.service !== 'judge') context.reconcile();
     judge = new RemoteJudgeService({ taskService, token, readProjectRevision, logger: judgeLogger,
-      timeoutMs: Math.max((checkerTimeoutMs ?? 120_000) * 4, (missionBudget?.queueWaitMs ?? 120_000) + 2 * (checkerTimeoutMs ?? 120_000)) + 30_000 });
+      timeoutMs: judgeTimeoutMs });
     const coordinator = await judge.startCoordinator();
     const configPath = join(projectDir, 'judge-peer-config.json');
-    await writeFile(configPath, JSON.stringify({ fixtureManifest, finalTreeConfiguration, problem, missionBudget, maxInfrastructureRetries,
+    await writeFile(configPath, JSON.stringify({ fixtureManifest, finalTreeConfiguration, problem, missionBudget: judgeBudget, maxInfrastructureRetries,
       coordinator: { url: coordinator.url, token }, checker: { command: leanCommand, timeoutMs: checkerTimeoutMs,
         workRoot: join(projectDir, 'judge-work') } }), { mode: 0o600 });
     const judgePeer = await startPeer('flock', ['--nonblock', '--no-fork', join(projectDir, 'judge.sqlite.instance-lock'),

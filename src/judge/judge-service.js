@@ -46,7 +46,7 @@ export function normalizeJudgeMissionBudget({ maxRequests = null, maxConcurrent 
   if (maxRequests !== null) throw new TypeError('Ordinary Judge checks no longer support a cumulative maxRequests limit');
   if (!Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 64 ||
       !Number.isSafeInteger(maxQueued) || maxQueued < 0 || maxQueued > 1024 ||
-      !Number.isSafeInteger(queueWaitMs) || queueWaitMs < 1 || queueWaitMs > 120_000) {
+      !Number.isSafeInteger(queueWaitMs) || queueWaitMs < 1 || queueWaitMs > 2_147_483_647) {
     throw new TypeError('Judge requires bounded positive concurrency/wait time and nonnegative queue capacity');
   }
   return { maxRequests: null, maxConcurrent, maxQueued, queueWaitMs };

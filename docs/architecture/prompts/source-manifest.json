@@ -45,7 +45,7 @@
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
-      "sha256": "023f308707114611e82170b508a6790bac78c309b002f3ac782bd549494b22ff"
+      "sha256": "dc2ec6c20978ddf5a3eb0ebb9a51be4900981caf161005e3b28d60e5f053b324"
     },
     {
       "path": "src/agent/version-manifest.js",

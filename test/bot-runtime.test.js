@@ -604,24 +604,29 @@ test('Bot lifetime is fixed before take and caps the active Execution deadline',
 
 test('Bot lifetime stops a taken Bot even while Workspace preparation has not returned', async t => {
   const { service, runtime, startSession } = await fixture(t);
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 60_000, maxLifetimeMs: 250, startSession });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 60_000, maxLifetimeMs: 1000, startSession });
   const task = service.createTask({ mission_id: bot.mission_id, summary: 'Prepare inputs for an independent research question', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'prepare-budget' });
   const create = runtime.workspaceManager.createWorkspace.bind(runtime.workspaceManager);
-  let release;
+  let release, preparationEntered = false;
   const gate = new Promise(resolve => { release = resolve; });
-  runtime.workspaceManager.createWorkspace = async options => { await gate; return create(options); };
+  runtime.workspaceManager.createWorkspace = async options => { preparationEntered = true; await gate; return create(options); };
   const binding = runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id, sendInitialPrompt: false });
   const rejected = assert.rejects(binding);
-  await new Promise(resolve => setTimeout(resolve, 350));
-  assert.equal(session.closed, true);
-  const stopped = service.getExecution(execution.execution_id);
-  assert.equal(stopped.terminal_reason, 'bot-lifetime-budget');
-  assert.equal(stopped.started_at, null);
-  assert.equal(stopped.workspace_ref, null);
-  assert.equal(isPreparationFailure(stopped), true, 'the report accepts this real pre-activation budget stop');
-  release();
-  await rejected;
+  try {
+    const released = await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 5000 });
+    assert.equal(released.released, true);
+    assert.equal(preparationEntered, true, 'the deadline must interrupt a pending Workspace preparation');
+    assert.equal(session.closed, true);
+    const stopped = service.getExecution(execution.execution_id);
+    assert.equal(stopped.terminal_reason, 'bot-lifetime-budget');
+    assert.equal(stopped.started_at, null);
+    assert.equal(stopped.workspace_ref, null);
+    assert.equal(isPreparationFailure(stopped), true, 'the report accepts this real pre-activation budget stop');
+  } finally {
+    release();
+    await rejected;
+  }
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
 });
 

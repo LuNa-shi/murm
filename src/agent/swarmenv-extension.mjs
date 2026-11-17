@@ -1,4 +1,5 @@
 import { buildCapabilityProfile, profileToolNames, AGENT_ROLES } from './capability-profile.js';
+import { requestHttp } from '../protocol/http-request.js';
 
 function text(value) {
   const encoded = JSON.stringify(value);
@@ -14,7 +15,7 @@ function bridgeConfig() {
 
 async function bridgeFetch(path, { method = 'GET', body, signal } = {}) {
   const { url, token } = bridgeConfig();
-  const response = await fetch(`${url}${path}`, {
+  const response = await requestHttp(`${url}${path}`, {
     method,
     headers: {
       authorization: `Bearer ${token}`,
@@ -23,7 +24,7 @@ async function bridgeFetch(path, { method = 'GET', body, signal } = {}) {
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     signal,
   });
-  const payload = await response.json();
+  const payload = JSON.parse(response.text);
   if (!response.ok || payload.ok === false) {
     const structured = payload?.error ?? {};
     const details = structured.details && typeof structured.details === 'object'
