@@ -172,25 +172,23 @@ missing, even if an unindexed file happens to exist at that path.
 | Wrong owner / old fence / released Workspace | `NOT_ALLOWED` for wrong owner; `FENCED` for stale fence or released writes. |
 | Expected revision differs | `STALE_VERSION`. |
 
-Initial seeding uses safe-path checks but does not apply the allowed-output
-restriction to each generated support file. Later saves do apply it.
-Consequently, a restrictive output contract must permit
-`runtime-manifest.json` when the Runtime-created Session path updates that
-file; only `.pi/settings.json` has an explicit internal-output exemption.
+The lower-level WorkspaceManager creation helpers use safe-path checks but
+do not apply the allowed-output restriction to each generated support file.
+Later file API saves do apply it. The retained contract normalizer exempts
+`.pi/settings.json`; Runtime does not generate that file or a runtime manifest
+during registered Bot preparation.
 Required-input validation uses the supplied file manifest; it is not a
 continuous monitor that prevents later shell writes.
 
-## 3. Clean creation and existing binding
+## 3. Clean creation and recorded binding
 
 For a registered Bot with a public Mission Workspace, the benchmark passes a trusted `missionWorkspaceId` into Runtime. During take preparation, `exportRevision` resolves the fixed Task `workspace.revision`, or main when omitted, once under the repository recovery barrier and exports every file plus immutable revision/commit/tree/content and per-file hashes. Runtime verifies the Mission and rejects a conflicting Task Workspace ID. A concurrent main advance does not change the selected input. If no trusted Workspace ID is configured, an explicit Task Workspace ID is required and its Mission is still checked.
 
 The host Execution directory receives those exact project files, including binary data and the existing `.gitignore`/README. This path adds no Task README, runtime manifest, workspace manifest or `.pi` settings to project files. Host bookkeeping stays in private `.swarm` and `.git`. Creation holds a target lock, builds a sibling staging directory, verifies every file against the public manifest, imports raw Git blobs without ignore/attribute conversion, and publishes the completed directory by rename. Exact matching retries reuse its original input; a different input/fence or a nonempty partial target is rejected, never overlaid. The initial local Git tree therefore matches the public Git tree. The OpenSandbox transfer receives the trusted manifest, copies exactly those paths using base64 chunks of at most 65,536 characters into a per-file guest temporary path, verifies the complete received file with SHA-256, then renames it into place. This stays below Linux single-argument limits even for the 2 MiB maximum file. Failed copies best-effort remove their temporary file and fail preparation; `.environment` and other allowed names are not silently omitted by the legacy traversal filter. It rejects source symlinks and bytes differing from the pinned manifest. Per-file hashing establishes transport integrity. Protected PREPARED input and process-paused grant are additional implemented worker boundaries described below; hashing alone does not establish them. The initial public input identity is recorded in both private Workspace metadata and `executions.workspace_input_json` before activation, and cannot be changed by later local revision saves. Reports include this initial public reference separately from the older local integer revision/commit fields. This establishes complete input selection/transport and audit identity; protected guest preparation/grant follows the flow below; same-E apply uses the captured guest transaction and confirmation protocol described above.
 
-Unregistered compatibility Executions retain the older formal-source and generated-manifest creation path. A take cannot select another Execution's private revision, source path, checkpoint or directory.
+Runtime requires a registered Bot and its original Session before preparation. A take cannot select another Execution's private revision, source path, checkpoint or directory. Preparation uses a fresh directory keyed by Execution and fence; if the Execution already has a recorded Workspace reference, it fails with `FENCED` instead of restoring or replacing that binding. The matching filesystem retry behavior above applies before a durable binding has been recorded.
 
-If an Execution already has its own Workspace, Runtime reads its current metadata under the current fence and continues from that binding. Matching retries are idempotent; a different owner, fence, revision, or content hash is rejected. Workspace saves advance exactly one revision and persist the file manifest and content hash before the corresponding Execution reference is recorded.
-
-In the compatibility preparation path, Runtime generates the initial README, manifest, ignore rules, Pi settings and runtime manifest. Registered public input materialization instead preserves the exact supplied project tree as described above. These writes may create successive revisions, so revision one is the materialization boundary rather than a promise about the first model turn.
+Lower-level WorkspaceManager creation and cloning helpers remain available for direct callers, diagnostics and historical data handling. They can generate support files or copy a private revision, but Runtime no longer invokes them as an alternative execution preparation path. Workspace saves persist the file manifest and content hash before the corresponding Execution reference is recorded.
 
 
 ## 4. File operations, revisions and their precise limits
