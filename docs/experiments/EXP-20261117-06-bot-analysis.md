@@ -107,7 +107,7 @@ B1在14:29:40.042读尚不存在的临时Mathlib参考文件收到ENOENT；下�
 
 B7唯一重复submit被CONFLICT拒绝；没有新增freeze或第二final检查，随后读取既有submission。B1／B4的API、类型和非计算性错误各有新源码及后继PASS，不据FAIL数量一概认定盲重试。
 
-最终report中4个identity_loop均保留PROCESS_EXITED／Pi RPC session closed before agent_settled，take_failure_count各1、stopped=true、state=STOPPING。最后state_history／last_event_at为14:41:11.513/.516/.519/.521，分别晚于accepted6–14毫秒，与接受后停止窗口相邻。但last_error没有独立首次发生时间，runtime日志也未给独立同名事件；不能把last_event_at直接称为错误发生时间，更不能因protocol_valid=true就删掉异常。当前可证实没有阻止已完成接受和物理cleanup；是否应将这种终止等待标为正常取消、或有别的提前错误，需要独立工程诊断，不能从该汇总推断为无异常。
+最终report中4个identity_loop均保留PROCESS_EXITED／Pi RPC session closed before agent_settled，take_failure_count各1、stopped=true、state=STOPPING。最后state_history／last_event_at为14:41:11.513/.516/.519/.521，分别晚于accepted6–14毫秒，与接受后停止窗口相邻。最终独立评审在report.run.identity_loop_events的105–108项找到identity_loop_take_failed回调：core1于14:41:11.581、core3于.590、core2于.597、core4于.604，分别晚于accepted74/83/90/97ms。每Core仅此一次failed事件、无其他failed/invalid，与最终count=1形成唯一候选对应。该事件清洗后没有error正文；原生会话错误首次产生时间仍未单独记录，不能把STOPPING或失败回调时刻当成原生错误首次时间。现有关闭流程停止loop/controller并结束等待agent_settled的会话，与这些接受后回调相容；当前没有阻止接受、Execution失败或物理cleanup失败证据。保留异常字段，不将其描述为新的不可恢复服务故障，也不声称原始session错误已被完整捕获。
 
 ### Task合同、可见关系与自然覆盖
 
@@ -147,6 +147,6 @@ B7/B8较长无Execution窗口有实际阅读，后继B9–B11主要落在final�
 
 ## Next steps
 
-由主报告汇总数学接受、protocol、独立physical cleanup、repair-specific控制／自然证据与独立代码评审，再判断Issue验收和合并。保留4loop PROCESS_EXITED最终异常及其时间局限，若进一步诊断需另取带时刻事件，不根据成功结论反写无异常。本报告未修runtime、重跑模型或修改原始实验结果。
+由主报告汇总数学接受、protocol、独立physical cleanup、repair-specific控制／自然证据与独立代码评审，再判断Issue验收和合并。保留4loop PROCESS_EXITED最终字段、接受后失败回调的已知时间和原生session错误首次时刻的采集局限，不根据成功结论反写无异常。本报告未修runtime、重跑模型或修改原始实验结果。
 
 公开仅保留稳定IDs与聚合行为；原始证据、证明、对话、stdout和私有数据库仅在ignored本地目录。自然未覆盖行为明确保持controlled-only。任何后续实验或算法变更依人类批准范围执行。

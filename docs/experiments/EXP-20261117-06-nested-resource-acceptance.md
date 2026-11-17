@@ -99,7 +99,7 @@ metadata到接受 **945.909秒（15m45.909s）**；project到接受794.832秒（
 
 最终验收115.580秒期间还启动B009/B010/B011；startup合计12.930 Core秒，新身份接受前寿命152.594 Core秒，所有UNBOUND ready窗口与final重叠339.091 Core秒。这些窗口有读取/观察活动但没有新Task，未见改变已冻结目标；这是可观测尾段投入，不证明应当直接修改调度策略。六次take全为自提自取，缺少有竞争候选任务的优先级选择样本；本次不能说明已解决长期关键路径投入不足。
 
-唯一普通Agent工具错误是首Bot读取尚未存在的临时Mathlib参考文件，随后改用固定commit的公开参考源码与Mathlib search并完成助手；不是checker崩溃。另有最终提交冲突，已被明确拒绝。四个identity loop最终均保留PROCESS_EXITED及take_failure_count=1，最后STOPPING事件在接受后6–14ms；last_error没有独立发生时间，不能把最终事件时间等同首次错误时间，也不能凭protocol=true抹掉这些字段。现有关闭流程会终止等待agent_settled的会话；这与终态字段相容，但仅能归为closeout相关观察，不能声称原始错误事件已完整定位。无Execution失败、接受丢失或物理资源残留证据。
+唯一普通Agent工具错误是首Bot读取尚未存在的临时Mathlib参考文件，随后改用固定commit的公开参考源码与Mathlib search并完成助手；不是checker崩溃。另有最终提交冲突，已被明确拒绝。四个identity loop最终均保留PROCESS_EXITED及take_failure_count=1，最后STOPPING事件在接受后6–14ms。独立评审进一步核对report.run.identity_loop_events的105–108项：四次identity_loop_take_failed回调在14:41:11.581/.590/.597/.604，分别晚于接受74/83/90/97ms；每Core只有一次failed事件、无其他failed/invalid，因而是最终错误汇总的唯一候选对应。事件清洗保留kind和时刻但不保留error正文，原生会话错误首次产生时间仍未单独记录，不能与回调时刻混同。现有关闭流程停止loop/controller并终止等待agent_settled的会话，失败回调确实位于接受后停止阶段；这些字段如实保留，不构成新的不可恢复服务故障证据。无Execution失败、接受丢失或物理资源残留证据。
 
 本次是成熟短任务、单个随机协作轨迹。真实跨Bot复用与局部cache命中均已观察，但四Core同时推进覆盖很短，final期间仍有额外身份成本。没有匹配的单Agent/禁cache反事实，不能据此断言并行胜出、计算节约或Q20长程选工质量已经改善。
 
