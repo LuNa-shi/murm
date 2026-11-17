@@ -47,7 +47,7 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 | `--report-dir` | `reports/putnambench-runs/run-<startup timestamp>` |
 | `--observability-host` | `127.0.0.1` when the benchmark launches its observer |
 | `--observability-port` | `8787` |
-| `--observability-advertise-host` | Absent: attempt `tailscale ip -4`, otherwise no override |
+| `--observability-advertise-host` | Null by default; only an explicit value overrides the advertised host |
 | `--observability-metadata` | `SWARMENV_OBSERVABILITY_METADATA`, otherwise look under the experiment root |
 | `--help`, `-h` | Print usage and exit before requiring benchmark arguments |
 
@@ -121,7 +121,6 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `command`, `account`, `group`, `extensionPath` | Override command and routing; runner command defaults to `pi`. Top-level `extensionPath` applies to the local compatibility adapter; registered OpenSandbox Bots reject custom Service-tool extensions and use four native tools |
 | `observationStore` | Inject persistent observation store; otherwise project-local storage |
 | `prepareProject` | Injected deterministic preparation hook after Mission/Workspace creation and before Core construction; receives `root: null`. Ordinary runs do not seed a fixed Task pool. |
-| `serviceDeployment` | `independent` for positive-duration runs; `in-process` for zero-duration fixtures. Only those two repository-owned compositions are accepted. |
 | `serviceRegistry` | Inject full Agent-facing registry; skips built-in bundle and Mathlib auto-registration; local owner/controller router still exists |
 | `serviceEndpoints` | Built-in provider endpoint/token map; otherwise use `SWARMENV_{TASK,CONTEXT,JUDGE,CATALOG}_SERVICE_URL` and corresponding `_TOKEN` variables |
 | `customServices` | Additional registered providers when building the default registry |
@@ -185,7 +184,6 @@ The top-level ignored `experiments/` raw evidence directory and committed `docs/
 
 Deterministic library tests use in-process adapters and explicit bounded fixtures; they are separate from the production benchmark CLI and do not represent a live provider run.
 
-`--real-agent` probes local Node/NuRouter/Pi/Lean/Lake commands and provider/model routing before launch. It returns `BLOCKED` for missing prerequisites and `FAILED_TO_LAUNCH` for missing root/input. The real-probe environment metadata fields are `SWARMENV_IMPLEMENTATION_COMMIT`, `SWARMENV_WORKTREE_DIRTY`, `SWARMENV_WORKTREE_STATUS`, `SWARMENV_TIMEBOX_MS`, `SWARMENV_PUTNAMBENCH_ROOT`; they record caller context and do not themselves prove it.
 
 Built-in and Mathlib service launchers use HTTP manifests and role/binding enforcement. Built-in invocation requires actor-bound principals; Mathlib Search retains optional bearer authentication. Each handles SIGINT/SIGTERM shutdown. The normal runner uses service-owned separate state with co-located synchronous lifecycle APIs. Independently hosted HTTP Context/Judge mutation without that authority composition fails closed. The built-in image installs production dependencies with scripts disabled; it does not install Lean. Mathlib Search needs an external upstream or a mounted source tree. Full host settings and request behavior are in [04](04-services.md).
 
@@ -276,6 +274,6 @@ The review command displays identities and acceptance criteria. To inspect the f
 
 ## Whole-Workspace Lean project checking
 
-The trusted final-tree deployment accepts `projectChecks: true` (default false). It cannot be combined with nonempty `localModules`. This flag participates in the artifact lock configuration; regenerate the lock after enabling it or changing the verifier source. In project mode the runner connects the locked adapter to ordinary Judge checks and to checks of the combined tree before a Workspace merge. Source/merge budgets use the configured ordinary diagnostic cap; final acceptance uses the separate final-tree cap. All remain bounded by their lifecycle and Mission deadlines.
+The trusted final-tree deployment accepts `projectChecks: true` (default false). It cannot be combined with nonempty `localModules`. This flag participates in the artifact lock configuration; regenerate the lock after enabling it or changing the verifier source. In project mode the runner connects the locked adapter to ordinary Judge checks and to checks of the combined tree before a Workspace merge. Ordinary Judge requests use the configured Mission diagnostic budget (default 20 requests / 2 active). Merge calls the project checker directly and has one retained slot per Runtime/Core, independently of ordinary Judge admission. Final acceptance uses its separate submission budget (default 4 attempts / 1 active). These are separate admission pools, not a global compiler concurrency cap. All remain bounded by their lifecycle and Mission deadlines.
 
 No new dependency is downloaded at check time. The configured, locked library roots become synthetic offline Lake path dependencies; the toolchain and library artifact fingerprints cover the executable inputs. Project source roots derive from the fixed target path, not a caller flag. See [Services](04-services.md#locked-lake-project-preparation-and-compilation) for module coverage, build outputs and error handling. Rebuild the Agent image after changing CLI help or the Workspace skill; the benchmark verifies their hashes before starting a Bot.
