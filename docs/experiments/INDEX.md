@@ -8,7 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261117-06` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) | **REGISTERED · nested-resource repair; 4 Cores / maximum1h** | `ccdd5c7` | [Nested-resource acceptance](EXP-20261117-06-nested-resource-acceptance.md) |
+| `EXP-20261117-06` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) | **B1 accepted; protocol/cleanup PASS; natural resource-error recovery** | `ccdd5c7` | [Nested-resource acceptance](EXP-20261117-06-nested-resource-acceptance.md) |
 | `EXP-20261117-05` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) | **B1 accepted, protocol/cleanup PASS; diagnostic repair incomplete** | `30908fc` | [Issue137 Putnam acceptance](EXP-20261117-05-issue137-putnam-acceptance.md) |
 | `EXP-20261117-04` | [Issue #138](https://github.com/LuNa-shi/SwarmEnv/issues/138) | **PASS · legacy cleanup; accepted in 18m28s, protocol valid** | `e8fd842` | [Legacy cleanup Putnam acceptance](EXP-20261117-04-legacy-cleanup-putnam.md) |
 | `EXP-20261117-03` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · 8h UNSOLVED; protocol INVALID, analyzer failed** | `d60b6b0` | [Q20 eight-hour retry](EXP-20261117-03-q20-subtree-8h.md) |
