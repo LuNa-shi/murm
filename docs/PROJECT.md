@@ -10,7 +10,7 @@ First, build a clear, reusable Agent Swarm environment and operating strategy. P
 
 Second, demonstrate useful autonomous operation: Bots should propose and choose worthwhile work, make local progress, preserve sourced knowledge, find and continue others' contributions, correct mistakes and advance the shared project. A framework that exposes these operations does not by itself establish that its Bots use them well.
 
-The [Phase 02 design](phases/0002-task-material-workspace/README.md) turns these goals into a proposed model and reviewable policies. Git branches and working copies are an engineering substrate for its first version. Research value must come from measured improvements in coordination, reuse, correction and cumulative outcomes; it is not established by renaming familiar infrastructure.
+The [Phase 02 design](phases/0002-task-material-workspace/README.md) records the approved model and policies underlying the current runtime. Architecture documents the implemented behavior and remaining boundaries; the design alone is not validation evidence. Git branches and working copies are an engineering substrate for its first version. Research value must come from measured improvements in coordination, reuse, correction and cumulative outcomes; it is not established by renaming familiar infrastructure.
 
 ## Open research questions
 

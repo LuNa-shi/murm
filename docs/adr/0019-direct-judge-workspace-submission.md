@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted for Issue #117.
+Accepted for Issue #117; the direct Bridge → Registry → Judge ownership decision remains. Its original command names and live-file input contract below are historical. Issues [#122](https://github.com/LuNa-shi/SwarmEnv/issues/122) and [#127](https://github.com/LuNa-shi/SwarmEnv/issues/127) superseded them for registered Bots with `swarm judge check --revision R [--path P]`, immutable public Workspace input and optional whole-project compilation. See [current Services](../architecture/04-services.md#the-as-built-submission-route); standalone HTTP hosting still requires the lifecycle authority described there.
 
 ## Decision
 

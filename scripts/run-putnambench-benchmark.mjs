@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { join, relative, resolve, sep } from 'node:path';
 import { loadBenchmarkConfig, runBenchmarkBatch, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
+import { runPassK } from '../src/benchmark/pass-k.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
 import { beginPrivateAudit } from '../src/observability/private-audit-retention.js';
 
@@ -175,6 +176,7 @@ function optionsFromArgs(argv) {
       '--report-dir': 'reportDir',
       '--problem': 'problemId',
       '--cores': 'cores',
+      '--pass-k': 'k',
       '--project-parallelism': 'projectParallelism',
       '--timebox-ms': 'timeboxMs',
       '--bot-max-ms': 'botMaxMs',
@@ -193,7 +195,7 @@ function optionsFromArgs(argv) {
     if (key === '--parallel-mode') throw new Error('--parallel-mode has been retired; omit it to use four independent Core loops');
     if (!fields[key]) throw new Error(`unknown option: ${arg}`);
     const value = inline ?? argv[++index];
-    options[fields[key]] = ['cores', 'projectParallelism', 'timeboxMs', 'botMaxMs', 'initialBotStaggerMs', 'selectionTimeoutMs', 'executionTimeoutMs', 'turnTimeoutMs', 'checkerTimeoutMs', 'observabilityPort'].includes(fields[key])
+    options[fields[key]] = ['k', 'cores', 'projectParallelism', 'timeboxMs', 'botMaxMs', 'initialBotStaggerMs', 'selectionTimeoutMs', 'executionTimeoutMs', 'turnTimeoutMs', 'checkerTimeoutMs', 'observabilityPort'].includes(fields[key])
       ? Number(value)
       : value;
   }
@@ -207,6 +209,7 @@ function usage() {
     '    --problems config/putnambench-12.json',
     '    --putnambench-root /path/to/PutnamBench',
     '    --cores 4',
+    '    --pass-k 1|4                 Independent complete Mission attempts on one --problem; default remains Swarm',
     '    --project-parallelism 3',
     '    --timebox-ms 1800000',
     '    --bot-max-ms 600000 --selection-timeout-ms 120000',
@@ -238,7 +241,12 @@ if (options.help) {
   process.exit(0);
 }
 if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '--problems and --putnambench-root are required');
-if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark protocol');
+if (options.k !== undefined) {
+  if (!Number.isSafeInteger(options.k) || options.k < 1 || options.k > 4 || !options.problemId) throw new Error('--pass-k requires K from 1 to 4 and one --problem');
+  options.initialBotStaggerMs = 0;
+  options.botMaxMs = options.timeboxMs;
+  options.executionTimeoutMs = options.timeboxMs;
+} else if (options.cores !== 4) throw new Error('--cores must be 4 for this benchmark protocol');
 if (!Number.isInteger(options.projectParallelism) || options.projectParallelism < 1) throw new Error('--project-parallelism must be a positive integer');
 if (!Number.isFinite(options.timeboxMs) || options.timeboxMs < 1) throw new Error('--timebox-ms must be positive');
 if (!Number.isSafeInteger(options.initialBotStaggerMs) || options.initialBotStaggerMs < 0 || options.initialBotStaggerMs > Math.floor(2_147_483_647 / 3)) {
@@ -334,7 +342,8 @@ const metadata = {
   },
   protocol: {
     problem_count: problems.length,
-    core_count: options.cores,
+    core_count: options.k ?? options.cores,
+    ...(options.k ? { execution_mode: 'pass_k', k: options.k, cores_per_mission: 1 } : {}),
     project_parallelism: options.projectParallelism,
     timebox_ms: options.timeboxMs,
     bot_max_ms: options.botMaxMs,
@@ -392,7 +401,8 @@ try {
     process.stdout.write(JSON.stringify({ observability_url: observationAddress.url }) + '\n');
   }
 
-  const reports = options.problemId
+  const passK = options.k ? await runPassK(problems[0], config, options) : null;
+  const reports = passK ? passK.reports : options.problemId
     ? [await runBenchmarkProject(problems[0], config, options)]
     : await runBenchmarkBatch(problems, config, options);
   projectOutcomesKnown = true;
@@ -401,7 +411,8 @@ try {
     schema_version: 1,
     protocol: {
       problem_count: reports.length,
-      core_count: options.cores,
+      core_count: options.k ?? options.cores,
+    ...(options.k ? { execution_mode: 'pass_k', k: options.k, cores_per_mission: 1 } : {}),
       project_parallelism: options.projectParallelism,
       timebox_ms: options.timeboxMs,
       bot_max_ms: options.botMaxMs,
@@ -417,7 +428,9 @@ try {
       raw_transcript_exported: false,
       proof_contents_exported: false,
     },
-    projects: reports.map((report) => ({
+    ...(passK ? { pass_k: passK.summary } : {}),
+    projects: reports.map((report, index) => ({
+      ...(passK ? { attempt_index: index + 1 } : {}),
       problem_id: report.project?.problem_id ?? null,
       solved: report.run?.solved ?? false,
       elapsed_ms: report.run?.elapsed_ms ?? null,

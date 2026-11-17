@@ -71,3 +71,17 @@ export function botServiceDirectory(profile) {
   }
   return entries;
 }
+
+export const SOLVER_SYSTEM_PROMPT = body('solver-system.txt').trimEnd();
+export const SOLVER_CONTINUATION_MESSAGE = 'Continue solving the original Lean problem in /workspace/project. Inspect your current source and actual check results, repair the proof and submit a complete solution using swarm solution submit. Stay within the supplied deadline; save useful work before it expires.';
+export function agentContract(mode = 'swarm') {
+  if (mode === 'swarm') return { protocolVersion: BOT_PROTOCOL_VERSION, systemPrompt: BOT_SYSTEM_PROMPT, systemHash: BOT_SYSTEM_HASH, systemResource: BOT_SYSTEM_RESOURCE, skills: BOT_SKILLS, resources: BOT_RESOURCES };
+  if (mode !== 'solver') throw new TypeError('Unknown agent mode');
+  const systemResource = { path: '/opt/swarmenv/src/agent/bot-contract/solver-system.txt', sha256: hash(body('solver-system.txt')) };
+  return { protocolVersion: 'swarm-solver-v1', systemPrompt: SOLVER_SYSTEM_PROMPT, systemHash: hash(SOLVER_SYSTEM_PROMPT), systemResource, skills: [], resources: [systemResource] };
+}
+
+export const SOLVER_CLOSEOUT_MESSAGE = 'The execution is closing. Stop new computation and submissions. Save useful existing files with swarm workspace save; the controller will finish and clean up this attempt. Report only observed results.';
+export function buildSolverContinuationMessage(execution, ordinary = SOLVER_CONTINUATION_MESSAGE) {
+  return isSoftCloseout(execution) ? SOLVER_CLOSEOUT_MESSAGE : ordinary;
+}

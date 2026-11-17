@@ -9,7 +9,7 @@ import vm from 'node:vm';
 import { SYSTEM_IDENTITY_PROMPT, BOUND_AGENT_PROMPT, GENERIC_AGENT_PROMPT, PROMPT_VERSION, SYSTEM_PROMPT_VERSION, buildPromptSnapshot, composeAgentPrompt, composeDynamicAgentPrompt, taskLoopGuide } from '../src/agent/agent-prompt.js';
 import { AGENT_ROLES, buildCapabilityProfile, capabilityDirectory } from '../src/agent/capability-profile.js';
 import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
-import { BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION, buildBotStartupMessage } from '../src/agent/bot-contract.js';
+import { SOLVER_SYSTEM_PROMPT, SOLVER_CONTINUATION_MESSAGE, SOLVER_CLOSEOUT_MESSAGE, BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION, buildBotStartupMessage } from '../src/agent/bot-contract.js';
 import { IDENTITY_TAKE_PROMPT } from '../src/runtime/identity-task-loop.js';
 import { runtimeCapabilityList } from '../src/runtime/runtime-capabilities.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
@@ -22,7 +22,7 @@ assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Us
 const check = args[0] === '--check';
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
-  'src/agent/bot-contract.js', 'src/agent/bot-contract/system.txt',
+  'src/agent/bot-contract.js', 'src/agent/bot-contract/system.txt', 'src/agent/bot-contract/solver-system.txt',
   ...BOT_SKILLS.map(skill => `src/agent/bot-contract/${skill.name}.md`),
   'src/agent/agent-prompt.js', 'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
   'src/agent/services-bridge.js', 'src/agent/swarmenv-extension.mjs', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
@@ -76,6 +76,7 @@ extendedRegistry.registerService({ manifest: mathlibBundle.manifest, bundle: mat
 const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, role: AGENT_ROLES.BOUND, runtimeCapabilities: runtimeCaps });
 
 output('01-system-identity.md', header('Complete stable identity instructions', 'Source: [agent-prompt.js](../../../src/agent/agent-prompt.js). The normal registered Bot body is bot-contract/system.txt. The older compatibility SDK body is exported as SYSTEM_IDENTITY_PROMPT, GENERIC_AGENT_PROMPT, IDLE_AGENT_PROMPT, BOUND_AGENT_PROMPT and RECOVERY_AGENT_PROMPT. The aliases do not create distinct selection Agents or research strategies.')
+  + block('Independent solver system addendum (swarm-solver-v1)', SOLVER_SYSTEM_PROMPT, 'Explicit Pass@K runs load only solver-system.txt through the same immutable worker contract. No Swarm skills are loaded.')
   + block(`Registered Bot system addendum (${BOT_PROTOCOL_VERSION})`, BOT_SYSTEM_PROMPT, 'Normal OpenSandbox Bots load the immutable image resource through --append-system-prompt. The worker verifies its hash and permissions before spawning Pi.')
   + block(`Compatibility SDK system addendum (system version ${SYSTEM_PROMPT_VERSION}; composition version ${PROMPT_VERSION})`, SYSTEM_IDENTITY_PROMPT, 'AgentCoreAdapter writes this body to identity-system-prompt.md and passes that file through Pi --append-system-prompt. It is an addendum to Pi-owned system instructions; it is not the whole upstream model request.'));
 
@@ -119,6 +120,8 @@ const discoveryPrompt = buildBotStartupMessage({
 let benchmarkDoc = header('Complete benchmark turn messages', 'The registered Bot path loads the stable system contract from the image, then dispatches buildBotStartupMessage using current durable Bot identity/deadlines and the resolved Workspace main. The values below are synthetic, not an experiment transcript. Retry turns refresh the state and identify themselves as continued selection.');
 benchmarkDoc += block('IdentityTaskLoop default for compatibility callers', IDENTITY_TAKE_PROMPT);
 benchmarkDoc += block('Registered Bot discovery: complete synthetic example', discoveryPrompt);
+benchmarkDoc += block('Independent solver continuation', SOLVER_CONTINUATION_MESSAGE, 'Pass@K initial user message appends problem ID, target path, fixed project path and ISO deadline from the current run. Continuations and compaction follow-up use this text; soft closeout uses the following message. No model-selected Task discovery is sent.');
+benchmarkDoc += block('Independent solver closeout', SOLVER_CLOSEOUT_MESSAGE);
 benchmarkDoc += block('Current bound continuation', BOT_CONTINUATION_MESSAGE, 'Both bound continuation send paths reread durable Execution state after Session readiness. Before soft closeout they use this ordinary message; after the deadline or an early reminder they send the closeout body below. Closing or expired identities do not receive another research turn.');
 benchmarkDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
 benchmarkDoc += block('Registered Bot compaction follow-up', BOT_COMPACTION_MESSAGE, 'If the current E has reached soft closeout, the closeout body replaces this ordinary follow-up.');

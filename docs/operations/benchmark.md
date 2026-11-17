@@ -141,3 +141,9 @@ exact same request with its original ID. Mission submission returns a pending re
 runs. Query the original submission for its final result.
 
 For configured project merge checks, use `swarm workspace merge --from R --request-id ID --timeout-ms 210000`. A lost response is an unknown outcome: replay the exact same request to recover its result. Merge checks have one retained slot per Core Runtime; they are separate from ordinary Judge and final-submission admission limits.
+
+## Pass@K baseline
+
+Use the same verified deployment, exact-image probes and CLI startup procedure, adding `--pass-k 1` or `--pass-k 4` and selecting one `--problem`. Register each condition separately and use fresh experiment/report directories. `--timebox-ms 3600000` gives the group its one-hour observation window. The option sets simultaneous initial starts, one Core per independent Mission and a single complete-solution Bot attempt per Mission. Each uses the original fixture and restricted solver tools; no Task or Material capability is granted to the agent. K=4 has four independent per-Mission budgets and can use four times the total resources of K=1.
+
+Do not interpret a retained full group window as continuous active computation: accepted Missions may clean up early while other attempts continue. Inspect `pass_k`, each attempt report, model-budget evidence and physical cleanup. Late results, startup failures and unknown costs remain explicit. Omitting `--pass-k` preserves the existing Swarm invocation and behavior.

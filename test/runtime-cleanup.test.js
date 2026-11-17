@@ -16,7 +16,7 @@ import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { CoreParallelismTracker } from '../src/benchmark/parallelism.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
-import { closeProjectStores, ensureAgentSession, releaseTerminalExecution, stopCore, stopBenchmarkRuntime, withinRunDeadline, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
+import { finishSolverTask, closeProjectStores, ensureAgentSession, releaseTerminalExecution, stopCore, stopBenchmarkRuntime, withinRunDeadline, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
 
 function deferred() {
   let resolve;
@@ -742,4 +742,23 @@ for (const boundary of ['failed provider preflight', 'initialization', 'natural 
   if (failPreflight) assert.equal(service, undefined);
   else assert.throws(() => service.db.prepare('SELECT 1'), /closed|not open/i);
   assert.ok(requests.length > 0 && requests.every(method => method === 'GET'));
+});
+
+
+test('solver accepted finish obeys closeout deadline and retains a delayed release for cleanup', async () => {
+  const held = deferred();
+  const state = { cores: [], cleanupErrors: [], runDeadlineAt: Date.now() + 10_000, missionCloseoutDeadline: Date.now() + 20 };
+  const core = { executionId: 'accepted-execution', bridge: { controlCall: async request => {
+    assert.equal(request.operation, 'task_finish');
+    return held.promise;
+  } } };
+  const finish = finishSolverTask(state, core);
+  const result = await Promise.race([finish.then(() => 'fulfilled', error => error.code),
+    new Promise(resolve => setTimeout(() => resolve('unbounded'), 100))]);
+  try {
+    assert.equal(result, 'BENCHMARK_TIMEBOX_EXPIRED');
+    assert.equal(state.pendingRunOperations.size, 1);
+    await stopBenchmarkRuntime(state, { cleanupGraceMs: 20 });
+    assert.ok(state.cleanupErrors.some(error => error.code === 'BACKGROUND_STOP_TIMEOUT'));
+  } finally { held.resolve(); await finish.catch(() => {}); await state.cleanupPromise; }
 });

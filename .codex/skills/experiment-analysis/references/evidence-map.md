@@ -12,9 +12,9 @@ Use the experiment directory and metadata as the boundary; summary fields only l
 | Services | Registry/Bridge/service requests and authoritative state | Same task identity, supported deployment boundary, errors and concurrency |
 | Acceptance | Preregistered phase/Experiment contract, all baseline/treatment runs and conformance ledger | Improvement with event coverage, guardrails and explicit failed/unknown cases |
 
-Typical stores are `metadata/`, `logs/projects/<project>/`, `state/projects/<project>/project.sqlite`, Workspace manifests/revisions and the metadata-declared observation database. Report records as present, missing, malformed, empty or not applicable. A historical child relation is evidence for that run, not a current architecture requirement.
+Typical stores are `metadata/`, `logs/projects/<project>/`, `state/projects/<project>/project.sqlite` (Task/Bot/Execution/Mission coordination), sibling `context.sqlite` (Material) and `judge.sqlite` (diagnostic checks), public Workspace revisions and private support manifests and the metadata-declared observation database. Report records as present, missing, malformed, empty or not applicable. A historical child relation is evidence for that run, not a current architecture requirement.
 
-Join explicit stable IDs first: experiment/event, Task/Execution/Session/Core/operation, Material/CheckResult/revision. Use timestamps only as a labelled fallback; ambiguous reusable-Core events remain unmatched. Task-wide execution order must not rely on an attempt_no whose old semantics differ.
+Join explicit stable IDs first: experiment/event, Mission/Bot/Task/Execution/Session/Core/operation, Material/CheckResult/revision. Use timestamps only as a labelled fallback; ambiguous reusable-Core events remain unmatched. Task-wide execution order must not rely on an attempt_no whose old semantics differ.
 
 Tool contracts come from serialized runtime metadata or source at the recorded implementation commit. If neither exists, state schema unavailable. Source-verified only is distinct from observed in the run. Read raw Agent JSONL locally for semantic work summaries; never infer hidden reasoning or publish full transcripts.
 

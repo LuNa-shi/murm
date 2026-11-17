@@ -117,3 +117,28 @@ test('swarm CLI gives a checker business FAIL its distinct exit code', async () 
     server.close();
   }
 });
+
+test('solver CLI exposes only local solving commands and submits an empty Material selection', async t => {
+  const invocations = [];
+  const server = createServer(async (request, response) => {
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    invocations.push(JSON.parse(body));
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ ok: true, result: { submitted: true } }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => server.close());
+  const keys = ['SWARMENV_BRIDGE_URL', 'SWARMENV_BRIDGE_TOKEN', 'SWARMENV_AGENT_MODE'];
+  const before = keys.map(key => [key, process.env[key]]);
+  t.after(() => { for (const [key, value] of before) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
+  Object.assign(process.env, { SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'solver', SWARMENV_AGENT_MODE: 'solver' });
+  let help = '';
+  await runSwarmCli(['--help'], { stdout: { write: text => { help += text; } } });
+  assert.doesNotMatch(help, /task|material/i);
+  for (const namespace of ['task', 'material', 'service']) await assert.rejects(runSwarmCli([namespace, 'list']), /unavailable/);
+  assert.equal(invocations.length, 0);
+  await runSwarmCli(['solution', 'submit', '--request-id', 'stable-final'], { stdout: { write() {} } });
+  assert.deepEqual(invocations[0], { operation: 'mission_submit', operation_id: 'stable-final', payload: { material_ids: [] } });
+});
