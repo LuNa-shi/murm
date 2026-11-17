@@ -2253,3 +2253,39 @@ test('solver compaction preserves the same Bot and Execution beyond the Swarm ro
   assert.equal(messages.length, 5);
   assert.ok(messages.every(message => !/swarm task|swarm material/.test(message)));
 });
+
+
+test('slow Bot preparation keeps its reservation lease live before activation', async t => {
+  const { service, runtime, manager, startSession } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a slow public input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:slow-lease' });
+  let resume, entered;
+  const gate = new Promise(resolve => { resume = resolve; });
+  const copying = new Promise(resolve => { entered = resolve; });
+  const sync = manager.syncWorkspace.bind(manager);
+  manager.syncWorkspace = async input => { entered(); await gate; return sync(input); };
+  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: Date.now() });
+  const binding = runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
+  await copying;
+  try {
+    for (let step = 0; step < 4; step++) t.mock.timers.tick(10_000);
+    assert.ok(Date.parse(service.getExecution(execution.execution_id).lease_expires_at) > Date.now(), 'preparation must retain a live lease beyond its original 30 seconds');
+  } finally { resume(); }
+  await binding;
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+  assert.doesNotThrow(() => runtime.heartbeat(execution.execution_id));
+});
+
+
+test('binding cannot revive an already expired preparation lease', async t => {
+  const { service, runtime, startSession, manager } = await fixture(t);
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect expired preparation ownership', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:expired-preparation' });
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse(execution.lease_expires_at) + 1 });
+  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false }), /lease has expired/);
+  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
+  assert.equal(manager.snapshot().executions.length, 0);
+  assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
+});
