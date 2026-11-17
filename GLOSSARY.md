@@ -58,3 +58,11 @@ _Avoid_: restoring a predecessor's private conversation or computation.
 **Supersession**: An explicit whole-Material replacement by a self-contained successor. Revocation removes the matching active relation while preserving its history.
 
 GitHub development Issues and PRs are engineering records, separate from research Tasks and Missions. The word “goal” may describe an objective inside a Mission or Task; it does not name an additional runtime object.
+
+## Task design vocabulary — Issue #137 draft
+
+These definitions capture the [Issue #137 discussion](https://github.com/LuNa-shi/SwarmEnv/issues/137); they do not describe implemented interface changes.
+
+**Mission gap**: A missing result, capability or understanding that a Task is intended to address in support of the Mission, including by solving a local problem. Its contribution may be indirect or exploratory and does not require a complete route to Mission acceptance.
+
+**Task priority**: An advisory judgment of the relative value of investing the next available computation in a Task, given the current Mission state and available evidence. It informs a Bot's choice without compelling it and can change as results, uncertainties and alternative routes change.
