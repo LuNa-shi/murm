@@ -50,7 +50,7 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   });
   const missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'default-public') });
   await missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-default', initialFiles: { 'input.txt': 'public project input' } });
-  const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-default', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, agentAdapter: {}, ...runtimeOptions });
+  const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-default', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, ...runtimeOptions });
   t.after(async () => { await runtime.missionSubmissionStore?.stop({ missionId: 'mission:bots' }); await runtime.shutdown(); service.close(); await rm(root, { recursive: true, force: true }); });
   const startSession = async ({ bot, onSandboxCreated, beforeAgentStart }) => {
     const sandbox = await manager.ensureExecution({ executionId: bot.resource_key, botId: bot.bot_id, onCreated: onSandboxCreated });
@@ -263,17 +263,29 @@ test('an unexpected unbound process exit ends the Bot instead of reviving its id
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
 });
 
+test('Execution binding rejects unregistered owners before preparing a Workspace', async t => {
+  const { service, runtime, manager } = await fixture(t);
+  const task = service.createTask({ mission_id: 'mission:bots', summary: 'Check a rejected legacy launch', expected_output: 'No resource allocation', acceptance_conditions: ['Unregistered launch denied'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: 'agent:unregistered', core_id: 'core-1', take_key: 'legacy-binding' });
+  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, { stop() {} }, { coreId: 'core-1' }), { code: 'NOT_ALLOWED' });
+  assert.equal(service.getExecution(execution.execution_id).state, 'CREATED');
+  assert.equal(service.getExecution(execution.execution_id).workspace_ref, null);
+  assert.equal(manager.snapshot().executions.length, 0);
+  assert.equal(runtime.getActiveProcessCount(), 0);
+});
+
 test('taken Bot keeps its original Sandbox and closes before a successor can use the Core', async (t) => {
   const { service, runtime, manager, startSession, calls } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
   const task = service.createTask({ mission_id: bot.mission_id, summary: 'Inspect a local question', expected_output: 'Reusable note', acceptance_conditions: ['Question answered'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const taken = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:bound' });
+  await assert.rejects(runtime.bindAgentExecution(taken.execution.execution_id, { stop() {} }, { coreId: bot.core_id }), /original Bot Session/);
+  assert.equal(service.getExecution(taken.execution.execution_id).state, 'CREATED');
   await runtime.bindAgentExecution(taken.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
   const execution = service.getExecution(taken.execution.execution_id);
   assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
   assert.equal(manager.snapshot().executions.length, 1);
   assert.equal(calls.filter(call => call.method === 'POST' && call.url.endsWith('/sandboxes')).length, 1);
-  await assert.rejects(runtime.restartSession(execution.execution_id), /cannot replace/);
   service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: bot.bot_id, taskId: task.task_id, executionId: execution.execution_id,
     specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
   await runtime.releaseExecution(execution.execution_id);

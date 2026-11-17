@@ -16,7 +16,7 @@ export async function runPassK(problem, config, options, { runAttempt = runBench
       ...options, runId: `${runId}-attempt-${index + 1}`, attemptIndex: index + 1,
       agentMode: 'solver', cores: 1, startedAt, initialBotStaggerMs: 0,
       botMaxMs: duration, executionTimeoutMs: duration,
-      maxRecoveryAttempts: 0, coordinationPermissions: ['mission_submit'],
+      coordinationPermissions: ['mission_submit'],
     };
     try { return await runAttempt(problem, config, attemptOptions); }
     catch (error) { return writeUnavailableProjectReport(problem, attemptOptions, error); }

@@ -422,9 +422,6 @@ export class IdentityTaskLoop {
   async #handoff(take, context) {
     let result;
     if (typeof this.runExecution === 'function') result = await this.runExecution(take, { ...context, core_id: this.coreId });
-    else if (typeof this.runtime?.runTakenExecution === 'function') result = await this.runtime.runTakenExecution(take.execution, { ...context, coreId: this.coreId });
-    else if (typeof this.runtime?.startTakenExecution === 'function') result = await this.runtime.startTakenExecution(take.execution, { ...context, coreId: this.coreId });
-    else if (typeof this.runtime?.startExecution === 'function') result = await this.runtime.startExecution(take.execution.execution_id, { coreId: this.coreId, sessionReason: 'identity_loop_take' });
     else throw new SwarmEnvError(ERROR_CODES.RUNTIME_HANDOFF_REQUIRED, 'IdentityTaskLoop requires a Runtime handoff after take');
     if (typeof this.runtime?.waitForExecutionRelease === 'function' && take.execution?.execution_id) {
       this.handoffAbortController = new AbortController();

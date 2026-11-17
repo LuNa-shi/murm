@@ -562,7 +562,7 @@
         "docs/architecture/08-prompts.md",
         "docs/architecture/10-service-api-reference.md"
       ],
-      "role": "Provider routing, Pi process arguments, RPC, streaming and Session lifecycle"
+      "role": "Shared provider routing and Pi RPC Session transport; OpenSandbox owns research startup"
     },
     {
       "path": "src/agent/responses-budget-gateway.js",
@@ -1094,7 +1094,7 @@
         "docs/architecture/08-prompts.md",
         "docs/architecture/10-service-api-reference.md"
       ],
-      "role": "Binding, physical process/capacity ownership, fencing, recovery and rotation"
+      "role": "Registered Bot binding, physical resource ownership, failure cleanup, fencing and rotation"
     },
     {
       "path": "src/runtime/sandbox-manager.js",
@@ -1104,17 +1104,6 @@
         "docs/architecture/09-known-boundaries.md"
       ],
       "role": "Docker image/container lifecycle, bounded command transport and job registry"
-    },
-    {
-      "path": "src/runtime/scheduler.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Retained standalone scheduler API and compatibility tests; not benchmark selector"
     },
     {
       "path": "src/runtime/task-controller.js",

@@ -10,9 +10,9 @@ The complete prompt bodies, composition branches and delivery evidence are in [0
 |---|---|---|
 | Core | Benchmark `core-N` record and its Runtime/identity-loop slot | It persists across ordinary Task claims and releases within the run |
 | Bot | Durable `bots` row registered before Sandbox/Pi creation; owns zero or one Execution | A closed Bot is never reused; the next run on the Core gets a fresh Bot ID |
-| Session | `AgentCoreSession`, wrapping one Pi process, RPC stream and conversation storage | The registered Bot keeps this Session from discovery through its sole Task; compatibility callers without Bot registration retain historical restart paths |
+| Session | `AgentCoreSession`, wrapping one Pi process, RPC stream and conversation storage | The registered Bot keeps this Session from discovery through its sole Task; a successor gets a new Bot and Session |
 | Task | Durable responsibility owned by Task Service | Take, semantic completion, block or close |
-| Execution | Durable authority for an attempt: Task ID, owner, Core, lease, fencing version and Workspace | Ends at a lifecycle boundary; only unregistered compatibility recovery may restart a Session under the same ID |
+| Execution | Durable authority for an attempt: Task ID, owner, Core, lease, fencing version and Workspace | Ends at a lifecycle boundary; Runtime never replaces the Session under the same Execution |
 | Capability profile | Normalized Registry/Runtime description for `bound` or `recovery` | Built from Registry revision and the deployment capability list; it is not a Task take |
 
 An unbound registered Bot still uses role `bound`. There is no separate `idle` role in `AGENT_ROLES`; the exported idle/generic/recovery prompt aliases contain the same stable instructions. Role `bound` therefore does not prove that an Execution exists. The Bridge checks the binding separately. [Sources: capability-profile](../../src/agent/capability-profile.js), [Bridge](../../src/agent/services-bridge.js), [benchmark](../../src/benchmark/putnam-runner.js).
@@ -21,9 +21,9 @@ An unbound registered Bot still uses role `bound`. There is no separate `idle` r
 
 ### 2.1 Adapter configuration and routing
 
-`AgentCoreAdapter` accepts command, provider, model, account/group routing, Session directory, extension path, working directory, environment, version overrides and a system-prompt string or file. `executionId`, `sessionId`, provider, model and Session directory must be nonempty strings when launch arguments are built. The benchmark registers a Bot first and uses its `resource_key` to start the worker. Its observation context has null Task/Execution IDs until binding; this resource key is not an Execution.
+`OpenSandboxAgentAdapter` is the research-process adapter. Its configuration includes the sandbox manager, command/provider/model routing, worker environment, model access and pinned Bot or solver resources. Runtime registers a Bot first; its `resource_key` identifies the worker before any Task/Execution exists. `AgentCoreSession` supplies RPC/event/stop behavior over the remote child transport, and `resolveAgentCoreRoute` supplies provider placement. These shared helpers remain in `pi-adapter.js`; there is no local-process launch adapter or direct Runtime launch alternative.
 
-The generic compatibility adapter retains its historical `nurouter` default. The benchmark runner defaults to direct `pi`, including its Issue 119 OpenSandbox route; the shipped OpenSandbox image carries the native Pi provider catalog without NuRouter. A programmatic caller may override the command, but a compatibility command then needs a matching image. A command equal to `pi`, or ending in `/pi`, is treated as direct Pi.
+The benchmark defaults to direct `pi`; the shipped image carries the native Pi provider catalog without NuRouter. A programmatic remote-adapter command override requires a matching image. A command equal to `pi`, or ending in `/pi`, is treated as direct Pi. The retained route helper rejects unknown providers and incompatible account/group selectors before worker creation.
 
 | Provider | Provider/model flags are placed on | Additional constraint |
 |---|---|---|
@@ -36,30 +36,11 @@ The generic compatibility adapter retains its historical `nurouter` default. The
 
 The direct-Pi command check and provider-placement table are separate mechanisms. Selecting direct Pi with a provider whose flags belong to NuRouter does not move those flags automatically. Use the recorded launch arguments to establish what a run invoked.
 
-The local compatibility adapter's Pi argument sequence includes (the registered OpenSandbox argv is described in §2.4):
-
-```text
---mode rpc
---session-dir <SESSION_DIR>
---session-id <SESSION_ID>
-[--extension <SWARMENV_EXTENSION_PATH>]
---no-builtin-tools
---no-skills
---no-prompt-templates
---no-context-files
-[--append-system-prompt <SYSTEM_PROMPT_FILE>]
-[--provider <PI_PROVIDER> --model <MODEL>]
-```
-
-Brackets denote conditional arguments. On the NuRouter path, `pi`, optional NuRouter provider/model/account/group flags and `--` precede these arguments. The process receives piped stdin/stdout/stderr, the selected working directory and a copied environment. Disabling built-in tools, skills, templates and context files prevents automatic loading of development-repository instructions into a research identity. Research capabilities are registered by the explicit SwarmEnv extension. This does not remove Pi's own base system prompt. [Source: pi-adapter](../../src/agent/pi-adapter.js).
-
-Adapter selection matters. With an enabled OpenSandbox provider, the runner constructs `OpenSandboxAgentAdapter`; its launch arguments retain `--no-builtin-tools` and the explicit extension, without the subclass's `--no-tools`, exact-name allowlist or `--exclude-tools parallel` additions. On the compatibility route, when no custom adapter factory is supplied, `BenchmarkAgentCoreAdapter` replaces `--no-builtin-tools` with `--no-tools`, adds `--thinking high`, supplies `--tools <comma-separated exact SwarmEnv tool names>`, and adds `--exclude-tools parallel`. That allowlist is the union of the bound/recovery profiles. These are separate current launch paths; the four-tool contract in phase 02 is a target design, not evidence that either adapter has already enabled it. [Sources: benchmark adapter selection](../../src/benchmark/putnam-runner.js), [OpenSandbox adapter](../../src/agent/opensandbox-agent-adapter.js).
+The registered OpenSandbox argument list, resource attestation and tool exposure are described in §2.4. Startup always uses that adapter; there is no custom local adapter factory or fallback that changes tool permissions. [Sources: benchmark composition](../../src/benchmark/putnam-runner.js), [OpenSandbox adapter](../../src/agent/opensandbox-agent-adapter.js).
 
 ### 2.2 System instructions and version records
 
-For a nonempty system-prompt string, the adapter writes `identity-system-prompt.md` in the Session directory with creation mode `0600` and passes its path through `--append-system-prompt`. An explicit `systemPromptPath` takes precedence for the path. This is a Pi system-role addendum, not an ordinary user RPC. Its [complete body](prompts/01-system-identity.md) is versioned separately from dynamic composition.
-
-The local compatibility adapter can supply this addendum. Registered OpenSandbox startup always selects `BOT_SYSTEM_PROMPT` and validates the baked-in system resource and four skill hashes. It rejects a different custom system prompt or Service extension; null configuration does not disable the contract. The worker passes the fixed resource through Pi's append-system mechanism. The earlier provider incompatibility is historical, not the current default. Actual delivery remains an evidence question; see [Prompts](08-prompts.md).
+Registered OpenSandbox startup selects the pinned Bot system resource and four skill resources, or the solver resource in explicit solver mode. It rejects an unrecognized custom system prompt or Service extension; null configuration does not disable attestation. The worker passes the selected immutable file through Pi’s system-role append mechanism. No host-local adapter writes a replacement identity file. The [complete bodies](prompts/01-system-identity.md) are distinct from ordinary user RPC messages.
 
 Before spawning, `createVersionManifest` records exact installed Pi and Node versions (NuRouter is optional for compatibility adapters) and launch arguments. Explicit constructor values win; environment overrides `SWARMENV_PI_VERSION`/`SWARMENV_NUROUTER_VERSION` are next; otherwise the executable's `--version` is queried. The NuRouter field is null on direct-Pi runs and only resolved for compatibility adapters. It rejects non-exact semantic versions. Normal startup does not query npm; the exported latest-version lookup is a separate utility. `package.json` pins Pi package `1.3.0`, while the recorded executable version is the evidence for an actual run. [Source: version-manifest](../../src/agent/version-manifest.js).
 
@@ -89,7 +70,7 @@ The adapter also owns failed startup before a Session can be returned. It tracks
 4. **Create the durable take.** The Bridge authenticates its own actor/Core, strips caller-provided owner and prompt claims, and invokes Task Service. A rejected take remains a failed take. The identity supervisor only accepts the actual transport receipt; it cannot turn a selected Task ID into an operator take.
 5. **Bind the existing Session.** The Bridge stores returned IDs; the runner hook prepares Workspace in the existing Bot Sandbox, validates that the original Session is still live, activates Execution durably and registers the process. `sendInitialPrompt:false` avoids a second prompt inside the discovery turn. The tool result returns to that same turn with Runtime's activated Execution and prepared Workspace descriptor. Task Service's durable reservation receipt remains separate from the post-preparation response.
 6. **Continue research on that lane.** After a turn settles, the runner can send another bound continuation if Execution is still `RUNNING`. Reading, checking or publishing a Material does not release the lane by itself.
-7. **Release at a lifecycle boundary.** Completion, valid typed block or Runtime-requested handoff changes durable state and triggers cleanup. With the default `freshBotPerExecution:true`, cleanup stops the Session; the next Bot starts fresh. Registered Bots always close their sole Session. For unregistered callers, the explicitly configured false compatibility path can retain a reusable Session and recovery/rotation can replace a Session inside one Execution.
+7. **Release at a lifecycle boundary.** Accepted Finish or Runtime stop retains ownership while the Session, Sandbox and Workspace are cleaned. The registered Bot closes its sole Session; a later responsibility starts a fresh Bot/Execution from public state.
 
 The runner suppresses discovery when the Core has a Task/Execution or an active turn. Before replacing a closed or failed unbound Session, it calls `stop()` even if the RPC transport is already closed; failed deletion retains the Session and prevents another startup. It records `take_deferred` for transient races rather than consuming another attempt. Selection, taking, process binding and settlement are separate steps, so failures must be attributed to the correct step. [Sources: benchmark](../../src/benchmark/putnam-runner.js), [identity loop](../../src/runtime/identity-task-loop.js), [Runtime](../../src/runtime/runtime.js).
 
@@ -97,7 +78,7 @@ In this manual, “candidate” refers only to a mathematical result file inside
 
 ### A composed prompt is not necessarily a sent prompt
 
-The normal take path can emit `runtime.initial_prompt_composed` while `sendInitialPrompt` is false. It therefore does **not** necessarily send the complete composer output, including full `Authorized Service Documentation`, to that Session. The extension's tool descriptions, schemas and short guidance are a different input surface. Runtime start/restart/recovery paths can send fuller composition. Some also compose a snapshot and then wrap the whole snapshot in a second Mission context. These distinctions are detailed in [08](08-prompts.md); the exported `buildInitialPromptBundle` helper is not proof of production delivery.
+The normal take path can emit `runtime.initial_prompt_composed` while `sendInitialPrompt` is false. It therefore does **not** necessarily send the complete composer output, including full `Authorized Service Documentation`, to that Session. The extension's tool descriptions, schemas and short guidance are a different input surface. An explicitly requested registered bind prompt can send fuller composition. Some also compose a snapshot and then wrap the whole snapshot in a second Mission context. These distinctions are detailed in [08](08-prompts.md); the exported `buildInitialPromptBundle` helper is not proof of production delivery.
 
 ## 4. How a callable tool is built
 

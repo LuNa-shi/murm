@@ -253,7 +253,7 @@ export function observedEligibleWorkCount(state, readyTasks) {
 
 function isPhysicallyAvailableCore(core) {
   return !core.taskId && !core.turnInFlight && !core.dispatchReserved && !core.stopping &&
-    !core.recoveryInFlight && (core.runtime?.getActiveProcessCount?.() ?? 0) === 0;
+    (core.runtime?.getActiveProcessCount?.() ?? 0) === 0;
 }
 
 function observeReadyTasks(state, tasks, at = Date.now()) {
@@ -301,15 +301,6 @@ function required(value, name) {
 
 function sdk(router, context) {
   return new ServicesSDK(router, context);
-}
-
-function taskContext(router, task, actorRef) {
-  return sdk(router, {
-    actorRef,
-    taskId: task.task_id,
-    specVersion: task.spec_version,
-    stateVersion: task.state_version,
-  });
 }
 
 function fixtureManifest(problem, sourceHash, leanProjectRoot, config) {
@@ -550,60 +541,6 @@ async function startAgentSession(core) {
   core.initialTurnPromise = null;
 }
 
-function attachRecoveredSession(core, { execution, session }) {
-  if (!session || core.session === session) return;
-  const turnStartedAt = Date.now();
-  // A Runtime recovery can race with the old runTurn finally block or with a
-  // scheduler tick that observed the old Session as idle. Close whichever
-  // Agent-time interval is currently open before assigning the replacement.
-  // endAgentTurn is idempotent when no interval is open.
-  core.parallelism.endAgentTurn(core.index, turnStartedAt, 'session_recovery');
-  session.identitySession = true;
-  core.session = session;
-  core.sessionHistory.push(session);
-  core.sessionRecoveryCount = (core.sessionRecoveryCount ?? 0) + 1;
-  core.versionManifest = session.manifest ?? core.versionManifest;
-  core.recoveryInFlight = true;
-  core.turnInFlight = true;
-  core.turnStartedAt = turnStartedAt;
-  core.parallelism.beginAgentTurn(core.index, {
-    task_id: execution.task_id,
-    execution_id: execution.execution_id,
-    reason: 'session_recovery',
-  }, turnStartedAt);
-  core.agentTurnSession = session;
-  const afterSequence = session.rpcRecords?.length ?? 0;
-  void (async () => {
-    try {
-      await session.waitForSettled?.({
-        timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000),
-        afterSequence,
-      });
-    } catch (error) {
-      const expectedHandoff = session.expectedStop || core.session !== session || core.stopping;
-      if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'recovery_turn_error' });
-    } finally {
-      const now = Date.now();
-      collectToolEvents(core, session.rpcRecords ?? []);
-      if (core.agentTurnSession === session) {
-        core.parallelism.endAgentTurn(core.index, now, 'session_recovery_settled');
-        core.agentTurnSession = null;
-      }
-      if (core.session === session) {
-        core.recoveryInFlight = false;
-        if (core.runtime.hasActiveExecution(execution.execution_id)) {
-          core.turns += 1;
-          core.turnInFlight = false;
-          core.nextTurnAt = now;
-        } else {
-          core.turnInFlight = false;
-        }
-      }
-      core.stateRef?.requestIdentityWake?.();
-    }
-  })();
-}
-
 export async function ensureAgentSession(core) {
   try {
     if (core.releasedSession) {
@@ -624,7 +561,7 @@ export async function ensureAgentSession(core) {
   // A failed retired take can clear the bridge binding after the transport
   // Session has already been replaced. Repair the stale local occupancy when
   // no Session, Task, Execution, recovery, or handoff promise remains.
-  if (core.turnInFlight && !core.session && !core.taskId && !core.executionId && !core.boundTurnPromise && !core.recoveryInFlight) {
+  if (core.turnInFlight && !core.session && !core.taskId && !core.executionId && !core.boundTurnPromise) {
     core.turnInFlight = false;
   }
   if (!discoveryOpen(core) || core.turnInFlight) return false;
@@ -1202,7 +1139,6 @@ export function projectReport(state, startedAt, deadline) {
       turn_durations_ms: core.turnDurationsMs,
       turn_timeout_count: core.turnTimeoutCount,
       session_count: core.sessionHistory.length,
-      session_recovery_count: core.sessionRecoveryCount,
       checks: core.checks,
       errors: core.errors,
       cheating_flags: core.cheatingFlags,
@@ -1963,76 +1899,18 @@ async function createProjectState(problem, config, options) {
         workspaceProjectCheck: Boolean(projectChecker),
         workspaceMergeChecker,
         coordinationPermissions: options.coordinationPermissions ?? config.mission_coordination_permissions ?? [],
-        agentAdapter: adapter,
         runtimeCapabilities,
         sandboxManager,
-        cleanExecutionWorkspaces: true,
-        freshBotPerExecution: true,
         capabilityRegistry,
         maxWorkers: 1,
         coreIds: [`core-${index}`],
         actorRef: `runtime:core-${index}`,
         watchdogTimeoutMs: options.watchdogTimeoutMs,
-        // Keep transient provider/session failures on the same durable
-        // Execution. Fencing after one retry lets a recovered identity start a
-        // second Task and invalidates a bounded formal run.
-        maxRecoveryAttempts: solver ? 0 : options.maxRecoveryAttempts ?? 5,
         // Execution, Task, Bot and Mission limits intersect. Bot lifetime starts
         // before discovery and cannot reset when take becomes active.
         executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
         handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
         logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
-        agentLogger: new DurableEventLog(join(logRoot, 'agents', `core-${index}.ndjson`), { raw: true, scope: `agent:core-${index}` }),
-        onSessionStarted: ({ execution, session, recovery }) => {
-          if (recovery) {
-            // Recovery reuses the durable Execution. Restore the benchmark's
-            // local binding before the recovered prompt can issue any tool call;
-            // otherwise a late runTurn cleanup can make the Bridge look unbound
-            // and the model may create a second Execution with task_take.
-            const recoveredTask = taskService.getTask(execution.task_id);
-            core.taskId = execution.task_id;
-            core.executionId = execution.execution_id;
-            core.take = recoveredTask ? { task: recoveredTask, execution } : { task: { task_id: execution.task_id }, execution };
-            if (core.bridge && (!core.bridge.taskId || core.bridge.taskId === execution.task_id)) {
-              core.bridge.taskId = execution.task_id;
-              core.bridge.executionId = execution.execution_id;
-              core.bridge.role = AGENT_ROLES.BOUND;
-              core.bridge.capabilityProfile = null;
-              core.bridge.capabilityProfileRegistryRevision = null;
-            }
-            attachRecoveredSession(core, { execution, session });
-            return;
-          }
-          if (core.executionId !== execution.execution_id || core.session === session) return;
-          // Explicit identity rotation replaced the Session in the same
-          // Execution. Runtime has already sent the initial prompt; track the
-          // replacement so the next idle wake does not start a competing turn.
-          session.identitySession = true;
-          core.session = session;
-          core.sessionHistory.push(session);
-          core.versionManifest = session.manifest ?? core.versionManifest;
-          core.turnInFlight = true;
-          core.agentTurnSession = session;
-          core.sessionRotationCount = (core.sessionRotationCount ?? 0) + 1;
-          void (async () => {
-            try {
-              await session.waitForSettled?.({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000) });
-            } catch (error) {
-              const expected = session.expectedStop || core.session !== session || core.stopping;
-              if (!expected) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'rotation_turn_error' });
-            } finally {
-              if (core.agentTurnSession === session) {
-                core.parallelism.endAgentTurn(core.index, Date.now(), 'identity_rotation_settled');
-                core.agentTurnSession = null;
-              }
-              if (core.session === session) {
-                core.turnInFlight = false;
-                core.nextTurnAt = Date.now();
-              }
-              core.stateRef?.requestIdentityWake?.();
-            }
-          })();
-        },
       });
       const core = {
         index,
@@ -2055,10 +1933,8 @@ async function createProjectState(problem, config, options) {
         waitingExecutionId: null,
         sessionHistory: [],
         sessionNumber: 0,
-        sessionRecoveryCount: 0,
         startConfig: { problem, logRoot, options },
         turnInFlight: false,
-        recoveryInFlight: false,
         agentTurnSession: null,
         turnPromise: null,
         initialTurnPromise: null,
@@ -3123,7 +2999,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
           }
           const active = state.cores.filter(core => core.executionId && state.taskService.getExecution(core.executionId)?.state === 'RUNNING');
           if (!active.length || remaining <= 0) break;
-          for (const core of active) if (!core.turnInFlight && !core.recoveryInFlight) {
+          for (const core of active) if (!core.turnInFlight) {
             scheduleTurn(core, continuation(core), Math.min(turnTimeoutMs, remaining));
           }
           continue;
@@ -3150,7 +3026,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
         await withinRunDeadline(state, () => state.controller.reconcile({ reason: reconcileReason }), deadline);
         for (const core of state.cores) {
           if (state.solvedAt !== null) break;
-          if (!core.turnInFlight && !core.recoveryInFlight && Date.now() < deadline && state.solvedAt === null) {
+          if (!core.turnInFlight && Date.now() < deadline && state.solvedAt === null) {
             const bound = Boolean(core.taskId);
             if (bound) scheduleTurn(core, basePrompt(core), turnTimeoutMs);
           }

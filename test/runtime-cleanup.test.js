@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { EventEmitter, once } from 'node:events';
 import { createServer } from 'node:http';
-import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -9,6 +9,8 @@ import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { TaskController } from '../src/runtime/task-controller.js';
 import { Runtime } from '../src/runtime/runtime.js';
+import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
+import { BOT_PROTOCOL_VERSION, BOT_RESOURCES } from '../src/agent/bot-contract.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { ServicesBridge } from '../src/agent/services-bridge.js';
@@ -24,12 +26,12 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function fixture(t, { removeSandbox = async () => new Response('{}'), bind = true, runtimeOptions = {} } = {}) {
+async function fixture(t, { removeSandbox = async () => new Response('{}'), bind = true, start = true, runtimeOptions = {} } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-cleanup-'));
   const service = new TaskService();
   let sandboxDeleted = false;
   const sandboxManager = createOpenSandboxManager({
-    lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
+    lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test', waitForExecdReady: false,
     fetchImpl: async (url, options) => {
       if (options.method === 'DELETE') {
         const response = await removeSandbox();
@@ -39,25 +41,40 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), bind
       if (sandboxDeleted && url.endsWith('/sandboxes/sandbox-test')) return new Response('{}', { status: 404 });
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: 'sandbox-test' }), { status: 202 });
       if (url.includes('/endpoints/')) return new Response(JSON.stringify({ url: 'http://execd.test' }));
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } }));
+      if (url.includes('/project/')) {
+        const input = JSON.parse(options.body);
+        return new Response(JSON.stringify({ result: { state: url.endsWith('/prepare') ? 'PREPARED' : 'ACTIVE', execution_id: input.execution_id, binding_version: input.binding_version } }));
+      }
       if (url.endsWith('/command')) return new Response('event: execution_complete\ndata: {"exit_code":0}\n\n');
       return new Response('{}');
     },
   });
-  const runtime = new Runtime({ taskService: service, workspaceManager: new WorkspaceManager({ rootDir: root }), agentAdapter: {}, sandboxManager, ...runtimeOptions });
+  const missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'public') });
+  await missionWorkspace.create({ missionId: 'mission:cleanup', workspaceId: 'workspace-cleanup', initialFiles: { 'input.txt': 'public input' } });
+  const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-cleanup', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager, ...runtimeOptions });
   t.after(async () => {
     await runtime.shutdown();
     service.close();
     await rm(root, { recursive: true, force: true });
   });
-  const envelope = () => makeEnvelope({ actorRef: 'bot:cleanup' });
+  const envelope = () => makeEnvelope({ actorRef: 'operator:cleanup' });
   service.dispatch('mission.create', { mission_id: 'mission:cleanup', goal: 'Verify safe Core reuse' }, envelope());
   const task = service.dispatch('task.create', { mission_id: 'mission:cleanup', summary: 'Inspect one local result', goal: 'Inspect one local result', expected_output: 'Inspection note', acceptance_conditions: ['Note records the inspection'] }, envelope()).task;
-  const take = service.takeTask(task.task_id, { owner_ref: 'bot:cleanup', core_id: 'core-1', take_key: 'take:cleanup', workspace_mode: 'clean' });
   // The model process is the external boundary. Task Service, Runtime,
   // Workspace and the OpenSandbox protocol adapter are real collaborators.
   const session = new EventEmitter();
   session.closed = false;
+  session.waitForReady = async () => {};
   session.stop = async () => { session.closed = true; session.emit('close'); };
+  const startSession = async ({ bot, onSandboxCreated, beforeAgentStart }) => {
+    await sandboxManager.ensureExecution({ executionId: bot.resource_key, botId: bot.bot_id, onCreated: onSandboxCreated });
+    await sandboxManager.startAgent({ executionId: bot.resource_key, command: 'controlled-session', args: [], beforeAgentStart });
+    return session;
+  };
+  if (!start) return { service, runtime, sandboxManager, session, startSession };
+  const { bot } = await runtime.startBot({ missionId: 'mission:cleanup', coreId: 'core-1', startSession });
+  const take = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:cleanup' });
   if (bind) await runtime.bindAgentExecution(take.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
   return { service, runtime, sandboxManager, session, executionId: take.execution.execution_id };
 }
@@ -75,7 +92,7 @@ test('Runtime retains Core occupancy until provider deletion is confirmed', asyn
   const removing = deferred();
   const removed = deferred();
   const { runtime, executionId } = await fixture(t, { removeSandbox: async () => { removing.resolve(); await removed.promise; return new Response('{}'); } });
-  const release = runtime.releaseExecution(executionId);
+  const release = runtime.stopExecution(executionId);
   try {
     await removing.promise;
     assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
@@ -94,15 +111,15 @@ test('failed provider deletion retains cleanup ownership and a later retry relea
   let fail = true;
   const { runtime, sandboxManager, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
   try {
-    await assert.rejects(runtime.releaseExecution(executionId), (error) => error.code === 'SERVICE_UNAVAILABLE');
+    await assert.rejects(runtime.stopExecution(executionId), (error) => error.code === 'SERVICE_UNAVAILABLE');
     assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
     assert.equal(runtime.hasActiveExecution(executionId), true);
     assert.equal(sandboxManager.snapshot().executions.length, 1);
   } finally { fail = false; }
-  await runtime.releaseExecution(executionId);
+  await runtime.stopExecution(executionId);
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
   assert.equal(sandboxManager.snapshot().executions.length, 0);
-  await runtime.releaseExecution(executionId);
+  await runtime.stopExecution(executionId);
 });
 
 test('a model process that fails to stop keeps its Core occupied for cleanup retry', async (t) => {
@@ -110,11 +127,11 @@ test('a model process that fails to stop keeps its Core occupied for cleanup ret
   const stop = session.stop;
   session.stop = async () => { throw new Error('process still alive'); };
   try {
-    await assert.rejects(runtime.releaseExecution(executionId), /process still alive/);
+    await assert.rejects(runtime.stopExecution(executionId), /process still alive/);
     assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
     assert.equal(runtime.hasActiveExecution(executionId), true);
   } finally { session.stop = stop; }
-  await runtime.releaseExecution(executionId);
+  await runtime.stopExecution(executionId);
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
@@ -157,7 +174,7 @@ test('lease expiry retains a closing Core on deletion failure until cleanup retr
     assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
     assert.equal(runtime.hasActiveExecution(executionId), true);
   } finally { fail = false; }
-  await runtime.releaseExecution(executionId);
+  await runtime.sweepExpired(expires);
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
@@ -250,13 +267,13 @@ test('Workspace release retries after primary metadata succeeded but revision me
   await rename(revisions, backup);
   await writeFile(revisions, 'temporarily unavailable');
   try {
-    await assert.rejects(runtime.releaseExecution(executionId));
+    await assert.rejects(runtime.stopExecution(executionId));
     assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
   } finally {
     await rm(revisions);
     await rename(backup, revisions);
   }
-  await runtime.releaseExecution(executionId);
+  await runtime.stopExecution(executionId);
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
@@ -270,7 +287,7 @@ test('timebox expiry holds Task ownership until both worker and sandbox are isol
     assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
   } finally { fail = false; }
   await runtime.sweepExecutionTimeouts(deadline);
-  assert.equal(service.getExecution(executionId).state, 'EXPIRED');
+  assert.equal(service.getExecution(executionId).state, 'FAILED');
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
@@ -278,24 +295,11 @@ test('an accepted asynchronous provider deletion is not yet a free Core', async 
   let pending = true;
   const { runtime, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: pending ? 202 : 200 }) });
   try {
-    await assert.rejects(runtime.releaseExecution(executionId), (error) => error.code === 'SERVICE_UNAVAILABLE');
+    await assert.rejects(runtime.stopExecution(executionId), (error) => error.code === 'SERVICE_UNAVAILABLE');
     assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
   } finally { pending = false; }
-  await runtime.releaseExecution(executionId);
+  await runtime.stopExecution(executionId);
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
-test('explicit restart stops even a compatibility reusable Session before starting its replacement', async (t) => {
-  const { runtime, session, executionId } = await fixture(t);
-  runtime.freshBotPerExecution = false;
-  session.identitySession = true;
-  const replacement = new EventEmitter();
-  replacement.closed = false;
-  replacement.stop = async () => { replacement.closed = true; };
-  runtime.agentAdapter = { start: async () => replacement };
-  await runtime.restartSession(executionId);
-  assert.equal(session.closed, true);
-  assert.equal(replacement.closed, false);
 });
 
 test('closing lease expiry rejects Runtime heartbeat and does not enter watchdog recovery', async (t) => {
@@ -326,35 +330,31 @@ test('benchmark does not discard a closed unbound Session whose sandbox still ne
   assert.equal(core.session, null);
 });
 
-test('manifest persistence failure after process launch still stops the newly created process', async (t) => {
-  const { runtime, session, executionId } = await fixture(t, { bind: false });
-  runtime.agentAdapter = { start: async ({ cwd }) => {
-    await rm(join(cwd, 'runtime-manifest.json'), { force: true });
-    await mkdir(join(cwd, 'runtime-manifest.json'));
-    return session;
-  } };
-  await assert.rejects(runtime.startExecution(executionId));
-  assert.equal(session.closed, true);
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
-test('Runtime shutdown joins a process launch that has not yet registered its Session', async (t) => {
-  const { runtime, session, service, executionId } = await fixture(t, { bind: false });
+test('Runtime shutdown retains a late registered Session and cleans it when startup settles', async (t) => {
+  const { runtime, session, service, startSession } = await fixture(t, { start: false });
   const entered = deferred();
   const finishStart = deferred();
-  runtime.agentAdapter = { start: async () => { entered.resolve(); await finishStart.promise; return session; } };
-  const starting = runtime.startExecution(executionId);
-  const rejected = assert.rejects(starting, /stopped/);
+  let botId;
+  const starting = runtime.startBot({ missionId: 'mission:cleanup', coreId: 'core-1', startSession: async options => {
+    botId = options.bot.bot_id;
+    const started = await startSession(options);
+    entered.resolve();
+    await finishStart.promise;
+    return started;
+  } });
+  const rejected = assert.rejects(starting, /stopp/i);
   await entered.promise;
-  let shutdownFinished = false;
-  const shuttingDown = runtime.shutdown().then(result => { shutdownFinished = true; return result; });
+  try {
+    await runtime.shutdown();
+    assert.equal(service.getBot(botId).state, 'CLOSING');
+    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
+  } finally { finishStart.resolve(); }
+  await rejected;
   await new Promise(resolve => setImmediate(resolve));
-  assert.equal(shutdownFinished, false);
-  finishStart.resolve();
-  const [, result] = await Promise.all([rejected, shuttingDown]);
+  await runtime.shutdown();
   assert.equal(session.closed, true);
-  assert.equal(result.active_process_count, 0);
-  assert.equal(service.getExecution(executionId).state, 'FAILED');
+  assert.equal(service.getBot(botId).state, 'CLOSED');
+  assert.equal(service.listActiveExecutions().length, 0);
 });
 
 test('benchmark startup join shares cleanup grace and reports a still-pending launch', async (t) => {
@@ -455,26 +455,25 @@ test('finish accepted during an existing release is finalized before its Core is
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
-for (const trigger of ['restart', 'process_exit', 'fence']) {
-  test(`finish wins safely while ${trigger} awaits physical isolation`, async (t) => {
+for (const trigger of ['process_exit', 'fence']) {
+  test(`a registered ${trigger} stop rejects late finish while retaining physical cleanup`, async (t) => {
     const removing = deferred();
     const removed = deferred();
     const { service, runtime, session, executionId } = await fixture(t, { removeSandbox: async () => { removing.resolve(); await removed.promise; return new Response('{}'); } });
-    let pending;
-    if (trigger === 'restart') pending = runtime.restartSession(executionId);
-    else if (trigger === 'fence') pending = runtime.fenceExecution(executionId);
-    else { session.closed = true; session.emit('close'); }
-    // Capture asynchronous rejection before the controlled stop resolves.
-    const completed = pending?.then((value) => ({ value }), (error) => ({ error }));
-    await removing.promise;
-    const execution = service.getExecution(executionId);
-    service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
-      executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
-    removed.resolve();
-    const result = await completed;
+    const pending = trigger === 'fence' ? runtime.fenceExecution(executionId) : null;
+    if (!pending) { session.closed = true; session.emit('close'); }
+    const completed = pending?.then(value => ({ value }), error => ({ error }));
+    try {
+      await removing.promise;
+      const execution = service.getExecution(executionId);
+      assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
+      assert.throws(() => service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
+        executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version })), error => error.code === 'NOT_ALLOWED');
+    } finally { removed.resolve(); }
+    assert.equal((await completed)?.error, undefined);
+    await runtime.waitForSettled();
     await runtime.releaseExecution(executionId);
-    assert.equal(result?.error, undefined);
-    assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
+    assert.equal(service.getExecution(executionId).state, trigger === 'fence' ? 'FENCED' : 'FAILED');
     assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
   });
 }

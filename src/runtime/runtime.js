@@ -1,11 +1,10 @@
-import { join } from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../agent/capability-profile.js';
 import { assertNewExecutionWork } from '../task/execution-budget.js';
-import { buildSolverContinuationMessage, SOLVER_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, buildBotNotification, buildBotContinuationMessage, buildBotSoftCloseoutNotice } from '../agent/bot-contract.js';
-import { BOUND_AGENT_PROMPT, RECOVERY_AGENT_PROMPT, buildPromptSnapshot, composeAgentPrompt } from '../agent/agent-prompt.js';
+import { buildSolverContinuationMessage, BOT_COMPACTION_MESSAGE, buildBotNotification, buildBotContinuationMessage, buildBotSoftCloseoutNotice } from '../agent/bot-contract.js';
+import { BOUND_AGENT_PROMPT, buildPromptSnapshot, composeAgentPrompt } from '../agent/agent-prompt.js';
 import { runtimeCapabilityList } from './runtime-capabilities.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
 import { publishWorkspace } from './workspace-publication.js';
@@ -23,10 +22,7 @@ function operationId(prefix) {
 const DEFAULT_WATCHDOG_TIMEOUT_MS = 120_000;
 const DEFAULT_EXECUTION_TIMEOUT_MS = 60 * 60 * 1000;
 const DEFAULT_HANDOFF_REMINDER_MS = 55 * 60 * 1000;
-const PI_PROJECT_SETTINGS = Object.freeze({
-  compaction: { enabled: true },
-  retry: { enabled: true, maxRetries: 15, baseDelayMs: 2_000, maxAgentDelayMs: 60_000 },
-});
+
 const ACTIVE_SESSION_PHASES = new Set(['turn', 'provider_retry', 'compaction']);
 const providerRecovery = new WeakMap();
 
@@ -138,7 +134,7 @@ function modernTaskPromptProjection(task) {
 }
 
 export class Runtime {
-  constructor({ agentMode = 'swarm', taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, agentAdapter, sandboxManager = null, cleanExecutionWorkspaces = false, freshBotPerExecution = true, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, agentLogger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), maxRecoveryAttempts = 1, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onSessionStarted = null, onCoreEvent = null }) {
+  constructor({ agentMode = 'swarm', taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, capabilityRegistry = null, runtimeCapabilities = runtimeCapabilityList(), finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, compactionCheckpointReminder = true, clock = () => Date.now(), onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -160,7 +156,6 @@ export class Runtime {
     this.workspaceMergeChecker = workspaceMergeChecker ? { identity: Object.freeze(structuredClone(workspaceMergeChecker.identity)),
       timeoutMs: workspaceMergeChecker.timeoutMs, check: workspaceMergeChecker.check.bind(workspaceMergeChecker) } : null;
     this.activeWorkspaceCheck = null;
-    this.agentAdapter = agentAdapter;
     this.sandboxManager = sandboxManager;
     if (sandboxManager) {
       if (!providerRecovery.has(sandboxManager)) providerRecovery.set(sandboxManager, { owners: new Map(), tail: null });
@@ -172,19 +167,15 @@ export class Runtime {
       taskService.setWorkspaceDeliveryReader(({ missionId, workspaceId, revision }) => workspaceId === missionWorkspaceId
         ? missionWorkspace.readDeliveryRevision({ workspaceId, missionId, revision }) : null);
     }
-    this.cleanExecutionWorkspaces = cleanExecutionWorkspaces === true;
-    this.freshBotPerExecution = freshBotPerExecution === true;
     this.maxWorkers = maxWorkers;
     this.runtimeGeneration = runtimeGeneration;
     this.actorRef = actorRef;
     this.logger = logger;
-    this.agentLogger = agentLogger;
     this.capabilityRegistry = capabilityRegistry;
     // Never advertise a capability the deployment cannot execute. Sandbox
     // tools are visible only when a Sandbox manager is bound.
     this.runtimeCapabilities = (runtimeCapabilities ?? runtimeCapabilityList())
       .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
-    this.maxRecoveryAttempts = maxRecoveryAttempts;
     if (!Number.isFinite(finishCleanupRetryMs) || finishCleanupRetryMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'finishCleanupRetryMs must be positive');
     if (!Number.isInteger(maxFinishCleanupRetries) || maxFinishCleanupRetries < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maxFinishCleanupRetries must be a non-negative integer');
     this.finishCleanupRetryMs = finishCleanupRetryMs;
@@ -202,7 +193,6 @@ export class Runtime {
     this.setRunDeadline(runDeadlineAt);
     this.compactionCheckpointReminder = compactionCheckpointReminder === true;
     this.clock = clock;
-    this.onSessionStarted = onSessionStarted;
     this.onCoreEvent = onCoreEvent;
     this.activeProcesses = new Map();
     this.botBindings = new Map();
@@ -220,7 +210,6 @@ export class Runtime {
       ? coreIds
       : Array.from({ length: Math.max(0, maxWorkers) }, (_, index) => `core-${index + 1}`);
     for (const coreId of configuredCoreIds) this.registerCore(coreId);
-    this.recoveryAttempts = new Map();
     this.handoffPromises = new Map();
     this.reminderPromises = new Map();
     this.pendingFailurePromises = new Set();
@@ -1002,20 +991,12 @@ export class Runtime {
   async #ensureSandbox(execution, workspace) {
     if (!this.sandboxManager) return;
     const bot = this.taskService.getBot(execution.owner_ref);
-    if (bot) {
-      if (!workspace?.public_workspace_input) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Sandbox preparation requires pinned public Workspace input');
-      if (bot.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot does not own this Execution');
-      this.sandboxManager.bindBotExecution({ botId: bot.bot_id, executionId: execution.execution_id,
-        workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref, bindingVersion: execution.fencing_version });
-      await this.sandboxManager.syncWorkspace({ executionId: execution.execution_id, workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref, manifest: workspace?.public_workspace_input?.manifest ?? null });
-      if (workspace?.public_workspace_input) await this.sandboxManager.prepareBotProject({ executionId: execution.execution_id, manifest: workspace.public_workspace_input.manifest });
-      return;
-    }
-    await this.sandboxManager.ensureExecution({
-      executionId: execution.execution_id,
-      workspaceRef: workspace?.workspace_ref ?? execution.workspace_ref,
-      bindingVersion: execution.fencing_version,
-    });
+    if (!bot || !workspace?.public_workspace_input) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Sandbox preparation requires pinned public Workspace input');
+    if (bot.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot does not own this Execution');
+    this.sandboxManager.bindBotExecution({ botId: bot.bot_id, executionId: execution.execution_id,
+      workspaceRef: workspace.workspace_ref, bindingVersion: execution.fencing_version });
+    await this.sandboxManager.syncWorkspace({ executionId: execution.execution_id, workspaceRef: workspace.workspace_ref, manifest: workspace.public_workspace_input.manifest });
+    await this.sandboxManager.prepareBotProject({ executionId: execution.execution_id, manifest: workspace.public_workspace_input.manifest });
   }
 
   async #stopSandbox(executionId) {
@@ -1045,78 +1026,14 @@ export class Runtime {
     return starting;
   }
 
-  async startExecution(...args) {
-    return this.#trackStartup(() => this.#startExecution(...args));
-  }
-
-  async #startExecution(executionId, { sessionReason = 'start', coreId = null } = {}) {
-    this.logger?.append({ event: 'runtime.start_execution', execution_id: executionId, session_reason: sessionReason });
-    const execution = this.#getExecution(executionId);
-    if (this.taskService.getBot(execution.owner_ref)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Registered Bot must bind its original Session with bindAgentExecution');
-    if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only start CREATED executions, got ${execution.state}`);
-    if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
-    const selectedCoreId = this.#resolveCoreId(execution, coreId);
-    this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
-    let workspace = null;
-    let current = execution;
-    let startedDurably = false;
-    try {
-      const recoverySession = sessionReason === 'recovery' || sessionReason === 'session_recovery' || sessionReason === 'wake';
-      const freshWorkspace = this.cleanExecutionWorkspaces && !recoverySession;
-      workspace = await this.#prepareWorkspace(execution, null, { fresh: freshWorkspace });
-      // A recovery start restores the already persisted revision. Rewriting
-      // that same revision would violate the Workspace Manager's monotonic
-      // CAS rule.
-      current = execution.workspace_ref && !freshWorkspace ? execution : this.#saveWorkspaceReference(execution, workspace);
-      current = this.taskService.dispatch('start_execution', {
-        ...this.#executionTimingPayload(this.clock(), current),
-        ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
-      }, this.#executionEnvelope(current, operationId('start'))).execution;
-      startedDurably = true;
-      return await this.#launch(current, workspace, { sessionReason, coreId: selectedCoreId });
-    } catch (error) {
-      const active = this.activeProcesses.get(executionId);
-      this.#retainCleanupBinding(executionId, { session: active?.session, workspace, coreId: active?.coreId ?? selectedCoreId });
-      await this.#stopExecutionResources(executionId);
-      if (this.stopping) throw error;
-      const failed = this.#getExecution(executionId);
-      if (!startedDurably && ['CREATED', 'RUNNING'].includes(failed.state)) {
-        await this.fenceExecution(executionId, { reason: 'startup_prepare_failed' }).catch(() => undefined);
-      } else if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
-        this.taskService.dispatch('stop_execution', {
-          terminal_state: 'FAILED',
-          terminal_reason: 'startup_failed',
-        }, this.#executionEnvelope(failed, operationId('start-failed')));
-      }
-      await this.releaseExecution(executionId);
-      throw error;
-    }
-  }
-
-  /**
-   * Start an Execution that has already been selected and taken by a Core
-   * Daemon. The method intentionally accepts no Task filters or ranking
-   * inputs: Task choice belongs to the Daemon and the take is the handoff
-   * boundary.
-   */
-  startTakenExecution(executionOrId, { coreId = null, sessionReason = 'taken' } = {}) {
-    const executionId = typeof executionOrId === 'string' ? executionOrId : executionOrId?.execution_id;
-    requireString(executionId, 'execution_id');
-    return this.startExecution(executionId, { coreId, sessionReason });
-  }
-
-  runTakenExecution(executionOrId, options = {}) {
-    return this.startTakenExecution(executionOrId, options);
-  }
-
   async bindAgentExecution(...args) {
     return this.#trackStartup(() => this.#bindAgentExecution(...args));
   }
 
-  async #bindAgentExecution(executionId, session = null, { workspaceRef, startSession = null, agentPrompt = null, promptSnapshot = null, capabilityProfile = null, promptContext = {}, coreId = null, sessionReason = 'bound', sendInitialPrompt = true } = {}) {
+  async #bindAgentExecution(executionId, session = null, { workspaceRef, agentPrompt = null, promptSnapshot = null, capabilityProfile = null, coreId = null, sendInitialPrompt = true } = {}) {
     this.logger?.append({ event: 'runtime.bind_execution', execution_id: executionId });
-    if ((!session || typeof session.stop !== 'function') && typeof startSession !== 'function') {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Agent session or startSession is required');
+    if (!session || typeof session.stop !== 'function') {
+      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Original Bot Session is required');
     }
     const execution = this.#getExecution(executionId);
     if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only bind CREATED executions, got ${execution.state}`);
@@ -1128,39 +1045,59 @@ export class Runtime {
     let initialPrompt = agentPrompt;
     let initialPromptSnapshot = promptSnapshot;
     const registeredBot = this.taskService.getBot(execution.owner_ref);
-    if (registeredBot && (this.botBindings.get(registeredBot.bot_id)?.session !== session || registeredBot.core_id !== selectedCoreId)) {
+    if (!registeredBot) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution startup requires a registered Bot');
+    if (this.botBindings.get(registeredBot.bot_id)?.session !== session || registeredBot.core_id !== selectedCoreId) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task take must bind its original Bot Session and Core');
     }
-    let boundSession = session;
-    let startedDurably = false;
+    const boundSession = session;
+    let preparationLeaseTimer = null;
+    let preparationLeaseError = null;
+    const renewPreparationLease = () => {
+      this.taskService.assertMissionResearchOpen(registeredBot.mission_id);
+      this.taskService.assertBotDeadline(registeredBot.bot_id);
+      const owner = this.taskService.getBot(registeredBot.bot_id);
+      const reserved = this.#getExecution(executionId);
+      if (this.stopping || owner?.state !== 'PREPARING' || owner.execution_id !== executionId ||
+          reserved.state !== 'CREATED' || reserved.fencing_version !== execution.fencing_version) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot preparation no longer owns its reservation');
+      }
+      this.heartbeat(executionId);
+    };
     try {
-      const recoverySession = sessionReason === 'recovery' || sessionReason === 'session_recovery' || sessionReason === 'wake';
-      const freshWorkspace = this.cleanExecutionWorkspaces && !recoverySession;
-      workspace = await this.#prepareWorkspace(execution, workspaceRef, { fresh: freshWorkspace });
-      current = execution.workspace_ref && !freshWorkspace ? execution : this.#saveWorkspaceReference(execution, workspace);
+      renewPreparationLease();
+      preparationLeaseTimer = setInterval(() => {
+        try { renewPreparationLease(); }
+        catch (error) {
+          preparationLeaseError = error;
+          clearInterval(preparationLeaseTimer);
+        }
+      }, 10_000);
+      workspace = await this.#prepareWorkspace(execution, workspaceRef);
+      if (preparationLeaseError) throw preparationLeaseError;
+      current = this.#getExecution(executionId);
+      current = this.#saveWorkspaceReference(current, workspace);
       if (!initialPromptSnapshot && capabilityProfile) {
-        const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
-        const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
+        const role = AGENT_ROLES.BOUND;
+        const rolePrompt = BOUND_AGENT_PROMPT;
         const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
           ? agentPrompt
           : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
         initialPromptSnapshot = buildPromptSnapshot({
           role, profile: capabilityProfile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace,
-          recovery: promptContext.recovery ?? null,
         });
         initialPrompt = initialPromptSnapshot.prompt;
       } else if (initialPromptSnapshot?.prompt) {
         initialPrompt = initialPromptSnapshot.prompt;
       }
       if (!capabilityProfile && this.capabilityRegistry) {
-        const role = sessionReason === 'recovery' || sessionReason === 'session_recovery' ? AGENT_ROLES.RECOVERY : AGENT_ROLES.BOUND;
-        const rolePrompt = role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT;
+        const role = AGENT_ROLES.BOUND;
+        const rolePrompt = BOUND_AGENT_PROMPT;
         const staticSop = agentPrompt && agentPrompt.includes(rolePrompt)
           ? agentPrompt
           : [rolePrompt, agentPrompt].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
         const profile = buildCapabilityProfile({ role, registry: this.capabilityRegistry, runtimeCapabilities: this.runtimeCapabilities, context: { task_id: current.task_id, execution_id: current.execution_id } });
         initialPromptSnapshot = buildPromptSnapshot({
-          role, profile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace, recovery: promptContext.recovery ?? null,
+          role, profile, staticSop, task: this.taskService.getTask(current.task_id), execution: current, workspace,
         });
         initialPrompt = initialPromptSnapshot.prompt;
       }
@@ -1184,13 +1121,16 @@ export class Runtime {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during Task preparation');
         }
       }
+      if (preparationLeaseError) throw preparationLeaseError;
+      renewPreparationLease();
+      clearInterval(preparationLeaseTimer);
+      current = this.#getExecution(executionId);
       current = this.taskService.dispatch('start_execution', {
         ...this.#executionTimingPayload(this.clock(), current),
         ...(selectedCoreId ? { core_id: selectedCoreId } : {}),
       }, this.#executionEnvelope(current, operationId('bind'))).execution;
       if (bot) this.botBindings.get(bot.bot_id).armDeadline(Date.parse(current.execution_deadline),
         Date.parse(current.execution_deadline) < Date.parse(bot.hard_deadline) ? 'execution-timebox' : 'bot-lifetime-budget');
-      startedDurably = true;
       if (bot && workspace.public_workspace_input && this.sandboxManager) {
         this.taskService.assertMissionResearchOpen(bot.mission_id);
         this.taskService.assertBotDeadline(bot.bot_id);
@@ -1200,11 +1140,8 @@ export class Runtime {
         this.taskService.assertMissionResearchOpen(bot.mission_id);
         this.taskService.assertBotDeadline(bot.bot_id);
       }
-      if (!boundSession) boundSession = await startSession({ execution: current, workspace });
-      if (!boundSession || typeof boundSession.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'startSession must return an Agent session');
       if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during startup');
-      this.#registerActiveProcess(current, workspace, boundSession, { sessionReason, coreId: selectedCoreId });
-      if (!bot) await this.#ensureSandbox(current, workspace);
+      this.#registerActiveProcess(current, workspace, boundSession, { coreId: selectedCoreId });
       if (sendInitialPrompt !== false) {
         await this.#sendInitialPrompt(boundSession, initialPrompt, current, workspace);
       } else {
@@ -1217,75 +1154,11 @@ export class Runtime {
       }
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
-      if (registeredBot) {
-        await this.stopExecution(executionId, 'FAILED', 'bind_prepare_failed');
-        throw error;
-      }
-      this.#retainCleanupBinding(executionId, { session: boundSession, workspace, coreId: selectedCoreId });
-      await this.#stopExecutionResources(executionId);
-      const failed = this.#getExecution(executionId);
-      if (!startedDurably && ['CREATED', 'RUNNING'].includes(failed.state)) {
-        await this.fenceExecution(executionId, { reason: 'bind_prepare_failed' }).catch(() => undefined);
-      } else if (!['FAILED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(failed.state)) {
-        this.taskService.dispatch('stop_execution', {
-          terminal_state: 'FAILED',
-          terminal_reason: 'bind_failed',
-        }, this.#executionEnvelope(failed, operationId('bind-failed')));
-      }
-      await this.releaseExecution(executionId);
+      await this.stopExecution(executionId, 'FAILED', 'bind_prepare_failed');
       throw error;
+    } finally {
+      clearInterval(preparationLeaseTimer);
     }
-  }
-
-  /**
-   * Restart only the process incarnation for an active Execution. The
-   * durable Execution ID and Core binding remain stable; Task Service records
-   * the fencing/session generation transition through recover_execution.
-   */
-  async restartSession(executionId, { reason = 'session_restart', agentPrompt = null } = {}) {
-    const existing = this.#getExecution(executionId);
-    if (this.taskService.getBot(existing.owner_ref)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'A Bot cannot replace its Pi Session; end this Execution and start a successor Bot');
-    }
-    if (!['CREATED', 'RUNNING'].includes(existing.state)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only restart CREATED or RUNNING executions, got ${existing.state}`);
-    }
-    const active = this.activeProcesses.get(executionId);
-    if (active) {
-      await this.#stopExecutionResources(executionId, { forceSessionStop: true });
-    }
-    let current = this.#getExecution(executionId);
-    if (!['CREATED', 'RUNNING'].includes(current.state)) return this.releaseExecution(executionId);
-    if (current.state === 'RUNNING') {
-      if (current.workspace_ref) {
-        await this.workspaceManager.fenceWorkspace({
-          workspaceRef: current.workspace_ref,
-          executionId,
-          fencingVersion: current.fencing_version,
-          newFencingVersion: current.fencing_version + 1,
-        });
-      }
-      current = this.#getExecution(executionId);
-      if (!['CREATED', 'RUNNING'].includes(current.state)) return this.releaseExecution(executionId);
-      current = this.taskService.dispatch('recover_execution', {
-        runtime_generation: this.runtimeGeneration,
-        ...(agentPrompt ? { agent_prompt: agentPrompt } : {}),
-      }, this.#executionEnvelope(current, operationId('session-restart'))).execution;
-    }
-    if (active && this.activeProcesses.get(executionId) === active) {
-      this.activeProcesses.delete(executionId);
-      this.identitySessions.delete(active.session);
-      this.#setCoreState(active.coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
-    }
-    const restarted = await this.startExecution(executionId, {
-      coreId: current.core_id ?? null,
-      sessionReason: reason,
-    });
-    return { previous_execution_id: executionId, execution: restarted.execution, workspace: restarted.workspace, session: restarted.session };
-  }
-
-  restartExecutionSession(executionId, options = {}) {
-    return this.restartSession(executionId, options);
   }
 
   /**
@@ -1819,7 +1692,6 @@ export class Runtime {
       last_successful_service_call_at: active.lastSuccessfulServiceCallAt ? new Date(active.lastSuccessfulServiceCallAt).toISOString() : null,
       last_productive_at: Number.isFinite(active.lastProductiveAt) ? new Date(active.lastProductiveAt).toISOString() : null,
       last_failure_class: active.lastFailureClass,
-      recovery_attempt: this.recoveryAttempts.get(active.execution.task_id) ?? 0,
     };
   }
 
@@ -1914,7 +1786,7 @@ export class Runtime {
     if (this.#canUpdateExecutionCore(active.coreId, execution)) this.#setCoreState(active.coreId, { state: 'CLOSING', execution_id: id, task_id: execution.task_id, session_id: active.session?.sessionId ?? null });
   }
 
-  async #stopExecutionResources(id, { forceSessionStop = false } = {}) {
+  async #stopExecutionResources(id) {
     const active = this.activeProcesses.get(id);
     const bot = this.taskService.getBot(this.#getExecution(id).owner_ref);
     const retainedBot = bot ? this.botBindings.get(bot.bot_id) : null;
@@ -1926,7 +1798,7 @@ export class Runtime {
       active.closing = true;
       if (this.#canUpdateExecutionCore(active.coreId, this.#getExecution(id))) this.#setCoreState(active.coreId, { state: 'CLOSING' });
       await this.#drainCompactionCheckpoint(active);
-      await this.#releaseSessionBinding(active, id, { forceStop: forceSessionStop || Boolean(bot) });
+      await this.#releaseSessionBinding(active, id);
     }
     if (retainedBot?.session && retainedBot.session !== active?.session) {
       await retainedBot.session.stop();
@@ -1942,7 +1814,7 @@ export class Runtime {
     if (before.state === 'CLOSING' && !this.activeProcesses.has(id)) {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
     }
-    await this.#stopExecutionResources(id, { forceSessionStop: before.state === 'CLOSING' });
+    await this.#stopExecutionResources(id);
     await this.executionWorkspace?.reconcile(id, { closedConfirmed: true });
     if (this.#getExecution(id).state === 'CLOSING') {
       if (!this.activeProcesses.has(id)) {
@@ -1950,7 +1822,7 @@ export class Runtime {
       }
       // Finish may commit while a pre-existing release awaits the provider.
       // Recheck it after stopping, including a compatibility reusable Session.
-      if (before.state !== 'CLOSING') await this.#stopExecutionResources(id, { forceSessionStop: true });
+      if (before.state !== 'CLOSING') await this.#stopExecutionResources(id);
       this.taskService.finalizeExecutionFinish(id, { fencingVersion: this.#getExecution(id).fencing_version });
     }
     const execution = this.#getExecution(id);
@@ -2176,22 +2048,14 @@ export class Runtime {
     retained.workspacePreview = { workspace_id: workspace.workspace_id, revision: workspace.main_revision };
   }
 
-  async #prepareWorkspace(execution, workspaceRef = null, { fresh = false } = {}) {
+  async #prepareWorkspace(execution, workspaceRef = null) {
     const task = this.taskService.getTask(execution.task_id);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Task is missing for execution: ${execution.execution_id}`);
-    if (fresh && execution.workspace_ref) {
+    if (execution.workspace_ref) {
       throw new SwarmEnvError(ERROR_CODES.FENCED, 'clean Execution preparation cannot replace an already recorded Workspace', {
         execution_id: execution.execution_id,
         workspace_ref: execution.workspace_ref,
       });
-    }
-    if (execution.workspace_ref && !fresh) {
-      const workspace = await this.workspaceManager.restoreWorkspace({
-        workspaceRef: execution.workspace_ref,
-        executionId: execution.execution_id,
-        fencingVersion: execution.fencing_version,
-      });
-      return workspace.public_workspace_input ? workspace : this.#ensurePiSettings(execution, workspace);
     }
     const workspaceManifest = {
       task_id: task.task_id,
@@ -2199,37 +2063,19 @@ export class Runtime {
       spec_hash: execution.spec_hash,
       workspace_snapshot_hash: execution.input_snapshot_hash,
       material_refs: execution.input_material_refs,
-      selection: fresh ? { mode: 'clean', revision: null } : (execution.workspace_selection ?? { mode: 'clean', revision: null }),
+      selection: { mode: 'clean', revision: null },
     };
     const inputSnapshotManifest = {
       workspace_snapshot_hash: execution.input_snapshot_hash,
       material_refs: execution.input_material_refs,
     };
-    const selection = fresh ? {} : (execution.workspace_selection ?? {});
-    if (!fresh && selection.mode === 'resume' && selection.source_workspace_ref) {
-      return this.workspaceManager.cloneWorkspace({
-        sourceWorkspaceRef: selection.source_workspace_ref,
-        targetWorkspaceRef: workspaceRef ?? this.workspaceManager.workspacePath(execution.execution_id),
-        executionId: execution.execution_id,
-        fencingVersion: execution.fencing_version,
-        revision: selection.revision,
-        task,
-        workspaceManifest,
-        inputSnapshotManifest,
-        runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
-      });
-    }
-    const freshWorkspaceRef = fresh
-      ? this.workspaceManager.workspacePath(`${execution.execution_id}-fresh-${execution.fencing_version}`)
-      : workspaceRef;
+    const freshWorkspaceRef = workspaceRef ?? this.workspaceManager.workspacePath(`${execution.execution_id}-fresh-${execution.fencing_version}`);
     const registeredBot = this.taskService.getBot(execution.owner_ref);
     const publicWorkspaceId = this.missionWorkspaceId ?? task.workspace?.workspace_id;
-    if (registeredBot && (!this.missionWorkspace || !publicWorkspaceId)) {
+    if (!registeredBot || !this.missionWorkspace || !publicWorkspaceId) {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Registered Bot take requires the authoritative Mission Workspace');
     }
-    const publicSnapshot = registeredBot
-      ? await this.missionWorkspace.exportRevision({ workspaceId: publicWorkspaceId, revision: task.workspace?.revision ?? 'main' })
-      : null;
+    const publicSnapshot = await this.missionWorkspace.exportRevision({ workspaceId: publicWorkspaceId, revision: task.workspace?.revision ?? 'main' });
     if (publicSnapshot && (publicSnapshot.mission_id !== task.mission_id ||
         (task.workspace?.workspace_id && task.workspace.workspace_id !== publicSnapshot.workspace_id))) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task Workspace inputs must belong to the Bot Mission');
@@ -2253,55 +2099,17 @@ export class Runtime {
           truncated: Boolean(diff.next_cursor), next_cursor: diff.next_cursor };
       }
     }
-    const workspaceTask = publicSnapshot ? task : await this.#materializeMissionInputs(task);
     const workspace = await this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,
       fencingVersion: execution.fencing_version,
-      task: workspaceTask,
+      task,
       publicSnapshot,
       ...(freshWorkspaceRef ? { workspaceRef: freshWorkspaceRef } : {}),
       workspaceManifest,
       inputSnapshotManifest,
       runtimeManifest: { runtime_generation: this.runtimeGeneration, actor_ref: this.actorRef },
     });
-    return publicSnapshot ? workspace : this.#ensurePiSettings(execution, workspace);
-  }
-
-  async #materializeMissionInputs(task) {
-    const workspace = task.workspace;
-    if (!this.missionWorkspace || !workspace || typeof workspace !== 'object' ||
-      typeof workspace.workspace_id !== 'string' || typeof workspace.problem_file !== 'string') {
-      return task;
-    }
-    const input = await this.missionWorkspace.read({
-      workspaceId: workspace.workspace_id,
-      revision: 'main',
-      path: workspace.problem_file,
-      maxBytes: 10_000_000,
-    });
-    return {
-      ...task,
-      workspace: {
-        ...workspace,
-        formal_source: input.content,
-      },
-    };
-  }
-
-  async #ensurePiSettings(execution, workspace) {
-    const files = await this.workspaceManager.listFiles({
-      workspaceRef: workspace.workspace_ref,
-      executionId: execution.execution_id,
-      fencingVersion: execution.fencing_version,
-      path: '',
-    });
-    if (files.files.some((file) => file.path === '.pi/settings.json')) return workspace;
-    return this.workspaceManager.saveWorkspaceRevision({
-      workspaceRef: workspace.workspace_ref,
-      executionId: execution.execution_id,
-      fencingVersion: execution.fencing_version,
-      files: { '.pi/settings.json': JSON.stringify(PI_PROJECT_SETTINGS, null, 2) },
-    });
+    return workspace;
   }
 
   #saveWorkspaceReference(execution, workspace, saveOperationId = operationId('workspace')) {
@@ -2326,99 +2134,6 @@ export class Runtime {
       }
     }
     throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'could not persist Workspace reference after concurrent updates');
-  }
-
-  async #launch(execution, workspace, { beforePrompt = null, sessionReason = 'start', coreId = null } = {}) {
-    // The extension fetches the profile from the Bridge before it registers
-    // tools. Keep the child-process role in lockstep with the Runtime
-    // lifecycle, including recovery restarts.
-    const agentEnvironment = this.agentAdapter?.config?.env;
-    if (agentEnvironment && typeof agentEnvironment === 'object' && !agentEnvironment.SWARMENV_AGENT_ROLE) {
-      // A reusable Core's Bridge remains bound across Runtime recovery.  Do
-      // not switch the child process to the recovery profile unless the
-      // caller explicitly configured that role: the extension validates the
-      // profile returned by that authenticated Bridge during startup, and a
-      // recovery-only process on a bound Bridge fails before it can retry the
-      // interrupted Execution.
-      agentEnvironment.SWARMENV_AGENT_ROLE = AGENT_ROLES.BOUND;
-    }
-    const session = await this.agentAdapter.start({
-      executionId: execution.execution_id,
-      sessionId: randomUUID(),
-      sessionDir: join(workspace.workspace_ref, '.swarm', 'pi-session'),
-      cwd: workspace.workspace_ref,
-      logger: this.agentLogger,
-      coreId,
-      taskId: execution.task_id,
-      observationContext: { coreId, taskId: execution.task_id, executionId: execution.execution_id },
-    });
-    try {
-      if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during startup');
-      const manifestContent = JSON.stringify(session.manifest ?? {}, null, 2);
-      const nextWorkspace = await this.workspaceManager.saveWorkspaceRevision({
-        workspaceRef: workspace.workspace_ref,
-        executionId: execution.execution_id,
-        fencingVersion: execution.fencing_version,
-        files: { 'runtime-manifest.json': manifestContent },
-      });
-      const current = this.#saveWorkspaceReference(execution, nextWorkspace);
-      if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during preparation');
-      this.#registerActiveProcess(current, nextWorkspace, session, { sessionReason, coreId });
-      await this.#ensureSandbox(current, nextWorkspace);
-      await beforePrompt?.({ execution: current, workspace: nextWorkspace, session });
-      let initialPrompt = execution.agent_prompt;
-      if (this.capabilityRegistry) {
-        const role = sessionReason === 'recovery' || sessionReason === 'session_recovery'
-          ? AGENT_ROLES.RECOVERY
-          : AGENT_ROLES.BOUND;
-        const profile = buildCapabilityProfile({
-          role,
-          registry: this.capabilityRegistry,
-          runtimeCapabilities: this.runtimeCapabilities,
-          context: { task_id: current.task_id, execution_id: current.execution_id },
-        });
-        const adapterHasSystemPrompt = Boolean(
-          this.agentAdapter?.config?.systemPrompt || this.agentAdapter?.config?.systemPromptPath,
-        );
-        const staticSop = adapterHasSystemPrompt
-          ? (execution.agent_prompt ?? '')
-          : [
-            role === AGENT_ROLES.RECOVERY ? RECOVERY_AGENT_PROMPT : BOUND_AGENT_PROMPT,
-            execution.agent_prompt,
-          ].filter((value) => typeof value === 'string' && value.trim().length > 0).join('\n\n');
-        const promptSnapshot = buildPromptSnapshot({
-          role,
-          profile,
-          staticSop,
-          task: this.taskService.getTask(current.task_id),
-          execution: current,
-          workspace: nextWorkspace,
-          recovery: role === AGENT_ROLES.RECOVERY
-            ? { reason: current.block_reason ?? sessionReason, checkpoint: current.checkpoint_ref, dependency: current.wait_condition }
-            : null,
-        });
-        initialPrompt = promptSnapshot.prompt;
-        this.logger?.append({
-          event: 'runtime.initial_prompt_composed',
-          execution_id: current.execution_id,
-          role: promptSnapshot.role,
-          prompt_version: promptSnapshot.prompt_version,
-          prompt_hash: promptSnapshot.prompt_hash,
-          system_prompt_version: promptSnapshot.system_prompt_version,
-          system_prompt_hash: promptSnapshot.system_prompt_hash,
-          dynamic_prompt_hash: promptSnapshot.dynamic_prompt_hash,
-          service_doc_hashes: promptSnapshot.service_doc_hashes,
-          profile_version: promptSnapshot.profile_version,
-          profile_hash: promptSnapshot.profile_hash,
-        });
-      }
-      await this.#sendInitialPrompt(session, initialPrompt, current, nextWorkspace);
-      const active = this.activeProcesses.get(execution.execution_id);
-      return { execution: current, workspace: nextWorkspace, session };
-    } catch (error) {
-      this.#retainCleanupBinding(execution.execution_id, { session, workspace, coreId });
-      throw error;
-    }
   }
 
   #dynamicPromptContext(execution, workspace, promptOverride = null) {
@@ -2447,9 +2162,7 @@ export class Runtime {
       ? this.taskService.listUnprocessedNotifications.bind(this.taskService)
       : this.taskService.listPendingNotifications?.bind(this.taskService);
     const notifications = notificationReader?.(task.task_id, execution.execution_id) ?? [];
-    const role = execution.session_reason === 'recovery' || execution.session_reason === 'session_recovery'
-      ? AGENT_ROLES.RECOVERY
-      : AGENT_ROLES.BOUND;
+    const role = AGENT_ROLES.BOUND;
     const profile = this.capabilityRegistry
       ? buildCapabilityProfile({
         role,
@@ -2616,18 +2329,9 @@ export class Runtime {
     return coreId ?? execution?.core_id ?? execution?.owner_ref ?? execution?.execution_id ?? 'identity';
   }
 
-  /**
-   * Release one Execution's take on its Bot Session. The identity session
-   * retains a reusable identity Session; freshBotPerExecution deliberately
-   * stops and removes it so the next responsibility starts a new Bot.
-   */
-  async #releaseSessionBinding(active, executionId, { forceStop = false } = {}) {
+  // A Bot owns one Session; release confirms its stop before freeing capacity.
+  async #releaseSessionBinding(active, executionId) {
     if (!active?.session) return;
-    if (active.session.identitySession === true && !this.freshBotPerExecution && !forceStop) {
-      if (active.session.boundExecutionId === executionId) active.session.boundExecutionId = null;
-      this.identitySessions.add(active.session);
-      return;
-    }
     await active.session.stop?.();
     if (active.session.closed === false) {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot process stop was not confirmed', { execution_id: executionId });
@@ -2636,7 +2340,7 @@ export class Runtime {
     if (active.session.identitySession === true) this.identitySessions.delete(active.session);
   }
 
-  #registerActiveProcess(execution, workspace, session, { sessionReason = 'start', coreId = null } = {}) {
+  #registerActiveProcess(execution, workspace, session, { coreId = null } = {}) {
     const nowMs = this.clock();
     const active = {
       session,
@@ -2705,38 +2409,6 @@ export class Runtime {
       session.on('close', () => {
         const boundId = session.boundExecutionId;
         if (boundId) void this.#processExit(boundId).catch(() => undefined);
-      });
-    }
-    this.#notifySessionStarted({ execution, workspace, session, sessionReason });
-  }
-
-  #notifySessionStarted({ execution, workspace, session, sessionReason }) {
-    if (typeof this.onSessionStarted !== 'function') return;
-    const notification = {
-      execution,
-      workspace,
-      session,
-      sessionReason,
-      recovery: sessionReason === 'recovery',
-    };
-    try {
-      const result = this.onSessionStarted(notification);
-      if (result && typeof result.catch === 'function') {
-        result.catch((error) => {
-          this.logger?.append({
-            event: 'runtime.session_observer_error',
-            execution_id: execution.execution_id,
-            session_id: session.sessionId ?? null,
-            error_class: error?.code ?? error?.name ?? 'session_observer_error',
-          });
-        });
-      }
-    } catch (error) {
-      this.logger?.append({
-        event: 'runtime.session_observer_error',
-        execution_id: execution.execution_id,
-        session_id: session.sessionId ?? null,
-        error_class: error?.code ?? error?.name ?? 'session_observer_error',
       });
     }
   }
@@ -2904,7 +2576,7 @@ export class Runtime {
       // for the current turn to settle when the adapter exposes that signal;
       // it never starts a concurrent prompt or blocks identity rotation on a
       // failed filesystem/checkpoint write.
-      this.#queueCompactionCheckpoint(active, record);
+      this.#queueCompactionCheckpoint(active);
       if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_window_unknown', usageSource: 'unknown', windowRatio: null,
@@ -2935,19 +2607,9 @@ export class Runtime {
     }
   }
 
-  #queueCompactionCheckpoint(active, record) {
+  #queueCompactionCheckpoint(active) {
     const executionId = active.execution.execution_id;
-    const checkpoint = {
-      kind: 'compaction',
-      reason: record.reason ?? 'compaction',
-      compaction_count: active.compactionCount,
-      identity_id: active.identityId,
-      tokens_before: record.result?.tokensBefore ?? record.result?.tokens_before ?? record.tokensBefore ?? null,
-      estimated_tokens_after: record.result?.estimatedTokensAfter ?? record.result?.estimated_tokens_after ?? null,
-    };
-    // Pi can emit the next compaction event before the previous checkpoint
-    // has finished saving. Queue every successful compaction in arrival order
-    // instead of dropping events while one save is in flight.
+    // Serialize compaction follow-up in event order; public saves remain explicit.
     const previous = active.compactionCheckpointPromise ?? Promise.resolve();
     const run = previous.catch(() => undefined).then(async () => {
       try {
@@ -2968,39 +2630,7 @@ export class Runtime {
           this.logger?.append({ event: 'runtime.bot_compaction_recorded', execution_id: executionId, compaction_count: active.compactionCount, public_save: false });
           return { status: 'not_saved', execution: current };
         }
-        if (!current.workspace_ref) {
-          this.logger?.append({ event: 'runtime.compaction_checkpoint_skipped', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, reason: 'no_workspace' });
-          return { status: 'not_applicable', execution: current };
-        }
-        const workspace = await this.workspaceManager.saveWorkspaceRevision({
-          workspaceRef: current.workspace_ref, executionId, fencingVersion: current.fencing_version, files: {},
-        });
-        const savedExecution = this.#saveWorkspaceReference(current, workspace, operationId('compaction-workspace'));
-        const savedCheckpoint = await this.workspaceManager.saveCheckpoint({
-          workspaceRef: workspace.workspace_ref, executionId, fencingVersion: savedExecution.fencing_version, checkpoint,
-        });
-        const checkpointResult = this.taskService.dispatch('save_checkpoint', savedCheckpoint, this.#executionEnvelope(savedExecution, operationId('compaction-checkpoint')));
-        active.execution = checkpointResult.execution;
-        active.workspace = workspace;
-        this.logger?.append({ event: 'runtime.compaction_checkpoint_saved', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, workspace_revision: workspace.workspace_revision, checkpoint_ref: savedCheckpoint.checkpoint_ref });
-        // Metadata alone is not research Progress. At this safe point ask the
-        // current Bot to record substantive progress; the prompt is queued
-        // only after the current turn settled and is skipped when this
-        // identity is already due to rotate.
-        if (this.compactionCheckpointReminder && !active.closing && !active.rotationPromise && typeof active.session.prompt === 'function') {
-          const currentNow = this.#getExecution(executionId);
-          if (['CREATED', 'RUNNING'].includes(currentNow.state)) {
-            try {
-              await active.session.prompt(
-                'Compaction completed. Before continuing research, call execution_progress with kind=checkpoint and substantive completed_work, findings, open_questions, and next_step from the actual work. Do not record only token or compaction metadata.',
-                { timeoutMs: 30_000, streamingBehavior: 'followUp' },
-              );
-            } catch (error) {
-              this.logger?.append({ event: 'runtime.compaction_progress_reminder_failed', execution_id: executionId, identity_id: active.identityId, error_class: error?.code ?? error?.name ?? 'prompt_error' });
-            }
-          }
-        }
-        return { status: 'saved', execution: checkpointResult.execution, workspace, checkpoint: savedCheckpoint };
+        return { status: 'not_applicable', execution: current };
       } catch (error) {
         this.logger?.append({ event: 'runtime.compaction_checkpoint_failed', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, error_class: error?.code ?? error?.name ?? 'checkpoint_failed' });
         return { status: 'save_failed', error_class: error?.code ?? error?.name ?? 'checkpoint_failed' };
@@ -3028,29 +2658,14 @@ export class Runtime {
       // A rotation raised at compaction_start must stop promptly; do not wait
       // for a new `agent_settled` event from the compaction that is being
       // aborted.  A successful compaction already queued its one checkpoint,
-      // and that in-flight save is the only save we await here.
+      // and only that in-flight follow-up is awaited here.
       if (active.compactionCheckpointPromise) await active.compactionCheckpointPromise.catch(() => undefined);
       this.logger?.append({
         event: 'runtime.identity_rotation_started', execution_id: executionId,
         old_identity_id: previousIdentity, compaction_count: previousCompactions,
         reason, window_ratio: windowRatio, usage_source: usageSource,
       });
-      if (this.taskService.getBot(this.#getExecution(executionId).owner_ref)) {
-        return this.stopExecution(executionId, 'HANDED_OFF', 'compaction_rotation');
-      }
-      const restarted = await this.restartSession(executionId, { reason: 'compaction_rotation' });
-      const replacement = this.activeProcesses.get(executionId);
-      if (replacement) {
-        replacement.compactionCount = 0;
-        this.identityCompactionCounts.set(this.#identityKey(replacement.coreId, replacement.execution), 0);
-      }
-      this.logger?.append({
-        event: 'runtime.identity_rotation_completed', execution_id: executionId,
-        old_identity_id: previousIdentity, new_identity_id: replacement?.identityId ?? restarted.session?.sessionId ?? null,
-        old_compaction_count: previousCompactions, new_compaction_count: replacement?.compactionCount ?? 0,
-        reason,
-      });
-      return restarted;
+      return this.stopExecution(executionId, 'HANDED_OFF', 'compaction_rotation');
     })();
     active.rotationPromise = rotation;
     try {
@@ -3089,64 +2704,9 @@ export class Runtime {
     if (active.failurePromise) return active.failurePromise;
     active.lastFailureClass = failureClass;
     const failurePromise = (async () => {
-      const coreId = active.coreId;
-      if (this.taskService.getBot(this.#getExecution(executionId).owner_ref)) {
-        this.#prepareBotExecutionStop(executionId, 'FAILED', failureClass);
-        this.#startFinishCleanup(executionId);
-        return this.stopExecution(executionId, 'FAILED', failureClass);
-      }
-      await this.#stopExecutionResources(executionId, { forceSessionStop: true });
-      let execution = this.#getExecution(executionId);
-      if (execution.state !== 'RUNNING') return this.releaseExecution(executionId);
-      if (this.taskService.getBot(execution.owner_ref)) {
-        this.taskService.dispatch('stop_execution', { terminal_state: 'FAILED', terminal_reason: failureClass }, this.#executionEnvelope(execution, operationId('bot-failed')));
-        return this.releaseExecution(executionId);
-      }
-      this.identitySessions.delete(active.session);
-      if (this.stopping) return { execution, disposition: 'stopping' };
-      const recoveryAttempt = (this.recoveryAttempts.get(execution.task_id) ?? 0) + 1;
-      this.recoveryAttempts.set(execution.task_id, recoveryAttempt);
-      this.logger?.append({ event: 'runtime.session_failure', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
-      if (recoveryAttempt > this.maxRecoveryAttempts) {
-        const fenced = await this.fenceExecution(executionId, { reason: 'recovery_exhausted' });
-        this.logger?.append({ event: 'runtime.recovery_exhausted', execution_id: executionId, failure_class: failureClass, recovery_attempt: recoveryAttempt });
-        return { execution: fenced.execution, recovery: null, disposition: 'exhausted' };
-      }
-      let task;
-      try {
-        task = this.taskService.getTask(execution.task_id);
-      } catch (error) {
-        // A shutdown may close the durable store while a process-exit event is
-        // still being handled. Never keep recovery alive against a closed DB.
-        if (this.stopping || error?.code === 'ERR_INVALID_STATE') return { execution, disposition: 'stopping' };
-        throw error;
-      }
-      const recoveryPrompt = this.#recoveryPrompt(task, execution, failureClass, recoveryAttempt);
-      const nextFencingVersion = execution.fencing_version + 1;
-      if (execution.workspace_ref) {
-        await this.workspaceManager.fenceWorkspace({
-          workspaceRef: execution.workspace_ref,
-          executionId: execution.execution_id,
-          fencingVersion: execution.fencing_version,
-          newFencingVersion: nextFencingVersion,
-        });
-      }
-      execution = this.#getExecution(executionId);
-      if (execution.state !== 'RUNNING') return this.releaseExecution(executionId);
-      const recovered = this.taskService.dispatch('recover_execution', {
-        runtime_generation: this.runtimeGeneration,
-        agent_prompt: recoveryPrompt,
-      }, this.#executionEnvelope(execution, operationId('recover')));
-      // A recovered process is a fresh identity Session. Do not inherit the
-      // failed Session's compaction count; only an ordinary handoff carries
-      // the lane's count forward.
-      this.identityCompactionCounts.delete(this.#identityKey(coreId, execution));
-      if (this.activeProcesses.get(executionId) === active) {
-        this.activeProcesses.delete(executionId);
-        this.#setCoreState(coreId, { state: 'IDLE', execution_id: null, task_id: null, session_id: null });
-      }
-      const replacement = await this.startExecution(recovered.execution.execution_id, { sessionReason: 'recovery' });
-      return { execution: execution, recovery: replacement.execution, disposition: 'recovered' };
+      this.#prepareBotExecutionStop(executionId, 'FAILED', failureClass);
+      this.#startFinishCleanup(executionId);
+      return this.stopExecution(executionId, 'FAILED', failureClass);
     })();
     active.failurePromise = failurePromise;
     this.pendingFailurePromises.add(failurePromise);
@@ -3156,18 +2716,6 @@ export class Runtime {
     } finally {
       active.failurePromise = null;
     }
-  }
-
-  #recoveryPrompt(task, execution, failureClass, attempt) {
-    return [
-      'Resume the taken Task from its durable Workspace and checkpoint.',
-      `Failure class: ${failureClass}. Recovery attempt: ${attempt}.`,
-      `Task goal: ${task.goal}`,
-      `Expected output: ${task.expected_output}`,
-      `Workspace revision: ${execution.workspace_revision ?? 'none'}.`,
-      `Checkpoint: ${execution.checkpoint_ref ?? 'none'}.`,
-      'Do not assume the interrupted turn completed. Inspect the current Task, Execution, Workspace, and Materials before continuing.',
-    ].join('\n');
   }
 
   #executionEnvelope(execution, id, actorRef = this.actorRef) {
