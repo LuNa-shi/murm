@@ -19,7 +19,7 @@ This is the entry point to current maintained documentation. Historical design d
 | Why was a major design decision made? | [adr/INDEX.md](adr/INDEX.md) | Decision rationale |
 | How are tools operated? | [operations/benchmark.md](operations/benchmark.md), [operations/observability.md](operations/observability.md) | Operational references |
 
-Root [GLOSSARY.md](../GLOSSARY.md) distinguishes the current runtime vocabulary from the [Phase 02 target model](phases/0002-task-material-workspace/01-model-and-runtime.md). The [experiment-analysis skill](../.codex/skills/experiment-analysis/SKILL.md) reconstructs experimental evidence.
+Root [GLOSSARY.md](../GLOSSARY.md) defines the Mission/Task/Bot/Execution/Material/Workspace vocabulary shared by the approved [Phase 02 design](phases/0002-task-material-workspace/01-model-and-runtime.md) and current implementation. Architecture explains the registered Bot path and explicitly labels retained compatibility APIs. The [experiment-analysis skill](../.codex/skills/experiment-analysis/SKILL.md) reconstructs experimental evidence.
 
 ## Authority and lifecycle
 

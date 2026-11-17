@@ -95,8 +95,10 @@ Focused CLI/Git tests cover disjoint contributions in the actual checked combine
 
 ## 1. What a Workspace represents
 
-Every `Runtime.startExecution` or `bindAgentExecution` prepares a private
-Workspace before starting the durable Execution. A Task need not expose file or
+The registered Bot starts in a protected Sandbox before take; after take Runtime materializes the selected immutable Mission revision into its guest project. Public continuity uses explicit save/apply/merge as described above.
+
+The compatibility `Runtime.startExecution` or `bindAgentExecution` path prepares a private
+WorkspaceManager support directory before starting the durable Execution. A Task need not expose file or
 Sandbox tools to its Agent for that support directory to exist: capability
 selection and materialization are separate decisions. Independent participants
 in the compatibility Task path receive independent writable directories. In
@@ -124,7 +126,7 @@ local owner, fence, file index and history. Neither one replaces the other.
 | `README.md`, `workspace-manifest.json`, `runtime-manifest.json` | Initial Task description, Task/input contract and Runtime/adapter manifest, respectively. |
 | `.pi/settings.json` | Runtime-installed Pi compaction/retry settings where the preparation path ensures the file. |
 
-A public Workspace view has `workspace_ref`, `execution_id`,
+A compatibility WorkspaceManager view has `workspace_ref`, `execution_id`,
 `fencing_version`, `workspace_revision`, `content_hash`, `git_commit`,
 `git_worktree`, parent Workspace/revision, Task and manifest fields,
 `workspace_contract`, `input_snapshot`, checkpoint reference/hash,
@@ -254,15 +256,7 @@ Judge uses its own configured fixture/checker and persists the resulting check;
 Task completion is separate. See [the direct submission contract](04-services.md#the-as-built-submission-route)
 and [ADR 0019](../adr/0019-direct-judge-workspace-submission.md).
 
-This boundary inherits the live-file behavior above. An optional revision
-checks the current metadata revision; it does not request bytes from that
-historical revision. Bridge uses the file-read default of 1,000,000 bytes and
-forwards its content/hash, without a separate full-file snapshot or truncation
-branch. Judge recomputes the supplied content's SHA-256 before checking, so a
-stale indexed hash or truncated source with a full-file hash fails request
-validation. Direct submission therefore does not remove the current
-metadata-index limitations or establish the phase-02 immutable shared-revision
-contract.
+The historical unregistered Bridge file route instead reads the current private Workspace with optional stale-value guards. Its revision check compares current metadata rather than exporting historical bytes. It retains the 1,000,000-byte read default and metadata-index limits; Judge recomputes content hashes and rejects inconsistent inputs. These are compatibility-route limits, not registered numeric-revision file/project limits. Neither route implicitly saves a revision or publishes Material.
 
 Sources: [Bridge source preparation](../../src/agent/services-bridge.js),
 [Runtime read boundary](../../src/runtime/runtime.js),
@@ -434,7 +428,7 @@ therefore an identity/Session replacement, not a Task handoff.
 
 ## 8. Sandbox provisioning and execution
 
-The benchmark uses `OpenSandboxManager` for every Agent Execution. Runtime creates one provider sandbox with the fixed worker entrypoint, authenticates the worker with a per-Execution token, copies bounded Workspace files into guest `/workspace`, and deletes the sandbox at release. `sandbox_exec` and `sandbox_job` are bound Runtime capabilities; they cannot address host paths or an unbound Execution. The worker event stream is sequence-based; retryable SSE failures switch to bounded history polling and replay deduplication. Controller restart reconciliation never revives an old Pi or shell: a sandbox whose worker token cannot be recovered is recorded as unrecoverable, quarantined/deleted, and replaced by a fresh Bot/Execution that resumes from public Workspace and Material state.
+Production benchmarks use OpenSandbox for registered Bots. Runtime creates each Bot sandbox before selection and keeps its worker credential out of Pi. Take associates that resource with E and prepares/grants the pinned project. Native Pi Bash runs as the non-root Bot user in `/workspace/project`; explicit save publishes files. Registered Bots cannot use root `sandbox_exec`. Trusted diagnostic/compatibility transport still supports bounded Execd commands/jobs. The worker event stream uses sequences, bounded polling and replay deduplication. Restart reconciliation cannot recover the credential or revive old private context; it deletes/quarantines the resource. Fresh Bots continue only from public state. Physical stop and provider deletion are distinct cleanup evidence.
 
 [OpenSandbox manager](../../src/runtime/opensandbox-manager.js), [OpenSandbox Agent adapter](../../src/agent/opensandbox-agent-adapter.js), and [Runtime Sandbox binding](../../src/runtime/runtime.js) define the provider boundary. The shipped image is the only trusted worker entrypoint; ordinary callers cannot provide a custom entrypoint.
 
