@@ -161,10 +161,10 @@ async function artifacts(configuration, expected = null) {
   }
   const locked = [];
   for (const root of roots) {
-    if (root.label === 'mkdir') {
+    if (root.label === 'mkdir' || root.label === 'base64') {
       const observed = await realpath(root.path);
       if (observed !== root.path && !hostMounts.some(mount => within(mount, observed))) {
-        throw failure('System mkdir target is outside approved host library mounts');
+        throw failure(`System ${root.label} target is outside approved host library mounts`);
       }
       const artifact = await fingerprintFinalTreeArtifact(observed, { label: root.label, directory: false });
       locked.push({ ...artifact, invoked_as: root.path, link: observed === root.path ? null : await readlink(root.path) });

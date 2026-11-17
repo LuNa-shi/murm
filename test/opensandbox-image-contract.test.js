@@ -95,7 +95,7 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
   for (const mode of ['swarm', 'solver']) {
     const contract = agentContract(mode);
     const input = { contract_version: contract.protocolVersion, resources: contract.resources, model_catalog_resource: modelCatalogResource, env: { SWARMENV_AGENT_MODE: mode } };
-    await Promise.all([runProbe(input), runProbe({ ...input, expect_rejection: true, resources: contract.resources.map(resource => ({ ...resource, sha256: '0'.repeat(64) })) })]);
+    await Promise.all([runProbe(input), runProbe({ ...input, expect_rejection: true, contract_version: 'swarm-bot-v1-draft.2' }), runProbe({ ...input, expect_rejection: true, resources: contract.resources.map(resource => ({ ...resource, sha256: '0'.repeat(64) })) })]);
   }
 });
 

@@ -144,7 +144,7 @@ async function startAgent(input) {
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
   const solver = input.contract_version === 'swarm-solver-v1';
   const expectedNames = solver ? ['solver-system.txt'] : ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
-  if ((!solver && input.contract_version !== 'swarm-bot-v1-draft.2') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
+  if ((!solver && input.contract_version !== 'swarm-bot-v1-draft.3') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
       new Set(input.resources.map(resource => resource?.path)).size !== expectedNames.length ||
       !expectedNames.every(name => input.resources.some(resource => resource?.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw startupContractError('complete versioned Bot contract resources are required');
   for (const resource of input.resources) {
