@@ -11,3 +11,6 @@ experiments/**/observability.sqlite
 
 # Generated semantic experiment reports remain local and may contain private metadata.
 experiments/**/analysis/
+
+# Linked development checkouts live inside the primary repository.
+/.worktree/

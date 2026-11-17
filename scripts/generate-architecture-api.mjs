@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { SERVICE_COMMIT_SCHEMA_SQL, CONTEXT_PEER_SCHEMA_SQL, JUDGE_PEER_SCHEMA_SQL } from '../src/storage/service-peer-schema.js';
 import { readFile, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +36,7 @@ const sourcePaths = [
 ];
 const sourceRows = await Promise.all(sourcePaths.map(async (path) => `| [${path}](../../${path}) | \`${hash(await readFile(resolve(root, path)))}\` |`));
 let api = '## Generated API inventory\n\nThis section is generated from executable exports and checked against the source hashes below. It contains declarations; call-time behavior and known differences are explained in [Services](04-services.md), [Mission and Task](03-mission-task.md), and [Workspace](05-workspace-continuity.md).\n\n| Source | SHA-256 |\n|---|---|\n' + sourceRows.join('\n') + '\n';
-api += '\n### Exact tool exposure for the built-in benchmark\n\nThe four columns apply the benchmark\'s current Task-model and Sandbox filters. Optional registered Services add capabilities. Both built-in `bound` and `recovery` roles currently have the same named surface. Presence in this table does not bypass the Bridge\'s Task/Execution binding, modern-retired-operation or Workspace-contract checks. `swarmenv_` is the Pi extension prefix.\n\n';
+api += '\n### Exact tool exposure for the built-in benchmark\n\nThe two profile columns describe the compatibility extension surface after Sandbox filtering. Registered Bots receive the four native Pi tools (`read`, `write`, `edit`, `bash`), and call typed `swarm` commands through Bash; the `swarmenv_` names below are not a second set of tools loaded into those Bots. Optional registered Services add capabilities. Both built-in `bound` and `recovery` roles currently have the same named surface. Presence in this table does not bypass the Bridge\'s Task/Execution binding, modern-retired-operation or Workspace-contract checks. `swarmenv_` is the Pi extension prefix.\n\n';
 const profiles = [];
 for (const model of ['flat']) for (const sandbox of [false, true]) {
   const runtimeCapabilities = runtimeCapabilityList()
@@ -76,7 +77,7 @@ for (let index = 0; index < sdkMethods.length; index++) {
   }
 }
 if (documentedSdkWrappers !== [...sdkSource.matchAll(/return this\.#(?:read|write)\('/g)].length) throw new Error('Unmapped SDK dispatch wrapper; update the reference extractor');
-api += '\n### Complete local router fallback sets\n\nRegistry matches are resolved first by capability name or operation and must be unique. Only when no Registry match exists does the local router use these exact fallback sets. Candidate submission belongs to Task here; only result retrieval belongs directly to Judge. Unlisted operations fail with no service route.\n';
+api += '\n### Complete local router fallback sets\n\nRegistry matches are resolved first by capability name or operation and must be unique. Only when no Registry match exists does the local router use these exact fallback sets. The historical Task source-binding entry records a Workspace source without performing a check; registered Bots invoke Judge directly through the Registry. The fallback Judge set contains result retrieval. Unlisted operations fail with no service route.\n';
 const routerSource = await readFile(resolve(root, 'src/sdk/service-router.js'), 'utf8');
 for (const owner of ['TASK', 'CONTEXT', 'JUDGE']) {
   const declaration = routerSource.match(new RegExp(`const ${owner}_OPERATIONS = new Set\\(\\[([\\s\\S]*?)\\]\\);`));
@@ -86,6 +87,9 @@ for (const owner of ['TASK', 'CONTEXT', 'JUDGE']) {
 api += '\n### Exact shared error-code vocabulary\n' + json(ERROR_CODES);
 
 const schemas = [
+  ['Task-owned independent service commit gates', 'src/storage/service-peer-schema.js', SERVICE_COMMIT_SCHEMA_SQL],
+  ['Context peer receipts', 'src/storage/service-peer-schema.js', CONTEXT_PEER_SCHEMA_SQL],
+  ['Judge peer launch phases', 'src/storage/service-peer-schema.js', JUDGE_PEER_SCHEMA_SQL],
   ['Model budget gateway', 'src/agent/responses-budget-gateway.js', RESPONSES_BUDGET_SCHEMA_SQL],
   ['Mission submission coordinator', 'src/runtime/mission-submission.js', MISSION_SUBMISSION_SCHEMA_SQL],
   ['Owner-local manual Mission review', 'src/runtime/manual-mission-review.js', MANUAL_MISSION_REVIEW_SCHEMA_SQL],

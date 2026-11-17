@@ -42,12 +42,14 @@ function executionRejection(error) {
       diagnostic_code: error.details?.phase === 'soft_closeout' ? 'soft_closeout' : 'execution_closed' } };
 }
 
-export function normalizeJudgeMissionBudget({ maxRequests = 20, maxConcurrent = Math.min(2, maxRequests) } = {}) {
-  if (!Number.isSafeInteger(maxRequests) || maxRequests < 1 || maxRequests > 10_000 ||
-      !Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > maxRequests) {
-    throw new TypeError('Judge Mission budget requires finite positive request and concurrent limits');
+export function normalizeJudgeMissionBudget({ maxRequests = null, maxConcurrent = 4, maxQueued = 8, queueWaitMs = 120_000 } = {}) {
+  if (maxRequests !== null) throw new TypeError('Ordinary Judge checks no longer support a cumulative maxRequests limit');
+  if (!Number.isSafeInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > 64 ||
+      !Number.isSafeInteger(maxQueued) || maxQueued < 0 || maxQueued > 1024 ||
+      !Number.isSafeInteger(queueWaitMs) || queueWaitMs < 1 || queueWaitMs > 120_000) {
+    throw new TypeError('Judge requires bounded positive concurrency/wait time and nonnegative queue capacity');
   }
-  return { maxRequests, maxConcurrent };
+  return { maxRequests: null, maxConcurrent, maxQueued, queueWaitMs };
 }
 
 export class JudgeService {
@@ -60,6 +62,8 @@ export class JudgeService {
     taskService = null,
     missionBudget,
     readProjectRevision = null,
+    lifecycleWrite = null,
+    refreshQueueAuthority = null,
   } = {}) {
     this.missionBudget = normalizeJudgeMissionBudget(missionBudget);
     this.activeChecks = new Set();
@@ -74,6 +78,8 @@ export class JudgeService {
     this.fixtureManifest = fixtureManifest;
     this.taskService = taskService;
     this.readProjectRevision = readProjectRevision;
+    this.lifecycleWrite = lifecycleWrite;
+    this.refreshQueueAuthority = refreshQueueAuthority;
   }
 
   close() { this.db.close(); }
@@ -83,33 +89,76 @@ export class JudgeService {
   }
 
   getMissionCheckBudget(missionId) {
-    const policy = this.db.prepare('SELECT max_requests, max_concurrent, process_timeout_ms FROM judge_mission_check_policies WHERE mission_id = ?').get(missionId);
+    const policy = this.db.prepare('SELECT * FROM judge_mission_check_policies WHERE mission_id = ?').get(missionId);
     const usage = this.db.prepare(`SELECT COUNT(*) AS admitted_requests,
-      COUNT(*) FILTER (WHERE settled_at IS NULL) AS active_requests,
+      COUNT(*) FILTER (WHERE settled_at IS NULL AND started_at IS NOT NULL) AS active_requests,
+      COUNT(*) FILTER (WHERE settled_at IS NULL AND started_at IS NULL) AS queued_requests,
       COALESCE(SUM(is_retry), 0) AS retry_requests,
       COALESCE(SUM(preflight_starts), 0) AS preflight_process_starts,
       COALESCE(SUM(source_starts), 0) AS source_process_starts
       FROM judge_mission_check_admissions WHERE mission_id = ?`).get(missionId);
     const cached = this.db.prepare(`SELECT COUNT(*) AS cached_request_aliases FROM judge_request_aliases alias
       JOIN judge_mission_check_admissions admission USING (check_result_id) WHERE admission.mission_id = ?`).get(missionId);
-    const maxRequests = policy?.max_requests ?? this.missionBudget.maxRequests;
+    const maxRequests = policy ? policy.max_requests : null;
     const processTimeoutMs = policy ? policy.process_timeout_ms : this.processTimeoutMs;
     return { max_requests: maxRequests, max_concurrent: policy?.max_concurrent ?? this.missionBudget.maxConcurrent,
-      process_timeout_ms: processTimeoutMs, upper_bound_process_ms: processTimeoutMs === null ? null : 2 * maxRequests * processTimeoutMs, ...usage, ...cached };
+      max_queued: policy?.max_queued ?? this.missionBudget.maxQueued,
+      queue_wait_ms: policy?.queue_wait_ms ?? this.missionBudget.queueWaitMs,
+      process_timeout_ms: processTimeoutMs, upper_bound_process_ms: maxRequests === null || processTimeoutMs === null ? null : 2 * maxRequests * processTimeoutMs, ...usage, ...cached };
   }
 
   #admitMissionCheck(missionId, checkResultId, isRetry) {
-    const { maxRequests, maxConcurrent } = this.missionBudget;
-    this.db.prepare(`INSERT INTO judge_mission_check_policies VALUES (?, ?, ?, ?)
-      ON CONFLICT(mission_id) DO NOTHING`).run(missionId, maxRequests, maxConcurrent, this.processTimeoutMs);
+    const { maxRequests, maxConcurrent, maxQueued, queueWaitMs } = this.missionBudget;
+    this.db.prepare(`INSERT INTO judge_mission_check_policies
+      (mission_id, max_requests, max_concurrent, process_timeout_ms, max_queued, queue_wait_ms) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(mission_id) DO NOTHING`).run(missionId, maxRequests, maxConcurrent, this.processTimeoutMs, maxQueued, queueWaitMs);
     const budget = this.getMissionCheckBudget(missionId);
-    if (budget.max_requests !== maxRequests || budget.max_concurrent !== maxConcurrent || budget.process_timeout_ms !== this.processTimeoutMs) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Judge Mission budget differs from the fixed policy');
+    if (budget.max_requests !== maxRequests || budget.max_concurrent !== maxConcurrent || budget.process_timeout_ms !== this.processTimeoutMs ||
+        budget.max_queued !== maxQueued || budget.queue_wait_ms !== queueWaitMs) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Judge Mission policy differs from the fixed policy');
     }
-    if (budget.admitted_requests >= maxRequests) throw new SwarmEnvError('CHECKER_BUDGET_EXHAUSTED', 'Judge Mission request budget is exhausted', budget);
-    if (budget.active_requests >= maxConcurrent) throw new SwarmEnvError('CHECKER_BUSY', 'Judge Mission checker concurrency is full', budget, { retryable: true });
-    this.db.prepare('INSERT INTO judge_mission_check_admissions (mission_id, check_result_id, admitted_at, is_retry) VALUES (?, ?, ?, ?)')
-      .run(missionId, checkResultId, now(), isRetry ? 1 : 0);
+    const queued = budget.active_requests >= maxConcurrent || budget.queued_requests > 0;
+    if (queued && budget.queued_requests >= maxQueued) {
+      throw new SwarmEnvError('CHECKER_BUSY', 'Judge Mission waiting queue is full', budget, { retryable: true });
+    }
+    const admittedAt = now();
+    this.db.prepare(`INSERT INTO judge_mission_check_admissions
+      (mission_id, check_result_id, admitted_at, started_at, is_retry) VALUES (?, ?, ?, ?, ?)`)
+      .run(missionId, checkResultId, admittedAt, queued ? null : admittedAt, isRetry ? 1 : 0);
+    return queued;
+  }
+
+  async #waitForMissionSlot(missionId, checkResultId, authority) {
+    if (!missionId) return;
+    let lastAuthorityCheck = 0;
+    // Each transaction is short. Waiting never holds the Task gate or a DB writer.
+    // Durable FIFO order also covers distinct connections to the same Judge store.
+    for (;;) {
+      const state = this.#transaction(() => {
+        const row = this.db.prepare(`SELECT * FROM judge_mission_check_admissions
+          WHERE mission_id = ? AND check_result_id = ?`).get(missionId, checkResultId);
+        if (!row || row.settled_at) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge reservation has ended');
+        if (row.started_at) return 'running';
+        if (Date.now() >= Date.parse(row.admitted_at) + this.missionBudget.queueWaitMs) {
+          throw new SwarmEnvError('CHECKER_BUSY', 'Judge waiting queue deadline expired',
+            this.getMissionCheckBudget(missionId), { retryable: true });
+        }
+        const first = this.db.prepare(`SELECT check_result_id FROM judge_mission_check_admissions
+          WHERE mission_id = ? AND settled_at IS NULL AND started_at IS NULL ORDER BY rowid LIMIT 1`).get(missionId);
+        if (first?.check_result_id !== checkResultId || this.getMissionCheckBudget(missionId).active_requests >= this.missionBudget.maxConcurrent) return 'queued';
+        this.db.prepare(`UPDATE judge_mission_check_admissions SET started_at = ?
+          WHERE mission_id = ? AND check_result_id = ?`).run(now(), missionId, checkResultId);
+        this.db.prepare("UPDATE check_results SET status = 'RUNNING', updated_at = ? WHERE check_result_id = ?").run(now(), checkResultId);
+        return 'running';
+      });
+      if (state === 'running') return;
+      if (!this.refreshQueueAuthority || Date.now() - lastAuthorityCheck >= 1000) {
+        await this.refreshQueueAuthority?.();
+        authority({ newWork: true });
+        lastAuthorityCheck = Date.now();
+      }
+      await new Promise(resolve => setTimeout(resolve, 25));
+    }
   }
 
   setDependencyEventSink(listener) {
@@ -359,10 +408,24 @@ export class JudgeService {
       }
     };
     const begin = () => this.#beginRequest(normalized, requestHash, authority);
-    const request = separateLifecycle ? this.taskService.withServiceLifecycleWrite(begin) : begin();
+    const request = this.lifecycleWrite
+      ? await this.lifecycleWrite(begin, { phase: 'admission', requestHash, envelope: requestEnvelope })
+      : separateLifecycle ? this.taskService.withServiceLifecycleWrite(begin) : begin();
     if (!request.shouldCheck) return request.result;
-    const work = this.#performWorkspaceCheck(normalized, requestHash, request.result, { operationId, actorRef,
-      authority, publicInput, registered, missionId: request.missionId, project }).finally(() => {
+    const work = (async () => {
+      try { await this.#waitForMissionSlot(request.missionId, request.result.check_result_id, authority); }
+      catch (error) {
+        const requestFailure = error.code === 'CHECKER_BUSY' || executionRejection(error);
+        this.db.prepare(`UPDATE check_results SET status = 'RECEIVED', verdict = 'ERROR',
+          judge_operation_status = 'persisted', result_class = ?, checker_process_status = 'not_started',
+          retryable = ?, diagnostic_code = ?, evidence_json = json_set(evidence_json, '$.checker_started', json('false'), '$.diagnostic', ?), updated_at = ?
+          WHERE check_result_id = ?`).run(requestFailure ? 'request_failure' : 'infrastructure_failure', error.retryable ? 1 : 0, error.code ?? 'queue_failed', error.message, now(), request.result.check_result_id);
+        if (executionRejection(error)) return this.getCheckResult(request.result.check_result_id);
+        throw error;
+      }
+      return this.#performWorkspaceCheck(normalized, requestHash, request.result, { operationId, actorRef,
+        authority, publicInput, registered, missionId: request.missionId, project });
+    })().finally(() => {
       if (request.missionId) this.db.prepare(`UPDATE judge_mission_check_admissions SET settled_at = ?
         WHERE mission_id = ? AND check_result_id = ? AND settled_at IS NULL`)
         .run(now(), request.missionId, request.result.check_result_id);
@@ -374,10 +437,12 @@ export class JudgeService {
 
   async #performWorkspaceCheck(normalized, requestHash, requested, { operationId, actorRef, authority, publicInput, registered, missionId, project }) {
     let admissionFailure = null;
-    const assertCanStart = () => authority({ newWork: true });
+    // Remote snapshots may age while queued or while a process runs. Only the
+    // synchronous spawn phase has freshly captured authority in that deployment.
+    const assertCanStart = () => { if (!this.lifecycleWrite) authority({ newWork: true }); };
     const startProcess = phase => launch => {
       const guardedLaunch = () => {
-        assertCanStart();
+        authority({ newWork: true });
         if (missionId) {
           const column = phase === 'preflight' ? 'preflight_starts' : 'source_starts';
           const reserved = this.db.prepare(`UPDATE judge_mission_check_admissions SET ${column} = 1
@@ -388,7 +453,9 @@ export class JudgeService {
         return launch();
       };
       if (!publicInput && !registered) return guardedLaunch();
-      return this.taskService.withServiceLifecycleWrite(guardedLaunch);
+      return this.lifecycleWrite
+        ? this.lifecycleWrite(guardedLaunch, { phase, requestHash, checkResultId: requested.check_result_id })
+        : this.taskService.withServiceLifecycleWrite(guardedLaunch);
     };
     const preflight = await this.#runPreflight(normalized, assertCanStart, startProcess('preflight')).catch(error => {
       admissionFailure = executionRejection(error);
@@ -417,7 +484,7 @@ export class JudgeService {
       try {
         // A preflight can finish after the soft/hard boundary. Do not launch
         // a new scientific calculation merely because preflight was admitted.
-        authority({ newWork: true });
+        assertCanStart();
         const launch = startProcess('source');
         checked = project
           ? await this.checker.checkProject({ files: project.files, tree: project.source.git_tree, path: project.source.path,
@@ -635,7 +702,8 @@ export class JudgeService {
         const existingResult = resultFromRow(equivalent);
         const retryableInfrastructure = existingResult.result_class === 'infrastructure_failure' &&
           existingResult.retryable && !existingResult.evidence?.retry_exhausted;
-        if (!retryableInfrastructure) {
+        const retryableQueue = existingResult.diagnostic_code === 'CHECKER_BUSY' && existingResult.retryable;
+        if (!retryableInfrastructure && !retryableQueue) {
           this.db.prepare('INSERT INTO judge_request_aliases (request_key, request_hash, check_result_id, created_at) VALUES (?, ?, ?, ?)')
             .run(normalized.request_key, requestHash, existingResult.check_result_id, now());
           return {
@@ -649,16 +717,16 @@ export class JudgeService {
         }
       }
       const checkResultId = randomUUID();
-      if (missionId) this.#admitMissionCheck(missionId, checkResultId, Boolean(equivalent));
+      const queued = missionId ? this.#admitMissionCheck(missionId, checkResultId, Boolean(equivalent)) : false;
       const createdAt = now();
       this.db.prepare(`INSERT INTO check_results (
         check_result_id, request_key, request_hash, workspace_source_id, workspace_content_hash, target_task_id, target_spec_version,
         execution_id, input_snapshot_hash, checker_ref, checker_version, environment_ref, status, verdict,
         judge_operation_status, checker_process_status, result_class, retryable, diagnostic_code, evidence_json,
         applied_task_state_version, applied_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'RUNNING', NULL, 'accepted', 'not_started', 'unassessed', 0, NULL, ?, NULL, NULL, ?, ?)`).run(
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 'accepted', 'not_started', 'unassessed', 0, NULL, ?, NULL, NULL, ?, ?)`).run(
         checkResultId, normalized.request_key, requestHash, normalized.workspace_source_id, normalized.workspace_content_hash, normalized.target_task_id, normalized.target_spec_version,
-          normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref,
+          normalized.execution_id, normalized.input_snapshot_hash, normalized.checker_ref, normalized.checker_version, normalized.environment_ref, queued ? 'REQUESTED' : 'RUNNING',
           json(publicInput ? { workspace_input: publicInput } : {}), createdAt, createdAt);
       return { result: this.getCheckResult(checkResultId), shouldCheck: true, missionId };
     });

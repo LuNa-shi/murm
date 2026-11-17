@@ -1,3 +1,4 @@
+import { startIndependentServices } from '../sdk/independent-services.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -1048,7 +1049,7 @@ export async function stopBenchmarkRuntime(state, { cleanupGraceMs = 30_000 } = 
   const controller = Promise.resolve().then(() => state.controller?.stop?.());
   const jobs = [
     ['CONTROLLER_STOP', controller],
-    ['JUDGE_STOP', Promise.resolve().then(() => state.judgeService?.waitForIdle())],
+    ['JUDGE_STOP', Promise.resolve().then(async () => { await state.judgeService?.waitForIdle(); await state.judgeService?.verifyCleanup?.(); })],
     ['MODEL_GATEWAY_STOP', Promise.resolve().then(() => state.modelAccess?.stop())],
     ['MISSION_STOP', Promise.resolve().then(() => state.missionId ? state.missionSubmissionStore?.stop({ missionId: state.missionId }) : state.missionSubmissionStore?.shutdown())],
     ['IDENTITY_LOOP_STOP', joinCleanup(state.identityLoopRuns ?? [])],
@@ -1068,8 +1069,7 @@ export async function stopBenchmarkRuntime(state, { cleanupGraceMs = 30_000 } = 
 
 export function closeProjectStores(state, closeStores, options) {
   if (state.cleanupErrors.length === 0) {
-    closeStores();
-    return;
+    return closeStores();
   }
   const finished = state.cleanupPromise.finally(closeStores);
   finished.catch(() => {});
@@ -1293,7 +1293,7 @@ export function projectReport(state, startedAt, deadline) {
         tool_count: service.tool_count,
       })),
       allowed_agent_tool_names: [...state.allowedAgentToolNames].sort(),
-      cheating_policy: 'placeholder or tool event outside read/write/edit/bash invalidates the project',
+      cheating_policy: 'A recorded forbidden candidate placeholder or tool event outside read/write/edit/bash invalidates the project; ordinary project diagnostics do not establish a policy violation',
     },
     project: {
       problem_id: state.problem.id,
@@ -1305,6 +1305,7 @@ export function projectReport(state, startedAt, deadline) {
       mathlib_version: state.fixtureManifest.mathlib_version,
       checker_version: state.fixtureManifest.checker_version,
       run_id: state.runId,
+      service_deployment: state.serviceDeployment ?? { deployment: 'in-process' },
       workspace_id: state.workspaceId,
       database_path: state.databasePath,
       input_workspace_hash: state.inputMaterialHash,
@@ -1623,7 +1624,9 @@ async function createProjectState(problem, config, options) {
   const database = new DatabaseSync(databasePath);
   let contextService;
   let judgeService;
-  const closeStores = () => {
+  let independentServices;
+  const closeStores = async () => {
+    await independentServices?.close();
     try { judgeService?.close(); }
     finally { try { contextService?.close(); } finally { try { modelDatabase?.close(); } finally { database.close(); } } }
   };
@@ -1632,7 +1635,7 @@ async function createProjectState(problem, config, options) {
   catch (error) {
     const cleanup = { cores, cleanupErrors: [], missionSubmissionStore, modelAccess, judgeService, operatorStopped: options.signal?.aborted === true };
     await stopBenchmarkRuntime(cleanup, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
-    closeProjectStores(cleanup, closeStores, options);
+    await closeProjectStores(cleanup, closeStores, options);
     if (cleanup.operatorStopped) {
       const stopped = operatorStop();
       stopped.cleanupErrors = cleanup.cleanupErrors;
@@ -1656,9 +1659,7 @@ async function createProjectState(problem, config, options) {
       new DurableEventLog(join(logRoot, 'judge', 'lean-checker.ndjson'), { raw: true, scope: 'judge:lean-checker' }),
       observationLogger(observationStore, runId, 'judge'),
     );
-    contextService = new ContextService(join(projectDir, 'context.sqlite'), { logger: contextLogger });
-    const taskService = new TaskService(database, { contextService, logger: taskLogger });
-    contextService.taskService = taskService;
+    const taskService = new TaskService(database, { logger: taskLogger });
     const fixture = fixtureManifest(problem, problem.source_hash, config.lean_project_root ?? config.putnam_bench_root, config);
     if (projectChecker) fixture.environment_ref = `${fixture.environment_ref}:lean-project:sha256:${finalTreeDeployment.evidence.artifact_lock_sha256}`;
     const workspaceMergeChecker = projectChecker ? {
@@ -1670,6 +1671,21 @@ async function createProjectState(problem, config, options) {
         return { ...result, check_mode: 'lean-project', check_result_id: `projectcheck:${randomUUID()}` };
       },
     } : null;
+    const serviceDeployment = options.serviceDeployment ?? (timedBenchmark ? 'independent' : 'in-process');
+    if (!['independent', 'in-process'].includes(serviceDeployment)) throw new TypeError('serviceDeployment must be independent or in-process');
+    if (serviceDeployment === 'independent') {
+      if (options.checker) throw new TypeError('Independent Judge uses its own configured checker, not a shared injected object');
+      independentServices = await startIndependentServices({ taskService, projectDir, logRoot,
+        fixtureManifest: fixture, finalTreeConfiguration, problem, missionBudget: judgeMissionBudget,
+        maxInfrastructureRetries: options.maxInfrastructureRetries, checkerTimeoutMs: sourceCheckerTimeoutMs,
+        readProjectRevision: projectChecker ? reference => missionWorkspace.exportRevision(reference) : null,
+        leanCommand: options.leanCommand ?? 'lake', contextLogger, judgeLogger });
+      contextService = independentServices.context;
+      judgeService = independentServices.judge;
+    } else {
+      contextService = new ContextService(join(projectDir, 'context.sqlite'), { logger: contextLogger });
+      contextService.taskService = taskService;
+      taskService.contextService = contextService;
     judgeService = new JudgeService(join(projectDir, 'judge.sqlite'), {
       missionBudget: judgeMissionBudget,
       taskService,
@@ -1686,6 +1702,7 @@ async function createProjectState(problem, config, options) {
         projectChecker,
       }),
     });
+    }
     taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
     taskService.setCheckResultReader((checkResultId) => judgeService.getCheckResult(checkResultId));
     judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
@@ -2598,6 +2615,7 @@ async function createProjectState(problem, config, options) {
       missionCloseoutMs: options.missionCloseoutMs ?? 30_000,
       fixtureManifest: fixture,
       finalTreeEvidence: finalTreeDeployment?.evidence ?? null,
+      serviceDeployment: independentServices?.evidence ?? { deployment: serviceDeployment },
       databasePath,
       projectDir,
       initialTaskIds: initialTasks.map((task) => task.task_id),
@@ -2692,7 +2710,7 @@ async function runProject(problem, config, options) {
     if (state.unhandledRejectionHandler) process.off('unhandledRejection', state.unhandledRejectionHandler);
     // Also owns exceptions during orchestration, report generation and write.
     // A timed-out join retains the store until all admitted work settles.
-    closeProjectStores(state, state.closeStores, options);
+    await closeProjectStores(state, state.closeStores, options);
   }
 }
 
@@ -3150,7 +3168,7 @@ async function writeUnavailableProjectReport(problem, options, error, { operator
       task_model: 'flat',
       input_policy: 'pinned formalization only; no candidate or solution input',
       tool_policy: 'Pi read/write/edit/bash; services through authenticated swarm CLI; ambient extensions, skills, prompt templates and project context discovery disabled',
-      cheating_policy: 'placeholder or tool event outside read/write/edit/bash invalidates the project',
+      cheating_policy: 'A recorded forbidden candidate placeholder or tool event outside read/write/edit/bash invalidates the project; ordinary project diagnostics do not establish a policy violation',
     },
     parallelism,
     project: { problem_id: problem.id, source_hash: problem.source_hash ?? null },

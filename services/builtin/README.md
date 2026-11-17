@@ -1,11 +1,35 @@
-# Built-in Service host
+# Built-in service deployment
 
-`scripts/service-host.mjs` exposes Task, Context, Judge or Catalog through the
-Service Manifest and JSON HTTP host. At the reviewed `755c72e` baseline this is
-a standalone compatibility/operator surface. The positive-duration benchmark
-uses Task, Context and Judge in one coordinator process with three databases;
-it rejects external service overrides. Configuring HTTP endpoints alone does
-not supply the lifecycle authorization needed by Context and Judge.
+Positive-duration benchmark runs default to repository-owned independent Context
+and Judge processes. Task, Mission and Workspace remain one coordinator. Each
+peer owns its own SQLite database and exchanges authenticated private HTTP
+commands with the coordinator; it never opens the Task database.
+
+`startIndependentServices` in `src/sdk/independent-services.js` starts the peers
+under exclusive instance locks, provisions credentials and pinned checker
+configuration, records endpoints/PIDs, and owns shutdown. Judge startup verifies
+the complete artifact lock and resource profile before becoming ready. Context
+writes use durable Task-owned gates; Judge admission and process starts use
+short authorized phases. Restart reconciles receipts and interrupted work.
+The production checker ledger supports cleanup even after Judge process loss.
+See the complete [deployment and recovery contract](../../docs/architecture/04-services.md#independent-contextjudge-deployment)
+and [runner configuration](../../docs/architecture/07-run-configuration.md).
+
+`context-service-peer.mjs` and `judge-service-peer.mjs` are the peer entrypoints.
+The Judge container entrypoint `judge-peer-entrypoint.sh` supplies its mandatory
+instance lock. A separately operated deployment must provide its own process
+supervision, private endpoints, credentials, artifact mounts, and systemd/cgroup
+access; merely exposing a port does not establish those guarantees.
+
+## Compatibility standalone hosts
+
+`npm run service:builtin` and `compose.yaml` retain the older generic
+Task/Context/Judge/Catalog HTTP hosts. These are useful for manifest, read and
+transport compatibility tests. They do **not** compose the new durable coordinator
+protocol. Lifecycle-sensitive writes without local Task authority fail closed;
+a healthy HTTP endpoint or a mounted checker fixture does not make this compose
+file a supported positive-duration research deployment.
+
 
 ## Host configuration and authentication
 
@@ -65,9 +89,8 @@ Task/Context/Judge volumes and a stateless Catalog. Its host ports default to
 Per-service principal arrays use `SWARMENV_<SERVICE>_SERVICE_PRINCIPALS`.
 `docker compose -f services/builtin/compose.yaml up --build -d` starts those
 hosts with the limitations above; it is not the normal benchmark launch path.
-The independent-service implementation tracked in
-[Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) is outside this
-reviewed main revision.
+The repository-owned independent peers described above provide the supported
+positive-duration composition; this generic Compose recipe does not use them.
 
 ## Checker assets and shutdown
 

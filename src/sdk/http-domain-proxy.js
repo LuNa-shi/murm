@@ -53,7 +53,7 @@ export class HttpDomainProxy {
     }
     if (result.status !== 0 || !Number.isInteger(status) || status < 200 || status >= 300 || payload.ok === false) {
       const error = payload.error ?? {};
-      throw new SwarmEnvError(error.code ?? (status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT), error.message ?? `HTTP ${this.serviceId} proxy returned ${status || result.status}`, { service_id: this.serviceId, diagnostic: safeDiagnostic(error.details ?? error.message) }, { retryable: Boolean(error.retryable) || status >= 500 });
+      throw new SwarmEnvError(error.code ?? (result.status !== 0 || status >= 500 || !status ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT), error.message ?? `HTTP ${this.serviceId} proxy returned ${status || result.status}`, { service_id: this.serviceId, diagnostic: safeDiagnostic(error.details ?? error.message) }, { retryable: Boolean(error.retryable) || result.status !== 0 || status >= 500 || !status });
     }
     return payload.result ?? payload;
   }

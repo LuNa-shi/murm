@@ -14,7 +14,7 @@ LABEL org.swarmenv.opensandbox.pi-version="${PI_VERSION}" \
       org.swarmenv.opensandbox.provider="gpt_proxy"
 
 RUN apt-get update \
-  && apt-get install --no-install-recommends --yes bash ca-certificates git util-linux \
+  && apt-get install --no-install-recommends --yes bash ca-certificates curl git jq python3 python-is-python3 ripgrep util-linux \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/swarmenv

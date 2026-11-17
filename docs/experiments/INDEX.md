@@ -8,6 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261116-08` | [Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) | **PASS · accepted in 20m28s from startup, within 1h maximum** | `1c2d5d5` | [Judge queue repeat](EXP-20261116-08-judge-queue-1h.md) |
+| `EXP-20261116-07` | [Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) | **PASS with recorded limits/interruption · accepted in 19m10s of 1h maximum** | `e18c7ae` | [Centralized Judge repeat](EXP-20261116-07-centralized-judge-1h.md) |
 | `EXP-20261116-04` | [Issue #127](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716) | **Four criteria PASS; trusted acceptance in 9m24s of 1h limit** | `e00e246` | [Whole-Workspace 1h repeat](EXP-20261116-04-workspace-project-1h.md) |
 | `EXP-20261116-03` | [Issue #127](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6907134029) | **Startup succeeded; verbose source failure misclassified · BLOCKED** | `df9240c` | [Workspace project follow-up](EXP-20261116-03-workspace-project-1h.md) |
 | `EXP-20261116-02` | [Issue #127](https://github.com/LuNa-shi/SwarmEnv/issues/127#issuecomment-6906617716) | **Image ownership gate rejected all Bot startups · BLOCKED** | `dfc0c87` | [Project-check acceptance repeat](EXP-20261116-02-workspace-project-1h.md) |
