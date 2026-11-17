@@ -1,7 +1,7 @@
 # EXP-20261117-04: Putnam acceptance after legacy execution cleanup
 
 Status: COMPLETE — PASS; trusted Mission accepted, protocol valid, physical cleanup independently verified.
-Implementation PR: [#139](https://github.com/LuNa-shi/SwarmEnv/pull/139), stacked on unmerged [#134](https://github.com/LuNa-shi/SwarmEnv/pull/134).
+Implementation PR: [#139](https://github.com/LuNa-shi/SwarmEnv/pull/139). At experiment time this was stacked on [#134](https://github.com/LuNa-shi/SwarmEnv/pull/134); see the later integration note below.
 Approved GitHub Issue: [#138](https://github.com/LuNa-shi/SwarmEnv/issues/138), [owner-authorized repeated one-hour runs](https://github.com/LuNa-shi/SwarmEnv/issues/138#issuecomment-6944184596).
 Comparison to: [EXP-20261116-08](EXP-20261116-08-judge-queue-1h.md). This is engineering acceptance of the current registered lifecycle, not a causal performance comparison.
 
@@ -68,10 +68,16 @@ Ordinary source failures and the placeholder rejection occurred before final acc
 
 ## Next steps
 
-The requested first cleanup scope and final Putnam acceptance are complete; no additional model run is needed for the stated criteria. Keep #134 and #139 unmerged pending the owner's merge decision. Broader redesign candidates remain outside this cleanup scope.
+The requested first cleanup scope and final Putnam acceptance are complete; no additional model run is needed for the stated criteria. At experiment closeout both PRs remained unmerged. The owner subsequently authorized merging #139 independently while deferring #134. Broader redesign candidates remain outside this cleanup scope.
 
 ## Evidence and limitations
 
 Authoritative evidence: `metadata/experiment.json`; Task/Bot/Execution/Mission and local observation rows in `state/projects/putnam_2025_b1/project.sqlite`; separate Context/Judge/model-budget databases; immutable public Workspace revisions; Agent/Bridge/runtime/service logs; `analysis/experiment-analysis.md`, `analysis/analysis-completion.json` and `analysis/service-cleanup-verification.json`. Reports are supporting projections, not substitutes for authority records. Raw conversations, proof/candidate source, credentials and private paths remain ignored and are not exported here.
 
 The actual run binds the exact launch commit and image. Environment-gated unit checks remain explicitly skipped, while the listed production/image probes ran separately. Untriggered races, queue saturation and other fixtures are covered only by their stated controlled tests or remain unverified; this run does not cover every environment or claim a causal performance improvement.
+
+## Later main integration
+
+After this experiment, the owner authorized merging cleanup PR #139 while keeping FLT PR #134 unmerged. The cleanup was isolated onto main `0a1e6f794aee1c07eb5231075f0c59cf5467d3c1`; implementation `66aa686aaff66ee94d81d52c4b90054f4e3c9cbb` retains the generic preparation-lease renewal prerequisite and its two regression tests. The Runtime file is identical to the experiment-reviewed `f1049c3` file. FLT fixtures, profiles, checker/worker extensions and benchmark context additions are excluded.
+
+EXP04 retains its original launch, image, checker and input identities above. It was not rerun on the isolated main integration tree; that integration has separate local verification recorded in PR #139. The historical result is not represented as a formal run of the new commit.
