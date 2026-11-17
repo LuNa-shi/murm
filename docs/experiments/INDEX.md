@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261117-04` | [Issue #138](https://github.com/LuNa-shi/SwarmEnv/issues/138) | **Putnam B1, 4 Core · REGISTERED; legacy cleanup acceptance** | `1eb4333` | [Legacy cleanup Putnam acceptance](EXP-20261117-04-legacy-cleanup-putnam.md) |
 | `EXP-20261116-08` | [Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) | **PASS · accepted in 20m28s from startup, within 1h maximum** | `1c2d5d5` | [Judge queue repeat](EXP-20261116-08-judge-queue-1h.md) |
 | `EXP-20261116-07` | [Issue #130](https://github.com/LuNa-shi/SwarmEnv/issues/130) | **PASS with recorded limits/interruption · accepted in 19m10s of 1h maximum** | `e18c7ae` | [Centralized Judge repeat](EXP-20261116-07-centralized-judge-1h.md) |
 | `EXP-20261116-05` | [Issue #129](https://github.com/LuNa-shi/SwarmEnv/issues/129) | **Trusted proof accepted; protocol INVALID; owner ended observation** | `2edb9b0` | [Independent Pass@1](EXP-20261116-05-pass-k-1-1h.md) |
