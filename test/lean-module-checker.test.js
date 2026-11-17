@@ -142,3 +142,119 @@ test('real Lean module-system private companion artifacts survive cold and warm 
     assert.equal(index ? result.cache.hits : result.cache.misses, 3);
   }
 });
+
+test('local frontend completion is required for ordinary early exit and copied valid dependency output', real, async () => {
+  for (const action of [
+    '#eval (IO.Process.exit 0 : IO Unit)',
+    '#eval IO.FS.writeBinFile "/output/Target.olean" (← IO.FS.readBinFile "/cache/Helpers/Basic.olean")\n#eval (IO.Process.exit 0 : IO Unit)',
+  ]) {
+    const verifier = fixture({ moduleCacheBytes: 0 });
+    const sources = files();
+    sources['src/Target.lean'] = `import Helpers.Middle\n${action}\ntheorem target : False := by trivial\n`;
+    const result = await check(verifier, sources);
+    assert.equal(result.verdict, 'ERROR', JSON.stringify(result));
+    assert.equal(result.cache.stored_bytes, 0);
+  }
+});
+
+test('independent module verification rejects old valid output for a different fixed source', real, async () => {
+  const verifier = fixture({ moduleCacheBytes: 0 });
+  const execute = verifier.moduleChecker.execute;
+  let previousOutput;
+  let replace = false;
+  verifier.moduleChecker.execute = async (args, options) => {
+    const result = await execute(args, options);
+    if (args.includes('/driver/Build.lean') && args.includes('Target')) {
+      if (replace) return { ...result, output: previousOutput };
+      previousOutput = Buffer.from(result.output);
+    }
+    return result;
+  };
+  assert.equal((await check(verifier, files())).verdict, 'PASS');
+  assert.ok(previousOutput.length);
+  replace = true;
+  const result = await check(verifier, { ...files(), 'src/Target.lean': 'import Helpers.Middle\ntheorem target : True := by constructor\n' });
+  assert.equal(result.verdict, 'ERROR', JSON.stringify(result));
+  assert.equal(result.diagnostic_code, 'module_verification_failed');
+});
+
+test('partial proofs and new axioms stay diagnostic with warnings while verification skips candidate initializers', real, async () => {
+  const verifier = fixture();
+  const execute = verifier.moduleChecker.execute;
+  const validationOutputs = [];
+  verifier.moduleChecker.execute = async (args, options) => {
+    const result = await execute(args, options);
+    if (args.includes('/driver/Verify.lean')) validationOutputs.push(result.output.toString());
+    return result;
+  };
+  const sources = { 'src/Target.lean': 'initialize IO.println "CANDIDATE_INITIALIZER_RAN"\naxiom helper : True\ntheorem target : True := by sorry\n' };
+  const result = await check(verifier, sources);
+  assert.equal(result.verdict, 'PASS', result.diagnostic);
+  assert.ok(result.warnings.some(warning => /sorry/.test(warning)), JSON.stringify(result));
+  assert.ok(result.warnings.some(warning => /axiom helper/.test(warning)), JSON.stringify(result));
+  assert.ok(validationOutputs.length > 0);
+  assert.ok(validationOutputs.every(output => !output.includes('CANDIDATE_INITIALIZER_RAN')));
+});
+
+test('independent verification rejects corrupted module companion data before caching', real, async () => {
+  const verifier = fixture({ moduleCacheBytes: 0 });
+  const execute = verifier.moduleChecker.execute;
+  let corrupted = false;
+  verifier.moduleChecker.execute = async (args, options) => {
+    const result = await execute(args, options);
+    if (args.includes('/driver/Build.lean') && args.includes('Target') && result.code === 0) {
+      const lines = result.output.toString().trimEnd().split('\n');
+      const companion = lines.indexOf('olean.private');
+      assert.ok(companion >= 0, 'module-system fixture should serialize private data');
+      lines[companion + 1] = Buffer.from('corrupted private module data').toString('base64');
+      corrupted = true;
+      return { ...result, output: Buffer.from(lines.join('\n') + '\n') };
+    }
+    return result;
+  };
+  const result = await check(verifier, { 'src/Target.lean': 'module\nprivate theorem hidden : True := trivial\npublic theorem target : True := hidden\n' });
+  assert.equal(corrupted, true);
+  assert.equal(result.verdict, 'ERROR', JSON.stringify(result));
+  assert.equal(result.cache.stored_bytes, 0);
+});
+
+test('cross-module custom tactics and macros remain executable after verified cache reuse and invalidation', real, async () => {
+  const verifier = fixture();
+  const sources = {
+    'src/Helpers/Basic.lean': 'import Lean\nopen Lean Elab Tactic\nmacro "finish_trivial" : tactic => `(tactic| exact True.intro)\nelab "finish_custom" : tactic => do evalTactic (← `(tactic| finish_trivial))\n',
+    'src/Helpers/Middle.lean': 'import Helpers.Basic\ntheorem middle : True := by finish_custom\n',
+    'src/Target.lean': 'import Helpers.Middle\ntheorem target : True := by finish_trivial\n',
+  };
+  const cold = await check(verifier, sources);
+  assert.equal(cold.verdict, 'PASS', cold.diagnostic);
+  const warm = await check(verifier, sources);
+  assert.equal(warm.verdict, 'PASS', warm.diagnostic);
+  assert.equal(warm.cache.hits, 3);
+  sources['src/Helpers/Basic.lean'] += '-- changed tactic module source\n';
+  const changed = await check(verifier, sources);
+  assert.equal(changed.verdict, 'PASS', changed.diagnostic);
+  assert.equal(changed.cache.misses, 3);
+});
+
+test('independent replay rejects invalid safe declarations inserted by a candidate metaprogram', real, async () => {
+  const verifier = fixture();
+  const sources = { 'src/Target.lean': `import Lean
+open Lean Elab Command
+elab "inject_invalid_safe_theorem" : command => do
+  modifyEnv fun env =>
+    match env.addDeclCore 0 0 (.thmDecl {
+      name := \`badFalse
+      levelParams := []
+      type := mkConst \`\`False
+      value := mkConst \`\`True.intro
+    }) none (doCheck := false) with
+    | .ok env => env
+    | .error _ => env
+inject_invalid_safe_theorem
+#check badFalse
+` };
+  const result = await check(verifier, sources);
+  assert.equal(result.verdict, 'ERROR', JSON.stringify(result));
+  assert.equal(result.diagnostic_code, 'module_verification_failed');
+  assert.equal(result.cache.stored_bytes, 0);
+});

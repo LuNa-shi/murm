@@ -84,7 +84,7 @@ export class RemoteJudgeService {
     const call_id = randomUUID();
     this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: envelope.operation_id, target_task_id: envelope.task_id, transport: 'http-json' });
     let project = null;
-    if (input.source?.check_mode === 'lean-project') {
+    if (['lean-project', 'lean-module'].includes(input.source?.check_mode)) {
       if (!this.readProjectRevision) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Trusted Workspace export is unavailable');
       const snapshot = await this.readProjectRevision({ workspaceId: input.source.workspace_id, revision: input.source.revision });
       project = { ...snapshot, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]) => [path, Buffer.from(bytes).toString('base64')])) };

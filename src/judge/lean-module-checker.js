@@ -2,6 +2,10 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const buildDriver = fileURLToPath(new URL('./lean-module-build.lean', import.meta.url));
+const verificationDriver = fileURLToPath(new URL('./lean-module-verify.lean', import.meta.url));
 
 // Only header parsing runs here; candidate elaborators and initializers never run.
 const importParser = `import Lean
@@ -128,14 +132,15 @@ export class LeanModuleChecker {
           }
           args.push('--ro-bind', join(directory, source.sourcePath), `/input/${source.sourcePath}`,
             '--size', '268435456', '--tmpfs', '/cache', ...dependencyMounts, '--remount-ro', '/cache',
-            '--size', '268435456', '--tmpfs', '/output', '--ro-bind', '/usr/bin/dash', '/bin/sh',
+            '--size', '268435456', '--tmpfs', '/output',
+            '--ro-bind', buildDriver, '/driver/Build.lean', '--ro-bind', '/usr/bin/dash', '/bin/sh',
             '--ro-bind', '/usr/bin/mkdir', '/bin/mkdir', '--ro-bind', '/usr/bin/base64', '/bin/base64',
             '--setenv', 'LEAN_PATH', ['/cache', ...this.libraryPaths].join(':'), '--chdir', '/input',
             '/bin/sh', '-eu', '-c',
             'ulimit -c 0\n/bin/mkdir -p "/output/${1%/*}"\n' +
-            ' /toolchain/bin/lean --json -j1 "$3" -R /input/source -o "/output/$1.olean" "$2" >&2 || { status=$?; if [ "$status" = 1 ]; then exit 21; fi; exit 23; }\n' +
+            ' /toolchain/bin/lean -j1 "$3" --run /driver/Build.lean "$2" "$4" "/output/$1.olean" "$5" >&2 || { status=$?; if [ "$status" = 21 ]; then exit 21; fi; exit 23; }\n' +
             'for suffix in olean olean.private olean.server; do if [ -f "/output/$1.$suffix" ] && [ ! -L "/output/$1.$suffix" ]; then printf "%s\\n" "$suffix"; /bin/base64 -w0 "/output/$1.$suffix"; printf "\\n"; fi; done',
-            'swarmenv-module', source.module.replaceAll('.', '/'), `/input/${source.sourcePath}`, this.memoryArgument);
+            'swarmenv-module', source.module.replaceAll('.', '/'), `/input/${source.sourcePath}`, this.memoryArgument, source.module, key);
           const built = await startProcess(() => this.execute(args, { ...budget, maxOutput: 192 * 1024 ** 2 }));
           const diagnostic = this.classify(built.stderr);
           if (built.code !== 0) {
@@ -148,17 +153,44 @@ export class LeanModuleChecker {
           artifacts = [];
           for (let index = 0; index < lines.length; index += 2) {
             if (!suffixes.includes(lines[index]) || !/^[A-Za-z0-9+/]*={0,2}$/.test(lines[index + 1] ?? '') || artifacts.some(file => file.suffix === lines[index])) {
-              throw new Error('Malformed Lean module artifacts');
+              return result('ERROR', 'Malformed Lean module artifacts', { diagnostic_code: 'module_verification_failed', retryable: false });
             }
             artifacts.push({ suffix: lines[index], bytes: Buffer.from(lines[index + 1], 'base64') });
           }
-          if (!artifacts.some(file => file.suffix === 'olean' && file.bytes.length)) throw new Error('Missing Lean module artifact');
+          if (!artifacts.some(file => file.suffix === 'olean' && file.bytes.length)) return result('ERROR', 'Missing Lean module artifact', { diagnostic_code: 'module_verification_failed', retryable: false });
           // execute resolves only after the cgroup and descendants have settled.
           if (budget.signal?.aborted) throw new Error('Lean module check aborted');
           moduleWarnings = built.stderr.split('\n').flatMap(line => {
             try { const message = JSON.parse(line); return message.severity === 'warning' ? [String(message.data).slice(0, 320)] : []; }
             catch { return []; }
           }).slice(0, 8);
+          const verificationDirectory = join(directory, 'verification', source.module.replaceAll('.', '/'));
+          await mkdir(verificationDirectory, { recursive: true });
+          for (const artifact of artifacts) {
+            await writeFile(join(verificationDirectory, `module.${artifact.suffix}`), artifact.bytes);
+          }
+          const verificationArgs = this.sandbox();
+          verificationArgs.push('--ro-bind', verificationDriver, '/driver/Verify.lean',
+            '--size', '268435456', '--tmpfs', '/cache', ...dependencyMounts, '--remount-ro', '/cache',
+            '--ro-bind', verificationDirectory, '/module',
+            '--setenv', 'LEAN_PATH', ['/cache', ...this.libraryPaths].join(':'), '--chdir', '/module',
+            '/toolchain/bin/lean', '-j1', this.memoryArgument, '--run', '/driver/Verify.lean',
+            '/module/module.olean', source.module, key);
+          const verified = await startProcess(() => this.execute(verificationArgs, { ...budget, maxOutput: 8192 }));
+          let validation;
+          try {
+            validation = JSON.parse(verified.output.toString().trim());
+          } catch {
+            // An incomplete verifier response cannot authorize artifact reuse.
+          }
+          if (verified.code !== 0 || validation?.status !== 'verified') {
+            return result('ERROR', 'Lean module artifact did not pass independent completion and kernel verification', {
+              diagnostic_code: 'module_verification_failed', checker_process_status: 'completed', retryable: false,
+            });
+          }
+          for (const name of validation.axioms ?? []) {
+            moduleWarnings.push(`Module declares axiom ${name}`);
+          }
           this.#put(key, artifacts, moduleWarnings);
         }
         builtArtifacts.set(source.module, artifacts);

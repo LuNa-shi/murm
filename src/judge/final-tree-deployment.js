@@ -142,6 +142,8 @@ async function artifacts(configuration, expected = null) {
     { label: 'bubblewrap', path: bubblewrap },
     { label: 'validator', path: harness },
     { label: 'module-checker', path: fileURLToPath(new URL('./lean-module-checker.js', import.meta.url)) },
+    { label: 'module-build-driver', path: fileURLToPath(new URL('./lean-module-build.lean', import.meta.url)) },
+    { label: 'module-proof-verifier', path: fileURLToPath(new URL('./lean-module-verify.lean', import.meta.url)) },
     { label: 'base64', path: '/usr/bin/base64' },
     { label: 'verifier', path: fileURLToPath(new URL('./lean-final-tree-verifier.js', import.meta.url)) },
     { label: 'resource-launcher', path: fileURLToPath(new URL('./checker-process-limits.js', import.meta.url)) },

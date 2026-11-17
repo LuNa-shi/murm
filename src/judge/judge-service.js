@@ -441,22 +441,45 @@ export class JudgeService {
     // Remote snapshots may age while queued or while a process runs. Only the
     // synchronous spawn phase has freshly captured authority in that deployment.
     const assertCanStart = () => { if (!this.lifecycleWrite) authority({ newWork: true }); };
-    const startProcess = phase => launch => {
-      const guardedLaunch = () => {
-        authority({ newWork: true });
-        if (missionId) {
-          const column = phase === 'preflight' ? 'preflight_starts' : 'source_starts';
-          const reserved = this.db.prepare(`UPDATE judge_mission_check_admissions SET ${column} = 1
-            WHERE mission_id = ? AND check_result_id = ? AND settled_at IS NULL AND ${column} = 0`)
-            .run(missionId, requested.check_result_id);
-          if (reserved.changes !== 1) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Checker attempted an unreserved process launch');
+    // One request retains one Mission slot and one source deadline. Module
+    // builds alone may start a bounded serial sequence, derived from the
+    // trusted revision rather than any Agent-supplied launch count. The
+    // plan allows one header parser and a compile/validation pair per source.
+    const sourceLaunchLimit = project?.source.check_mode === 'lean-module'
+      ? Object.keys(project.files).filter(path => path.endsWith('.lean') && path !== 'lakefile.lean').length * 2 + 1
+      : 1;
+    let sourceDeadline;
+    const startProcess = phase => {
+      let inFlight = false;
+      return async launch => {
+        if (inFlight) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Checker phase workers must run serially');
+        inFlight = true;
+        try {
+          const guardedLaunch = () => {
+            authority({ newWork: true });
+            if (phase === 'source' && sourceDeadline !== undefined && Date.now() >= sourceDeadline) {
+              throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Checker source phase deadline elapsed');
+            }
+            if (missionId) {
+              const column = phase === 'preflight' ? 'preflight_starts' : 'source_starts';
+              const limit = phase === 'preflight' ? 1 : sourceLaunchLimit;
+              const reserved = this.db.prepare(`UPDATE judge_mission_check_admissions SET ${column} = ${column} + 1
+                WHERE mission_id = ? AND check_result_id = ? AND settled_at IS NULL AND ${column} < ?`)
+                .run(missionId, requested.check_result_id, limit);
+              if (reserved.changes !== 1) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Checker attempted an unreserved process launch');
+            }
+            return launch();
+          };
+          if (!publicInput && !registered) return await guardedLaunch();
+          return await (this.lifecycleWrite
+            ? this.lifecycleWrite(guardedLaunch, { phase, requestHash, checkResultId: requested.check_result_id })
+            : this.taskService.withServiceLifecycleWrite(guardedLaunch));
+        } finally {
+          // The trusted runner settles only after worker descendants/cleanup.
+          // Retain this guard across asynchronous lifecycle acquisition too.
+          inFlight = false;
         }
-        return launch();
       };
-      if (!publicInput && !registered) return guardedLaunch();
-      return this.lifecycleWrite
-        ? this.lifecycleWrite(guardedLaunch, { phase, requestHash, checkResultId: requested.check_result_id })
-        : this.taskService.withServiceLifecycleWrite(guardedLaunch);
     };
     const preflight = await this.#runPreflight(normalized, assertCanStart, startProcess('preflight')).catch(error => {
       admissionFailure = executionRejection(error);
@@ -486,6 +509,7 @@ export class JudgeService {
         // A preflight can finish after the soft/hard boundary. Do not launch
         // a new scientific calculation merely because preflight was admitted.
         assertCanStart();
+        sourceDeadline = this.processTimeoutMs === null ? undefined : Date.now() + this.processTimeoutMs;
         const launch = startProcess('source');
         checked = project
           ? await this.checker.checkProject({ files: project.files, tree: project.source.git_tree, path: project.source.path,

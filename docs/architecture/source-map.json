@@ -1162,6 +1162,25 @@
       "role": "Independent Lean preflight/compiler process and diagnostic extraction"
     },
     {
+      "path": "src/judge/lean-final-tree-verifier.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Locked offline Lake project builds, isolated proof export, theorem comparison and kernel replay"
+    },
+    {
+      "path": "src/judge/lean-module-build.lean",
+      "category": "services and contracts",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned Lean frontend driver recording completed fixed-source elaboration before module serialization"
+    },
+    {
       "path": "src/judge/lean-module-checker.js",
       "category": "services and contracts",
       "chapters": [
@@ -1171,14 +1190,13 @@
       "role": "Isolated module dependency compilation and Mission-scoped immutable artifact cache"
     },
     {
-      "path": "src/judge/lean-final-tree-verifier.js",
-      "category": "Mission acceptance and checker",
+      "path": "src/judge/lean-module-verify.lean",
+      "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
-        "docs/architecture/05-workspace-continuity.md",
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Locked offline Lake project builds, isolated proof export, theorem comparison and kernel replay"
+      "role": "Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers"
     },
     {
       "path": "src/observability/benchmark-report-importer.js",
