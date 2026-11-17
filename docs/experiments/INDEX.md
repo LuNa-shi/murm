@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261117-02` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · REGISTERED; 15-minute queue, eight-hour attempt** | `d60b6b0` | [Q20 eight-hour retry](EXP-20261117-02-q20-subtree-8h.md) |
 | `EXP-20261117-01` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · STARTUP_BLOCKED; zero model calls** | `2dc4a16` | [Q20 eight-hour](EXP-20261117-01-q20-subtree-8h.md) |
 | `EXP-20261116-14` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · COMPLETED; unsolved, audit misclassification diagnosed** | `d79ace7` | [Q20 root-only one-hour](EXP-20261116-14-q20-subtree-1h.md) |
 | `EXP-20261116-13` | [Issue #135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **Q20 root-only, 4 Core · COMPLETED; unsolved, protocol valid** | `d79ace7` | [Q20 root-only health](EXP-20261116-13-q20-subtree-health-15m.md) |
