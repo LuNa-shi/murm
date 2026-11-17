@@ -282,9 +282,10 @@
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
+        "docs/architecture/06-observability-experiments.md",
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "CLI options, locked input, persistent observer, batch and aggregate outputs"
+      "role": "CLI options, locked input, opt-in persistent observer, batch and aggregate outputs"
     },
     {
       "path": "scripts/sandbox-project.mjs",

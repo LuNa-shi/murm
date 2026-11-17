@@ -6,7 +6,7 @@ This chapter describes how the repository actually composes a run. It covers the
 
 | Entry | What it executes |
 |---|---|
-| `scripts/run-putnambench-benchmark.mjs` | Real benchmark launcher: validates locked input, creates run metadata/observer, invokes one project or a bounded batch, writes aggregate output |
+| `scripts/run-putnambench-benchmark.mjs` | Real benchmark launcher: validates locked input, creates run metadata and an opt-in observer, invokes one project or a bounded batch, writes aggregate output |
 | `runBenchmarkProject(problem, config, options)` | Four Core lanes for one problem; non-timed tests can inject controlled checkers and provider endpoints |
 | `runBenchmarkBatch(problems, config, options)` | Worker pool across isolated projects; each project still has four lanes; a project error becomes a sanitized fallback report |
 | `scripts/service-host.mjs` | Separately hosted built-in Task, Context, Judge or Catalog provider |
@@ -42,6 +42,7 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 | `--initial-bot-stagger-ms` | `60000` for the CLI; delays first Bot starts by Core index, bounded by the Mission deadline. Replacement Bots start immediately. |
 | `--provider` | `PI_PROVIDER`, then `NUROUTER_PI_PROVIDER`, otherwise `gpt_proxy`; empty values are rejected |
 | `--model` | `PI_MODEL`, then `NUROUTER_PI_MODEL`, otherwise `gpt-6.1-sol`; empty values are rejected |
+| `--observability` | Absent by default: no observer server startup or metadata health probe. Supply this flag to enable the existing persistent observer flow; host/port/metadata options alone do not enable it. Project-local evidence still records. |
 | `--experiment-root` | `experiments` |
 | `--experiment-dir` | `experiments/putnambench-runs/run-<startup timestamp>`; resolved path must be absent and strictly below experiment root |
 | `--report-dir` | `reports/putnambench-runs/run-<startup timestamp>` |
@@ -77,7 +78,7 @@ Direct Pi routing uses `PI_PROVIDER` and `PI_MODEL` (with the older `NUROUTER_PI
 ## 4. Startup in execution order
 
 1. **Record the launch.** Resolve the experiment root and directory and reject an existing directory before resolving provider credentials, loading the pinned fixture or attaching the observer. Stage deployment inputs outside the new experiment directory. After validating the fixture and reading repository commit/dirty state, exclusively create the private audit directory; if another launch already created it, return the same diagnostic with instructions to choose a fresh ID. Write `metadata/experiment.json` with environment, protocol, provider/model, paths and start time. The CLI's `experiment_id` is the experiment directory basename; project `runId` is separately generated unless explicitly provided.
-2. **Attach an observer.** Reuse a healthy metadata-declared server. Without an explicit metadata override, the server must use the expected observation database. An explicitly configured unavailable server causes an error. Otherwise spawn a detached observer, poll health up to 80 times at 250 ms intervals, then open the observation database and write `metadata/observability.json`. The observer is persistent and is not stopped at project cleanup.
+2. **Optionally attach an observer.** Skip this entire step by default. Only `--observability` enables it; address/metadata options alone do not. When enabled, reuse a healthy metadata-declared server. Without an explicit metadata override, the server must use the expected observation database. An explicitly configured unavailable server causes an error. Otherwise spawn a detached observer, poll health up to 80 times at 250 ms intervals, then open the observation database and write `metadata/observability.json`. The observer is persistent and is not stopped at project cleanup.
 3. **Create project storage.** The runner creates project SQLite, Workspace, report and log directories. Task owns `project.sqlite`; Context and Judge own `context.sqlite` and `judge.sqlite`. Unless an Observation Store is injected, observation tables live in the Task connection. Formal CLI runs inject the separate persistent observation store. Separate files do not by themselves establish independently deployed services.
 4. **Construct services.** Create Task in the coordinator, then select `serviceDeployment`. Positive-duration runs default to repository-owned independent Context/Judge peers and separate durable files; zero-duration fixtures default to `in-process`. The independent path binds private authenticated HTTP, instance locks, durable commit/launch gates, checker ownership and bounded startup/cleanup. The compatibility path wires synchronous local domain objects. Both install checker health/result readers and dependency events. Arbitrary external/custom provider overrides remain rejected in timed runs. The legacy `services/builtin/compose.yaml` host is a separate compatibility surface and does not supply this peer protocol.
 5. **Create Mission and public input.** Create a Mission with the locked problem identity, target path/source hash, final acceptance checker and optional separate merge checker. Create its distinct public Workspace with the original unsolved file as the initial revision, then wire and reconcile the durable Mission submission store. There is no initial/shared/root Task. Bots later propose ordinary Tasks; the Mission is never taken.
@@ -167,7 +168,7 @@ The Mission timebox is fixed before project setup, including artifact and enviro
 | Location | Contents and interpretation |
 |---|---|
 | `<experiment>/metadata/experiment.json` | CLI launch/protocol snapshot; final status/counts only written if the CLI reaches finalization |
-| `<experiment>/metadata/observability.json` | Persistent observer address/database metadata |
+| `<experiment>/metadata/observability.json` | Persistent observer address/database metadata, only with `--observability` |
 | `<experiment>/state/projects/<problem>/project.sqlite` | Task, Bot and Execution records, Mission coordination and local Workspace request state; observations only when no external store was injected |
 | `<experiment>/state/projects/<problem>/model-budget.sqlite` | Model admissions, request identity, usage and budget settlement |
 | `<experiment>/state/projects/<problem>/mission-workspace/` | Public Mission repository/index and immutable saved revisions |
@@ -177,7 +178,7 @@ The Mission timebox is fixed before project setup, including artifact and enviro
 | `<experiment>/state/projects/<problem>/judge-work/` | Independent checker work products |
 | `<experiment>/logs/projects/<problem>/agents/core-N.ndjson` | Private raw Pi transport evidence, including repository-sent prompt messages |
 | `<experiment>/logs/projects/<problem>/services/`, `bridge/`, `runtime/`, `judge/` | Component evidence with the visibility/sanitization of each logger |
-| `<experiment root>/.observability/observability.sqlite` | Default persistent CLI observation projection |
+| `<experiment root>/.observability/observability.sqlite` | Shared CLI observation projection, only with `--observability`; otherwise the runner uses its project-local database |
 | `<report root>/<problem>/report.json`, `<report root>/aggregate-report.json` | Exported reports; counts and projections are explained in [06](06-observability-experiments.md) |
 
 The top-level ignored `experiments/` raw evidence directory and committed `docs/experiments/` report directory have different purposes. Raw conversations and proof source are not copied into the implementation manual.

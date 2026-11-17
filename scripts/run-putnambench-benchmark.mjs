@@ -142,6 +142,7 @@ function optionsFromArgs(argv) {
     timeboxMs: 60 * 60_000,
     initialBotStaggerMs: 60_000,
     turnTimeoutMs: 9 * 60_000,
+    observability: false,
     observabilityPort: 8787,
     observabilityHost: '127.0.0.1',
     observabilityAdvertiseHost: null,
@@ -164,6 +165,10 @@ function optionsFromArgs(argv) {
     const arg = argv[index];
     if (arg === '--help' || arg === '-h') {
       options.help = true;
+      continue;
+    }
+    if (arg === '--observability') {
+      options.observability = true;
       continue;
     }
     const [key, inline] = arg.split('=', 2);
@@ -218,6 +223,7 @@ function usage() {
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
     '    --report-dir reports/putnambench-runs/run-<id>',
+    '    --observability             Opt in to the persistent observer server; disabled by default',
     '    --observability-host 127.0.0.1',
     '    --observability-port 8787',
     '    --observability-metadata /path/to/experiments/.observability/public-server.json',
@@ -356,6 +362,7 @@ const metadata = {
     turn_timeout_ms: options.turnTimeoutMs,
     provider: options.provider,
     model: options.model,
+    observability_enabled: options.observability,
     input_policy: 'pinned formalization in Task-owned Workspace; no candidate or solution input',
     raw_evidence_layout: 'logs/, state/, workspaces/',
     report_layout: resolve(options.reportDir),
@@ -375,10 +382,10 @@ try {
   await mkdir(resolve(options.reportDir), { recursive: true });
   await mkdir(resolve(options.experimentDir, 'metadata'), { recursive: true });
   await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
-  const observationAddress = await ensureObservabilityServer(options).catch(error => {
+  const observationAddress = options.observability ? await ensureObservabilityServer(options).catch(error => {
     if (operatorStop.signal.aborted) return null;
     throw error;
-  });
+  }) : null;
   if (observationAddress && !operatorStop.signal.aborted) {
     const observationDatabasePath = resolve(observationAddress.database_path ?? join(options.experimentRoot, '.observability', 'observability.sqlite'));
     observationStore = new ObservationStore(observationDatabasePath);
