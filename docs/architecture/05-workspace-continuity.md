@@ -95,8 +95,10 @@ Focused CLI/Git tests cover disjoint contributions in the actual checked combine
 
 ## 1. What a Workspace represents
 
-Every `Runtime.startExecution` or `bindAgentExecution` prepares a private
-Workspace before starting the durable Execution. A Task need not expose file or
+The registered Bot starts in a protected Sandbox before take; after take Runtime materializes the selected immutable Mission revision into its guest project. Public continuity uses explicit save/apply/merge as described above.
+
+The compatibility `Runtime.startExecution` or `bindAgentExecution` path prepares a private
+WorkspaceManager support directory before starting the durable Execution. A Task need not expose file or
 Sandbox tools to its Agent for that support directory to exist: capability
 selection and materialization are separate decisions. Independent participants
 in the compatibility Task path receive independent writable directories. In
@@ -124,7 +126,7 @@ local owner, fence, file index and history. Neither one replaces the other.
 | `README.md`, `workspace-manifest.json`, `runtime-manifest.json` | Initial Task description, Task/input contract and Runtime/adapter manifest, respectively. |
 | `.pi/settings.json` | Runtime-installed Pi compaction/retry settings where the preparation path ensures the file. |
 
-A public Workspace view has `workspace_ref`, `execution_id`,
+A compatibility WorkspaceManager view has `workspace_ref`, `execution_id`,
 `fencing_version`, `workspace_revision`, `content_hash`, `git_commit`,
 `git_worktree`, parent Workspace/revision, Task and manifest fields,
 `workspace_contract`, `input_snapshot`, checkpoint reference/hash,
@@ -187,13 +189,13 @@ continuous monitor that prevents later shell writes.
 
 For a registered Bot with a public Mission Workspace, the benchmark passes a trusted `missionWorkspaceId` into Runtime. During take preparation, `exportRevision` resolves the fixed Task `workspace.revision`, or main when omitted, once under the repository recovery barrier and exports every file plus immutable revision/commit/tree/content and per-file hashes. Runtime verifies the Mission and rejects a conflicting Task Workspace ID. A concurrent main advance does not change the selected input. If no trusted Workspace ID is configured, an explicit Task Workspace ID is required and its Mission is still checked.
 
-The host Execution directory receives those exact project files, including binary data and the existing `.gitignore`/README. This path adds no Task README, runtime manifest, workspace manifest or `.pi` settings to project files. Host bookkeeping stays in private `.swarm` and `.git`. Creation holds a target lock, builds a sibling staging directory, verifies every file against the public manifest, imports raw Git blobs without ignore/attribute conversion, and publishes the completed directory by rename. Exact matching retries reuse its original input; a different input/fence or a nonempty partial target is rejected, never overlaid. The initial local Git tree therefore matches the public Git tree. The OpenSandbox transfer receives the trusted manifest, copies exactly those paths using base64 chunks of at most 65,536 characters into a per-file guest temporary path, verifies the complete received file with SHA-256, then renames it into place. This stays below Linux single-argument limits even for the 2 MiB maximum file. Failed copies best-effort remove their temporary file and fail preparation; `.environment` and other allowed names are not silently omitted by the legacy traversal filter. It rejects source symlinks and bytes differing from the pinned manifest. This per-file verification is not yet a writer-pause or protected-directory guarantee. The initial public input identity is recorded in both private Workspace metadata and `executions.workspace_input_json` before activation, and cannot be changed by later local revision saves. Reports include this initial public reference separately from the older local integer revision/commit fields. This establishes complete input selection/transport and audit identity; protected guest preparation/grant follows the flow below; same-E apply uses the captured guest transaction and confirmation protocol described above.
+The host Execution directory receives those exact project files, including binary data and the existing `.gitignore`/README. This path adds no Task README, runtime manifest, workspace manifest or `.pi` settings to project files. Host bookkeeping stays in private `.swarm` and `.git`. Creation holds a target lock, builds a sibling staging directory, verifies every file against the public manifest, imports raw Git blobs without ignore/attribute conversion, and publishes the completed directory by rename. Exact matching retries reuse its original input; a different input/fence or a nonempty partial target is rejected, never overlaid. The initial local Git tree therefore matches the public Git tree. The OpenSandbox transfer receives the trusted manifest, copies exactly those paths using base64 chunks of at most 65,536 characters into a per-file guest temporary path, verifies the complete received file with SHA-256, then renames it into place. This stays below Linux single-argument limits even for the 2 MiB maximum file. Failed copies best-effort remove their temporary file and fail preparation; `.environment` and other allowed names are not silently omitted by the legacy traversal filter. It rejects source symlinks and bytes differing from the pinned manifest. Per-file hashing establishes transport integrity. Protected PREPARED input and process-paused grant are additional implemented worker boundaries described below; hashing alone does not establish them. The initial public input identity is recorded in both private Workspace metadata and `executions.workspace_input_json` before activation, and cannot be changed by later local revision saves. Reports include this initial public reference separately from the older local integer revision/commit fields. This establishes complete input selection/transport and audit identity; protected guest preparation/grant follows the flow below; same-E apply uses the captured guest transaction and confirmation protocol described above.
 
 Unregistered compatibility Executions retain the older formal-source and generated-manifest creation path. A take cannot select another Execution's private revision, source path, checkpoint or directory.
 
 If an Execution already has its own Workspace, Runtime reads its current metadata under the current fence and continues from that binding. Matching retries are idempotent; a different owner, fence, revision, or content hash is rejected. Workspace saves advance exactly one revision and persist the file manifest and content hash before the corresponding Execution reference is recorded.
 
-The initial README, manifest, ignore rules, Pi settings and runtime manifest are generated by Runtime. These writes may create successive revisions, so revision one is the materialization boundary rather than a promise about the first model turn.
+In the compatibility preparation path, Runtime generates the initial README, manifest, ignore rules, Pi settings and runtime manifest. Registered public input materialization instead preserves the exact supplied project tree as described above. These writes may create successive revisions, so revision one is the materialization boundary rather than a promise about the first model turn.
 
 
 ## 4. File operations, revisions and their precise limits
@@ -254,15 +256,7 @@ Judge uses its own configured fixture/checker and persists the resulting check;
 Task completion is separate. See [the direct submission contract](04-services.md#the-as-built-submission-route)
 and [ADR 0019](../adr/0019-direct-judge-workspace-submission.md).
 
-This boundary inherits the live-file behavior above. An optional revision
-checks the current metadata revision; it does not request bytes from that
-historical revision. Bridge uses the file-read default of 1,000,000 bytes and
-forwards its content/hash, without a separate full-file snapshot or truncation
-branch. Judge recomputes the supplied content's SHA-256 before checking, so a
-stale indexed hash or truncated source with a full-file hash fails request
-validation. Direct submission therefore does not remove the current
-metadata-index limitations or establish the phase-02 immutable shared-revision
-contract.
+The historical unregistered Bridge file route instead reads the current private Workspace with optional stale-value guards. Its revision check compares current metadata rather than exporting historical bytes. It retains the 1,000,000-byte read default and metadata-index limits; Judge recomputes content hashes and rejects inconsistent inputs. These are compatibility-route limits, not registered numeric-revision file/project limits. Neither route implicitly saves a revision or publishes Material.
 
 Sources: [Bridge source preparation](../../src/agent/services-bridge.js),
 [Runtime read boundary](../../src/runtime/runtime.js),
@@ -270,6 +264,8 @@ Sources: [Bridge source preparation](../../src/agent/services-bridge.js),
 [Judge source validation](../../src/judge/judge-service.js).
 
 ## 5. Progress and handoff persistence
+
+This section describes unregistered compatibility APIs. Registered Bots cannot call `execution_progress` or switch Tasks within the same Bot. They explicitly save public revisions, publish/link Materials and call `task_finish`; no automatic private checkpoint is their public handoff. Registered finish retains ownership through physical cleanup as described in [Mission and Task](03-mission-task.md#accepted-finish-and-safe-release).
 
 `execution_progress` accepts `kind: checkpoint | handoff` (default
 `checkpoint`) and requires all four substantive fields:
@@ -340,6 +336,8 @@ Runtime's common physical-release path retains a `CLOSING` Core and resource bin
 
 ## 6. Fence, release, restart and retained state
 
+The WorkspaceManager metadata and same-E restart APIs below are compatibility mechanisms. The registered path uses immutable public inputs, retained cleanup ownership and fresh Bot/E authority; `restartSession` rejects a registered Bot. Public revisions survive independently of its private directory.
+
 A normal Workspace write requires the same Execution ID, current fence and no
 `released_at`. `releaseWorkspace` verifies owner/fence and idempotently retries both metadata writes, retaining the original release timestamp after a partial write failure. It records a release timestamp without
 deleting data. `reopenWorkspace` permits that same owner and fence to clear
@@ -354,7 +352,7 @@ container that retains raw filesystem access is not stopped merely because a
 JSON fence changed. Read/list APIs check ownership and fence but do not require
 an unreleased Workspace.
 
-Session restart normally keeps the same Execution ID and Core. Runtime stops
+Compatibility Session restart keeps the same Execution ID and Core. Runtime stops
 the previous actual Session, removes its identity-session registration, frees
 the in-memory Core, advances the Workspace and durable Execution fences via
 recovery, and starts another Session on the existing Workspace. Recovery
@@ -391,7 +389,7 @@ when available and uses a valid measured value.
 | Event/condition | Runtime action |
 | --- | --- |
 | `compaction_start` when count is already at the configured maximum | Start identity rotation immediately with reason `compaction_limit`. |
-| Successful `compaction_end` with result and not aborted | Increment lane count; queue one persistence attempt for this event in arrival order. |
+| Successful `compaction_end` with result and not aborted | Increment lane count and queue handling in arrival order: registered Bot reminder/observation, or compatibility private checkpoint. |
 | At/above max after successful compaction, postcompaction usage unknown | Rotate conservatively with `compaction_window_unknown`. |
 | At/above max after successful compaction, known ratio at/above 0.8 | Rotate with `compaction_window_threshold`. |
 | At/above max, later `turn_end` with ratio at/above threshold | Rotate. |
@@ -406,7 +404,11 @@ prevent a fourth compaction; the implementation does not prove that an
 external provider has not begun internal compaction before emitting it.
 Do not turn this event-based intervention into a stronger provider guarantee.
 
-### Each successful compaction queues a checkpoint
+### Registered Bot compaction and rotation
+
+After successful compaction, Runtime waits for settlement (up to 30 seconds), verifies the current active Bot/E/deadline and optionally sends the fixed compaction reminder. During soft closeout the phase selector substitutes save/publish/finish guidance. It records `runtime.bot_compaction_recorded` with `public_save:false` and returns `not_saved`; Pi compaction does not publish the guest tree, a Material or a private checkpoint as public progress. A closing/rotating Bot receives no reminder. At a rotation boundary Runtime stops E as `HANDED_OFF` with reason `compaction_rotation`, confirms physical cleanup and allows a later fresh Bot to continue from explicitly published state. It does not call same-E Session restart.
+
+### Compatibility automatic checkpoints
 
 Saves are serialized behind the previous compaction save, including after a
 previous failure. If supported, Runtime waits up to 30 seconds for the Session
@@ -423,7 +425,7 @@ follow-up prompt asking the current Bot to write substantive
 alone is not converted into invented findings. The full reminder and exact
 send path appear in [08](08-prompts.md).
 
-Rotation coalesces concurrent requests and drains the already queued compaction
+Compatibility rotation coalesces concurrent requests and drains the already queued compaction
 save; a `compaction_start` rotation does not wait for a new settle event from
 the compaction it is interrupting. It calls
 `restartSession(reason: compaction_rotation)`, logs old/new identity IDs and
@@ -434,7 +436,7 @@ therefore an identity/Session replacement, not a Task handoff.
 
 ## 8. Sandbox provisioning and execution
 
-The benchmark uses `OpenSandboxManager` for every Agent Execution. Runtime creates one provider sandbox with the fixed worker entrypoint, authenticates the worker with a per-Execution token, copies bounded Workspace files into guest `/workspace`, and deletes the sandbox at release. `sandbox_exec` and `sandbox_job` are bound Runtime capabilities; they cannot address host paths or an unbound Execution. The worker event stream is sequence-based; retryable SSE failures switch to bounded history polling and replay deduplication. Controller restart reconciliation never revives an old Pi or shell: a sandbox whose worker token cannot be recovered is recorded as unrecoverable, quarantined/deleted, and replaced by a fresh Bot/Execution that resumes from public Workspace and Material state.
+Production benchmarks use OpenSandbox for registered Bots. Runtime creates each Bot sandbox before selection and keeps its worker credential out of Pi. Take associates that resource with E and prepares/grants the pinned project. Native Pi Bash runs as the non-root Bot user in `/workspace/project`; explicit save publishes files. Registered Bots cannot use root `sandbox_exec`. Trusted diagnostic/compatibility transport still supports bounded Execd commands/jobs. The worker event stream uses sequences, bounded polling and replay deduplication. Restart reconciliation cannot recover the credential or revive old private context; it deletes/quarantines the resource. Fresh Bots continue only from public state. Physical stop and provider deletion are distinct cleanup evidence.
 
 [OpenSandbox manager](../../src/runtime/opensandbox-manager.js), [OpenSandbox Agent adapter](../../src/agent/opensandbox-agent-adapter.js), and [Runtime Sandbox binding](../../src/runtime/runtime.js) define the provider boundary. The shipped image is the only trusted worker entrypoint; ordinary callers cannot provide a custom entrypoint.
 

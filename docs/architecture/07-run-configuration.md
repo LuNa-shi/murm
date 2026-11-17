@@ -7,7 +7,7 @@ This chapter describes how the repository actually composes a run. It covers the
 | Entry | What it executes |
 |---|---|
 | `scripts/run-putnambench-benchmark.mjs` | Real benchmark launcher: validates locked input, creates run metadata/observer, invokes one project or a bounded batch, writes aggregate output |
-| `runBenchmarkProject(problem, config, options)` | Four Core lanes for one problem; the caller can inject adapters/checkers for deterministic tests |
+| `runBenchmarkProject(problem, config, options)` | Four Core lanes for one problem; non-timed tests can inject controlled checkers and provider endpoints |
 | `runBenchmarkBatch(problems, config, options)` | Worker pool across isolated projects; each project still has four lanes; a project error becomes a sanitized fallback report |
 | `scripts/service-host.mjs` | Separately hosted built-in Task, Context, Judge or Catalog provider |
 | `scripts/mathlib-search-service.mjs` | Optional HTTP Mathlib Search provider |
@@ -30,7 +30,7 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 | `--problem` | Absent: run all configured problems; otherwise select one matching ID after validating the full configuration |
 | `--cores` | `4`; CLI rejects any other value |
 | `--project-parallelism` | `1`; positive integer; batch concurrency is capped at the problem count |
-| `--timebox-ms` | `3600000`; positive finite execution-loop duration per project |
+| `--timebox-ms` | `3600000`; positive finite setup-plus-research deadline per project |
 | `--bot-max-ms` | Defaults to run timebox; timer-safe integer of at least 2 ms; total Bot lifetime including startup/discovery/preparation |
 | `--selection-timeout-ms` | Defaults to min(300000, Bot maximum); timer-safe integer of at least 2 ms, clamped to Bot/run deadline |
 | `--execution-timeout-ms` | Defaults to Bot maximum; timer-safe integer of at least 2 ms; active Execution cap intersects Task/Bot/run limits |
@@ -38,14 +38,16 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 | `--checker-timeout-ms` | `120000`; timer-safe positive integer for each Lean source diagnostic process, subject to the locked checker timeout |
 | `--task-model` | Rejected; the benchmark has one flat Mission Task model |
 | `--normal-flow` | Rejected; the flat Mission Task contract is always used |
+| `--parallel-mode` | Rejected; the former selector has been removed |
+| `--initial-bot-stagger-ms` | `60000` for the CLI; delays first Bot starts by Core index, bounded by the Mission deadline. Replacement Bots start immediately. |
 | `--provider` | `PI_PROVIDER`, then `NUROUTER_PI_PROVIDER`, otherwise `gpt_proxy`; empty values are rejected |
 | `--model` | `PI_MODEL`, then `NUROUTER_PI_MODEL`, otherwise `gpt-6.1-sol`; empty values are rejected |
 | `--experiment-root` | `experiments` |
 | `--experiment-dir` | `experiments/putnambench-runs/run-<startup timestamp>`; resolved path must be absent and strictly below experiment root |
 | `--report-dir` | `reports/putnambench-runs/run-<startup timestamp>` |
-| `--observability-host` | `0.0.0.0` when the benchmark launches its observer |
+| `--observability-host` | `127.0.0.1` when the benchmark launches its observer |
 | `--observability-port` | `8787` |
-| `--observability-advertise-host` | Absent: attempt `tailscale ip -4`, otherwise no override |
+| `--observability-advertise-host` | Null by default; only an explicit value overrides the advertised host |
 | `--observability-metadata` | `SWARMENV_OBSERVABILITY_METADATA`, otherwise look under the experiment root |
 | `--help`, `-h` | Print usage and exit before requiring benchmark arguments |
 
@@ -76,14 +78,14 @@ Direct Pi routing uses `PI_PROVIDER` and `PI_MODEL` (with the older `NUROUTER_PI
 
 1. **Record the launch.** Resolve the experiment root and directory and reject an existing directory before resolving provider credentials, loading the pinned fixture or attaching the observer. Stage deployment inputs outside the new experiment directory. After validating the fixture and reading repository commit/dirty state, exclusively create the private audit directory; if another launch already created it, return the same diagnostic with instructions to choose a fresh ID. Write `metadata/experiment.json` with environment, protocol, provider/model, paths and start time. The CLI's `experiment_id` is the experiment directory basename; project `runId` is separately generated unless explicitly provided.
 2. **Attach an observer.** Reuse a healthy metadata-declared server. Without an explicit metadata override, the server must use the expected observation database. An explicitly configured unavailable server causes an error. Otherwise spawn a detached observer, poll health up to 80 times at 250 ms intervals, then open the observation database and write `metadata/observability.json`. The observer is persistent and is not stopped at project cleanup.
-3. **Create project storage.** The runner creates project SQLite, Workspace, report and log directories. Task, Context and Judge share the project database. Unless an Observation Store is injected, observation tables can live in that same connection. CLI runs inject the separate persistent store.
+3. **Create project storage.** The runner creates project SQLite, Workspace, report and log directories. Task and Mission coordination own `project.sqlite`; Context owns `context.sqlite` and Judge owns `judge.sqlite`. All three services run in the coordinator process. Unless an Observation Store is injected, observations use the Task connection. CLI runs inject the separate persistent store.
 4. **Construct services.** Wire Context to Task Service, Judge health lookup to Task Service, and Judge dependency events back to Task Service. Create LeanChecker unless a checker was injected. Build the Agent-facing capability registry from local providers, configured HTTP endpoints and optional bundles. Keep a second local registry/router for synchronous owner/controller transactions.
-   The checked-in `services/builtin/compose.yaml` starts Task, Context, Judge and Catalog as separate HTTP processes with independent stateful volumes; the runner still uses in-process services unless its deployment supplies external endpoints and an integration path for controller transactions.
+   Positive-duration runs reject custom/remote service overrides and use the local lifecycle authority composition. The checked-in standalone Compose host has separate HTTP processes and volumes, but lacks the Task-owned commit boundary required for Context/Judge operations; endpoint configuration alone cannot enable that production path. See [Services](04-services.md).
 5. **Resolve Mathlib Search.** Prefer a configured external URL/provider. Otherwise, if the pinned project's Mathlib source tree exists, register the local source provider. Missing source in a synthetic fixture leaves the capability absent; admission can then reject a Task needing it. Registration does not create a hidden alternative search service.
-6. **Create the responsibility.** The runner creates a Mission and its first/shared proof Task. The Task contains the goal, instructions, completion contract, source hash and formal source in Workspace metadata, including proof-relevant Material consumption and a final checked Workspace artifact. Full instruction variants appear in [08](08-prompts.md).
-7. **Optional preparation hook.** Await `prepareProject` for deterministic callers to seed Tasks through the same services before Agent startup. Normal benchmark code does not pre-create a fixed research Task pool.
-8. **Create four Core environments.** Each Core receives an adapter, one-worker Runtime, shared project Workspace root, lane-specific Bridge, raw Agent log and sanitized observation hooks. Flat profiles omit Runtime's duplicate `task_finish`/`task_finish(outcome=blocked)` aliases. Sandbox tools are exposed only when Sandbox is enabled. Start Bridges and pass their endpoint/token environment into the respective Agent process.
-9. **Create supervisors and start the clock.** Build Task Controller and four identity loops, subscribe to post-commit Task events, reconcile readiness and start loop supervisors. Reset the parallelism tracker at execution-loop start. Flat Runtime deadlines use this common run deadline. The Pi Session is launched when a loop actually needs it.
+6. **Create Mission and public input.** Create a Mission with the locked problem identity, target path/source hash, final acceptance checker and optional separate merge checker. Create its distinct public Workspace with the original unsolved file as the initial revision, then wire and reconcile the durable Mission submission store. There is no initial/shared/root Task. Bots later propose ordinary Tasks; the Mission is never taken.
+7. **Optional preparation hook.** Await `prepareProject` with `root: null`, the Mission/public Workspace and domain services. Deterministic callers may seed Tasks through those services; normal runs start with an empty Task pool.
+8. **Create four Core environments.** Each Core receives a registered-Bot adapter, one-worker Runtime, authenticated Bridge, private raw log and observation hooks. Domain state and public Workspace are shared; each Bot has its own Sandbox and guest project. Native Pi read/write/edit/bash and the protected `swarm` CLI are the research tool surface.
+9. **Start supervisors under the existing deadline.** Build Task Controller and four identity loops, subscribe to public changes and start independent discovery with the configured first-Bot stagger. The project deadline was fixed before setup; starting the active loop resets only its observation tracker, not the budget. Successors start after prior resource cleanup and do not repeat the initial stagger.
 
 Failures while creating Core environments stop any created Sessions, shut down Runtimes, stop Bridges and close Task Service before rethrowing. Earlier setup failures are not equivalent to a completed project; the batch wrapper can create a fallback report, while the single-project CLI propagates the error.
 
@@ -97,8 +99,8 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `normalFlow` | No longer selects behavior; the runner fixes normal flow to `true` and does not read this option |
 | `runId`, `startedAt` | Random UUID and current time for setup identity/tracker; active-loop timing is set after setup |
 | `repositoryCommit`, `repositoryWorktreeDirty` | `null` unless caller/CLI supplies them; report provenance |
-| `stopOnSolved` | Only literal `true` enables early exit; otherwise continue toward the deadline |
-| `taskTimeboxMs` | Flat initial Task timebox: run timebox unless supplied |
+| `stopOnSolved` | Retained in option storage for compatibility; it does not change the loop. Accepted Mission plus completed closeout ends the run regardless of this value. |
+| `taskTimeboxMs` | No current consumer; the runner creates no initial Task. Bot, Execution and Mission deadlines govern the active path. |
 | `botMaxMs` | Run timebox; total lifetime starting before discovery |
 | `selectionTimeoutMs` | min(300000, Bot maximum) for library calls; Runtime clamps to the Bot deadline |
 | `executionTimeoutMs` | Bot maximum if set, otherwise run timebox; Runtime owns the active Execution deadline |
@@ -117,9 +119,8 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `checker`, `leanCommand`, `checkerTimeoutMs` | Inject checker or use LeanChecker, command `lake`, timeout `120000` capped by the locked deployment when in use |
 | `maxInfrastructureRetries` | Forwarded to JudgeService; see exact Judge defaults in [04](04-services.md) |
 | `command`, `account`, `group`, `extensionPath` | Override command and routing; runner command defaults to `pi`. Top-level `extensionPath` applies to the local compatibility adapter; registered OpenSandbox Bots reject custom Service-tool extensions and use four native tools |
-| `agentAdapterFactory` | Caller-supplied compatibility adapter factory when an OpenSandbox manager is not selected; used for controlled tests, not an extra Agent-selection process |
 | `observationStore` | Inject persistent observation store; otherwise project-local storage |
-| `prepareProject` | Awaited preparation hook after initial Task creation and before Core construction |
+| `prepareProject` | Injected deterministic preparation hook after Mission/Workspace creation and before Core construction; receives `root: null`. Ordinary runs do not seed a fixed Task pool. |
 | `serviceRegistry` | Inject full Agent-facing registry; skips built-in bundle and Mathlib auto-registration; local owner/controller router still exists |
 | `serviceEndpoints` | Built-in provider endpoint/token map; otherwise use `SWARMENV_{TASK,CONTEXT,JUDGE,CATALOG}_SERVICE_URL` and corresponding `_TOKEN` variables |
 | `customServices` | Additional registered providers when building the default registry |
@@ -129,7 +130,7 @@ The exported runner accepts the options below in addition to CLI-equivalent `pro
 | `mathlibSearchSourceRoot` | Otherwise `MATHLIB_SEARCH_SOURCE_ROOT` or `<lean project>/.lake/packages/mathlib/Mathlib` |
 | `mathlibRevision`, `leanVersion` | Otherwise the fixture's pinned revision/toolchain; provider metadata |
 | `sandbox` | Enabled only when `sandbox.enabled === true`; exact settings below |
-| `requireThirdPartySandbox` | CLI sets `true`: require enabled OpenSandbox. Direct library calls can omit it for explicitly configured compatibility fixtures |
+| `requireThirdPartySandbox` | CLI sets `true`; affects classification of provider startup failures. The current runner requires enabled OpenSandbox structurally even for direct library calls; zero-duration fixtures use controlled endpoints |
 
 Finish cleanup uses Runtime defaults `finishCleanupRetryMs=1000` and `maxFinishCleanupRetries=3`; retries back off exponentially up to 30 seconds, preserve ownership on exhaustion, and are cancelled on shutdown. The runner does not pass every Runtime constructor option through. For example `maxRecoveryAttempts=1`, `maxCompactions=3`, `handoffWindowRatio=0.8` and compaction checkpoint reminders use Runtime defaults here; assigning similarly named fields on runner options does not configure them.
 
@@ -157,7 +158,7 @@ Shutdown runs after the active loop exits:
 2. Unsubscribe Task events, stop new wake requests, abort/stop identity loops, and begin Controller stop. A suspended Controller cannot subsequently signal another Bot.
 3. Mark every Core stopping. Concurrently stop Runtime, Bridge transport, Sessions and startup; join turns and pending handlers. Runtime persists closing intent before joining startup and cleans a late arriving Session. Bridge no longer waits for deferred lifecycle work before closing HTTP admission.
 4. All joins share `cleanupGraceMs` (default 30 seconds) measured from the start of finalization. Each pending component receives a typed timeout and, where applicable, a Core ID. A failed sibling does not bypass other pending joins. There are no extra per-turn or per-Core grace periods. Owner/capacity release remains conditional on Runtime-confirmed physical stop, not the reporting timeout.
-5. Read only an already recorded Mission submission within the remaining allowance; never create a synthetic operator verdict from report fields. Build/write the report and final observations. Pending cleanup makes the run invalid and is recorded explicitly. Keep the shared authority database open until tracked late cleanup settles; otherwise close it after writing. The CLI writes `aggregate-report.json` and experiment metadata. Fresh-process reconciliation uses durable registered Bot create/cleanup state and scoped provider evidence; it does not revive private Pi sessions.
+5. Read only an already recorded Mission submission within the remaining allowance; never create a synthetic operator verdict from report fields. Build/write the report and final observations. Pending cleanup makes the run invalid and is recorded explicitly. Keep all owned stores needed by tracked late cleanup open until it settles; otherwise close them after writing. The CLI writes `aggregate-report.json` and experiment metadata. Fresh-process reconciliation uses durable registered Bot create/cleanup state and scoped provider evidence; it does not revive private Pi sessions.
 
 The Mission timebox is fixed before project setup, including artifact and environment preflight; entering the active loop does not reset that absolute deadline. The report separately measures the active-loop elapsed interval. Polling and awaited orchestration use the remaining Mission allowance. A shared cleanup grace and any retained unknown external-operation tails can extend wall-clock completion, so `timeboxMs` is not a guarantee that all host processes have already disappeared. A code exception still runs `finally` cleanup but can propagate before a normal project report is built. Batch execution catches such errors per problem and writes an invalid `project_runner_error` report; a direct single-project call does not receive that batch fallback. Abrupt process/host termination is not a guaranteed complete-report path.
 
@@ -167,7 +168,7 @@ The Mission timebox is fixed before project setup, including artifact and enviro
 |---|---|
 | `<experiment>/metadata/experiment.json` | CLI launch/protocol snapshot; final status/counts only written if the CLI reaches finalization |
 | `<experiment>/metadata/observability.json` | Persistent observer address/database metadata |
-| `<experiment>/state/projects/<problem>/project.sqlite` | Task, Bot and Execution records, Mission coordination, local Workspace request state and observations |
+| `<experiment>/state/projects/<problem>/project.sqlite` | Task, Bot and Execution records, Mission coordination, local Workspace request state; observations only without an injected Observation Store |
 | `<experiment>/state/projects/<problem>/context.sqlite` | Immutable Material, corrections, usage and Context receipts |
 | `<experiment>/state/projects/<problem>/judge.sqlite` | Diagnostic Judge requests, checker preflights and results |
 | `<experiment>/workspaces/projects/<problem>/<execution>/` | Private Execution Workspace and lineage metadata; reusable Core process directories also live below the project Workspace root |
@@ -183,9 +184,8 @@ The top-level ignored `experiments/` raw evidence directory and committed `docs/
 
 Deterministic library tests use in-process adapters and explicit bounded fixtures; they are separate from the production benchmark CLI and do not represent a live provider run.
 
-`--real-agent` probes local Node/NuRouter/Pi/Lean/Lake commands and provider/model routing before launch. It returns `BLOCKED` for missing prerequisites and `FAILED_TO_LAUNCH` for missing root/input. The real-probe environment metadata fields are `SWARMENV_IMPLEMENTATION_COMMIT`, `SWARMENV_WORKTREE_DIRTY`, `SWARMENV_WORKTREE_STATUS`, `SWARMENV_TIMEBOX_MS`, `SWARMENV_PUTNAMBENCH_ROOT`; they record caller context and do not themselves prove it.
 
-Built-in and Mathlib service launchers use HTTP manifests, role/binding enforcement and optional bearer tokens. Each handles SIGINT/SIGTERM shutdown. The normal runner uses service-owned separate state with co-located synchronous lifecycle APIs. Independently hosted HTTP Context/Judge mutation without that authority composition fails closed. The built-in image installs production dependencies with scripts disabled; it does not install Lean. Mathlib Search needs an external upstream or a mounted source tree. Full host settings and request behavior are in [04](04-services.md).
+Built-in and Mathlib service launchers use HTTP manifests and role/binding enforcement. Built-in invocation requires actor-bound principals; Mathlib Search retains optional bearer authentication. Each handles SIGINT/SIGTERM shutdown. The normal runner uses service-owned separate state with co-located synchronous lifecycle APIs. Independently hosted HTTP Context/Judge mutation without that authority composition fails closed. The built-in image installs production dependencies with scripts disabled; it does not install Lean. Mathlib Search needs an external upstream or a mounted source tree. Full host settings and request behavior are in [04](04-services.md).
 
 The dashboard's maintained source is `src/observability/client/`; Vite builds it to `src/observability/public/` with `app.js` and `styles.css` names. The observer serves these generated assets. Development proxies `/api` to `127.0.0.1:8787`. `components.json` configures the UI component generator, not runtime scheduling. `package.json` pins the Pi package and records Node's minimum version; `package-lock.json` pins dependency resolution. `npm test` uses serial Node tests. Its pretest hook first runs the offline `npm run docs:check` gate, then builds the UI. `npm run docs:generate` refreshes the prompt, API/storage and source-fingerprint references; `docs:check` only verifies them and local links.
 
@@ -234,7 +234,7 @@ A positive-duration Putnam run requires `final_tree_checker` in its trusted host
 
 The trusted `final_tree_checker.timeoutMs` field defaults to 120,000 ms and participates in the artifact lock. Renew the lock after changing it. Mission coordination takes the verifier timeout and clips it to the remaining Mission deadline. The source diagnostic process bound is the smaller of `checkerTimeoutMs` and the locked timeout when using the locked adapter. The launch manifest and aggregate protocol record the resolved source and final bounds as `source_checker_timeout_ms` and `final_tree_checker_timeout_ms`; the project report includes the effective source process bound under `judge_check_budget.process_timeout_ms` and the verified final-tree bound under `run.final_tree_checker.timeout_ms`.
 
-`mission_coordination_permissions` is an explicit allowlist from `unsupersede`, `task_cancel`, `task_dependency_replace`, `mission_submit`; omitted means no grants. Runtime freezes the list at Bot registration. The research Bot cannot change it. The runner always stops new research after trusted Mission acceptance; an older stop-on-solved flag cannot override the accepted Mission lifecycle. `maxInfrastructureRetries` caps final acceptance infrastructure retries and defaults to zero; exact scientific outcomes reuse their original result. Per-Bot, selection, E and run timeboxes continue to bound work independently.
+`mission_coordination_permissions` is an explicit allowlist from `unsupersede`, `task_cancel`, `task_dependency_replace`, `mission_submit`; omitted means no grants in general compositions; positive-duration validation requires an explicit `mission_submit` grant. Runtime freezes the list at Bot registration. The research Bot cannot change it. The runner always stops new research after trusted Mission acceptance; an older stop-on-solved flag cannot override the accepted Mission lifecycle. `maxInfrastructureRetries` caps final acceptance infrastructure retries and defaults to zero; exact scientific outcomes reuse their original result. Per-Bot, selection, E and run timeboxes continue to bound work independently.
 
 ## Host-gated model access and concrete network deployment
 
@@ -274,6 +274,6 @@ The review command displays identities and acceptance criteria. To inspect the f
 
 ## Whole-Workspace Lean project checking
 
-The trusted final-tree deployment accepts `projectChecks: true` (default false). It cannot be combined with nonempty `localModules`. This flag participates in the artifact lock configuration; regenerate the lock after enabling it or changing the verifier source. In project mode the runner connects the locked adapter to ordinary Judge checks and to checks of the combined tree before a Workspace merge. Source/merge budgets use the configured ordinary diagnostic cap; final acceptance uses the separate final-tree cap. All remain bounded by their lifecycle and Mission deadlines.
+The trusted final-tree deployment accepts `projectChecks: true` (default false). It cannot be combined with nonempty `localModules`. This flag participates in the artifact lock configuration; regenerate the lock after enabling it or changing the verifier source. In project mode the runner connects the locked adapter to ordinary Judge checks and to checks of the combined tree before a Workspace merge. Ordinary Judge requests use the configured Mission diagnostic budget (default 20 requests / 2 active). Merge calls the project checker directly and has one retained slot per Runtime/Core, independently of ordinary Judge admission. Final acceptance uses its separate submission budget (default 4 attempts / 1 active). These are separate admission pools, not a global compiler concurrency cap. All remain bounded by their lifecycle and Mission deadlines.
 
 No new dependency is downloaded at check time. The configured, locked library roots become synthetic offline Lake path dependencies; the toolchain and library artifact fingerprints cover the executable inputs. Project source roots derive from the fixed target path, not a caller flag. See [Services](04-services.md#locked-lake-project-preparation-and-compilation) for module coverage, build outputs and error handling. Rebuild the Agent image after changing CLI help or the Workspace skill; the benchmark verifies their hashes before starting a Bot.

@@ -32,7 +32,7 @@ The registered Bot/OpenSandbox path and the older direct SDK path are distinct. 
 | Initial unbound discovery | `buildBotStartupMessage` output with current Mission, durable Bot/Core/Sandbox, Pi Session ID, resolved Workspace preview, deadlines, configured services/skill manifest and a bounded Task page | Runner reads current state after Session readiness, records `bot_prompt_composed` with final user-body SHA-256, then calls `session.prompt`. The raw RPC log establishes actual dispatch; a composition event alone does not. |
 | Further selection turn | Refreshed dynamic message identifying continued selection in the same Bot | It does not claim a new Session or preassign a Task. Empty page is not Mission completion. |
 | Successful take | CLI JSON containing refreshed E and actual prepared Workspace input | No second initial prompt is sent. The callback completes prepare/activate/grant before returning this binding; original same-ID retry can join preparation or recover the receipt. |
-| Bound continuation | `BOT_CONTINUATION_MESSAGE` | Both runner continuation send paths use this body, without repeating the old SDK SOP/tool guide. |
+| Bound continuation | `buildBotContinuationMessage` selects the ordinary or soft-closeout body | Both runner send paths apply the phase selector. Soft closeout asks for save/publish/finish and prohibits new research; the ordinary body continues current work. Neither repeats the compatibility SDK SOP. |
 | Registered Bot notification | `buildBotNotification` for soft closeout, Material or dependency change | Runtime sends as `followUp` using the same Session. Save/publish/finish remain explicit CLI operations. Material delivery is distinct from recorded feedback. |
 | Registered Bot compaction | Pi's own compaction plus `BOT_COMPACTION_MESSAGE` when configured and still active | Runtime records the count but does not save a stale host tree or private checkpoint as public progress. Threshold/closure handling can suppress the reminder. |
 | Direct SDK start/restart/recovery | Compatibility `agent-prompt.js` SOP, capability directory and Runtime compositions described below | These paths remain exported for SDK callers and deterministic tests. Unregistered OpenSandbox startup rejects; this is not the normal registered Bot transport. |
@@ -43,7 +43,7 @@ Full registered bodies appear in [01](prompts/01-system-identity.md), [03](promp
 
 `src/agent/bot-contract/system.txt` contains the approved phase 06 stable text, identified as `swarm-bot-v1-draft.2`. Every registered Bot gets this same addendum. It defines Mission/Task/E responsibility, bounded discovery, same-Sandbox take, protected initial project, explicit save/apply/merge, Material provenance/corrections, final submission and terminal cleanup. Skills cannot grant permissions or replace this mandatory contract.
 
-The file and four skill resources are baked into the image, root-owned and not writable by UID 10001. The adapter passes expected resource hashes through manager `/start`; the worker rejects absent, changed, symlinked or writable files before Pi starts. Startup failure follows ordinary Bot cleanup. Custom system replacements and the old per-Service extension option reject in `OpenSandboxAgentAdapter`; the runner always selects this versioned contract. Resource hashes describe image bytes; the system body hash excludes the final newline. A matching hash is not proof of model compliance.
+The file and four skill resources are baked into the image, root-owned and not writable by UID 10001. The adapter passes expected resource hashes through manager `/start`; the worker rejects absent, changed, symlinked or writable files before Pi starts. Startup failure cleans up the Bot; a deterministic contract/resource mismatch additionally aborts the formal project rather than repeatedly replacing Bots with the same invalid image. Custom system replacements and the old per-Service extension option reject in `OpenSandboxAgentAdapter`; the runner always selects this versioned contract. Resource hashes describe image bytes; the system body hash excludes the final newline. A matching hash is not proof of model compliance.
 
 The installed Pi 1.3.0 loader keeps explicit `--skill` resources even with `--no-skills`, which disables ambient discovery. Metadata is available initially; full bodies enter the conversation through actual `read` tool output when requested. The four defaults are plan-task, use-material, use-workspace and finish-task. The local network-disabled `bot-contract-probe.mjs` captures the actual Pi request against a scripted in-container endpoint and verifies the four native tool definitions, complete system text, all four skill reads and Bash invoking the authenticated CLI. This controlled transport evidence does not establish compatibility or success of the real configured model/provider.
 
@@ -69,7 +69,7 @@ The unused whole-proof `taskPayload` and its root-only/decomposition/shell-prohi
 
 ### 4.3 Continuations are not fresh full snapshots
 
-Both bound continuation send paths use the same short reminder to check remaining budget, Workspace state and new feedback, then proceed or save/publish/finish honestly. They do not rescan all history or resend old SOPs. Explicit CLI reads, retained conversation and targeted notifications carry evolving state. An unbound turn settling without a take or explicit Bot exit remains `DISCOVERY_INCOMPLETE`; bounded retries and durable selection/hard limits govern further work.
+Both bound continuation send paths call `buildBotContinuationMessage`. Ordinary execution receives the short budget/Workspace/feedback reminder; soft closeout receives the dedicated save/publish/finish body, which forbids new research. They do not rescan all history or resend old SOPs. Explicit CLI reads, retained conversation and targeted notifications carry evolving state. An unbound turn settling without a take or explicit Bot exit remains `DISCOVERY_INCOMPLETE`; bounded retries and durable selection/hard limits govern further work.
 
 ## 5. Generic composer: every field and default
 
@@ -112,9 +112,11 @@ Bundle documents are added from each Service's `documentation` array and dedupli
 
 The Pi extension separately registers `description`, `promptSnippet`, `promptGuidelines` and schemas. It does **not** pass `help.text` as an extension prompt guideline. Full-help composition and extension registration are distinct mechanisms. [Sources: agent-prompt](../../src/agent/agent-prompt.js), [capability-profile](../../src/agent/capability-profile.js), [extension](../../src/agent/swarmenv-extension.mjs), [Service bundle](../../src/sdk/service-bundle.js).
 
-## 6. Runtime starts, restarts and recovery
+## 6. Compatibility Runtime starts, restarts and recovery
 
 ### 6.1 Inner snapshot
+
+These generic composition APIs remain for SDK/local compatibility callers. Registered Bot startup uses the live first-turn message in §4 and does not restore a predecessor's private Session; take suppresses a second initial prompt.
 
 For Runtime-managed launch with a Registry, `#launch` chooses `bound` or `recovery`, builds a profile using current Task/Execution IDs, and calls `buildPromptSnapshot` with the full Task, Execution, prepared Workspace and optional recovery data. If the adapter already has a system addendum, the static user portion is `execution.agent_prompt`; otherwise the stable role SOP is prepended. A saved `agent_prompt` can itself already contain the SOP, so presence of a system addendum does not imply that the user message has no repeated SOP.
 
@@ -143,9 +145,11 @@ A process failure produces a seven-line instruction: resume the claimed Task; na
 
 Runtime uses one prompt queue for initial/follow-up delivery on an active Execution. It waits for a settled boundary where available. Notification delivery can defer when settlement times out; a durable later turn-end can serve as the safe boundary in the retry path. A successfully sent notification is marked delivered. It remains unprocessed until the Agent records `task_feedback`; it is not resent at every turn-end merely because feedback is outstanding.
 
-`handoff_warning` asks for linked Handoff Material before the deadline. `material_available` names Material/source Task/source Execution and requests read/adapt/feedback; it explicitly says the notice does not itself require handoff. Other notification types use the dependency-satisfied “Task is OPEN again” text. Missing Material/source IDs fall back to payload fields, then `<unknown>`. The exact bodies are in [04](prompts/04-runtime-messages.md).
+For unregistered compatibility notifications, `handoff_warning` asks for linked Handoff Material before the deadline. `material_available` names Material/source Task/source Execution and requests read/adapt/feedback; it explicitly says the notice does not itself require handoff. Other notification types use the dependency-satisfied “Task is OPEN again” text. Missing Material/source IDs fall back to payload fields, then `<unknown>`. The exact bodies are in [04](prompts/04-runtime-messages.md).
 
-After a successful automatic compaction checkpoint, the optional reminder asks for substantive completed work, findings, open questions and next step. Runtime skips that reminder when closing/rotating or no longer active. It is not the content of Pi's compacted summary. A non-Mission deadline reminder uses a different three-line body; Mission Tasks use the durable notification route. [Source: Runtime](../../src/runtime/runtime.js).
+For unregistered compatibility Sessions, after a successful automatic compaction checkpoint, the optional reminder asks for substantive completed work, findings, open questions and next step. Runtime skips that reminder when closing/rotating or no longer active. It is not the content of Pi's compacted summary. A non-Mission deadline reminder uses a different three-line body; Mission Tasks use the durable notification route. [Source: Runtime](../../src/runtime/runtime.js).
+
+Registered notifications instead use `buildBotNotification`: soft closeout directs explicit save/publish/finish, Material notices identify public references, and other changes request fresh public-state reads. Registered compaction sends the fixed reminder only when the live E permits it, using the soft-closeout body when required, and records `public_save:false`. It does not automatically checkpoint files or ask for the rejected compound `execution_progress` operation. Complete registered bodies are in [benchmark turns](prompts/03-benchmark-turns.md); the full compatibility bodies remain in [Runtime messages](prompts/04-runtime-messages.md).
 
 ### 7.2 Tool results are additional model inputs
 
@@ -155,7 +159,7 @@ The [fixed guidance catalog](prompts/06-tool-return-guidance.md) preserves compl
 
 The registered `task_take` response reaches native Bash through the protected CLI only after Runtime has finished prepare, activation and grant. It carries the refreshed Execution, actual pinned public Workspace metadata, exact Material input identities and applicable deadlines. The trusted discovery preview and actual input can differ. A bounded path comparison and `reread_required` flag tell the Bot to inspect the actual fixed inputs before relying on discovery content. There is no separately sent bound first prompt. Trusted compatibility paths can still expose pre-activation snapshots and are governed by the entry point they exercise. [Source: Task take](../../src/task/task-service.js) · [Bridge binding](../../src/agent/services-bridge.js) · [Benchmark onTake](../../src/benchmark/putnam-runner.js).
 
-The extension prints a JSON result into the text content block and truncates at 65,536 JavaScript characters, adding a truncation marker; structured `details` remain separately attached. Errors contain the authoritative code, retryability and details. Consequently a full database record or HTTP response does not by itself establish that all of its text appeared in model-visible tool content. The raw Pi response stream is the local evidence for that boundary. [Source: extension](../../src/agent/swarmenv-extension.mjs).
+The compatibility extension prints a JSON result into the text content block and truncates at 65,536 JavaScript characters, adding a truncation marker; structured `details` remain separately attached. Errors contain the authoritative code, retryability and details. Consequently a full database record or HTTP response does not by itself establish that all of its text appeared in model-visible tool content. The raw Pi response stream is the local evidence for that boundary. [Source: extension](../../src/agent/swarmenv-extension.mjs).
 
 ## 8. Exactly what is recorded today
 
@@ -180,10 +184,10 @@ The runtime event can record the inner snapshot before Mission wrapping or recor
 
 | Input/effect | Current evidence location | Limit |
 |---|---|---|
-| Stable addendum supplied to Pi | Session's `identity-system-prompt.md`; launch argument record | Does not include Pi's base prompt |
+| Stable addendum supplied to Pi | Registered worker: `/opt/swarmenv/src/agent/bot-contract/system.txt`, hash/ownership receipt and launch arguments; local compatibility Session: `identity-system-prompt.md` | Does not include Pi's base prompt |
 | Actual user turn | Raw Agent NDJSON `rpc_request.message` whose type is `prompt`, with message text and RPC ID | Proves write to Pi stdin; match response/turn records to establish processing |
 | Returned model/tool events | Raw Agent `rpc_record`, stdout/stderr and Pi Session artifacts | Private and potentially large; report projection can remove content |
-| Capability registration | Profile plus extension inputs, Registry manifests and launch configuration | Current profile may differ from a Session's earlier frozen registration |
+| Capability registration | Registered four-tool argv and CLI/profile manifests; compatibility extension inputs and launch configuration | Current profile may differ from a Session's earlier frozen registration |
 | Service document content | Exact bundle/version hashes and local documents | A hash alone does not prove injection on that launch path |
 | Dynamic Task/Mission data | State records/views and the actual outgoing message/tool result | Reading the later database alone can show a newer value than the Agent saw |
 | Notifications | Queue/attempt/delivery records plus corresponding outgoing follow-up | Delivered is different from feedback processed |
@@ -196,7 +200,7 @@ The private raw logs can contain complete repository-issued user messages. The p
 
 The registered Bot CLI routes Workspace save/apply through Runtime and Mission acceptance through the configured local coordinator. The benchmark requires its configured trusted final-tree checker for a positive-duration run. Test compositions can omit that coordinator, in which case Mission submit and submission view return service unavailability. Current verification boundaries are recorded in [Known boundaries](09-known-boundaries.md).
 
-Compatibility SDK compositions can still repeat context and use old per-Service tool names and checkpoint semantics. They are catalogued separately and must be reconciled at full-stage closeout. Composition hashes cannot replace final message/RPC evidence. The live configured provider's append-system path requires its own verification before a formal run; the local scripted probe proves Pi serialization, not remote gateway behavior.
+Compatibility SDK compositions can still repeat context and use old per-Service tool names and checkpoint semantics. They are catalogued separately and must be reconciled at full-stage closeout. Composition hashes cannot replace final message/RPC evidence. The local scripted probe proves Pi serialization. EXP-20261116-04 additionally records the actual configured remote provider path for its pinned revision/image; it does not establish that a future provider or image will render identical requests.
 
 ## 10. Keeping the catalog current at stage closeout
 

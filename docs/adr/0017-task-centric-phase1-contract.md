@@ -1,6 +1,6 @@
 # ADR 0017: Shared Mission and Task-centric division of work
 
-- Status: Recorded design decision. The original phase-one proposal remains available in Git history; actual implementation and evidence should be checked against source, the [architecture manual](../architecture/INDEX.md) and the relevant GitHub Issue/PR evidence.
+- Status: Historical decision; shared-Mission-Task ownership and private continuity were superseded by [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) and its [Phase 02 model](../phases/0002-task-material-workspace/01-model-and-runtime.md). The current Mission is never taken, each Task has at most one current executor, and fresh Bots continue through public Material/revisions. The original phase-one proposal remains available in Git history; actual implementation and evidence should be checked against source, the [architecture manual](../architecture/INDEX.md) and the relevant GitHub Issue/PR evidence.
 - Origin: 2026-11-01 to 2026-11-05; PR #110 and related task-centric revisions.
 
 ## Context

@@ -59,7 +59,7 @@ The standalone server accepts `--name value` or `--name=value` for these options
 | `--port` | `8787`; integer 0–65535, with 0 allowing an ephemeral port. |
 | `--report` | Null; optional report to import before serving/reusing the daemon. |
 | `--experiment-dir` | Null; optional original raw-evidence root for report import. |
-| `--no-raw-logs` | Disable raw-log import; otherwise it is enabled. |
+| `--no-raw-logs` | Accepted compatibility flag with no effect. This CLI imports report projections without raw logs; only a trusted library caller can opt into raw ingestion. |
 
 Healthy-daemon reuse returns the existing metadata and exits; passing a different bind address to this invocation does not reconfigure that existing process.
 
@@ -131,12 +131,12 @@ The runner finalizes its report from Task/Execution/Material/check data, Core ac
 |---|---|
 | `solved` | The Mission submission coordinator has a persisted accepted submission for the fixed public main and input manifest. This scientific outcome is independent of protocol validity or ordinary source diagnostics; pending cleanup still invalidates the run evidence. See [04](04-services.md). |
 | `protocol_valid` | Report/protocol checks passed, including allowed tool surface, placeholder flags and relevant run boundaries. It does not certify research progress. |
-| `made_progress` | Broad output/activity heuristic: a Workspace write, nonfailure Material, or check can be enough. Proposals alone do not set this flag. It is not a measured collaboration benefit. |
+| `made_progress` | Broad activity heuristic: Workspace output, nonfailure Material or any recorded non-project check (including failed or infrastructure/request outcomes) can suffice. Whole-project Lean diagnostics are excluded from this flag and from progress work units. Proposals alone do not set it; this is not a measured collaboration benefit. |
 | `progress_evidence.proposed_task_count` and `parallelism.proposal_evidence.observed_task_count` | Count all observed Mission proposals, including the first; no root/child split or inferred semantic independence. Totals come from Task Service aggregates independently of the Task detail page. The detail/narrative projection remains bounded to 100 Tasks and `project.task_page` records its total, returned size and completeness. |
 | Core occupancy/parallelism | Overlap/interval accounting from recorded states/turns. Production `task_discovery_and_take` also starts an Agent-turn interval, so busy-time metrics can include discovery. |
 | Scheduler metrics | Compatibility reporting from the production identity-loop path; they do not imply a `Scheduler` instance is driving that benchmark. |
 | `audit.prompt_hashes` | Hashes the Core prompt value initialized from the generic prompt; it is not a digest of every fully composed/delivered per-turn prompt. |
-| Judge counts | Separate source failure, infrastructure failure, unassessed and preflight health. A request that never ran Lean is not a failed proof attempt. |
+| Judge counts | Separate source failure, infrastructure failure, unassessed and preflight health. Whole-project diagnostics remain mathematically `unassessed` even after a terminal PASS or FAIL; that count is not a pending-check count. Durable late receipts can appear in operator evidence while Bot delivery is fenced; aliases of one check are deduplicated. A request that never ran Lean is not a failed proof attempt. |
 | Material/read/consume counts | Publication, retrieval and explicit consumption are different facts; useful integration needs additional semantic evidence. |
 
 `CoreParallelismTracker` records states/intervals, Agent turns, work units, wait and Judge time. The report transforms them into overlap and utilization quantities; a populated lane or many tool calls is not proof of productive concurrency. New reports omit root/child take counts and decomposition claims. `take_count` covers every accepted recorded take; proposal counts alone do not establish independent work. Historical imports may still contain old names. The Task-created observation identifies the actual created Task, while any proposing E is recorded separately. The initial-input audit uses the Mission public Workspace metadata rather than treating the first Task as the benchmark input owner.
