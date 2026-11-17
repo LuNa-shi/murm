@@ -25,7 +25,7 @@
     },
     {
       "path": "src/agent/bot-contract/use-workspace.md",
-      "sha256": "205332928cd62838f1a20c43468be79fdc300ff5914e63bbaa49ec6ae6b8f58c"
+      "sha256": "9f7c8fed6b1f4b1607a0328ffca09a67a2e83b547552a0bf276f48ae8631dcae"
     },
     {
       "path": "src/agent/bot-contract/finish-task.md",
@@ -336,11 +336,11 @@
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "15debdb021203fa4bdf2923699df79fd2c3c35c7531d13186fa6d90c6533e4f3"
+      "sha256": "c28f8d65e15b9ef286f127a3bdb97e683225e193e5b651f5828839a59d0074b8"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
-      "sha256": "bd30db51203655a0565a372b191b48013b3d0f32c652c46972e303b9e8cdf97e"
+      "sha256": "7d8d33efaf924d27b7b033239cd0bb582357ac0d6afd8861e6f5062ce05cb21b"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",

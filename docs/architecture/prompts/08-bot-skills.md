@@ -105,9 +105,9 @@ swarm material consume --material-ids '["M1"]' --action integration --impact "Us
 ````
 ## use-workspace (draft.3)
 
-Guest path: /opt/swarmenv/src/agent/bot-contract/use-workspace.md; file SHA-256: 205332928cd62838f1a20c43468be79fdc300ff5914e63bbaa49ec6ae6b8f58c
+Guest path: /opt/swarmenv/src/agent/bot-contract/use-workspace.md; file SHA-256: 9f7c8fed6b1f4b1607a0328ffca09a67a2e83b547552a0bf276f48ae8631dcae
 
-Body SHA-256: `205332928cd62838f1a20c43468be79fdc300ff5914e63bbaa49ec6ae6b8f58c`
+Body SHA-256: `9f7c8fed6b1f4b1607a0328ffca09a67a2e83b547552a0bf276f48ae8631dcae`
 
 ````text
 ---
@@ -138,6 +138,8 @@ Lean 项目检查先看 `swarm judge check --help`。配置支持局部检查时
 读取实际 checked scope、依赖范围、警告和缓存信息，不把局部 PASS 当作全项目或 Mission 通过。集中服务依据 Mission、源码、传递依赖、工具链和选项管理缓存；不能提交预编译文件供服务复用。需要整体集成诊断时用 `swarm judge check --revision R`；在默认全量模式加 `--path P` 仍编译同一项目，并将回执绑定到该交付文件。Task 要求全量 Workspace delivery 时，局部回执不能代替它。merge 检查最终合成树，Mission 提交另走固定目标的独立验收。部分证明的占位符只能作为诊断状态保留。没有启用项目检查的部署仍要求 `--path`，不要假定它能读取相邻模块。
 
 Sandbox 没有本地 Lean/Lake/Mathlib。日常开发也使用上述 Judge 路径：编辑 → save → check 固定 revision → 阅读错误位置/诊断 → 修复 → save/check。含编译错误或部分证明的中间版本不必先 merge，源码 FAIL 是可用于修复的反馈。普通 Judge 检查不设累计次数上限，默认每 Mission 同时运行 4 个、FIFO 等待最多 8 个，等待最长 120 秒。网络响应未知时沿用原 request ID 查询或重放，不能用新请求并发轰炸；收到明确的 CHECKER_BUSY（队列满或等待超时）后退避，再以新 request ID 重试。排队不会延长 Execution 的有效期；检查前仍会验证当前授权。不要把尚在排队或未检查的源码称为 PASS。
+
+局部冷检查也可能耗时数分钟。CLI 默认只等 30 秒，检查前按服务预算显式设置 `--timeout-ms`；例如已完成 preflight 且无需排队的 10 分钟 source 检查可用 `--timeout-ms 630000`，冷 preflight 和排队还需额外等待时间。HTTP 等待不会延长 Task/E 或 checker 的期限；超时只表示响应未知，先查原 request ID 的结果，不重复启动同一工作。
 
 ````
 ## finish-task (draft.3)
