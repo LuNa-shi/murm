@@ -533,10 +533,10 @@ export class JudgeService {
     }
     checked = normalizeCheckerResult(checked);
     if (normalized.workspace_source.file_ref) checked.evidence = { ...checked.evidence, workspace_input: normalized.workspace_source.file_ref };
-    // A completed Lean invocation can exhaust a source limit without making
-    // the checker unavailable. Preserve its diagnosis and no-retry guidance.
+    // Completed source-limit or module-artifact rejection does not make the
+    // checker unavailable. Preserve its diagnosis and no-retry guidance.
     const completedLeanFailure = checked.checker_process_status === 'completed' && checked.retryable === false &&
-      ['lean_resource_limit', 'lean_panic', 'checker_memory_limit', 'checker_runtime_failure'].includes(checked.diagnostic_code);
+      ['lean_resource_limit', 'lean_panic', 'checker_memory_limit', 'checker_runtime_failure', 'module_verification_failed'].includes(checked.diagnostic_code);
     if (preflight.status === 'healthy' && checked.result_class === 'infrastructure_failure' && !completedLeanFailure) {
       const health = this.#persistPreflight(checkerIdentity(normalized.fixture_manifest), normalizePreflight({
         status: 'unavailable',

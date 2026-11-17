@@ -177,3 +177,50 @@ for (const cancelDuringParser of [false, true]) test(`independent Judge peer gat
   tasks.dispatch('task_finish', { outcome: 'incomplete' }, envelope('finish'));
   await assert.rejects(judge.dispatch('workspace_check', { request_key: '0.3', source: { workspace_id: 'w', revision: '0.3', path: 'Target.lean', check_mode: 'lean-module' } }, envelope('0.3')));
 });
+
+
+test('completed module artifact rejection preserves feedback and checker health through real Judge', { skip: !process.env.SWARMENV_TEST_LEAN_ROOT }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'judge-module-rejection-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const fixture = 'theorem target : True := by sorry\n';
+  await writeFile(join(directory, 'Target.lean'), fixture);
+  await writeFile(join(directory, 'lean-toolchain'), 'leanprover/lean4:v4.33.1\n');
+  const fixtureManifest = { ...manifest, project_root: directory, problem_file_hash: createHash('sha256').update(fixture).digest('hex') };
+  const leanRoot = process.env.SWARMENV_TEST_LEAN_ROOT;
+  const verifier = new LeanFinalTreeVerifier({ identity: manifest, leanRoot, libraryRoots: [], comparatorLibraryRoots: ['/unused', '/unused'],
+    exporterPath: '/unused/export', targetPath: 'Target.lean', declarationName: 'target', fixtureSource: fixture,
+    fixtureSha256: fixtureManifest.problem_file_hash, projectChecks: true, allowUnboundedDiagnostics: true, timeoutMs: 30000 });
+  const checker = new LeanChecker({ command: join(leanRoot, 'bin/lake'), checkerVersion: 'fixture', projectChecker: input => verifier.checkProject(input), timeoutMs: 30000 });
+  const files = { 'Target.lean': `import Lean
+open Lean Elab Command
+elab "inject_invalid_safe_theorem" : command => do
+  modifyEnv fun env =>
+    match env.addDeclCore 0 0 (.thmDecl {
+      name := \`badFalse
+      levelParams := []
+      type := mkConst \`\`False
+      value := mkConst \`\`True.intro
+    }) none (doCheck := false) with
+    | .ok env => env
+    | .error _ => env
+inject_invalid_safe_theorem
+#check badFalse
+` };
+  const h = harness(t, { checker, fixtureManifest, files });
+  const rejected = await h.submit('0.1');
+  assert.equal(rejected.verdict, 'ERROR');
+  assert.equal(rejected.mathematical_outcome, 'unassessed');
+  assert.equal(rejected.checker_process_status, 'completed');
+  assert.equal(rejected.diagnostic_code, 'module_verification_failed');
+  assert.equal(rejected.retryable, false);
+  assert.equal(rejected.evidence.build_scope, 'module');
+  assert.equal(rejected.evidence.build_cache.stored_bytes, 0);
+  const health = h.judge.db.prepare('SELECT status, attempt_count FROM checker_preflights').all();
+  assert.equal(health.length, 1);
+  assert.equal(health[0].status, 'healthy');
+  assert.equal(health[0].attempt_count, 0);
+  files['Target.lean'] = 'theorem target : True := by trivial\n';
+  const corrected = await h.submit('0.2');
+  assert.equal(corrected.verdict, 'PASS', JSON.stringify(corrected));
+  assert.equal(corrected.mathematical_outcome, 'unassessed');
+});

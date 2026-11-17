@@ -264,7 +264,7 @@ export class LeanChecker {
       return inputFailure('Project build did not cover the requested Lean source path.', 'project_path_uncovered', true);
     }
     const verdict = result.verdict === 'PASS' && !complete ? 'ERROR' : result.verdict;
-    const diagnosedLeanFailure = ['lean_resource_limit', 'lean_panic', 'checker_memory_limit', 'checker_runtime_failure'].includes(result.diagnostic_code);
+    const diagnosedLeanFailure = ['lean_resource_limit', 'lean_panic', 'checker_memory_limit', 'checker_runtime_failure', 'module_verification_failed'].includes(result.diagnostic_code);
     const processStatus = result.timed_out ? 'timeout' : !started ? 'not_started' : diagnosedLeanFailure ? 'completed' : verdict === 'ERROR' ? 'crashed' : 'completed';
     return {
       verdict, checker_process_status: processStatus,
