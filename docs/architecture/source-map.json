@@ -487,6 +487,15 @@
       "role": "Offline analysis CLI arguments and failure reporting"
     },
     {
+      "path": "scripts/experiment-supervisor.py",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Failure-isolated read-only long-run observer with bounded SQLite polling"
+    },
+    {
       "path": "scripts/benchmarks/build_flt10_statement_graph.py",
       "category": "benchmark inputs",
       "chapters": [

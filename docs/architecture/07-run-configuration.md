@@ -13,6 +13,7 @@ This chapter describes how the repository actually composes a run. It covers the
 | `scripts/mathlib-search-service.mjs` | Optional HTTP Mathlib Search provider |
 | `scripts/serve-observability.mjs` | Persistent observation/dashboard server, including report import and multi-root discovery |
 | `scripts/analyze-experiment.mjs` | Offline reconstruction of an existing run; does not execute a new research experiment |
+| `scripts/experiment-supervisor.py` | Read-only long-run observer attached to an existing runner PID; its failure is isolated from the research process |
 | `src/index.js` | Public JavaScript exports, including generic Runtime/SDK and compatibility fixture APIs |
 
 These entry points have different contracts. Deterministic in-process tests use injected adapters and checkers; they do not implement the benchmark's no-solution-input protocol or establish autonomous research ability.
@@ -79,6 +80,15 @@ Direct Pi routing uses `PI_PROVIDER` and `PI_MODEL` (with the older `NUROUTER_PI
 
 1. **Record the launch.** Resolve the experiment root and directory and reject an existing directory before resolving provider credentials, loading the pinned fixture or attaching the observer. Stage deployment inputs outside the new experiment directory. After validating the fixture and reading repository commit/dirty state, exclusively create the private audit directory; if another launch already created it, return the same diagnostic with instructions to choose a fresh ID. Write `metadata/experiment.json` with environment, protocol, provider/model, paths and start time. The CLI's `experiment_id` is the experiment directory basename; project `runId` is separately generated unless explicitly provided.
 2. **Optionally attach an observer.** Skip this entire step by default. Only `--observability` enables it; address/metadata options alone do not. When enabled, reuse a healthy metadata-declared server. Without an explicit metadata override, the server must use the expected observation database. An explicitly configured unavailable server causes an error. Otherwise spawn a detached observer, poll health up to 80 times at 250 ms intervals, then open the observation database and write `metadata/observability.json`. The observer is persistent and is not stopped at project cleanup.
+
+Formal long-run operator supervision is a separate concern from the benchmark
+runner. `scripts/experiment-supervisor.py` attaches to a runner PID and reads
+the project SQLite stores in read-only mode. Each polling query explicitly
+closes its connection; observation and log-write errors become observer events
+and do not signal the runner. Deploy the observer and runner in separate service
+units or containers. A shared service with the observer as its main process and
+`KillMode=mixed` would make an observer failure terminate the research runner,
+so that arrangement is not an accepted long-run deployment.
 3. **Create project storage.** The runner creates project SQLite, Workspace, report and log directories. Task owns `project.sqlite`; Context and Judge own `context.sqlite` and `judge.sqlite`. Unless an Observation Store is injected, observation tables live in the Task connection. Formal CLI runs inject the separate persistent observation store only with `--observability`; by default they use the project-local database. Separate files do not by themselves establish independently deployed services.
 4. **Construct services.** Create Task in the coordinator, then select `serviceDeployment`. Positive-duration runs default to repository-owned independent Context/Judge peers and separate durable files; zero-duration fixtures default to `in-process`. The independent path binds private authenticated HTTP, instance locks, durable commit/launch gates, checker ownership and bounded startup/cleanup. The compatibility path wires synchronous local domain objects. Both install checker health/result readers and dependency events. Arbitrary external/custom provider overrides remain rejected in timed runs. The legacy `services/builtin/compose.yaml` host is a separate compatibility surface and does not supply this peer protocol.
 5. **Create Mission and public input.** Create a Mission with the locked problem identity, target path/source hash, final acceptance checker and optional separate merge checker. Create its distinct public Workspace with the original unsolved file as the initial revision, then wire and reconcile the durable Mission submission store. There is no initial/shared/root Task. Bots later propose ordinary Tasks; the Mission is never taken.
