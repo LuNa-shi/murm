@@ -14,7 +14,7 @@ const safe = (path) => typeof path === 'string' && path !== '' && !path.startsWi
 // Git worktrees and local agent metadata are workspace state, not repository
 // runtime inputs. They can contain dependency symlinks and must never affect
 // the tracked source inventory.
-const skipRoots = new Set(['.git', '.worktrees', '.claude', 'node_modules', '.codex', 'docs', 'test', 'test-support', 'experiments', 'reports']);
+const skipRoots = new Set(['.git', '.worktree', '.worktrees', '.claude', 'node_modules', '.codex', 'docs', 'test', 'test-support', 'experiments', 'reports']);
 async function walk(directory, prefix = '') {
   const files = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {
