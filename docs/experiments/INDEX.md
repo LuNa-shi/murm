@@ -51,6 +51,10 @@ Use [TEMPLATE.md](TEMPLATE.md) for each new formal study. An approved Issue may 
 
 - [Issue #122 formal24 gap analysis](issue122-formal24-gap-analysis.md) records the one-hour run at `7c5836f`, reconstructs each Bot lifecycle, and compares observed behavior with Phase 02.
 
+## Metric proposals
+
+- [Q20 progress score and curve](q20-score-curve.md) defines five cumulative proof milestones and records the retrospective 1-hour and 8-hour curve.
+
 ## Retention and interpretation
 
 This directory is retained because a current implementation manual cannot reconstruct a historical observation. Keep the registry, reusable report template and reports still cited by current Issues, PRs, ADRs or accepted design decisions. When a report leaves the active tree, replace its maintained references with an immutable Git link; do not silently discard the evidence behind a current claim. The existing R16 example remains explicitly retrospective and is not proof of a later implementation's behavior.
