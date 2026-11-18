@@ -59,10 +59,37 @@ count, model-token count, or the order in which Agents explored the proof.
 
 ## Current Q20 runs
 
+### EXP-20261117-03 · eight-hour run
+
+Applying the strict milestone definitions to the available evidence gives this
+curve:
+
+| Mission elapsed | Score | Mathematical closure |
+|---:|---:|---|
+| 0 min | 0 | Fresh Mission |
+| 3.8 min | 12 | M1, Frey curve elliptic setup integrated at `FreyNonsingular` |
+| 6.8 min | 24 | M3, proper stable-submodule extraction integrated at `Reduction` |
+| 478.0 min | 24 | M2, M4, M5, M6, M7 and M8 remain open |
+
+The later `TorsionNontrivial` result was conditional and explicitly did not
+prove the required p-torsion point. The `AbsoluteCofixedEndpoint` result was a
+conditional endpoint with rank, inertia and p-local assumptions still open.
+The later general coordinate work proved an upper bound `card ≤ p²` and
+`finrank ≤ 2`, which does not close M2's exact `card = p²` obligation. These
+results are recorded as partial frontier evidence and do not create score
+jumps.
+
+```mermaid
+xychart-beta
+    title "EXP-20261117-03 strict Q20 score"
+    x-axis "Mission elapsed minutes" [0, 3.8, 6.8, 478]
+    y-axis "score" 0 --> 100
+    line [0, 12, 24, 24]
+```
+
 Both existing Q20 runs finish with M8 open because the target was not accepted.
-Their exact intermediate score requires replaying the exact statement hashes
-and main revisions against this milestone table. The reports remain useful as
-evidence sources, but their activity totals do not determine a score.
+The reports remain useful as evidence sources, but their activity totals do
+not determine a score.
 
 The one-hour and eight-hour reports are diagnostic comparisons. The eight-hour
 run changed duration-linked execution and checker budgets, so this curve does
