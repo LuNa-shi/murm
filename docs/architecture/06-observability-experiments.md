@@ -99,6 +99,59 @@ Operator admission covers event, detail, report and owner-service routes. Direct
 
 Sources: [server](../../src/observability/observability-server.js), [daemon entry/discovery](../../scripts/serve-observability.mjs), [Vite configuration](../../src/observability/vite.config.js), [server tests](../../test/observability-server.test.js), [worktree discovery tests](../../test/observability-worktree-discovery.test.js).
 
+### Failure-isolated long-run process observer
+
+The operator-only `scripts/experiment-supervisor.py` is a separate process
+observer for long benchmark runs. It is not the benchmark runner, does not
+start a runner, and never sends a signal to the observed PID. The operator
+starts the runner first, records its PID, then attaches the observer in a
+different service unit or container. A bounded operator readiness check must
+confirm a nonzero active runner `MainPID`; `--print-starttime` obtains the
+identity token and `--pid-starttime` binds attach to that token. The required
+arguments are `--pid` and `--project-dir`; `--log` defaults to `supervision.ndjson`,
+`--interval-seconds` defaults to `600`, and `--max-runtime-seconds` is
+unbounded unless supplied. `--self-test` is a local regression mode and does
+not attach to a process.
+
+On attach, the observer reads `/proc/<pid>/stat` and records the Linux process
+start time. Each poll verifies the same start time before reading the stores;
+missing or changed identity ends observation without touching the new process.
+The bounded snapshot performs read-only queries against `project.sqlite`,
+`judge.sqlite` and `context.sqlite`: grouped Task/Bot/Execution states,
+the newest Mission identity, grouped checker verdict/result and diagnostic
+counts, Material count, and grouped Material-consumption actions. The Mission
+query is explicitly limited to one row. `read_rows` opens a URI `mode=ro`
+connection, fetches the rows, and closes it in `finally`, including query
+errors. No observer query writes service state.
+
+The observer emits timestamped `observer_started`, `status`,
+`observed_process_finished`, `observed_process_identity_changed`,
+`observer_attach_failed`, `observation_error`, `observer_log_error`,
+`observer_timebox_reached` and `observer_stopped` events.
+It appends each event as one NDJSON line when the log is available. A database,
+log, stderr or stdout failure is converted to an observer-side error and does
+not signal or terminate the runner; a missing runner PID is an attach failure
+with exit code 2. SIGINT/SIGTERM only stops the observer loop. There is no
+observer cleanup of the runner, project stores or checker resources; those
+remain owned by the benchmark runner and its service lifecycle. Process-group
+coupling is therefore a deployment error: a shared unit with the observer as
+its main process and `KillMode=mixed` is not a valid formal-run configuration.
+
+The tracked regression test exercises all snapshot query families 1000 times
+and asserts stable descriptors, and runs the observer against a live `sleep`
+process with missing stores and an invalid log path to verify that the target
+survives observer-side failures. It also checks an explicit start-time mismatch
+before any query. These tests establish observer isolation and resource
+handling; they do not establish a benchmark result or Mission acceptance.
+
+This process is intentionally a health/lifecycle projection rather than a
+complete progress analyzer. It does not claim Mission submission or
+acceptance, Workspace main/revision lineage, complete Task/Execution/Material
+relationships, checker receipt integrity or terminal cleanup. Those facts are
+read from the authoritative stores by the existing observability and
+experiment-analysis paths. A status event from this observer must therefore
+never be counted as mathematical or Mission progress.
+
 ## 4. Bounds, SSE and client updates
 
 The initial overview combines the last 2000 relevant events, at most 750 latest-entity seeds, and a recent tool projection. It compacts records and caps the overview at 50,000 events/4,000,000 bytes; its normal candidate set is much smaller because of the tail/seed limits. Returned metadata distinguishes payload truncation, history-window truncation, start/end sequence, seed count and whether tool counts are windowed. Tool counts deduplicate start/end records by Execution plus tool-call ID in the server's recent window. They are not necessarily all-run counts.

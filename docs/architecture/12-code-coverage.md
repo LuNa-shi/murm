@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **196 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **197 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -221,11 +221,12 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `063d4bc085c0efb18accc75cd62146c0fe43fbfb099e1eae937cc559b502c168` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `db3b2bf9f173643310116aefeb256ca14d3327e6fc2e37293f6ece6599ce57d3` |
 
-### observation and analysis (11)
+### observation and analysis (12)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/analyze-experiment.mjs](../../scripts/analyze-experiment.mjs) | Offline analysis CLI arguments and failure reporting | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `ca2042104b9bdbc2128eef21011f0b4c4b5e4a490a71bd44ba3273918082b8ef` |
+| [scripts/experiment-supervisor.py](../../scripts/experiment-supervisor.py) | Failure-isolated read-only long-run observer with bounded SQLite polling | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `9e7990edb27e6c518ec37bc9a423ce3f1f08575d31b1f44c0a7533776bdc15ad` |
 | [scripts/prune-private-audit.mjs](../../scripts/prune-private-audit.mjs) | Operator deletion task for expired managed private audit directories | [06-observability-experiments](06-observability-experiments.md) | `52bf50b3f51814385c629a7a3cd0149e3dab133c8b6c188ec0181e3a49cbd0e5` |
 | [scripts/serve-observability.mjs](../../scripts/serve-observability.mjs) | Persistent observer, root/worktree/database discovery and metadata lifecycle | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `cc9b9391db2c24cb77fa32859adc47083c3d7069e48d7b349a67843e72cd6dd1` |
 | [src/analysis/experiment-analysis.js](../../src/analysis/experiment-analysis.js) | Offline evidence inventory, timeline reconstruction, metrics and report rendering | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `cea8f4806964c14790ee0d1a5ae36505aebef222977124f0f2ab03d82f5965c0` |
