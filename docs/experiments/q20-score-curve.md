@@ -1,47 +1,72 @@
 # Q20 progress score proposal
 
-## Score
+## Scoring rule
 
-Q20 receives 100 points through five proof milestones. A milestone earns its points only when the corresponding Lean statement has a Judge PASS, no forbidden placeholder, and is present in the experiment's main Workspace.
+The score follows the mathematical dependency chain of
+`FreyPackage.frey_reducible_hasCofixedLine`. It does not follow the order in
+which an experiment happened to generate files. Each milestone earns its
+points only after the corresponding Lean conclusion passes the Judge and is
+present in the experiment's main Workspace.
 
-| Stage | Proof milestone | Points |
-|---|---|---:|
-| 1 | Frey curve non-singularity and elliptic setup are proved | 20 |
-| 2 | Reducibility is converted into a proper stable-submodule or cofixed-interface obligation | 20 |
-| 3 | The required p-torsion finiteness and non-triviality obligations are proved | 20 |
-| 4 | The general cofixed arithmetic endpoint is proved and integrated into main | 20 |
-| 5 | `FLT10Bench.q20_frey_reducible_hasCofixedLine` is submitted and trusted-accepted | 20 |
+| Stage | Required mathematical conclusion | Canonical proof anchor | Points |
+|---|---|---|---:|
+| M1 | The Frey curve is elliptic because its discriminant is nonzero | `freyCurve_discriminant` | 12 |
+| M2 | The p-torsion module is finite, has cardinality `p²`, and is nontrivial | `card_torsion_of_isAlgClosed` | 12 |
+| M3 | Reducibility yields a nonzero proper Galois-stable submodule `N` | `GaloisRepIsIrreducible` unfolded at the target | 12 |
+| M4 | Local inertia control proves that the action is trivial on `N` or on the quotient, including the `p` and `2` cases | `frey_inertia_at_p_trivial_on_submodule_or_quotient` and the `2`-adic case | 13 |
+| M5 | The local control transfers to a global fixed-or-cofixed alternative | `frey_stable_submodule_fixed_or_cofixed` | 13 |
+| M6 | A fixed branch supplies a fixed nonzero p-torsion point | `Submodule.ne_bot_iff` plus the fixed branch | 12 |
+| M7 | Every Galois-fixed p-torsion point on the Frey curve is zero | `frey_torsion_fixed_eq_zero` | 13 |
+| M8 | The remaining branch is a Galois-stable cofixed line for the target | `frey_reducible_hasCofixedLine` | 13 |
 
-The score is cumulative. A saved candidate that has not entered main contributes zero points. A local Judge PASS contributes evidence for later review, but does not move the main score. A theorem that only supports an unfinished milestone is recorded under that milestone and is not counted again.
+The weights sum to 100 and stay between 12 and 13 points. The score gap
+between adjacent mathematical milestones is therefore small and fixed before
+an experiment is evaluated.
 
-## Retrospective curve
+An alternative proof route may replace a canonical theorem, but it must close
+the same mathematical conclusion in the table. Several helper lemmas proving
+the same conclusion count once. A saved candidate without main integration
+earns zero points until the exact statement is integrated and rechecked.
 
-The 8-hour run provides the clearest milestone timestamps. Its Mission began at 02:50:06 UTC. The first three milestones were integrated during the first 12 minutes. The cofixed endpoint was integrated at 07:20:35 UTC, about 270 minutes into the Mission. The target remained unaccepted at the end of the 478-minute research window.
+## Mathematical score curve
+
+The curve is the cumulative score after each required conclusion closes.
 
 ```mermaid
 xychart-beta
-    title "Q20 verified progress score"
-    x-axis "elapsed minutes" [0, 12, 270, 478]
+    title "Q20 mathematical progress score"
+    x-axis "closed milestone" [0, 1, 2, 3, 4, 5, 6, 7, 8]
     y-axis "score" 0 --> 100
-    line "EXP-20261117-03 · 8h" [0, 60, 80, 80]
+    line [0, 12, 24, 36, 49, 62, 74, 87, 100]
 ```
 
-| Elapsed time | Score | Evidence |
-|---:|---:|---|
-| 0 min | 0 | Fresh Q20 Mission |
-| 12 min | 60 | `FreyNonsingular`, `Reduction`/`CofixedCriterion`, and `TorsionNontrivial` were checked and integrated. [Bot audit B001–B036](EXP-20261117-03-bots-b001-b036.md) |
-| 270 min | 80 | `AbsoluteCofixedEndpoint` reached main at 07:20:35 UTC. [Bot audit B073–B108](EXP-20261117-03-bots-b073-b108.md) |
-| 478 min | 80 | Q20 target remained open and no Mission submission was accepted. [EXP-20261117-03 report](EXP-20261117-03-q20-subtree-8h.md) |
+| Closed milestones | Score |
+|---:|---:|
+| 0 | 0 |
+| M1 | 12 |
+| M1–M2 | 24 |
+| M1–M3 | 36 |
+| M1–M4 | 49 |
+| M1–M5 | 62 |
+| M1–M6 | 74 |
+| M1–M7 | 87 |
+| M1–M8 | 100 |
 
-The one-hour run ends at 40 points under the same coarse mapping. Its report confirms the discriminant/arithmetic foundation and checked reuse of a quotient-character/cofixed criterion. The report does not retain the exact milestone receipt for every stage, so this point is marked retrospective and provisional until the raw evidence is replayed.
+For each run, the evaluator projects the evidence at time `t` onto this fixed
+curve. A run that ends before a milestone is observed keeps that milestone
+open. The score is independent of Task count, Material count, helper-file
+count, model-token count, or the order in which Agents explored the proof.
 
-| Run | Research window | End score | Root accepted |
-|---|---:|---:|---|
-| [`EXP-20261116-14`](EXP-20261116-14-q20-subtree-1h.md) | 1 h | 40 provisional | No |
-| [`EXP-20261117-03`](EXP-20261117-03-q20-subtree-8h.md) | 8 h | 80 | No |
+## Current Q20 runs
 
-The two runs are diagnostic comparisons. Both original reports carry protocol-invalid findings. The 8-hour run also changed duration-linked execution and checker budgets, so the curve describes observed proof progress and does not estimate a duration-only causal effect.
+Both existing Q20 runs finish with M8 open because the target was not accepted.
+Their exact intermediate score requires replaying the exact statement hashes
+and main revisions against this milestone table. The reports remain useful as
+evidence sources, but their activity totals do not determine a score.
 
-## Score data
+The one-hour and eight-hour reports are diagnostic comparisons. The eight-hour
+run changed duration-linked execution and checker budgets, so this curve does
+not estimate a duration-only causal effect.
 
-The machine-readable points are stored in [q20-score-curve.csv](q20-score-curve.csv).
+The machine-readable mathematical curve is stored in
+[q20-score-curve.csv](q20-score-curve.csv).

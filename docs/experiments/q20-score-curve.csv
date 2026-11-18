@@ -1,7 +1,10 @@
-run_id,elapsed_minutes,score,stage,accepted_root,evidence_status
-EXP-20261117-03,0,0,0,false,observed
-EXP-20261117-03,12,60,3,false,observed
-EXP-20261117-03,270,80,4,false,observed
-EXP-20261117-03,478,80,4,false,observed
-EXP-20261116-14,0,0,0,false,observed
-EXP-20261116-14,60,40,2,false,provisional
+curve,closed_milestones,score
+q20-mathematical,0,0
+q20-mathematical,1,12
+q20-mathematical,2,24
+q20-mathematical,3,36
+q20-mathematical,4,49
+q20-mathematical,5,62
+q20-mathematical,6,74
+q20-mathematical,7,87
+q20-mathematical,8,100
