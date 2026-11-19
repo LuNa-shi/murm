@@ -83,5 +83,11 @@
   ],
   "fixture_checkout_mode": "repository-descendant",
   "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
-  "embedded_fixture_root": "benchmarks/openai-math-12"
+  "embedded_fixture_root": "benchmarks/openai-math-12",
+  "smoke_problem": {
+    "id": "oai_plane_coloring_smoke",
+    "problem_file": "benchmarks/openai-math-12/lean/ComparatorChallenges/PlaneColoring.lean",
+    "declaration_name": "OAI.Problem160.properColoring_seven",
+    "source_sha256": "868e71b127ba5bc82474130618483289ac29cc58c45898eb0216199080c9dc37"
+  }
 }

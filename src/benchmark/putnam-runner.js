@@ -2657,7 +2657,8 @@ async function runProject(problem, config, options) {
   if ((options.timeboxMs ?? 60 * 60_000) > 0) {
     problem = { ...problem };
     config = { ...config };
-    const verified = await verifyBenchmarkRunFixture({ root: config.putnam_bench_root, commit: config.fixture_commit ?? config.putnambench_commit, problem })
+    const verified = await verifyBenchmarkRunFixture({ root: config.putnam_bench_root, commit: config.fixture_commit ?? config.putnambench_commit,
+      problem, allowDescendant: config.fixture_checkout_mode === 'repository-descendant' })
       .catch(error => {
         if (options.signal?.aborted) throw operatorStop();
         throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Timed benchmarks require a verified committed fixture', {}, { cause: error });

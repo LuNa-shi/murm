@@ -64,9 +64,9 @@ export async function readBenchmarkFixture({ root, path, commit = null }) {
 }
 
 /** Verify the selected fixture again at the timed-run entry point. */
-export async function verifyBenchmarkRunFixture({ root, commit, problem }) {
+export async function verifyBenchmarkRunFixture({ root, commit, problem, allowDescendant = false }) {
   const { problem_file: path, source, source_hash: sourceHash, source_path: sourcePath } = problem;
-  await verifyBenchmarkFixtureCheckout({ root, commit });
+  await verifyBenchmarkFixtureCheckout({ root, commit, allowDescendant });
   const verified = await readBenchmarkFixture({ root, path, commit });
   if (source !== verified.source || sourceHash !== verified.sourceHash || sourcePath !== verified.sourcePath) {
     throw new TypeError('Prepared benchmark problem does not match the pinned Git fixture');

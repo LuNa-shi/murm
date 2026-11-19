@@ -129,8 +129,9 @@ function selected(configuration) {
     ...(configuration.projectJobs === undefined ? {} : { projectJobs: configuration.projectJobs }),
     ...(configuration.projectChecks === undefined ? {} : { projectChecks: configuration.projectChecks }),
     ...(configuration.benchmarkProfile == null ? {} : {
-      benchmarkProfile: configuration.benchmarkProfile, checkpoint: configuration.checkpoint,
-      projectionRoot: configuration.projectionRoot,
+      benchmarkProfile: configuration.benchmarkProfile,
+      ...(configuration.checkpoint === undefined ? {} : { checkpoint: configuration.checkpoint }),
+      ...(configuration.projectionRoot === undefined ? {} : { projectionRoot: configuration.projectionRoot }),
       ...(configuration.benchmarkProfile === 'flt10-subtree-v1'
         ? { foundationSha256: configuration.foundationSha256, requireCompleteProject: true }
         : configuration.benchmarkProfile === 'openai-math-v1'

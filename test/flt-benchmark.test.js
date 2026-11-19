@@ -111,6 +111,18 @@ test('a Lean project subdirectory cannot escape the benchmark root', async t => 
   await assert.rejects(loadBenchmarkConfig(path, { putnamBenchRoot: root }), /invalid Lean project subdirectory/);
 });
 
+test('the embedded OpenAI Math fixture loads from this repository checkout', async () => {
+  const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
+  const config = await loadBenchmarkConfig(join(repositoryRoot, 'config/openai-math-12.json'), {
+    putnamBenchRoot: repositoryRoot,
+    verifyPinnedCheckout: true,
+  });
+  assert.equal(config.problems.length, 12);
+  assert.equal(config.lean_project_root, join(repositoryRoot, 'benchmarks/openai-math-12/lean'));
+  assert.equal(config.problems[0].source_path, join(repositoryRoot, config.problems[0].problem_file));
+  assert.equal(config.smoke_problem.problem_file, 'benchmarks/openai-math-12/lean/ComparatorChallenges/PlaneColoring.lean');
+});
+
 test('formal readiness requires a complete target receipt bound to its context and checker', async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarm-validation-'));
   t.after(() => rm(root, { recursive: true, force: true }));
