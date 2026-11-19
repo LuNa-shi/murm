@@ -22,6 +22,15 @@ const sandboxImage = process.env.SWARMENV_SANDBOX_IMAGE ?? 'swarmenv-agent:opena
 const sandboxUrl = process.env.SWARMENV_OPENSANDBOX_URL ?? 'http://127.0.0.1:8080';
 const bridgeHost = process.env.SWARMENV_BRIDGE_HOST ?? '0.0.0.0';
 const bridgeUrl = process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? 'http://172.17.0.1:{port}';
+const stopController = new AbortController();
+let stopRequested = false;
+const requestStop = () => {
+  if (stopRequested) return;
+  stopRequested = true;
+  stopController.abort();
+};
+process.on('SIGINT', requestStop);
+process.on('SIGTERM', requestStop);
 
 if (!Number.isSafeInteger(timeboxMs) || timeboxMs < 2_000) throw new TypeError('OPENAI_MATH_TIMEBOX_MS must be at least 2000');
 if (!Number.isSafeInteger(botMaxMs) || botMaxMs < 2_000) throw new TypeError('OPENAI_MATH_BOT_MAX_MS must be at least 2000');
@@ -82,6 +91,7 @@ try {
     turnTimeoutMs: Math.min(120_000, botMaxMs),
     checkerTimeoutMs: 120_000,
     cores: 4,
+    signal: stopController.signal,
     provider,
     model,
     command: 'pi',
@@ -113,5 +123,7 @@ try {
   }, null, 2) + '\n', { mode: 0o600 });
   process.stdout.write(JSON.stringify({ experiment_dir: experimentDir, report_dir: reportDir, solved: report.run.solved, protocol_valid: report.run.protocol_valid, invalid_reasons: report.audit.invalid_reasons }, null, 2) + '\n');
 } finally {
+  process.off('SIGINT', requestStop);
+  process.off('SIGTERM', requestStop);
   await privateAudit.close();
 }

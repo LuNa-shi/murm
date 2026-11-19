@@ -19,10 +19,21 @@ const sandboxImage = process.env.SWARMENV_SANDBOX_IMAGE ?? 'swarmenv-agent:opena
 const sandboxUrl = process.env.SWARMENV_OPENSANDBOX_URL ?? 'http://127.0.0.1:8080';
 const bridgeHost = process.env.SWARMENV_BRIDGE_HOST ?? '0.0.0.0';
 const bridgeUrl = process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? 'http://172.17.0.1:{port}';
+const stopController = new AbortController();
+let stopRequested = false;
+const requestStop = () => {
+  if (stopRequested) return;
+  stopRequested = true;
+  stopController.abort();
+};
+process.on('SIGINT', requestStop);
+process.on('SIGTERM', requestStop);
 
 if (!Number.isSafeInteger(timeboxMs) || timeboxMs < 2_000) throw new TypeError('OPENAI_MATH_TIMEBOX_MS must be at least 2000');
 if (!Number.isSafeInteger(botMaxMs) || botMaxMs < 2_000) throw new TypeError('OPENAI_MATH_BOT_MAX_MS must be at least 2000');
-if (projectParallelism !== 2) throw new TypeError('OPENAI_MATH_PROJECT_PARALLELISM must be 2 for a two-problem round');
+if (!Number.isSafeInteger(projectParallelism) || projectParallelism < 1 || projectParallelism > 2) {
+  throw new TypeError('OPENAI_MATH_PROJECT_PARALLELISM must be 1 or 2');
+}
 
 const config = await loadBenchmarkConfig(configPath, {
   putnamBenchRoot: repositoryRoot,
@@ -30,7 +41,10 @@ const config = await loadBenchmarkConfig(configPath, {
 });
 const requestedIds = (process.env.OPENAI_MATH_PROBLEM_IDS ?? config.problems.slice(0, 2).map(problem => problem.id).join(','))
   .split(',').map(value => value.trim()).filter(Boolean);
-if (requestedIds.length !== 2 || new Set(requestedIds).size !== 2) throw new TypeError('OPENAI_MATH_PROBLEM_IDS must contain exactly two distinct problem IDs');
+if (requestedIds.length < 1 || requestedIds.length > 2 || new Set(requestedIds).size !== requestedIds.length) {
+  throw new TypeError('OPENAI_MATH_PROBLEM_IDS must contain one or two distinct problem IDs');
+}
+if (projectParallelism > requestedIds.length) throw new TypeError('OPENAI_MATH_PROJECT_PARALLELISM cannot exceed the problem count');
 const problems = requestedIds.map(id => config.problems.find(problem => problem.id === id));
 if (problems.some(problem => !problem)) throw new TypeError(`Unknown OpenAI Math problem ID in ${requestedIds.join(',')}`);
 for (const problem of problems) {
@@ -79,6 +93,7 @@ try {
     turnTimeoutMs: Math.min(120_000, botMaxMs),
     checkerTimeoutMs: 120_000,
     cores: 4,
+    signal: stopController.signal,
     provider,
     model,
     command: 'pi',
@@ -128,5 +143,7 @@ try {
   await writeFile(join(experimentDir, 'round-summary.json'), JSON.stringify(summary, null, 2) + '\n', { mode: 0o600 });
   process.stdout.write(JSON.stringify({ experiment_dir: experimentDir, report_dir: reportDir, summary }, null, 2) + '\n');
 } finally {
+  process.off('SIGINT', requestStop);
+  process.off('SIGTERM', requestStop);
   await privateAudit.close();
 }
