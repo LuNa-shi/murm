@@ -21,13 +21,17 @@ const bridgeHost = process.env.SWARMENV_BRIDGE_HOST ?? '0.0.0.0';
 const bridgeUrl = process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? 'http://172.17.0.1:{port}';
 const stopController = new AbortController();
 let stopRequested = false;
-const requestStop = () => {
+let stopSignal = null;
+const requestStop = signal => {
   if (stopRequested) return;
   stopRequested = true;
-  stopController.abort();
+  stopSignal = signal;
+  stopController.abort(signal);
 };
-process.on('SIGINT', requestStop);
-process.on('SIGTERM', requestStop);
+const onSigint = () => requestStop('SIGINT');
+const onSigterm = () => requestStop('SIGTERM');
+process.on('SIGINT', onSigint);
+process.on('SIGTERM', onSigterm);
 
 if (!Number.isSafeInteger(timeboxMs) || timeboxMs < 2_000) throw new TypeError('OPENAI_MATH_TIMEBOX_MS must be at least 2000');
 if (!Number.isSafeInteger(botMaxMs) || botMaxMs < 2_000) throw new TypeError('OPENAI_MATH_BOT_MAX_MS must be at least 2000');
@@ -67,6 +71,7 @@ try {
   await writeFile(join(experimentDir, 'launch-inputs.json'), JSON.stringify({
     repository_root: repositoryRoot,
     repository_commit: process.env.GIT_COMMIT ?? null,
+    stop_signal: stopSignal,
     config_path: configPath,
     fixture_commit: config.fixture_commit,
     problem_ids: requestedIds,
@@ -116,6 +121,7 @@ try {
   });
   const summary = {
     repository_commit: process.env.GIT_COMMIT ?? null,
+    stop_signal: stopSignal,
     problem_ids: requestedIds,
     project_parallelism: projectParallelism,
     timebox_ms: timeboxMs,
@@ -143,7 +149,8 @@ try {
   await writeFile(join(experimentDir, 'round-summary.json'), JSON.stringify(summary, null, 2) + '\n', { mode: 0o600 });
   process.stdout.write(JSON.stringify({ experiment_dir: experimentDir, report_dir: reportDir, summary }, null, 2) + '\n');
 } finally {
-  process.off('SIGINT', requestStop);
-  process.off('SIGTERM', requestStop);
+  process.off('SIGINT', onSigint);
+  process.off('SIGTERM', onSigterm);
+  if (stopSignal) process.exitCode = stopSignal === 'SIGINT' ? 130 : 143;
   await privateAudit.close();
 }

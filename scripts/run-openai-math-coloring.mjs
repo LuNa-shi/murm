@@ -24,13 +24,17 @@ const bridgeHost = process.env.SWARMENV_BRIDGE_HOST ?? '0.0.0.0';
 const bridgeUrl = process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? 'http://172.17.0.1:{port}';
 const stopController = new AbortController();
 let stopRequested = false;
-const requestStop = () => {
+let stopSignal = null;
+const requestStop = signal => {
   if (stopRequested) return;
   stopRequested = true;
-  stopController.abort();
+  stopSignal = signal;
+  stopController.abort(signal);
 };
-process.on('SIGINT', requestStop);
-process.on('SIGTERM', requestStop);
+const onSigint = () => requestStop('SIGINT');
+const onSigterm = () => requestStop('SIGTERM');
+process.on('SIGINT', onSigint);
+process.on('SIGTERM', onSigterm);
 
 if (!Number.isSafeInteger(timeboxMs) || timeboxMs < 2_000) throw new TypeError('OPENAI_MATH_TIMEBOX_MS must be at least 2000');
 if (!Number.isSafeInteger(botMaxMs) || botMaxMs < 2_000) throw new TypeError('OPENAI_MATH_BOT_MAX_MS must be at least 2000');
@@ -113,6 +117,7 @@ try {
     },
   });
   await writeFile(join(experimentDir, 'result-summary.json'), JSON.stringify({
+    stop_signal: stopSignal,
     solved: report.run.solved,
     protocol_valid: report.run.protocol_valid,
     stop_reason: report.run.stop_reason ?? null,
@@ -123,7 +128,8 @@ try {
   }, null, 2) + '\n', { mode: 0o600 });
   process.stdout.write(JSON.stringify({ experiment_dir: experimentDir, report_dir: reportDir, solved: report.run.solved, protocol_valid: report.run.protocol_valid, invalid_reasons: report.audit.invalid_reasons }, null, 2) + '\n');
 } finally {
-  process.off('SIGINT', requestStop);
-  process.off('SIGTERM', requestStop);
+  process.off('SIGINT', onSigint);
+  process.off('SIGTERM', onSigterm);
+  if (stopSignal) process.exitCode = stopSignal === 'SIGINT' ? 130 : 143;
   await privateAudit.close();
 }
