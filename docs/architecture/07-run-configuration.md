@@ -44,7 +44,7 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 | `--parallel-mode` | Rejected; the former selector has been removed |
 | `--initial-bot-stagger-ms` | `60000` for the CLI; delays first Bot starts by Core index, bounded by the Mission deadline. Replacement Bots start immediately. |
 | `--provider` | `PI_PROVIDER`, then `NUROUTER_PI_PROVIDER`, otherwise `gpt_proxy`; empty values are rejected |
-| `--model` | `PI_MODEL`, then `NUROUTER_PI_MODEL`, otherwise `gpt-6.1-sol`; empty values are rejected |
+| `--model` | `PI_MODEL`, then `NUROUTER_PI_MODEL`, otherwise `gpt-6.2-sol`; empty values are rejected |
 | `--observability` | Absent by default: no observer server startup or metadata health probe. Supply this flag to enable the existing persistent observer flow; host/port/metadata options alone do not enable it. Project-local evidence still records. |
 | `--experiment-root` | `experiments` |
 | `--experiment-dir` | `experiments/putnambench-runs/run-<startup timestamp>`; resolved path must be absent and strictly below experiment root |
