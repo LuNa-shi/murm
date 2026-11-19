@@ -1,0 +1,399 @@
+# KMedianRefinedRecovery：精细 k-median 恢复
+
+**16 个固定评分项 · 需进一步确认**
+
+[返回总表](../README.md) · [统一评分规则](../PROTOCOL.md) · [结构化规格](KMedianRefinedRecovery.json)
+
+## 目标与适用性
+
+- 题目 ID：`oai_kmedian_refined_recovery`。
+- 唯一计分根：`OAI.MetricKMedianRecovery.RefinedRecovery.refined_recovery`。
+- [原题文件](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/ComparatorChallenges/KMedianRefinedRecovery.lean) · [参考入口](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/Recovery.lean)。
+- 来源版本：`7617767a945e263f3fa412255e1a570ccdbfb98c`。
+
+**判断：** 参考证明路线可验收，但其核心实际是一般 k-median 的确定性近似算法，然后转换到 refined 输入；并未利用证书的全部专门几何条件。
+
+**需要留意：** 若实验直接利用 refined Certificate 的特殊结构，可能不需要分数 LP、舍入和稀疏预算修复这套通用算法。不能把参考路线的每项都宣称为所有算法的必要步骤。
+
+**下一步：** 先确认本轮比较锁定这套通用近似算法路线，并固定唯一算法见证 A 的映射。若真正要测 certificate 特殊恢复能力，应将本题标为待换题候选；本次不改题面或配置。
+
+## 参考证明主线
+
+先求分数近似解，准备和舍入到最多 k+C 个设施，再通过稀疏分支、删除与补全恢复严格 k 预算，取得确定性的 1+2/e+ε 近似。随后证明 refined 输入的编码与成本一致，把同一程序封装为 randomBits=0 的 A，得到工作量、可行性和成功概率1。
+
+## 固定评分项
+
+本题各项等权。先固定清单，再按实验截止时刻已有的证明逐项验收。条件引理可以独立完成；把它用于无条件结论时，仍须补齐前提。所有项必须使用兼容的构造。
+
+| ID | 要完成的工作 | 参考路线中的上游项 |
+|---|---|---|
+| KM01 | 取得可行的近似分数解 | — |
+| KM02 | 把分数解细化为单位客户质量而不增加代价 | — |
+| KM03 | 准备阶段同时保留质量、预算与客户代价 | — |
+| KM04 | 把每条有效舍入历史补全为设施集合 | — |
+| KM05 | 控制补全代价的期望 | KM04 |
+| KM06 | 有限扫描找到同时满足预算和代价的舍入解 | KM02、KM03、KM04、KM05 |
+| KM07 | 得到统一的超预算近似算法 | KM01、KM06 |
+| KM08 | 找到保留最优设施的稀疏分支 | — |
+| KM09 | 把超出的 C 个设施消除并控制成本损失 | — |
+| KM10 | 恢复严格预算并选出最便宜的可行候选 | KM07、KM08、KM09 |
+| KM11 | 同一算法同时具有多项式实现和目标近似率 | KM10 |
+| KM12 | 细化题面与通用 k-median 使用同一成本和编码 | — |
+| KM13 | 把通用程序封装为题面的同一个 A | KM11、KM12 |
+| KM14 | 该 A 满足题面规定的工作量界 | KM13 |
+| KM15 | 同一输出同时可行并达到证书比较成本 | KM11、KM12、KM13 |
+| KM16 | 组装 refined_recovery 的原量词 | KM13、KM14、KM15 |
+
+### KM01 · 取得可行的近似分数解
+
+类型：数学结果。上游：无表内上游项。
+
+**完整结论**
+
+对任意非零成本分支 I、r>0，computedFractional r 是预算 k 下的 Valid 分数解，且 value≤(1+3/r)optimum(I)。
+
+**允许的前提**
+
+- 参考 MetricKMedian.Instance 的全部度量、设施、客户和预算条件；cost、optimum、computedFractional、computedPseudo 按源码定义。
+- nonzeroFractional_spec 的非零分支和 r>0 前提。
+
+**验收条件**
+
+既要给预算、覆盖可行性，也要给相对真实 optimum 的代价界；仅给分数 LP 的形式或一个可行解不够。
+
+**参考声明**
+
+- [OAI.MetricKMedian.Instance.nonzeroFractional_spec](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Programs/InstanceComputedPseudo.lean#L15)
+
+### KM02 · 把分数解细化为单位客户质量而不增加代价
+
+类型：数学结果。上游：无表内上游项。
+
+**完整结论**
+
+对任意 Valid FractionalData，把开设质量拆为 unitInput，证明总开设质量≤k+1，全部客户参考代价之和≤原分数解 value。
+
+**允许的前提**
+
+- 参考 MetricKMedian.Instance 的全部度量、设施、客户和预算条件；cost、optimum、computedFractional、computedPseudo 按源码定义。
+- FractionalRefinement 的 Valid、客户非空、非负距离及度量实现前提。
+
+**验收条件**
+
+细化后的质量、距离和 original 映射必须来自同一分数解；不能给两个不同构造分别满足预算和成本。
+
+**参考声明**
+
+- [OAI.MetricKMedian.Preparation.FractionalRefinement.input_mass](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Geometry/RationalFractionalInput.lean#L66)
+- [OAI.MetricKMedian.Preparation.FractionalRefinement.input_cost](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Geometry/RationalFractionalInput.lean#L73)
+
+### KM03 · 准备阶段同时保留质量、预算与客户代价
+
+类型：数学结果。上游：无表内上游项。
+
+**完整结论**
+
+在 selected_preparation_outcome 的完整几何、单位质量、代表客户与 CoupledLaw 条件下，证明存在正概率的同一结果 z：每点拷贝数≤Δ、总质量介于1和Σy+3g、每个客户分配质量恰为1且不超过开设质量，总代价满足源码 H/(1−failureFactor) 界。
+
+**允许的前提**
+
+- selected_preparation_outcome 的完整参数条件与 BundleGeometry、CoupledLaw 定义；H 是源码 farFactor 与 nearFactor 的最大值。
+
+**验收条件**
+
+必须提供一个同时满足全部要求的 z 和分配 r；单独证明各要求各有好样本不能验收。
+
+**参考声明**
+
+- [OAI.MetricKMedian.Preparation.selected_preparation_outcome](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Preparation/SelectedPreparationOutcome.lean#L17)
+
+### KM04 · 把每条有效舍入历史补全为设施集合
+
+类型：数学结果。上游：无表内上游项。
+
+**完整结论**
+
+在 histories_completion 的质量、邻域、半径、网格和度量实现条件下，每条历史均可补全为 O：基数≤剩余质量，客户非空时 O 非空，服务代价≤末态 potential 总和加 5R 倍存活质量总和。
+
+**允许的前提**
+
+- histories_completion 的完整原有前提；RationalPhysicalKernel.completed、replay、potential 和 histories 的固定定义。
+
+**验收条件**
+
+验收所有历史的确定性补全界；需证明缺少近设施时备份集合仍存活，再接到成本界，不能直接假设一个满足成本的 O 存在。
+
+**参考声明**
+
+- [OAI.MetricKMedian.RationalPhysicalKernel.histories_completion](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Geometry/RationalHistoryCompletion.lean#L22)
+
+### KM05 · 控制补全代价的期望
+
+类型：衔接推理。上游：KM04。
+
+**完整结论**
+
+对 RationalParameters τ 的舍入树，证明补全后期望服务代价≤(1+2/e+τ)Σ客户初始 PhysicalPotential.cost；包括存活项和离散 taper 误差的累计控制。
+
+**允许的前提**
+
+- completed_expectation 的完整网格、质量、邻域、半径实现前提及 RationalParameters τ 条件。
+- KM04 的完整结论。
+
+**验收条件**
+
+从每条历史的补全界接到期望界，消化全部误差预算；只证明一个时间步的漂移或局部存活估计不足。
+
+**参考声明**
+
+- [OAI.MetricKMedian.RationalPhysicalKernel.histories_completed_expectation](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Geometry/RationalHistoryCompletion.lean#L67)
+- [OAI.MetricKMedian.FixedBatch.RationalParameters.completed_expectation](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Geometry/RationalParameterizedHistory.lean#L51)
+
+### KM06 · 有限扫描找到同时满足预算和代价的舍入解
+
+类型：衔接推理。上游：KM02、KM03、KM04、KM05。
+
+**完整结论**
+
+对源码 RationalAllParameters η τ，τ∈(0,1)、η≥0、C≥1+3g+allowance，把有效分数解转换并扫描得到 some O，O非空、|O|≤k+C，且 cost(O)≤((1+2/e+τ)/(1−τ))·(1+η)value。
+
+**允许的前提**
+
+- 参考 MetricKMedian.Instance 的全部度量、设施、客户和预算条件；cost、optimum、computedFractional、computedPseudo 按源码定义。
+- RationalAllParameters η τ 的完整条件；同一输入的质量与度量实现。
+- KM02–KM05 的完整结论。
+
+**验收条件**
+
+须把好准备结果、好舍入历史接到实际有限扫描的支持中，并把拷贝设施映射回原设施；不能只给随机舍入期望而没有可返回的集合。
+
+**参考声明**
+
+- [OAI.MetricKMedian.Preparation.RationalBundles.scan_geometry](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Geometry/RationalGeometryScan.lean#L66)
+- [OAI.MetricKMedian.Preparation.FractionalRefinement.scan_spec](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Geometry/RationalFractionalScan.lean#L29)
+- [OAI.MetricKMedian.Instance.fractionalRound_spec](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Programs/InstanceFractionalRound.lean#L35)
+
+### KM07 · 得到统一的超预算近似算法
+
+类型：衔接推理。上游：KM01、KM06。
+
+**完整结论**
+
+对所有 I，computedPseudo 输出原设施中的非空集合，基数≤k+C，代价≤α optimum(I)，α=((1+2/e+τ)/(1−τ))·(1+η)(1+3/r)；零最优值分支同样正确。
+
+**允许的前提**
+
+- 参考 MetricKMedian.Instance 的全部度量、设施、客户和预算条件；cost、optimum、computedFractional、computedPseudo 按源码定义。
+- r>0 及 KM06 的参数条件。
+- KM01、KM06 的完整结论。
+
+**验收条件**
+
+同一个 computedPseudo 必须覆盖零成本和非零成本输入；不得只证明非零分支或用空集成本为零获得伪近似。
+
+**参考声明**
+
+- [OAI.MetricKMedian.Instance.computedPseudo_spec](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Programs/InstanceComputedPseudo.lean#L43)
+
+### KM08 · 找到保留最优设施的稀疏分支
+
+类型：数学结果。上游：无表内上游项。
+
+**完整结论**
+
+对正成本参考设施 O⊆F 和 ρ>0、(3/2)≤aρ，证明枚举 sparseBranches 中存在 F′，既包含 O 又满足 Sparse(F′,O,ρ)；将设施限制到该分支不改变原 optimum。
+
+**允许的前提**
+
+- 参考 MetricKMedian.Instance 的全部度量、设施、客户和预算条件；cost、optimum、computedFractional、computedPseudo 按源码定义。
+- sparse_branch_exists 的完整前提；restrict_optimum 中 O 为最优可行集合。
+
+**验收条件**
+
+需证明候选分支真实在有限枚举中且保留同一最优集合；不能假设算法预知 O。
+
+**参考声明**
+
+- [OAI.MetricKMedian.Reduction.sparse_branch_exists](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Reduction/SparsifyEnumeration.lean#L33)
+- [OAI.MetricKMedian.Instance.restrict_optimum](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Reduction/BudgetReduction.lean#L28)
+
+### KM09 · 把超出的 C 个设施消除并控制成本损失
+
+类型：数学结果。上游：无表内上游项。
+
+**完整结论**
+
+在 sparse_outcome_exists 的条件下，若 |T|≤k+C、cost(T)≤α cost(O)，则有限候选中存在非空 S⊆F，|S|≤k、cost(S)≤(α+ξ)cost(O)。
+
+**允许的前提**
+
+- 参考 MetricKMedian.Instance 的全部度量、设施、客户和预算条件；cost、optimum、computedFractional、computedPseudo 按源码定义。
+- sparse_outcome_exists 中 C>0、δ∈(0,1/6]、ξ>0、Sparse 条件、1+12δ≤α+ξ 及 b≥6(α+ξ)C/(δξ)。
+
+**验收条件**
+
+必须覆盖删除历史能到达预算和删除受阻后需要补全的两类情况；只证明一次删点代价小不能验收。
+
+**参考声明**
+
+- [OAI.MetricKMedian.Reduction.sparse_outcome_exists](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Sparse/SparseReduction.lean#L50)
+
+### KM10 · 恢复严格预算并选出最便宜的可行候选
+
+类型：衔接推理。上游：KM07、KM08、KM09。
+
+**完整结论**
+
+对同一 α-近似的 computedPseudo，枚举稀疏分支和预算修复候选，ordinarySet 返回原设施中的非空集合，基数≤k，代价≤(α+ξ)optimum。
+
+**允许的前提**
+
+- 参考 MetricKMedian.Instance 的全部度量、设施、客户和预算条件；cost、optimum、computedFractional、computedPseudo 按源码定义。
+- ordinarySet_spec 中的统一 C,a,b,δ,α,ξ 数值条件。
+- KM07–KM09 的完整结论。
+
+**验收条件**
+
+给出候选成功性到实际 selectList 的连接，并覆盖零最优值分支；不得将存在的好候选与程序返回值混同。
+
+**参考声明**
+
+- [OAI.MetricKMedian.Reduction.reductionOutputs_success](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Reduction/BudgetReduction.lean#L47)
+- [OAI.MetricKMedian.Reduction.Program.selectList_spec](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Programs/FinalSelectionProgram.lean#L44)
+- [OAI.MetricKMedian.Reduction.Program.ordinarySet_spec](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Reduction/OrdinaryListProgram.lean#L32)
+
+### KM11 · 同一算法同时具有多项式实现和目标近似率
+
+类型：衔接推理。上游：KM10。
+
+**完整结论**
+
+对每个 ε>0，先选定一组只依赖 ε 的参数和一个 algorithm:Instance→List Bool，证明它有 PolyProgram 实现，并对所有 I 满足 Correct ε，即预算可行且代价≤(1+2/e+ε)optimum(I)。
+
+**允许的前提**
+
+- 参考 MetricKMedian.Instance 的全部度量、设施、客户和预算条件；cost、optimum、computedFractional、computedPseudo 按源码定义。
+- ε>0；KM10 的完整结论。
+
+**验收条件**
+
+从 ε>0 实际选出满足 RationalAllParameters 及全部误差预算的一组参数，再给出同一个 algorithm 的语义正确性和多项式实现；参数不能依 I 重新选择。不能将参数可行性作为额外存在性假设；候选数多项式或任意算法可计算也不足以完成本项。
+
+**参考声明**
+
+- [OAI.MetricKMedian.exists_internal_program](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Main.lean#L26)
+- [OAI.MetricKMedian.exists_approximation_slack](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Optimization/ApproximationSlack.lean#L37)
+- [OAI.MetricKMedian.Reduction.Program.ordinaryProgram](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Reduction/OrdinaryListProgram.lean#L22)
+- [OAI.MetricKMedian.Preparation.exists_rational_all_parameters](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Geometry/RationalAllParameters.lean#L33)
+
+### KM12 · 细化题面与通用 k-median 使用同一成本和编码
+
+类型：数学结果。上游：无表内上游项。
+
+**完整结论**
+
+对每个 refined Input I，asInstance 保持输入编码和所有集合的成本；其 mask 输出能解码回原设施集合，且每个 Certificate C 都满足 optimum(I.asInstance)≤cost(C.centers)。
+
+**允许的前提**
+
+- 原题 bound,ε,L₀,μ 及 0<ε、0<L₀、0<μ≤1/4、(μ:ℝ)≤ε/12；之后才量化输入 I、0<ζ<1 和 Certificate I μ L₀。
+- Input 和 Certificate 的完整原有结构条件；C.centers_subset、same_card 与 I.anchor_card。
+
+**验收条件**
+
+必须建立同一 I 的编码、代价和集合对应关系。只比较数值近似率而没有合法输出映射不算完成。
+
+**参考声明**
+
+- [OAI.MetricKMedianRecovery.RefinedRecovery.Input.asInstance_bits](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/ThresholdInput.lean#L29)
+- [OAI.MetricKMedianRecovery.RefinedRecovery.Input.asInstance_cost](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/ThresholdInput.lean#L37)
+- [OAI.MetricKMedianRecovery.RefinedRecovery.Input.decode_mask](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/ThresholdInput.lean#L67)
+- [OAI.MetricKMedianRecovery.RefinedRecovery.Input.optimum_le_comparison](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/ThresholdInput.lean#L58)
+
+### KM13 · 把通用程序封装为题面的同一个 A
+
+类型：衔接推理。上游：KM11、KM12。
+
+**完整结论**
+
+从 KM11 的同一 f,PolyProgram 构造一个 BinaryRandomizedAlgorithm A，randomBits=0；对所有 I,ζ,s，A.run(queryBits I ζ,List.ofFn s)=f(I.asInstance)。
+
+**允许的前提**
+
+- 原题 bound,ε,L₀,μ 及 0<ε、0<L₀、0<μ≤1/4、(μ:ℝ)≤ε/12；之后才量化输入 I、0<ζ<1 和 Certificate I μ L₀。
+- KM11、KM12 的完整结论；CheckedInput.checked、queryBits 和 pairBits 的固定定义。
+
+**验收条件**
+
+要证明解析和校验后得到原 I.asInstance，且计算实现与运行函数一致；A 必须在 I、ζ、C 之前选定。
+
+**参考声明**
+
+- [OAI.MetricKMedianRecovery.RefinedRecovery.CheckedInput.checked_view](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/CheckedInput.lean#L204)
+- [OAI.MetricKMedianRecovery.RefinedRecovery.algorithm](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/ConditionalRecovery.lean#L36)
+- [OAI.MetricKMedianRecovery.RefinedRecovery.algorithm_run](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/ConditionalRecovery.lean#L43)
+
+### KM14 · 该 A 满足题面规定的工作量界
+
+类型：衔接推理。上游：KM13。
+
+**完整结论**
+
+对 KM13 选定的同一 A 和任意多项式 bound，证明 PolynomialWork A bound；使用 Bounded 输入的编码长度界和 log(1/ζ) 精度长度。
+
+**允许的前提**
+
+- 原题 bound,ε,L₀,μ 及 0<ε、0<L₀、0<μ≤1/4、(μ:ℝ)≤ε/12；之后才量化输入 I、0<ζ<1 和 Certificate I μ L₀。
+- KM13 的同一 A、其 PolyProgram 计算证明和 randomBits=0；只在 I.Bounded bound、0<ζ<1 下要求工作界。
+
+**验收条件**
+
+必须把实际编码长度和实际运行时间接到原题 PolynomialWork 的统一常数和指数，不能把多项式可计算标签直接当作该工作界。
+
+**参考声明**
+
+- [OAI.MetricKMedianRecovery.RefinedRecovery.metric_length_bound](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/Work.lean#L32)
+- [OAI.MetricKMedianRecovery.RefinedRecovery.zero_random_polynomialWork](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/Work.lean#L85)
+
+### KM15 · 同一输出同时可行并达到证书比较成本
+
+类型：衔接推理。上游：KM11、KM12、KM13。
+
+**完整结论**
+
+对 KM13 的同一 A、每个合法 I,ζ,s 和每个 Certificate C，output(A,I,ζ,s) 可行，且其成本≤(1+2/e+ε)cost(C.centers)。 因此同一 A 的全部种子都成功，原定义 successProbability=1≥1−ζ。
+
+**允许的前提**
+
+- 原题 bound,ε,L₀,μ 及 0<ε、0<L₀、0<μ≤1/4、(μ:ℝ)≤ε/12；之后才量化输入 I、0<ζ<1 和 Certificate I μ L₀。
+- KM11、KM12、KM13 的完整结论；同一 A 和同一输出集合。
+
+**验收条件**
+
+同时验收设施包含、预算、客户非空时输出非空及成本界；不能仅用原题将空集成本定义为0的约定。 将逐种子结论换成概率时，必须使用同一 A 的 seedLength 和全部种子；不把这一机械换算单列评分。
+
+**参考声明**
+
+- [OAI.MetricKMedianRecovery.RefinedRecovery.refined_recovery_conditional](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/ConditionalRecovery.lean#L50)
+
+### KM16 · 组装 refined_recovery 的原量词
+
+类型：汇合结论。上游：KM13、KM14、KM15。
+
+**完整结论**
+
+对每个 bound,ε,L₀,μ 满足原条件，先存在一个 A，再对所有 Bounded 输入 I、0<ζ<1 同时给出 PolynomialWork、逐种子可行性以及对所有 Certificate 的成功概率≥1−ζ。
+
+**允许的前提**
+
+- 原题 bound,ε,L₀,μ 及 0<ε、0<L₀、0<μ≤1/4、(μ:ℝ)≤ε/12；之后才量化输入 I、0<ζ<1 和 Certificate I μ L₀。
+- KM13–KM15 的完整结论，全部绑定到同一个 A。
+
+**验收条件**
+
+精确恢复配置根 refined_recovery；A 可以依赖外层参数，但不能依赖 I、ζ、某个 C 或某条种子。
+
+**参考声明**
+
+- [OAI.MetricKMedianRecovery.RefinedRecovery.companion_threshold_input](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/Recovery.lean#L8)
+- [OAI.MetricKMedianRecovery.RefinedRecovery.refined_recovery](https://github.com/LuNa-shi/SwarmEnv/blob/7617767a945e263f3fa412255e1a570ccdbfb98c/benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedianRecovery/Refined/Recovery.lean#L11)

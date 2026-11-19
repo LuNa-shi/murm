@@ -1,0 +1,447 @@
+{
+  "problem_id": "oai_euclidean_ramsey",
+  "title": "欧氏 Ramsey 构形的张量判别",
+  "target_declaration": "OAI.EuclideanRamsey.classification",
+  "challenge_path": "benchmarks/openai-math-12/lean/ComparatorChallenges/EuclideanRamsey.lean",
+  "reference_module": "OAI.Combinatorics.EuclideanRamsey.Main",
+  "source_commit": "7617767a945e263f3fa412255e1a570ccdbfb98c",
+  "suitability": {
+    "status": "conditional",
+    "reason": "参考证明两方向及其连接很清楚，能拆出 20 项。必要方向经分离函数和有限着色障碍；充分方向经格点矩、平滑、坐标置换、路径修正和有限维紧性。",
+    "route_risk": "有限格点恒等式、平滑定理和一般群平均在源码中都是泛化的工具定理；一个只针对当前构形的有效证明可能不产出这些更广的接口。若直接按通用定理的声明匹配，会漏记这种实质推进。",
+    "next_action": "先在沿本参考接口工作的实验中试用；正式横向比较前，为 ER08、ER09、ER15 写清可接受的实例化接口：须够后续使用，但不必额外证明对未使用数据的泛化版本。保持本版分母固定，不因实验的写法临时增减项。"
+  },
+  "route_summary": "固定评分对象为 classification；它已经假设点互异、s≥2、d≥1、仿射张成全空间，后面的 full_affine_representative 和 classification_nonempty 不计分。η、δ 和路径比例是证明内部辅助量：各项要求对其完整量词成立，不按参数大小阶梯计分。最关键的拼接是同一有符号测度同时满足矩和消去条件，以及两条路径拥有完全相同的端点。",
+  "milestones": [
+    {
+      "id": "ER01",
+      "title": "全仿射张成的全等副本来自同一个等距仿射映射",
+      "kind": "result",
+      "statement": "对 a:Fin s→ℝ^d、b:Fin s→ℝ^D，选定 i₀:Fin s；若 a 的仿射张成是全空间且所有两点距离相同，则存在线性等距嵌入 Q 和平移 t，使每个 i 都有 bᵢ=t+Q(aᵢ)。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "全仿射张成；原题 Congruent；一个点 i₀。"
+      ],
+      "acceptance": "输出同一个 Q,t 对所有点成立。分别为每一对点选择等距映射不能通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/Congruence.lean",
+          "declaration": "OAI.EuclideanRamsey.congruent_linearIsometry"
+        }
+      ]
+    },
+    {
+      "id": "ER02",
+      "title": "实张量判别失败给出分离函数",
+      "kind": "result",
+      "statement": "若 ¬RealCriterion(a)，则存在 f_i:ℝ→ℝ 和 ℚ 线性映射 L:Mat_d(ℝ)→ℝ，L(I)=1；对所有 v∈ℝ、u∈ℝ^d，有 ∑_i f_i(v+∑_j aᵢ,j u_j)+L(u uᵀ)=0；并且对所有 x，∑_i f_i(x)=0。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "¬RealCriterion(a)；实张量阵列及 arrayMap 的定义。"
+      ],
+      "acceptance": "先将目标 (0,I) 与 arrayMap 的像分离，再得到同一 f,L 的两类恒等式；不能把分离函数存在当作额外假设。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorNecessity.lean",
+          "declaration": "OAI.EuclideanRamsey.separate_arrayMap"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorNecessity.lean",
+          "declaration": "OAI.EuclideanRamsey.exists_separated_functions"
+        }
+      ]
+    },
+    {
+      "id": "ER03",
+      "title": "任何仿射等距副本上分离函数总和固定为负一",
+      "kind": "bridge",
+      "statement": "若 f,L 满足 ER02 的 L(I)=1 和全部仿射线性恒等式，则对任意线性等距嵌入 Q:ℝ^d→ℝ^D、任意平移 t，∑_i∑_j f_i((t+Q(aᵢ))_j)=−1。",
+      "depends_on": [
+        "ER01",
+        "ER02"
+      ],
+      "allowed_assumptions": [
+        "ER02 的明确恒等式；任意 Q,t；无需另外假设副本单色。"
+      ],
+      "acceptance": "用同一个 Q 的行向量 Gram 矩阵之和为 I 合并所有坐标，不可只处理某一种坐标放置。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorNecessity.lean",
+          "declaration": "OAI.EuclideanRamsey.separated_copy_sum"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorNecessity.lean",
+          "declaration": "OAI.EuclideanRamsey.isometryRows_gram"
+        }
+      ]
+    },
+    {
+      "id": "ER04",
+      "title": "有限取整着色排除负一总和",
+      "kind": "result",
+      "statement": "对 s>0、任意集合 X 和函数 H_i:X→ℝ，若 ∀z,∑_iH_i(z)=0，则按向量 (⌊(2s+1)H_j(z)/2⌋ mod (2s+1))_j 着色时，任何同色点族 b_i 都满足 ∑_iH_i(b_i)≠−1。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "s>0；逐点相消恒等式；全部 b_i 的上述颜色向量相同。"
+      ],
+      "acceptance": "取整误差与模 2s+1 的整除矛盾必须完整；只说存在阻碍着色或只比较一个颜色坐标不通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorNecessity.lean",
+          "declaration": "OAI.EuclideanRamsey.floor_coloring_obstruction"
+        }
+      ]
+    },
+    {
+      "id": "ER05",
+      "title": "Ramsey 性迫使实张量判别成立",
+      "kind": "bridge",
+      "statement": "对 s>0、仿射张成全空间的 a，Ramsey(a)⇒RealCriterion(a)。",
+      "depends_on": [
+        "ER01",
+        "ER02",
+        "ER03",
+        "ER04"
+      ],
+      "allowed_assumptions": [
+        "原题 Ramsey 定义；s>0 和全仿射张成。"
+      ],
+      "acceptance": "以 H_i(z)=∑_j f_i(z_j) 构造有限颜色，调用 Ramsey 得同色副本，再用 ER01–ER04 产生矛盾；颜色数必须是合法有限数且≥2。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorNecessity.lean",
+          "declaration": "OAI.EuclideanRamsey.ramsey_realCriterion"
+        }
+      ]
+    },
+    {
+      "id": "ER06",
+      "title": "实系数与坐标域上的判别双向兼容",
+      "kind": "result",
+      "statement": "对任意有限构形 a，RealCriterion(a)⇔FieldCriterion(a)。从实张量降到 coordinateField(a)⊗ℚcoordinateField(a) 时，同时保留每个点的增广二次式为 0 和空间块乘积为单位阵；反方向沿域嵌入提升。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "题面的 coordinateField、augmented、multiply 和两个判别定义。"
+      ],
+      "acceptance": "两个方向都要提供实际张量矩阵并保持所有约束。只证明空间块单位阵或只把坐标系数包含关系写出不通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorDescent.lean",
+          "declaration": "OAI.EuclideanRamsey.realCriterion_fieldCriterion"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorDescent.lean",
+          "declaration": "OAI.EuclideanRamsey.fieldCriterion_realCriterion"
+        }
+      ]
+    },
+    {
+      "id": "ER07",
+      "title": "张量证书转成共同的有理矩阵和格子数据",
+      "kind": "bridge",
+      "statement": "对 d≥1 且 RealCriterion(a)，存在 k≥1、仿射向量 w₁,…,w_k 和同一个对称有理矩阵 C。令 U 的列为 w 的空间部分，则 U C Uᵀ=I；每个点 a_i 的评价映射在整数格上的核 Λ_i 都满足 quotientTensor(Λ_i,matrixTensor C)=0。",
+      "depends_on": [
+        "ER06"
+      ],
+      "allowed_assumptions": [
+        "RealCriterion(a) 的完整证书；d≥1。"
+      ],
+      "acceptance": "同一 w,C 同时适用于所有 i；明确 Λ_i 是评价映射之核。逐点选择不同 C 或遗漏空间 Gram 等式不通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorPresentation.lean",
+          "declaration": "OAI.EuclideanRamsey.realCriterion_lattice"
+        }
+      ]
+    },
+    {
+      "id": "ER08",
+      "title": "共同商张量消失得到有限支撑的格点矩证书",
+      "kind": "bridge",
+      "statement": "对 k,s≥1、格子子群 Λ_i 和对称有理矩阵 C，若每个 quotientTensor(Λ_i,matrixTensor C)=0，则存在同一个有限支撑有理格点元 ν：全部 cosetPushforward(Λ_i,ν)=0、mass(ν)=0、一阶矩全为 0、二阶矩恰为 C。",
+      "depends_on": [
+        "ER07"
+      ],
+      "allowed_assumptions": [
+        "完整商张量消失条件；k,s≥1；C 对称。"
+      ],
+      "acceptance": "构造一个 ν 同时满足所有余类消去和矩约束。分别为各 i 找到 ν_i 不通过；若只对 ER07 实际产生的 Λ,C 证明，须事先冻结该实例接口并验证足够供 ER10 使用。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/LatticeMoments.lean",
+          "declaration": "OAI.EuclideanRamsey.FiniteLatticeIdentity"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/AdicLifting.lean",
+          "declaration": "OAI.EuclideanRamsey.finite_lattice_identity"
+        }
+      ]
+    },
+    {
+      "id": "ER09",
+      "title": "构造负二阶质量任意小的紧支撑平滑函数",
+      "kind": "result",
+      "statement": "对 d≥1、任意对称实矩阵 C 和 U 满足 U C Uᵀ=I，任意 η>0，存在光滑紧支撑 b≥0，∫b>0，且 ∫max(−stencilDifferential(C,b),0)·gradientWeight(U)<η∫b。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "C 对称；U C Uᵀ=I；η>0、d≥1。"
+      ],
+      "acceptance": "必须处理不定的 C，不能增加 C 正定的假设；同一个 b 满足正质量、紧支撑和负部加权界。量词覆盖任意 η>0，不逐个 η 给分。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/SmoothingMatrix.lean",
+          "declaration": "OAI.EuclideanRamsey.CompactSmoothing"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/SmoothingMatrix.lean",
+          "declaration": "OAI.EuclideanRamsey.compact_smoothing"
+        }
+      ]
+    },
+    {
+      "id": "ER10",
+      "title": "平滑后仍严格保持所有代数约束",
+      "kind": "bridge",
+      "statement": "给定 ER08 的 ν、C、Λ_i，及 d≥1、U C Uᵀ=I，任意 η>0，构造 n≥1、有限支撑有理格点元 μ、ζ>0。所有余类消去、零质量、零一阶矩仍精确成立；二阶矩除以 n² 等于 ζC；负系数加权的 ∑max(−μ_δ,0)·gradientWeight(U,δ/n)<ηζ。",
+      "depends_on": [
+        "ER08",
+        "ER09"
+      ],
+      "allowed_assumptions": [
+        "ν 的全部消去和矩条件；U C Uᵀ=I；C 对称；η>0。"
+      ],
+      "acceptance": "离散化和有理化后，等式必须精确而非近似；所有 i 使用同一个 μ,n,ζ。只控制负质量却破坏余类消去不通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/StencilConvolution.lean",
+          "declaration": "OAI.EuclideanRamsey.rational_smoothing"
+        }
+      ]
+    },
+    {
+      "id": "ER11",
+      "title": "有符号权重转成可配对的两组有限行",
+      "kind": "bridge",
+      "statement": "对 s>0、有限支撑有理权 f、仿射评价 v(x)+a_i·g(x)，若每个评价的推前为 0、二阶矩为 ζI（ζ>0）、负部加权平方范数<ηζ，则存在同一有限行指标 τ、U,V 及偏移 vp,vn：UUᵀ−VVᵀ=I、trace(VVᵀ)<η；对每个 i，有一个行置换 σ_i，使两组仿射评价逐项相等。",
+      "depends_on": [
+        "ER10"
+      ],
+      "allowed_assumptions": [
+        "上述精确评价消去、矩等式和负部界；s>0、ζ>0。"
+      ],
+      "acceptance": "完成有理权的整数量化、正负重数配对和统一归一化。不能为不同点改变两组行本身；允许各点有自己的置换。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/SignedRows.lean",
+          "declaration": "OAI.EuclideanRamsey.normalized_signed_rows"
+        }
+      ]
+    },
+    {
+      "id": "ER12",
+      "title": "补齐 Gram 矩阵得到两个精确尺度",
+      "kind": "bridge",
+      "statement": "若 UUᵀ−VVᵀ=I、trace(VVᵀ)<η、η>0，则存在同一个补充矩阵 R，令 c=(√(1+η))⁻¹，有 Gram(c[U,R])=I、Gram(c[V,R])=(η/(1+η))I。",
+      "depends_on": [
+        "ER11"
+      ],
+      "allowed_assumptions": [
+        "同一个 U,V 的 Gram 差与 trace 界；η>0。"
+      ],
+      "acceptance": "两个矩阵添加相同的 R，并给出精确 Gram 等式；近似等距、各自不同的补充矩阵均不通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/GramCompletion.lean",
+          "declaration": "OAI.EuclideanRamsey.complete_gram_pair"
+        }
+      ]
+    },
+    {
+      "id": "ER13",
+      "title": "判别证书产生具有坐标置换关系的双尺度构形",
+      "kind": "bridge",
+      "statement": "对 d,s≥1 且 RealCriterion(a)，任意 η>0，存在 ℓ≥1 和 f,g:Fin s→ℝ^ℓ，使所有平方距离分别等于 a 的平方距离及其 η/(1+η) 倍；对每个 i，g_i 的坐标经某个置换后逐项等于 f_i。",
+      "depends_on": [
+        "ER07",
+        "ER08",
+        "ER10",
+        "ER11",
+        "ER12"
+      ],
+      "allowed_assumptions": [
+        "RealCriterion(a)；d,s≥1；η>0。"
+      ],
+      "acceptance": "从同一 μ,w,C 计算评价消去、二阶矩和负部界，再应用行配对与共同 Gram 补齐。两套各自全等但没有逐点坐标置换联系的构形不通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/GramCompletion.lean",
+          "declaration": "OAI.EuclideanRamsey.two_scale_of_signed_rows"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/GramCompletion.lean",
+          "declaration": "OAI.EuclideanRamsey.realCriterion_two_scale"
+        }
+      ]
+    },
+    {
+      "id": "ER14",
+      "title": "导出子群的误差可以逐坐标修正为路径分式",
+      "kind": "result",
+      "statement": "一般接口：有限指标集 ι、子幺半群 M⊆G^ι 有对角元、PairInverse 和 PairCoverage(M,N)，N 为正规子群，且 |ι|≤r+2，则 Derived(N,r) 包含于每个坐标的 singleFractions(M)。对单射构形 a 的单位路径系统，证明 pair 条件确实成立，从而可取 N=AugKernel、r=|ι|−2。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "一般接口的完整对角、两坐标逆元和覆盖条件；专门应用中 a 单射。"
+      ],
+      "acceptance": "既证明导出子群到单坐标分式的连接，也验证单位路径的覆盖条件；不能把可修正误差当成额外群假设。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/DerivedFractions.lean",
+          "declaration": "OAI.EuclideanRamsey.derived_subset_single"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/PathWords.lean",
+          "declaration": "OAI.EuclideanRamsey.unit_pair_inverse"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/PathWords.lean",
+          "declaration": "OAI.EuclideanRamsey.unit_pair_coverage"
+        }
+      ]
+    },
+    {
+      "id": "ER15",
+      "title": "有限群平均把同轨道误差同时压低",
+      "kind": "result",
+      "statement": "有限群 H 作用在有限 X 上，G 为群、N 正规，给定 Derived(N,r) 上的 NormalCost c。若所有 letter(x)letter(y)⁻¹∈N，则任意 δ>0 都存在同一个 OrbitWords 族 w 与长度 m>0，使所有同轨道 x,y 的差 w(x)w(y)⁻¹ 均落在 Derived(N,r)，且成本≤δm。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "完整 NormalCost 的非负、逆元/共轭不变及乘积次可加条件；有限 H,X；字母差在 N 中；δ>0。"
+      ],
+      "acceptance": "同一个 w,m 同时控制所有轨道，不得逐点独立选择平均结果；需要成本随长度的相对界而非仅有绝对有限性。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/OrbitAveraging.lean",
+          "declaration": "OAI.EuclideanRamsey.finite_group_averaging"
+        }
+      ]
+    },
+    {
+      "id": "ER16",
+      "title": "把双尺度构形修正为完全相同的路径端点",
+      "kind": "bridge",
+      "statement": "对单射 a、f,g:Fin s→ℝ^ℓ，若 f 的平方距离等于 a，g 的平方距离是 a 的 q 倍（q>0），且逐点坐标由置换联系，则任意 δ>0 可构造同一端点族 w 和两条 Path(a,w,λ)、Path(a,w,μ)，λ>0、μ≥0、μ/λ≤q+sδ。",
+      "depends_on": [
+        "ER13",
+        "ER14",
+        "ER15"
+      ],
+      "allowed_assumptions": [
+        "上述两组距离等式、逐点置换、a 单射；q,δ>0。"
+      ],
+      "acceptance": "把平均误差写成路径分式并控制总修正长度，从 Dp·u=Dm·v 得到真正相等的端点。端点仅接近、同轨道或两个互不相干的 w 均不通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/CorrectionPaths.lean",
+          "declaration": "OAI.EuclideanRamsey.GradedPaths.correction_cost"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/CorrectionPaths.lean",
+          "declaration": "OAI.EuclideanRamsey.averaged_equal_endpoints"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/CorrectionPaths.lean",
+          "declaration": "OAI.EuclideanRamsey.permutation_equal_endpoints"
+        }
+      ]
+    },
+    {
+      "id": "ER17",
+      "title": "同一端点支持全部所需倒数尺度",
+      "kind": "bridge",
+      "statement": "对 n≥1，若同一 w 有尺度 λ>0、μ 的两条路径且 μ/λ<1/n，则存在同一个 W，使每个 1≤t≤n 都有 Path(a,W,1/t)。",
+      "depends_on": [
+        "ER16"
+      ],
+      "allowed_assumptions": [
+        "同一端点的两条路径；λ>0、μ/λ<1/n。"
+      ],
+      "acceptance": "同步全部 1/t 的端点为一个 W，不允许各 t 独立生成 W_t。此项验收完整 n 的全称接口，不按小 n 给分。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/PathSynchronization.lean",
+          "declaration": "OAI.EuclideanRamsey.synchronize_paths"
+        }
+      ]
+    },
+    {
+      "id": "ER18",
+      "title": "由路径得到任意有限着色的单色全等副本",
+      "kind": "bridge",
+      "statement": "若对每个 n≥1 都有同一端点的两条路径 λ>0、μ/λ<1/n，则对 FiniteEuclidean 上任意有限颜色类型及任意着色 c，存在与 a 全等的点族 b，且所有 b_i 同色。",
+      "depends_on": [
+        "ER17"
+      ],
+      "allowed_assumptions": [
+        "对所有 n 的路径供给；有限颜色类型。"
+      ],
+      "acceptance": "将同步路径、组合线和超滤子共同实现连接起来，最终输出实际点族及颜色。仅有超滤子中同色或仅有近似距离不通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/ColoringCompactness.lean",
+          "declaration": "OAI.EuclideanRamsey.paths_monochromatic"
+        }
+      ]
+    },
+    {
+      "id": "ER19",
+      "title": "将无限坐标空间结果统一降为有限维",
+      "kind": "bridge",
+      "statement": "固定颜色数 r，若 FiniteEuclidean 的每个 r 着色都含 a 的单色全等副本，则存在 D≥1，使 ℝ^D 的每个 r 着色都含这样的副本。D 在选择具体着色前确定。",
+      "depends_on": [
+        "ER18"
+      ],
+      "allowed_assumptions": [
+        "固定 r；对 FiniteEuclidean 全部 r 着色的结论。"
+      ],
+      "acceptance": "核对 ∃D∀color 的量词顺序，并在截断时同时保留有限点族的全部距离与颜色。对每个着色各选一个维度不通过。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/ColoringCompactness.lean",
+          "declaration": "OAI.EuclideanRamsey.finite_coloring_compactness"
+        }
+      ]
+    },
+    {
+      "id": "ER20",
+      "title": "闭合原题的双向分类",
+      "kind": "assembly",
+      "statement": "对 s≥2、d≥1、单射且仿射张成全空间的 a，证明 OAI.EuclideanRamsey.classification：Ramsey(a)⇔FieldCriterion(a)。必要方向用 ER05、ER06；充分方向对每个 n 取 η=1/(4n)、δ=1/(4ns)，用 ER13、ER16 得 μ/λ<1/n，再经 ER18、ER19 得原题 Ramsey。",
+      "depends_on": [
+        "ER05",
+        "ER06",
+        "ER13",
+        "ER16",
+        "ER18",
+        "ER19"
+      ],
+      "allowed_assumptions": [
+        "原题的 s,d、单射和仿射张成条件；前述完整接口。"
+      ],
+      "acceptance": "两个方向都回到 coordinateField(a) 的题面矩阵和有限维着色定义，所有辅助平滑、平均和路径条件均已消去。full_affine_representative 与 classification_nonempty 不计分。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/TensorDescent.lean",
+          "declaration": "OAI.EuclideanRamsey.ramsey_fieldCriterion"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/Main.lean",
+          "declaration": "OAI.EuclideanRamsey.fieldCriterion_ramsey"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/EuclideanRamsey/Main.lean",
+          "declaration": "OAI.EuclideanRamsey.classification"
+        }
+      ]
+    }
+  ]
+}

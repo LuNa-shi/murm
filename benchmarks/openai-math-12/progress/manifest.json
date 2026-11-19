@@ -1,0 +1,123 @@
+{
+  "schema_version": 1,
+  "rubric_version": "openai-math-12-progress-v1",
+  "purpose": "fixed-reference proof-progress annotation",
+  "source_commit": "7617767a945e263f3fa412255e1a570ccdbfb98c",
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "lean_toolchain": "leanprover/lean4:v4.34.1",
+  "mathlib_version": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+  "issue": "https://github.com/LuNa-shi/SwarmEnv/issues/150",
+  "parent_pr": "https://github.com/LuNa-shi/SwarmEnv/pull/147",
+  "metric": {
+    "name": "proof_progress",
+    "range": [
+      0,
+      1
+    ],
+    "formula": "1 if configured_root_verified else passed_milestones / total_milestones",
+    "milestone_weights": "equal within each problem",
+    "multi_problem_aggregation": "arithmetic mean over a task set fixed before evaluation",
+    "unassessed_policy": "do not publish a comparable score; keep the fixed denominator",
+    "acceptance_protocol": "PROTOCOL.md"
+  },
+  "problem_count": 12,
+  "total_milestones": 227,
+  "problems": [
+    {
+      "problem_id": "oai_seymour_second_neighborhood",
+      "target_declaration": "OAI.SeymourSecondNeighborhood.exists_goodVertex",
+      "rubric": "problems/SeymourSecondNeighborhood.json",
+      "readable": "problems/SeymourSecondNeighborhood.md",
+      "milestone_count": 19,
+      "suitability": "conditional"
+    },
+    {
+      "problem_id": "oai_one_way_liveness",
+      "target_declaration": "OAI.OneWayLiveness.main_theorem",
+      "rubric": "problems/OneWayLiveness.json",
+      "readable": "problems/OneWayLiveness.md",
+      "milestone_count": 19,
+      "suitability": "conditional"
+    },
+    {
+      "problem_id": "oai_partial_permutation",
+      "target_declaration": "OAI.PartialPermutation.complementaryCosets_finite",
+      "rubric": "problems/PartialPermutation.json",
+      "readable": "problems/PartialPermutation.md",
+      "milestone_count": 19,
+      "suitability": "suitable"
+    },
+    {
+      "problem_id": "oai_short_egyptian_fractions",
+      "target_declaration": "OAI.ShortEgyptian.main",
+      "rubric": "problems/ShortEgyptianFractions.json",
+      "readable": "problems/ShortEgyptianFractions.md",
+      "milestone_count": 21,
+      "suitability": "suitable"
+    },
+    {
+      "problem_id": "oai_power_free_values",
+      "target_declaration": "OAI.QuarticPowerFree.allDegrees",
+      "rubric": "problems/PowerFreeValues.json",
+      "readable": "problems/PowerFreeValues.md",
+      "milestone_count": 19,
+      "suitability": "conditional"
+    },
+    {
+      "problem_id": "oai_second_kahn_kalai",
+      "target_declaration": "OAI.LeanBlast.SecondKahnKalai.secondKahnKalaiBounds",
+      "rubric": "problems/SecondKahnKalai.json",
+      "readable": "problems/SecondKahnKalai.md",
+      "milestone_count": 20,
+      "suitability": "conditional"
+    },
+    {
+      "problem_id": "oai_euclidean_ramsey",
+      "target_declaration": "OAI.EuclideanRamsey.classification",
+      "rubric": "problems/EuclideanRamsey.json",
+      "readable": "problems/EuclideanRamsey.md",
+      "milestone_count": 20,
+      "suitability": "conditional"
+    },
+    {
+      "problem_id": "oai_entropy_photon_number",
+      "target_declaration": "OAI.EntropyPhotonNumber.entropy_photon_number_inequality",
+      "rubric": "problems/EntropyPhotonNumber.json",
+      "readable": "problems/EntropyPhotonNumber.md",
+      "milestone_count": 20,
+      "suitability": "conditional"
+    },
+    {
+      "problem_id": "oai_strongly_rayleigh_dpp",
+      "target_declaration": "OAI.Problem336AdditiveD139.finite_strongly_rayleigh_response",
+      "rubric": "problems/StronglyRayleighDPP.json",
+      "readable": "problems/StronglyRayleighDPP.md",
+      "milestone_count": 16,
+      "suitability": "suitable"
+    },
+    {
+      "problem_id": "oai_kmedian_refined_recovery",
+      "target_declaration": "OAI.MetricKMedianRecovery.RefinedRecovery.refined_recovery",
+      "rubric": "problems/KMedianRefinedRecovery.json",
+      "readable": "problems/KMedianRefinedRecovery.md",
+      "milestone_count": 16,
+      "suitability": "conditional"
+    },
+    {
+      "problem_id": "oai_matching_fpras",
+      "target_declaration": "OAI.MatchingFPRAS.thm_main",
+      "rubric": "problems/MatchingFPRAS.json",
+      "readable": "problems/MatchingFPRAS.md",
+      "milestone_count": 20,
+      "suitability": "conditional"
+    },
+    {
+      "problem_id": "oai_egyptian_fractions",
+      "target_declaration": "OAI.Problem337.main_double_log_order",
+      "rubric": "problems/EgyptianFractions.json",
+      "readable": "problems/EgyptianFractions.md",
+      "milestone_count": 18,
+      "suitability": "suitable"
+    }
+  ]
+}

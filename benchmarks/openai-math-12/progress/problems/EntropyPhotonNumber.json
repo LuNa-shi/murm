@@ -1,0 +1,539 @@
+{
+  "problem_id": "oai_entropy_photon_number",
+  "title": "熵光子数不等式",
+  "target_declaration": "OAI.EntropyPhotonNumber.entropy_photon_number_inequality",
+  "challenge_path": "benchmarks/openai-math-12/lean/ComparatorChallenges/EntropyPhotonNumber.lean",
+  "reference_module": "OAI.InformationTheory.PhotonNumber.Inequality",
+  "source_commit": "7617767a945e263f3fa412255e1a570ccdbfb98c",
+  "suitability": {
+    "status": "conditional",
+    "reason": "参考路线能拆出明确的变分、热态识别和极限接口。这 20 项可用于同一路线的事后比较，但 EP04 的 Gibbs/谱数据接口仍比其余项目重。",
+    "route_risk": "各项对应固定的正则化变分证明。换用另一类证明时，可能跳过 GibbsData 和偏差分析；等权分数也不代表各项耗时相同。",
+    "next_action": "启用前由熟悉该参考证明的人核对 EP04–EP09 的相容谱数据与假设边界，确认把 EP04 作为一个验收单元；随后冻结 20 项。本次保留原题，不直接替换。"
+  },
+  "route_summary": "正则化目标先取得全局极小值，变分恒等式控制热偏差；偏差消失和能量紧性把极小值逼近热态。利用热态的显式熵得到切线不等式，依次去掉两类正则化，再以保能量截断覆盖全部有限能量态。最后选取与输入熵匹配的参考参数并识别题面的实际输出。",
+  "milestones": [
+    {
+      "id": "EP01",
+      "title": "热熵函数的逆与保序关系",
+      "kind": "result",
+      "statement": "在非负实数上证明 g 连续、严格递增且满射到非负实数，gInv(g(t))=t、g(gInv(s))=s，并得到 t≤gInv(s)↔g(t)≤s。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "原题 g 与 sInf 形式 gInv 的定义；t,s≥0。"
+      ],
+      "acceptance": "必须处理 t=0 或 s=0；不得把 gInv 换成未经证明相同的逆函数。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.strictMonoOn_g"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.g_surjective_nonneg"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.gInv_g"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.g_gInv"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.le_gInv_iff"
+        }
+      ]
+    },
+    {
+      "id": "EP02",
+      "title": "统一能量界下的熵连续性",
+      "kind": "result",
+      "statement": "若一族有限能量态的算子收敛到有限能量态，且同一 E 控制全部能量，则其熵收敛；同时证明固定有限能量输入的分束器输出熵随 η∈[0,1] 连续。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "源声明 tendsto_entropy 的共同能量上界和算子收敛前提；原分束器定义。"
+      ],
+      "acceptance": "一般无限维态的连续性及分束器参数连续性都要成立；有限矩阵的连续性不能代替。本项必须展示输出能量仍受同一个界控制。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Entropy.lean",
+          "declaration": "OAI.EntropyPhotonNumber.tendsto_entropy"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.tendsto_entropy_beamOutput_parameter"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.tendsto_beamOutput_parameter"
+        }
+      ]
+    },
+    {
+      "id": "EP03",
+      "title": "正则化目标存在全局极小值",
+      "kind": "result",
+      "statement": "对任意 Regularization R 和任意四阶矩有限的见证态 ρw,σw，证明存在四阶矩有限的 ρ,σ 全局最小化 R.objective；其 sublevel 能量与四阶矩满足源码给出的显式界。",
+      "depends_on": [
+        "EP02"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "Regularization 的全部结构条件，包括正的能量惩罚与四阶矩惩罚系数。",
+        "EP02 的完整结论。"
+      ],
+      "acceptance": "要对所有四阶矩有限竞争态取全局最小，而非局部驻点；能量界必须能在之后 ζ→0 时保持统一。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Entropy.lean",
+          "declaration": "OAI.EntropyPhotonNumber.Regularization.sublevel_bounds"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Entropy.lean",
+          "declaration": "OAI.EntropyPhotonNumber.Regularization.exists_minimum"
+        }
+      ]
+    },
+    {
+      "id": "EP04",
+      "title": "极小值产生相容的 Gibbs 数据与变分恒等式",
+      "kind": "result",
+      "statement": "对满足源码热噪声条件的 R 的全局极小态，构造同一组 G1,G2,G0：输入 GibbsData、输出 SpectralLogData、六阶矩有限性；证明 minimum_spectral_pairing_balance 中的生成元对数配对等式和两个中心化 BKM Hessian 界。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "源声明 minimum_spectral_pairing_balance 的 R、四阶矩、热参考参数及全局极小性前提。"
+      ],
+      "acceptance": "严格验收该源声明的完整存在量词和三个相容结论；G1,G2,G0 不可在配对等式和 Hessian 界中分别更换。仅证明热态是驻点不能验收。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Minimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.Regularization.minimum_spectral_pairing_balance"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/PhysicalMinimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.Regularization.minimum_physical_pairing_balance"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/PhysicalMinimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.Regularization.minimum_centered_gibbs_data"
+        }
+      ]
+    },
+    {
+      "id": "EP05",
+      "title": "输出热偏差由输入偏差控制",
+      "kind": "bridge",
+      "statement": "固定 ThermalSetup P。设 Qᵢ 为第 i 个谱数据的 defectSquared，Mᵢ 为 meanSquared。由两个中心化 Hessian 界证明 Q0≤w1 Q1+w2 Q2+(ε/2)[w1 Q1+w2 Q2+w1 M1+w2 M2]。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "参考 ThermalSetup 的完整结构条件：η,θ,κ∈(0,1)，r1,r2,d,ε>0，以及 slack_r、slack_s 两个噪声余量约束和 small_κ 约束；r0,w1,w2、reg、defectSquared、meanSquared 按源码定义。",
+        "源声明 ThermalSetup.physical_estimate 的同一组三个 SpectralLogData、六阶矩和两个 Hessian 不等式。"
+      ],
+      "acceptance": "要把真实双端口分束器、热噪声和替换通道接到偏差估计；所有权重及 ε/2 系数须与源码一致，不能直接假设目标收缩界。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Minimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalSetup.physical_estimate"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Minimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.physical_defect_estimate"
+        }
+      ]
+    },
+    {
+      "id": "EP06",
+      "title": "中心化能量的精确平衡",
+      "kind": "result",
+      "statement": "对同一 ThermalSetup 和三个谱数据，证明存在 v≥0 使 E0−n r0=w1(E1−n r1)+w2(E2−n r2)+κ(1−κ)v，其中 Eᵢ 为 centeredEnergy。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "参考 ThermalSetup 的完整结构条件：η,θ,κ∈(0,1)，r1,r2,d,ε>0，以及 slack_r、slack_s 两个噪声余量约束和 small_κ 约束；r0,w1,w2、reg、defectSquared、meanSquared 按源码定义。",
+        "源声明 ThermalSetup.physical_energy 的同一组谱数据及输入六阶矩条件。"
+      ],
+      "acceptance": "必须保留额外项非负性，并对应同一个分束器输出；单独证明总能量有界不能验收。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Minimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalSetup.physical_energy"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Minimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.physical_centered_energy_identity"
+        }
+      ]
+    },
+    {
+      "id": "EP07",
+      "title": "极小态的偏差和均值随正则化消失",
+      "kind": "bridge",
+      "statement": "对固定 n,P，存在不依赖 ζ、ρ、σ 的 C>0，使每个 ζ>0 的全局极小态都有相容 GibbsData，满足 w1(Q1+M1)+w2(Q2+M2)≤Cζ。",
+      "depends_on": [
+        "EP04",
+        "EP05",
+        "EP06"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "参考 ThermalSetup 的完整结构条件：η,θ,κ∈(0,1)，r1,r2,d,ε>0，以及 slack_r、slack_s 两个噪声余量约束和 small_κ 约束；r0,w1,w2、reg、defectSquared、meanSquared 按源码定义。",
+        "EP04、EP05、EP06 的完整结论；极小性与四阶矩前提。"
+      ],
+      "acceptance": "必须证明统一 C 的存在并完成配对项消去；只对固定 ζ 给出有限常数不算完成。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Minimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalSetup.minimum_decay"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Minimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalSetup.uniform_minimum_decay"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Minimum.lean",
+          "declaration": "OAI.EntropyPhotonNumber.thermalGenerator_fourth_bound"
+        }
+      ]
+    },
+    {
+      "id": "EP08",
+      "title": "零热偏差确定唯一热态",
+      "kind": "result",
+      "statement": "若带 GibbsData 的态列算子收敛到 σ，各模式 annihilationMean 与 defect 范数都趋零，则 σ=thermalState n r；核心是由极限矩阵满足 Balance 递推和迹一推出唯一几何对角矩阵。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "thermal_limit_state 中的正 Gibbs 参数、r>0、算子收敛和逐模式偏差趋零前提；不假设极限态已对角化。"
+      ],
+      "acceptance": "需要排除非对角矩阵元并确定全部对角元及归一化；只证明极限态某个矩等于热态不够。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.ThermalRecurrence.unique_thermal_matrix"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.thermal_limit_entries"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.thermal_limit_state"
+        }
+      ]
+    },
+    {
+      "id": "EP09",
+      "title": "极小态列存在共同的热态收敛子列",
+      "kind": "bridge",
+      "statement": "对 ζm>0、ζm→0 的全局极小态列，若两输入能量有共同界，证明存在一个严格递增 f，使 ρf(m)、σf(m) 分别趋于 r1、r2 的热态。",
+      "depends_on": [
+        "EP07",
+        "EP08"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "参考 ThermalSetup 的完整结构条件：η,θ,κ∈(0,1)，r1,r2,d,ε>0，以及 slack_r、slack_s 两个噪声余量约束和 small_κ 约束；r0,w1,w2、reg、defectSquared、meanSquared 按源码定义。",
+        "EP07、EP08 的完整结论；源声明 minimum_thermal_subsequence 的四阶矩、全局极小性和共同能量界。"
+      ],
+      "acceptance": "两输入必须使用同一子列；要从总偏差界推出每个模式趋零，再与能量紧性和热态识别接通。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.pair_energy_subsequence"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.pair_thermal_subsequence"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalSetup.minimum_thermal_subsequence"
+        }
+      ]
+    },
+    {
+      "id": "EP10",
+      "title": "热参考态的熵与分束器输出",
+      "kind": "result",
+      "statement": "对 r>0，证明 energy(thermalState n r)=nr、entropy(thermalState n r)=n g(r)；两热态输入分束器得到参数 ηa+(1−η)b 的热态，进而 P.out 的热参考输出为 thermalState n P.r0。",
+      "depends_on": [
+        "EP08"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "热态正参数和 η∈[0,1]；EP08 中唯一热矩阵递推结论。",
+        "参考 ThermalSetup 的完整结构条件：η,θ,κ∈(0,1)，r1,r2,d,ε>0，以及 slack_r、slack_s 两个噪声余量约束和 small_κ 约束；r0,w1,w2、reg、defectSquared、meanSquared 按源码定义。"
+      ],
+      "acceptance": "需识别整个输出态和其熵；只匹配能量、均值或形式上的高斯参数不足。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.thermalState_energy"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.thermalState_entropy"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.thermal_beamOutput"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalSetup.output_thermal"
+        }
+      ]
+    },
+    {
+      "id": "EP11",
+      "title": "正则化熵目标的基准下界",
+      "kind": "bridge",
+      "statement": "对任意四阶矩有限输入，证明 P.entropyPart(ρ,σ)+P.penalty(ρ,σ)≥0；penalty 使用热相对熵，且非负。",
+      "depends_on": [
+        "EP02",
+        "EP03",
+        "EP09",
+        "EP10"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "参考 ThermalSetup 的完整结构条件：η,θ,κ∈(0,1)，r1,r2,d,ε>0，以及 slack_r、slack_s 两个噪声余量约束和 small_κ 约束；r0,w1,w2、reg、defectSquared、meanSquared 按源码定义。",
+        "EP02、EP03、EP09、EP10 的完整结论；thermalRelative、entropyPart、penalty 和 objective 的固定定义。"
+      ],
+      "acceptance": "以任意输入作为竞争态，选全局极小态并取共同热态子列；必须说明惩罚项非负；固定竞争态的 ζ·(M4ρw+M4σw) 趋零，极小态一侧的四阶矩项只用非负性丢弃，不能只验证热参考输入。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.thermalRelative_nonneg"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalSetup.objective_offset"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/ThermalLimit.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalSetup.base_nonnegative"
+        }
+      ]
+    },
+    {
+      "id": "EP12",
+      "title": "去掉替换正则化得到带热噪声的切线界",
+      "kind": "bridge",
+      "statement": "对任意 ThermalInterior T 及四阶矩有限输入，令 raw 为先以 η 混合、再以 θ 与热噪声混合的输出，证明 (S(raw)−n g(r0))/h(r0)−θη(S(ρ)−n g(r1))/h(r1)−θ(1−η)(S(σ)−n g(r2))/h(r2)≥0。",
+      "depends_on": [
+        "EP02",
+        "EP11"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "ThermalInterior 的完整结构条件；h(r)=log(r+1)−log(r)。",
+        "EP02、EP11 的完整结论。"
+      ],
+      "acceptance": "构造满足所有 ThermalSetup 约束的 κm,εm→0，控制输出熵极限并消除 penalty；本项验收完整极限结论，不按若干固定参数点计分。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalInterior.out_entropy_limit"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.ThermalInterior.entropy_tangent"
+        }
+      ]
+    },
+    {
+      "id": "EP13",
+      "title": "去掉附加热噪声得到真实分束器切线界",
+      "kind": "bridge",
+      "statement": "对 0<η<1、r1,r2>0 和任意四阶矩有限输入，令 r=ηr1+(1−η)r2，证明 (S(beamOutput)−n g(r))/h(r)−η(S(ρ)−n g(r1))/h(r1)−(1−η)(S(σ)−n g(r2))/h(r2)≥0。",
+      "depends_on": [
+        "EP02",
+        "EP12"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "上述参数范围和输入四阶矩条件。",
+        "EP02、EP12 的完整结论。"
+      ],
+      "acceptance": "须通过 θ→1 以及 beamOutput_one 识别极限为原分束器；不能留下附加热噪声或把 θ<1 的结论当作完成。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.beamOutput_one"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.entropy_tangent_beam"
+        }
+      ]
+    },
+    {
+      "id": "EP14",
+      "title": "有限能量态有保能量的有限矩逼近",
+      "kind": "result",
+      "statement": "对任意有限能量态 ρ，构造 NumberCutoff.state ρ F：任意阶矩有限、能量≤原能量，并且随着有限截断 F 增大其算子趋于 ρ.op。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "ρ 的有限能量；NumberCutoff 的投影压缩加真空补质量定义。"
+      ],
+      "acceptance": "必须同时证明正性、迹一、有限矩、统一能量界和算子收敛；仅截断矩阵而丢失归一化不算有效逼近。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.NumberCutoff.state"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.NumberCutoff.finiteMoment"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.NumberCutoff.energy_le"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.NumberCutoff.limit"
+        }
+      ]
+    },
+    {
+      "id": "EP15",
+      "title": "把切线界推广到全部有限能量输入",
+      "kind": "bridge",
+      "statement": "在 EP13 同一参数范围下，去掉四阶矩假设，证明任意有限能量 ρ,σ 的相同切线不等式。",
+      "depends_on": [
+        "EP02",
+        "EP13",
+        "EP14"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "输入只假设 FiniteEnergy；EP02、EP13、EP14 的完整结论。"
+      ],
+      "acceptance": "需要输入和真实输出的熵同时收敛，输出能量有统一界；最终声明不得残留有限维、有限支撑或四阶矩前提。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.entropy_tangent_finiteEnergy"
+        }
+      ]
+    },
+    {
+      "id": "EP16",
+      "title": "零熵参考参数的误差控制",
+      "kind": "result",
+      "statement": "对每个 a≥0，令 am=a+1/(m+1)，证明 [g(a)−g(am)]/h(am)→0。",
+      "depends_on": [
+        "EP01"
+      ],
+      "allowed_assumptions": [
+        "a≥0、g,h 的固定定义；EP01 的 g 连续性和单调性事实。"
+      ],
+      "acceptance": "必须覆盖 a=0，不能使用 h(0) 的有限连续性；通过统一分母下界或等价正确论证消掉误差。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.reference_error_limit"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.h_antitone"
+        }
+      ]
+    },
+    {
+      "id": "EP17",
+      "title": "选取匹配输入熵的参考态",
+      "kind": "bridge",
+      "statement": "对 n≥1、0<η<1 和任意有限能量输入，证明 g(η gInv(Sρ/n)+(1−η)gInv(Sσ/n))≤S(beamOutput)/n。",
+      "depends_on": [
+        "EP01",
+        "EP15",
+        "EP16"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "n≥1、0<η<1；EP01、EP15、EP16 的完整结论。"
+      ],
+      "acceptance": "使用输入自身的熵选择两个参考参数并消除正近似误差；必须覆盖一个或两个输入熵为零的情况。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.epni_entropy_interior"
+        }
+      ]
+    },
+    {
+      "id": "EP18",
+      "title": "把不等式接到闭区间全部透射率",
+      "kind": "bridge",
+      "statement": "EP17 的熵形式不等式对每个 η∈[0,1] 成立。",
+      "depends_on": [
+        "EP02",
+        "EP17"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "n≥1、η∈[0,1]；EP02、EP17 的完整结论。"
+      ],
+      "acceptance": "证明从内部参数列到任意闭区间参数的极限传递；η=0 与 η=1 必须包含。此项不是给若干 η 特例分别加分。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.epni_entropy_closed"
+        }
+      ]
+    },
+    {
+      "id": "EP19",
+      "title": "题面输出关系识别唯一的分束器态",
+      "kind": "result",
+      "statement": "若 IsBeamSplitterOutput η ρA ρB ρC 且 η∈[0,1]，证明 ρC=beamOutput η hη ρA ρB。",
+      "depends_on": [],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "原题的 IsBeamSplitterOutput HasSum 偏迹关系。"
+      ],
+      "acceptance": "证明偏迹关系确定整个态；不能直接将题面任意 ρC 重新定义为构造输出，或只证明对角元相等。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Continuity.lean",
+          "declaration": "OAI.EntropyPhotonNumber.output_unique"
+        },
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Continuity.lean",
+          "declaration": "OAI.EntropyPhotonNumber.output_eq"
+        }
+      ]
+    },
+    {
+      "id": "EP20",
+      "title": "组装原题熵光子数不等式",
+      "kind": "assembly",
+      "statement": "对配置根的全部 n≥1、有限能量 ρA,ρB、η∈[0,1] 和满足输出关系的 ρC，证明 η gInv(SρA/n)+(1−η)gInv(SρB/n)≤gInv(SρC/n)。",
+      "depends_on": [
+        "EP01",
+        "EP18",
+        "EP19"
+      ],
+      "allowed_assumptions": [
+        "原题 n 模 Fock 空间、State、entropy、FiniteEnergy、beamOutput 和 IsBeamSplitterOutput 的固定定义；输入可以是任意混态，不限对角态或热态。",
+        "原题全部前提；EP01、EP18、EP19 的完整结论。"
+      ],
+      "acceptance": "精确恢复 entropy_photon_number_inequality 的原量词，不增加热态、对角态、有限矩或严格内部参数假设。",
+      "sources": [
+        {
+          "path": "benchmarks/openai-math-12/lean/OAI/InformationTheory/PhotonNumber/Inequality.lean",
+          "declaration": "OAI.EntropyPhotonNumber.entropy_photon_number_inequality"
+        }
+      ]
+    }
+  ]
+}
