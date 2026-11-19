@@ -1,0 +1,84 @@
+{
+  "benchmark": "openai_math_v1",
+  "fixture_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "lean_project_subdir": "lean",
+  "lean_toolchain": "leanprover/lean4:v4.34.1",
+  "mathlib_version": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+  "checker_ref": "lean",
+  "checker_version": "openai-math-v1",
+  "environment_ref": "openai-math-12-source-v1",
+  "problems": [
+    {
+      "id": "oai_seymour_second_neighborhood",
+      "problem_file": "lean/ComparatorChallenges/SeymourSecondNeighborhood.lean",
+      "declaration_name": "OAI.SeymourSecondNeighborhood.exists_goodVertex",
+      "source_sha256": "fa4a37831405b3fe7f6a88a2dce8918982195ee1757e05e4623055822d36ca98"
+    },
+    {
+      "id": "oai_one_way_liveness",
+      "problem_file": "lean/ComparatorChallenges/OneWayLiveness.lean",
+      "declaration_name": "OAI.OneWayLiveness.main_theorem",
+      "source_sha256": "875eb3b5bd7f84214e571fd1bb1257260c81cd583fb28517b401c987faa44c3b"
+    },
+    {
+      "id": "oai_partial_permutation",
+      "problem_file": "lean/ComparatorChallenges/PartialPermutation.lean",
+      "declaration_name": "OAI.PartialPermutation.complementaryCosets_finite",
+      "source_sha256": "b4a79c0885d12cac3b96953267880e30366e7a0d99b29aadd05e45b00805431f"
+    },
+    {
+      "id": "oai_short_egyptian_fractions",
+      "problem_file": "lean/ComparatorChallenges/ShortEgyptianFractions.lean",
+      "declaration_name": "OAI.ShortEgyptian.main",
+      "source_sha256": "9796ca70fdd0aa41186bed6f940a9e76c7081aa6bf89f9e7bfe6cd03e329541f"
+    },
+    {
+      "id": "oai_power_free_values",
+      "problem_file": "lean/ComparatorChallenges/PowerFreeValues.lean",
+      "declaration_name": "OAI.QuarticPowerFree.allDegrees",
+      "source_sha256": "5e42de8cf6611fb73cab28849edb8b473ab16a047c1fc29ec042463e87a1f2f1"
+    },
+    {
+      "id": "oai_second_kahn_kalai",
+      "problem_file": "lean/ComparatorChallenges/SecondKahnKalai.lean",
+      "declaration_name": "OAI.LeanBlast.SecondKahnKalai.secondKahnKalaiBounds",
+      "source_sha256": "2a0d29f9fde90aa8a4b5173da67cab115be047e59f6001ccdc9b6095988beae5"
+    },
+    {
+      "id": "oai_euclidean_ramsey",
+      "problem_file": "lean/ComparatorChallenges/EuclideanRamsey.lean",
+      "declaration_name": "OAI.EuclideanRamsey.classification",
+      "source_sha256": "cb2ede9a1f7b6c2784acfcace10de725268779be904e8b81771e79044233ac0c"
+    },
+    {
+      "id": "oai_entropy_photon_number",
+      "problem_file": "lean/ComparatorChallenges/EntropyPhotonNumber.lean",
+      "declaration_name": "OAI.EntropyPhotonNumber.entropy_photon_number_inequality",
+      "source_sha256": "852aaa9ae3c137dcbe311da89c8467f09bb25b592c2ebb79a3d9cd079b2dd016"
+    },
+    {
+      "id": "oai_strongly_rayleigh_dpp",
+      "problem_file": "lean/ComparatorChallenges/StronglyRayleighDPP.lean",
+      "declaration_name": "OAI.Problem336AdditiveD139.finite_strongly_rayleigh_response",
+      "source_sha256": "2058dbda79146234fc04b8d1d1168dc48814d8af2e2295be6ecbbe47f2dfca60"
+    },
+    {
+      "id": "oai_kmedian_refined_recovery",
+      "problem_file": "lean/ComparatorChallenges/KMedianRefinedRecovery.lean",
+      "declaration_name": "OAI.MetricKMedianRecovery.RefinedRecovery.refined_recovery",
+      "source_sha256": "c2b3b927374907d3b4a915c9acce0d0ea9d1ed46ad327961697783c62f80ab94"
+    },
+    {
+      "id": "oai_matching_fpras",
+      "problem_file": "lean/ComparatorChallenges/MatchingFPRAS.lean",
+      "declaration_name": "OAI.MatchingFPRAS.thm_main",
+      "source_sha256": "14624569e906d3702564c39dab9c63bc77ef1d0b621bd1b51a1239fcafbca206"
+    },
+    {
+      "id": "oai_egyptian_fractions",
+      "problem_file": "lean/ComparatorChallenges/EgyptianFractions.lean",
+      "declaration_name": "OAI.Problem337.main_double_log_order",
+      "source_sha256": "e96f5967735c7f7af64fc306601a5280d20f5752799e8c9a5fcc424cd421c0f6"
+    }
+  ]
+}

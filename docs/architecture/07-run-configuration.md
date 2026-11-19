@@ -431,8 +431,19 @@ The loader accepts a safe configured benchmark identifier and 1–1000 problems,
 with explicit Lean declaration names where needed. `instructions_path`, when
 present, must be under `benchmark/` without traversal; the Mission goal directs
 the Bot to read it through Workspace. Existing fixture checkout/digest checks
-and context byte/path/hash limits remain. Benchmark-specific coordination code
-is not inserted into the Core loop.
+and context byte/path/hash limits remain. `lean_project_subdir` selects a safe
+repository-relative directory containing `lean-toolchain`, so fixtures whose
+Lean project is nested under a repository root use the same locked project root
+for loading and checker preflight. Benchmark-specific coordination code is not
+inserted into the Core loop.
+
+`config/openai-math-12.json` pins twelve medium-scope OpenAI Math challenge
+modules to commit `4eaee87548250b2682affda7d05d947c05554bae`, Lean 4.34.1 and
+the recorded Mathlib revision. Its source-only validation is independent of the
+trusted final-tree deployment. The `openai-math-v1` final-check profile uses
+the matching Lean, Comparator, Lean4Export and Mathlib pins, requires complete
+project coverage, and still requires an operator-created artifact lock before
+a timed run can start.
 
 The new final-check profile pins FLT/Mathlib revisions, the operator-approved
 foundation manifest digest and compiled artifacts. Lock creation verifies the

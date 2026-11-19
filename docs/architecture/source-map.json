@@ -415,6 +415,14 @@
       "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
     },
     {
+      "path": "config/openai-math-12.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned OpenAI Math challenge sources, declarations and Lean/mathlib compatibility metadata"
+    },
+    {
       "path": "config/putnambench-12.json",
       "category": "launch and composition",
       "chapters": [

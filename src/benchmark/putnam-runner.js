@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { cpus, freemem, totalmem } from 'node:os';
-import { join, resolve, relative } from 'node:path';
+import { join, resolve, relative, sep } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { DockerBotDisk } from '../runtime/docker-bot-disk.js';
 import { DockerBotNetwork } from '../runtime/docker-bot-network.js';
@@ -50,6 +50,7 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 });
 
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+const SAFE_LEAN_PROJECT_SUBDIR = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
 class SerialTaskCreateAdmission {
   constructor() {
@@ -387,7 +388,15 @@ export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyP
   const commit = config.fixture_commit ?? config.putnambench_commit;
   const root = resolve(putnamBenchRoot);
   if (verifyPinnedCheckout) await verifyBenchmarkFixtureCheckout({ root, commit });
-  const leanProjectRoot = resolve(root, 'lean4');
+  const configuredSubdir = config.lean_project_subdir ?? 'lean4';
+  if (typeof configuredSubdir !== 'string' || !SAFE_LEAN_PROJECT_SUBDIR.test(configuredSubdir) ||
+      configuredSubdir.split('/').some(part => !part || part === '.' || part === '..')) {
+    throw new TypeError('invalid Lean project subdirectory');
+  }
+  const leanProjectRoot = resolve(root, configuredSubdir);
+  if (relative(root, leanProjectRoot).startsWith(`..${sep}`) || relative(root, leanProjectRoot) === '..') {
+    throw new TypeError('Lean project subdirectory escapes the benchmark root');
+  }
   const projectRoot = await readFile(join(leanProjectRoot, 'lean-toolchain'), 'utf8')
     .then(() => leanProjectRoot)
     .catch(() => root);
