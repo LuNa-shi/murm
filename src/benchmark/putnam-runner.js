@@ -387,7 +387,8 @@ export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyP
   }
   const commit = config.fixture_commit ?? config.putnambench_commit;
   const root = resolve(putnamBenchRoot);
-  if (verifyPinnedCheckout) await verifyBenchmarkFixtureCheckout({ root, commit });
+  if (verifyPinnedCheckout) await verifyBenchmarkFixtureCheckout({ root, commit,
+    allowDescendant: config.fixture_checkout_mode === 'repository-descendant' });
   const configuredSubdir = config.lean_project_subdir ?? 'lean4';
   if (typeof configuredSubdir !== 'string' || !SAFE_LEAN_PROJECT_SUBDIR.test(configuredSubdir) ||
       configuredSubdir.split('/').some(part => !part || part === '.' || part === '..')) {
