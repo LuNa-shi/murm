@@ -8,6 +8,7 @@ This chapter describes how the repository actually composes a run. It covers the
 |---|---|
 | `scripts/run-putnambench-benchmark.mjs` | Real benchmark launcher: validates locked input, creates run metadata and an opt-in observer, invokes one project or a bounded batch, writes aggregate output |
 | `scripts/run-openai-math-coloring.mjs` | Four-Core diagnostic launcher for the embedded PlaneColoring smoke problem; reads the local fixture and a trusted host checker lock |
+| `scripts/run-openai-math-round.mjs` | Two-project parallel launcher for a fixed OpenAI Math round; each project uses four Cores and writes an independent full report plus a round summary |
 | `runBenchmarkProject(problem, config, options)` | Four Core lanes for one problem; non-timed tests can inject controlled checkers and provider endpoints |
 | `runBenchmarkBatch(problems, config, options)` | Worker pool across isolated projects; each project still has four lanes; a project error becomes a sanitized fallback report |
 | `scripts/service-host.mjs` | Separately hosted built-in Task, Context, Judge or Catalog provider |

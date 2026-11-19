@@ -16576,6 +16576,14 @@
       "role": "Four-Core launcher for the embedded OpenAI Math PlaneColoring smoke run"
     },
     {
+      "path": "scripts/run-openai-math-round.mjs",
+      "category": "benchmark setup",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Two-problem parallel OpenAI Math round launcher"
+    },
+    {
       "path": "scripts/run-putnambench-benchmark.mjs",
       "category": "launch and composition",
       "chapters": [
