@@ -2,7 +2,8 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { beginPrivateAudit } from '../src/observability/private-audit-retention.js';
-import { loadBenchmarkConfig, readBenchmarkFixture, runBenchmarkBatch } from '../src/benchmark/putnam-runner.js';
+import { loadBenchmarkConfig, runBenchmarkBatch } from '../src/benchmark/putnam-runner.js';
+import { readBenchmarkFixture } from '../src/benchmark/benchmark-fixture.js';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const configPath = join(repositoryRoot, 'config/openai-math-12.json');
