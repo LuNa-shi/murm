@@ -116,6 +116,8 @@ try {
       secretEnvironment: {},
     },
   });
+  report.run = { ...report.run, stop_signal: stopSignal };
+  await writeFile(join(reportDir, problem.id, 'report.json'), JSON.stringify(report, null, 2) + '\n');
   await writeFile(join(experimentDir, 'result-summary.json'), JSON.stringify({
     stop_signal: stopSignal,
     solved: report.run.solved,

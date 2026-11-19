@@ -119,6 +119,12 @@ try {
       secretEnvironment: {},
     },
   });
+  for (const report of reports) {
+    const problemId = report.project?.problem_id;
+    if (!problemId) continue;
+    report.run = { ...report.run, stop_signal: stopSignal };
+    await writeFile(join(reportDir, problemId, 'report.json'), JSON.stringify(report, null, 2) + '\n');
+  }
   const summary = {
     repository_commit: process.env.GIT_COMMIT ?? null,
     stop_signal: stopSignal,

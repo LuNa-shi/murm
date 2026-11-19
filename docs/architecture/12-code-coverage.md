@@ -1913,8 +1913,8 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/benchmarks/prepare_flt_subtrees.py](../../scripts/benchmarks/prepare_flt_subtrees.py) | Root-only FLT extraction, private typed facts and public fixture generation | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `d40cab74f2ac086746abd85b901d3a3381ac1c32f9756cab4052b4b46db5e537` |
-| [scripts/run-openai-math-coloring.mjs](../../scripts/run-openai-math-coloring.mjs) | Four-Core launcher for the embedded OpenAI Math PlaneColoring smoke run | [07-run-configuration](07-run-configuration.md) | `feea1a782a3b51ade3720dd63a1d67b8d7404e659bf34da6a32fb62ce49e3cc6` |
-| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `ce1b41f4f3f32a9419d06a8c843a59923a0821927eb2e814eee32948b9e1c330` |
+| [scripts/run-openai-math-coloring.mjs](../../scripts/run-openai-math-coloring.mjs) | Four-Core launcher for the embedded OpenAI Math PlaneColoring smoke run | [07-run-configuration](07-run-configuration.md) | `e28aea53b1bfda89f4ba7d052147c415925f5de8028cee69e2d416236ab7ef72` |
+| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `14e82d30fb0c0c04d1c9f662e3686d023aaa05ba3dfdad949d58debf176bb3cc` |
 
 ### controlled verification data (4)
 
