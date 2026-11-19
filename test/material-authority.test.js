@@ -6,8 +6,7 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFile, execFileSync } from 'node:child_process';
-import { promisify } from 'node:util';
+import { execFileSync } from 'node:child_process';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { TaskController } from '../src/runtime/task-controller.js';
 import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
@@ -184,27 +183,10 @@ test('historical cross-Mission relations and links stay stored but cannot affect
   tasks.db.prepare('UPDATE materials SET mission_id = ? WHERE material_id = ?').run('mission:b', a.material_id);
   assert.throws(() => context.dispatch('get_material', { material_id: a.material_id }, two.envelope('mismatched-producer')), { code: 'NOT_ALLOWED' });
   assert.ok(!context.dispatch('read_materials', {}, two.envelope('mismatched-producer-list')).materials.some(m => m.material_id === a.material_id));
-  assert.deepEqual(tasks.dispatch('list_task_materials', { task_id: one.execution.task_id }, one.envelope('after-contamination')).links, []);
+  assert.deepEqual(tasks.dispatch('task_materials', { task_id: one.execution.task_id }, one.envelope('after-contamination')).links, []);
   assert.deepEqual(tasks.getTask(one.execution.task_id).materials, []);
   assert.equal(tasks.db.prepare('SELECT COUNT(*) AS count FROM task_material_links WHERE material_id = ?').get(a.material_id).count, 1);
   assert.throws(() => tasks.dispatch('task_link_material', { material_id: a.material_id, role: 'experience' }, one.envelope('contaminated-link')), { code: 'NOT_ALLOWED' });
-});
-
-test('concurrent Context constructors migrate old Material identity storage under one writer lock', async t => {
-  const root = mkdtempSync(join(tmpdir(), 'material-migration-'));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const database = join(root, 'context.sqlite');
-  const old = new ContextService(database);
-  old.db.exec('ALTER TABLE materials DROP COLUMN producer_bot_id'); old.close();
-  const source = `
-    import { ContextService } from './src/context/context-service.js';
-    const context = new ContextService(process.argv[1]);
-    console.log(context.db.prepare('PRAGMA table_info(materials)').all().filter(column => column.name === 'producer_bot_id').length);
-    context.close();
-  `;
-  const results = await Promise.all(Array.from({ length: 4 }, () => promisify(execFile)(process.execPath,
-    ['--input-type=module', '-e', source, database], { timeout: 10000 })));
-  for (const result of results) assert.equal(result.stdout.trim(), '1');
 });
 
 test('durable public changes wake no-work discovery even with lost hints and an unchanged eligible queue', async t => {

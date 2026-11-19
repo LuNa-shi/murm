@@ -982,7 +982,7 @@ test('real CLI saves guest additions/deletions/binary files and chains immutable
   assert.equal((await command('workspace', 'read', 'nested/note.md', '--at', next.revision)).content, 'second');
   await assert.rejects(dispatch('status', 'save-one'), error => error.code === 'CONFLICT');
   await assert.rejects(bridge.call({ operation: 'workspace_save', payload: { files: { injected: 'bad' } } }), /cannot supply/);
-  await assert.rejects(bridge.call({ operation: 'write_workspace_file', payload: { path: 'injected', content: 'bad' } }), /Legacy private/);
+  await assert.rejects(bridge.call({ operation: 'write_workspace_file', payload: { path: 'injected', content: 'bad' } }), /Private Workspace/);
   assert.equal(runtime.taskService.getExecution(execution.execution_id).workspace_input.revision, '0.1');
 });
 
@@ -1994,7 +1994,7 @@ test('actual Task CLI lets an UNBOUND Bot retire work while an ACTIVE Bot only r
     '--reason', 'An ACTIVE Bot must not cancel another responsibility'), error => /NOT_ALLOWED/.test(error.stderr));
   const cancelled = await edit('task', 'cancel', old.task_id, '--expected-spec-version', String(old.spec_version), '--expected-state-version', String(old.state_version),
     '--reason', 'The corrected responsibility supersedes this unowned proposal', '--replacement', replacement.task_id, '--request-id', 'cli-cancel-old');
-  assert.equal(cancelled.task.state, 'CANCELLED');
+  assert.equal(cancelled.task.state, 'CANCELED');
   const view = await command('task', 'view', dependent.task_id);
   const repaired = await command('task', 'dependency-replace', dependent.task_id, '--from-task-id', old.task_id, '--to-task-id', replacement.task_id,
     '--expected-spec-version', String(view.task.spec_version), '--expected-state-version', String(view.task.state_version),

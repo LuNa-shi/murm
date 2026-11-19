@@ -188,7 +188,7 @@ The host Execution directory receives those exact project files, including binar
 
 Runtime requires a registered Bot and its original Session before preparation. A take cannot select another Execution's private revision, source path, checkpoint or directory. Preparation uses a fresh directory keyed by Execution and fence; if the Execution already has a recorded Workspace reference, it fails with `FENCED` instead of restoring or replacing that binding. The matching filesystem retry behavior above applies before a durable binding has been recorded.
 
-Lower-level WorkspaceManager creation and cloning helpers remain available for direct callers, diagnostics and historical data handling. They can generate support files or copy a private revision, but Runtime no longer invokes them as an alternative execution preparation path. Workspace saves persist the file manifest and content hash before the corresponding Execution reference is recorded.
+Lower-level WorkspaceManager creation and cloning helpers remain available for internal callers and diagnostics. They can generate support files or copy a private revision, but Runtime no longer invokes them as an alternative execution preparation path. Workspace saves persist the file manifest and content hash before the corresponding Execution reference is recorded.
 
 
 ## 4. File operations, revisions and their precise limits
@@ -244,12 +244,12 @@ separate steps with separately observable failure.
 
 ### Direct Judge reads of a Workspace file
 
-For a registered Bot, `swarm judge check --revision R --path P` exports exactly R from the public Mission Workspace and checks the complete file. Runtime revalidates its E before and after export, and rejects path traversal, foreign Workspaces, binary content, missing files and moving `main` references. The response exposes the actual public revision, file hash and Git commit/tree. Unsaved guest changes and the host support Workspace do not affect this input. The historical unregistered Bridge route still reads its current private Workspace with optional stale-value guards. Neither path saves files or creates a Material implicitly.
+For a registered Bot, `swarm judge check --revision R --path P` exports exactly R from the public Mission Workspace and checks the complete file. Runtime revalidates its E before and after export, and rejects path traversal, foreign Workspaces, binary content, missing files and moving `main` references. The response exposes the actual public revision, file hash and Git commit/tree. Unsaved guest changes and the host support Workspace do not affect this input. The internal Bridge route reads its current private Workspace with optional stale-value guards. Neither path saves files or creates a Material implicitly.
 Judge uses its own configured fixture/checker and persists the resulting check;
 Task completion is separate. See [the direct submission contract](04-services.md#the-as-built-submission-route)
 and [ADR 0019](../adr/0019-direct-judge-workspace-submission.md).
 
-The historical unregistered Bridge file route instead reads the current private Workspace with optional stale-value guards. Its revision check compares current metadata rather than exporting historical bytes. It retains the 1,000,000-byte read default and metadata-index limits; Judge recomputes content hashes and rejects inconsistent inputs. These are compatibility-route limits, not registered numeric-revision file/project limits. Neither route implicitly saves a revision or publishes Material.
+The internal Bridge file route reads the current private Workspace with optional stale-value guards. Its revision check compares current metadata rather than exporting historical bytes. It retains the 1,000,000-byte read default and metadata-index limits; Judge recomputes content hashes and rejects inconsistent inputs. These are internal-route limits, not registered numeric-revision file/project limits. Neither route implicitly saves a revision or publishes Material.
 
 Sources: [Bridge source preparation](../../src/agent/services-bridge.js),
 [Runtime read boundary](../../src/runtime/runtime.js),
@@ -258,41 +258,9 @@ Sources: [Bridge source preparation](../../src/agent/services-bridge.js),
 
 ## 5. Progress and handoff persistence
 
-This section describes unregistered compatibility APIs. Registered Bots cannot call `execution_progress` or switch Tasks within the same Bot. They explicitly save public revisions, publish/link Materials and call `task_finish`; no automatic private checkpoint is their public handoff. Registered finish retains ownership through physical cleanup as described in [Mission and Task](03-mission-task.md#accepted-finish-and-safe-release).
+Registered Bots make progress durable through explicit Workspace saves, Material publication and Task links. `task_finish` records the outcome and required evidence before Runtime performs physical cleanup. A saved Workspace revision is the public file state. A published Material is the readable handoff or experience record. These operations are independently authenticated against the current Task and Execution, so a missing or failed artifact remains visible rather than being implied by a compound progress call.
 
-`execution_progress` accepts `kind: checkpoint | handoff` (default
-`checkpoint`) and requires all four substantive fields:
-`completed_work`, `findings`, `open_questions`, `next_step`. See
-[03](03-mission-task.md) for Task semantics and
-[tool contracts](10-service-api-reference.md) for the complete inputs.
-
-For an active `CREATED/RUNNING` Execution the implementation:
-
-1. Remembers the previously durable Workspace/revision/hash/checkpoint as
-   `last_valid_snapshot`.
-2. If a Workspace exists, attempts one revision save, saves its Task Service
-   reference, writes a checkpoint containing caller data plus progress, then
-   saves that checkpoint reference in Task Service.
-3. Publishes an `experience` Material with scope `execution_progress`,
-   evidence state `observed`, progress fields and the attempted revision/Git
-   commit. Provenance records source Execution and save status.
-4. Links that Material to the Task as `experience`.
-5. For checkpoint returns `disposition: continued`; for handoff delegates to
-   `handoffExecution` with `skipWorkspaceSave: true`, carrying the result
-   evidence so there is no second disk-save attempt.
-
-The result includes `progress_material`, `progress_link`, `workspace`,
-`checkpoint`, `save_status`, `last_valid_snapshot`, `loss`, Task and
-Execution. No Workspace means disk save is `not_applicable`, but progress
-Material publication can still occur. A nonactive state returns
-`already_terminal`/`not_applicable` (including `WAITING` in this method).
-
-Filesystem/checkpoint errors become `save_failed` and a
-`loss: {unsaved_progress: true, phase, error_class}`; handoff still proceeds.
-Material publication or linking failure is also logged and reflected in loss;
-a Material may already exist if linking was the failing step. These operations
-are not rolled back together, and `save_status` must be read with the
-returned evidence rather than inferred from the word “checkpoint”.
+`handoffExecution` is an internal Runtime cleanup path used for timeout, fencing and physical release. It coalesces concurrent requests for the same Execution, records the final checkpoint and loss evidence, and asks Task Service to end the attempt as `FENCED` or `EXPIRED`. Registered Bots do not invoke this lifecycle path directly.
 
 ### Generic handoff order
 
@@ -311,19 +279,6 @@ released; the directory and Git history remain. A failed physical cleanup does
 not undo the durable fence. The reusable identity Session can remain alive for
 its next Task; this is distinct from leaving the old Execution authorized.
 [Runtime handoff and progress](../../src/runtime/runtime.js).
-
-Two boundaries matter when interpreting a saved revision:
-
-- The `execution_progress(kind: handoff)` path saves **before** calling the
-  generic handoff method. Because that delegate skips another save, the
-  Sandbox stop in generic handoff does not precede this path's snapshot.
-  Compaction checkpointing also does not stop shell jobs. A running background
-  writer can therefore overlap those saves.
-- Semantic `execution_progress`/`task_finish(outcome=blocked)` validate and optionally link their
-  referenced handoff Material, then release ownership. They do not
-  automatically create a fresh disk checkpoint. The Bridge's
-  `task_create followed by task_take` performs a separate progress checkpoint before
-  the atomic Task switch, and post-switch Runtime binding is another step.
 
 Runtime's common physical-release path retains a `CLOSING` Core and resource binding when Session, provider deletion, or Workspace release fails. It reconciles an older Workspace fence against the durable Execution fence before retrying release. Concurrent provider deletes share one pending deletion; HTTP 202 requires a follow-up GET confirming absence before the resource record can be discarded. [02](02-execution.md) distinguishes this retry behavior from the durable closing protocol and Bot-initiated finish ordering.
 
@@ -394,7 +349,7 @@ Rotation coalesces concurrent requests and waits only for an already queued comp
 
 ## 8. Sandbox provisioning and execution
 
-Production benchmarks use OpenSandbox for registered Bots. Runtime creates each Bot sandbox before selection and keeps its worker credential out of Pi. Take associates that resource with E and prepares/grants the pinned project. Native Pi Bash runs as the non-root Bot user in `/workspace/project`; explicit save publishes files. Registered Bots cannot use root `sandbox_exec`. Trusted diagnostic/compatibility transport still supports bounded Execd commands/jobs. The worker event stream uses sequences, bounded polling and replay deduplication. Restart reconciliation cannot recover the credential or revive old private context; it deletes/quarantines the resource. Fresh Bots continue only from public state. Physical stop and provider deletion are distinct cleanup evidence.
+Production benchmarks use OpenSandbox for registered Bots. Runtime creates each Bot sandbox before selection and keeps its worker credential out of Pi. Take associates that resource with E and prepares/grants the pinned project. Native Pi Bash runs as the non-root Bot user in `/workspace/project`; explicit save publishes files. Registered Bots cannot use root `sandbox_exec`. Trusted diagnostic/compatibility transport still supports bounded Execd commands/jobs. The worker event stream uses sequences and replay deduplication. Restart reconciliation cannot recover the credential or revive old private context; it deletes/quarantines the resource. Fresh Bots continue only from public state. Physical stop and provider deletion are distinct cleanup evidence.
 
 [OpenSandbox manager](../../src/runtime/opensandbox-manager.js), [OpenSandbox Agent adapter](../../src/agent/opensandbox-agent-adapter.js), and [Runtime Sandbox binding](../../src/runtime/runtime.js) define the provider boundary. The shipped image is the only trusted worker entrypoint; ordinary callers cannot provide a custom entrypoint.
 

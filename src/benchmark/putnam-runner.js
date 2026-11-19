@@ -94,14 +94,14 @@ function projectEligibleTasks(state, { limit = 100 } = {}) {
   return state.taskService.listEligibleTasks({ missionId: state.missionId, limit });
 }
 
-// Flat model: one Execution may run for the whole run; the reminder lead is
+// One Execution may run for the whole run; the reminder lead is
 // five minutes (or a tenth of a short run) before the run deadline.
-function flatExecutionTimeoutMs(options) {
+function executionTimeoutMs(options) {
   return options.timeboxMs ?? 60 * 60_000;
 }
 
-function flatHandoffReminderMs(options) {
-  const timeoutMs = options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options);
+function handoffReminderMs(options) {
+  const timeoutMs = options.executionTimeoutMs ?? options.botMaxMs ?? executionTimeoutMs(options);
   return Math.max(1, timeoutMs - Math.min(5 * 60_000, Math.floor(timeoutMs / 10)));
 }
 
@@ -125,15 +125,6 @@ function sha256(value) {
 
 function waitDependencyIds(condition) {
   if (!condition || typeof condition !== 'object') return [];
-  if (condition.type === 'child_task_terminal') {
-    return [condition.child_task_id ?? condition.task_id].filter(Boolean);
-  }
-  if (condition.type === 'children_all_terminal') {
-    return Array.isArray(condition.child_task_ids) ? [...condition.child_task_ids] : [];
-  }
-  if (condition.type === 'parent_review') {
-    return condition.parent_task_id ? [condition.parent_task_id] : [];
-  }
   if (condition.type === 'check_result_arrived') {
     return [condition.check_request_key ?? condition.request_key ?? condition.workspace_source_id].filter(Boolean);
   }
@@ -524,8 +515,8 @@ async function startAgentSession(core) {
   const { bot, session } = await core.runtime.startBot({
     missionId: core.stateRef.mission.mission_id,
     coreId: `core-${core.index}`,
-    selectionTimeoutMs: core.startConfig.options.selectionTimeoutMs ?? Math.min(300_000, core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options)),
-    maxLifetimeMs: core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options),
+    selectionTimeoutMs: core.startConfig.options.selectionTimeoutMs ?? Math.min(300_000, core.startConfig.options.botMaxMs ?? executionTimeoutMs(core.startConfig.options)),
+    maxLifetimeMs: core.startConfig.options.botMaxMs ?? executionTimeoutMs(core.startConfig.options),
     readyTimeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000,
     startSession: async ({ bot: startingBot, signal, assertStartupAllowed, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated }) => {
       core.actorRef = startingBot.bot_id;
@@ -1222,8 +1213,7 @@ export function projectReport(state, startedAt, deadline) {
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
   const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
   const checkCount = cores.reduce((count, core) => count + core.checks.length, 0);
-  const legacyCheckObserved = cores.some(core => core.checks.some(check => check.workspace_input?.check_mode !== 'lean-project'));
-  const madeProgress = workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || legacyCheckObserved;
+  const madeProgress = workspaceWriteCount > 0 || meaningfulMaterialCount > 0;
   const parallelism = state.parallelism.snapshot({ endedAt });
   const checkerPreflights = state.judgeService.listCheckerPreflights().map((row) => ({
     preflight_key: row.preflight_key,
@@ -1256,7 +1246,6 @@ export function projectReport(state, startedAt, deadline) {
       repository_commit: state.repositoryCommit,
       repository_worktree_dirty: state.repositoryWorktreeDirty,
       normal_flow: state.normalFlow,
-      task_model: 'flat',
       provider: state.provider ?? null,
       model: state.model ?? null,
       timebox_ms: state.timeboxMs ?? null,
@@ -1332,7 +1321,6 @@ export function projectReport(state, startedAt, deadline) {
       proposal_evidence: {
         definition: 'All admitted Mission Tasks, including the first proposal. Creation alone does not establish independent progress or successful execution.',
         observed_task_count: proposedTaskCount,
-        scheduler_status_count: state.schedulerStatusCount,
         ready_work_ms: parallelism.ready_work_ms,
         ready_unassigned_ms: parallelism.ready_unassigned_ms,
       },
@@ -1409,21 +1397,14 @@ export function projectReport(state, startedAt, deadline) {
       tool_error_count: toolErrorCount,
       tool_protocol_error_count: toolProtocolErrorCount,
       invalid_wait_attempt_count: invalidWaitAttemptCount,
-      scheduler_status_count: state.schedulerStatusCount,
       identity_loops: state.identityLoops?.map((loop) => loop.snapshot()) ?? [],
       identity_loop_events: state.identityLoopEvents ?? [],
       identity_loop_errors: state.identityLoopErrors ?? [],
-      // Kept as a compatibility projection for existing report consumers;
-      // production decisions are owned by Controller and IdentityTaskLoop above.
-      scheduler: state.scheduler?.snapshot() ?? null,
-      scheduler_events: state.schedulerEvents,
       controller: state.controller?.snapshot() ?? null,
       controller_events: state.controllerEvents,
       latency_samples: cores.flatMap((core) => core.latency_samples ?? []),
       latency_summary: {
-        ready_to_session_start_ms: state.schedulerEvents
-          .filter((event) => event.kind === 'scheduler_dispatch_started' && Number.isFinite(event.ready_to_dispatch_ms))
-          .map((event) => event.ready_to_dispatch_ms),
+        ready_to_session_start_ms: [],
         ready_to_take_ms: cores.flatMap((core) => core.latency_samples ?? [])
           .map((sample) => sample.ready_to_take_ms).filter(Number.isFinite),
         take_to_first_turn_ms: cores.flatMap((core) => core.latency_samples ?? [])
@@ -1836,7 +1817,6 @@ async function createProjectState(problem, config, options) {
     // Swarm starts empty; Pass@K seeds one complete responsibility through Task Service.
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: {
       problem_id: problem.id,
-      task_model: 'flat',
       mission_id: mission?.mission_id ?? null,
       initial_task_count: 0,
       workspace_id: publicWorkspace.workspace_id,
@@ -1862,8 +1842,7 @@ async function createProjectState(problem, config, options) {
         core_count: coreCount,
         initial_bot_stagger_ms: options.initialBotStaggerMs ?? 0,
         timebox_ms: options.timeboxMs ?? 60 * 60_000,
-        task_model: 'flat',
-        mission_id: mission?.mission_id ?? null,
+          mission_id: mission?.mission_id ?? null,
         workspace_id: publicWorkspace.workspace_id,
         initial_task_count: initialTasks.length,
         proposed_task_count: 0,
@@ -1933,8 +1912,8 @@ async function createProjectState(problem, config, options) {
         watchdogTimeoutMs: options.watchdogTimeoutMs,
         // Execution, Task, Bot and Mission limits intersect. Bot lifetime starts
         // before discovery and cannot reset when take becomes active.
-        executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
-        handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
+        executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? executionTimeoutMs(options),
+        handoffReminderMs: options.handoffReminderMs ?? handoffReminderMs(options),
         logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       });
       const core = {
@@ -2184,31 +2163,6 @@ async function createProjectState(problem, config, options) {
           if (workerSession !== core.session) await Promise.resolve(workerSession.stop?.()).catch(() => undefined);
         },
         onTakeAccepted: async () => {
-        },
-        onSchedulerStatus: async (payload) => {
-          if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
-          const cores = core.stateRef?.cores ?? [core];
-          const readyTasks = projectTasks(core.stateRef, {
-            states: ['OPEN', 'RUNNING'],
-            limit: payload.limit ?? 100,
-            availableOnly: true,
-          });
-          const activeCoreCount = cores.filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.turnInFlight).length;
-          const waitingOwners = new Set(taskService.listActiveExecutions()
-            .filter((execution) => execution.state === 'WAITING')
-            .map((execution) => execution.owner_ref));
-          return {
-            core_count: cores.length,
-            active_core_count: activeCoreCount,
-            idle_core_count: Math.max(0, cores.length - activeCoreCount),
-            waiting_core_count: waitingOwners.size,
-            waiting_execution_count: taskService.listActiveExecutions().filter((execution) => execution.state === 'WAITING').length,
-            ready_task_count: readyTasks.length,
-            ready_task_ids: readyTasks.map((task) => task.task_id),
-            ready_tasks: readyTasks,
-            current_task_id: payload.task_id ?? core.taskId,
-            current_execution_id: payload.execution_id ?? core.executionId,
-          };
         },
         onRelease: async ({ taskId, executionId }) => {
           const releasedAt = Date.now();
@@ -2600,8 +2554,6 @@ async function createProjectState(problem, config, options) {
       watchdogErrorCount: 0,
       executionTimeoutSweepCount: 0,
       executionTimeoutErrorCount: 0,
-      schedulerStatusCount: 0,
-      schedulerEvents: [],
       identityLoopEvents: [],
       identityLoops: [],
       identityLoopRuns: [],
@@ -2625,10 +2577,10 @@ async function createProjectState(problem, config, options) {
       modelAccess,
       taskCreateMutex,
       dynamicTaskEvents: [],
-      botMaxMs: options.botMaxMs ?? flatExecutionTimeoutMs(options),
-      selectionTimeoutMs: options.selectionTimeoutMs ?? Math.min(300_000, options.botMaxMs ?? flatExecutionTimeoutMs(options)),
-      executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
-      handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
+      botMaxMs: options.botMaxMs ?? executionTimeoutMs(options),
+      selectionTimeoutMs: options.selectionTimeoutMs ?? Math.min(300_000, options.botMaxMs ?? executionTimeoutMs(options)),
+      executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? executionTimeoutMs(options),
+      handoffReminderMs: options.handoffReminderMs ?? handoffReminderMs(options),
       normalFlow,
       readinessSamples: [],
     };
@@ -2874,20 +2826,6 @@ async function executeBenchmarkProject(state, problem, config, options) {
     // and also repair missed or cross-process publication notifications.
     state.requestIdentityWake(event?.kind ?? 'task_event');
   });
-  // Compatibility metrics keep the old report field readable while the
-  // production composition has no Scheduler instance or Scheduler decision
-  // maker. Every value is derived from IdentityTaskLoop lifecycle counters.
-  state.scheduler = { snapshot: () => ({
-    ready_count: projectEligibleTasks(state, { limit: 100 }).length,
-    dispatch_count: state.identityLoops.reduce((count, loop) => count + loop.snapshot().take_count, 0),
-    startup_attempt_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartAttempts ?? 0), 0),
-    startup_failure_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartFailures ?? 0), 0),
-    bounded_startup_exhausted_count: state.identityLoops.filter((loop) => loop.snapshot().take_exhausted).length,
-    duplicate_suppression_count: 0,
-    dispatch_latencies_ms: [],
-    in_flight_core_ids: state.identityLoops.filter((loop) => loop.snapshot().state !== 'IDLE').map((loop) => loop.coreId),
-    stopped: state.identityLoops.every((loop) => loop.snapshot().stopped),
-  }) };
   let operatorStoppedAt;
   const acceptedAndClosed = () => state.missionSubmissionStore.isAccepted(state.missionId) &&
     !state.cores.some(core => core.executionId && state.taskService.getExecution(core.executionId)?.state === 'RUNNING');
@@ -3122,7 +3060,6 @@ export async function writeUnavailableProjectReport(problem, options, error, { o
       core_count: options.agentMode === 'solver' ? 1 : 4,
       initial_bot_stagger_ms: options.initialBotStaggerMs ?? 0,
       project_parallelism: options.projectParallelism ?? 1,
-      task_model: 'flat',
       input_policy: 'pinned formalization only; no candidate or solution input',
       tool_policy: 'Pi read/write/edit/bash; services through authenticated swarm CLI; ambient extensions, skills, prompt templates and project context discovery disabled',
       cheating_policy: 'A recorded forbidden candidate placeholder or tool event outside read/write/edit/bash invalidates the project; ordinary project diagnostics do not establish a policy violation',

@@ -13,8 +13,8 @@ function safeDiagnostic(value) {
 }
 
 /**
- * Synchronous domain seam used only inside legacy synchronous service
- * handlers. It keeps Task/Context's existing transaction-facing methods
+ * Synchronous domain seam for service handlers that cross an HTTP boundary.
+ * It keeps Task/Context transaction-facing methods
  * usable while the owning process crosses an HTTP boundary. The shell client
  * is argv-based, bounded, and never invokes a shell string.
  */
@@ -58,11 +58,6 @@ export class HttpDomainProxy {
     return payload.result ?? payload;
   }
 
-  getExecution(executionId) { const result = this.dispatch('get_execution', { execution_id: executionId }); return result.execution ?? result; }
-  listTaskMaterialIds(taskId) {
-    const result = this.dispatch('list_task_materials', { task_id: taskId });
-    return (result.links ?? result.materials ?? []).map((link) => link.material_id ?? link.id).filter(Boolean);
-  }
   notifyDependencyEvent(event) {
     try {
       return this.dispatch('reconcile_task', { task_id: event.task_id }, { operation_id: `proxy:reconcile:${event.task_id ?? 'all'}:${randomUUID()}`, actor_ref: this.actorRef, task_id: event.task_id ?? null, execution_id: null, spec_version: null, state_version: null }, { role: 'recovery' });

@@ -4,7 +4,7 @@ import { listServices, listTools, getServiceMetadata } from '../src/sdk/service-
 import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
 
-test('Service catalog keeps internal ownership metadata and exposes the modern Task surface', () => {
+test('Service catalog keeps internal ownership metadata and exposes the Task surface', () => {
   const services = listServices();
   assert.deepEqual(services.map((service) => service.name), ['task', 'execution', 'workspace', 'context', 'judge', 'catalog']);
   const task = getServiceMetadata('task');
@@ -21,8 +21,8 @@ test('Service catalog keeps internal ownership metadata and exposes the modern T
   for (const name of ['context_search_materials', 'context_get_material', 'context_publish_material']) {
     assert.ok(context.tools.some((tool) => tool.name === name), `missing context tool ${name}`);
   }
-  assert.ok(listTools('workspace').some((tool) => tool.name === 'workspace_read_file'));
-  assert.ok(listTools('workspace').some((tool) => tool.name === 'workspace_write_file'));
+  assert.deepEqual(listTools('workspace'), []);
+  assert.deepEqual(listTools('execution'), []);
   assert.ok(getServiceMetadata('judge').tools.some((tool) => tool.name === 'judge_get_check_result'));
   assert.ok(getServiceMetadata('catalog').tools.some((tool) => tool.operation === 'get_service_metadata'));
   assert.equal(getServiceMetadata('missing'), null);
@@ -49,5 +49,5 @@ test('Pi extension registers only the deterministic role profile', async () => {
   assert.ok(names.length > 0);
   assert.ok(!names.includes('swarmenv_call'));
   assert.ok(names.includes('swarmenv_task_take'));
-  assert.ok(names.includes('swarmenv_task_create') || names.includes('swarmenv_task_create_task'));
+  assert.ok(names.includes('swarmenv_task_create') || names.includes('swarmenv_task_task_create'));
 });

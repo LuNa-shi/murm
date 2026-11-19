@@ -36,9 +36,9 @@ const sourcePaths = [
 ];
 const sourceRows = await Promise.all(sourcePaths.map(async (path) => `| [${path}](../../${path}) | \`${hash(await readFile(resolve(root, path)))}\` |`));
 let api = '## Generated API inventory\n\nThis section is generated from executable exports and checked against the source hashes below. It contains declarations; call-time behavior and known differences are explained in [Services](04-services.md), [Mission and Task](03-mission-task.md), and [Workspace](05-workspace-continuity.md).\n\n| Source | SHA-256 |\n|---|---|\n' + sourceRows.join('\n') + '\n';
-api += '\n### Exact tool exposure for the built-in benchmark\n\nThe two profile columns describe the compatibility extension surface after Sandbox filtering. Registered Bots receive the four native Pi tools (`read`, `write`, `edit`, `bash`), and call typed `swarm` commands through Bash; the `swarmenv_` names below are not a second set of tools loaded into those Bots. Optional registered Services add capabilities. Both built-in `bound` and `recovery` roles currently have the same named surface. Presence in this table does not bypass the Bridge\'s Task/Execution binding, modern-retired-operation or Workspace-contract checks. `swarmenv_` is the Pi extension prefix.\n\n';
+api += '\n### Exact tool exposure for the built-in benchmark\n\nThe two profile columns describe the Task surface with and without Sandbox capabilities. Registered Bots receive the four native Pi tools (`read`, `write`, `edit`, `bash`), and call typed `swarm` commands through Bash; the `swarmenv_` names below are not a second set of tools loaded into those Bots. Optional registered Services add capabilities. Both built-in `bound` and `recovery` roles currently have the same named surface. Presence in this table does not bypass the Bridge\'s Task/Execution binding or Workspace-contract checks. `swarmenv_` is the Pi extension prefix.\n\n';
 const profiles = [];
-for (const model of ['flat']) for (const sandbox of [false, true]) {
+for (const model of ['task']) for (const sandbox of [false, true]) {
   const runtimeCapabilities = runtimeCapabilityList()
     .filter((capability) => sandbox || !['sandbox_exec', 'sandbox_job'].includes(capability.operation))
     ;
@@ -47,7 +47,7 @@ for (const model of ['flat']) for (const sandbox of [false, true]) {
 const ids = [...new Set(profiles.flatMap(({profile}) => profile.capabilities.map((capability) => capability.id)))].sort();
 api += `| Capability identity | ${profiles.map(({label}) => label).join(' | ')} |\n|---|${profiles.map(() => '---').join('|')}|\n`;
 for (const id of ids) api += `| \`${id}\` | ${profiles.map(({profile}) => { const cap = profile.capabilities.find((capability) => capability.id === id); return cap ? `\`swarmenv_${cap.tool_name ?? cap.name}\`` : 'Absent'; }).join(' | ')} |\n`;
-api += '\nThe flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. Registered Bots use explicit save/publish and `task_finish`; the old `execution_progress` compound path is rejected.\n';
+api += '\nThe Mission Task profile is the only Agent-facing Task model. The built-in Registry exposes only the canonical Task, Context, Judge and Catalog operations. Registered Bots use explicit save/publish and `task_finish`.\n';
 for (const serviceId of ['catalog', 'task', 'context', 'judge']) {
   const manifest = builtInServiceManifest(serviceId);
   const {capabilities, ...metadata} = manifest;
@@ -59,11 +59,11 @@ for (const cap of runtimeCapabilityList()) api += `\n#### ${cap.id}\n${json(cap)
 api += '\n### Optional Mathlib Search manifest\n\nExact repository bundle declaration. Loading the bundle additionally binds its documentation hashes into the normalized manifest; deployment endpoint overrides change the manifest hash. The implementation also returns `duration_ms` and, after fallback, `fallback`/`upstream_error_code`; these are not listed in this declaration\'s closed output schema.\n';
 api += fence('json', await readFile(resolve(root, 'services/mathlib-search/service.json'), 'utf8'));
 const represented = new Set(['task', 'context', 'judge', 'catalog'].flatMap((serviceId) => builtInServiceManifest(serviceId).capabilities.map((cap) => `${serviceId}:${cap.operation}`)));
-const legacy = listTools(null, { includeInternal: true }).filter((cap) => !represented.has(`${cap.service}:${cap.operation}`));
-const uniqueLegacy = [...new Map(legacy.map((cap) => [`${cap.service}:${cap.operation}:${cap.name}`,cap])).values()];
-api += '\n### Additional catalog entries retained for compatibility/internal callers\n\nThis section records every extra catalog declaration not represented by the registered built-in operation set above. It is not an authorization list for the current Agent. Internal SDK/domain methods can have additional operations that are never a model tool; see the operation routing section in [Services](04-services.md).\n';
-for (const cap of uniqueLegacy) api += `\n#### Catalog ${cap.service}.${cap.name} / ${cap.operation}\n${json(cap)}`;
-api += '\n### Complete local SDK dispatch mapping\n\nThe SDK constructor requires `dispatch` and `actorRef`. `withContext` creates another SDK with merged context. The methods below are the complete direct read/write wrappers, extracted from the source. This table records local/internal entry points, not the current Agent tool authorization list. Each call constructs an envelope from its context and explicit write options; read calls also have an operation ID. `createMission` and `proposeTask` clear Task/Execution/fence binding; `taskTake` supplies the context actor and configured Core lane. Structural methods select the Task state version from explicit options/context.\n\n| SDK method | Dispatched operation | Wrapper |\n|---|---|---|\n';
+const internalExtras = listTools(null, { includeInternal: true }).filter((cap) => !represented.has(`${cap.service}:${cap.operation}`));
+const uniqueInternalExtras = [...new Map(internalExtras.map((cap) => [`${cap.service}:${cap.operation}:${cap.name}`,cap])).values()];
+api += '\n### Internal catalog entries\n\nThis section records catalog declarations used by trusted service composition but not exposed as Agent operations. It is not an authorization list for the Agent.\n';
+for (const cap of uniqueInternalExtras) api += `\n#### Catalog ${cap.service}.${cap.name} / ${cap.operation}\n${json(cap)}`;
+api += '\n### Complete local SDK dispatch mapping\n\nThe SDK constructor requires `dispatch` and `actorRef`. `withContext` creates another SDK with merged context. The methods below are the complete direct read/write wrappers, extracted from the source. Each call constructs an envelope from its context and explicit write options; read calls also have an operation ID. `createMission` clears Task/Execution/fence binding, and `taskTake` supplies the context actor and configured Core lane.\n\n| SDK method | Dispatched operation | Wrapper |\n|---|---|---|\n';
 const sdkSource = await readFile(resolve(root, 'src/sdk/services-sdk.js'), 'utf8');
 const sdkMethods = [...sdkSource.matchAll(/^  ([A-Za-z]\w*)\((.*)\) \{$/gm)];
 let documentedSdkWrappers = 0;
@@ -77,7 +77,7 @@ for (let index = 0; index < sdkMethods.length; index++) {
   }
 }
 if (documentedSdkWrappers !== [...sdkSource.matchAll(/return this\.#(?:read|write)\('/g)].length) throw new Error('Unmapped SDK dispatch wrapper; update the reference extractor');
-api += '\n### Complete local router fallback sets\n\nRegistry matches are resolved first by capability name or operation and must be unique. Only when no Registry match exists does the local router use these exact fallback sets. The historical Task source-binding entry records a Workspace source without performing a check; registered Bots invoke Judge directly through the Registry. The fallback Judge set contains result retrieval. Unlisted operations fail with no service route.\n';
+api += '\n### Complete local router operation sets\n\nRegistry matches are resolved first by capability name or operation and must be unique. These sets are the trusted local routing boundary. Unlisted operations fail with no service route.\n';
 const routerSource = await readFile(resolve(root, 'src/sdk/service-router.js'), 'utf8');
 for (const owner of ['TASK', 'CONTEXT', 'JUDGE']) {
   const declaration = routerSource.match(new RegExp(`const ${owner}_OPERATIONS = new Set\\(\\[([\\s\\S]*?)\\]\\);`));

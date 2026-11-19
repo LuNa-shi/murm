@@ -80,21 +80,6 @@ function normalizeWaitFiles(files) {
   }));
 }
 
-function normalizeProgress(progress) {
-  if (!progress || typeof progress !== 'object' || Array.isArray(progress)) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'progress must be an object');
-  }
-  for (const field of ['completed_work', 'findings', 'open_questions', 'next_step']) {
-    if (!Object.hasOwn(progress, field)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `progress.${field} is required`);
-  }
-  return {
-    completed_work: progress.completed_work,
-    findings: progress.findings,
-    open_questions: progress.open_questions,
-    next_step: progress.next_step,
-  };
-}
-
 function taskUsesJudge(task) {
   const contract = task?.completion_contract ?? {};
   return Boolean(contract.required_candidate || contract.required_check || task?.task_type === 'proof');
@@ -107,7 +92,7 @@ function taskUsesWorkspace(task) {
     contract.requires_workspace === true || contract.required_candidate?.workspace === true);
 }
 
-function modernTaskPromptProjection(task) {
+function taskRecordPromptProjection(task) {
   if (!task?.mission_id) return task;
   const contract = task.completion_contract ?? {};
   return {
@@ -485,7 +470,7 @@ export class Runtime {
   async #recoverProviderBots({ missionId, executionIds, timeoutMs }) {
     const owned = bot => this.providerRecovery.owners.has(bot.bot_id) || this.sandboxManager.ownsBotResource?.(bot.resource_key);
     const ids = executionIds === null ? null : new Set(executionIds);
-    const legacy = this.taskService.listActiveExecutions().filter(execution => (!ids || ids.has(execution.execution_id)) &&
+    const unboundExecutions = this.taskService.listActiveExecutions().filter(execution => (!ids || ids.has(execution.execution_id)) &&
       !this.taskService.getBot(execution.owner_ref) && this.taskService.getTask(execution.task_id)?.mission_id === missionId);
     const targets = [];
     const ownedIds = [];
@@ -508,8 +493,8 @@ export class Runtime {
       closedIds.push(botId);
     }
     const providerTargets = targets.filter(bot => !noResource.has(bot.bot_id));
-    const result = (providerTargets.length || legacy.length) ? await this.sandboxManager.reconcileExecutions({ missionId, bots: providerTargets,
-      executionIds: legacy.map(execution => execution.execution_id), timeoutMs,
+    const result = (providerTargets.length || unboundExecutions.length) ? await this.sandboxManager.reconcileExecutions({ missionId, bots: providerTargets,
+      executionIds: unboundExecutions.map(execution => execution.execution_id), timeoutMs,
       onSandboxDiscovered: (bot, sandboxId) => {
         if (owned(bot) || this.taskService.getBot(bot.bot_id)?.state !== 'CLOSING') {
           throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Recovery does not own the Bot');
@@ -667,24 +652,6 @@ export class Runtime {
     }
     await this.waitForSettled();
     return { active_process_count: this.activeProcesses.size, cleanup_pending_execution_ids: [...this.activeProcesses.keys()], cleanup_pending_session_count: this.identitySessions.size, cleanup_pending_bot_ids: [...this.botBindings.keys()] };
-  }
-
-  getSchedulerStatus({ rootId = null, taskId = null, executionId = null, limit = 100 } = {}) {
-    const readyTasks = this.taskService.listTasks({ rootId, limit, availableOnly: true });
-    const executions = this.taskService.listActiveExecutions();
-    const waitingExecutions = executions.filter((execution) => execution.state === 'WAITING');
-    return {
-      core_count: this.maxWorkers,
-      active_core_count: this.activeProcesses.size,
-      idle_core_count: Math.max(0, this.maxWorkers - this.activeProcesses.size),
-      waiting_execution_count: waitingExecutions.length,
-      ready_task_count: readyTasks.length,
-      ready_task_ids: readyTasks.map((task) => task.task_id),
-      ready_tasks: readyTasks,
-      current_task_id: taskId,
-      current_execution_id: executionId,
-      current_root_id: rootId ?? (taskId ? this.taskService.getTask(taskId)?.root_id ?? null : null),
-    };
   }
 
   async getWorkspace(executionId) {
@@ -968,7 +935,7 @@ export class Runtime {
    * Run a bounded command in the Execution's Sandbox. The Sandbox is bound to
    * the same private Workspace as the file tools, so shell edits and
    * read/write tool edits share one file truth. Shell changes are not a saved
-   * revision until execution_progress checkpoints them.
+   * revision until an explicit Workspace save records them.
    */
   async sandboxExec(executionId, { command, cwd = '/workspace', timeout_ms: timeoutMs = undefined, env = {}, background = false } = {}) {
     const execution = this.#getExecution(executionId);
@@ -1259,7 +1226,7 @@ export class Runtime {
    * Semantic Task handoff boundary used by the Agent-facing bridge.  The Task
    * Service commits HANDED_OFF/OPEN only after validating Handoff Material;
    * this method then performs the same physical Session/Workspace/Core
-   * cleanup as the legacy Runtime handoff path.
+   * cleanup as the Runtime handoff path.
    */
   async handoffTask(executionId, payload = {}) {
     return this.#semanticRelease(executionId, 'handoff_task', payload, 'handed_off');
@@ -1349,9 +1316,7 @@ export class Runtime {
         }
         const result = await this.handoffExecution(execution.execution_id, {
           terminalState: 'EXPIRED',
-          // Preserve the existing terminal_reason string for legacy report
-          // consumers; handoff_metadata.timeout_type carries the typed
-          // TIMEBOX_EXPIRED classification for the new surface.
+          // Preserve the terminal reason while carrying the typed timeout classification.
           reason: 'timeout',
           handoffKey: `timeout:${execution.execution_deadline ?? timeoutMs}`,
           at: atDate,
@@ -1367,119 +1332,6 @@ export class Runtime {
 
   sweepTimeouts(at = new Date(this.clock()), options = {}) {
     return this.sweepExecutionTimeouts(at, options);
-  }
-
-  /**
-   * Agent-facing progress boundary. Filesystem/checkpoint persistence is
-   * attempted once, then one Progress Material records the exact handoff
-   * state. A checkpoint failure leaves the Execution alive; a handoff failure
-   * is recorded and still releases the old Execution so it cannot strand a
-   * Core or take that unsaved work was persisted.
-   */
-  async executionProgress(executionId, {
-    kind = 'checkpoint', progress, checkpoint = {}, files = {}, reason = 'progress_handoff', summary = null,
-  } = {}) {
-    const id = requireString(executionId, 'execution_id');
-    if (!['checkpoint', 'handoff'].includes(kind)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'execution_progress kind must be checkpoint or handoff');
-    const normalizedProgress = normalizeProgress(progress);
-    let current = this.#getExecution(id);
-    if (!['CREATED', 'RUNNING'].includes(current.state)) {
-      return { execution: current, task: this.taskService.getTask(current.task_id), kind, disposition: 'already_terminal', save_status: 'not_applicable' };
-    }
-    const normalizedFiles = normalizeWaitFiles(files);
-    let workspace = null;
-    let checkpointResult = null;
-    let saveStatus = 'not_applicable';
-    let saveFailure = null;
-    const lastValidSnapshot = current.workspace_ref ? {
-      workspace_ref: current.workspace_ref,
-      workspace_revision: current.workspace_revision,
-      workspace_content_hash: current.workspace_content_hash,
-      checkpoint_ref: current.checkpoint_ref,
-      checkpoint_hash: current.checkpoint_hash,
-    } : null;
-    try {
-      if (current.workspace_ref) {
-        workspace = await this.workspaceManager.saveWorkspaceRevision({
-          workspaceRef: current.workspace_ref,
-          executionId: id,
-          fencingVersion: current.fencing_version,
-          files: normalizedFiles,
-        });
-        current = this.#saveWorkspaceReference(current, workspace, `runtime:progress-workspace:${id}:${current.state_version}`);
-        checkpointResult = await this.workspaceManager.saveCheckpoint({
-          workspaceRef: workspace.workspace_ref,
-          executionId: id,
-          fencingVersion: current.fencing_version,
-          checkpoint: { ...checkpoint, progress: normalizedProgress },
-        });
-        current = this.taskService.dispatch('save_checkpoint', checkpointResult, this.#executionEnvelope(current, `runtime:progress-checkpoint:${id}:${current.state_version}`)).execution;
-        saveStatus = 'saved';
-      }
-    } catch (error) {
-      saveStatus = 'save_failed';
-      saveFailure = { phase: workspace ? 'checkpoint' : 'workspace', error_class: error?.code ?? error?.name ?? 'save_failed' };
-      this.logger?.append({ event: 'runtime.progress_save_failed', execution_id: id, phase: saveFailure.phase, error_class: saveFailure.error_class });
-    }
-
-    const recordedProgress = {
-      ...normalizedProgress,
-      workspace_revision: workspace?.workspace_revision ?? current.workspace_revision ?? null,
-      workspace_commit: workspace?.git_commit ?? null,
-    };
-    let progressMaterial = null;
-    let progressLink = null;
-    try {
-      const envelope = this.#executionEnvelope(current, `runtime:progress-material:${id}:${current.state_version}`, current.owner_ref);
-      progressMaterial = this.contextService?.publishMaterialForTask
-        ? this.contextService.publishMaterialForTask({
-          kind: 'experience', role: 'experience', scope: 'execution_progress', evidence_state: 'observed',
-          content: recordedProgress,
-          provenance: {
-            actor_ref: envelope.actor_ref,
-            source_execution: id,
-            save_status: saveStatus,
-            workspace_commit: workspace?.git_commit ?? null,
-            workspace_revision: workspace?.workspace_revision ?? current.workspace_revision ?? null,
-          },
-        }, envelope).material
-        : null;
-      if (progressMaterial) {
-        progressLink = this.taskService.dispatch('link_material', {
-          task_id: current.task_id, material_id: progressMaterial.material_id, role: 'experience',
-        }, envelope).link;
-      }
-    } catch (error) {
-      this.logger?.append({ event: 'runtime.progress_material_failed', execution_id: id, error_class: error?.code ?? error?.name ?? 'material_save_failed' });
-      if (saveStatus === 'saved') saveStatus = 'save_failed';
-      saveFailure ??= { phase: 'material', error_class: error?.code ?? error?.name ?? 'material_save_failed' };
-    }
-
-    const result = {
-      kind,
-      progress_material: progressMaterial,
-      progress_link: progressLink,
-      workspace: workspace ?? null,
-      checkpoint: checkpointResult,
-      save_status: saveStatus,
-      last_valid_snapshot: lastValidSnapshot,
-      loss: saveFailure ? { unsaved_progress: true, ...saveFailure } : { unsaved_progress: false },
-    };
-    if (kind === 'checkpoint') {
-      return { ...result, execution: current, task: this.taskService.getTask(current.task_id), disposition: 'continued' };
-    }
-    const handed = await this.handoffExecution(id, {
-      checkpoint: {}, files: {}, reason, summary,
-      handoffMetadata: {
-        summary,
-        progress_material_id: progressMaterial?.material_id ?? null,
-        save_status: saveStatus,
-        last_valid_snapshot: lastValidSnapshot,
-        loss: result.loss,
-      },
-      skipWorkspaceSave: true,
-    });
-    return { ...result, ...handed, save_status: saveStatus, last_valid_snapshot: lastValidSnapshot, loss: result.loss };
   }
 
   /**
@@ -1834,7 +1686,7 @@ export class Runtime {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
       }
       // Finish may commit while a pre-existing release awaits the provider.
-      // Recheck it after stopping, including a compatibility reusable Session.
+      // Recheck it after stopping, including a reusable Session.
       if (before.state !== 'CLOSING') await this.#stopExecutionResources(id);
       this.taskService.finalizeExecutionFinish(id, { fencingVersion: this.#getExecution(id).fencing_version });
     }
@@ -2203,7 +2055,7 @@ export class Runtime {
         staticPrompt: (promptOverride ?? execution.agent_prompt) || undefined,
         profile,
         mission,
-        task: modernTaskPromptProjection(task),
+        task: taskRecordPromptProjection(task),
         tasks,
         materials,
         notifications,

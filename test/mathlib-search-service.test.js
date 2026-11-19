@@ -423,7 +423,8 @@ test('Built-in Registry exposes the current Task contract without legacy lifecyc
 
   const reusableNames = profile.capabilities.map((capability) => capability.name);
   assert.ok(reusableNames.includes('task_take'));
-  // Unified execution_progress is the only handoff surface; the legacy
+  // Explicit Workspace and Task operations are the handoff surface.
+  // The old compound operation is removed.
   // task_handoff tool must not be advertised alongside it.
   assert.ok(!reusableNames.includes('task_handoff'));
 });

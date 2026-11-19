@@ -4,7 +4,7 @@ import { ServiceCommitGate } from './service-commit-gate.js';
 import { captureServiceAuthority } from './service-authority-snapshot.js';
 import { CONTEXT_READ_METHODS, CONTEXT_READ_OPERATIONS } from './context-service-peer.js';
 import { stableStringify } from '../protocol/envelope.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { SwarmEnvError } from '../errors.js';
 
 export class RemoteContextService {
   constructor({ taskService, url, token, timeoutMs = 15_000, logger = null }) {
@@ -26,8 +26,6 @@ export class RemoteContextService {
       throw error;
     }
   }
-  publishMaterialForTask() { throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Compound legacy progress requires in-process compatibility services; registered Bots publish explicitly'); }
-  consumeMaterialsForTask() { throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Compound legacy progress requires in-process compatibility services; registered Bots consume explicitly'); }
   reconcile() {
     const pending = this.gate.pending();
     if (!pending) { this.gate.deliverEvents(); return; }

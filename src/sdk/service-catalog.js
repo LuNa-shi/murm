@@ -32,18 +32,6 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', properties: { service: { type: 'string' } }, additionalProperties: false },
   },
   {
-    name: 'task_list', service: 'task', operation: 'list_tasks', version: '1.0',
-    description: 'List the highest-priority eligible Tasks in a Mission.',
-    scope: 'public-read', side_effect: false,
-    parameters: { type: 'object', properties: { root_id: { type: 'string' }, states: { type: 'array', items: { type: 'string' } }, task_type: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, available_only: { type: 'boolean' } }, additionalProperties: false },
-  },
-  {
-    name: 'execution_get', service: 'execution', operation: 'get_execution', version: '1.0',
-    description: 'Read the current Execution lease, Workspace revision and checkpoint.',
-    scope: 'execution-read', side_effect: false,
-    parameters: { type: 'object', properties: { execution_id: { type: 'string' } }, additionalProperties: false },
-  },
-  {
     name: 'workspace_get', service: 'workspace', operation: 'get_workspace', version: '1.0',
     description: 'Read the current Workspace materialization and revision.',
     scope: 'execution-read', side_effect: false,
@@ -123,11 +111,7 @@ const TOOL_DEFINITIONS = Object.freeze([
   },
 ]);
 
-// The legacy catalog above remains available to internal adapters while the
-// Agent-facing projection is deliberately small.  Runtime lease/liveness
-// operations and the old structural Task vocabulary are not callable tools in
-// a normal bound Agent profile.  The target operations use a stable semantic
-// name even when an adapter temporarily maps them to an older implementation.
+// Runtime-owned tools are kept in the service catalog for authenticated internal calls.
 const publicTaskTools = [
   {
     name: 'bot_exit', service: 'task', operation: 'bot_exit', version: '1.0',
@@ -152,19 +136,6 @@ const publicTaskTools = [
     description: 'Record this Execution\'s durable decision and action for delivered feedback; another Execution may retain its own handling state.',
     scope: 'task-write', side_effect: true,
     parameters: { type: 'object', required: ['notification_id', 'decision', 'action'], properties: { notification_id: { type: 'string' }, decision: { type: 'string' }, action: { type: 'string' }, details: { type: 'object' } }, additionalProperties: false },
-  },
-  {
-    name: 'execution_progress', service: 'task', operation: 'execution_progress', version: '1.0',
-    description: 'Save a bounded Progress Material and either continue the current Execution or hand it off.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['kind', 'progress'], properties: {
-      kind: { type: 'string', enum: ['checkpoint', 'handoff'] },
-      progress: { type: 'object', required: ['completed_work', 'findings', 'open_questions', 'next_step'] },
-      checkpoint: { type: 'object' },
-      files: { type: 'object' },
-      reason: { type: 'string' },
-      summary: { type: 'string' },
-    }, additionalProperties: false },
   },
   {
     name: 'task_list', service: 'task', operation: 'task_list', version: '1.0',
@@ -377,16 +348,12 @@ const publicMissionWorkspaceTools = [
 const publicJudgeTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'judge');
 const publicCatalogTools = TOOL_DEFINITIONS.filter((tool) => tool.service === 'catalog');
 
-// These definitions remain available to internal Runtime/Task Service callers,
-// but they are not part of the Agent-facing fallback projection. Runtime owns
-// the Execution lease/liveness controls; modern Mission Tasks use the semantic
-// entries above and the Registry-backed profile.
 const SERVICE_DEFINITIONS = Object.freeze([
   {
     name: 'task',
     version: '1.0',
     description: 'Task goals, Mission-scoped Material links, semantic completion, explicit dependencies, and canonical task_take.',
-    tools: [...publicTaskTools, ...publicWorkspaceTools, ...publicMissionWorkspaceTools],
+    tools: [...publicTaskTools, ...publicMissionWorkspaceTools],
   },
   { name: 'execution', version: '1.0', description: 'Internal Execution lease, heartbeat, wait, and lifecycle metadata.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'execution') },
   { name: 'workspace', version: '1.0', description: 'Runtime-owned Workspace materialization, revisions, and checkpoint lineage.', tools: TOOL_DEFINITIONS.filter((tool) => tool.service === 'workspace') },
@@ -404,9 +371,6 @@ function clone(value) {
   return structuredClone(value);
 }
 
-export function isLegacyAgentSurface(tool, { runtimeOwned = false } = {}) {
-  return false;
-}
 
 function normalizeCatalogOptions(options) {
   if (!options || typeof options !== 'object' || Array.isArray(options)) return { includeInternal: false };
@@ -421,9 +385,9 @@ function deduplicateNamedTools(tools) {
 
 function toolsForService(service, options) {
   const { includeInternal } = normalizeCatalogOptions(options);
-  const tools = includeInternal
+  const tools = includeInternal || !['execution', 'workspace'].includes(service.name)
     ? service.tools
-    : deduplicateNamedTools(service.tools.filter((tool) => !isLegacyAgentSurface(tool)));
+    : [];
   return clone(tools);
 }
 
@@ -435,7 +399,7 @@ export function listServices(options = {}) {
     description,
     tool_count: includeInternal
       ? tools.length
-      : deduplicateNamedTools(tools.filter((tool) => !isLegacyAgentSurface(tool))).length,
+      : deduplicateNamedTools(['execution', 'workspace'].includes(name) ? [] : tools).length,
   })));
 }
 
@@ -451,7 +415,7 @@ export function listTools(service = null, options = {}) {
   const { includeInternal } = normalizeCatalogOptions(options);
   return clone(includeInternal
     ? selected
-    : deduplicateNamedTools(selected.filter((tool) => !isLegacyAgentSurface(tool))));
+    : deduplicateNamedTools(selected.filter((tool) => !['execution', 'workspace'].includes(tool.service))));
 }
 
 export function serviceCatalog(options = {}) {

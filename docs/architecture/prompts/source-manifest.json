@@ -5,7 +5,7 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "5248fde0ff4b574ce32e0102f8405ba96d25e30d918be31de122c67e0760af36"
+      "sha256": "eb63c71f1f576ac711bc0fde192db8bdb57cbf497f53b5130aafe214372d91ce"
     },
     {
       "path": "src/agent/bot-contract/system.txt",
@@ -33,11 +33,11 @@
     },
     {
       "path": "src/agent/agent-prompt.js",
-      "sha256": "f25244595daa018caab05adcb76292fbd3e724ea280b1eede9707794009cb61b"
+      "sha256": "79e10fb382971fcbe14f06db17b07f5b2a3035b14e9b33bbdb25c6d86c19dcf5"
     },
     {
       "path": "src/agent/capability-profile.js",
-      "sha256": "5e9a40a7624518d0b9ca1e81ff65a75f99d798e08476b4320fbe8148e594031d"
+      "sha256": "686ef274ebf9866f7d84dad4e90d44788b105a17a693d15887d0237e128ae606"
     },
     {
       "path": "src/agent/pi-adapter.js",
@@ -45,7 +45,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "496a3d1a99d7413f0c119fac9574d525700a5c0005eda2446c4376344253310e"
+      "sha256": "7564b0263d9509c8923e33c1a1c9e98fb5f28d2ca7c794fe66a26e3fa77598ca"
     },
     {
       "path": "src/agent/swarmenv-extension.mjs",
@@ -61,19 +61,19 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "063d4bc085c0efb18accc75cd62146c0fe43fbfb099e1eae937cc559b502c168"
+      "sha256": "56dc9a0f3f2edbd8af8ff376c08703a57a4c9387a514163670f8ffab256bdbdd"
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "335f9e2962ed78c716fa3ecd76404ccd17fdf2217ac9384310f5a1f37bafb05c"
+      "sha256": "a83f5ecc94a41261544ecb012f4c2c50091ad813cc1d01fa067f4f23fde2baa7"
     },
     {
       "path": "src/runtime/identity-task-loop.js",
-      "sha256": "415f039e3a205e778945896238205cd92a812b022069d4b0c9c760cad3b027c9"
+      "sha256": "6379a50df3797096e16c79cedf5c8ad2f8420b946bdd9bf07ef6dc8434aed892"
     },
     {
       "path": "src/runtime/runtime-capabilities.js",
-      "sha256": "e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05"
+      "sha256": "31c1ebcccd4d21129b7aed3d62d136d6a5ce6460b4c1ec592bb902d05fa99a5f"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -81,15 +81,15 @@
     },
     {
       "path": "src/runtime/mission-workspace.js",
-      "sha256": "27a47c08b9a6042b85b1d78ffe1195adbbeaffbf1d5cbaf4fdb2900553a385ab"
+      "sha256": "f91d9fa389510320adf8944467b670aad16f9459c1d586af00a9c755448b6d0c"
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "c9f93455ebb8a1daefc21ced84f98f95f4d4df1d72cf70e120c00607ed283b8c"
+      "sha256": "73ab71ce55eed396523afb690522f27df319028d3ee0ff054cd395b6d25dccf2"
     },
     {
       "path": "src/sdk/builtin-registry.js",
-      "sha256": "92db5cc14ac74c89e080b766f2cfe415898fe7d1cf0713c45a99344f5bda9743"
+      "sha256": "37325635022fa77efc87f5db03ed5b0b93140d7b26e80b507039d4a24f7c9b6e"
     },
     {
       "path": "src/sdk/service-bundle.js",
@@ -109,11 +109,11 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "05e307d72e815db99b20a83da6c1ef95c09d0c7bef9a044c9d52d968cc4496c9"
+      "sha256": "f9647677004269e14d41ecedd0381857828d735ed4d79404ba5c80190ba20c88"
     },
     {
       "path": "src/task/task-types.js",
-      "sha256": "993ef085a150a12879eaff46eb588530d883c05fc1d389d9f196f2ecb6bd69d9"
+      "sha256": "b714ae0eaf0032efa3e7061433b997e1656e09ffc8e7bdc72cb15ca93bc073c4"
     },
     {
       "path": "services/mathlib-search/service.json",
@@ -132,25 +132,19 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 627,
+      "line": 618,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     },
     {
       "path": "src/runtime/runtime.js",
       "anchor": "  #notificationText",
-      "line": 2258,
+      "line": 2110,
       "sha256": "91d762ef38719a12b9cfab2a135e6db814d9ef0d90609916d1e34374c39c9369"
     },
     {
       "path": "src/runtime/runtime.js",
-      "anchor": "        const prompt = ",
-      "line": 1674,
-      "sha256": "7324112e1ed5f71238d9bf5ac227047ab65eb0e32c8e609355b9959928503c2f"
-    },
-    {
-      "path": "src/runtime/runtime.js",
-      "anchor": "function modernTaskPromptProjection",
-      "line": 110,
+      "anchor": "function taskRecordPromptProjection",
+      "line": 95,
       "sha256": "72f3c7a0a89b6a2ccf2ff41ebdb9e81993edd014a118429a9ea781818775ec8c"
     }
   ],
@@ -162,32 +156,32 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 449,
+      "line": 440,
       "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 726,
+      "line": 717,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1679,
+      "line": 1531,
       "expression": "active.promptChain = active.promptChain.catch(() => undefined).then(() => active.session.prompt?.(prompt, { timeoutMs: 30_000, streamingBehavior: 'followUp' }));"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2244,
+      "line": 2096,
       "expression": "await session.prompt(dynamic.prompt, { timeoutMs: 30_000 });"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2309,
+      "line": 2161,
       "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : this.taskService.getBot(active.execution.owner_ref) ? buildBotNotification(notification) : this.#notificationText(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 2645,
+      "line": 2497,
       "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     }
   ],
@@ -218,13 +212,13 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 672,
+      "line": 671,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 679,
+      "line": 678,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -302,25 +296,19 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1788,
+      "line": 1532,
       "field": "guidance",
       "sha256": "2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1913,
+      "line": 1653,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 2125,
-      "field": "action",
-      "sha256": "ce60631b660e5fe12530e79d59f4a808fd02a5a4c6ab8bb85d4b8d5d6eebf8c8"
-    },
-    {
-      "path": "src/task/task-service.js",
-      "line": 2218,
+      "line": 1806,
       "field": "guidance",
       "sha256": "0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b"
     }
@@ -328,15 +316,15 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "c4d85896040158d794c554b4eb1f3cd4931908fd62d8d3522e46b938db61e96f"
+      "sha256": "0032d4fe95c5ad475748682bf2037e3843384ac8db39a8b4a905678ebd5dfa7a"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "ac07a50183ce5c15d41b2154ebd6d610a3677871f7609400dfcabcdac2b832e2"
+      "sha256": "e8df11e7db5f6ec8f8fb30eb4ab777350c7cb2dc99403187b4264677b95dcf04"
     },
     {
       "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "c28f8d65e15b9ef286f127a3bdb97e683225e193e5b651f5828839a59d0074b8"
+      "sha256": "f80bbe731064c9968df7c9b5b38ec27a3592f79ee5e34dca6945403c4fd05ed4"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
@@ -344,15 +332,15 @@
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "8f31999aed4ce9f0d1eded74cba6f5c456d6d11c4fcfcf5dd4c1e6fdc7c3f409"
+      "sha256": "63e5bbab92a25eeae9946b5a6bc51b408b240cf01d53015d5e3091c8ef86e098"
     },
     {
       "path": "docs/architecture/prompts/05-composed-context-examples.md",
-      "sha256": "d6d0092c1c5cd40f29a6a581dd0a4c24fbc562d5b9da9439bb33008198796529"
+      "sha256": "2a6224e15866cee34c806c2cce39e60bedcf35504f5bba583aaea8e2fef77bcc"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "e0104add66c63423960224a03fccdfe59f948fd169ce971509a4e88b300b604b"
+      "sha256": "f4dff3ba6dd6d957dd752a85f0bac577ba33be927799559344aca2afdcd0bc98"
     }
   ]
 }

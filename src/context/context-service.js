@@ -78,12 +78,9 @@ function cloneMaterial(row) {
   if (!row) return null;
   return {
     ...row,
-    // `role` was added after the first Context schema.  Keep reads from old
-    // databases deterministic while the constructor migration catches up.
     role: row.role ?? 'experience',
-    // Stable semantic aliases.  The SQLite schema retains the historical
-    // source_* column names, while the public Material contract names the
-    // immutable producer identity explicitly.
+    // Storage uses source_* columns while the public Material contract uses
+    // immutable producer identity names.
     producer_task_id: row.source_task ?? null,
     producer_execution_id: row.source_execution ?? null,
     content: parse(row.content_json),
@@ -111,38 +108,8 @@ export class ContextService {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     const busyTimeout = this.db.prepare('PRAGMA busy_timeout').get().timeout;
     this.db.exec(`PRAGMA busy_timeout = ${Math.max(busyTimeout, 1000)}`);
-    try {
-      this.db.exec('BEGIN IMMEDIATE');
-      try {
-        this.db.exec(CONTEXT_SCHEMA_SQL);
-        const materialColumns = new Set(this.db.prepare('PRAGMA table_info(materials)').all().map((column) => column.name));
-        if (!materialColumns.has('role')) {
-          this.db.exec("ALTER TABLE materials ADD COLUMN role TEXT NOT NULL DEFAULT 'experience'");
-        }
-        if (!materialColumns.has('mission_id')) {
-          this.db.exec('ALTER TABLE materials ADD COLUMN mission_id TEXT');
-        }
-        if (!materialColumns.has('evidence_json')) {
-          this.db.exec("ALTER TABLE materials ADD COLUMN evidence_json TEXT NOT NULL DEFAULT '[]'");
-        }
-        if (!materialColumns.has('producer_bot_id')) this.db.exec('ALTER TABLE materials ADD COLUMN producer_bot_id TEXT');
-        for (const column of ['title', 'summary', 'media_type']) {
-          if (!materialColumns.has(column)) this.db.exec(`ALTER TABLE materials ADD COLUMN ${column} TEXT`);
-        }
-        const consumptionColumns = new Set(this.db.prepare('PRAGMA table_info(material_consumptions)').all().map(column => column.name));
-        for (const [column, type] of [['material_version', 'INTEGER'], ['content_hash', 'TEXT'], ['impact', 'TEXT']]) {
-          if (!consumptionColumns.has(column)) this.db.exec(`ALTER TABLE material_consumptions ADD COLUMN ${column} ${type}`);
-        }
-        const relationColumns = new Set(this.db.prepare('PRAGMA table_info(material_relations)').all().map(column => column.name));
-        if (!relationColumns.has('claim')) this.db.exec('ALTER TABLE material_relations ADD COLUMN claim TEXT');
-        // Preserve ambiguous historical forks. Never select a winner or erase a
-        // relation during migration; exact reads expose all successors.
-        this.db.exec(`INSERT OR IGNORE INTO material_relation_heads (material_id, version)
-          SELECT material_id, MAX(version) + SUM(CASE WHEN active = 0 THEN 1 ELSE 0 END)
-          FROM material_relations WHERE relation_kind = 'supersede' GROUP BY material_id`);
-        this.db.exec('COMMIT');
-      } catch (error) { try { this.db.exec('ROLLBACK'); } catch {} throw error; }
-    } finally { this.db.exec(`PRAGMA busy_timeout = ${busyTimeout}`); }
+    this.db.exec(CONTEXT_SCHEMA_SQL);
+    this.db.exec(`PRAGMA busy_timeout = ${busyTimeout}`);
     this.trustedActorPrefixes = trustedActorPrefixes;
     this.taskService = taskService;
     this.logger = logger;

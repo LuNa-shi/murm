@@ -274,7 +274,7 @@ test('IdentityTaskLoop presents a bounded shortlist, takes once, hands off to Ru
   const daemon = new IdentityTaskLoop({
     coreId: 'core-1',
     listEligibleTasks: () => [
-      { task_id: 'task-1', priority: 10 },
+      { task_id: 'task-1', priority: 1 },
       { task_id: 'task-2', priority: 1 },
     ],
     shortlistLimit: 1,
@@ -585,7 +585,7 @@ test('a Bot that loses a tool-level take race can rescan and execute other work'
 
 test('four Cores discover a zero-Task Mission and hold distinct proposed Tasks concurrently', async () => {
   const service = new TaskService();
-  const mission = service.dispatch('mission.create', { mission_id: 'mission-discovery', goal: 'Build a CSV tool' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+  const mission = service.dispatch('mission_create', { mission_id: 'mission-discovery', goal: 'Build a CSV tool' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
   const discoveryGate = deferred();
   const executionGate = deferred();
   const entered = [];
@@ -599,7 +599,7 @@ test('four Cores discover a zero-Task Mission and hold distinct proposed Tasks c
       entered.push({ index, candidates });
       await discoveryGate.promise;
       const actorRef = `bot-discovery-${index}`;
-      const task = service.dispatch('task.create', {
+      const task = service.dispatch('task_create', {
         mission_id: mission.mission_id, summary: `Implement ${responsibility} independently of other CSV features.`, goal: responsibility,
         expected_output: `Reusable ${responsibility} result`, acceptance_conditions: ['Documented independently testable result'],
       }, makeEnvelope({ actorRef })).task;
@@ -631,8 +631,8 @@ test('four Cores discover a zero-Task Mission and hold distinct proposed Tasks c
 
 test('a bounded discovery page does not reject a newly proposed Task already accepted by Task Service', async () => {
   const service = new TaskService();
-  const mission = service.dispatch('mission.create', { mission_id: 'mission-other-work', goal: 'Independent CSV features' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
-  const create = (summary) => service.dispatch('task.create', { mission_id: mission.mission_id, summary, goal: summary, expected_output: 'Independent reusable result', acceptance_conditions: ['Verify the stated result'] }, makeEnvelope({ actorRef: 'bot:discover' })).task;
+  const mission = service.dispatch('mission_create', { mission_id: 'mission-other-work', goal: 'Independent CSV features' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+  const create = (summary) => service.dispatch('task_create', { mission_id: mission.mission_id, summary, goal: summary, expected_output: 'Independent reusable result', acceptance_conditions: ['Verify the stated result'] }, makeEnvelope({ actorRef: 'bot:discover' })).task;
   create('Review the CSV output while other work identifies input edge cases');
   let chosen;
   const loop = new IdentityTaskLoop({
@@ -720,8 +720,8 @@ test('a public change during discovery is not lost when the Bot reports no work'
 
 test('a real Bridge tool rejection preserves the take conflict for Core rescan', async () => {
   const service = new TaskService();
-  const mission = service.dispatch('mission.create', { mission_id: 'mission-bridge-race', goal: 'Compare independent routes' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
-  const task = service.dispatch('task.create', { mission_id: mission.mission_id, summary: 'Verify one existing route without duplicating another responsibility', expected_output: 'Verified route', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef: 'bot:first' })).task;
+  const mission = service.dispatch('mission_create', { mission_id: 'mission-bridge-race', goal: 'Compare independent routes' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+  const task = service.dispatch('task_create', { mission_id: mission.mission_id, summary: 'Verify one existing route without duplicating another responsibility', expected_output: 'Verified route', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef: 'bot:first' })).task;
   service.takeTask(task.task_id, { owner_ref: 'bot:winner', core_id: 'core-winner', take_key: 'winner', workspace_mode: 'clean' });
   const bridge = new ServicesBridge({ taskService: service, contextService: {}, runtime: {}, actorRef: 'bot:loser', coreId: 'core-loser' });
   const loop = new IdentityTaskLoop({
@@ -748,7 +748,7 @@ test('private checkpoints do not wake no-work discovery but public Materials do'
     takeTask: async () => { discoveries += 1; return { no_work: true }; },
   });
   await loop.runOnce();
-  for (const operation of ['save_checkpoint', 'save_workspace_revision', 'execution_progress', 'task_feedback']) {
+  for (const operation of ['save_checkpoint', 'save_workspace_revision', 'task_feedback']) {
     loop.notifyPublicChange({ operation, changed: true });
     await loop.runOnce();
   }
@@ -760,8 +760,8 @@ test('private checkpoints do not wake no-work discovery but public Materials do'
 
 test('a failed Runtime binding remains a failed take and releases the provisional Task ownership', async () => {
   const service = new TaskService();
-  const mission = service.dispatch('mission.create', { mission_id: 'mission-bind-failure', goal: 'Investigate a route' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
-  const task = service.dispatch('task.create', { mission_id: mission.mission_id, summary: 'Investigate an independent route with a reproducible written result', expected_output: 'Route note', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef: 'bot:test' })).task;
+  const mission = service.dispatch('mission_create', { mission_id: 'mission-bind-failure', goal: 'Investigate a route' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
+  const task = service.dispatch('task_create', { mission_id: mission.mission_id, summary: 'Investigate an independent route with a reproducible written result', expected_output: 'Route note', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef: 'bot:test' })).task;
   const bridge = new ServicesBridge({
     taskService: service, contextService: {}, runtime: {}, actorRef: 'bot:test', coreId: 'core-bind',
     onTake: async () => { const error = new Error('provider preparation failed'); error.code = 'SERVICE_UNAVAILABLE'; throw error; },

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { isLegacyAgentSurface, listTools } from '../sdk/service-catalog.js';
+import { listTools } from '../sdk/service-catalog.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 export const AGENT_ROLES = Object.freeze({
@@ -10,20 +10,14 @@ export const AGENT_ROLES = Object.freeze({
 const PROFILE_VERSION = '1';
 const INTERNAL_AUDIENCES = new Set(['runtime', 'daemon', 'internal']);
 
-// The catalog still contains historical Task/Execution entries for bounded
-// observability imports. They must not leak through the no-Registry migration
-// path into a live Agent profile. Registry-backed profiles are authoritative;
-// this allowlist keeps the fallback equally aligned with the current Agent
-// contract while callers migrate to a Registry.
 const CURRENT_AGENT_OPERATIONS = new Set([
   'bot_exit',
   'list_services', 'get_service_metadata', 'list_tools',
-  'list_tasks', 'list_executions',
   'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
-  'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_revise', 'task_cancel', 'task_dependency_replace',
+  'task_status', 'task_take', 'task_feedback', 'task_revise', 'task_cancel', 'task_dependency_replace',
   'read_materials', 'consume_materials',
   'context_search_materials', 'context_get_material', 'context_publish_material', 'material_dispute', 'material_supersede', 'material_unsupersede',
-  'workspace_check', 'get_check_result', 'get_execution',
+  'workspace_check', 'get_check_result',
   'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
   'read_workspace_file', 'write_workspace_file', 'workspace_diff',
   'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_apply',
@@ -76,11 +70,11 @@ function inferredAudience(capability) {
   const sideEffect = capability.side_effect ?? capability.sideEffect;
 
   // Registry manifests should always provide an audience. This fallback keeps
-  // current built-in metadata useful while it is migrated to the Registry.
-  if (service === 'workspace' || service === 'execution' || service === 'context' || service === 'judge' || capability.runtime_owned === true || operation === 'scheduler_status') {
+  // Current built-in metadata used by the Registry projection.
+  if (service === 'workspace' || service === 'execution' || service === 'context' || service === 'judge' || capability.runtime_owned === true) {
     return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
-  if (operation === 'list_tasks' || operation === 'task_list' || operation === 'task_view' || operation === 'task_status') {
+  if (operation === 'task_list' || operation === 'task_view' || operation === 'task_status') {
     return [AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY];
   }
   if (scope === 'public-read' && sideEffect === false) {
@@ -101,9 +95,8 @@ function normalizeCapability(capability, role) {
   if (!operation || !name) return null;
   if (!allowsRole(capability, role)) return null;
   const serviceId = serviceIdOf(capability);
-  const audience = audienceOf(capability);
   const runtimeOwned = capability.runtime_owned === true || serviceId === 'runtime';
-  if (isLegacyAgentSurface({ ...capability, name, operation }, { runtimeOwned })) return null;
+  const audience = audienceOf(capability);
   // Execution lease/process controls remain Runtime-owned. Only the read-only
   // Execution projection may appear in a bound profile; typed Task actions
   // are supplied separately as Runtime capabilities.
@@ -186,7 +179,7 @@ function normalizeServices(capabilities, profileServices = []) {
 /**
  * Build the exact capability set visible to one Agent Session. Registry
  * profiles are authoritative; the built-in catalog fallback is only for the
- * migration seam and is intentionally normalized through the same projection.
+ * projection and is intentionally normalized through the same projection.
  */
 export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = null, context = {}, tools = null, runtimeCapabilities = [] } = {}) {
   const canonical = canonicalRole(role);

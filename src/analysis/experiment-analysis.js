@@ -21,7 +21,7 @@ const SENSITIVE_KEYS = /(?:^|_)(?:authorization|content|credential|formal_source
 const SAFE_RESULT_KEYS = new Set([
   'bridge_call_id', 'bridge_pairing', 'ok',
   'pi_result', 'pi_result_sha256', 'pi_result_json_bytes', 'pi_result_truncated', 'pi_result_limits', 'model_request_delivery',
-  'task_id', 'root_id', 'parent_id', 'execution_id', 'owner_ref', 'task_type',
+  'task_id', 'execution_id', 'owner_ref', 'task_type',
   'state', 'task_state', 'execution_state', 'state_version', 'attempt_no',
   'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision',
   'workspace_content_hash', 'artifact_material_id', 'material_id', 'kind',
@@ -33,7 +33,7 @@ const SAFE_RESULT_KEYS = new Set([
   'workspace_revision_start', 'workspace_revision_end', 'progress_kind',
   'tool', 'operation', 'outcome', 'phase', 'service', 'error', 'stream', 'type',
   'event', 'decision', 'diagnostic', 'session_transport_id', 'file_count',
-  'content_hash', 'assignment_basis', 'target_task_id', 'target_execution_id', 'authority_execution_id', 'parent_execution_id', 'parent_task_id', 'result', 'task', 'execution', 'material', 'check_result',
+  'content_hash', 'assignment_basis', 'target_task_id', 'target_execution_id', 'result', 'task', 'execution', 'material', 'check_result',
   'material_ids', 'count', 'artifact_material_id', 'diagnostic_class', 'judge_operation_status',
   'checker_process_status', 'process_status', 'result_class', 'mathematical_outcome', 'retryable', 'checker_started',
   'checker_ref', 'checker_version', 'environment_ref', 'checker_result_available',
@@ -46,10 +46,9 @@ const SAFE_RESULT_KEYS = new Set([
 const INTENT_BY_OPERATION = new Map([
   ['list_services', 'discover services'],
   ['list_tools', 'discover tools'],
-  ['list_tasks', 'discover available work'],
-  ['list_executions', 'inspect execution history'],
-  ['get_task', 'inspect task contract'],
-  ['get_execution', 'inspect execution state'],
+  ['task_list', 'discover available work'],
+  ['task_view', 'inspect task contract'],
+  ['execution_get', 'inspect execution state'],
   ['get_workspace', 'inspect Workspace'],
   ['list_workspace_revisions', 'inspect Workspace lineage'],
   ['list_workspace_files', 'inspect Workspace files'],
@@ -58,7 +57,6 @@ const INTENT_BY_OPERATION = new Map([
   ['task_take', 'take a Task'],
   ['task_create', 'propose a Task'],
   ['task_finish', 'finish a Task'],
-  ['create_child_task', 'decompose the Task'],
   ['save_workspace_revision', 'save a Workspace revision'],
   ['write_workspace_file', 'edit the Workspace'],
   ['publish_material', 'publish a Material'],
@@ -68,10 +66,7 @@ const INTENT_BY_OPERATION = new Map([
   ['get_check_result', 'inspect Judge feedback'],
   ['apply_check_result', 'process Judge feedback'],
   ['wait_for', 'wait for a concrete condition'],
-  ['accept_task', 'review and accept a Task'],
-  ['request_rework', 'review and request rework'],
   ['heartbeat', 'maintain the Execution lease'],
-  ['scheduler_status', 'inspect scheduler status'],
 ]);
 
 const BOUNDARY_KINDS = new Set([
@@ -225,7 +220,7 @@ function safeEntity(value, type) {
   if (!isObject(value)) return null;
   const result = {};
   const keys = type === 'task'
-    ? ['task_id', 'root_id', 'parent_id', 'owner_ref', 'task_type', 'state', 'state_version', 'goal', 'created_at', 'updated_at', 'block_reason']
+    ? ['task_id', 'owner_ref', 'task_type', 'state', 'state_version', 'goal', 'created_at', 'updated_at', 'block_reason']
     : type === 'execution'
       ? ['execution_id', 'task_id', 'owner_ref', 'state', 'state_version', 'attempt_no', 'fencing_version', 'runtime_generation', 'workspace_ref', 'workspace_revision', 'artifact_material_id', 'wait_condition', 'wait_deadline', 'created_at', 'updated_at']
       : type === 'material'
@@ -309,14 +304,8 @@ function coreFromScope(scope) {
   return match?.[1]?.startsWith('core-') ? match[1] : null;
 }
 
-const OPERATION_ALIASES = new Map([
-  ['context_publish_material', 'publish_material'], ['material_publish', 'publish_material'],
-  ['workspace_save', 'save_workspace_revision'], ['context_read_materials', 'read_materials'],
-  ['finish_task', 'task_finish'],
-]);
-
 function canonicalOperation(operation) {
-  return OPERATION_ALIASES.get(operation) ?? operation;
+  return operation;
 }
 
 function revisionValue(value) {
@@ -402,7 +391,6 @@ function serviceFact(root, row, source, payload, result = null) {
   const owner = envelopeIds(envelope);
   const targetTask = idsFromEntity(result?.task);
   const targetExecution = idsFromEntity(result?.execution);
-  const authority = idsFromEntity(result?.authority_execution ?? result?.parent_execution);
   const ids = {
     taskId: owner.taskId ?? targetTask.taskId ?? null,
     executionId: owner.executionId ?? targetExecution.executionId ?? null,
@@ -417,7 +405,6 @@ function serviceFact(root, row, source, payload, result = null) {
     ...ids,
     target_task_id: targetTask.taskId ?? null,
     target_execution_id: targetExecution.executionId ?? null,
-    authority_execution_id: authority.executionId ?? null,
     result: entity,
     error: row.error ? { code: text(row.error.code ?? row.error.name, 80), message: text(row.error.message, 180) } : null,
   };
@@ -444,9 +431,7 @@ function domainFactsForService(root, row, source, payload, result = null) {
   const task = entityFromResult(result, 'task');
   const material = entityFromResult(result, 'material');
   const check = entityFromResult(result, 'check_result');
-  const authority = result?.authority_execution ?? result?.parent_execution ?? null;
   const targetIds = { ...idsFromEntity(task), ...idsFromEntity(execution) };
-  const authorityIds = idsFromEntity(authority);
   const ids = {
     taskId: owner.taskId ?? targetIds.taskId ?? null,
     executionId: owner.executionId ?? targetIds.executionId ?? null,
@@ -463,8 +448,8 @@ function domainFactsForService(root, row, source, payload, result = null) {
     summary,
     priority: 2,
   });
-  if (['task_create', 'propose_task', 'create_child_task'].includes(operation) && task) {
-    facts.push(base('task_created', { task: safeEntity(task, 'task'), parent_task_id: owner.taskId, parent_execution_id: owner.executionId }, { taskId: owner.taskId, executionId: owner.executionId }));
+  if (operation === 'task_create' && task) {
+    facts.push(base('task_created', { task: safeEntity(task, 'task') }, { taskId: task.task_id, executionId: owner.executionId }));
   }
   if (operation === 'task_take' && execution) {
     facts.push(base('task_taken', { task_id: task?.task_id ?? execution.task_id, execution_id: execution.execution_id, owner_ref: execution.owner_ref, state: execution.state }, { taskId: task?.task_id ?? execution.task_id, executionId: execution.execution_id }));
@@ -512,8 +497,6 @@ function domainFactsForService(root, row, source, payload, result = null) {
       deadline: execution?.wait_deadline ?? null,
     }, { executionId: execution?.execution_id ?? ids.executionId }));
   }
-  if (operation === 'accept_task') facts.push(base('review', { decision: 'accept', target_task_id: task?.task_id ?? owner.taskId, authority_execution_id: authorityIds.executionId ?? owner.executionId }, { taskId: owner.taskId ?? authorityIds.taskId, executionId: authorityIds.executionId ?? owner.executionId }));
-  if (operation === 'request_rework') facts.push(base('rework', { decision: 'request_rework', target_task_id: task?.task_id ?? owner.taskId, parent_execution_id: authorityIds.executionId ?? owner.executionId }, { taskId: owner.taskId ?? authorityIds.taskId, executionId: authorityIds.executionId ?? owner.executionId }));
   if (operation === 'stop_execution' || (operation === 'task_finish' && execution && !['RUNNING', 'CREATED', 'WAITING'].includes(execution.state))) {
     facts.push(base('execution_terminal', { execution: safeEntity(execution, 'execution'), terminal_state: execution?.state ?? result?.terminal_state ?? null }, { executionId: execution?.execution_id ?? ids.executionId }));
   }
@@ -585,14 +568,6 @@ function factsForObservationRow(root, observationPath, row, payload, mode) {
         source_execution: typeof payload?.source_execution === 'string' ? payload.source_execution : ids.executionId,
       },
     }, { operation: 'publish_material' }));
-    return facts;
-  }
-  if (row.kind === 'task_review') {
-    const decision = payload?.decision === 'request_rework' ? 'request_rework' : payload?.decision === 'accept' ? 'accept' : null;
-    facts.push(base(decision === 'request_rework' ? 'rework' : 'review', {
-      decision,
-      target_task_id: typeof payload?.target_task_id === 'string' ? payload.target_task_id : null,
-    }, { operation: decision === 'request_rework' ? 'request_rework' : 'accept_task' }));
     return facts;
   }
   if (row.kind === 'workspace_revision_saved') {
@@ -961,7 +936,7 @@ async function readDomainDatabases(root, dbPaths, errors, mode = 'full') {
     try {
       const tables = new Set(databaseTableNames(db));
       if (tables.has('tasks')) {
-        for (const row of selectRows(db, 'tasks', ['task_id', 'root_id', 'parent_id', 'owner_ref', 'task_type', 'state', 'state_version', 'goal', 'block_reason', 'created_at', 'updated_at'])) {
+        for (const row of selectRows(db, 'tasks', ['task_id', 'owner_ref', 'task_type', 'state', 'state_version', 'goal', 'block_reason', 'created_at', 'updated_at'])) {
           model.tasks.push({ ...row, project: basename(dirname(dbPath)), source: sourceForDb(root, dbPath, 'tasks', `task_id=${row.task_id}`) });
         }
       }
@@ -1135,7 +1110,7 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
       if (mode === 'full') {
         try { payload = JSON.parse(row.payload_json ?? '{}'); }
         catch (error) { errors.push({ path: sourcePath(root, observationPath), sequence: row.sequence, error: text(error.message, 180) }); continue; }
-      } else if (['material_read', 'material_consumed', 'material_published', 'task_review', 'task_lifecycle_operation', 'workspace_revision_saved', 'workspace_checked'].includes(row.kind)) {
+      } else if (['material_read', 'material_consumed', 'material_published', 'task_lifecycle_operation', 'workspace_revision_saved', 'workspace_checked'].includes(row.kind)) {
         // Read only the runner's bounded operator events in sanitized mode.
         // Other observation payloads may contain Agent or checker material and
         // remain intentionally opaque.
@@ -1163,11 +1138,6 @@ async function readObservationFacts(root, observationPath, experimentIds, mode, 
               scope: typeof decoded.scope === 'string' ? decoded.scope : null,
               source_task: typeof decoded.source_task === 'string' ? decoded.source_task : null,
               source_execution: typeof decoded.source_execution === 'string' ? decoded.source_execution : null,
-            };
-          } else if (row.kind === 'task_review') {
-            payload = {
-              decision: decoded.decision === 'accept' || decoded.decision === 'request_rework' ? decoded.decision : null,
-              target_task_id: typeof decoded.target_task_id === 'string' ? decoded.target_task_id : null,
             };
           } else if (row.kind === 'workspace_revision_saved') {
             payload = { workspace_revision: revisionValue(decoded.revision ?? decoded.workspace_revision) };
@@ -1397,18 +1367,16 @@ async function readRawFacts(root, projectIds, mode, intervals, errors) {
         const key = `bridge:${operation ?? '<none>'}`;
         const queue = pending.get(key) ?? [];
         const field = record.bridge_call_id ? 'bridge_call_id' : record.operation_id ? 'operation_id' : null;
-        const candidates = field ? queue.filter(item => item.record[field] === record[field]) : queue;
-        const uniqueIdentity = !field || bridgeIdentityCounts.get(`${operation}:${field}:${record[field]}`) === 1;
+        const candidates = field ? queue.filter(item => item.record[field] === record[field]) : [];
+        const uniqueIdentity = field && bridgeIdentityCounts.get(`${operation}:${field}:${record[field]}`) === 1;
         const candidate = candidates.length === 1 && uniqueIdentity ? candidates[0] : null;
-        const reusedLegacyId = !field && candidate?.record.operation_id && bridgeIdentityCounts.get(`${operation}:operation_id:${candidate.record.operation_id}`) > 1;
         const conflictingOwner = candidate && ['task_id', 'execution_id', 'operation_id'].some(field => record[field] && candidate.record[field] && record[field] !== candidate.record[field]);
-        // A response without complete stays pending. It blocks later legacy
-        // FIFO guesses while exact identities can still close the real call.
-        if (!candidate || conflictingOwner || reusedLegacyId || (!field && candidate.responseSent)) return { pending: null, basis: 'unknown' };
+        // A response without complete stays pending while exact identities can still close the real call.
+        if (!candidate || conflictingOwner) return { pending: null, basis: 'unknown' };
         if (complete) queue.splice(queue.indexOf(candidate), 1);
         else if (record.event === 'bridge.response_sent' || record.type === 'bridge.response_sent') candidate.responseSent = true;
         if (!queue.length) pending.delete(key);
-        return { pending: candidate, basis: field ?? 'unique_legacy_start' };
+        return { pending: candidate, basis: field };
       },
       takePending: (type, operation) => {
         const key = `${type}:${operation ?? '<none>'}`;
@@ -1488,7 +1456,7 @@ function factOperation(fact) {
 function isBoundary(fact) {
   if (BOUNDARY_KINDS.has(fact.kind)) return true;
   const operation = factOperation(fact);
-  return ['task_take', 'task_create', 'task_finish', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'].includes(operation);
+  return ['task_take', 'task_create', 'task_finish', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'stop_execution'].includes(operation);
 }
 
 function isSemanticBoundary(fact) {
@@ -1496,7 +1464,7 @@ function isSemanticBoundary(fact) {
     'task_created', 'task_taken',
     'workspace_checked', 'judge_result', 'judge_check', 'judge_check_record',
     'wait_for_requested', 'wake', 'resume', 'review', 'rework', 'execution_terminal',
-  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['create_child_task', 'workspace_check', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'].includes(factOperation(fact)));
+  ]).has(fact.kind) || (!['service_call_started', 'service_call_finished', 'database_operation', 'tool_call'].includes(fact.kind) && ['workspace_check', 'wait_for', 'stop_execution'].includes(factOperation(fact)));
 }
 
 function sourceLabels(facts) {
@@ -1534,7 +1502,7 @@ function latestState(facts, execution) {
 function resultForWindow(facts) {
   const meaningful = [...facts].reverse().find((fact) => ['judge_result', 'judge_check', 'judge_check_record', 'workspace_checked', 'wait_for_requested', 'review', 'rework', 'material_read', 'material_consumed', 'material_published', 'workspace_revision', 'execution_terminal', 'task_state_changed', 'execution_state_changed'].includes(fact.kind));
   const impactful = meaningful ?? [...facts].reverse().find((fact) => {
-    const durableOperations = ['task_take', 'task_create', 'task_finish', 'create_child_task', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'accept_task', 'request_rework', 'stop_execution'];
+    const durableOperations = ['task_take', 'task_create', 'task_finish', 'save_workspace_revision', 'publish_material', 'read_materials', 'consume_materials', 'workspace_check', 'apply_check_result', 'wait_for', 'stop_execution'];
     if (['heartbeat', 'agent_turn', 'agent_settled', 'process_event', 'agent_event', 'agent_rpc_request'].includes(fact.kind)) return false;
     if (durableOperations.includes(fact.operation)) return true;
     if (fact.kind === 'service_call_started' || fact.kind === 'service_call_finished') return Boolean(fact.summary?.ok === false || fact.summary?.error);
@@ -1578,7 +1546,7 @@ function semanticPhase(facts) {
   if (kinds.has('workspace_checked') || operations.has('workspace_check')) return 'Workspace editing and checking';
   if (kinds.has('review') || kinds.has('rework')) return 'parent review and rework';
   if (kinds.has('wait_for_requested')) return 'coordination and waiting';
-  if (kinds.has('material_published') || kinds.has('material_read') || kinds.has('material_consumed') || operations.has('create_child_task')) return 'research and collaboration handoff';
+  if (kinds.has('material_published') || kinds.has('material_read') || kinds.has('material_consumed')) return 'research and collaboration handoff';
   if (kinds.has('workspace_revision') || operations.has('write_workspace_file') || operations.has('save_workspace_revision')) return 'Workspace editing';
   if (operations.has('task_take') || kinds.has('execution_assigned')) return 'Task discovery and take';
   if (facts.some((fact) => ['agent_turn', 'agent_event', 'agent_rpc_request'].includes(fact.kind))) return 'Agent reasoning activity';
@@ -2321,8 +2289,8 @@ function evidenceTable(inventory) {
 }
 
 function taskTable(model) {
-  const rows = model.tasks.map((task) => `| ${md(task.task_id)} | ${md(task.parent_id ?? 'root')} | ${md(task.task_type)} | ${md(task.state)} | ${md(task.owner_ref)} | ${md(task.goal)} | ${task.source.ref} |`);
-  return rows.length ? ['| Task | Parent | Type | State | Owner | Goal | Evidence |', '|---|---|---|---|---|---|---|', ...rows].join('\n') : '_No Task rows were available from the authoritative database._';
+  const rows = model.tasks.map((task) => `| ${md(task.task_id)} | ${md(task.task_type)} | ${md(task.state)} | ${md(task.owner_ref)} | ${md(task.goal)} | ${task.source.ref} |`);
+  return rows.length ? ['| Task | Type | State | Owner | Goal | Evidence |', '|---|---|---|---|---|---|', ...rows].join('\n') : '_No Task rows were available from the authoritative database._';
 }
 
 function executionTable(executions) {

@@ -79,7 +79,7 @@ test('cancelled finish preserves replacement intent while closing and rejects a 
   assert.equal(service.getExecution(next.execution_id).state, 'CREATED');
   assert.equal(service.getExecutionFinish(next.execution_id), null);
   service.finalizeExecutionFinish(execution.execution_id, { fencingVersion: execution.fencing_version });
-  assert.equal(service.getTask(task.task_id).state, 'CANCELLED');
+  assert.equal(service.getTask(task.task_id).state, 'CANCELED');
   assert.ok(service.listMissionTasks({ mission_id: task.mission_id }).some((item) => item.task_id === task.task_id));
   assert.equal(service.taskStatus({ mission_id: task.mission_id }).counts.terminal, 1);
   assert.equal(service.getExecution(execution.execution_id).state, 'CANCELLED');
@@ -146,51 +146,9 @@ test('Task detail exposes durable finish records after the Bot is gone', (t) => 
   const { service, task, execution, envelope } = fixture(t);
   service.dispatch('task_finish', { outcome: 'incomplete', reason: 'No result was saved' }, envelope('finish:detail'));
   service.finalizeExecutionFinish(execution.execution_id, { fencingVersion: execution.fencing_version });
-  const detail = service.viewModernTask(task.task_id);
+  const detail = service.viewTaskRecord(task.task_id);
   assert.equal(detail.finishes[0].request_id, 'finish:detail');
   assert.equal(detail.finishes[0].outcome, 'incomplete');
   assert.equal(detail.finishes[0].reason, 'No result was saved');
   assert.ok(detail.finishes[0].closed_at);
-});
-
-test('an existing Execution store migrates to closing without losing take identity or foreign keys', (t) => {
-  const { service, task, execution, envelope } = fixture(t);
-  // Construct the previous on-disk constraint around existing durable rows.
-  const priorSchema = service.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'executions'").get().sql
-    .replace('CREATE TABLE executions', 'CREATE TABLE executions_previous').replace("'CLOSING', ", '');
-  service.db.exec(`PRAGMA foreign_keys = OFF; ${priorSchema};
-    INSERT INTO executions_previous SELECT * FROM executions;
-    DROP TABLE executions;
-    ALTER TABLE executions_previous RENAME TO executions;
-    PRAGMA foreign_keys = ON;`);
-  const migrated = new TaskService(service.db);
-  assert.equal(migrated.getActiveExecutionForCore('core-1').execution_id, execution.execution_id);
-  const accepted = migrated.dispatch('task_finish', { outcome: 'incomplete' }, envelope('finish:migrated'));
-  assert.equal(accepted.execution.state, 'CLOSING');
-  migrated.finalizeExecutionFinish(execution.execution_id, { fencingVersion: execution.fencing_version });
-  assert.equal(migrated.getTask(task.task_id).state, 'OPEN');
-  assert.deepEqual(service.db.prepare('PRAGMA foreign_key_check').all(), []);
-  assert.equal(service.db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
-});
-
-
-test('exact pre-migration finish receipts remain replayable', (t) => {
-  const { service, envelope } = fixture(t);
-  const request = envelope('finish:legacy-receipt');
-  const payload = { outcome: 'incomplete' };
-  const accepted = service.dispatch('task_finish', payload, request);
-  // Prior releases fingerprinted the original versions in the envelope.
-  service.db.prepare('UPDATE operations SET fingerprint = ? WHERE operation_id = ?')
-    .run(operationPayload('finish_task', payload, request), request.operation_id);
-  assert.deepEqual(service.dispatch('task_finish', payload, request), accepted);
-});
-
-test('dynamic waits cannot form a cycle through retained pre-migration dependencies', (t) => {
-  const { service, task, execution, envelope, create } = fixture(t);
-  const prerequisite = create('task:old-dependency');
-  service.db.prepare(`INSERT INTO task_structure_dependencies
-    (dependency_id, task_id, dependency_kind, prerequisite_task_id, created_by_actor_ref, created_at)
-    VALUES ('prior-wait', ?, 'TASK', ?, 'bot:prior', '2026-01-01T00:00:00Z')`).run(prerequisite.task_id, task.task_id);
-  assert.throws(() => service.dispatch('task_finish', { outcome: 'blocked', wait_for: prerequisite.task_id, reason: 'Would cycle through prior wait' }, envelope('finish:mixed-cycle')), (error) => error.code === 'INVALID_CONTRACT');
-  assert.equal(service.getExecution(execution.execution_id).state, 'CREATED');
 });

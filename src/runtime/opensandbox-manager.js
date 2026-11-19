@@ -406,8 +406,7 @@ export class OpenSandboxManager {
     }
     const launchBody = { ...this.environment, ...envs(environment) };
     const { mission_id: configuredMission = null, mission_key: _missionKey, bot_id: _botId, bot_key: _botKey,
-      resource_key: _resourceKey, execution_id: _executionId, executionId: _legacyExecutionId, execution_key: _executionKey,
-      ...labels } = { ...this.metadata, ...metadata };
+      resource_key: _resourceKey, ...labels } = { ...this.metadata, ...metadata };
     const creation = botId ? { bot_id: botId, resource_key: id, mission_id: configuredMission, inFlight: true, onCreated } : null;
     if (creation) this.pendingCreations.set(id, creation);
     const workerToken = randomUUID();

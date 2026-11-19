@@ -51,7 +51,6 @@ test('Workspace Manager enforces required input and declared output path classes
     const source = 'theorem input : True := by trivial\n';
     const task = {
       task_id: 'task-contract',
-      root_id: 'task-contract',
       task_type: 'proof',
       goal: 'workspace contract',
       expected_output: 'candidate',
@@ -144,7 +143,6 @@ test('missing required input is a contract blocker while missing output is not c
         fencingVersion: 1,
         task: {
           task_id: 'task-missing-input',
-          root_id: 'task-missing-input',
           task_type: 'research',
           goal: 'missing fixture',
           expected_output: 'notes',
@@ -165,7 +163,6 @@ test('missing required input is a contract blocker while missing output is not c
       fencingVersion: 1,
       task: {
         task_id: 'task-output',
-        root_id: 'task-output',
         task_type: 'research',
         goal: 'declared output',
         expected_output: 'notes',
@@ -188,11 +185,10 @@ test('missing required input is a contract blocker while missing output is not c
   });
 });
 
-test('Workspace contract keeps parent and Runtime metadata paths typed and forbidden', async () => {
+test('Workspace contract keeps Runtime metadata paths typed and forbidden', async () => {
   await withManager(async (manager) => {
     const task = {
       task_id: 'task-forbidden',
-      root_id: 'task-forbidden',
       task_type: 'research',
       goal: 'forbidden paths',
       expected_output: 'notes',

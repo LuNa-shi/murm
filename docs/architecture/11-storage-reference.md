@@ -10,28 +10,28 @@ This chapter separates persisted facts from live-process state, and provides eve
 | Context Service | Immutable Material content/provenance/hash/version and explicit consumption edges | No semantic proof of whether the Agent used or understood the text |
 | Judge Service | Workspace artifact request/checker/input binding, CheckResult and result class, checker health/preflight attempts, applied-result bookkeeping | The currently executing checker subprocess and pending asynchronous call |
 | MissionWorkspace | Public Mission Git repository, immutable numeric revisions, main, merge/freeze receipts and index | Unsaved guest edits and live checker work |
-| Compatibility Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
+| Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
 | Observation Store | Experiment registry, ordered events, operator payload, redacted Agent payload and payload hash | SSE connections, event-emitter subscriptions, server caches and client projection |
 | Registry/Bridge | Manifest/profile hashes can be recorded in run metadata; source/bundle files define defaults | Registered adapters, readiness cache, Bridge token, current binding, deferred lifecycle callback |
 | Sandbox | Registered Bots publish files through explicit public save; compatibility paths retain checkpoint/progress | Container/process state, background job handles; cleanup and saving are separate steps |
 
-Production uses `project.sqlite` for Task/Mission/Workspace coordination, `context.sqlite` for Material state, `judge.sqlite` for diagnostic checking and `model-budget.sqlite` for model admission. The formal CLI injects a separate persistent observation database; only the library fallback colocates observations with Task. Each service owns its connection/schema. Independent peers exchange explicit HTTP commands and receipts. The Task-owned durable gate orders revocation against Context commit and actual Judge spawn; unknown outcomes remain fenced until exact reconciliation. Resource-unit ownership survives Judge crashes independently of the in-memory checker promise. The in-process and historical single-connection compositions remain supported compatibility paths. See [Services](04-services.md#independent-contextjudge-deployment) for order, bounds and cleanup.
+Production uses `project.sqlite` for Task/Mission/Workspace coordination, `context.sqlite` for Material state, `judge.sqlite` for diagnostic checking and `model-budget.sqlite` for model admission. The formal CLI injects a separate persistent observation database; only the library fallback colocates observations with Task. Each service owns its connection/schema. Independent peers exchange explicit HTTP commands and receipts. The Task-owned durable gate orders revocation against Context commit and actual Judge spawn; unknown outcomes remain fenced until exact reconciliation. Resource-unit ownership survives Judge crashes independently of the in-memory checker promise. Current service compositions use the configured local or independent service boundaries. See [Services](04-services.md#independent-contextjudge-deployment) for order, bounds and cleanup.
 
 The Task-owned `service_commit_gate` holds one unresolved exact command and digest; `service_commit_events` retains notification delivery work. Context owns `context_peer_receipts` for terminal gate outcomes. Judge owns `judge_peer_phases` for one-shot phase/generation receipts. The private `judge-checker-resources.ndjson` ledger names only allocated/settled systemd resources and is fsynced before launch. These are recovery records, not new research entities.
 
 ## How to interpret the tables
 
-`modern_task_records.gap` is nullable for historical records. Constructor migration adds the nullable column without rewriting legacy descriptions or priorities. New registered Bot contracts require a real gap and explicit three-level priority; reads identify legacy contracts instead of fabricating either value. `task_contract_revisions` stores immutable per-Task spec-version snapshots, spec hash, actor, reason and timestamp. Initial new proposals create their first snapshot; revision preserves an existing legacy contract before appending the replacement. Both snapshots, changed Task fields/dependencies and the idempotency receipt commit in the same Task transaction. Existing Executions retain their original spec version/hash, so their checks and artifacts remain historical evidence for that contract. Task view exposes bounded version-ordered continuation rather than loading all revisions.
+`task_records.gap` and `registration_hash` are required current Task fields. Registered Bot contracts require a real gap and explicit three-level priority. `task_contract_revisions` stores immutable per-Task spec-version snapshots, spec hash, actor, reason and timestamp. Initial proposals create their first snapshot; revision appends a new current contract. Both snapshots, changed Task fields/dependencies and the idempotency receipt commit in the same Task transaction. Existing Executions retain their original spec version/hash, so their checks and artifacts remain historical evidence for that contract. Task view exposes bounded version-ordered continuation rather than loading all revisions.
 
 | Table(s) | Meaning and important fields |
 |---|---|
 | `missions` | Mission columns are `mission_id`, `goal`, `acceptance_conditions_json`, `merge_required_check_json`, `created_by`, `created_at`, `updated_at`. Initial Materials/resource budgets are not Mission columns. |
-| `tasks` + `modern_task_records` | Durable Task row plus `modern_task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. Modern record projection combines these facts. A Mission may begin with zero Tasks; each Task is explicitly created and taken, with no implicit shared-Mission Task. |
+| `tasks` + `task_records` | Durable Task row plus `task_records` Mission ID, short summary, timebox and registration hash. Responsibility keys live on `tasks`; feedback lives in notifications/receipts. The current record projection combines these facts. A Mission may begin with zero Tasks; each Task is explicitly created and taken, with no implicit shared-Mission Task. |
 | `bots` | One Bot run: Mission/Core, state/version, unique optional Execution, selection deadline, resource key, provider/Sandbox IDs, exit request/reason, optional Runtime stop terminal state, and lifecycle timestamps. A partial unique index reserves each Mission/Core until CLOSED. The trusted registration grant is stored in `coordination_permissions_json`; Pi/worker tokens are not stored here. |
 | `executions` | One authorization interval: Task/spec/state/fence, owner/Core, lease/deadline, Workspace/checkpoint, Workspace source/check references, input snapshot/Materials, and terminal reason. Only the unregistered compatibility path can retain this Execution across a Session restart. |
 | `execution_finish_intents` | One accepted finish per Execution, unique request ID, immutable payload/outcome, optional wait/replacement references, and acceptance/closure timestamps. Stored atomically with CLOSING and dynamic wait edges; exposed through Task detail. |
-| `task_relations` | Current `depends_on` prerequisite edges and retained historical `spawned_from` records; new proposals cannot create provenance edges. |
-| `task_cancellations`, `task_dependency_replacements` | CAS-protected unowned cancellation and exact prerequisite replacement audit; original legacy/modern edge bytes and reasons remain. |
+| `task_relations` | Current `depends_on` prerequisite edges and `depends_on` prerequisite edges. |
+| `task_cancellations`, `task_dependency_replacements` | CAS-protected unowned cancellation and exact prerequisite replacement audit; original edge bytes and reasons remain. |
 | `mission_submissions`, `mission_submission_audit` | Mission-owned preparation/pending/terminal receipts, immutable inputs, freeze epoch, retry lineage, cleanup intent and bounded late-result audit. |
 | `task_material_links` | A Material's input/response/handoff/experience role for a Task and receiving Task, separate from immutable producer provenance. |
 | `task_notifications` | Durable typed feedback queue with Mission/Task/Execution targeting and fallback delivery/handling metadata. |
@@ -42,16 +42,13 @@ The Task-owned `service_commit_gate` holds one unresolved exact command and dige
 | `material_relation_heads`, `material_relations`, `material_relation_events` | Per-old-Material CAS version, immutable original dispute/supersede details and append-only revocation history. Active flags select current relationships without erasing past authors or reasons. |
 | `check_results` | Request key/hash and Workspace source binding; status/verdict; separate process status/result class/retryability/diagnostic; applied Task state/version/time. A result is evidence, not universally Mission acceptance. |
 | `checker_preflights` | Checker/environment/project identity, health fingerprint, repeated-failure count and evidence. |
-| `operations`, `take_keys`, `task_creation_keys`, `wait_keys`, `wake_keys` | Replay and conflict protection. Operation replay normally compares the full stable operation/payload/envelope fingerprint. New finish receipts exclude volatile state/fence versions while retaining actor, Task, Execution, spec and payload identity. |
-| `task_creation_provenance`, `task_structure_*`, `task_rework_links` | Retained structural/legacy support: versioned alternative/required groups, explicit dependencies, audit history and rework lineage. These tables still exist at this baseline. |
-| `task_admission_policies`, `execution_admission_counters`, `turn_admission_counters` | Creation/fairness limits and usage accounting; not the authoritative plan for a GitHub development Issue. |
 | `experiments`, `observation_events` | Monitoring registry and ordered projections. `visibility` is a label; Agent reads use the redacted payload column rather than filtering out all private-labeled rows. |
 
 ## Transactions, migrations and recovery limits
 
 Task and Observation schema setup enables foreign keys, a 5-second SQLite busy timeout and WAL mode. Context and Judge create their tables on the supplied connection. Task/Context dispatch mutation replay and Judge's `submit_check_result` replay use `BEGIN IMMEDIATE` transactions with rollback on failure. Judge commits its RUNNING request before awaiting the external checker; checker health and final result are later writes, so a whole compiler run is not one database transaction. A readonly query is not thereby a distributed snapshot across independently hosted providers.
 
-Constructors inspect existing columns and apply the current schema migrations. Context adds missing `role` (default `experience`) and `mission_id`. Judge adds Workspace source binding, Execution/applied-result metadata and explicit checker outcome fields. Task Service contains migrations for Task/Execution fields, constraints and notification receipts; the source inventory links that constructor. The Execution CHECK migration adds CLOSING in a transaction, preserving existing columns, non-Core indexes and triggers, and restoring foreign-key enforcement in a finally block. The active-Core index also includes CLOSING. The SQL below is the complete create-schema definition for the reviewed tree.
+Constructors create the current schema definitions for the supplied database connections. They do not upgrade historical databases or preserve removed Task/Judge structures. The SQL below is the complete create-schema definition for the reviewed tree.
 
 Durable state can outlive a Session, but runtime recovery still has to validate the current fence, reconstruct/restore a Workspace, reacquire a Core and start a Session. Observation events do not authorize that recovery. See [02 Execution](02-execution.md) and [05 Workspace](05-workspace-continuity.md).
 
@@ -205,16 +202,13 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `a5555a8ce7bc5ff9269767bf2bf097584763fcaea94e6d33cc42b95bf44a072c`.
+Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `588bac4e60d5358c896ece9621376315d4c885a370c48459ab69d28feb1c1d7f`.
 
 ```sql
 PRAGMA foreign_keys = ON;
 PRAGMA busy_timeout = 5000;
 PRAGMA journal_mode = WAL;
 
--- Mission and modern Task records are deliberately additive.  The legacy
--- Task tables remain readable while the Issue #100 public surface uses these
--- small records for a flat Mission-scoped queue.
 CREATE TABLE IF NOT EXISTS missions (
   mission_id TEXT PRIMARY KEY,
   goal TEXT NOT NULL,
@@ -225,23 +219,23 @@ CREATE TABLE IF NOT EXISTS missions (
   updated_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS modern_task_records (
+CREATE TABLE IF NOT EXISTS task_records (
   task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
   mission_id TEXT NOT NULL REFERENCES missions(mission_id),
   summary TEXT NOT NULL,
-  gap TEXT,
+  gap TEXT NOT NULL,
   timebox_ms INTEGER NOT NULL CHECK (timebox_ms > 0),
-  registration_hash TEXT,
+  registration_hash TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS modern_task_records_mission
-  ON modern_task_records(mission_id, created_at, task_id);
+CREATE INDEX IF NOT EXISTS task_records_mission
+  ON task_records(mission_id, created_at, task_id);
 
 -- SQLite indexes carry rowid as their tie breaker: this supports bounded
 -- Mission creation-window scans without sorting every Mission record.
-CREATE INDEX IF NOT EXISTS modern_task_records_mission_scan ON modern_task_records(mission_id);
+CREATE INDEX IF NOT EXISTS task_records_mission_scan ON task_records(mission_id);
 
 CREATE TABLE IF NOT EXISTS task_contract_revisions (
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
@@ -258,7 +252,7 @@ CREATE TABLE IF NOT EXISTS task_relations (
   relation_id TEXT PRIMARY KEY,
   mission_id TEXT NOT NULL REFERENCES missions(mission_id),
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
-  relation_kind TEXT NOT NULL CHECK (relation_kind IN ('spawned_from', 'depends_on')),
+  relation_kind TEXT NOT NULL CHECK (relation_kind = 'depends_on'),
   related_task_id TEXT NOT NULL REFERENCES tasks(task_id),
   created_by_task_id TEXT REFERENCES tasks(task_id),
   created_by_execution_id TEXT REFERENCES executions(execution_id),
@@ -373,8 +367,6 @@ CREATE INDEX IF NOT EXISTS task_material_links_material
 
 CREATE TABLE IF NOT EXISTS tasks (
   task_id TEXT PRIMARY KEY,
-  root_id TEXT NOT NULL,
-  parent_id TEXT REFERENCES tasks(task_id),
   owner_ref TEXT NOT NULL,
   task_type TEXT NOT NULL,
   task_type_version TEXT NOT NULL,
@@ -390,13 +382,10 @@ CREATE TABLE IF NOT EXISTS tasks (
   completion_contract_json TEXT NOT NULL,
   parallel_quota INTEGER NOT NULL DEFAULT 1 CHECK (parallel_quota >= 1),
   state_version INTEGER NOT NULL DEFAULT 0,
-  state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED')),
+  state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED')),
   block_reason TEXT,
-  max_depth INTEGER NOT NULL,
-  max_children INTEGER NOT NULL,
   max_attempts INTEGER NOT NULL,
   retry_policy_json TEXT NOT NULL,
-  root_deadline TEXT,
   cancelled_at TEXT,
   eligible_at TEXT,
   responsibility_key TEXT,
@@ -414,7 +403,7 @@ CREATE TABLE IF NOT EXISTS executions (
   state_version INTEGER NOT NULL DEFAULT 0,
   attempt_no INTEGER NOT NULL,
   -- A Core binding is immutable for the lifetime of an Execution.  Legacy
-  -- records may be unbound and are migrated with NULL for read compatibility.
+  -- records may be unbound and use NULL for the optional binding fields.
   core_id TEXT,
   session_generation INTEGER NOT NULL DEFAULT 1,
   fencing_version INTEGER NOT NULL,
@@ -502,112 +491,6 @@ CREATE TABLE IF NOT EXISTS operations (
   created_at TEXT NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS task_creation_keys (
-  request_key TEXT PRIMARY KEY,
-  parent_task_id TEXT,
-  fingerprint TEXT NOT NULL,
-  task_id TEXT NOT NULL UNIQUE REFERENCES tasks(task_id),
-  created_at TEXT NOT NULL
-);
-
--- Task relationships are semantic records over ordinary Task IDs.  The
--- parent_id column above remains the legacy creation edge; these tables keep
--- alternative work, jointly-required work, and concrete dependencies
--- separate from creation provenance.
-CREATE TABLE IF NOT EXISTS task_creation_provenance (
-  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
-  creator_task_id TEXT REFERENCES tasks(task_id),
-  creator_execution_id TEXT REFERENCES executions(execution_id),
-  creator_actor_ref TEXT NOT NULL,
-  creation_kind TEXT NOT NULL CHECK (creation_kind IN ('ROOT', 'CHILD', 'BRANCH', 'REQUIRED_SUBTASK', 'REWORK')),
-  prior_task_id TEXT REFERENCES tasks(task_id),
-  source_material_refs_json TEXT NOT NULL DEFAULT '[]',
-  feedback_json TEXT,
-  workspace_lineage_json TEXT,
-  collaboration_reason_json TEXT,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS task_structure_versions (
-  task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
-  structural_version INTEGER NOT NULL DEFAULT 1 CHECK (structural_version >= 1),
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS task_structure_events (
-  event_id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES tasks(task_id),
-  structural_version INTEGER NOT NULL,
-  event_type TEXT NOT NULL,
-  actor_ref TEXT NOT NULL,
-  execution_id TEXT REFERENCES executions(execution_id),
-  payload_json TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS task_structure_events_task_version
-  ON task_structure_events(task_id, structural_version, created_at);
-
-CREATE TABLE IF NOT EXISTS task_structure_groups (
-  group_id TEXT PRIMARY KEY,
-  owner_task_id TEXT NOT NULL REFERENCES tasks(task_id),
-  group_kind TEXT NOT NULL CHECK (group_kind IN ('BRANCH', 'REQUIRED_SUBTASK')),
-  structural_version INTEGER NOT NULL,
-  created_by_task_id TEXT REFERENCES tasks(task_id),
-  created_by_execution_id TEXT REFERENCES executions(execution_id),
-  created_by_actor_ref TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  retired_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS task_structure_members (
-  group_id TEXT NOT NULL REFERENCES task_structure_groups(group_id),
-  task_id TEXT NOT NULL REFERENCES tasks(task_id),
-  member_order INTEGER NOT NULL DEFAULT 0,
-  added_in_version INTEGER NOT NULL,
-  added_at TEXT NOT NULL,
-  retired_at TEXT,
-  PRIMARY KEY (group_id, task_id)
-);
-
-CREATE INDEX IF NOT EXISTS task_structure_members_task
-  ON task_structure_members(task_id, retired_at);
-
-CREATE TABLE IF NOT EXISTS task_structure_dependencies (
-  dependency_id TEXT PRIMARY KEY,
-  task_id TEXT NOT NULL REFERENCES tasks(task_id),
-  dependency_kind TEXT NOT NULL CHECK (dependency_kind IN ('TASK', 'MATERIAL', 'CHECK_RESULT')),
-  prerequisite_task_id TEXT REFERENCES tasks(task_id),
-  material_id TEXT,
-  check_result_id TEXT,
-  requirement_json TEXT NOT NULL DEFAULT '{}',
-  created_by_task_id TEXT REFERENCES tasks(task_id),
-  created_by_execution_id TEXT REFERENCES executions(execution_id),
-  created_by_actor_ref TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  retired_at TEXT,
-  CHECK (
-    (dependency_kind = 'TASK' AND prerequisite_task_id IS NOT NULL AND material_id IS NULL AND check_result_id IS NULL) OR
-    (dependency_kind = 'MATERIAL' AND prerequisite_task_id IS NULL AND material_id IS NOT NULL AND check_result_id IS NULL) OR
-    (dependency_kind = 'CHECK_RESULT' AND prerequisite_task_id IS NULL AND material_id IS NULL AND check_result_id IS NOT NULL)
-  )
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS task_structure_dependencies_active
-  ON task_structure_dependencies(task_id, dependency_kind, COALESCE(prerequisite_task_id, material_id, check_result_id))
-  WHERE retired_at IS NULL;
-
-CREATE TABLE IF NOT EXISTS task_rework_links (
-  prior_task_id TEXT NOT NULL REFERENCES tasks(task_id),
-  rework_task_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
-  feedback_json TEXT NOT NULL,
-  source_material_refs_json TEXT NOT NULL DEFAULT '[]',
-  workspace_lineage_json TEXT,
-  created_by_actor_ref TEXT NOT NULL,
-  created_by_execution_id TEXT REFERENCES executions(execution_id),
-  created_at TEXT NOT NULL
-);
-
 CREATE TABLE IF NOT EXISTS take_keys (
   request_key TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
@@ -615,51 +498,11 @@ CREATE TABLE IF NOT EXISTS take_keys (
   execution_id TEXT NOT NULL REFERENCES executions(execution_id),
   created_at TEXT NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS task_admission_policies (
-  root_id TEXT PRIMARY KEY REFERENCES tasks(task_id),
-  max_unfinished_tasks INTEGER NOT NULL,
-  max_open_tasks INTEGER NOT NULL,
-  max_children_per_execution INTEGER NOT NULL,
-  max_turn_mutations INTEGER NOT NULL,
-  aging_threshold_ms INTEGER NOT NULL,
-  require_responsibility_key INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS execution_admission_counters (
-  execution_id TEXT PRIMARY KEY REFERENCES executions(execution_id),
-  child_count INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS turn_admission_counters (
-  execution_id TEXT NOT NULL REFERENCES executions(execution_id),
-  turn_id TEXT NOT NULL,
-  mutation_count INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (execution_id, turn_id)
-);
-
-CREATE TABLE IF NOT EXISTS wait_keys (
-  request_key TEXT PRIMARY KEY,
-  execution_id TEXT NOT NULL REFERENCES executions(execution_id),
-  fingerprint TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS wake_keys (
-  request_key TEXT PRIMARY KEY,
-  execution_id TEXT NOT NULL REFERENCES executions(execution_id),
-  fingerprint TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
 ```
 
 ### Context database
 
-Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `5e0a1a4fc2fed95cfaf765a218c4dcc402f391be18899105145405e269b93bd1`.
+Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `b60cbb5e09bf265d42d4b0d961f1bacc034abb91aa4118d7561a7a4a59f181d7`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -673,8 +516,7 @@ CREATE TABLE IF NOT EXISTS operations (
 CREATE TABLE IF NOT EXISTS materials (
   material_id TEXT PRIMARY KEY,
   kind TEXT NOT NULL CHECK (kind IN ('assumption', 'fact', 'conjecture', 'experience', 'failure', 'artifact', 'steer', 'check_result')),
-  -- Collaboration role is orthogonal to the evidence kind.  Older rows are
-  -- migrated to experience, which is the least prescriptive role.
+  -- Collaboration role is orthogonal to the evidence kind.
   role TEXT NOT NULL DEFAULT 'experience' CHECK (role IN ('input', 'response', 'handoff', 'experience')),
   mission_id TEXT,
   scope TEXT NOT NULL,
@@ -776,7 +618,7 @@ CREATE INDEX IF NOT EXISTS material_consumptions_material_scan
 
 ### Judge database
 
-Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `ac0ce787b69c965d8843b3181d621e8f6d26e8c392c7b0807c6c29b2c746e0b6`.
+Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `7fceae1e3ec7c8c5c53e4c94313e5995898a71907a3a7c8b092cb727b3239142`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -921,13 +763,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `05e307d72e815db99b20a83da6c1ef95c09d0c7bef9a044c9d52d968cc4496c9`.
-
-#### executions_active_core
-
-```sql
-CREATE INDEX executions_active_core ON executions(core_id, state) WHERE core_id IS NOT NULL AND state IN ('CREATED', 'RUNNING', 'CLOSING');
-```
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `f9647677004269e14d41ecedd0381857828d735ed4d79404ba5c80190ba20c88`.
 
 #### mission_final_check_active
 
@@ -985,14 +821,6 @@ CREATE TABLE mission_submissions (
         document TEXT NOT NULL,
         PRIMARY KEY (mission_id, submission_id)
       );
-```
-
-#### tasks_active_responsibility
-
-```sql
-CREATE UNIQUE INDEX tasks_active_responsibility
-      ON tasks(root_id, responsibility_key)
-      WHERE responsibility_key IS NOT NULL AND state NOT IN ('CANCELLED', 'CANCELED', 'REJECTED', 'CLOSED', 'DONE');
 ```
 
 <!-- END GENERATED REFERENCE -->

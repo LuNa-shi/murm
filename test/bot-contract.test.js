@@ -64,7 +64,7 @@ test('four Core discovery send paths carry current durable identity and pinned p
     assert.equal(input.system_prompt_sha256, BOT_SYSTEM_HASH);
     assert.deepEqual(input.skills, BOT_SKILLS);
     assert.deepEqual(input.eligible_task_page, { tasks: [], complete_history: false });
-    assert.doesNotMatch(message, /swarmenv_task|execution_progress|identity rotation/);
+    assert.doesNotMatch(message, /swarmenv_task|identity rotation/);
   }
 });
 
@@ -136,7 +136,7 @@ test('proposal-only report counts more than one page exactly without claiming pr
     assert.equal(Object.hasOwn(report.protocol, 'parallel_mode'), false);
     assert.equal(report.protocol.project_parallelism, 1);
     assert.equal(Object.hasOwn(report.project, 'structure'), false);
-    assert.equal(Object.hasOwn(report.project.task_tree[0], 'parent_id'), false);
+    assert.equal(typeof report.project.task_tree[0].task_id, 'string');
     assert.equal(report.project.task_count, 105);
     assert.equal(report.project.task_tree.length, 100);
     assert.equal(report.project.task_page.complete, false);

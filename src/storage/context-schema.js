@@ -10,8 +10,7 @@ CREATE TABLE IF NOT EXISTS operations (
 CREATE TABLE IF NOT EXISTS materials (
   material_id TEXT PRIMARY KEY,
   kind TEXT NOT NULL CHECK (kind IN ('assumption', 'fact', 'conjecture', 'experience', 'failure', 'artifact', 'steer', 'check_result')),
-  -- Collaboration role is orthogonal to the evidence kind.  Older rows are
-  -- migrated to experience, which is the least prescriptive role.
+  -- Collaboration role is orthogonal to the evidence kind.
   role TEXT NOT NULL DEFAULT 'experience' CHECK (role IN ('input', 'response', 'handoff', 'experience')),
   mission_id TEXT,
   scope TEXT NOT NULL,

@@ -116,7 +116,6 @@ function dispatch(capability, input, envelope, role = null) {
   if (serviceId === 'task') {
     const bot = taskService.getBot(envelope.actor_ref);
     if (bot) {
-      if (capability.operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy Execution progress is unavailable to Bots');
       const requestedMission = input.mission_id ?? input.missionId;
       const taskId = input.task_id ?? input.taskId ?? envelope.task_id;
       if ((requestedMission !== undefined && requestedMission !== bot.mission_id) ||

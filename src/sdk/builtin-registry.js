@@ -16,7 +16,7 @@ const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
     'bot_exit',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
-    'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_revise', 'task_cancel', 'task_dependency_replace',
+    'task_status', 'task_take', 'task_feedback', 'task_revise', 'task_cancel', 'task_dependency_replace',
     'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'workspace_public_apply',
     'workspace_status', 'workspace_current_diff', 'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
   ]),
@@ -52,7 +52,7 @@ function strictInputSchema(parameters) {
 
 function audienceFor(tool) {
   if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'mission_submission_get'].includes(tool.operation)) return ALL_ROLES;
-  if (['list_tasks', 'task_list', 'task_view'].includes(tool.operation)) return ALL_ROLES;
+  if (['task_list', 'task_view'].includes(tool.operation)) return ALL_ROLES;
   if (SHARED_READ_OPERATIONS.has(tool.operation)) return ALL_ROLES;
   if (tool.service === 'catalog' && tool.scope === 'public-read' && tool.side_effect === false) return ALL_ROLES;
   return ['bound', 'recovery'];

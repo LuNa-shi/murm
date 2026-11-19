@@ -170,7 +170,6 @@ export class WorkspaceManager {
       ].join('\n'),
       'workspace-manifest.json': JSON.stringify({
         task_id: task.task_id,
-        root_id: task.root_id,
         task_type: task.task_type,
         goal: task.goal,
         expected_output: task.expected_output,
@@ -349,7 +348,7 @@ export class WorkspaceManager {
       // commit identity.
       metadata.git_commit = gitSourceCommit;
     } else {
-      metadata.git_commit = await this.#initializeGit(target, 'Restore legacy Workspace revision');
+      metadata.git_commit = await this.#initializeGit(target, 'Restore Workspace revision');
     }
     await this.#writeMetadata(target, metadata);
     await this.#writeRevisionSnapshot(target, metadata);

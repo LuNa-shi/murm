@@ -13,7 +13,7 @@ function op(operationId, actorRef, extra = {}) {
 }
 
 function createMission(service, missionId = 'mission:test') {
-  return service.dispatch('mission.create', {
+  return service.dispatch('mission_create', {
     mission_id: missionId,
     goal: 'Solve one shared problem',
     acceptance_conditions: ['a durable result exists'],
@@ -21,7 +21,7 @@ function createMission(service, missionId = 'mission:test') {
 }
 
 function createTask(service, missionId, taskId, extra = {}, envelope = null) {
-  return service.dispatch('task.create', {
+  return service.dispatch('task_create', {
     mission_id: missionId,
     task_id: taskId,
     summary: `Investigate ${taskId} without duplicating other work.`,
@@ -32,7 +32,7 @@ function createTask(service, missionId, taskId, extra = {}, envelope = null) {
   }, envelope ?? op(`task:${taskId}`, 'agent:test')).task;
 }
 
-test('Mission creates a flat Task pool with explicit proposal and dependency relations', () => {
+test('Mission creates a Task pool with explicit proposal and dependency relations', () => {
   const { service } = env();
   const mission = createMission(service);
   const first = createTask(service, mission.mission_id, 'task:first');
@@ -41,12 +41,10 @@ test('Mission creates a flat Task pool with explicit proposal and dependency rel
   });
 
   assert.equal(first.mission_id, mission.mission_id);
-  assert.equal(first.parent_id, null);
   assert.equal(first.summary.includes('task:first'), true);
-  assert.deepEqual(second.relations.spawned_from, []);
   assert.deepEqual(second.relations.depends_on.map((row) => row.related_task_id), [first.task_id]);
-  assert.deepEqual(service.dispatch('task.list', { mission_id: mission.mission_id, available_only: false }, op('task:list', 'agent:test')).tasks.map((task) => task.task_id), [first.task_id, second.task_id]);
-  assert.equal(service.dispatch('task.view', { task_id: second.task_id }, op('task:view', 'agent:test')).task.relations.depends_on[0].related_task_id, first.task_id);
+  assert.deepEqual(service.dispatch('task_list', { mission_id: mission.mission_id, available_only: false }, op('task:list', 'agent:test')).tasks.map((task) => task.task_id), [first.task_id, second.task_id]);
+  assert.equal(service.dispatch('task_view', { task_id: second.task_id }, op('task:view', 'agent:test')).task.relations.depends_on[0].related_task_id, first.task_id);
   service.close();
 });
 
@@ -162,11 +160,11 @@ test('Mission Task creation carries a bounded dynamic contract and deduplicates 
     task_instructions: 'Read the feedback Material and produce one bounded route result.',
     completion_contract: { required_materials: [{ kinds: ['fact'], scope: 'proof_relevant', min_count: 1 }] },
     input_material_refs: ['material:feedback'],
-    priority: 105,
+    priority: 'high',
     responsibility_key: 'flat:proof-feedback:check-1',
     timebox_ms: 30 * 60_000,
   });
-  const duplicate = service.dispatch('task.create', {
+  const duplicate = service.dispatch('task_create', {
     mission_id: mission.mission_id,
     task_id: 'task:duplicate-id',
     summary: 'Investigate task:feedback-route without duplicating other work.',
@@ -177,7 +175,7 @@ test('Mission Task creation carries a bounded dynamic contract and deduplicates 
     acceptance_conditions: ['result is documented'],
     completion_contract: { required_materials: [{ kinds: ['fact'], scope: 'proof_relevant', min_count: 1 }] },
     input_material_refs: ['material:feedback'],
-    priority: 105,
+    priority: 'high',
     timebox_ms: 30 * 60_000,
     responsibility_key: 'flat:proof-feedback:check-1',
   }, op('task:feedback-route:duplicate', 'agent:test'));
@@ -197,19 +195,16 @@ test('Task responsibility deduplication requires matching Workspace and Material
   const proposal = { mission_id: mission.mission_id, summary: 'Investigate a domain boundary with fixed input',
     expected_output: 'Reproducible boundary result', acceptance_conditions: ['Explain the case'],
     base_revision: '0.2', input_material_refs: ['material:a', 'material:b'], responsibility_key: 'fixed-inputs' };
-  const submit = (input, key) => service.dispatch('task.create', input, op(key, 'agent:test'));
+  const submit = (input, key) => service.dispatch('task_create', input, op(key, 'agent:test'));
   const created = submit(proposal, 'original-proposal');
   const { base_revision: revision, ...legacyInput } = proposal;
   const compatible = { ...legacyInput, workspace: { revision }, input_material_refs: ['material:b', 'material:a'] };
   assert.equal(submit(compatible, 'compatible-inputs').task.task_id, created.task.task_id);
   assert.throws(() => submit({ ...proposal, workspace: { revision: '0.3' } }, 'aliases-conflict'), { code: 'INVALID_CONTRACT' });
   assert.throws(() => submit({ ...proposal, base_revision: 'main' }, 'mutable-revision'), { code: 'INVALID_CONTRACT' });
-  for (const legacy of [false, true]) {
-    if (legacy) service.db.prepare('UPDATE modern_task_records SET registration_hash = NULL WHERE task_id = ?').run(created.task.task_id);
-    assert.equal(submit(compatible, `repeat-${legacy}`).deduplicated, true);
-    assert.throws(() => submit({ ...proposal, base_revision: '0.3' }, `different-workspace-${legacy}`), { code: 'CONFLICT' });
-    assert.throws(() => submit({ ...proposal, input_material_refs: ['material:c'] }, `different-material-${legacy}`), { code: 'CONFLICT' });
-  }
+  assert.equal(submit(compatible, 'repeat').deduplicated, true);
+  assert.throws(() => submit({ ...proposal, base_revision: '0.3' }, 'different-workspace'), { code: 'CONFLICT' });
+  assert.throws(() => submit({ ...proposal, input_material_refs: ['material:c'] }, 'different-material'), { code: 'CONFLICT' });
   assert.equal(submit(proposal, 'original-proposal').task.task_id, created.task.task_id);
 });
 
@@ -218,16 +213,13 @@ test('only depends_on gates the flat eligible view and cycles are rejected', () 
   const mission = createMission(service, 'mission:takeability');
   const prerequisite = createTask(service, mission.mission_id, 'task:prerequisite');
   const dependent = createTask(service, mission.mission_id, 'task:dependent', { depends_on: [prerequisite.task_id] });
-  const spawnedOnly = createTask(service, mission.mission_id, 'task:spawned-only');
-  service.db.prepare(`INSERT INTO task_relations (relation_id, mission_id, task_id, relation_kind, related_task_id, created_by, created_at)
-    VALUES (?, ?, ?, 'spawned_from', ?, ?, ?)`).run('historical-spawn', mission.mission_id, spawnedOnly.task_id, prerequisite.task_id, 'agent:test', spawnedOnly.created_at);
-  assert.equal(service.getTask(spawnedOnly.task_id).relations.spawned_from[0].related_task_id, prerequisite.task_id);
+  const independent = createTask(service, mission.mission_id, 'task:independent');
 
-  const available = service.dispatch('task.list', { mission_id: mission.mission_id, available_only: true }, op('task:available:one', 'agent:test'));
-  assert.deepEqual(available.tasks.map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
-  assert.deepEqual(service.listEligibleTasks({ missionId: mission.mission_id, limit: 10 }).map((task) => task.task_id), [prerequisite.task_id, spawnedOnly.task_id]);
+  const available = service.dispatch('task_list', { mission_id: mission.mission_id, available_only: true }, op('task:available:one', 'agent:test'));
+  assert.deepEqual(available.tasks.map((task) => task.task_id), [prerequisite.task_id, independent.task_id]);
+  assert.deepEqual(service.listEligibleTasks({ missionId: mission.mission_id, limit: 10 }).map((task) => task.task_id), [prerequisite.task_id, independent.task_id]);
 
-  assert.throws(() => service.dispatch('task.create', {
+  assert.throws(() => service.dispatch('task_create', {
     mission_id: mission.mission_id,
     task_id: 'task:cycle',
     summary: 'cycle', goal: 'cycle', expected_output: 'cycle', acceptance_conditions: [],

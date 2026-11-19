@@ -101,9 +101,7 @@ export async function importBenchmarkReport({ observationStore, reportPath, expe
   const report = await readJson(resolvedReportPath);
   const experimentRoot = experimentRootFromReport(report, resolvedReportPath, experimentDir);
   const experimentId = report.project?.run_id ?? basename(experimentRoot);
-  const rootTaskId = report.protocol?.task_model === 'flat' || report.protocol?.mission_id
-    ? null
-    : report.project?.task_tree?.find((task) => task.parent_id === null)?.task_id ?? null;
+  const rootTaskId = null;
   const existing = observationStore.getExperiment(experimentId);
   if (existing && observationStore.countEvents(experimentId) > 0) return { experiment: existing, report, imported_events: 0, report_path: resolvedReportPath };
   const metadata = {

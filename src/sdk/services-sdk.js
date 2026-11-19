@@ -20,30 +20,22 @@ export class ServicesSDK {
     return new ServicesSDK(this.service, { ...this.context, ...overrides });
   }
 
-  getExecution(executionId = this.context.executionId) {
-    return this.#read('get_execution', { execution_id: executionId });
-  }
-
-  listTasks(filters = {}) {
-    return this.#read('list_tasks', filters);
-  }
-
   /** Create a Mission objective; the Mission itself is never eligible. */
   createMission(mission, options = {}) {
-    return this.#write('create_mission', mission, { ...options, taskId: null, executionId: null, fencingVersion: null });
+    return this.#write('mission_create', mission, { ...options, taskId: null, executionId: null, fencingVersion: null });
   }
 
   getMission(missionId) {
-    return this.#read('get_mission', { mission_id: missionId });
+    return this.#read('mission_get', { mission_id: missionId });
   }
 
   /** Create an ordinary Mission Task; a bound Execution may propose work without releasing itself. */
   createTask(task, options = {}) {
-    return this.#write('create_task', task, options);
+    return this.#write('task_create', task, options);
   }
 
   listMissionTasks(filters = {}) {
-    return this.#read('list_task', filters);
+    return this.#read('task_list', filters);
   }
 
   /** Read the authoritative Mission/task view used by an active identity. */
@@ -52,7 +44,7 @@ export class ServicesSDK {
   }
 
   viewTask(taskId = this.context.taskId) {
-    return this.#read('view_task', { task_id: taskId });
+    return this.#read('task_view', { task_id: taskId });
   }
 
   linkMaterial(payload = {}, options = {}) {
@@ -60,15 +52,11 @@ export class ServicesSDK {
   }
 
   listTaskMaterials(taskId = this.context.taskId, filters = {}) {
-    return this.#read('list_task_materials', { ...filters, task_id: taskId });
+    return this.#read('task_materials', { ...filters, task_id: taskId });
   }
 
   finishTask(payload = {}, options = {}) {
     return this.#write('task_finish', payload, options);
-  }
-
-  listExecutions(taskId = this.context.taskId, { includeTerminal = true } = {}) {
-    return this.#read('list_executions', { task_id: taskId, include_terminal: includeTerminal });
   }
 
   listServices() {
@@ -128,11 +116,6 @@ export class ServicesSDK {
   /** Record the current Execution's decision and action for delivered feedback. */
   taskFeedback(payload = {}, options = {}) {
     return this.#write('task_feedback', payload, options);
-  }
-
-  /** Save Progress Material and checkpoint or hand off the current Execution. */
-  executionProgress(payload = {}, options = {}) {
-    return this.#write('execution_progress', payload, options);
   }
 
   heartbeat(payload = {}, options = {}) {

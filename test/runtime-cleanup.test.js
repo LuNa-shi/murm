@@ -59,8 +59,8 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), bind
     await rm(root, { recursive: true, force: true });
   });
   const envelope = () => makeEnvelope({ actorRef: 'operator:cleanup' });
-  service.dispatch('mission.create', { mission_id: 'mission:cleanup', goal: 'Verify safe Core reuse' }, envelope());
-  const task = service.dispatch('task.create', { mission_id: 'mission:cleanup', summary: 'Inspect one local result', goal: 'Inspect one local result', expected_output: 'Inspection note', acceptance_conditions: ['Note records the inspection'] }, envelope()).task;
+  service.dispatch('mission_create', { mission_id: 'mission:cleanup', goal: 'Verify safe Core reuse' }, envelope());
+  const task = service.dispatch('task_create', { mission_id: 'mission:cleanup', summary: 'Inspect one local result', goal: 'Inspect one local result', expected_output: 'Inspection note', acceptance_conditions: ['Note records the inspection'] }, envelope()).task;
   // The model process is the external boundary. Task Service, Runtime,
   // Workspace and the OpenSandbox protocol adapter are real collaborators.
   const session = new EventEmitter();

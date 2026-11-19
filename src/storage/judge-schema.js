@@ -84,38 +84,5 @@ CREATE TABLE IF NOT EXISTS checker_preflights (
 `;
 
 export function ensureJudgeSchema(database) {
-  const legacy = database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'judge_mission_check_policies'").get();
-  if (legacy?.sql.includes('max_requests INTEGER NOT NULL')) {
-    database.exec(`BEGIN IMMEDIATE;
-      ALTER TABLE judge_mission_check_policies RENAME TO judge_mission_check_policies_legacy;
-      CREATE TABLE judge_mission_check_policies (mission_id TEXT PRIMARY KEY,
-        max_requests INTEGER CHECK(max_requests > 0), max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0),
-        process_timeout_ms INTEGER);
-      INSERT INTO judge_mission_check_policies SELECT mission_id, max_requests, max_concurrent, process_timeout_ms FROM judge_mission_check_policies_legacy;
-      DROP TABLE judge_mission_check_policies_legacy;
-      COMMIT;`);
-  }
   database.exec(JUDGE_SCHEMA_SQL);
-  const policyColumns = new Set(database.prepare('PRAGMA table_info(judge_mission_check_policies)').all().map(column => column.name));
-  if (!policyColumns.has('max_queued')) database.exec('ALTER TABLE judge_mission_check_policies ADD COLUMN max_queued INTEGER NOT NULL DEFAULT 0');
-  if (!policyColumns.has('queue_wait_ms')) database.exec('ALTER TABLE judge_mission_check_policies ADD COLUMN queue_wait_ms INTEGER NOT NULL DEFAULT 120000');
-  const admissionColumns = new Set(database.prepare('PRAGMA table_info(judge_mission_check_admissions)').all().map(column => column.name));
-  if (!admissionColumns.has('started_at')) {
-    database.exec(`ALTER TABLE judge_mission_check_admissions ADD COLUMN started_at TEXT;
-      UPDATE judge_mission_check_admissions SET started_at = admitted_at`);
-  }
-  const columns = new Set(database.prepare('PRAGMA table_info(check_results)').all().map((column) => column.name));
-  for (const [name, definition] of [
-    ['workspace_content_hash', 'TEXT'],
-    ['execution_id', 'TEXT'],
-    ['applied_task_state_version', 'INTEGER'],
-    ['applied_at', 'TEXT'],
-    ['judge_operation_status', "TEXT NOT NULL DEFAULT 'persisted'"],
-    ['checker_process_status', "TEXT NOT NULL DEFAULT 'not_started'"],
-    ['result_class', "TEXT NOT NULL DEFAULT 'unassessed'"],
-    ['retryable', 'INTEGER NOT NULL DEFAULT 0'],
-    ['diagnostic_code', 'TEXT'],
-  ]) {
-    if (!columns.has(name)) database.exec(`ALTER TABLE check_results ADD COLUMN ${name} ${definition}`);
-  }
 }

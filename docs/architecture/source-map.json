@@ -625,14 +625,6 @@
       "role": "Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface"
     },
     {
-      "path": "scripts/preview-migration.mjs",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/09-known-boundaries.md"
-      ],
-      "role": "Read-only fresh-start migration preview and verified restore rehearsal"
-    },
-    {
       "path": "scripts/project-install.mjs",
       "category": "runtime and execution",
       "chapters": [
@@ -1664,16 +1656,6 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Independent service transport, authorization, lifecycle and deployment"
-    },
-    {
-      "path": "src/sdk/local-service-double.js",
-      "category": "services and contracts",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/10-service-api-reference.md",
-        "docs/architecture/11-storage-reference.md"
-      ],
-      "role": "Deterministic SDK/service test double; not production domain authority"
     },
     {
       "path": "src/sdk/peer-process-lifetime.js",

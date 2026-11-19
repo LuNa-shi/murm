@@ -37,8 +37,8 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 | `--execution-timeout-ms` | Defaults to Bot maximum; timer-safe integer of at least 2 ms; active Execution cap intersects Task/Bot/run limits |
 | `--turn-timeout-ms` | `540000`; per-turn settling bound, separate from the overall project deadline |
 | `--checker-timeout-ms` | `120000`; timer-safe positive integer for each Lean source diagnostic process, subject to the locked checker timeout |
-| `--task-model` | Rejected; the benchmark has one flat Mission Task model |
-| `--normal-flow` | Rejected; the flat Mission Task contract is always used |
+| `--task-model` | Rejected; the benchmark has one Mission Task contract |
+| `--normal-flow` | Rejected; the Mission Task contract is always used |
 | `--parallel-mode` | Rejected; the former selector has been removed |
 | `--initial-bot-stagger-ms` | `60000` for the CLI; delays first Bot starts by Core index, bounded by the Mission deadline. Replacement Bots start immediately. |
 | `--provider` | `PI_PROVIDER`, then `NUROUTER_PI_PROVIDER`, otherwise `gpt_proxy`; empty values are rejected |
@@ -55,7 +55,7 @@ Value-taking arguments accept `--name value` or `--name=value`; `--help`/`-h` is
 
 Unknown options throw. Numeric flags are converted with `Number`; only the explicit validations above and downstream constructors apply. The CLI has no Sandbox flags: it builds its required OpenSandbox configuration from `SWARMENV_SANDBOX_ENABLED` (the literal string `true` enables it), `SWARMENV_SANDBOX_PROVIDER` (default `opensandbox`), `SWARMENV_SANDBOX_IMAGE`, `SWARMENV_OPENSANDBOX_URL`, optional endpoint/Bridge host variables and the selected provider settings. A disabled or non-OpenSandbox deployment is rejected. General Runtime supports custom adapters; the current benchmark runner constructs its OpenSandbox adapter directly. Only explicitly forwarded Runtime timers are runner options. Normal trusted Mission acceptance initiates closeout; the retained `stopOnSolved` option does not disable this behavior.
 
-The exported runner and CLI both construct the flat Mission Task model with four independent Core loops per project. The old parallel-mode selector is retired and an explicit request for it fails. `projectParallelism` controls how many separate projects run at the same time. Reports record the actual settings and observed Core/Execution overlap.
+The exported runner and CLI both construct the Mission Task contract with four independent Core loops per project. The old parallel-mode selector is retired and an explicit request for it fails. `projectParallelism` controls how many separate projects run at the same time. Reports record the actual settings and observed Core/Execution overlap.
 
 ## 3. Locked input and environment
 
@@ -208,7 +208,7 @@ The dashboard's maintained source is `src/observability/client/`; Vite builds it
 
 Sources: [benchmark CLI](../../scripts/run-putnambench-benchmark.mjs), [runner](../../src/benchmark/putnam-runner.js), [locked config](../../config/putnambench-12.json), [parallelism tracker](../../src/benchmark/parallelism.js), [observer launcher](../../scripts/serve-observability.mjs), [service launcher](../../scripts/service-host.mjs), [search launcher](../../scripts/mathlib-search-service.mjs), [Vite config](../../src/observability/vite.config.js), [package scripts](../../package.json).
 
-Relevant deterministic tests: [flat benchmark CLI](../../test/flat-only-cli.test.js), [orchestration](../../test/orchestration-roles.test.js), [parallelism](../../test/parallelism.test.js), [observation server](../../test/observability-server.test.js). Real provider/Lean acceptance still requires separate version-bound evidence.
+Relevant deterministic tests: [benchmark CLI](../../test/benchmark-cli.test.js), [orchestration](../../test/orchestration-roles.test.js), [parallelism](../../test/parallelism.test.js), [observation server](../../test/observability-server.test.js). Real provider/Lean acceptance still requires separate version-bound evidence.
 
 ### Phase 02 migration and comparison labels
 

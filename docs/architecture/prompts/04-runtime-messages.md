@@ -35,12 +35,3 @@ Body SHA-256: `503653e90d9fda9be447266d21dec347441689bd3f915a96ea7c75c8a3ee877e`
 ````text
 Response Material <unknown> from Task <unknown> / Execution <unknown> is linked to this Task. Read it through Context Service and adapt your own work, then record your decision with task_feedback using notification_id <NOTIFICATION_ID>. This notice is delivered once; it does not end your Execution or require a handoff. Call task.close only when your contract accepts the Response.
 ````
-## Legacy/non-Mission deadline reminder
-
-Body SHA-256: `06935dff2df99353184aafd362695091cb61cbde7fcb55f5ee0c48d11759e10e`
-
-````text
-Execution handoff reminder: this bounded attempt is approaching its deadline.
-Publish durable Materials, save the current Workspace/checkpoint, summarize what was attempted and learned, list outstanding questions, and recommend the next step.
-Continue only if useful progress remains; otherwise call the Runtime handoff boundary.
-````

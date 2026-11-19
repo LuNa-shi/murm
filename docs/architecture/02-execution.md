@@ -1,6 +1,6 @@
 # 02. Execution, Core scheduling and failure recovery
 
-> As built: runtime code at the source baseline named in [INDEX](INDEX.md), including the flat-only benchmark and OpenSandbox provider changes. This describes implementation, including compatibility paths and limits; it does not take a new real-Agent acceptance run.
+> As built: runtime code at the source baseline named in [INDEX](INDEX.md), including the current benchmark and OpenSandbox provider changes. This describes implementation, including compatibility paths and limits; it does not take a new real-Agent acceptance run.
 
 An Execution is a durable authorization for a Bot to work on a Task. Runtime binds that authorization to a Core, a Workspace and a model Session. Runtime always removes the Session from Runtime's reusable set and stops it with the Sandbox when the Execution releases. A later Execution then requires a fresh Bot/Session. Neither a model reply nor the end of a turn automatically completes an Execution or Task.
 
@@ -162,11 +162,11 @@ Registered `task_finish` instead commits a finish intent and `CLOSING` while ret
 | Productive-progress watchdog | 120 seconds | Stop and clean a stalled registered Bot outside active turn/retry/compaction phases |
 | Execution timebox | 60 minutes; reminder at 55 minutes | Persist one reminder, then hand off as `EXPIRED`, reason `timeout`, metadata `TIMEBOX_EXPIRED` |
 
-Modern Task `timebox_ms` replaces generic duration; a global run deadline caps it. Runtime uses at least 1 ms. With a run deadline it keeps configured reminder lead time before the earlier end; without one it uses the lesser of configured reminder offset and just before Task timeout.
+Task `timebox_ms` replaces generic duration; a global run deadline caps it. Runtime uses at least 1 ms. With a run deadline it keeps configured reminder lead time before the earlier end; without one it uses the lesser of configured reminder offset and just before Task timeout.
 
 Registered Bot startup arms selection and hard-lifetime timers. Take never resets that lifetime: activation intersects Task, Execution, Bot and Mission limits and rearms to the earliest deadline. Session failure closes the Bot; continued research requires a new Bot/Execution reading public state. TaskService storage transitions remain separately described in [03](03-mission-task.md).
 
-Reminder-sent time is committed before delivery. Modern Tasks receive durable `handoff_warning`; compatibility Tasks receive a direct follow-up. Registered expiry revokes the actual E and closes the Bot without inventing a handoff Material. Historical expiry paths may additionally record whether an existing Handoff Material was linked; that is an audit fact, not an automatic new research conclusion.
+Reminder-sent time is committed before delivery. Tasks receive durable `handoff_warning`; compatibility Tasks receive a direct follow-up. Registered expiry revokes the actual E and closes the Bot without inventing a handoff Material. Historical expiry paths may additionally record whether an existing Handoff Material was linked; that is an audit fact, not an automatic new research conclusion.
 
 ### 7.2 Event-derived health
 
@@ -216,7 +216,7 @@ Registered cleanup distinguishes acceptance from completion: finish first persis
 | [identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Discover/propose/take, cooldown, signal races and failed handoff | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
 | [task-controller.js](../../src/runtime/task-controller.js) | Reconciliation, discovery wake deduplication and health callbacks | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
 | [runtime.js](../../src/runtime/runtime.js) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.js), [cleanup integration](../../test/runtime-cleanup.test.js) |
-| [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.js) | Durable state/version/Core/lease transitions and replay | [flat Task behavior](../../test/task-oriented-flat.test.js),  |
+| [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.js) | Durable state/version/Core/lease transitions and replay | [Task behavior](../../test/task-contract.test.js),  |
 | [services-bridge.js](../../src/agent/services-bridge.js) | Identity, same-lane bind/switch and compensation | [profile/Bridge](../../test/capability-profile-bridge.test.js), [direct Judge](../../test/judge-direct-submit.test.js) |
 
 Test links identify existing regression scenarios, not a claim that they ran in this documentation session. Mock adapter tests do not establish live-provider, Docker or long-duration scientific behavior.

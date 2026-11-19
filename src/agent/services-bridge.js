@@ -181,7 +181,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ agentMode = 'swarm', taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onSchedulerStatus = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
+  constructor({ agentMode = 'swarm', taskService, contextService, runtime, router, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, runtimeCapabilities = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onWorkspaceWrite = null, onWorkUnit = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = GENERIC_AGENT_PROMPT } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     if (!['swarm', 'solver'].includes(agentMode)) throw new TypeError('Unknown agent mode');
     this.agentMode = agentMode;
@@ -213,7 +213,6 @@ export class ServicesBridge {
     this.onWorkspaceWrite = onWorkspaceWrite;
     this.onWorkUnit = onWorkUnit;
     this.onTaskCreate = onTaskCreate;
-    this.onSchedulerStatus = onSchedulerStatus;
     this.onError = onError;
     this.agentPrompt = agentPrompt;
     this.host = host;
@@ -720,7 +719,7 @@ export class ServicesBridge {
           log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return { ...result, request_id: bridgeOperationId };
         }
-        if (WORKSPACE_OPERATIONS.has(operation) || operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy private Workspace and Execution APIs are unavailable to registered Bots');
+        if (WORKSPACE_OPERATIONS.has(operation)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Private Workspace and Execution APIs are unavailable to registered Bots');
         if (operation === 'mission_submit') {
           if (Object.keys(payload).some(key => key !== 'material_ids') || !Array.isArray(payload.material_ids)) {
             throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Mission submit accepts only an explicit material_ids selection');
@@ -743,10 +742,10 @@ export class ServicesBridge {
           log({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
-        if (['mission_get', 'mission_submit', 'mission_submission_get', 'task_create', 'task_list', 'task_status', 'list_tasks', 'read_materials', 'context_search_materials'].includes(operation)) {
+        if (['mission_get', 'mission_submit', 'mission_submission_get', 'task_create', 'task_list', 'task_status', 'read_materials', 'context_search_materials'].includes(operation)) {
           payload = { ...payload, mission_id: bot.mission_id };
         }
-        if (['task_view', 'task_take', 'list_executions', 'task_revise', 'task_cancel', 'task_dependency_replace'].includes(operation) && payload.task_id !== undefined) {
+        if (['task_view', 'task_take', 'task_revise', 'task_cancel', 'task_dependency_replace'].includes(operation) && payload.task_id !== undefined) {
           const target = this.taskService.getTask(payload.task_id);
           if (!target || target.mission_id !== bot.mission_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task is not readable in the Bot Mission');
         }
@@ -773,44 +772,21 @@ export class ServicesBridge {
       if (operation === 'bot_exit') {
         return this.taskService.dispatch('bot_exit', payload, makeEnvelope({ actorRef: this.actorRef, operationId: bridgeOperationId }));
       }
-      const modernBoundTask = boundTask?.mission_id ? boundTask : null;
-      if (modernBoundTask && WORKSPACE_OPERATIONS.has(operation) && !usesWorkspace(modernBoundTask)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: modernBoundTask.task_id });
+      const boundTaskScope = boundTask?.mission_id ? boundTask : null;
+      if (boundTaskScope && WORKSPACE_OPERATIONS.has(operation) && !usesWorkspace(boundTaskScope)) {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace capability is not enabled by the current Task contract', { operation, task_id: boundTaskScope.task_id });
       }
       const service = this.router ?? { dispatch: (name, body, envelope) => {
-        if (['get_execution', 'list_tasks', 'list_executions', 'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish', 'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_revise', 'task_cancel', 'task_dependency_replace'].includes(name)) return this.taskService.dispatch(name, body, envelope);
+        if (['task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish', 'task_status', 'task_take', 'task_feedback', 'task_revise', 'task_cancel', 'task_dependency_replace'].includes(name)) return this.taskService.dispatch(name, body, envelope);
         return this.contextService.dispatch(name, body, envelope);
       } };
-      if (operation === 'execution_progress') {
-        if (!this.taskId || !this.executionId || ![AGENT_ROLES.BOUND, AGENT_ROLES.RECOVERY].includes(this.role)) {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'execution_progress requires a bound Task Execution', { role: this.role });
-        }
-        if (typeof this.runtime?.executionProgress !== 'function') {
-          throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Runtime does not expose execution_progress');
-        }
-        const result = await this.runtime.executionProgress(this.executionId, { ...payload, actorRef: this.actorRef });
-        await this.onWorkUnit?.({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
-        if (payload.kind === 'handoff') await this.releaseTake({ result });
-        log({ event: 'bridge.complete', operation, ok: true, result });
-        return result;
-      }
       const isCatalogDiscovery = capability.service_id === 'catalog' && ['list_services', 'get_service_metadata', 'list_tools'].includes(operation);
-      const isTaskDiscovery = capability.service_id === 'task' && [
-        'list_tasks', 'list_executions',
-        'task_view', 'task_status',
-      ].includes(operation);
-      if (isCatalogDiscovery || isTaskDiscovery || (capability.service_id === 'task' && operation === 'scheduler_status')) {
-        if (capability.service_id === 'task' && operation === 'scheduler_status') {
-          const result = await (this.onSchedulerStatus
-            ? this.onSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId })
-            : this.runtime.getSchedulerStatus({ ...payload, task_id: payload.task_id ?? this.taskId, execution_id: payload.execution_id ?? this.executionId }));
-          log({ event: 'bridge.complete', operation, ok: true, result });
-          return result;
-        }
-        const discoveryPayload = operation === 'task_status' && payload.mission_id === undefined && modernBoundTask?.mission_id
-          ? { ...payload, mission_id: modernBoundTask.mission_id }
-          : operation === 'list_tasks' && this.taskId === null && payload.available_only !== false
-          ? { ...payload, states: ['OPEN', 'RUNNING', 'WAITING'] }
+      const isTaskDiscovery = capability.service_id === 'task' && ['task_list', 'task_view', 'task_status'].includes(operation);
+      if (isCatalogDiscovery || isTaskDiscovery) {
+        const discoveryPayload = operation === 'task_status' && payload.mission_id === undefined && boundTaskScope?.mission_id
+          ? { ...payload, mission_id: boundTaskScope.mission_id }
+          : operation === 'task_list' && this.taskId === null && payload.available_only !== false
+          ? { ...payload, states: ['OPEN', 'RUNNING'] }
           : (operation === 'task_view' && payload.task_id === undefined && this.taskId
             ? { ...payload, task_id: this.taskId }
             : payload);
@@ -844,7 +820,7 @@ export class ServicesBridge {
             // actor; only task choice and workspace lineage come from the
             // request.
             ...Object.fromEntries(Object.entries(payload).filter(([key]) => !['owner_ref', 'agent_prompt', 'initial_prompt'].includes(key))),
-            ...(this.taskService.isModernTask?.(payload.task_id)
+            ...(this.taskService.isTaskRecord?.(payload.task_id)
               ? {
                 workspace_mode: 'clean',
                 workspace_revision: undefined,
@@ -979,7 +955,6 @@ export class ServicesBridge {
       const options = { operationId: bridgeOperationId };
       let result;
       switch (operation) {
-        case 'get_execution': result = sdk.getExecution(payload.execution_id ?? this.executionId); break;
         case 'task_list': result = sdk.listMissionTasks(payload); break;
         case 'task_status': result = sdk.taskStatus(payload); break;
         case 'task_view': result = service.dispatch('task_view', { ...payload, task_id: payload.task_id ?? this.taskId }, makeEnvelope({ actorRef: this.actorRef, operationId: bridgeOperationId })); break;

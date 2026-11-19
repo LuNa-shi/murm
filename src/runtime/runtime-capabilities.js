@@ -15,15 +15,6 @@ const revision = { type: 'integer', minimum: 1 };
 
 export const RUNTIME_CAPABILITIES = Object.freeze([
   {
-    id: 'runtime.execution_get', name: 'execution_get', operation: 'get_execution', service_id: 'runtime',
-    service_title: 'SwarmEnv Runtime', service_purpose: 'Task-scoped Execution projection',
-    description: 'Read the current Execution identity and Workspace revision.',
-    audience: ['bound', 'recovery'], side_effect: 'read', idempotent: true, runtime_owned: true,
-    context: ['task', 'execution', 'fencing'],
-    help: { when: 'Read the current Execution before acting on its Task.', ref: 'runtime://execution_get' },
-    input_schema: objectSchema({ execution_id: id }, ['execution_id']), output_schema: objectSchema(),
-  },
-  {
     id: 'runtime.workspace_get', name: 'workspace_get', operation: 'get_workspace', service_id: 'runtime',
     service_title: 'Task Workspace', service_purpose: 'Task-scoped Workspace materialization and revision contract',
     description: 'Read the current task-scoped Workspace and its revision contract.',

@@ -2,10 +2,9 @@ import { createBuiltinServiceRegistry, dispatchMissionWorkspaceRead, MISSION_WOR
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 const TASK_OPERATIONS = new Set([
-  'get_execution', 'list_tasks', 'list_executions',
-  'create_mission', 'get_mission', 'create_task', 'list_task', 'view_task', 'task_list', 'task_view', 'task_create',
-  'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_cancel', 'task_dependency_replace',
-  'link_material', 'task_link_material', 'list_task_materials', 'task_materials', 'finish_task', 'task_finish',
+  'mission_create', 'mission_get', 'task_list', 'task_view', 'task_create',
+  'task_status', 'task_take', 'task_feedback', 'task_cancel', 'task_dependency_replace',
+  'task_link_material', 'task_materials', 'task_finish',
 ]);
 const CONTEXT_OPERATIONS = new Set([
   'publish_material', 'context.publish_material', 'context_publish_material',
@@ -46,7 +45,7 @@ export class ServicesRouter {
       // ServicesSDK is intentionally synchronous because the local control
       // plane performs Task/Context/Judge writes in one SQLite transaction.
       // Remote HTTP providers are invoked asynchronously by ServicesBridge;
-      // never leak an HTTP Promise through this legacy-free local router.
+      // never leak an HTTP Promise through this current local router.
       const registered = this.registry?.listTools?.()
         .filter((candidate) => candidate.operation === operation || candidate.name === operation) ?? [];
       if (registered.length > 1) throw new Error(`ambiguous service route for operation: ${operation}`);

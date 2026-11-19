@@ -130,7 +130,7 @@ The outer context contains the current Mission; up to 32 Mission Task summaries 
 
 There are two easily missed details:
 
-- `modernTaskPromptProjection` supplies Task identity, short summary, gap, numeric and named priority, contract version, goal, output, acceptance conditions and validation flags, but omits `completion_contract` and `task_instructions`. Thus the outer Task text falls back to acceptance conditions; the fuller contract/instructions can already be inside the inner snapshot.
+- `taskRecordPromptProjection` supplies Task identity, short summary, gap, numeric and named priority, contract version, goal, output, acceptance conditions and validation flags, but omits `completion_contract` and `task_instructions`. Thus the outer Task text falls back to acceptance conditions; the fuller contract/instructions can already be inside the inner snapshot.
 - The outer composer invocation does not pass an `execution` argument. Its Execution section therefore prints the default “supplied by Runtime” text even when the inner snapshot already printed an exact ID. Recovery reason is similarly present in the inner snapshot, while the outer invocation prints its default recovery section. The outer Runtime profile always resolves to `bound`; it does not select a recovery launch.
 
 The generated [full examples](prompts/05-composed-context-examples.md) deliberately retain these duplicated blocks. They are not cleaned-up mockups. The actual final message may be much longer when Workspace, Tasks, Materials or provider documents contain substantial data.
@@ -145,9 +145,9 @@ Runtime uses one prompt queue for initial/follow-up delivery on an active Execut
 
 For unregistered compatibility notifications, `handoff_warning` asks for linked Handoff Material before the deadline. `material_available` names Material/source Task/source Execution and requests read/adapt/feedback; it explicitly says the notice does not itself require handoff. Other notification types use the dependency-satisfied “Task is OPEN again” text. Missing Material/source IDs fall back to payload fields, then `<unknown>`. The exact bodies are in [04](prompts/04-runtime-messages.md).
 
-Registered successful compaction queues only the existing Bot/solver follow-up, subject to active ownership and deadline guards. It does not automatically save a private checkpoint or send an execution_progress request. The retained non-Mission deadline helper is catalogued separately from registered delivery.
+Registered successful compaction queues only the existing Bot/solver follow-up, subject to active ownership and deadline guards. It does not automatically save a private checkpoint. The retained non-Mission deadline helper is catalogued separately from registered delivery.
 
-Registered notifications instead use `buildBotNotification`: soft closeout directs explicit save/publish/finish, Material notices identify public references, and other changes request fresh public-state reads. Registered compaction sends the fixed reminder only when the live E permits it, using the soft-closeout body when required, and records `public_save:false`. It does not automatically checkpoint files or ask for the rejected compound `execution_progress` operation. Complete registered bodies are in [benchmark turns](prompts/03-benchmark-turns.md); the full compatibility bodies remain in [Runtime messages](prompts/04-runtime-messages.md).
+Registered notifications instead use `buildBotNotification`: soft closeout directs explicit save/publish/finish, Material notices identify public references, and other changes request fresh public-state reads. Registered compaction sends the fixed reminder only when the live E permits it, using the soft-closeout body when required, and records `public_save:false`. It does not automatically checkpoint files. Complete registered bodies are in [benchmark turns](prompts/03-benchmark-turns.md); Runtime messages document internal lifecycle notices.
 
 ### 7.2 Tool results are additional model inputs
 

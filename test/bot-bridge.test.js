@@ -169,14 +169,8 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
   await writeFile(proposalPath, JSON.stringify({ gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Check one independently useful boundary', expected_output: 'A reproducible result', acceptance_conditions: ['Result is readable'] }));
   const task = (await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-propose')).task;
   assert.equal(task.mission_id, 'mission:auth');
-  const assertFlat = value => {
-    for (const field of ['root_id', 'parent_id', 'root_deadline', 'max_children', 'acceptance_conditions_json']) {
-      assert.equal(Object.hasOwn(value, field), false, field);
-    }
-    assert.equal(Object.hasOwn(value.relations, 'spawned_from'), false);
-  };
-  assertFlat(task);
-  assert.equal(service.getTask(task.task_id).root_id, task.task_id);
+  assert.equal(task.contract_format, 'mission-gap-v1');
+  assert.equal(task.relations.depends_on.length, 0);
   assert.equal(task.creation.actor_ref, 'bot:cli-flow');
   assert.equal(task.creation.execution_id, null);
   assert.deepEqual((await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-propose')).task, task);
@@ -186,8 +180,8 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
     specVersion: prior.spec_version, stateVersion: prior.state_version, fencingVersion: prior.fencing_version,
   }));
   const detail = await run('task', 'view', task.task_id);
-  assertFlat(detail.task);
-  assert.equal(Object.hasOwn(detail.relations, 'spawned_from'), false);
+  assert.equal(detail.task.contract_format, 'mission-gap-v1');
+  assert.equal(detail.relations.depends_on.length, 0);
   assert.deepEqual(detail.finishes, []);
   assert.equal(detail.executions[0].execution_id, prior.execution_id);
   assert.equal(detail.executions[0].state, 'FAILED');
@@ -195,7 +189,7 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
   assert.equal(detail.executions[0].finish, null);
   assert.equal(Object.hasOwn(detail.executions[0], 'launch_token'), false);
   const taken = await run('task', 'take', task.task_id, '--request-id', 'cli-take');
-  assertFlat(taken.task);
+  assert.equal(taken.task.contract_format, 'mission-gap-v1');
   assert.equal(taken.execution.state, 'RUNNING');
   assert.ok(service.getExecution(taken.execution.execution_id).launch_token);
   for (const field of ['launch_token', 'resume_token', 'workspace_ref', 'checkpoint_ref', 'agent_prompt']) {
@@ -219,13 +213,10 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
   assert.equal((await run('material', 'view', published.material.material_id)).material.content, published.material.content);
   await writeFile(proposalPath, JSON.stringify({ gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect the replacement responsibility and its boundary', expected_output: 'A new bounded result', acceptance_conditions: ['Result is readable'] }));
   const replacement = (await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-replacement')).task;
-  const replacementDetail = (await run('task', 'view', replacement.task_id)).task;
-  assert.equal(replacementDetail.creation.task_id, task.task_id);
-  assert.equal(replacementDetail.creation.execution_id, taken.execution.execution_id);
   const finished = await run('task', 'finish', '--outcome', 'cancelled', '--reason', 'responsibility replaced', '--replacement', replacement.task_id, '--request-id', 'cli-finish');
   assert.equal(service.getExecutionFinish(taken.execution.execution_id).replacement_task_id, replacement.task_id);
   assert.equal(finished.execution.state, 'CLOSING');
-  assertFlat(finished.task);
+  assert.equal(finished.task.contract_format, 'mission-gap-v1');
   assert.equal(Object.hasOwn(finished.execution, 'launch_token'), false);
   await assert.rejects(run('material', 'publish', '--input', materialPath, '--request-id', 'after-finish'));
 });
@@ -254,7 +245,7 @@ test('real CLI follows Task pages and takes an existing low-priority responsibil
   } });
   service = f.service;
   for (let i = 0; i < 505; i += 1) service.createTask({ mission_id: 'mission:auth', task_id: `existing:${i}`, summary: `Inspect reusable responsibility number ${i}`,
-    expected_output: 'A reusable result', acceptance_conditions: ['Result is readable'], priority: i === 504 ? 0 : 10 }, makeEnvelope({ actorRef: 'operator:fixture' }));
+    expected_output: 'A reusable result', acceptance_conditions: ['Result is readable'], priority: i === 504 ? 0 : 1 }, makeEnvelope({ actorRef: 'operator:fixture' }));
   const env = f.start('bot:deep-lookup');
   const run = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], {
     env: { PATH: process.env.PATH, ...env }, timeout: 10000,
@@ -264,7 +255,7 @@ test('real CLI follows Task pages and takes an existing low-priority responsibil
   assert.equal(status.counts.eligible, null);
   assert.deepEqual(status.eligible_page, { limit: 2, returned: 2, complete: false });
   assert.equal(status.page.complete, false);
-  assert.equal(Object.hasOwn(status.tasks[0], 'root_id'), false);
+  assert.equal(status.tasks[0].task_id, 'existing:0');
   let cursor, target, pages = 0;
   do {
     const page = await run('task', 'list', '--query', 'reusable', '--limit', '100', ...(cursor ? ['--cursor', cursor] : []));
@@ -309,15 +300,11 @@ test('same-ID take retry joins preparation while altered payload and other write
   assert.equal(service.listExecutions(task.task_id).length, 1);
 });
 
-test('registered Bots cannot discover foreign Tasks through retired list aliases', async t => {
+test('registered Bots cannot discover foreign Tasks outside their Mission', async t => {
   const { service, bridge, start } = await fixture(t);
   service.createMission({ mission_id: 'mission:foreign', goal: 'Private independent project' }, makeEnvelope({ actorRef: 'operator:test' }));
   service.createTask({ mission_id: 'mission:foreign', gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Foreign responsibility', expected_output: 'Result', acceptance_conditions: ['Readable'] }, makeEnvelope({ actorRef: 'operator:test' }));
   start('bot:scoped-discovery');
-  for (const operation of ['list_tasks', 'list_eligible_tasks', 'list_executions', 'task_discover']) {
-    await assert.rejects(bridge.call({ operation, payload: {} }), { code: 'NOT_ALLOWED' });
-    if (operation !== 'task_discover') assert.throws(() => service.dispatch(operation, {}, makeEnvelope({ actorRef: 'bot:scoped-discovery' })), { code: 'NOT_ALLOWED' });
-  }
   assert.deepEqual((await bridge.call({ operation: 'task_list', payload: {} })).tasks, []);
 });
 

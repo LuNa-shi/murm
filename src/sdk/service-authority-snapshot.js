@@ -14,7 +14,7 @@ export function captureServiceAuthority(tasks, envelope = null, { missionId = nu
   const selectedTasks = [...new Set([envelope?.task_id, ...taskIds].filter(Boolean))];
   const taskMap = Object.fromEntries(selectedTasks.map(id => {
     const row = tasks.db.prepare(`SELECT t.task_id, m.mission_id, t.state, t.spec_version
-      FROM tasks t JOIN modern_task_records m ON m.task_id = t.task_id WHERE t.task_id = ?`).get(id);
+      FROM tasks t JOIN task_records m ON m.task_id = t.task_id WHERE t.task_id = ?`).get(id);
     return [id, row ?? null];
   }));
   const current = envelope?.execution_id ? tasks.getExecution(envelope.execution_id) : null;
@@ -30,7 +30,7 @@ export function captureServiceAuthority(tasks, envelope = null, { missionId = nu
   // contracts or live state. Unrelated Missions are excluded at the owner query.
   const origins = provenance && missionId ? Object.fromEntries(tasks.db.prepare(`
     SELECT e.execution_id, e.task_id, e.owner_ref FROM executions e
-    JOIN modern_task_records m ON m.task_id = e.task_id WHERE m.mission_id = ?`)
+    JOIN task_records m ON m.task_id = e.task_id WHERE m.mission_id = ?`)
     .all(missionId).map(row => [row.execution_id, { task_id: row.task_id, owner_ref: row.owner_ref, mission_id: missionId }])) : {};
   return { envelope, bot, tasks: taskMap, executions, origins,
     links: Object.fromEntries(selectedTasks.map(id => [id, tasks.listTaskMaterialIds(id)])), scope,

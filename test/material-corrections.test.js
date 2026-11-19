@@ -127,25 +127,6 @@ test('exact correction view uses one snapshot while another connection commits a
   assert.equal(after.active_successors[0].replacement_material_id, 'b');
 });
 
-test('migration retains historical forks and revoking one cannot restore still-replaced content', t => {
-  const { tasks, context, one, publish, revoke, replace } = fixture(t);
-  for (const id of ['a', 'b', 'c']) publish(id);
-  const identity = one('legacy');
-  for (const [version, successor] of [[1, 'b'], [2, 'c']]) tasks.db.prepare(`INSERT INTO material_relations
-    (relation_id, material_id, replacement_material_id, relation_kind, active, reason, actor_ref, source_task, source_execution, version, created_at)
-    VALUES (?, 'a', ?, 'supersede', 1, 'Historical replacement', ?, ?, ?, ?, ?)`).run(`legacy-${version}`, successor,
-      identity.actor_ref, identity.task_id, identity.execution_id, version, new Date().toISOString());
-  new ContextService(tasks.db, { taskService: tasks });
-  assert.equal(context.getMaterial('a').relation_version, 2);
-  assert.throws(() => replace('a', 'b', 2, 'no-arbitrary-winner'), { code: 'CONFLICT' });
-  const result = revoke('a', 'b', 2, 'repair-one-fork');
-  assert.equal(result.relation_version, 3);
-  const view = context.dispatch('context_get_material', { material_id: 'a' }, one('view'));
-  assert.equal(view.relations.length, 2);
-  assert.deepEqual(view.active_successors.map(r => r.replacement_material_id), ['c']);
-  assert.equal(context.dispatch('read_materials', {}, one('list')).materials.some(m => m.material_id === 'a'), false);
-});
-
 test('fresh reuse of an already-published combined replacement cannot bypass the current successor', t => {
   const { context, one, publish, replace, revoke } = fixture(t);
   publish('old');

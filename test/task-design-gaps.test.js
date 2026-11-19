@@ -21,18 +21,6 @@ function fixture(t) {
   return { service, create, coordinator };
 }
 
-test('new Task proposals reject retired provenance spellings before any Task is persisted', t => {
-  const { service, create } = fixture(t);
-  const origin = create('task:origin');
-  for (const field of ['spawned_from', 'spawnedFrom']) {
-    for (const value of [origin.task_id, null]) {
-      assert.throws(() => create('task:rejected', { [field]: value }), error =>
-        error.code === 'INVALID_CONTRACT' && /spawned_from is retired/.test(error.message));
-      assert.equal(service.getTask('task:rejected'), null);
-    }
-  }
-});
-
 test('cancelling a prerequisite preserves blockers and surfaces its replacement without granting take', t => {
   const { service, create } = fixture(t);
   const prerequisite = create('task:prerequisite');
@@ -54,7 +42,7 @@ test('cancelling a prerequisite preserves blockers and surfaces its replacement 
   const relationId = blocked.relations.depends_on.find(row => row.related_task_id === prerequisite.task_id).relation_id;
   assert.deepEqual(blocked.blockers.find(row => row.prerequisite_task_id === prerequisite.task_id), {
     dependency_id: relationId, relation_id: relationId,
-    dependency_kind: 'TASK', prerequisite_task_id: prerequisite.task_id, prerequisite_state: 'CANCELLED',
+    dependency_kind: 'TASK', prerequisite_task_id: prerequisite.task_id, prerequisite_state: 'CANCELED',
     invalid_prerequisite: true, replacement_task_id: replacement.task_id,
   });
   assert.equal(blocked.blockers.find(row => row.prerequisite_task_id === independent.task_id).prerequisite_state, 'OPEN');
@@ -76,7 +64,7 @@ test('Task cancellation needs UNBOUND Mission authority while other coordination
   const task = create('task:cancel-target');
   const input = { ...observed(task), reason: 'Withdraw obsolete responsibility' };
   const ordinaryTarget = create('task:ordinary-cancel');
-  assert.equal(service.dispatch('task_cancel', { ...observed(ordinaryTarget), reason: input.reason }, ordinary('ordinary')).task.state, 'CANCELLED');
+  assert.equal(service.dispatch('task_cancel', { ...observed(ordinaryTarget), reason: input.reason }, ordinary('ordinary')).task.state, 'CANCELED');
   assert.throws(() => service.dispatch('task_cancel', input, makeEnvelope({ actorRef: 'operator:unverified' })), { code: 'NOT_ALLOWED' });
   service.createMission({ mission_id: 'foreign', goal: 'Separate Mission' }, makeEnvelope({ actorRef: 'operator:test' }));
   const foreign = coordinator('foreign-bot', ['task_cancel'], 'foreign');
@@ -85,9 +73,9 @@ test('Task cancellation needs UNBOUND Mission authority while other coordination
     mission_id: task.mission_id, bot_id: 'granted', task_id: null, execution_id: null,
   });
   const cancellation = service.dispatch('task_cancel', input, granted('cancel'));
-  assert.equal(cancellation.task.state, 'CANCELLED');
+  assert.equal(cancellation.task.state, 'CANCELED');
   assert.equal(cancellation.cancellation.actor_ref, 'granted');
-  assert.equal(service.dispatch('view_task', { task_id: task.task_id }, granted('view')).cancellation.reason, input.reason);
+  assert.equal(service.dispatch('task_view', { task_id: task.task_id }, granted('view')).cancellation.reason, input.reason);
   service.requestBotStop('granted', 'test');
   assert.throws(() => service.assertMissionCoordination(granted('close'), 'unsupersede'), { code: 'NOT_ALLOWED' });
   assert.deepEqual(service.dispatch('task_cancel', input, granted('cancel')), cancellation);
@@ -157,36 +145,4 @@ test('Mission stop admission rejects fresh work but preserves existing Execution
   assert.throws(() => service.assertMissionCoordination(bound(active), 'mission_submit'), { code: 'NOT_ALLOWED' });
   assert.equal(service.materialScope(bound(active), { write: true }).execution_id, active.execution_id);
   assert.equal(service.dispatch('task_finish', { outcome: 'incomplete' }, bound(active)).execution.state, 'CLOSING');
-});
-
-for (const mixed of [false, true]) test(`coordinator replaces a historical TASK dependency${mixed ? ' also represented in the modern graph' : ''}`, t => {
-  const { service, create, coordinator } = fixture(t);
-  const grant = coordinator('repair', ['task_cancel', 'task_dependency_replace']);
-  const cancelled = create('historical:cancelled');
-  const successor = create('historical:successor');
-  const untouched = create('historical:unrelated');
-  const downstream = create('historical:downstream', { depends_on: mixed ? [cancelled.task_id] : [] });
-  const insert = service.db.prepare(`INSERT INTO task_structure_dependencies
-    (dependency_id, task_id, dependency_kind, prerequisite_task_id, created_by_actor_ref, created_at)
-    VALUES (?, ?, 'TASK', ?, 'historical:writer', ?)`);
-  insert.run('historical-edge', downstream.task_id, cancelled.task_id, downstream.created_at);
-  insert.run('unrelated-edge', downstream.task_id, untouched.task_id, downstream.created_at);
-  service.dispatch('task_cancel', { ...observed(cancelled), reason: 'Obsolete dependency',
-    replacement_task_id: successor.task_id }, grant('cancel-historical'));
-  const before = service.getTask(downstream.task_id);
-  assert.equal(before.state, 'BLOCKED');
-  const blocker = before.blockers.find(row => row.dependency_id === 'historical-edge');
-  assert.equal(blocker.prerequisite_state, 'CANCELLED');
-  assert.equal(blocker.invalid_prerequisite, true);
-  assert.equal(blocker.replacement_task_id, successor.task_id);
-  const payload = { ...observed(before), from_task_id: cancelled.task_id, to_task_id: successor.task_id, reason: 'Repair historical requirement' };
-  const result = service.dispatch('task_dependency_replace', payload, grant('replace-historical'));
-  assert.deepEqual(result.task.relations.depends_on.map(row => row.related_task_id), [successor.task_id]);
-  assert.deepEqual(result.task.blockers.map(row => row.prerequisite_task_id).sort(), [successor.task_id, untouched.task_id]);
-  const historic = result.task.relations.dependency_replacements[0].original_relation;
-  assert.equal((mixed ? historic.legacy_dependency : historic).dependency_id, 'historical-edge');
-  assert.ok(service.db.prepare("SELECT retired_at FROM task_structure_dependencies WHERE dependency_id = 'historical-edge'").get().retired_at);
-  assert.equal(service.db.prepare("SELECT retired_at FROM task_structure_dependencies WHERE dependency_id = 'unrelated-edge'").get().retired_at, null);
-  assert.deepEqual(service.dispatch('task_dependency_replace', payload, grant('replace-historical')), result);
-  assert.throws(() => service.dispatch('task_dependency_replace', payload, grant('other-historical')), { code: 'STALE_VERSION' });
 });

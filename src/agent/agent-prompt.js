@@ -22,7 +22,7 @@ const BOUND_SOP = [
   'When Mathlib Search is present, use it as a service aid and verify returned declarations in the locked project. Local compilation or tests are feedback, not final Mission acceptance. A Judge FAIL is diagnostic feedback: revise the candidate in this same Task/Execution and check again; do not create a repair Task merely because the check failed. A Judge FAIL is not a reason to hand off: the check is an iterable tool call within this Execution, so submit again whenever the candidate has materially changed.',
   'Registering a Task does not end your Execution and does not make your current work depend on it. A concrete Task becomes BLOCKED when a real prerequisite stops it; the Mission remains a shared objective and is never made eligible by that state. A capability that appears in the Callable capability directory is never an external blocker; call it, and treat its structured error as feedback.',
   'Publish reusable findings with evidence, scope, and limitations. Treat feedback as evidence to inspect and act on, not as proof that a message was delivered. Keep hypotheses, observations, checked conclusions, and unknowns distinct. When a targeted Material notification arrives, inspect the referenced Material and call task_feedback with the decision and next action before changing course.',
-  'Use the unified execution_progress operation for checkpoint and handoff. Record completed work, findings, open questions, and next step. Runtime records the actual file commit and source identity; never invent a commit or claim a failed save succeeded. End the Task with task_finish and one outcome: done requires the current contract, incomplete preserves unfinished responsibility, blocked requires a typed wait_for dependency, and cancelled may name a replacement Task.',
+  'Use the explicit Workspace and Material operations for checkpoint and handoff. Record completed work, findings, open questions, and next step. Runtime records the actual file commit and source identity; never invent a commit or claim a failed save succeeded. End the Task with task_finish and one outcome: done requires the current contract, incomplete preserves unfinished responsibility, blocked requires a typed wait_for dependency, and cancelled may name a replacement Task.',
   'An Execution lasts until its Task is complete, a real prerequisite stops it, or Runtime asks for handoff (the execution deadline reminder, identity rotation after compaction, or a notification that says handoff is required). A read-only research phase that produces research Materials is normal work, not a reason to end. Do not hand off on your own initiative; when Runtime asks, save progress and hand off promptly.',
   'A checkpoint continues this Execution. After task_finish or timeout Runtime stops this Bot and releases its permissions. A fresh Bot may continue from public Task, Material, and Workspace revision state. Stop new research when Runtime requests termination.',
   'Treat structured tool errors, missing context, and save failures as observable outcomes. Do not infer completion from prose, an unverified file, a tool delivery receipt, or a green local check alone.',
@@ -44,8 +44,8 @@ function taskSection(task) {
   const sections = [
     `Task ID: ${task.task_id ?? task.id ?? 'unknown'}`,
     `Title: ${task.summary ?? task.goal ?? 'not supplied'}`,
-    `Mission gap: ${task.gap ?? 'not recorded in this legacy contract'}`,
-    `Priority: ${task.priority_level ?? 'legacy priority ' + (task.priority ?? 'unknown')} (advisory)`,
+    `Mission gap: ${task.gap ?? 'not recorded in this current contract'}`,
+    `Priority: ${task.priority_level ?? 'priority ' + (task.priority ?? 'unknown')} (advisory)`,
     `Contract version: ${task.spec_version ?? 'unknown'}`,
     `Expected output: ${task.expected_output ?? 'not supplied'}`,
     `Completion contract: ${compact(task.completion_contract ?? task.acceptance_conditions)}`,
@@ -186,7 +186,6 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
   const link = tool('task_link_material');
   const register = tool('task_create');
   const feedback = tool('task_feedback');
-  const progress = tool('execution_progress');
   const complete = tool('task_finish');
   const finish = tool('task_finish');
   const aids = capabilities
@@ -199,7 +198,7 @@ export function taskLoopGuide(profile, { toolPrefix = 'swarmenv_' } = {}) {
     line('4. Check:', `write the answer file in the Workspace, then call ${submit} with its relative path and current Workspace revision (and content_hash when available); Judge reads and checks that file directly and returns the CheckResult verdict and diagnostics${checkResult ? ` (re-read with ${checkResult})` : ''}. On FAIL, revise the file and call ${submit} again in this Execution. Publish a Material separately when another Execution needs the candidate or its provenance.`, submit),
     line('5. Share:', `publish a distinct finding with ${publish}, attach it with ${link}, record an explicit integration of another Task's Material with ${tool('consume_materials') ?? 'the consume tool'}, and answer a delivered notification with ${feedback}.`, publish, link),
     line('6. Identify further work:', `while executing, use ${register} for a separable responsibility that another Bot can take. Keep the current Task contract stable.`, register),
-    line('7. Save:', `call ${progress} with kind "checkpoint" to save progress and keep working.`, progress),
+    line('7. Save:', `save a public Workspace revision and publish a handoff Material when another Bot must continue. Keep the current Task open until its lifecycle boundary.`, files, publish),
     line('8. End this Execution with exactly one of:', `${finish ?? complete} with outcome done, incomplete, blocked, or cancelled when the Task reaches its boundary.`, finish ?? complete),
     line('9. Next:', `after Runtime ends this Bot, a fresh Bot reads public Task, Material, and Workspace state before calling ${take} for one Task. Mission itself is never eligible.`, take),
   ].filter(Boolean);
@@ -309,8 +308,8 @@ function initialContextInventory(options = {}) {
   return inventory;
 }
 
-// These aliases are retained for SDK compatibility; they intentionally use
-// the same reusable-identity contract rather than a separate selection SOP.
+// These exported names share one reusable-identity contract. They do not
+// represent separate lifecycle modes or selection strategies.
 export const GENERIC_AGENT_PROMPT = BOUND_SOP;
 export const IDLE_AGENT_PROMPT = BOUND_SOP;
 export const BOUND_AGENT_PROMPT = BOUND_SOP;

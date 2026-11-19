@@ -105,8 +105,7 @@ function fileEntries(files) {
  * This module deliberately keeps Git and revision metadata outside an
  * Execution directory. Bots only receive materialized files and high-level
  * save/apply/merge operations; they never receive a repository path or Git
- * credentials. The older WorkspaceManager remains available for compatibility
- * with execution-local records while new callers should use this class.
+ * credentials.
  */
 export class MissionWorkspace {
   constructor({ rootDir, fault = null }) {
@@ -671,7 +670,7 @@ export class MissionWorkspace {
     if (record.format_version === 2) this.repository.assertMain(root, record.main_commit);
     return record;
   }
-  // Caller holds the Task lifecycle writer lock also used by modern Git publication.
+  // Caller holds the Task lifecycle writer lock also used by Git publication.
   readDeliveryRevision({ workspaceId, missionId, revision }) {
     const root = this.workspacePath(workspaceId);
     const selected = revisionNumber(revision);
