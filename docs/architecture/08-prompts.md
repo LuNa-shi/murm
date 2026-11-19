@@ -65,6 +65,13 @@ Configured service metadata includes versions, hashes, capability names and bund
 
 The default eligible page has at most 16 Tasks. It includes contracts/instructions and current state/ranking through `selectionView`, explicitly marks `complete_history:false` and does not claim to be an admission allowlist. No Task is bootstrapped by the runner; all initial proposals are made by Bots. Four-Core controlled send-path coverage holds all four prompt calls open concurrently and checks each actual message against the corresponding durable Bot and the resolved Git main.
 
+When starting from a historical time, the startup message's `project.input_policy`
+identifies both the locked original formalization and the reconstructed public
+research state as inputs. The message uses the restored Mission, Tasks, Materials
+and main revision, while each Bot has a fresh identity and context. Original private
+conversations are not imported. [Historical continuation](13-historical-resume.md)
+defines the data reconstruction and fresh-run handoff.
+
 ### 4.2 What creates the benchmark Task text
 
 The unused whole-proof `taskPayload` and its root-only/decomposition/shell-prohibition instructions have been removed. Bot proposals supply local Task contracts and optional Task instructions; these are work data, not authority to override the stable contract. The Mission retains benchmark acceptance and the startup project entry names locked input coordinates and the prohibition on solution-derived input. The Bridge supplies the versioned system contract as stored Execution prompt provenance during take, instead of trusting a caller override.

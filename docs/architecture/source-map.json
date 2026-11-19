@@ -487,15 +487,6 @@
       "role": "Offline analysis CLI arguments and failure reporting"
     },
     {
-      "path": "scripts/experiment-supervisor.py",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Failure-isolated read-only long-run observer with bounded SQLite polling"
-    },
-    {
       "path": "scripts/benchmarks/build_flt10_statement_graph.py",
       "category": "benchmark inputs",
       "chapters": [
@@ -549,6 +540,15 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Independent service transport, authorization, lifecycle and deployment"
+    },
+    {
+      "path": "scripts/experiment-supervisor.py",
+      "category": "observation and analysis",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Failure-isolated read-only long-run observer with bounded SQLite polling"
     },
     {
       "path": "scripts/generate-architecture-api.mjs",
@@ -661,7 +661,8 @@
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/13-historical-resume.md"
       ],
       "role": "Owner-local CLI for an exact fixed manual Mission review receipt"
     },
@@ -671,7 +672,8 @@
       "chapters": [
         "docs/architecture/00-overview.md",
         "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/13-historical-resume.md"
       ],
       "role": "CLI options, locked input, opt-in persistent observer, batch and aggregate outputs"
     },
@@ -1052,7 +1054,8 @@
       "chapters": [
         "docs/architecture/00-overview.md",
         "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/13-historical-resume.md"
       ],
       "role": "Project composition, Agent take loop, Judge orchestration, stop and reports"
     },
@@ -1072,7 +1075,8 @@
       "chapters": [
         "docs/architecture/04-services.md",
         "docs/architecture/10-service-api-reference.md",
-        "docs/architecture/11-storage-reference.md"
+        "docs/architecture/11-storage-reference.md",
+        "docs/architecture/13-historical-resume.md"
       ],
       "role": "Material publication, lineage, read/search and consumption persistence"
     },
@@ -1156,7 +1160,8 @@
       "chapters": [
         "docs/architecture/04-services.md",
         "docs/architecture/10-service-api-reference.md",
-        "docs/architecture/11-storage-reference.md"
+        "docs/architecture/11-storage-reference.md",
+        "docs/architecture/13-historical-resume.md"
       ],
       "role": "Idempotent checks, preflight health, retries and durable CheckResults"
     },
@@ -1425,6 +1430,38 @@
       "role": "Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers"
     },
     {
+      "path": "src/replay/legacy-service-state.js",
+      "category": "historical continuation",
+      "chapters": [
+        "docs/architecture/13-historical-resume.md"
+      ],
+      "role": "Project recorded public research facts from existing service receipts at a selected time"
+    },
+    {
+      "path": "src/replay/resume-experiment.js",
+      "category": "historical continuation",
+      "chapters": [
+        "docs/architecture/13-historical-resume.md"
+      ],
+      "role": "Prepare historical service data and fresh ownership before the ordinary four-Core runner"
+    },
+    {
+      "path": "src/replay/service-history.js",
+      "category": "historical continuation",
+      "chapters": [
+        "docs/architecture/13-historical-resume.md"
+      ],
+      "role": "Automatic transaction-aware SQLite row history and read-only historical reconstruction"
+    },
+    {
+      "path": "src/replay/workspace-history.js",
+      "category": "historical continuation",
+      "chapters": [
+        "docs/architecture/13-historical-resume.md"
+      ],
+      "role": "Reconstruct past public main and reachable Git objects without modifying the source"
+    },
+    {
       "path": "src/runtime/docker-bot-disk.js",
       "category": "runtime and execution",
       "chapters": [
@@ -1467,7 +1504,8 @@
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/13-historical-resume.md"
       ],
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
     },
@@ -1498,7 +1536,8 @@
         "docs/architecture/00-overview.md",
         "docs/architecture/03-mission-task.md",
         "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/10-service-api-reference.md"
+        "docs/architecture/10-service-api-reference.md",
+        "docs/architecture/13-historical-resume.md"
       ],
       "role": "Runtime-owned Mission Workspace repository with immutable public revisions, fixed-file reads, materialization, and whole-revision merge"
     },
@@ -1592,7 +1631,8 @@
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/11-storage-reference.md"
+        "docs/architecture/11-storage-reference.md",
+        "docs/architecture/13-historical-resume.md"
       ],
       "role": "Workspace Git object creation, single-writer OS locking, immutable revision refs, durable request results and ref/index recovery barrier"
     },
@@ -1870,7 +1910,8 @@
       "chapters": [
         "docs/architecture/03-mission-task.md",
         "docs/architecture/10-service-api-reference.md",
-        "docs/architecture/11-storage-reference.md"
+        "docs/architecture/11-storage-reference.md",
+        "docs/architecture/13-historical-resume.md"
       ],
       "role": "Authoritative Task/Execution transactions, admission, projections and lifecycle"
     },

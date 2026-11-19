@@ -11,6 +11,7 @@ import { promisify } from 'node:util';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { TaskController } from '../src/runtime/task-controller.js';
 import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
+import { dropReplayHistory } from '../src/replay/service-history.js';
 
 function fixture(t, database = ':memory:', contextDatabase = null) {
   const tasks = new TaskService(database);
@@ -195,6 +196,9 @@ test('concurrent Context constructors migrate old Material identity storage unde
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const database = join(root, 'context.sqlite');
   const old = new ContextService(database);
+  // This fixture represents a schema predating both Material identity and
+  // automatic replay. Remove new capture triggers before building that old schema.
+  dropReplayHistory(old.db);
   old.db.exec('ALTER TABLE materials DROP COLUMN producer_bot_id'); old.close();
   const source = `
     import { ContextService } from './src/context/context-service.js';

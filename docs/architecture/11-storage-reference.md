@@ -65,6 +65,44 @@ Durable state can outlive a Session, but runtime recovery still has to validate 
 
 The SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors also migrate older databases as described above. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.
 
+### Automatic service history
+
+Source: [src/replay/service-history.js](../../src/replay/service-history.js); source SHA-256: `f57ba0c33375fcaccef3e6e5c15b1c99c7463c8f004b075349a791edd3c07148`.
+
+```sql
+CREATE TABLE IF NOT EXISTS replay_tables (
+  table_name TEXT PRIMARY KEY,
+  columns_json TEXT NOT NULL,
+  rowid_alias TEXT,
+  history_from TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS replay_domains (
+  domain TEXT PRIMARY KEY,
+  format_version INTEGER NOT NULL,
+  tables_json TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS replay_transactions (
+  transaction_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  started_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  committed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS replay_control (
+  singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+  transaction_id INTEGER
+);
+INSERT OR IGNORE INTO replay_control VALUES (1, NULL);
+CREATE TABLE IF NOT EXISTS replay_events (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  table_name TEXT NOT NULL,
+  transaction_id INTEGER,
+  occurred_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  before_json TEXT,
+  after_json TEXT
+);
+CREATE INDEX IF NOT EXISTS replay_events_time ON replay_events(occurred_at, sequence);
+CREATE INDEX IF NOT EXISTS replay_events_transaction ON replay_events(transaction_id, sequence);
+```
+
 ### Task-owned independent service commit gates
 
 Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
@@ -921,7 +959,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `05e307d72e815db99b20a83da6c1ef95c09d0c7bef9a044c9d52d968cc4496c9`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `2868f17ddb8a67d0d84edbfd7edbfe36d108adcb38acc3e161b4db868f2b818c`.
 
 #### executions_active_core
 
@@ -956,6 +994,26 @@ CREATE TABLE mission_final_check_policies (
         max_checks INTEGER NOT NULL CHECK(max_checks > 0),
         max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
       );
+```
+
+#### mission_manual_one_timely_decision
+
+```sql
+CREATE UNIQUE INDEX mission_manual_one_timely_decision
+  ON mission_manual_reviews (mission_id, submission_id)
+  WHERE json_extract(document, '$.timely') = 1;
+```
+
+#### mission_manual_reviews
+
+```sql
+CREATE TABLE mission_manual_reviews (
+    mission_id TEXT NOT NULL,
+    submission_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    document TEXT NOT NULL,
+    PRIMARY KEY (mission_id, submission_id, request_id)
+  );
 ```
 
 #### mission_submission_audit

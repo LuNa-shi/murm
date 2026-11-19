@@ -8,6 +8,7 @@ import { loadBenchmarkConfig, runBenchmarkBatch, runBenchmarkProject } from '../
 import { runPassK } from '../src/benchmark/pass-k.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
 import { beginPrivateAudit } from '../src/observability/private-audit-retention.js';
+import { parseReplayTime } from '../src/replay/resume-experiment.js';
 
 import { OBSERVABILITY_AUTH_VERSION, observabilityAccessMode } from '../src/observability/observability-server.js';
 const execFileAsync = promisify(execFile);
@@ -179,6 +180,8 @@ function optionsFromArgs(argv) {
       '--experiment-root': 'experimentRoot',
       '--experiment-dir': 'experimentDir',
       '--report-dir': 'reportDir',
+      '--resume-from': 'resumeFrom',
+      '--at': 'resumeAt',
       '--problem': 'problemId',
       '--cores': 'cores',
       '--pass-k': 'k',
@@ -224,12 +227,15 @@ function usage() {
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
     '    --report-dir reports/putnambench-runs/run-<id>',
+    '    --resume-from experiments/<finished-run> --at 2026-11-19T12:30:00Z --problem <id>',
     '    --observability             Opt in to the persistent observer server; disabled by default',
     '    --observability-host 127.0.0.1',
     '    --observability-port 8787',
     '    --observability-metadata /path/to/experiments/.observability/public-server.json',
     '',
     'Use --problem <id> to run one configured project as a pilot.',
+    'Historical resume reconstructs service history at --at and starts four fresh Cores in a new --experiment-dir.',
+    'Choose the historical time after the source experiment ends; no manual snapshot is required.',
     'Initial Bots start 60000 ms apart by default; replacement Bots do not repeat this stagger.',
     'The source diagnostic timeout defaults to 120000 ms and is capped by the locked checker timeout.',
     'Set the final-tree timeout in the trusted final_tree_checker configuration and regenerate its artifact lock.',
@@ -247,6 +253,12 @@ if (options.help) {
   process.exit(0);
 }
 if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '--problems and --putnambench-root are required');
+if (Boolean(options.resumeFrom) !== Boolean(options.resumeAt)) throw new Error('--resume-from and --at must be supplied together');
+if (options.resumeFrom) {
+  if (!options.problemId || options.k !== undefined) throw new Error('Historical resume requires one --problem and four fresh Cores; --pass-k is unavailable');
+  options.resumeFrom = resolve(options.resumeFrom);
+  options.resumeAt = parseReplayTime(options.resumeAt);
+}
 if (options.k !== undefined) {
   if (!Number.isSafeInteger(options.k) || options.k < 1 || options.k > 4 || !options.problemId) throw new Error('--pass-k requires K from 1 to 4 and one --problem');
   options.initialBotStaggerMs = 0;
@@ -334,6 +346,7 @@ const metadata = {
   started_at: new Date().toISOString(),
   repository_commit: repositoryCommit,
   repository_worktree_dirty: repositoryStatus.length > 0,
+  ...(options.resumeFrom ? { resume: { source_experiment: options.resumeFrom, requested_at: options.resumeAt } } : {}),
   putnambench_commit: config.putnambench_commit,
   benchmark: config.benchmark ?? 'putnambench',
   fixture_commit: config.fixture_commit ?? config.putnambench_commit,
@@ -366,7 +379,7 @@ const metadata = {
     provider: options.provider,
     model: options.model,
     observability_enabled: options.observability,
-    input_policy: 'pinned formalization in Task-owned Workspace; no candidate or solution input',
+    input_policy: options.resumeFrom ? 'original pinned formalization and public research state reconstructed at the requested historical time' : 'pinned formalization in Task-owned Workspace; no candidate or solution input',
     raw_evidence_layout: 'logs/, state/, workspaces/',
     report_layout: resolve(options.reportDir),
   },

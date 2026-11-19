@@ -1,10 +1,12 @@
 import { assertServiceCommitSettled } from '../sdk/service-commit-gate.js';
+import { installServiceHistory } from '../replay/service-history.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { storedCheckerProcessStatus, storedResultClass } from '../judge/check-result.js';
 import { makeEnvelope, operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
 import { MISSION_SUBMISSION_SCHEMA_SQL, SCHEMA_SQL, TASKS_TABLE_DEFINITION } from '../storage/schema.js';
+import { MANUAL_MISSION_REVIEW_SCHEMA_SQL } from '../runtime/manual-mission-review.js';
 import { assertNewExecutionWork } from './execution-budget.js';
 import { ensureJudgeSchema } from '../storage/judge-schema.js';
 import {
@@ -212,6 +214,9 @@ export class TaskService {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
     this.db.exec(MISSION_SUBMISSION_SCHEMA_SQL);
+    // Manual decisions are public research facts, even though their writer is
+    // the separate owner CLI. Include their table before installing history.
+    this.db.exec(MANUAL_MISSION_REVIEW_SCHEMA_SQL);
     if (!this.db.prepare('PRAGMA table_info(missions)').all().some(column => column.name === 'merge_required_check_json')) {
       this.#transaction(() => {
         if (!this.db.prepare('PRAGMA table_info(missions)').all().some(column => column.name === 'merge_required_check_json')) {
@@ -368,6 +373,7 @@ export class TaskService {
     this.taskEventListeners = new Set();
     this.notificationListeners = new Set();
     this.admission = this.#normalizeAdmissionPolicy(admission);
+    installServiceHistory(this.db, { domain: 'task' });
   }
 
   close() {

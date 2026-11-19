@@ -4,7 +4,7 @@ import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, stat, w
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
-import { WorkspaceRepository, writeWorkspaceJson } from './workspace-repository.js';
+import { WorkspaceRepository } from './workspace-repository.js';
 
 export const WORKSPACE_CONFLICT_HELP = Object.freeze({
   guidance: `Workspace apply has unresolved conflicts. The ordinary project tree contains Git's editable merge result.
@@ -19,7 +19,6 @@ const REVISION_DIR = '.swarm-revisions';
 const pendingRequests = new Map();
 
 const textHash = (value) => createHash('sha256').update(value).digest('hex');
-const now = () => new Date().toISOString();
 const required = (value, name) => {
   if (typeof value !== 'string' || value.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${name} is required`);
   return value;
@@ -109,8 +108,9 @@ function fileEntries(files) {
  * with execution-local records while new callers should use this class.
  */
 export class MissionWorkspace {
-  constructor({ rootDir, fault = null }) {
-    this.repository = new WorkspaceRepository({ fault });
+  constructor({ rootDir, fault = null, clock = Date.now }) {
+    this.repository = new WorkspaceRepository({ fault, clock });
+    this.clock = () => new Date(clock()).toISOString();
     this.fault = fault;
     this.rootDir = resolve(required(rootDir, 'rootDir'));
   }
@@ -145,7 +145,7 @@ export class MissionWorkspace {
         const imported = await this.repository.importTree(root, files, [], 'Workspace revision 0.1');
         const revision = this.#revision('0.1', [], files, 'initial', imported);
         const record = { format_version: 2, workspace_id: workspaceId, mission_id: missionId, main_revision: '0.1', main_commit: imported.commit,
-          next_revision: '0.2', revisions: ['0.1'], frozen_submission_id: null, metadata, created_at: now(), updated_at: now() };
+          next_revision: '0.2', revisions: ['0.1'], frozen_submission_id: null, metadata, created_at: this.clock(), updated_at: this.clock() };
         this.repository.commit(root, { kind: 'create', oldMain: null, newMain: imported.commit, record, revision });
         return this.#public(record);
       });
@@ -355,12 +355,12 @@ export class MissionWorkspace {
       this.#assertWritable(record);
       if (expectedMainRevision !== undefined && resolvedRevision(expectedMainRevision, record) !== record.main_revision) throw new SwarmEnvError('MAIN_MOVED', 'main revision changed before Mission submission');
       const next = { ...record, frozen_submission_id: submissionId,
-        freeze_epoch: (record.freeze_epoch ?? 0) + (record.frozen_submission_id ? 0 : 1), updated_at: now() };
+        freeze_epoch: (record.freeze_epoch ?? 0) + (record.frozen_submission_id ? 0 : 1), updated_at: this.clock() };
       const publish = () => {
         if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) {
           throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace main is frozen by another Mission submission');
         }
-        writeWorkspaceJson(join(root, META), next);
+        this.repository.writeRecord(root, next, { kind: 'freeze' });
       };
       if (coordinate) {
         const result = coordinate({ previous: this.#public(record), frozen: this.#public(next), publish });
@@ -391,8 +391,8 @@ export class MissionWorkspace {
       this.#assertWritable(record);
       if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace freeze belongs to another Mission submission');
       record.frozen_submission_id = null;
-      record.updated_at = now();
-      writeWorkspaceJson(join(root, META), record);
+      record.updated_at = this.clock();
+      this.repository.writeRecord(root, record, { kind: 'unfreeze' });
       return this.#public(record);
     });
   }
@@ -482,7 +482,7 @@ export class MissionWorkspace {
       const metadata = this.#revision(revision, parents, tree, source, imported, requestId, conflicts);
       const result = { workspace_id: workspaceId, revision, base_revision: base, parents, git_commit: imported.commit,
         files: metadata.files, changed_files: this.#changed(before, metadata.files), content_hash: metadata.content_hash, git_tree: imported.tree, source, conflicts };
-      record.revisions.push(revision); record.next_revision = nextRevision(revision); record.updated_at = now();
+      record.revisions.push(revision); record.next_revision = nextRevision(revision); record.updated_at = this.clock();
       const published = withPublication(() => {
         this.#guard(guard);
         this.repository.commit(root, { kind: 'save', oldMain: record.main_commit, newMain: record.main_commit, record, revision: metadata, receipt: { ...request, result } });
@@ -547,7 +547,7 @@ export class MissionWorkspace {
       const metadata = this.#revision(revision, parents, files, mergeSource, { commit, tree: merged.tree }, requestId);
       metadata.check = check === true ? { verdict: 'PASS', tree: merged.tree } : check;
       const before = await this.#snapshot(root, pinned.main_revision);
-      record.revisions.push(revision); record.main_revision = revision; record.main_commit = commit; record.next_revision = nextRevision(revision); record.updated_at = now();
+      record.revisions.push(revision); record.main_revision = revision; record.main_commit = commit; record.next_revision = nextRevision(revision); record.updated_at = this.clock();
       const result = { ...this.#public(record), merged_from: source.revision, parents, changed_files: this.#changed(before, metadata.files), source_commit: source.git_commit, check: metadata.check };
       const published = withPublication(() => {
         this.#assertMergeAllowed(record, guard);
@@ -719,7 +719,7 @@ export class MissionWorkspace {
   }
   #revision(revision, parents, tree, source, imported, requestId = null, conflicts = []) {
     const files = fileEntries(tree);
-    return { revision, parents, git_commit: imported.commit, git_tree: imported.tree, files, content_hash: textHash(stableStringify(files)), source, conflicts, request_id: requestId, created_at: now() };
+    return { revision, parents, git_commit: imported.commit, git_tree: imported.tree, files, content_hash: textHash(stableStringify(files)), source, conflicts, request_id: requestId, created_at: this.clock() };
   }
   #request(id, payload) { required(id, 'request_id'); return { request_id: id, key: textHash(id), fingerprint: textHash(stableStringify(payload)) }; }
   #replay(root, request) {

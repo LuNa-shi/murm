@@ -1,4 +1,5 @@
 import { assertNewExecutionWork } from '../task/execution-budget.js';
+import { installServiceHistory } from '../replay/service-history.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -80,6 +81,7 @@ export class JudgeService {
     this.readProjectRevision = readProjectRevision;
     this.lifecycleWrite = lifecycleWrite;
     this.refreshQueueAuthority = refreshQueueAuthority;
+    installServiceHistory(this.db, { domain: 'judge' });
   }
 
   close() { this.db.close(); }
