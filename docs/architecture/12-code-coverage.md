@@ -200,7 +200,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/replay/legacy-service-state.js](../../src/replay/legacy-service-state.js) | Project recorded public research facts from existing service receipts at a selected time | [13-historical-resume](13-historical-resume.md) | `75368bab8b09c7cbb953c8215f772e484857420e1650883161a1e8a2759d21bf` |
+| [src/replay/legacy-service-state.js](../../src/replay/legacy-service-state.js) | Project recorded public research facts from existing service receipts at a selected time | [13-historical-resume](13-historical-resume.md) | `d21b9e9db0f7ec88472deaefe320b541ef99d866830be881a20004deaaf2b649` |
 | [src/replay/resume-experiment.js](../../src/replay/resume-experiment.js) | Prepare historical service data and fresh ownership before the ordinary four-Core runner | [13-historical-resume](13-historical-resume.md) | `178de9f2ba922488fa8f780ee3c0353e15645b1e973cc24e015fb22dae9b43a3` |
 | [src/replay/resume-schema.js](../../src/replay/resume-schema.js) | Convert a reconstructed archive to the supported current service schemas before handoff | [13-historical-resume](13-historical-resume.md) | `526109b9f288217d021cc7f0b123700cf9844a88f79c5081a5fa69cadbc43be8` |
 | [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and read-only historical reconstruction | [13-historical-resume](13-historical-resume.md) | `3ae15de790367396c5890c2ba97e2e2607e4bf1d3d9467cae3116158332bf67a` |

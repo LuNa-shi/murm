@@ -419,11 +419,12 @@ function restoreContext(db, cutoff, history) {
       revocations.set(event.relation_id, prior);
     }
   }
-  for (const relation of relations) {
-    if (time(relation.created_at) > cutoff || creations.has(relation.relation_id)) continue;
+  const retainedRelations = relations.filter(row =>
+    Math.max(time(row.created_at), creations.get(row.relation_id) ?? -Infinity) <= cutoff);
+  for (const relation of retainedRelations) {
     for (const id of [relation.material_id, relation.replacement_material_id].filter(Boolean)) {
       if (!materialIds.has(id)) throw missing('context', 'material_relations', relation.relation_id,
-        `Material ${id} has no proven initial publication before this relationship; its creation receipt is missing`);
+        `Material ${id} lacks historical publication evidence for this relationship`);
     }
   }
   for (const consumption of rows(db, 'material_consumptions')) {
@@ -432,9 +433,6 @@ function restoreContext(db, cutoff, history) {
         'An earlier-timestamped consumption references a Material whose initial publication and consumption receipts are missing');
     }
   }
-  const retainedRelations = relations.filter(row =>
-    Math.max(time(row.created_at), creations.get(row.relation_id) ?? -Infinity) <= cutoff && materialIds.has(row.material_id) &&
-    (!row.replacement_material_id || materialIds.has(row.replacement_material_id)));
   const supersedeVersions = new Map();
   for (const relation of retainedRelations) {
     const revoked = revocations.get(relation.relation_id) ?? [];

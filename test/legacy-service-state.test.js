@@ -688,3 +688,20 @@ test('a receipt-less earlier consumption reports ambiguous Material history befo
   });
   assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM material_consumptions').get().n, 1);
 });
+
+test('a retained correction event with missing operation receipts keeps ambiguous history from being silently discarded', t => {
+  const { context, publish, supersede, envelope, at, next } = contextFixture(t);
+  for (const id of ['old', 'new']) publish(id);
+  next();
+  const { relation_id: relationId } = supersede().relation;
+  const selected = at();
+  context.db.exec('DELETE FROM operations');
+  next();
+  for (const id of ['old', 'new']) context.dispatch('context_publish_material', {
+    material_id: id, content: `Mathematical evidence ${id}`,
+  }, envelope(`repeat-${id}`));
+  const restored = copy(t, context.db);
+  assert.throws(() => projectLegacyServiceState(restored, { domain: 'context', at: selected }), error =>
+    error.code === 'REPLAY_HISTORY_MISSING' && error.details.table === 'material_relations' && error.details.entity_id === relationId);
+  assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM materials').get().n, 2);
+});
