@@ -12,7 +12,11 @@
       "id": "oai_seymour_second_neighborhood",
       "problem_file": "benchmarks/openai-math-12/lean/ComparatorChallenges/SeymourSecondNeighborhood.lean",
       "declaration_name": "OAI.SeymourSecondNeighborhood.exists_goodVertex",
-      "source_sha256": "fa4a37831405b3fe7f6a88a2dce8918982195ee1757e05e4623055822d36ca98"
+      "source_sha256": "fa4a37831405b3fe7f6a88a2dce8918982195ee1757e05e4623055822d36ca98",
+      "paper": {
+        "manifest": "173/manifest.json",
+        "sha256": "7154d525431d105a19735bdacf3f0e34344df0c591dba8168deae1c3c9c6e74a"
+      }
     },
     {
       "id": "oai_one_way_liveness",
