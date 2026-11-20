@@ -285,9 +285,6 @@ const experimentDirectoryExists = await lstat(options.experimentDir).then(
 );
 if (experimentDirectoryExists) throw existingExperimentDirectory();
 
-if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
-if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
-
 const operatorStop = new AbortController();
 options.signal = operatorStop.signal;
 let projectOutcomesKnown = false;
@@ -300,36 +297,7 @@ const onOperatorSignal = signal => {
 process.on('SIGINT', onOperatorSignal);
 process.on('SIGTERM', onOperatorSignal);
 
-// Resolve the selected upstream on the host. The sandbox receives a separate
-// per-Bot credential from the local gateway, never this provider key.
-const piProviderSettings = await loadPiProviderSettings(options.provider);
-const piProviderEnvPrefix = `PI_${options.provider.toUpperCase().replaceAll('-', '_')}`;
-const upstreamBase = process.env[`${piProviderEnvPrefix}_BASE_URL`] ?? piProviderSettings.baseUrl;
-const upstreamKey = process.env[`${piProviderEnvPrefix}_API_KEY`] ?? piProviderSettings.apiKey;
-if (!upstreamBase || !upstreamKey) throw new Error('The selected provider requires a host-side endpoint and credential');
-options.modelUpstream = {
-  url: `${upstreamBase.replace(/\/$/, '')}/responses`,
-  headers: { authorization: `Bearer ${upstreamKey}`, ...(piProviderSettings.headers ?? {}) },
-};
-options.sandbox.agentEnvironment = {};
-options.sandbox.secretEnvironment = {};
-
-const config = await loadBenchmarkConfig(options.configPath, {
-  putnamBenchRoot: options.putnamBenchRoot,
-  verifyPinnedCheckout: true,
-});
-const problems = options.problemId
-  ? config.problems.filter((problem) => problem.id === options.problemId)
-  : config.problems;
-if (problems.length === 0) throw new Error(`problem is not in the locked configuration: ${options.problemId}`);
-
-const repositoryCommit = (await execFileAsync('git', ['-C', process.cwd(), 'rev-parse', 'HEAD'], { encoding: 'utf8' })).stdout.trim();
-const repositoryStatus = (await execFileAsync('git', ['-C', process.cwd(), 'status', '--porcelain'], { encoding: 'utf8' })).stdout.trim();
-options.repositoryCommit = repositoryCommit;
-options.repositoryWorktreeDirty = repositoryStatus.length > 0;
 const metadataPath = resolve(options.experimentDir, 'metadata', 'experiment.json');
-const finalTreeTimeoutMs = config.final_tree_checker ? config.final_tree_checker.timeoutMs ?? 120_000 : null;
-const sourceCheckerTimeoutMs = Math.min(options.checkerTimeoutMs ?? 120_000, finalTreeTimeoutMs ?? Infinity);
 const metadata = {
   schema_version: 1,
   experiment_id: resolve(options.experimentDir).split('/').at(-1),
@@ -337,43 +305,6 @@ const metadata = {
   setup_elapsed_ms: null,
   started_at: null,
   status: 'preparing',
-  repository_commit: repositoryCommit,
-  repository_worktree_dirty: repositoryStatus.length > 0,
-  putnambench_commit: config.putnambench_commit,
-  benchmark: config.benchmark ?? 'putnambench',
-  fixture_commit: config.fixture_commit ?? config.putnambench_commit,
-  environment: {
-    putnambench_root: config.putnam_bench_root,
-    lean_project_root: config.lean_project_root,
-    lean_toolchain: config.lean_toolchain,
-    mathlib_version: config.mathlib_version,
-    checker_ref: config.checker_ref,
-    checker_version: config.checker_version,
-    environment_ref: config.environment_ref,
-  },
-  protocol: {
-    problem_count: problems.length,
-    core_count: options.k ?? options.cores,
-    ...(options.k ? { execution_mode: 'pass_k', k: options.k, cores_per_mission: 1 } : {}),
-    project_parallelism: options.projectParallelism,
-    timebox_ms: options.timeboxMs,
-    bot_max_ms: options.botMaxMs,
-    initial_bot_stagger_ms: options.initialBotStaggerMs,
-    selection_timeout_ms: options.selectionTimeoutMs,
-    execution_timeout_ms: options.executionTimeoutMs,
-    source_checker_timeout_ms: sourceCheckerTimeoutMs,
-    final_tree_checker_timeout_ms: finalTreeTimeoutMs,
-    workspace_model: 'mission_workspace_public_revisions',
-    candidate_model: 'workspace_file_ref',
-    initial_task_count: null,
-    turn_timeout_ms: options.turnTimeoutMs,
-    provider: options.provider,
-    model: options.model,
-    observability_enabled: options.observability,
-    input_policy: 'pinned formalization in Task-owned Workspace; no candidate or solution input',
-    raw_evidence_layout: 'logs/, state/, workspaces/',
-    report_layout: resolve(options.reportDir),
-  },
 };
 process.umask(0o077);
 const audit = await beginPrivateAudit({ root: options.experimentRoot, directory: options.experimentDir }).catch((error) => {
@@ -381,7 +312,6 @@ const audit = await beginPrivateAudit({ root: options.experimentRoot, directory:
   throw error;
 });
 options.privateAudit = audit;
-metadata.protocol.private_audit_retention_ms = audit.retentionMs;
 let observationStore;
 const pendingCleanup = [];
 options.onCleanupPending = promise => pendingCleanup.push(promise);
@@ -395,9 +325,82 @@ options.onRunStarted = startedAt => {
   renameSync(temporary, metadataPath);
 };
 try {
-  await mkdir(resolve(options.reportDir), { recursive: true });
   await mkdir(resolve(options.experimentDir, 'metadata'), { recursive: true });
   await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+  if (!options.provider) throw new Error('PI_PROVIDER is required; set it in .env or the environment');
+  if (!options.model) throw new Error('PI_MODEL is required; set it in .env or the environment');
+
+  // Resolve the selected upstream on the host. The sandbox receives a separate
+  // per-Bot credential from the local gateway, never this provider key.
+  const piProviderSettings = await loadPiProviderSettings(options.provider);
+  const piProviderEnvPrefix = `PI_${options.provider.toUpperCase().replaceAll('-', '_')}`;
+  const upstreamBase = process.env[`${piProviderEnvPrefix}_BASE_URL`] ?? piProviderSettings.baseUrl;
+  const upstreamKey = process.env[`${piProviderEnvPrefix}_API_KEY`] ?? piProviderSettings.apiKey;
+  if (!upstreamBase || !upstreamKey) throw new Error('The selected provider requires a host-side endpoint and credential');
+  options.modelUpstream = {
+    url: `${upstreamBase.replace(/\/$/, '')}/responses`,
+    headers: { authorization: `Bearer ${upstreamKey}`, ...(piProviderSettings.headers ?? {}) },
+  };
+  options.sandbox.agentEnvironment = {};
+  options.sandbox.secretEnvironment = {};
+
+  const config = await loadBenchmarkConfig(options.configPath, {
+    putnamBenchRoot: options.putnamBenchRoot,
+    verifyPinnedCheckout: true,
+  });
+  const problems = options.problemId
+    ? config.problems.filter((problem) => problem.id === options.problemId)
+    : config.problems;
+  if (problems.length === 0) throw new Error(`problem is not in the locked configuration: ${options.problemId}`);
+
+  const repositoryCommit = (await execFileAsync('git', ['-C', process.cwd(), 'rev-parse', 'HEAD'], { encoding: 'utf8' })).stdout.trim();
+  const repositoryStatus = (await execFileAsync('git', ['-C', process.cwd(), 'status', '--porcelain'], { encoding: 'utf8' })).stdout.trim();
+  options.repositoryCommit = repositoryCommit;
+  options.repositoryWorktreeDirty = repositoryStatus.length > 0;
+  const finalTreeTimeoutMs = config.final_tree_checker ? config.final_tree_checker.timeoutMs ?? 120_000 : null;
+  const sourceCheckerTimeoutMs = Math.min(options.checkerTimeoutMs ?? 120_000, finalTreeTimeoutMs ?? Infinity);
+  Object.assign(metadata, {
+    repository_commit: repositoryCommit,
+    repository_worktree_dirty: repositoryStatus.length > 0,
+    putnambench_commit: config.putnambench_commit,
+    benchmark: config.benchmark ?? 'putnambench',
+    fixture_commit: config.fixture_commit ?? config.putnambench_commit,
+    environment: {
+      putnambench_root: config.putnam_bench_root,
+      lean_project_root: config.lean_project_root,
+      lean_toolchain: config.lean_toolchain,
+      mathlib_version: config.mathlib_version,
+      checker_ref: config.checker_ref,
+      checker_version: config.checker_version,
+      environment_ref: config.environment_ref,
+    },
+    protocol: {
+      private_audit_retention_ms: audit.retentionMs,
+      problem_count: problems.length,
+      core_count: options.k ?? options.cores,
+      ...(options.k ? { execution_mode: 'pass_k', k: options.k, cores_per_mission: 1 } : {}),
+      project_parallelism: options.projectParallelism,
+      timebox_ms: options.timeboxMs,
+      bot_max_ms: options.botMaxMs,
+      initial_bot_stagger_ms: options.initialBotStaggerMs,
+      selection_timeout_ms: options.selectionTimeoutMs,
+      execution_timeout_ms: options.executionTimeoutMs,
+      source_checker_timeout_ms: sourceCheckerTimeoutMs,
+      final_tree_checker_timeout_ms: finalTreeTimeoutMs,
+      workspace_model: 'mission_workspace_public_revisions',
+      candidate_model: 'workspace_file_ref',
+      initial_task_count: null,
+      turn_timeout_ms: options.turnTimeoutMs,
+      provider: options.provider,
+      model: options.model,
+      observability_enabled: options.observability,
+      input_policy: 'pinned formalization in Task-owned Workspace; no candidate or solution input',
+      raw_evidence_layout: 'logs/, state/, workspaces/',
+      report_layout: resolve(options.reportDir),
+    },
+  });
+  await writeFile(metadataPath, JSON.stringify(metadata, null, 2));
+  await mkdir(resolve(options.reportDir), { recursive: true });
   const observationAddress = options.observability ? await ensureObservabilityServer(options).catch(error => {
     if (operatorStop.signal.aborted) return null;
     throw error;
@@ -509,10 +512,15 @@ try {
     invalid_count: invalidCount,
   }) + '\\n');
 } catch (error) {
-  await writeFile(metadataPath, JSON.stringify({ ...metadata, status: metadata.started_at === null ? 'startup_failed' : 'failed',
-    valid_for_analysis: false, ended_at: new Date().toISOString(), setup_elapsed_ms: metadata.setup_elapsed_ms ?? Date.now() - setupStartedAt,
-    error_code: error.code ?? error.name }, null, 2));
-  throw error;
+  stoppedByOperator = operatorStop.signal.aborted;
+  const status = stoppedByOperator ? 'operator_stopped' : metadata.started_at === null ? 'startup_failed' : 'failed';
+  await writeFile(metadataPath, JSON.stringify({
+    ...metadata, status, valid_for_analysis: false, ended_at: new Date().toISOString(),
+    setup_elapsed_ms: metadata.setup_elapsed_ms ?? Date.now() - setupStartedAt,
+    error_code: error.code ?? error.name,
+    ...(stoppedByOperator ? { stop_reason: 'operator_stop', stop_signal: operatorStop.signal.reason } : {}),
+  }, null, 2));
+  if (!stoppedByOperator) throw error;
 } finally {
   if (pendingCleanup.length > 0) {
     process.stderr.write(JSON.stringify({ status: 'cleanup_pending', projects: pendingCleanup.length }) + '\n');

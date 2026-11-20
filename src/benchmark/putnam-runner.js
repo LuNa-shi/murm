@@ -1414,6 +1414,13 @@ export function projectReport(state, startedAt, deadline) {
   return report;
 }
 
+function finishPreflightObservation(store, runId, stopped) {
+  if (store?.getExperiment(runId)?.status !== 'CREATED') return;
+  store.append({ experimentId: runId, source: 'runtime', kind: 'experiment_finished',
+    payload: { solved: false, protocol_valid: false, stop_reason: stopped ? 'operator_stop' : 'preflight_failed' } });
+  store.finishExperiment(runId, { status: stopped ? 'CANCELLED' : 'FAILED' });
+}
+
 async function createProjectState(problem, config, options) {
   const assertInitializing = () => { if (options.signal?.aborted) throw operatorStop(); };
   assertInitializing();
@@ -1561,7 +1568,8 @@ async function createProjectState(problem, config, options) {
   catch (error) {
     const cleanup = { cores, cleanupErrors: [], missionSubmissionStore, modelAccess, judgeService, operatorStopped: options.signal?.aborted === true };
     await stopBenchmarkRuntime(cleanup, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
-    await closeProjectStores(cleanup, closeStores, options);
+    try { finishPreflightObservation(sandboxObservationStore, runId, cleanup.operatorStopped); }
+    finally { await closeProjectStores(cleanup, closeStores, options); }
     if (cleanup.operatorStopped) {
       const stopped = operatorStop();
       stopped.cleanupErrors = cleanup.cleanupErrors;
@@ -2469,7 +2477,10 @@ async function runProject(problem, config, options) {
   if (!Number.isFinite(options.cleanupGraceMs ?? 30_000) || (options.cleanupGraceMs ?? 30_000) <= 0) throw new TypeError('cleanupGraceMs must be finite and positive');
   const state = await createProjectState(problem, config, options);
   try { return await executeBenchmarkProject(state, problem, config, options); }
-  finally {
+  catch (error) {
+    finishPreflightObservation(state.observationStore, state.runId, options.signal?.aborted === true);
+    throw error;
+  } finally {
     if (!state.cleanupPromise) await stopBenchmarkRuntime(state, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
     if (state.unhandledRejectionHandler) process.off('unhandledRejection', state.unhandledRejectionHandler);
     // Also owns exceptions during orchestration, report generation and write.
