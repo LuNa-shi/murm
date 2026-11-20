@@ -114,3 +114,66 @@ prescribed decomposition, list of helper lemmas or assignment of Core roles.
 The generated [system reference](prompts/01-system-identity.md) includes the complete independent solver addendum, and [benchmark reference](prompts/03-benchmark-turns.md) includes its continuation and soft-closeout text. The adapter selects these only for explicit solver mode and verifies the pinned worker resource. Swarm's skills are not loaded. After the host binds the real Execution, the initial user prompt appends JSON containing `problem` and `target_path` from the verified fixture, the fixed `/workspace/project` path and the group deadline from run state. These are actual send inputs, using the same verified immutable resource contract. The next ordinary turns and compaction follow-up reuse solver continuation; soft closeout substitutes save-only guidance. No Task/Material tool instructions are sent by these solver paths.
 
 The Workspace skill also distinguishes the default 30-second CLI HTTP wait from the checker execution limit. Its 630000 ms example assumes an already-ready preflight, no queue wait and a ten-minute source allowance; queue/cold-preflight time is additional, and no client timeout extends lifecycle deadlines. This text is included through the same protected skill read path.
+
+## Native Agensh math team
+
+The pinned Agensh entrypoint renders its upstream collaboration template with worker identity, team size, channel and the four math fragments (focus, objective, work_cycle, delivery). The native router sends kickoff, idle and budget reminders through the ProgramBench lifecycle. The brief receives TASK, REPO, Mattermost IDs and TARGET_FILE from the verified seed. PAPER_BRIEF is empty by default. With the pinned Seymour paper it expands to ` Formalize the supplied manuscript in benchmark/paper.pdf (text in benchmark/paper.txt).` Snapshot text does not establish delivery. The native session archives and router state record actual turns. [Upstream template](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/prompts/agents.txt)
+
+### deadline_45m
+
+```text
+@all **45 minutes left.** Concentrate on integrating and checking existing work on the default branch. Land the open PRs; report any blockers.
+```
+
+### deadline_5m
+
+```text
+@all **5 minutes left.** Merge ready work, verify the original theorem on main and report the final state.
+```
+
+### delivery
+
+```text
+Commit the Lean sources to main. From the directory containing the original theorem, run lean-check Helper.lean before checking a module that imports Helper. Keep generated .olean files out of Git. The final checker rebuilds from source and checks the fixed declaration.
+```
+
+### focus
+
+```text
+proving the original theorem
+```
+
+### idle
+
+```text
+Inspect current main and the live board, find an open proof obligation and choose the next piece of work.
+```
+
+### idle_delivery
+
+```text
+Verify and merge completed work on the default branch, resolve integration issues and report blockers. Keep the current scope.
+```
+
+### objective
+
+```text
+Prove the original declaration in the seeded Lean file. New helper modules can be added under the directory containing the declaration. Keep the original statement and trusted assumptions. The external checker grades the delivered main tree.
+```
+
+### task_brief
+
+```text
+Prove the original Lean theorem in ${TARGET_FILE} in ${REPO}.${PAPER_BRIEF} The pinned Lean libraries are available offline through lean-check. Work autonomously, split work as you discover it, and merge checked Lean sources to main. Mattermost team ${MM_TEAM_ID}, channel pbench-task ${TASK_CHANNEL_ID}.
+```
+
+### work_cycle
+
+```text
+1. Read the current main and explore an open mathematical question.
+2. Announce the area you are taking as a CLAIM on the shared context board.
+3. Start from current main and develop the proof or a reusable lemma.
+4. Run lean-check on the changed modules and their dependents. Check the actual premises of each statement.
+5. Push, open a PR and merge to main. If refused, merge latest main into your branch, re-check and push again.
+6. Share a PATCH_SUMMARY with files, idea and evidence on the board, then choose the next area.
+```

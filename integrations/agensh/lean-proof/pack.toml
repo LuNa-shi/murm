@@ -1,0 +1,29 @@
+name = "lean-proof"
+description = "Prove a fixed Lean theorem on the shared main branch"
+
+[hooks]
+prepare = "hooks/prepare.sh"
+export = "hooks/export.sh"
+evaluate = "hooks/evaluate.sh"
+
+[messages]
+task_brief = "prompts/task_brief.txt"
+idle = "prompts/idle.txt"
+idle_delivery = "prompts/idle_delivery.txt"
+
+[[messages.reminders]]
+before_end = "45m"
+message = "prompts/deadline_45m.txt"
+
+[[messages.reminders]]
+before_end = "5m"
+message = "prompts/deadline_5m.txt"
+
+[team]
+issue_title = "[Lean] {task}"
+seed_message = "Seed the public theorem for {task}"
+board_id = "pbench-top"
+channel = "pbench-task"
+
+[environment]
+network = "offline"

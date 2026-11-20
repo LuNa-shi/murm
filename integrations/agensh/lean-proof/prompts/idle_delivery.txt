@@ -1,0 +1,1 @@
+Verify and merge completed work on the default branch, resolve integration issues and report blockers. Keep the current scope.

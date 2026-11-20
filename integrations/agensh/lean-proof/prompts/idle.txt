@@ -1,0 +1,1 @@
+Inspect current main and the live board, find an open proof obligation and choose the next piece of work.

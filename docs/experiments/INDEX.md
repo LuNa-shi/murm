@@ -8,6 +8,12 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261120-09` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Final PASS · 35m35s from launch, four archives verified; local access repaired in-run | `eeb45c4` | [Paper run](EXP-20261120-09-agensh-seymour-paper.md) |
+| `EXP-20261120-07` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Stopped by owner at 46m34s · final FAIL, four archives verified | `8fb4d5f` | [Seymour comparison](EXP-20261120-07-agensh-seymour.md) |
+| `EXP-20261120-06` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Stopped by owner at 7m34s · four archives verified, plateau unassessable | `51bb3c4` | [Q20 observation](EXP-20261120-06-agensh-pi-q20.md) |
+| `EXP-20261120-05` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Final PASS · 2 Pi workers, actual cross-worker handoff, trusted B1 at 8m26s | `87b6a9b` | [Putnam pilot](EXP-20261120-05-agensh-pi-putnam.md) |
+| `EXP-20261120-04` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Provider rejected all requests · 138 s · protocol invalid | `e257540` | [Putnam pilot](EXP-20261120-04-agensh-pi-putnam.md) |
+| `EXP-20261120-03` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Setup failed before first wake · 0 model requests | `e257540` | [Putnam pilot](EXP-20261120-03-agensh-pi-putnam.md) |
 | `EXP-20261120-02` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Completed · Seymour, 4h, protocol valid, general theorem unsolved | `4c2f193` | [Single Seymour run](EXP-20261120-02-seymour-single-4h.md) |
 | `EXP-20261120-01` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Stopped after 25m48s wall · Core 3 discovery failure, operator stop | `b56d030` | [First pair](EXP-20261120-01-openai-math-first-pair.md) |
 | `EXP-20261117-07` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) / [#135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **REGISTERED · Q20 fresh12h /4Cores; matched-time comparison** | `9f62722` | [Q20 twelve-hour comparison](EXP-20261117-07-q20-subtree-12h.md) |

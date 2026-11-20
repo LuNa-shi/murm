@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2020 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2043 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchmarks/`. Root files: `package.json`, `package-lock.json`, `components.json`, `.env.example`, `.gitignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchmarks/`, `integrations/`. Root files: `package.json`, `package-lock.json`, `components.json`, `.env.example`, `.gitignore`, `.gitmodules`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -18,6 +18,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | experiments/ and reports/ | Historical/private run data; belongs to version-bound evidence, not current executable architecture. |
 | node_modules/ and externally supplied service bundles | External dependency/provider implementations; versions and integration boundaries are documented, internal code and private context are not vendored. |
 | docs/ and .codex/ | Development governance and generated reference artifacts; reviewed by documentation/link checks, not part of research-Agent runtime except explicitly listed provider documents. |
+| third_party/agensh | Pinned external Agensh submodule. Integration entry points, prompt composition and library boundaries are mapped under integrations/agensh. |
 
 ## File-by-file ownership
 
@@ -2004,7 +2005,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 |---|---|---|---|
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `60a718baf79b4ee81d16aed9813cef6f1b7c31d66810ea41e1c087cffc4fd2a8` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `8a158cc28657c63309b83909b931eba9318034104e71573c55910d09852de83b` |
-| [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `98c3708230f1450b59431ac9446743fd11426c9680cc63fd051c86fe86f1cc31` |
+| [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
 | [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `8975cd1c76d9fe8e3ca27be65341df45b0cb60faeb80f1491534ff57bc2c8d11` |
 
 ### durable storage (3)
@@ -2041,7 +2042,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `3a743004be58357ca275b94c0ab9cad92c53a37cf7225202a26deb7da956481e` |
 | [config/putnambench-12.json](../../config/putnambench-12.json) | Checked-in twelve-problem protocol and checker/toolchain pins | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `290353d4f2888020d61e8a10ff5f9d816b941cee1cf8645df6a472c99733fd28` |
 | [package-lock.json](../../package-lock.json) | Exact dependency resolution, including external Pi/frontend packages | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `4930b78e6c22920fc6e83563f8a111c76a0b48b0f088910b114577ffb1409ae8` |
-| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `f5189d47e29227b443add14bb4718cdf7c5d698db97ab91295904b0f79bdac5c` |
+| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `99001ec9e518c69e326d541021c93e0f663a28daa43715969b59aaf180a1de42` |
 | [scripts/mathlib-search-service.mjs](../../scripts/mathlib-search-service.mjs) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |
 | [scripts/run-putnambench-benchmark.mjs](../../scripts/run-putnambench-benchmark.mjs) | CLI options, locked input, opt-in persistent observer, batch and aggregate outputs | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `00819275f1fbbf98b5093643b25ca917ace5083dfbbb9d635c939b2ebad1bb4d` |
 | [scripts/service-host-entrypoint.sh](../../scripts/service-host-entrypoint.sh) | Explicit Judge checker prebuild gate and persistent volume marker | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `4c067092da38e68214149badb57dfcdb662523787dc3fbdae9740a93f25f9b75` |
@@ -2052,6 +2053,34 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/benchmark/pass-k.js](../../src/benchmark/pass-k.js) | Compose K independent one-Core Mission runs with a fixed observation window and trusted acceptance aggregation | [07-run-configuration](07-run-configuration.md), [06-observability-experiments](06-observability-experiments.md) | `3a9530594867be357f91c226c77f1a4738d570cac9039a49bdd4b97b4beaaa75` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `71e874f459bd62e0bad7586171229daa351a2d5f7b55f50aa0ad42dba1a597e0` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `47466a0abf9fa13e69f4802bcd70ca02c2e3f69546b5e989235c85a83a2f7660` |
+
+### native Agensh experiment (23)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [.gitmodules](../../.gitmodules) | Pinned third-party checkout location | [14-agensh-lean](14-agensh-lean.md) | `6160616b42057b75949236480e7505e9500561fd4d11194bb07bd5933b4d7a6c` |
+| [integrations/agensh/domain.mjs](../../integrations/agensh/domain.mjs) | Seed, export and check fixed Git trees | [14-agensh-lean](14-agensh-lean.md) | `ed793fd7eae169cf2877fb2bdfc5508df3ebde5934ef5847458c4a7fac5f8a5d` |
+| [integrations/agensh/lean-check](../../integrations/agensh/lean-check) | Local Lean elaboration command | [14-agensh-lean](14-agensh-lean.md) | `6f4beebf2107063b76ce9383990ca3a52d22296ad3af1c3bb934e3f1ee36a4af` |
+| [integrations/agensh/lean-proof/hooks/evaluate.sh](../../integrations/agensh/lean-proof/hooks/evaluate.sh) | Native pack evaluate hook | [14-agensh-lean](14-agensh-lean.md) | `7d287f931481ad46e589f823770c7ec348011c6e380e75a617575c3cd7e67458` |
+| [integrations/agensh/lean-proof/hooks/export.sh](../../integrations/agensh/lean-proof/hooks/export.sh) | Native pack export hook | [14-agensh-lean](14-agensh-lean.md) | `db56fb29f495e68517d730c2eed90fde0406f9aaea6e397103702a09883bf6f1` |
+| [integrations/agensh/lean-proof/hooks/prepare.sh](../../integrations/agensh/lean-proof/hooks/prepare.sh) | Native pack prepare hook | [14-agensh-lean](14-agensh-lean.md) | `10792c169c73cfc21eee54a630bcddb1fb050f1b268b18de1c50bf46d23ebc0f` |
+| [integrations/agensh/lean-proof/pack.toml](../../integrations/agensh/lean-proof/pack.toml) | Native team driver math pack | [14-agensh-lean](14-agensh-lean.md) | `429bd6f57f71ec56be759079a56ec08b98592c6eb271783be4f2bd60bd13b283` |
+| [integrations/agensh/lean-proof/prompts/deadline_45m.txt](../../integrations/agensh/lean-proof/prompts/deadline_45m.txt) | Math deadline_45m prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `f1ea9bc217d3dde645271674e17185316c85745991c1e66fa7b98b11ea0e928f` |
+| [integrations/agensh/lean-proof/prompts/deadline_5m.txt](../../integrations/agensh/lean-proof/prompts/deadline_5m.txt) | Math deadline_5m prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `6d10cb9ab01a8e2c4e8e9413553c9d302e526adfd153ea4a5db2bc62fa7781d1` |
+| [integrations/agensh/lean-proof/prompts/delivery.txt](../../integrations/agensh/lean-proof/prompts/delivery.txt) | Math delivery prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `e73f07937e267d22657109d06cf90e7beb048219c62fda34e04c02f12e4b207b` |
+| [integrations/agensh/lean-proof/prompts/focus.txt](../../integrations/agensh/lean-proof/prompts/focus.txt) | Math focus prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `a40baf132252773a434f9f36780d8745f976532952a8d65f59cb3e0eeb15837e` |
+| [integrations/agensh/lean-proof/prompts/idle_delivery.txt](../../integrations/agensh/lean-proof/prompts/idle_delivery.txt) | Math idle_delivery prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `e154a27ae05737530235936b17102f6a54f2160797591f8cc88917bbf46dd89e` |
+| [integrations/agensh/lean-proof/prompts/idle.txt](../../integrations/agensh/lean-proof/prompts/idle.txt) | Math idle prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `a33dda3fb2a678e3d317189ae4b86b140e2fa0a71acb389865c2888d738b6d12` |
+| [integrations/agensh/lean-proof/prompts/objective.txt](../../integrations/agensh/lean-proof/prompts/objective.txt) | Math objective prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `7ac24696a94ed1bb29fb6aa7ef7c14f644df8b724835f6d599045eaf16cb69c8` |
+| [integrations/agensh/lean-proof/prompts/task_brief.txt](../../integrations/agensh/lean-proof/prompts/task_brief.txt) | Math task_brief prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `e508a0dec25841fac3f6ac3b4b676cbae6c4e1e23c0cf47324b4ce7ed43aad3f` |
+| [integrations/agensh/lean-proof/prompts/work_cycle.txt](../../integrations/agensh/lean-proof/prompts/work_cycle.txt) | Math work_cycle prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `a08c5b2585ba53ca2c9879878fe094e11243df211c4bfa85c70dd15fdb266ca5` |
+| [integrations/agensh/manifest.py](../../integrations/agensh/manifest.py) | Freeze and revalidate the effective profile, authority, inputs, service and worker images | [14-agensh-lean](14-agensh-lean.md) | `4c40ba6f8455ff39fd568beda896f5e4f25afd5368b0a1a49b8e7bcae31571f1` |
+| [integrations/agensh/observe.mjs](../../integrations/agensh/observe.mjs) | Read-only public Git observer and checker queue | [14-agensh-lean](14-agensh-lean.md) | `5c441f487288064feb62179abf69c942075ba8cb6e2e60e462882c10c8a06dbd` |
+| [integrations/agensh/provider_transport.py](../../integrations/agensh/provider_transport.py) | Trusted egress credential and model binding | [14-agensh-lean](14-agensh-lean.md) | `96838c79b6d5ae630e5ac67fcb3c9321a14e3454b5389a99923787adbe23ba9e` |
+| [integrations/agensh/seymour_inputs.py](../../integrations/agensh/seymour_inputs.py) | EXP-02 challenge, artifact lock and public Mathlib source projection | [14-agensh-lean](14-agensh-lean.md) | `3be66b0e45bbcdac409cacbe2b598b36912501188e86a3cea72ae0fe8277e22b` |
+| [integrations/agensh/seymour-lean-check](../../integrations/agensh/seymour-lean-check) | Source-only fixed-root local Lean module check for Seymour | [14-agensh-lean](14-agensh-lean.md) | `a5bfb827830cdb7177b6a87ffa3e1e0ff8ffd6fe740081c6e681bca726a0b137` |
+| [integrations/agensh/stage.py](../../integrations/agensh/stage.py) | Generate private profiles and worker mounts | [14-agensh-lean](14-agensh-lean.md) | `377f06d69dc12631ed3c60dfc525c5c2c0463aa25e95b3e97d6bd7242c329ee4` |
+| [integrations/agensh/start.py](../../integrations/agensh/start.py) | Start and time-fence the native team | [14-agensh-lean](14-agensh-lean.md) | `5b58da4834c7adde26e1cb85605735f1a00c94e9195886e99a25ea8d0842e2f0` |
 
 ### observation and analysis (12)
 

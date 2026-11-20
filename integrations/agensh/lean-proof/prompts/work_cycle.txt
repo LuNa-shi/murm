@@ -1,0 +1,6 @@
+1. Read the current main and explore an open mathematical question.
+2. Announce the area you are taking as a CLAIM on the shared context board.
+3. Start from current main and develop the proof or a reusable lemma.
+4. Run lean-check on the changed modules and their dependents. Check the actual premises of each statement.
+5. Push, open a PR and merge to main. If refused, merge latest main into your branch, re-check and push again.
+6. Share a PATCH_SUMMARY with files, idea and evidence on the board, then choose the next area.

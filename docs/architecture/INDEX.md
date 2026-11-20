@@ -28,6 +28,7 @@ Read 00 first, then 07 for the actual launch and outer loop. Read 01–06 for th
 | [11 Storage reference](11-storage-reference.md) | Complete database definitions, keys, indexes, ownership and persistence boundaries |
 | [12 Source coverage](12-code-coverage.md) | Runtime/configuration/build source files, their role, chapter ownership and fingerprints; explicit generated/test/data classifications |
 | [13 Historical continuation](13-historical-resume.md) | How does a time selected after an experiment ends reconstruct service and Workspace data, then start four fresh Cores? |
+| [14 Native Agensh on Lean](14-agensh-lean.md) | How does a native Pi team receive a clean fixture, share work, enforce its time window and submit to the external checker? |
 
 ## What complete means here
 
