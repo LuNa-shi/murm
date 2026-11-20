@@ -15,6 +15,8 @@ Registered before research inference under [Issue #157](https://github.com/LuNa-
 
 ## Results
 
+**SETUP FAILURE.** The systemd user manager did not inherit the Node binary directory. The seed hook failed before Gitea startup, first wake or research inference. Zero worker research time was used. The observer was stopped. Replacement registration [EXP-20261120-04](EXP-20261120-04-agensh-pi-putnam.md) retains the same research allowance.
+
 Prelaunch controls use separate scripted sessions. The upstream code smoke produced two merged PRs and two sealed archives. Scripted math workers checked and merged a local theorem and its independently imported parent. The operator's separate known B1 witness passed the final exported-tree checker (treecheck:b767e3ff-792f-4f48-b0c2-c735a181a0ed). The initial placeholder, changed target and additional axiom controls rejected. These observations precede any autonomous pilot outcome.
 
 ## Analysis

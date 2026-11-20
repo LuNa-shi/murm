@@ -8,7 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261120-03` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Registered · native Agensh Pi, 2 workers, B1 30 min | `e257540` | [Putnam pilot](EXP-20261120-03-agensh-pi-putnam.md) |
+| `EXP-20261120-04` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Registered · native Agensh Pi, 2 workers, B1 30 min | `e257540` | [Putnam pilot](EXP-20261120-04-agensh-pi-putnam.md) |
+| `EXP-20261120-03` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Setup failed before first wake · 0 model requests | `e257540` | [Putnam pilot](EXP-20261120-03-agensh-pi-putnam.md) |
 | `EXP-20261117-07` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) / [#135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **REGISTERED · Q20 fresh12h /4Cores; matched-time comparison** | `9f62722` | [Q20 twelve-hour comparison](EXP-20261117-07-q20-subtree-12h.md) |
 | `EXP-20261117-06` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) | **B1 accepted; protocol/cleanup PASS; natural resource-error recovery** | `ccdd5c7` | [Nested-resource acceptance](EXP-20261117-06-nested-resource-acceptance.md) |
 | `EXP-20261117-05` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) | **B1 accepted, protocol/cleanup PASS; diagnostic repair incomplete** | `30908fc` | [Issue137 Putnam acceptance](EXP-20261117-05-issue137-putnam-acceptance.md) |
