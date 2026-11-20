@@ -17,10 +17,12 @@ The owner paused Q20 and selected this single project from openai/math for the n
 
 Before launch, the pinned full witness passed the exact EXP-02 checker in 55.976 s (treecheck:5f554ac1-e309-4a6e-8a3c-eb03de7966d8). The candidate worker image elaborated the sole challenge on Lean 4.34.1 with its expected original proof hole.
 
+The sole formal run started 2026-11-20 at 08:56:51.916 UTC. First wake was 08:57:55.440 UTC. The provider cutoff is 12:56:51.916 UTC. All four native workers woke and had 53 aggregate HTTP 200 responses by 09:00:28 UTC, distributed 15, 17, 10 and 11. The initial exact goal received its expected FAIL (treecheck:a3a12a85-07e4-4866-aae2-ae8c8ab38bb2). On-worker model metadata confirms medium reasoning, a 500,000 context and a 128,000 output catalog limit. Implementation 8fb4d5f216ca0af50d4e30abd2dde03874ca1258, worker image a93a70e09b30787e9706ed619fa0c26d353ddb54c9b23aad4f10bf7350282fd6, private deployment manifest 35beb65fd30e6b9a9da4de3eac1b02537e2a3f102d2324b9f9071f8daf2c00e3. A persistent observer updates the [ten-minute health and verification table](https://github.com/LuNa-shi/SwarmEnv/issues/157#issuecomment-7035071268).
+
 ## Analysis
 
 Compare verified mathematical scope and actual cross-worker consumption with the four-hour baseline. Missing final acceptance, tool-call counts or a moving Git ref alone cannot identify a cause. Record stalled verification, service problems and genuinely new mathematics separately.
 
 ## Next steps
 
-Run the single registered team and preserve ten-minute receipts, final fixed-tree assessment and native archives.
+Monitor the single active team and preserve ten-minute receipts, final fixed-tree assessment and native archives.
