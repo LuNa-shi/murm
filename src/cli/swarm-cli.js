@@ -5,6 +5,11 @@ import { requestHttp } from '../protocol/http-request.js';
 const SERVICE_NAMES = ['task', 'bot', 'material', 'workspace', 'mission', 'judge', 'catalog'];
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 2_147_483_647;
+function operationTimeoutMs(operation, explicit) {
+  const configured = ['workspace_check', 'workspace_merge', 'mission_submit'].includes(operation)
+    ? process.env.SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS : undefined;
+  return parseScalar(explicit) ?? (configured === undefined ? DEFAULT_REQUEST_TIMEOUT_MS : Number(configured));
+}
 const ALIASES = Object.freeze({
   solution: { submit: 'mission_submit', status: 'mission_submission_get' },
   'mathlib-search': { search: 'mathlib_search' },
@@ -86,7 +91,7 @@ Replace M1 with an actual Material ID. After an unknown response, reuse the same
     check: `Check a saved public Workspace revision with --revision R. When the project checker is configured, Lake builds the revision's Lean modules, including local imports. Find the locked target path with swarm mission view. Keep Lean sources under the target's source directory, and import siblings by module name relative to that directory. Example: if the target is lean4/src/Main.lean, save lean4/src/Proof/Geometry.lean and write import Proof.Geometry. Judge uses its trusted project configuration.
 For iteration on a local proposition, save its module and use --revision R --check-mode lean-module --path P. This checks that whole module and its necessary dependencies, with actual scope and cache evidence in the receipt; it does not select an individual declaration within a multi-declaration file. Independently useful lemmas and definitions may live in separate imported modules to keep iteration focused. A local PASS is not a whole-project or Mission PASS. Without this mode, --path P identifies a delivery file and still builds the whole project. The selected file must satisfy the delivery source policy. Legacy single-file checkers require --path.
 A build result is diagnostic. A check without --path does not supply a Task delivery file receipt. Mission acceptance separately validates the locked target proof on a fixed tree.
---timeout-ms controls how long the CLI waits for HTTP. The service controls the checker's execution limit. The default HTTP wait is 30 seconds and may be too short for a cold module build. For a 10-minute source phase with preflight already ready and no queue wait, use --timeout-ms 630000. Allow additional time for queue waiting and cold preflight; changing HTTP wait never extends Execution or checker deadlines.
+--timeout-ms controls how long the CLI waits for HTTP. The service controls the checker's execution limit. Without a deployment override the HTTP wait is 30 seconds; the effective default is shown below and may be too short for a cold module build. For a 10-minute source phase with preflight already ready and no queue wait, use --timeout-ms 630000. Allow additional time for queue waiting and cold preflight; changing HTTP wait never extends Execution or checker deadlines.
 Use a stable --request-id. After a lost response, use swarm judge result --request-key with the original ID, or repeat the same request with the same ID.`,
     result: 'Read one CheckResult. Use --check-result-id or --request-key; request-key lookup survives a lost submit response.',
   },
@@ -95,7 +100,7 @@ Use a stable --request-id. After a lost response, use swarm judge result --reque
 function usage(scope = 'top', commandName = null) {
   if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|revise|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
-  if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${DEFAULT_REQUEST_TIMEOUT_MS})\n  --help                     Show this command help`;
+  if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${operationTimeoutMs(ALIASES[scope]?.[commandName] ?? commandName)})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Task and Material IDs and file paths use the documented positional arguments.\nBot identity always comes from the protected Bridge binding.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
 }
 
@@ -255,7 +260,7 @@ async function bridgeCall(operation, payload, options = {}, serviceId = undefine
   if (!token) throw new Error('SWARMENV_BRIDGE_TOKEN is required for Bot operations');
   const requestId = options['request-id'] ?? options['operation-id'] ?? `cli:${operation === 'task_take' ? 'take' : operation}:${randomUUID()}`;
   try { return await request(`${process.env.SWARMENV_BRIDGE_URL.replace(/\/$/, '')}/call`, {
-    method: 'POST', token, timeoutMs: parseScalar(options['timeout-ms']) ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    method: 'POST', token, timeoutMs: operationTimeoutMs(operation, options['timeout-ms']),
     body: { operation, service_id: serviceId, operation_id: requestId, payload },
   }); } catch (error) {
     if (requestId && (error.code === 'SERVICE_TIMEOUT' || !error.code || /^(ECONN|EPIPE|ENET|EHOST|EAI_)/.test(error.code))) {
@@ -328,7 +333,7 @@ async function invoke(service, commandName, options, args = []) {
   const endpoint = configuredEndpoint(service);
   const invocationBase = endpoint?.url ?? provider.endpoint.url;
   return request(`${invocationBase.replace(/\/$/, '')}${capability.path}`, {
-    method: capability.method ?? 'POST', token: endpoint?.token ?? null, timeoutMs: parseScalar(options['timeout-ms']) ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    method: capability.method ?? 'POST', token: endpoint?.token ?? null, timeoutMs: operationTimeoutMs(operation, options['timeout-ms']),
     body: { envelope: envelope(options, service), input, role: 'bound' },
   });
 }

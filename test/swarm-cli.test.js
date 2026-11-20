@@ -173,3 +173,32 @@ test('solver CLI exposes only local solving commands and submits an empty Materi
   await runSwarmCli(['solution', 'submit', '--request-id', 'stable-final'], { stdout: { write() {} } });
   assert.deepEqual(invocations[0], { operation: 'mission_submit', operation_id: 'stable-final', payload: { material_ids: [] } });
 });
+
+test('deployment check HTTP allowance is scoped and explicit timeout still wins', async t => {
+  const keys = ['SWARMENV_BRIDGE_URL', 'SWARMENV_BRIDGE_TOKEN', 'SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS'];
+  const restore = keys.map(key => [key, process.env[key]]);
+  t.after(() => { for (const [key, value] of restore) {
+    if (value === undefined) delete process.env[key]; else process.env[key] = value;
+  } });
+  const server = createServer(async (request, response) => {
+    for await (const _chunk of request) { /* consume the fixed local request */ }
+    setTimeout(() => { response.setHeader('content-type', 'application/json'); response.end('{}'); }, 80);
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  process.env.SWARMENV_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`;
+  process.env.SWARMENV_BRIDGE_TOKEN = 'local-test';
+  process.env.SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS = '10';
+  let help = '';
+  await runSwarmCli(['judge', 'check', '--help'], { stdout: { write(value) { help += value; } } });
+  assert.match(help, /HTTP request \(default 10\)/);
+  help = '';
+  await runSwarmCli(['task', 'view', '--help'], { stdout: { write(value) { help += value; } } });
+  assert.match(help, /HTTP request \(default 30000\)/);
+  const stdout = { write() {} };
+  await assert.rejects(runSwarmCli(['judge', 'check'], { stdout }), { code: 'SERVICE_TIMEOUT' });
+  assert.equal(await runSwarmCli(['task', 'view', 'task-1'], { stdout }), 0);
+  assert.equal(await runSwarmCli(['judge', 'check', '--timeout-ms', '1000'], { stdout }), 0);
+  process.env.SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS = 'invalid';
+  await assert.rejects(runSwarmCli(['judge', 'check'], { stdout }), /timeout-ms must be between/);
+});

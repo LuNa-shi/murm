@@ -86,7 +86,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `42ac45231228b74c94f41baa0e07bb62a0734ed002fa77d52252cfc6552193ec` |
+| [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `36b569b8479ac867a7cbf46f122307c71ee8d0cb02d27e76c01c6e91a9c1b878` |
 
 ### agent prompts and tools (1)
 
@@ -1914,7 +1914,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 |---|---|---|---|
 | [scripts/benchmarks/prepare_flt_subtrees.py](../../scripts/benchmarks/prepare_flt_subtrees.py) | Root-only FLT extraction, private typed facts and public fixture generation | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `d40cab74f2ac086746abd85b901d3a3381ac1c32f9756cab4052b4b46db5e537` |
 | [scripts/run-openai-math-coloring.mjs](../../scripts/run-openai-math-coloring.mjs) | Four-Core launcher for the embedded OpenAI Math PlaneColoring smoke run | [07-run-configuration](07-run-configuration.md) | `e28aea53b1bfda89f4ba7d052147c415925f5de8028cee69e2d416236ab7ef72` |
-| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `14e82d30fb0c0c04d1c9f662e3686d023aaa05ba3dfdad949d58debf176bb3cc` |
+| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `0545aa1e61d1aa00ceb3c2999053bb10e5a48162345e1b2e76d51cb9105fe98f` |
 
 ### controlled verification data (4)
 
@@ -1987,7 +1987,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [services/opensandbox-agent/Dockerfile](../../services/opensandbox-agent/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `0e26cc854c0ddd4a80dca2eddd56a6df6e5b43b1c3473ca7b172aea184a0c971` |
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `50c0c4d26ea3450bb2881af65c39ffde41a42a8e8cdbdb56eac35d1af118e55c` |
 | [src/benchmark/pass-k.js](../../src/benchmark/pass-k.js) | Compose K independent one-Core Mission runs with a fixed observation window and trusted acceptance aggregation | [07-run-configuration](07-run-configuration.md), [06-observability-experiments](06-observability-experiments.md) | `faab8bfa6737266d3e6e314bd807b85306be0e5eb8dc64f194db630e9e608310` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `18d68a1ab557c69a5c2c5382801d6427d2b47c35c247350de1f21cd3b820497d` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `1936c71743f306f327e0722ba724241c84fc4a2bd847171ea9ad7ff7c4587389` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `db3b2bf9f173643310116aefeb256ca14d3327e6fc2e37293f6ece6599ce57d3` |
 
 ### observation and analysis (12)
@@ -2041,7 +2041,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/swarm.mjs](../../scripts/swarm.mjs) | Executable swarm CLI entry point and exit-code boundary | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `9a53b8652a48c036d30df006304e7da8befb5f3547d469f17c9363450a359d8c` |
-| [src/cli/swarm-cli.js](../../src/cli/swarm-cli.js) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `84944ada59b2fc0c3bb08867c37ff46ae1f201548eee106e292e94e47671a99d` |
+| [src/cli/swarm-cli.js](../../src/cli/swarm-cli.js) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `6781e2bc7eafaf28e835b77aae8e2f0b32a76d59cc933ef4a1a72dd9aaaf5dfb` |
 | [src/protocol/http-request.js](../../src/protocol/http-request.js) | Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `21fe10eeb0069c743f1f9a0c7c4a359c41ea200c8915b627c036ec22c14fb56b` |
 | [src/sdk/http-domain-proxy.js](../../src/sdk/http-domain-proxy.js) | Bounded HTTP proxy for synchronous cross-domain service dependencies in isolated hosts | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `060cfad4d91ced8b79daa83528135136270dbd1da91b70ab6f84dd55de3d5632` |
 

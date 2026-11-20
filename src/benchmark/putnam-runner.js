@@ -536,7 +536,7 @@ async function startAgentSession(core) {
     coreId: `core-${core.index}`,
     selectionTimeoutMs: core.startConfig.options.selectionTimeoutMs ?? Math.min(300_000, core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options)),
     maxLifetimeMs: core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options),
-    readyTimeoutMs: core.startConfig.options.turnTimeoutMs ?? 30_000,
+    readyTimeoutMs: core.startConfig.options.readyTimeoutMs ?? core.startConfig.options.turnTimeoutMs ?? 30_000,
     startSession: async ({ bot: startingBot, signal, assertStartupAllowed, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated }) => {
       core.actorRef = startingBot.bot_id;
       Object.assign(core.childEnv, core.bridge.startBotIdentity(startingBot.bot_id));

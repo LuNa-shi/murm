@@ -12,6 +12,9 @@ const experimentDir = resolve(process.env.OPENAI_MATH_EXPERIMENT_DIR ?? join(rep
 const reportDir = join(experimentDir, 'reports');
 const timeboxMs = Number(process.env.OPENAI_MATH_TIMEBOX_MS ?? 2 * 60 * 60_000);
 const botMaxMs = Number(process.env.OPENAI_MATH_BOT_MAX_MS ?? timeboxMs);
+const checkerTimeoutOverride = process.env.OPENAI_MATH_CHECKER_TIMEOUT_MS !== undefined;
+const checkerTimeoutMs = Number(process.env.OPENAI_MATH_CHECKER_TIMEOUT_MS ?? 120_000);
+const checkerHttpTimeoutMs = Math.max(4 * checkerTimeoutMs, 120_000 + 2 * checkerTimeoutMs) + 30_000;
 const projectParallelism = Number(process.env.OPENAI_MATH_PROJECT_PARALLELISM ?? 1);
 const provider = process.env.PI_PROVIDER ?? 'gpt_proxy';
 const model = process.env.PI_MODEL ?? 'gpt-6.2-sol';
@@ -35,6 +38,9 @@ process.on('SIGTERM', onSigterm);
 
 if (!Number.isSafeInteger(timeboxMs) || timeboxMs < 2_000) throw new TypeError('OPENAI_MATH_TIMEBOX_MS must be at least 2000');
 if (!Number.isSafeInteger(botMaxMs) || botMaxMs < 2_000) throw new TypeError('OPENAI_MATH_BOT_MAX_MS must be at least 2000');
+if (!Number.isSafeInteger(checkerTimeoutMs) || checkerTimeoutMs < 1 || !Number.isSafeInteger(checkerHttpTimeoutMs) || checkerHttpTimeoutMs + 30_000 > 2_147_483_647) {
+  throw new TypeError('OPENAI_MATH_CHECKER_TIMEOUT_MS must be positive and fit checker plus transport timer bounds');
+}
 if (!Number.isSafeInteger(projectParallelism) || projectParallelism < 1 || projectParallelism > 2) {
   throw new TypeError('OPENAI_MATH_PROJECT_PARALLELISM must be 1 or 2');
 }
@@ -58,6 +64,13 @@ for (const problem of problems) {
 
 const lock = JSON.parse(await readFile(artifactLockPath, 'utf8'));
 const finalTreeCheckerConfig = { ...lock.configuration, artifactLock: artifactLockPath };
+if (finalTreeCheckerConfig.timeoutMs !== checkerTimeoutMs) {
+  throw new TypeError('Locked final checker timeout must equal OPENAI_MATH_CHECKER_TIMEOUT_MS; renew the artifact lock for this policy');
+}
+const checkerPolicy = { source_timeout_ms: checkerTimeoutMs, final_timeout_ms: finalTreeCheckerConfig.timeoutMs,
+  merge_timeout_ms: checkerTimeoutMs, cli_http_timeout_ms: checkerTimeoutOverride ? checkerHttpTimeoutMs : 30_000,
+  ready_timeout_ms: Math.min(120_000, botMaxMs),
+  turn_timeout_ms: Math.min(checkerTimeoutOverride ? Math.max(120_000, checkerHttpTimeoutMs + 30_000) : 120_000, botMaxMs), queue_wait_ms: 120_000 };
 const modelCatalog = JSON.parse(await readFile(process.env.PI_MODELS_PATH ?? '/home/ubuntu/.pi/agent/models.json', 'utf8'));
 const providerSettings = modelCatalog.providers?.[provider];
 if (!providerSettings?.baseUrl || !providerSettings?.apiKey) throw new Error(`Missing model settings for ${provider}`);
@@ -76,6 +89,7 @@ try {
     fixture_commit: config.fixture_commit,
     problem_ids: requestedIds,
     checker_lock: artifactLockPath,
+    checker_policy: checkerPolicy,
     provider,
     model,
     core_count_per_project: 4,
@@ -95,8 +109,9 @@ try {
     initialBotStaggerMs: 0,
     selectionTimeoutMs: Math.min(120_000, botMaxMs),
     executionTimeoutMs: botMaxMs,
-    turnTimeoutMs: Math.min(120_000, botMaxMs),
-    checkerTimeoutMs: 120_000,
+    readyTimeoutMs: checkerPolicy.ready_timeout_ms,
+    turnTimeoutMs: checkerPolicy.turn_timeout_ms,
+    checkerTimeoutMs,
     cores: 4,
     signal: stopController.signal,
     provider,
@@ -115,17 +130,18 @@ try {
       bridgeUrl,
       networkIsolation: { mode: 'local-docker', additionalEndpoints: [] },
       diskIsolation: { mode: 'local-docker-tmpfs-landlock', bytes: 256 * 1024 ** 2, inodes: 16_384 },
-      agentEnvironment: {},
+      agentEnvironment: checkerTimeoutOverride ? { SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS: String(checkerHttpTimeoutMs) } : {},
       secretEnvironment: {},
     },
   });
   for (const report of reports) {
     const problemId = report.project?.problem_id;
     if (!problemId) continue;
-    report.run = { ...report.run, stop_signal: stopSignal };
+    report.run = { ...report.run, stop_signal: stopSignal, checker_policy: checkerPolicy };
     await writeFile(join(reportDir, problemId, 'report.json'), JSON.stringify(report, null, 2) + '\n');
   }
   const summary = {
+    checker_policy: checkerPolicy,
     repository_commit: process.env.GIT_COMMIT ?? null,
     stop_signal: stopSignal,
     problem_ids: requestedIds,

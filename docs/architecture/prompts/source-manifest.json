@@ -57,11 +57,11 @@
     },
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "sha256": "42ac45231228b74c94f41baa0e07bb62a0734ed002fa77d52252cfc6552193ec"
+      "sha256": "36b569b8479ac867a7cbf46f122307c71ee8d0cb02d27e76c01c6e91a9c1b878"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "18d68a1ab557c69a5c2c5382801d6427d2b47c35c247350de1f21cd3b820497d"
+      "sha256": "1936c71743f306f327e0722ba724241c84fc4a2bd847171ea9ad7ff7c4587389"
     },
     {
       "path": "src/runtime/runtime.js",

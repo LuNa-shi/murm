@@ -330,6 +330,23 @@ test('benchmark does not discard a closed unbound Session whose sandbox still ne
   assert.equal(core.session, null);
 });
 
+test('benchmark startup readiness stays separate from a long checker-bearing turn wait', async () => {
+  for (const [readyTimeoutMs, expected] of [[120_000, 120_000], [undefined, 2_460_000]]) {
+    let admitted;
+    const core = {
+      childEnv: {}, sessionNumber: 0, errors: [], index: 1,
+      stateRef: { mission: { mission_id: 'mission:ready-budget' } },
+      startConfig: { options: { readyTimeoutMs, turnTimeoutMs: 2_460_000 } },
+      runtime: { taskService: { isMissionStopped: () => false }, startBot: async options => {
+        admitted = options;
+        throw new Error('bounded startup probe');
+      } },
+    };
+    assert.equal(await ensureAgentSession(core), false);
+    assert.equal(admitted.readyTimeoutMs, expected);
+  }
+});
+
 test('Runtime shutdown retains a late registered Session and cleans it when startup settles', async (t) => {
   const { runtime, session, service, startSession } = await fixture(t, { start: false });
   const entered = deferred();
