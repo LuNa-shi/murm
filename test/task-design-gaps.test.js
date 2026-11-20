@@ -41,8 +41,8 @@ test('cancelling a prerequisite preserves blockers and surfaces its replacement 
   assert.equal(blocked.blockers.length, 2);
   const relationId = blocked.relations.depends_on.find(row => row.related_task_id === prerequisite.task_id).relation_id;
   assert.deepEqual(blocked.blockers.find(row => row.prerequisite_task_id === prerequisite.task_id), {
-    dependency_id: relationId, relation_id: relationId,
-    dependency_kind: 'TASK', prerequisite_task_id: prerequisite.task_id, prerequisite_state: 'CANCELED',
+    relation_id: relationId,
+    prerequisite_task_id: prerequisite.task_id, prerequisite_state: 'CANCELED',
     invalid_prerequisite: true, replacement_task_id: replacement.task_id,
   });
   assert.equal(blocked.blockers.find(row => row.prerequisite_task_id === independent.task_id).prerequisite_state, 'OPEN');
