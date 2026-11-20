@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadBenchmarkConfig } from '../../src/benchmark/putnam-runner.js';
 import { readBenchmarkContext } from '../../src/benchmark/benchmark-context.js';
 import { createLockedFinalTreeVerifier as localVerifier } from '../../src/judge/final-tree-deployment.js';
@@ -47,12 +47,20 @@ async function prepare() {
        'fa4a37831405b3fe7f6a88a2dce8918982195ee1757e05e4623055822d36ca98')) {
     throw new Error('Seymour challenge-only seed differs from EXP-02');
   }
-  const context = await readBenchmarkContext(problem, config);
+  const paper = process.env.AGENSH_SEYMOUR_PAPER === '1';
+  if (paper && problem.id !== 'oai_seymour_second_neighborhood') throw new Error('Unexpected paper task');
+  const context = paper
+    ? await readBenchmarkContext({ ...problem, context_manifest: '173/manifest.json',
+      context_sha256: '7154d525431d105a19735bdacf3f0e34344df0c591dba8168deae1c3c9c6e74a' }, {
+      ...config, benchmark_context_root: fileURLToPath(new URL('../../benchmarks/openai-math-12/papers/', import.meta.url)),
+    })
+    : await readBenchmarkContext(problem, config);
   for (const [path, bytes] of Object.entries({ ...context, [problem.problem_file]: problem.source })) {
     await mkdir(dirname(join(root, path)), { recursive: true });
     await writeFile(join(root, path), bytes, { flag: 'wx' });
   }
-  await save('brief_vars.json', { TARGET_FILE: problem.problem_file });
+  await save('brief_vars.json', { TARGET_FILE: problem.problem_file,
+    PAPER_BRIEF: paper ? ' Formalize the supplied manuscript in benchmark/paper.pdf (text in benchmark/paper.txt).' : '' });
   await save('seed.json', { task: problem.id, target: problem.problem_file, sha256: problem.source_hash,
     fixture_commit: config.fixture_commit ?? config.putnambench_commit, public_context_files: Object.keys(context) });
   await writeFile(join(output, '.seed_path'), root + '\n', { flag: 'wx' });

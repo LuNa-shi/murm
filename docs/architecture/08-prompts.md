@@ -117,7 +117,7 @@ The Workspace skill also distinguishes the default 30-second CLI HTTP wait from 
 
 ## Native Agensh math team
 
-The pinned Agensh entrypoint renders its upstream collaboration template with worker identity, team size, channel and the four math fragments (focus, objective, work_cycle, delivery). The native router sends kickoff, idle and budget reminders through the ProgramBench lifecycle. The brief receives TASK, REPO, Mattermost IDs and TARGET_FILE from the verified seed. Snapshot text does not establish delivery. The native session archives and router state record actual turns. [Upstream template](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/prompts/agents.txt)
+The pinned Agensh entrypoint renders its upstream collaboration template with worker identity, team size, channel and the four math fragments (focus, objective, work_cycle, delivery). The native router sends kickoff, idle and budget reminders through the ProgramBench lifecycle. The brief receives TASK, REPO, Mattermost IDs and TARGET_FILE from the verified seed. PAPER_BRIEF is empty by default. With the pinned Seymour paper it expands to ` Formalize the supplied manuscript in benchmark/paper.pdf (text in benchmark/paper.txt).` Snapshot text does not establish delivery. The native session archives and router state record actual turns. [Upstream template](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/prompts/agents.txt)
 
 ### deadline_45m
 
@@ -164,7 +164,7 @@ Prove the original declaration in the seeded Lean file. New helper modules can b
 ### task_brief
 
 ```text
-Prove the original Lean theorem in ${TARGET_FILE} in ${REPO}. The pinned Lean libraries are available offline through lean-check. Work autonomously, split work as you discover it, and merge checked Lean sources to main. Mattermost team ${MM_TEAM_ID}, channel pbench-task ${TASK_CHANNEL_ID}.
+Prove the original Lean theorem in ${TARGET_FILE} in ${REPO}.${PAPER_BRIEF} The pinned Lean libraries are available offline through lean-check. Work autonomously, split work as you discover it, and merge checked Lean sources to main. Mattermost team ${MM_TEAM_ID}, channel pbench-task ${TASK_CHANNEL_ID}.
 ```
 
 ### work_cycle

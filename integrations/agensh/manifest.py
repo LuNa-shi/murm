@@ -35,6 +35,9 @@ def snapshot(run):
     files = {'launch': run / 'launch.json', 'overlay': run / 'math-compose.json', 'route': run / 'route.json',
              'profile': checkout / ('.env.' + launch['PROFILE']), 'deployment': launch['AGENSH_DEPLOYMENT'],
              'lock': dep['final_tree_checker']['artifactLock'], 'target': source / problem['problem_file']}
+    if launch.get('AGENSH_SEYMOUR_PAPER') == '1':
+        for name in ('manifest.json', 'paper.pdf', 'paper.txt'):
+            files['paper/' + name] = HERE.parents[1] / 'benchmarks/openai-math-12/papers/173' / name
     if (run / 'pi-config.py').exists():
         files['pi-config'] = run / 'pi-config.py'
     if problem.get('context_manifest'):

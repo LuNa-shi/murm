@@ -33,10 +33,13 @@ def main():
     parser.add_argument('--task', choices=MATRIX, required=True)
     parser.add_argument('--worker-image', required=True)
     parser.add_argument('--profile-suffix', required=True)
+    parser.add_argument('--seymour-paper', action='store_true', help='Include the pinned Seymour manuscript in the public seed')
     parser.add_argument('--research-seconds', type=int, help='Remaining wall seconds in the approved pilot allowance')
     args = parser.parse_args()
     workers, hours, model, version = MATRIX[args.task]
     deployment = json.loads(args.deployment.read_text())
+    if args.seymour_paper and args.task != SEYMOUR:
+        parser.error('--seymour-paper requires the Seymour task')
     if args.task == SEYMOUR:
         seymour_inputs.validate(deployment, args.fixture)
     if args.research_seconds is not None:
@@ -132,6 +135,8 @@ def main():
     launch = dict(SWARMENV_ROOT=str(ROOT), AGENSH_DEPLOYMENT=str(args.deployment.resolve(strict=True)),
                   AGENSH_FIXTURE_ROOT=str(args.fixture.resolve(strict=True)), AGENSH_PACK='lean-proof', TASK=args.task,
                   PROFILE=profile, HOURS=hours, OUT_DIR=str(run / 'out'), COMPOSE_EXTRA_FILES=str(overlay))
+    if args.seymour_paper:
+        launch['AGENSH_SEYMOUR_PAPER'] = '1'
     (run / 'launch.json').write_text(json.dumps(launch, indent=2))
     (run / 'identity.json').write_text(json.dumps(dict(upstream=PIN, image=image, workers=workers, hours=hours,
                                                         harness='pi', version=version, provider='gpt_proxy', model=model)))
