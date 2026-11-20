@@ -49,6 +49,20 @@ class SeymourInputs(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'only the original'):
             seymour_inputs.validate({'problems': [problem]}, Path('/nonexistent-test-fixture'))
 
+    def test_timeout_stops_compiler_child_before_returning(self):
+        run_build = runpy.run_path(str(ROOT / 'integrations/agensh/seymour-lean-check'))['run_build']
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            stub = ("import subprocess,time,pathlib,sys; "
+                    "p=subprocess.Popen([sys.executable,'-c','import time; time.sleep(60)']); "
+                    "pathlib.Path('child.pid').write_text(str(p.pid)); time.sleep(60)")
+            with self.assertRaises(subprocess.TimeoutExpired):
+                run_build([sys.executable, '-c', stub], tmp, os.environ, timeout=1)
+            pid = (tmp / 'child.pid').read_text()
+            status = Path('/proc') / pid / 'stat'
+            if status.exists():
+                self.assertIn(status.read_text().split()[2], ('Z', 'X'))
+
     def test_module_root_and_source_only_build(self):
         if not os.environ.get('AGENSH_TEST_LEAN_ROOT'):
             self.skipTest('set AGENSH_TEST_LEAN_ROOT to a pinned local toolchain')
@@ -71,6 +85,17 @@ class SeymourInputs(unittest.TestCase):
                 os.chdir(root.parent)
                 with patch.dict(check.__globals__, LEAN=lean, LIBRARIES=libs):
                     self.assertEqual(check('ComparatorChallenges/Parent.lean'), 0)
+                    reserved = root / 'Leanc.lean'
+                    reserved.write_text('def localValue := 1')
+                    with self.assertRaisesRegex(ValueError, 'reserved Lean module'):
+                        check('ComparatorChallenges/Parent.lean')
+                    reserved.unlink()
+                    stale = repo / 'Stray.lean'
+                    stale.write_text('def stray := 1')
+                    git(repo, 'add', 'Stray.lean')
+                    with self.assertRaisesRegex(ValueError, 'outside the canonical'):
+                        check('ComparatorChallenges/Parent.lean')
+                    stale.unlink()
                     # Even an existing object in the worker tree cannot grant
                     # the invalid parent-relative module name to the checker.
                     subprocess.run([str(lean / 'bin/lean'), '-R', '.', '-o',
