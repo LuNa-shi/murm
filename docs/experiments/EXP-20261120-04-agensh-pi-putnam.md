@@ -15,6 +15,8 @@ Replacement for [EXP-20261120-03](EXP-20261120-03-agensh-pi-putnam.md), which fa
 
 ## Results
 
+**PROTOCOL INVALID.** Real Pi 1.4.0 workers reached the Responses provider; all 11 requests returned HTTP 401 (six from worker 1, five from worker 2). Python 3.13 retained the ordinary local authorization header over the new unredirected header. Closed model access at 138 seconds inclusive of wake ramp. No successful inference, independent proof, or accepted root. Both worker archives verified and no profile containers remained. Replacement [EXP-20261120-05](EXP-20261120-05-agensh-pi-putnam.md) retains 1,662 research seconds.
+
 Prelaunch controls use separate scripted sessions. The upstream code smoke produced two merged PRs and two sealed archives. Scripted math workers checked and merged a local theorem and its independently imported parent. The operator's separate known B1 witness passed the final exported-tree checker (treecheck:b767e3ff-792f-4f48-b0c2-c735a181a0ed). The initial placeholder, changed target and additional axiom controls rejected. These observations precede any autonomous pilot outcome.
 
 ## Analysis
