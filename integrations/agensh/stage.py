@@ -9,6 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 import sys
 sys.dont_write_bytecode = True
 from manifest import snapshot
+import seymour_inputs
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = ROOT / 'integrations' / 'agensh'
@@ -35,6 +36,9 @@ def main():
     parser.add_argument('--research-seconds', type=int, help='Remaining wall seconds in the approved pilot allowance')
     args = parser.parse_args()
     workers, hours, model, version = MATRIX[args.task]
+    deployment = json.loads(args.deployment.read_text())
+    if args.task == SEYMOUR:
+        seymour_inputs.validate(deployment, args.fixture)
     if args.research_seconds is not None:
         if args.task != 'putnam_2025_b1' or not 0 < args.research_seconds <= 1800:
             raise ValueError('Only the short pilot may use a reduced window')
@@ -84,9 +88,12 @@ def main():
     updates['SECRET_SERVICE_IMAGE'] = 'swarmenv/agensh-secret-service:157-2dae4e1'
     lines = [line for line in lines if line.partition('=')[0] not in updates]
     profile_path.write_text('\n'.join(lines + [f'{k}={v}' for k, v in updates.items()]) + '\n')
-    deployment = json.loads(args.deployment.read_text())
     checker = deployment['final_tree_checker']
-    volumes = [mount(checker['leanRoot'], '/opt/lean'), mount(HERE / 'lean-check', '/usr/local/bin/lean-check')]
+    diagnostic = 'seymour-lean-check' if args.task == SEYMOUR else 'lean-check'
+    lean = Path(checker['leanRoot'])
+    volumes = ([mount(lean / name, '/opt/lean/' + name) for name in ('bin', 'lib')]
+               if args.task == SEYMOUR else [mount(lean, '/opt/lean')])
+    volumes.append(mount(HERE / diagnostic, '/usr/local/bin/lean-check'))
     if args.task == SEYMOUR:
         # Agensh's model metadata hardcodes 16k. Use the baseline catalog value
         # while keeping the upstream ACP loop, prompt composition and router.
@@ -105,7 +112,11 @@ def main():
         libraries.append(target)
     # Keep the mathlib sources available to search without importing Git history, other problems or prior proofs.
     mathlib = next(Path(p) for p in checker['libraryRoots'] if Path(p).parents[3].name == 'mathlib')
-    volumes.append(mount(mathlib.parents[3] / 'Mathlib', '/opt/mathlib-source/Mathlib'))
+    source = mathlib.parents[3] / 'Mathlib'
+    if args.task == SEYMOUR:
+        source = run / 'public-mathlib'
+        seymour_inputs.export_mathlib(mathlib.parents[3], seymour_inputs.MATHLIB, source)
+    volumes.append(mount(source, '/opt/mathlib-source/Mathlib'))
     services = {f'agent-worker{i}': {'environment': {'AGENSH_LEAN_LIBRARIES': ':'.join(libraries)},
                                       'volumes': volumes} for i in range(1, workers + 1)}
     clock = run / 'clock'

@@ -42,6 +42,11 @@ async function prepare() {
   const { problem, config } = await fixture();
   const root = join(output, '_seed');
   await mkdir(root);
+  if (problem.id === 'oai_seymour_second_neighborhood' &&
+      (config.benchmark !== 'openai_math_v1' || problem.context_manifest != null || config.instructions_path || problem.source_hash !==
+       'fa4a37831405b3fe7f6a88a2dce8918982195ee1757e05e4623055822d36ca98')) {
+    throw new Error('Seymour challenge-only seed differs from EXP-02');
+  }
   const context = await readBenchmarkContext(problem, config);
   for (const [path, bytes] of Object.entries({ ...context, [problem.problem_file]: problem.source })) {
     await mkdir(dirname(join(root, path)), { recursive: true });
@@ -101,6 +106,11 @@ async function evaluate() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) switch (mode) {
+  case 'preflight': {
+    const { config, problem } = await fixture();
+    await verifyDeployment(config, problem);
+    break;
+  }
   case 'prepare': await prepare(); break;
   case 'export': await exportMain(); break;
   case 'evaluate': await evaluate(); break;

@@ -17978,6 +17978,22 @@
       "role": "Trusted egress credential and model binding"
     },
     {
+      "path": "integrations/agensh/seymour-lean-check",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Source-only fixed-root local Lean module check for Seymour"
+    },
+    {
+      "path": "integrations/agensh/seymour_inputs.py",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "EXP-02 challenge, artifact lock and public Mathlib source projection"
+    },
+    {
       "path": "integrations/agensh/stage.py",
       "category": "native Agensh experiment",
       "chapters": [

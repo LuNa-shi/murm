@@ -31,6 +31,11 @@ if image != identity['image']:
     raise SystemExit('Worker image drifted after staging')
 if snapshot(run) != json.loads((run / 'input-manifest.json').read_text()):
     raise SystemExit('Staged source, runtime, deployment, fixture or image identity drifted')
+if seymour:
+    # Before any worker is mounted, verify the live compiler and library bytes
+    # against the original artifact lock in the operator verifier namespace.
+    subprocess.run(['node', str(Path(__file__).with_name('domain.mjs')), 'preflight'],
+                   env={**os.environ, **launch, 'AGENSH_TASK': SEYMOUR}, check=True)
 clock = run / 'clock'
 (clock / 'started').touch(exist_ok=False)
 launch_time = time.time()
