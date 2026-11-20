@@ -8,11 +8,12 @@ export function createMissionCoordination({
   taskService, contextService, workspace, workspaceId, missionId, checker, manualReview, deadline,
   isStopping = () => false, onAccepted = () => undefined, maxInfrastructureRetries = 0, maxFinalChecks, maxConcurrentFinalChecks,
 }) {
-  if (!Number.isFinite(deadline)) throw new TypeError('Mission coordination requires a finite run deadline');
+  if (typeof deadline !== 'function' && !Number.isFinite(deadline)) throw new TypeError('Mission coordination requires a finite run deadline');
   if (!taskService?.db || !contextService || contextService.taskService !== taskService) {
     throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission requires local Task lifecycle authority for Context');
   }
-  const running = () => !isStopping() && Date.now() < deadline;
+  const getDeadline = typeof deadline === 'function' ? deadline : () => deadline;
+  const running = () => !isStopping() && Date.now() < getDeadline();
   const acceptance = () => taskService.getMission(missionId)?.acceptance_conditions;
   const authorize = input => {
     if (input.missionId !== missionId || input.workspaceId !== workspaceId || !running()) {
@@ -36,7 +37,7 @@ export function createMissionCoordination({
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission submission permission belongs to another Mission');
     }
     if (execution) assertNewExecutionWork(execution);
-    return { acceptance: acceptance(), envelope, deadline };
+    return { acceptance: acceptance(), envelope, deadline: getDeadline() };
   };
   const snapshotMaterials = input => {
     const { envelope } = authorize(input);

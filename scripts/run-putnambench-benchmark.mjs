@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { execFile, spawn } from 'node:child_process';
+import { renameSync, writeFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { join, relative, resolve, sep } from 'node:path';
@@ -11,6 +12,7 @@ import { beginPrivateAudit } from '../src/observability/private-audit-retention.
 
 import { OBSERVABILITY_AUTH_VERSION, observabilityAccessMode } from '../src/observability/observability-server.js';
 const execFileAsync = promisify(execFile);
+const setupStartedAt = Date.now();
 
 function sleep(milliseconds) {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, milliseconds));
@@ -331,7 +333,10 @@ const sourceCheckerTimeoutMs = Math.min(options.checkerTimeoutMs ?? 120_000, fin
 const metadata = {
   schema_version: 1,
   experiment_id: resolve(options.experimentDir).split('/').at(-1),
-  started_at: new Date().toISOString(),
+  setup_started_at: new Date(setupStartedAt).toISOString(),
+  setup_elapsed_ms: null,
+  started_at: null,
+  status: 'preparing',
   repository_commit: repositoryCommit,
   repository_worktree_dirty: repositoryStatus.length > 0,
   putnambench_commit: config.putnambench_commit,
@@ -380,6 +385,15 @@ metadata.protocol.private_audit_retention_ms = audit.retentionMs;
 let observationStore;
 const pendingCleanup = [];
 options.onCleanupPending = promise => pendingCleanup.push(promise);
+options.onRunStarted = startedAt => {
+  if (metadata.started_at !== null) return;
+  metadata.started_at = new Date(startedAt).toISOString();
+  metadata.setup_elapsed_ms = startedAt - setupStartedAt;
+  metadata.status = 'running';
+  const temporary = metadataPath + '.tmp';
+  writeFileSync(temporary, JSON.stringify(metadata, null, 2));
+  renameSync(temporary, metadataPath);
+};
 try {
   await mkdir(resolve(options.reportDir), { recursive: true });
   await mkdir(resolve(options.experimentDir, 'metadata'), { recursive: true });
@@ -439,6 +453,10 @@ try {
       ...(passK ? { attempt_index: index + 1 } : {}),
       problem_id: report.project?.problem_id ?? null,
       solved: report.run?.solved ?? false,
+      setup_started_at: report.run?.setup_started_at ?? null,
+      setup_elapsed_ms: report.run?.setup_elapsed_ms ?? null,
+      started_at: report.run?.started_at ?? null,
+      deadline_ms: report.run?.deadline_ms ?? null,
       elapsed_ms: report.run?.elapsed_ms ?? null,
       candidate_count: report.run?.candidate_count ?? null,
       invalid: report.audit?.invalid ?? true,
@@ -461,20 +479,21 @@ try {
   await writeFile(aggregatePath, JSON.stringify(aggregate, null, 2));
   const invalidCount = aggregate.projects.filter((project) => project.invalid).length;
   const solvedCount = aggregate.projects.filter((project) => project.solved).length;
-  const startupFailed = aggregate.projects.some((project) => project.stop_reason === 'bot_startup_contract');
-  if (startupFailed && !stoppedByOperator) {
+  const startupFailure = aggregate.projects.some(project => project.stop_reason === 'bot_startup_contract')
+    ? 'bot_startup_contract' : metadata.started_at === null ? 'preflight_failed' : null;
+  if (startupFailure && !stoppedByOperator) {
     process.exitCode = 1;
     process.stderr.write(JSON.stringify({
       status: 'startup_failed',
-      reason: 'bot_startup_contract',
-      action: 'Verify the pinned Bot image with the worker contract and disk quota probes before retrying.',
+      reason: startupFailure,
     }) + '\n');
   }
   await writeFile(metadataPath, JSON.stringify({
     ...metadata,
+    setup_elapsed_ms: metadata.setup_elapsed_ms ?? Date.now() - setupStartedAt,
     ended_at: new Date().toISOString(),
-    status: stoppedByOperator ? 'operator_stopped' : startupFailed ? 'startup_failed' : 'completed',
-    ...(stoppedByOperator ? { stop_reason: 'operator_stop', stop_signal: operatorStop.signal.reason } : startupFailed ? { stop_reason: 'bot_startup_contract' } : {}),
+    status: stoppedByOperator ? 'operator_stopped' : startupFailure ? 'startup_failed' : 'completed',
+    ...(stoppedByOperator ? { stop_reason: 'operator_stop', stop_signal: operatorStop.signal.reason } : startupFailure ? { stop_reason: startupFailure } : {}),
     valid_for_analysis: invalidCount === 0,
     result: {
       project_count: aggregate.projects.length,
@@ -489,6 +508,11 @@ try {
     solved_count: solvedCount,
     invalid_count: invalidCount,
   }) + '\\n');
+} catch (error) {
+  await writeFile(metadataPath, JSON.stringify({ ...metadata, status: metadata.started_at === null ? 'startup_failed' : 'failed',
+    valid_for_analysis: false, ended_at: new Date().toISOString(), setup_elapsed_ms: metadata.setup_elapsed_ms ?? Date.now() - setupStartedAt,
+    error_code: error.code ?? error.name }, null, 2));
+  throw error;
 } finally {
   if (pendingCleanup.length > 0) {
     process.stderr.write(JSON.stringify({ status: 'cleanup_pending', projects: pendingCleanup.length }) + '\n');

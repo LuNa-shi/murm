@@ -16,14 +16,23 @@ test('benchmark composes independent stores and HTTP peers and cleans their proc
   const problem = { id: 'independent_services_fixture', problem_file: 'input.lean', source: 'example : True := by trivial', source_hash: 'a'.repeat(64) };
   const config = { lean_project_root: root, putnam_bench_root: root, putnambench_commit: 'b'.repeat(40), lean_toolchain: 'controlled',
     mathlib_version: 'controlled', checker_ref: 'controlled', checker_version: '1', environment_ref: 'controlled' };
+  let setupFinishedAt;
+  let admittedAt;
   const report = await runBenchmarkProject(problem, config, { experimentDir: root, reportDir: join(root, 'reports'),
     timeboxMs: 0, botMaxMs: 60_000, serviceDeployment: 'independent',
     sandbox: { enabled: true, provider: 'opensandbox', lifecycleBaseUrl: `http://127.0.0.1:${provider.address().port}`, image: 'controlled:test' },
-    prepareProject: ({ taskService, contextService }) => {
+    onRunStarted: at => { admittedAt = at; },
+    prepareProject: async ({ taskService, contextService }) => {
+      await new Promise(resolve => setTimeout(resolve, 30));
+      setupFinishedAt = Date.now();
       assert.equal(contextService.taskService, taskService);
       assert.equal(contextService.readMaterials({}).length, 0);
     },
   });
+  assert.ok(admittedAt >= setupFinishedAt);
+  assert.equal(Date.parse(report.run.started_at), admittedAt);
+  assert.equal(report.run.deadline_ms, 0);
+  assert.ok(report.run.setup_elapsed_ms >= 30);
   assert.equal(report.project.service_deployment.deployment, 'independent');
   assert.equal(report.run.solved, false);
   assert.equal(report.project.task_count, 0);

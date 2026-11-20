@@ -130,7 +130,7 @@ function rowToExperiment(row) {
   return {
     experiment_id: row.experiment_id,
     status: row.status,
-    started_at: row.started_at,
+    started_at: row.status === 'CREATED' ? null : row.started_at || null,
     ended_at: row.ended_at,
     metadata: parse(row.metadata_json),
     created_at: row.created_at,
@@ -161,14 +161,15 @@ export class ObservationStore {
     const existing = this.getExperiment(experimentId);
     if (existing) {
       if (existing.status !== status) {
-        this.db.prepare('UPDATE experiments SET status = ?, updated_at = ? WHERE experiment_id = ?').run(status, now(), experimentId);
+        this.db.prepare(`UPDATE experiments SET started_at = CASE WHEN status = 'CREATED' AND ? = 'RUNNING' THEN ? ELSE started_at END,
+          status = ?, updated_at = ? WHERE experiment_id = ?`).run(status, startedAt, status, now(), experimentId);
       }
       return this.getExperiment(experimentId);
     }
     this.db.prepare(`INSERT INTO experiments (
       experiment_id, status, started_at, metadata_json, created_at, updated_at
     ) VALUES (?, ?, ?, ?, ?, ?)`).run(
-      experimentId, status, startedAt, json(metadata), createdAt, createdAt,
+      experimentId, status, status === 'CREATED' ? '' : startedAt, json(metadata), createdAt, createdAt,
     );
     return this.getExperiment(experimentId);
   }
