@@ -3,6 +3,7 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import tarfile
 import tempfile
@@ -115,8 +116,12 @@ printf '%s\n' 'import Mathlib.Data.Fintype.Card' 'example : Fintype.card (Fin 2)
 git add .
 lean-check "$parent/WorkerProbe.lean"
 """
+    def terminate_probe(signum, frame):
+        raise InterruptedError('Worker-library preflight terminated')
+
     with tempfile.TemporaryDirectory(prefix='agensh-uid-probe-') as directory:
         cid = Path(directory) / 'container-id'
+        previous = signal.signal(signal.SIGTERM, terminate_probe)
         try:
             subprocess.run([*command, '--cidfile', str(cid), image, '-ec', script, 'probe', TARGET],
                            input=challenge.read_bytes(), check=True, timeout=180)
@@ -126,3 +131,5 @@ lean-check "$parent/WorkerProbe.lean"
                 subprocess.run(['docker', 'rm', '-f', container], timeout=30, check=False,
                                stdout=subprocess.DEVNULL)
             raise
+        finally:
+            signal.signal(signal.SIGTERM, previous)
