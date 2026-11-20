@@ -2020,6 +2020,14 @@
         "docs/architecture/14-agensh-lean.md"
       ],
       "role": "Start and time-fence the native team"
+    },
+    {
+      "path": "integrations/agensh/manifest.py",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Freeze and revalidate the effective profile, authority, inputs, service and worker images"
     }
   ]
 }

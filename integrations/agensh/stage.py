@@ -6,6 +6,9 @@ from pathlib import Path
 import shutil
 import subprocess
 from urllib.parse import urlsplit, urlunsplit
+import sys
+sys.dont_write_bytecode = True
+from manifest import snapshot
 
 ROOT = Path(__file__).resolve().parents[2]
 HERE = ROOT / 'integrations' / 'agensh'
@@ -100,6 +103,7 @@ def main():
     (run / 'launch.json').write_text(json.dumps(launch, indent=2))
     (run / 'identity.json').write_text(json.dumps(dict(upstream=PIN, image=image, workers=workers, hours=hours,
                                                         harness='pi', version='1.4.0', provider='gpt_proxy', model=model)))
+    (run / 'input-manifest.json').write_text(json.dumps(snapshot(run), sort_keys=True, indent=2))
     print(f'Prepared {profile}: {workers} Pi workers, {hours} research hours')
 
 

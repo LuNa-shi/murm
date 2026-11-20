@@ -10,7 +10,7 @@ import { createLockedFinalTreeVerifier } from '../../src/judge/final-tree-deploy
 const exec = promisify(execFile);
 const run = resolve(process.argv[2]);
 const launch = JSON.parse(await readFile(join(run, 'launch.json'), 'utf8'));
-Object.assign(process.env, launch);
+Object.assign(process.env, launch, { AGENSH_TASK: launch.TASK });
 const { config, problem } = await fixture();
 const profile = Object.fromEntries((await readFile(join(run, 'upstream', '.env.' + launch.PROFILE), 'utf8'))
   .split('\n').filter(line => /^[A-Z_0-9]+=/.test(line)).map(line => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)]));

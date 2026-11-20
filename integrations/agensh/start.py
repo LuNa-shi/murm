@@ -6,6 +6,8 @@ import signal
 import subprocess
 import sys
 import time
+sys.dont_write_bytecode = True
+from manifest import snapshot
 
 run = Path(sys.argv[1]).resolve(strict=True)
 launch = json.loads((run / 'launch.json').read_text())
@@ -23,10 +25,13 @@ if (bits['AGENT_HARNESS'], bits['LLM_MODEL'], int(bits['AGENSH_WORKERS'])) != ('
 image = subprocess.check_output(['docker', 'image', 'inspect', '--format', '{{.Id}}', bits['AGENT_IMAGE']], text=True).strip()
 if image != identity['image']:
     raise SystemExit('Worker image drifted after staging')
+if snapshot(run) != json.loads((run / 'input-manifest.json').read_text()):
+    raise SystemExit('Staged source, runtime, deployment, fixture or image identity drifted')
 clock = run / 'clock'
 (clock / 'started').touch(exist_ok=False)
 process = subprocess.Popen(['bash', 'scripts/team_run.sh', '--pack', 'lean-proof'], cwd=checkout,
-                           env=dict(os.environ, **launch), stdout=subprocess.PIPE,
+                           env={**{k: os.environ[k] for k in ('PATH', 'HOME', 'USER', 'LANG', 'XDG_RUNTIME_DIR', 'DBUS_SESSION_BUS_ADDRESS') if k in os.environ},
+                                **launch, 'AGENSH_PLANNING': '0'}, stdout=subprocess.PIPE,
                            stderr=subprocess.STDOUT, text=True, errors='replace')
 for sig in (signal.SIGINT, signal.SIGTERM):
     signal.signal(sig, lambda number, _: process.send_signal(number))
