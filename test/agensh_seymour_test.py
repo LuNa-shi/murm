@@ -19,6 +19,33 @@ def git(root, *args):
 
 
 class SeymourInputs(unittest.TestCase):
+    def test_owner_only_objects_are_copied_readably_and_verified(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tmp = Path(directory)
+            lib = tmp / 'library'
+            lib.mkdir()
+            source = lib / 'Public.olean'
+            source.write_bytes(b'public object')
+            source.chmod(0o600)
+            copies = tmp / 'public'
+            seymour_inputs.copy_libraries([lib], copies)
+            actual = copies / '0'
+            self.assertEqual(seymour_inputs.library_digest(lib),
+                             seymour_inputs.library_digest(actual, worker_copy=True))
+            copied = actual / source.name
+            self.assertEqual(copied.stat().st_mode & 0o777, 0o444)
+            self.assertEqual(source.stat().st_mode & 0o777, 0o600)
+            copied.chmod(0o600)
+            with self.assertRaisesRegex(ValueError, 'read-only and readable'):
+                seymour_inputs.library_digest(actual, worker_copy=True)
+            copied.write_bytes(b'changed')
+            copied.chmod(0o444)
+            self.assertNotEqual(seymour_inputs.library_digest(lib),
+                                seymour_inputs.library_digest(actual, worker_copy=True))
+            (lib / 'link').symlink_to(source)
+            with self.assertRaisesRegex(ValueError, 'Symlink'):
+                seymour_inputs.copy_libraries([lib], tmp / 'other')
+
     def test_pinned_sources_exclude_working_tree_and_untracked_content(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)

@@ -59,3 +59,60 @@ def export_mathlib(repo, revision, destination):
             proc.stdout.close()
         if proc.wait() != 0:
             raise ValueError('Cannot export the pinned public Mathlib sources')
+
+
+def library_digest(root, *, worker_copy=False):
+    """Hash library paths and file contents independently of owner read permissions."""
+    h = hashlib.sha256()
+    for entry in [root, *sorted(root.rglob('*'))]:
+        relative = entry.relative_to(root).as_posix().encode()
+        if entry.is_symlink():
+            raise ValueError('Symlink in public compiled library')
+        if entry.is_dir():
+            if worker_copy and entry.stat().st_mode & 0o777 != 0o755:
+                raise ValueError('Worker library directories must be traversable')
+            h.update(b'd\0' + relative + b'\0')
+        elif entry.is_file():
+            if worker_copy and entry.stat().st_mode & 0o777 != 0o444:
+                raise ValueError('Worker library files must be read-only and readable')
+            with entry.open('rb') as stream:
+                h.update(b'f\0' + relative + b'\0' + hashlib.file_digest(stream, 'sha256').digest())
+        else:
+            raise ValueError('Expected a regular public library file')
+    return h.hexdigest()
+
+
+def copy_libraries(roots, destination):
+    destination.mkdir(mode=0o755)
+    destination.chmod(0o755)
+    for index, src in enumerate(roots):
+        dst = destination / str(index)
+        # Preserve symlinks as entries so the digest check can reject them.
+        shutil.copytree(src, dst, symlinks=True, copy_function=shutil.copyfile)
+        for path in [dst, *dst.rglob('*')]:
+            if path.is_symlink():
+                raise ValueError('Symlink in public compiled library')
+            path.chmod(0o755 if path.is_dir() else 0o444)
+
+def probe_worker(image, volumes, challenge):
+    # Run the shipped command with the same unprivileged UID as native Pi.
+    command = ['docker', 'run', '--rm', '-i', '--network', 'none', '--user', '10000:10000',
+               '--cpus', '2', '--memory', '8g', '--entrypoint', 'sh']
+    for item in volumes:
+        if not item['read_only']:
+            raise ValueError('Expected read-only diagnostic mounts')
+        command.extend(['--mount', f"type=bind,src={item['source']},dst={item['target']},readonly"])
+    script = """set -eu
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+cd "$work"
+git init -q
+parent=$(dirname "$1")
+mkdir -p "$parent"
+cat >"$1"
+printf '%s\n' 'import Mathlib.Data.Fintype.Card' 'example : Fintype.card (Fin 2) = 2 := by decide' >"$parent/WorkerProbe.lean"
+git add .
+lean-check "$parent/WorkerProbe.lean"
+"""
+    subprocess.run([*command, image, '-ec', script, 'probe', TARGET], input=challenge.read_bytes(),
+                   check=True, timeout=180)
