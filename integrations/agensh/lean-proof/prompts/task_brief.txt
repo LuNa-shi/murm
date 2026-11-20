@@ -1,0 +1,1 @@
+Prove the original Lean theorem in ${TARGET_FILE} in ${REPO}. The pinned Lean libraries are available offline through lean-check. Work autonomously, split work as you discover it, and merge checked Lean sources to main. Mattermost team ${MM_TEAM_ID}, channel pbench-task ${TASK_CHANNEL_ID}.

@@ -1,0 +1,1 @@
+Commit the Lean sources to main. From the directory containing the original theorem, run lean-check Helper.lean before checking a module that imports Helper. Keep generated .olean files out of Git. The final checker rebuilds from source and checks the fixed declaration.
