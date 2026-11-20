@@ -1,0 +1,4116 @@
+Page 1
+From partial permutation information to Fourier bounds
+OpenAI
+September 26, 2026
+Abstract
+We show how information about partial permutations controls full permutation laws. Letn
+tend to infinity through multiples of eight. If the images of a uniformly chosen7n/8labels
+approach the uniform injection law in average total variation, and the sign mean tends to zero,
+then the product of two independent permutations with the given law converges to uniform on
+Sn.
+1 What partial observations can determine
+A permutation can look uniform on many labels while retaining information about the whole deck.
+Parity gives the simplest example: the uniform law on the alternating group has uniform images
+on any set of at mostn− 2labels. Thus partial observations require an additional argument
+before they can establish convergence onSn. This paper develops that argument. Its input is
+quantitative information about partial permutations; its output is a bound on every nontrivial
+Fourier matrix, with the sign representation treated separately.
+Let X be a set ofn labels andG= Sym(X). We regardg∈G as the map from initial labels
+to final positions. ForM⊆X , letHM = Sym(M)fix X\M pointwise. Two permutations have
+the same images onX\M precisely when they lie in the same left cosetgHM. Consequently an
+upper bound on the distribution of those images is exactly an upper bound on the masses of these
+cosets. The elements ofgHM are obtained by multiplication on the right; this convention matters
+when image observations are compared with inverse-image observations.
+For a nonnegative measuref on G and an irreducible unitary representationρ: G→U (Vρ),
+write
+ˆf(ρ) =
+∑
+g∈G
+f(g)ρ(g), D ρ = dimVρ.
+Our Hilbert–Schmidt norm is unnormalized:∥A∥2
+HS = tr(A∗A). Let Dλ denote the degree of the
+irreducible ofSm indexed by a partitionλ⊢m, and set
+Cu = sup
+m≥1
+∑
+λ⊢m
+D−u
+λ (u>0).
+These constants are finite, and the sums with the row and column partitions removed tend to zero.
+A short proof is given in Lemma 2.1; Section 6 retains the distinct counting proofs that give more
+detailed information.
+Theorem 1.1(Complementary cosets control Fourier matrices).PartitionX into b nonempty
+sets M1,...,M b. Put Hi = HMi. Suppose f is a nonnegative measure onG of mass at most one
+and, for everyg∈Gandi,
+f(gHi)≤ B
+[G:H i].(1.1)
+1
+
+Page 2
+For everyu>0and every irreducibleρof degreeD,
+∥ˆf(ρ)∥2
+HS ≤bBC uD−1+(u+2)/b.(1.2)
+There is also an independent orbit-span proof of the bound
+∥ˆf(ρ)∥2
+op ≤bBC uD−1+(u+2)/b.(1.3)
+No restriction is imposed on block sizes or on the multiplicities inρ|H1×···×Hb.
+The Hilbert–Schmidt conclusion implies the operator-norm conclusion, but the two proofs use
+different information. The orbit proof follows one vector and controls the dimension of its orbit
+under a small subgroup type. The isotypic proof instead bounds the entire Fourier matrix by
+cosetwise Plancherel. We give the orbit proof first because it isolates the multiplicity issue in a
+concrete linear map, and then prove the stronger norm conclusion independently.
+The principal consequence is a transfer from observations of7n/8labels to the product of just
+two independent permutations. Suppose8divides n, the average total-variation error of these
+observations tends to zero, and the sign mean iso(1). One can choose eight complementary blocks
+whose errors sum too(1), then retain a common subprobability of mass1−o(1)with coset cap one.
+With b= 8and u= 1, Theorem 1.1 gives squared Hilbert–Schmidt norm at most8C1D−5/8. Two
+convolutions have nonsign Plancherel contribution at most(8C1)2 ∑ D−1/4, which tends to zero.
+The discarded mass and sign coefficient also vanish. Corollary 3.6 gives the precise conclusion.
+The orbit proof alone gives four convolutions, as recorded in Corollary 3.3. The distinction is the
+dimension factor saved by controlling the whole matrix, not a change in the observed marginals.
+1.1 The first proof and its extensions
+Restriction to H1 ×···×H b decomposes an irreducible space into tensor-product types, each
+tensored with its multiplicity space. The product of the factor degrees is at mostD. Hence some
+factor has degree at mostD1/b. Assign the whole type to one such factor. This produces an
+orthogonal decomposition of any test vector intobpieces. The orbit of one piece under its assigned
+subgroup has dimension at most the sum of the squares of the small factor degrees. Multiplicity
+causes no extra factor: on all copies of one type the group acts by the same matrix tensored with
+identity. The boundCu now controls that sum. Averaging the projections onto translates of the
+orbit span, Schur’s lemma turns its dimension into a factor1/D. This proves (1.3).
+The next proof retains more of the Fourier matrix. The central idempotent of a subgroup type
+projects onto all its copies. Cosetwise convolution bounds the squared Hilbert–Schmidt norm of
+the projected transform, summed over every ambient irreducible. The small subgroup types cover
+the original representation; taking a trace against a positive operator completes(1.2). This also
+explains why one must count types once rather than count their multiplicities.
+The complete fixed-coset route is proved in Sections 2–3. Sections 4 and 5 compare alternative
+coefficient arguments and retained measures for the same marginal information. Section 6 develops
+the shape-sensitive degree estimates needed later, and Section 7 constructs one-dimensional
+characters in subgroups of controlled index. Supplementary tableau and hook proofs are grouped
+in Appendix A. Appendix C retains the projection-averaging and longest-line peeling methods,
+together with explicit parameter substitutions. These independent routes remain available without
+interrupting the main transfers.
+The remaining results distinguish three kinds of additional information. First, image and
+inverse-image caps control opposite sides of a Fourier matrix. Section 8 places those sides together
+2
+
+Page 3
+in a product of two laws. Section 9 instead works with transition kernels: the sign contribution is
+then an operator on a multiplicity space, not merely the scalar sign mean of a group law.
+Second, the quantifiers on an information bound determine which changes of law it permits.
+Section 10 constructs retained laws by selecting good omitted sets separately for each permutation,
+under the same averaged marginal hypothesis as the fixed-partition route. Section 11 assumes
+an entropy comparison for every law on one common event; it can therefore condition on a rare
+representation-coefficient event. Section 12 obtains analogous rare-event control from a pointwise
+bound on accumulated reveal errors. In contrast, the single-law entropy bounds of Section 13 give a
+growing coset cap by clipping. They control only sufficiently large dimensions; Section 14 supplies
+a precise hybrid conclusion when a separate law handles the remaining diagrams by long-row decay
+and exact vanishing on diagrams with more thann/2rows.
+Finally, Section 15 uses a conditional product structure: after fixing an environment, the two
+half-permutations are independent. A signed tabloid basis turns their image caps into matrix
+bounds, while a preceding law’s inverse-image caps average positive operators. Appendix B gives
+an independent arm–leg construction of the signed representation used there. These different
+hypotheses are kept explicit; no mixing conclusion is inferred by substituting one kind of partial
+information for another.
+1.2 Relation to earlier methods
+Fourier analysis of random walks on finite groups converts distributional convergence into esti-
+mates of matrix transforms. Diaconis and Shahshahani’s analysis of random transpositions is
+a fundamental example [3]; the Plancherel and total-variation steps used here belong to that
+framework. We keep matrix norms throughout because the laws considered here need not be
+central and their transforms need not be normal.
+The representation-theoretic ingredients are classical. Specht modules, Young branching,
+induced representations from Young subgroups, and the Littlewood–Richardson rule supply the
+restriction and signed-tabloid constructions; see James [6] and Sagan [13]. The hook formula of
+Frame, Robinson, and Thrall [5] and elementary standard-tableau constructions supply degree
+lower bounds. The reciprocal-degree limits are part of the symmetric-group Witten-zeta theory;
+see Liebeck and Shalev [7, Proposition 2.5 and Theorem 2.6]. We give elementary proofs suited to
+the different transfer arguments and retain their more detailed tableau bounds. The orbit-span
+and coset estimates are proved explicitly. Relative entropy enters through its chain rule and
+its variational behavior under conditioning; the rare-event arguments specify the changed law
+explicitly.
+One motivation is the Thorp shuffle, introduced in [14]. Entropy methods yielded anO((logn)4)
+mixing bound for even decks and anO((logn)3)bound for power-of-two decks [8, 9]. These bounds
+count elementary cut-and-interleave shuffles; onn = 2 d cards, a complete coordinate sweep
+consists ofd such steps. The entropy arguments reveal and compare card trajectories, providing a
+methodological antecedent to the partial-information hypotheses considered here.
+More directly, Czumaj and Vöcking studied the joint randomization of a fixed fraction of
+labeled cards under the Thorp shuffle [2]. Czumaj subsequently obtained full-permutation sampling
+by recursively applying partial-permutation randomizers on successively smaller sets [1]. The
+present transfer has a different form: complementary quotient estimates for a single law control its
+noncentral Fourier matrices and, with separate sign control, imply mixing after a fixed number of
+independent compositions of that same law. No shuffle construction or physical-time bound is
+assumed in the abstract proofs.
+3
+
+Page 4
+Three companion papers construct inputs for the later transfers. The coordinate-frame paper
+proves the all-tilt entropy estimate in Lemma 12.13 and establishes the quotient and retained
+sign-multiplicity estimates within the proof of Theorem 14.2 [12]. The conditional-information
+paper supplies the fixed-list estimate in Proposition 3.3; the palette estimate and common-event
+construction in Proposition 13.2 and equations (13.2)–(13.3); the random-domain estimate in
+Theorem 12.2; the weak-entropy and sparse-Fourier inputs in Propositions 15.1 and 15.4; and the
+entropy assertion (16.1) of Theorem 16.1 [10]. The conditional-permutation paper constructs the
+two-half environment and its independent internal permutations in the proof of Theorem 7.1 and
+Lemma 7.2 [11]. These estimates are established before the cited papers apply the transfer results
+here. Their full-deck mixing conclusions are applications, not hypotheses of the present proofs;
+their discarded-mass, parity, and physical-time checks remain part of those applications.
+2 Degree sums, common trimming, and normalization
+We first supply the three ingredients needed to complete a transfer: a uniform count of small
+representation degrees, one measure satisfying all coset bounds at once, and the precise Fourier
+conversion to total variation. For a finite set,U denotes uniform probability. For a subgroup
+H≤G , the pushforward ofµ to G/H is denoted byµH, soµH(gH) = µ(gH). Our convention is
+∥µ−ν∥ TV = 1
+2
+∑
+x|µ(x)−ν(x)|for probabilities.
+Lemma 2.1(A short reciprocal-degree proof).For everyu>0,C u <∞and
+Zu(n) :=
+∑
+λ⊢n, λ/∈{(n),(1n)}
+D−u
+λ −→0.
+The excluded partitions form a set, so the unique partition of one is removed only once.
+Proof. We use the classical tableau dimension and hook formulas:Dλ is the number of fillings of
+the diagram ofλby1,...,nincreasing along each row and column, and
+Dλ = n!∏
+x∈λh(x),
+where h(x)counts the box xand the boxes strictly right of it or strictly below it [5, 6]. Writep(k)
+for the number of partitions ofk, withp(0) = 1. Euler’s product atx=e−1/
+√
+k gives, fork≥1,
+logp(k)≤
+√
+k+
+∑
+j≥1
+1
+j(ej/
+√
+k −1)
+≤
+√
+k
+
+1 +
+∑
+j≥1
+j−2
+
+≤3
+√
+k.
+If a Young diagram has a top row of lengtha and j≤a lower boxes, its number of standard
+tableaux is at least
+(a
+j
+)
+. Put the firstj labels in the firstj top-row positions, choose thej lower
+labels from the remaininga labels, and fill the lower diagram in one fixed standard relative order.
+Its width is at mostj, so every top-row predecessor is smaller. Fill the rest of the row increasingly.
+A tableau of any Young subdiagram extends to the full diagram by adding larger labels in an
+order respecting row and column predecessors.
+Orient a longest row or column as the first row and let its length ben−j . When1 ≤j≤n/ 3,
+at most2p(j)diagrams have this value and
+Dλ ≥
+(
+n−j
+j
+)
+≥2 j.
+4
+
+Page 5
+For each fixedj >0the binomial coefficient diverges, and2p(j)2−uj is summable. Dominated
+convergence handles this range.
+In the remaining range puta= max(λ1,λ′
+1) <2n/3. If a≥n/ 10, retain the first row and a
+lower Young order ideal of⌊a/2⌋boxes; there are enough lower boxes. Extension and the preceding
+construction giveDλ ≥2a/(a+ 1), exponential inn. If a<n/ 10, every hook has length at most
+2a, and the hook formula givesDλ ≥n!/(2a)n ≥(5/e)n. Both bounds beatp(n) ≤e3√n. Thus
+Zu(n) →0. Adding the row and column shows that the full sum tends to two; finitely many
+smaller values are finite.
+Lemma 2.2(Selecting one partition).Ifnis divisible byband a lawµonS n satisfies
+E|M|=n/b∥µHM −UG/HM∥TV ≤δ,
+there is a partition intob equal blocks for which the sum of the complementary coset errors is at
+mostbδ.
+Proof. Every block of a uniformly chosen ordered equal partition is itself a uniformn/b-subset.
+The expected sum of the errors is at mostbδ, so one partition has sum no larger than that
+expectation.
+Lemma 2.3(Two common trimming operations).Let H1,...,H b be subgroups of a finite group
+G, letµ be a probability, and putδi = ∥µHi −UG/Hi∥TV and δ= ∑
+iδi. There is a subprobability
+f≤µwith
+f(G)≥1−δ, f(gH i)≤[G:H i]−1 (g∈G,i≤b).
+For anyc> 1, deleting the union of all cosets with original density greater thanc loses mass at
+mostcδ/(c−1). If that loss isη <1, the conditional lawνhas
+∥ν−µ∥ TV =η, ν(gH i)≤ c
+1−η [G:H i]−1.
+In particularc= 2loses at most2δ.
+Proof. Process the subgroup coset systems successively. Within each coset whose current mass
+exceeds its uniform mass, multiply all current point masses by the ratio of the cap to the current
+mass. The loss at stagei is at most the original positive excess on theith quotient, namelyδi,
+because all current masses are belowµ. Later decreases preserve earlier caps.
+There is also a simultaneous construction with the same guarantee. For eachi, trimµseparately
+to a measurefi, and setf(g) = minifi(g). Thenf≤f i ensures every cap, whileµ−f≤ ∑
+i(µ−fi)
+bounds the loss byδ. Thus these two constructions need not produce the same measure, but prove
+exactly the same assertion.
+If a cosetQhas µ(Q) >cU (Q), thenµ(Q) ≤c(µ(Q) −U(Q))/(c−1). Summing over its heavy
+cosets and then over subgroup systems bounds the removed mass. A surviving coset has original
+mass at mostcU(Q); division by1 −η gives the displayed cap. Conditioning deletes massη and
+adds that same mass on the retained set, proving the variation equality.
+Lemma 2.4(Plancherel with a mass deficit).For every complex mass functiona on a finite group
+G,
+|G|
+∑
+g
+|a(g)|2 =
+∑
+ρ∈Irr(G)
+Dρ∥ˆa(ρ)∥2
+HS.
+5
+
+Page 6
+Iff≥0has massz≤1, then
+|G|
+∑
+g
+|f(g)−zU(g)| 2 =
+∑
+ρ̸=1
+Dρ∥ˆf(ρ)∥2
+HS,(2.1)
+(∑
+g
+|f(g)−U(g)|
+)2
+≤(1−z) 2 +
+∑
+ρ̸=1
+Dρ∥ˆf(ρ)∥2
+HS.(2.2)
+If f≤µ for a probabilityµ, its normalization, whenz >0, is at variation distance at most1−z
+fromµ.
+Proof.Expand the squared Hilbert–Schmidt norms. The regular-character identity
+∑
+ρ
+Dρχρ(h−1g) =|G|1 g=h
+proves Plancherel. Apply it tof−zU , whose trivial coefficient is zero, and tof−U , whose trivial
+coefficient isz−1. Cauchy–Schwarz gives(2.2). Finally,∑ |f/z−f| = 1 −z = ∑ |µ−f| , so the
+triangle inequality proves the normalization claim.
+With convolution(f∗k )(g) = ∑
+xf(x)k(x−1g), transforms multiply in the displayed order. If
+f≤µ , positivity impliesf∗r ≤µ∗r and the missing mass is1−zr ≤r(1 −z). If µ has sign mean
+s, then|ˆf(sgn)|≤|s| + 1 −z. For nearby probabilities, the corresponding sign perturbation is at
+most twice their total-variation distance.
+Proposition 2.5(Fourier amplification).Let µn be probabilities onSn with ˆµn(sgn) = o(1).
+Suppose eitherfn is a nonnegative subprobability withfn ≤µn and mass tending to one, orfn is
+a probability with∥fn −µn∥TV =o(1). If, uniformly for every irreducible of degreeD>1,
+∥ˆfn∥op ≤AD−β,
+where A,β >0are fixed, then ∥µ∗r
+n −U∥TV →0for every fixed integer r with2 −2rβ <0. If
+instead∥ ˆfn∥2
+HS ≤AD−γ, the sufficient condition is1−rγ <0.
+Proof.The sign term tends to zero by the preceding mass bounds. In the operator case,
+D∥ˆfr
+n∥2
+HS ≤D2∥ˆfn∥2r
+op ≤A2rD2−2rβ.
+In the Hilbert–Schmidt case submultiplicativity givesD∥ˆfr
+n∥2
+HS ≤ArD1−rγ. The sums tend to
+zero by Lemma 2.1. The trivial coefficient tends to one. Lemma 2.4 gives convergence forf∗r
+n ; the
+missing mass or a telescoping replacement of ther probability factors gives convergence forµ∗r
+n .
+No normality or diagonalization is used.
+3 The complete transfer from disjoint coset systems
+The coset bounds are now available on one common measure. We first turn them into an operator
+estimate by following the orbit of one vector. For eight complementary coset systems, this gives
+convergence after four convolutions. Central projections then retain the whole Fourier matrix and
+reduce that count to two. Both arguments keep every restriction multiplicity; they differ in what
+they average.
+6
+
+Page 7
+Lemma 3.1(The orbit of a single vector).LetH act unitarily onV, and suppose a vectorv has
+components only inH-types belonging to a setΛ⊆Irr(H). Then
+dim span{ρ(h)v:h∈H}≤
+∑
+τ∈Λ
+(dimτ) 2.
+All copies of a type are included in this estimate.
+Proof. Regroup the entireτ-isotypic space asVτ⊗Aτ, whereH acts asτ⊗I . Ifvτ is the component
+ofvthere, its orbit lies in the image of
+End(Vτ)−→V τ ⊗Aτ, Q↦−→(Q⊗I)v τ.
+The image has dimension at most( dimτ)2, independently of dimAτ. Equivalently, writing
+vτ = ∑dimτ
+j=1 ej ⊗aj, the orbit lies inVτ ⊗span(aj). Sum over inequivalent types.
+Write a= dimτ, Wτ = span{ρ(h)vτ : h∈H} , andT(Q) = (Q⊗I )vτ. The key point is the
+map in Figure 1: multiplicity enlarges the ambient space, but not the matrix space that moves a
+fixed vector.
+End(Vτ)
+dimensiona 2
+imT⊇W τ
+dimension at mosta2
+Vτ ⊗Aτ
+arbitrary multiplicity
+T
+inclusion
+Figure 1: The orbit of one vector in all copies of a subgroup type of degreea. The restriction of
+the group action factors through a matrix space of dimensiona2.
+Proposition 3.2(Orbit-span transfer).Under the assumptions of Theorem 1.1, for everyu> 0,
+∥ˆf(ρ)∥op ≤
+√
+bBCuD−1/2+(u+2)/(2b).
+Proof. The disjoint subgroups form a direct productH = H1 ×···×H b. Its isotypic decomposition
+inV ρ is an orthogonal sum of spaces
+(Vτ1 ⊗···⊗V τb)⊗Aτ .
+Every occurring tensor product has dimension∏
+idimτi ≤D. Assign its whole isotypic space to
+the least indexifor whichdimτi ≤D1/b. Group the assigned spaces to obtainVρ = E1 ⊕···⊕E b.
+Equivalently, letPi select the smallHi-types. These projections commute and∏
+i(I−P i) = 0.
+The projectionsQi = Pi
+∏
+j<i(I−P j)are orthogonal and sum to identity: on each product typeQi
+is identity exactly wheni is its first small factor. Thus the explicit splittingvi = Qiv is precisely
+the least-index assignment above.
+Fixv i ∈Ei and putWi = spanρ(Hi)vi. Lemma 3.1 and the definition ofCu give
+dimWi ≤
+∑
+τ∈Irr(Hi): dimτ≤D1/b
+(dimτ) 2 ≤CuD(u+2)/b.(3.1)
+7
+
+Page 8
+The second inequality follows term by term from(dimτ)2 ≤D(u+2)/b(dimτ)−u. It is uniform in
+the block size.
+The remaining task is to use this dimension bound on a coefficient. LetΠi be the orthogonal
+projection ontoWi. Since Wi is Hi-invariant, the projection ontoρ(g)Wi depends only ongHi.
+The coset cap therefore gives, for everyw,
+∑
+g
+f(g)∥Π ρ(g)Wiw∥2 ≤BE g∼UG∥Πρ(g)Wiw∥2
+=B dimWi
+D ∥w∥2.
+Indeed EUρ(g)Πiρ(g)∗commutes withρ(G)and has trace dimWi, so Schur’s lemma identifies it
+as(dimW i/D)I.
+Sinceρ(g)v i ∈ρ(g)Wi andfhas mass at most one, Cauchy–Schwarz yields
+|⟨w, ˆf(ρ)vi⟩|≤∥v i∥
+(∑
+g
+f(g)∥Π ρ(g)Wiw∥2
+)1/2
+≤
+√
+BCuD−1/2+(u+2)/(2b)∥w∥∥vi∥.
+For v= ∑
+ivi, orthogonality gives∑
+i∥vi∥≤
+√
+b∥v∥. Summing proves the claim. In particular no
+dimension of a multiplicity space has been discarded.
+Corollary 3.3(Four convolutions by the orbit argument).Letn→∞ through multiples of eight.
+Suppose probabilitiesµn onS n have sign meano(1)and
+E|M|=n/8 ∥µn,HM −UG/HM∥TV =o(1).
+Then∥µ ∗4
+n −UG∥TV →0.
+Proof. Lemma 2.2 selects an eight-block partition with summed marginal erroro(1). Lemma 2.3
+supplies a common subprobabilityfn ≤µn of mass1 −o(1)and coset cap one. Proposition 3.2
+at u= 1gives ∥ˆfn(ρ)∥op ≤√8C1D−5/16. The nonsign Plancherel contribution after four factors
+is at most(8C1)4Z1/2(n), because2 −8(5/16) = −1/2. Sign and missing mass tend to zero by
+Proposition 2.5. This completes a route from averaged observations to the full law.
+3.1 Central projections retain the whole Fourier matrix
+The orbit argument controls one vector at a time. To estimate the Hilbert–Schmidt norm without
+paying an extra ambient dimension, we instead convolve with a central idempotent of the subgroup.
+Its cosetwise squared norm controls all Fourier matrix entries at once.
+For an irreducibleH-typeτof degreea, define the mass function
+eH,τ(h) = a
+|H|χτ(h) (h∈H), e H,τ = 0offH.
+Character orthogonality shows that ˆeH,τ(ρ)is the orthogonal projection Pρ,H,τ onto the full
+τ-isotypic subspace inρ|H. Thus every copy is included.
+Lemma 3.4(Cosetwise isotypic estimate).Let H≤G and letf≥ 0have mass z≤ 1and satisfy
+f(gH)≤B/[G:H]. For an irreducibleH-typeτof degreea,
+∑
+ρ∈Irr(G)
+Dρ∥ˆf(ρ)Pρ,H,τ∥2
+HS ≤Bza 2.(3.2)
+8
+
+Page 9
+Proof. Convolution withe= eH,τ acts separately in each left cosetQ= xH. Since∑
+h∈H |e(h)|2 =
+a2/|H|, the triangle inequality for a positive weighted sum of translates gives
+∑
+h∈H
+|(f∗e)(xh)| 2 ≤f(Q) 2 a2
+|H|.
+Onemayequivalentlynormalizetheweightsby f(Q)anduseJensen; thezero-masscosetcontributes
+zero. Also ∑
+Qf(Q)2 ≤Bz/[G:H]. Plancherel onGproves (3.2).
+There is a second exact expression for the same calculation. LetfQ(h) = f(xh)and ˆfQ(τ) =∑
+hfQ(h)τ(h). Subgroup Plancherel yields
+∑
+ρ
+Dρ∥ˆf(ρ)Pρ,H,τ∥2
+HS = [G:H]
+∑
+Q
+a∥ˆfQ(τ)∥2
+HS.
+Unitarity gives∥ˆfQ(τ)∥HS ≤√af(Q)and recovers the same bound. This identity makes the
+normalization of the Hilbert–Schmidt norm explicit.
+There is also a positive-projection proof of the same bound. Right convolution bye is an
+orthogonal projection, sincee∗e = eand e∗(h) = e(h−1) = e(h). With the counting inner product,
+|G|∥f∗e∥ 2
+2 =|G|⟨f,f∗e⟩
+≤a2|G|⟨f,f∗U H⟩≤Bza 2.(3.3)
+Indeed |e(h)|≤a 2UH(h), so positivity of f bounds the absolute convolution pointwise; and
+(f∗U H)(g) = f(gH)/|H|≤B/|G| . This proves the estimate from idempotence and positivity,
+independently of the cosetwise norm calculation.
+Proposition 3.5(Isotypic transfer).Under the assumptions of Theorem 1.1,
+∥ˆf(ρ)∥2
+HS ≤bBC uD−1+(u+2)/b.
+In fact the right side can be multiplied byf(G).
+Proof. For eachi, take allHi-isotypic projections with degree at mostD1/b. On every product
+type in the restriction to∏
+iHi, at least one such projection is identity. The projections commute
+and include all multiplicities, so
+I⪯
+b∑
+i=1
+∑
+τ:dimτ≤D 1/b
+Pρ,Hi,τ.(3.4)
+Tracethisinequalityagainstthepositiveoperator ˆf(ρ)∗ˆf(ρ), applyLemma3.4afterdiscardingother
+ambient irreducibles, and use(3.1). The resulting inequality isD∥ˆf(ρ)∥2
+HS ≤Bf (G)bCuD(u+2)/b.
+This proves Theorem 1.1. The improvement from operator to Hilbert–Schmidt norm changes
+the convolution count because the regular-representation weight is thenD, rather than theD2
+obtained by bounding∥A∥2
+HS byD∥A∥2
+op.
+Corollary 3.6(Two convolutions from eight complements).Under the hypotheses of Corollary 3.3,
+∥µ∗2
+n −UG∥TV →0.
+9
+
+Page 10
+Proof. Use the same partition and subprobability as in that corollary. Proposition 3.5 withu= 1
+gives HS squared at most8C1D−5/8. Two powers have nonsign contribution at most(8C1)2Z1/4(n),
+since1−2(5/8) =−1/4. Proposition 2.5 handles sign and mass.
+The last corollary is an abstract consequence of the stated marginal hypotheses. A shuffle
+application must supply those hypotheses at its own time and preserve its own time convention; a
+numerical mixing statement is not part of this abstract deduction.
+4 Coefficient spaces and finer fixed-partition estimates
+The central-isotypic estimate already controls the whole Fourier matrix. This section compares
+three features of alternative fixed-coset arguments: evaluation in a coefficient space, pointwise
+character control, and the number of restriction types allowed by the ambient diagram. The first
+two give weaker bounds but require different intermediate estimates; the branching refinement
+retains information that the uniform constantCu suppresses. Throughout this section X =
+M1 ⊔···⊔M b, Hi = Sym(Mi)fixes the complement, andf≥ 0has mass at most one and satisfies
+f(gHi)≤B/[G:H i]. The constantsCu have the meaning fixed in the introduction.
+4.1 Comparison of the information and the conclusions
+The first three rows of Table 1 compare methods under the same fixed-coset hypothesis; the
+remaining rows locate transfers with different orientations, quantifiers, or conditional structure. A
+fixed family of coset bounds controls one common measure. An estimate averaged over omitted sets
+first needs a choice of partition or a permutation-dependent modification. An entropy inequality
+valid for every change of law can be applied to a rare coefficient event; an entropy estimate
+for the reference law alone cannot justify that step. For kernels, small quotient error must be
+supplemented by control of the full sign multiplicity operators.
+4.2 Evaluation of coefficient functions
+Lemma 4.1(Evaluation in a coefficient space).LetH be a finite group and letΛ⊆Irr (H). If F
+is a linear combination of matrix coefficients of the types inΛ, then
+max
+h∈H
+|F(h)|2 ≤
+
+∑
+τ∈Λ
+(dimτ) 2
+
+Eh∼UH|F(h)|2.
+Proof. Schur orthogonality makes the functions
+√
+dimττ (h)jk an orthonormal basis of this coeffi-
+cient space. At everyh, the sum of their squared absolute values is∑
+τ∈Λ (dimτ)2, because each
+τ(h)is unitary. Cauchy–Schwarz for expansion in this basis proves the assertion. Multiple copies
+of a representation give the same coefficient functions and do not enlarge the space.
+Proposition 4.2(Coefficient-evaluation transfer).For every u> 0and irreducible ρ of degreeD,
+∥ˆf(ρ)∥op ≤
+√
+bBCuD−1/2+(u+2)/(2b).
+Proof. Let Pi project onto allHi-types of degree at mostD1/b. ThePi commute, and∏
+i(I−Pi) = 0
+by the product-degree bound. ThusQi = Pi
+∏
+j<i(I−P j)are pairwise orthogonal projections
+summing to identity. Writevi =Qiv.
+10
+
+Page 11
+Input or method Orientation and
+quantifier
+Mass treatment Fourier conclusion
+Central isotypic
+projection
+gHi, every coset of one
+law
+Subprobability allowed HS squared
+bBCuD−1+(u+2)/b
+Coefficient-space
+projection
+Same fixed cosets Same retained law HS squared
+bB2CuD−1+(u+2)/b
+Pointwise character
+bound
+Same fixed cosets Same retained law HS squared
+bB2CuD−1+(u+4)/b
+Two-sided observations Image and
+inverse-image cosets
+Two retained factors Joint-type bound,
+Section 8
+Uniform random
+omitted set
+Average marginal TV
+error
+Nearby conditional law Alternative retained
+laws; Sections 5 and 10
+Entropy on a common
+event
+Every law supported
+on that event
+Condition on the event TailCD −1/256;
+Theorem 11.1
+Equivariant quotient
+kernels
+Mean rows, or both
+rows and columns
+Subkernels with
+explicit loss
+Product-type HS
+bounds; Theorems 9.1
+and 9.2
+Conditional
+half-products
+Inverse-image cap
+followed by conditional
+image caps
+Product
+subprobabilities
+Operator
+√
+22D−1/40;
+Theorem 15.1
+Table 1: Inputs that lead to different Fourier transfers. The dimension is that of the ambient irre-
+ducible except in the kernel product-type estimates. All Hilbert–Schmidt norms are unnormalized.
+For fixedg,w, the functionh↦→⟨w,ρ(gh)vi⟩on Hi uses only the selected types. Lemma 4.1
+gives
+|⟨w,ρ(g)vi⟩|2 ≤CuD(u+2)/bEh∼UHi
+|⟨w,ρ(gh)vi⟩|2.
+Average overg with massf(g). Right averaging replacesf by f∗U Hi, whose density relative to
+UG is at mostB. Schur orthogonality onGgives
+∑
+g
+f(g)|⟨w,ρ(g)v i⟩|2 ≤BC uD−1+(u+2)/b∥w∥2∥vi∥2.
+Jensen for a measure of mass at most one and∑
+i∥vi∥≤
+√
+b∥v∥finish the proof. This argument
+proves the same numerical inequality as Proposition 3.2, using evaluation of functions instead of
+dimensions of orbit subspaces.
+4.3 Two more isotypic estimates
+Lemma 4.3(Coefficient and pointwise character estimates).LetH≤G , letf≥ 0have mass at
+most one and coset capB/[G:H], and letτ∈Irr(H)have degreea. For everyρ∈Irr(G),
+Dρ∥ˆf(ρ)Pρ,H,τ∥2
+HS ≤B 2a2,(4.1)
+Dρ∥ˆf(ρ)Pρ,H,τ∥2
+HS ≤B 2a4.(4.2)
+The first bound comes from coefficient projection on each coset; the second comes from a pointwise
+bound on the character idempotent.
+11
+
+Page 12
+Proof. Put F = |G|f. On xH, projecth↦→F(xh)onto the conjugates of the matrix coefficients
+ofτ. Its uniform squared norm is
+a∥Eh∈HF(xh)τ(h)∥2
+HS ≤B 2a2,
+because the matrix in the norm has operator norm at most the nonnegative function’s mean, which
+is at mostB. The entries ofρ(xh)Pρ,H,τ belong to theτ coefficient space. ReplacingF by this
+projection therefore preserves the tested Fourier matrix. Averaging the bound over cosets and
+applying full-group Plancherel proves (4.1).
+For the second proof, the character bound|χτ(h)|≤agives
+|(f∗e H,τ)(g)|≤ a2
+|H|f(gH)≤ Ba2
+|G|.
+The density of this convolution has squaredL2(UG)norm at most B2a4. Plancherel gives(4.2).
+No bound on the conditional law inside a coset was required in either proof.
+Proposition 4.4(Coefficient and character Hilbert–Schmidt transfers).For the disjoint-block
+data of this section and everyu>0,
+∥ˆf(ρ)∥2
+HS ≤B 2bCuD−1+(u+2)/b,(4.3)
+∥ˆf(ρ)∥2
+HS ≤B 2bCuD−1+(u+4)/b.(4.4)
+Proof. Trace the covering inequality (3.4) against ˆf∗ˆf. Sum the corresponding estimate of
+Lemma 4.3 over all selected subgroup types. Forj= 2,4,
+∑
+dimτ≤D1/b
+(dimτ) j ≤CuD(u+j)/b.
+This proves both bounds, including every multiplicity.
+Although (3.2) gives a stronger bound,(4.4) records the method that uses only pointwise
+character control. Foru= 2, large block size makes the complete subgroup reciprocal sum at most
+three, so capB= 4gives the concrete bound48bD −1+6/b.
+Proposition 4.5(Low-type central-projector estimates).Let η be a probability satisfying the
+coset caps of this section. Let Pi select its Hi-types of degree at mostD1/b and put Ri =∑
+dimτ≤D1/b(dimτ) 2. Then
+∥ˆη(ρ)Pi∥op ≤BD −1/2Ri, D∥ ˆη(ρ)Pi∥2
+HS ≤B 2Ri.
+Consequently
+∥ˆη(ρ)∥op ≤BC u
+√
+bD−1/2+(u+2)/b,
+∥ˆη(ρ)∥op ≤B
+√
+bCuD−1/2+(u+2)/(2b).
+Proof. On Hi take the central projector densityki(h) = ∑
+dimτ≤D1/b(dimτ)χτ(h), relative to
+uniform subgroup measure. Its transform isPi. Pointwise|ki|≤R i, so convolution of the density
+|G|η with ki is bounded in absolute value byBRi. Plancherel yields the first displayed bound.
+Alternatively project onto all selected coefficient spaces on each coset. They are orthogonal; their
+squared mean sums to at mostB2Ri by the first proof of Lemma 4.3. This gives the second bound.
+Use the orthogonalQi = Pi
+∏
+j<i(I−P j), apply either bound toQiv, and sum their norms.
+The inequalities∑
+i∥Qiv∥≤
+√
+b∥v∥andR i ≤CuD(u+2)/b give the conclusions.
+12
+
+Page 13
+4.4 Counting only types allowed by branching
+Let p(j)again denote the partition number, and define M(k) = ∑k
+j=0 p(j). For λ⊢n put
+kλ =n−max(λ 1,λ′
+1).
+Proposition 4.6(Branching refinement).For an irreducibleρλ of degreeD, the disjoint-block
+caps give
+∥ˆf(ρλ)∥2
+HS ≤BbM(k λ)D−1+2/b.
+The blocks may have unequal sizes.
+Proof. Young branching says that each diagramτ occurring under restriction to a block symmetric
+group is contained inλ; conjugating a block to the standard subgroup does not change the set of
+occurring types [6, Theorem 9.2]. Orient a longest row or column ofλ horizontally, transposing
+the restricted diagrams too if necessary. Eachτ then has at mostkλ boxes below its first row.
+Given those lower boxes and the block size, its first row is determined. Thus at mostM(kλ)types
+occur, regardless of multiplicity. Apply(3.2) to each selected small type and bound its squared
+degree byD2/b in (3.4).
+Appendix C develops two averages of low-type projections, a four-factor coefficient decomposi-
+tion, and explicit parameter substitutions. Those alternative estimates retain their proofs, while
+the tools above suffice for the transfers that follow.
+5 Keeping the partition random
+Selecting one partition and imposing common coset caps already handles the averaged marginal
+hypothesis. Here we construct a different retained law: each retained permutation is good for
+many partitions, without choosing one partition on which the law must satisfy every cap. The
+partition therefore varies inside the coefficient estimate. Its event of simultaneous goodness must
+be inserted before decomposing a test vector.
+Proposition 5.1(Random-partition lift).Let n tend to infinity through multiples of a fixed
+integer q >3, and letµ be probability laws onSn. For a uniformn/q-subset C, putHC = Sym(C),
+fixing its complement pointwise. Suppose
+EC∥µHC −(UG)HC∥TV =o(1), ˆµ(sgn) = 0.
+There is a conditional probability lawν with ∥ν−µ∥TV = o(1)such that, for every irreducibleρ of
+degreeD,
+∥ˆν(ρ)∥op ≤ 2
+M
+√
+2qC1 D−(1−3/q)/2,(5.1)
+where M = 1 −o(1)is the retained mass andC1 is from Lemma 2.1. In particular forq = 8,
+∥µ∗8 −UG∥TV =o(1).
+Proof. Put h0 = |HC|/|G|. Sayg is good forC if µ(gHC) ≤2h0. The totalµ-mass of bad cosets
+is at most twice their marginal total-variation distance. Thus the set
+R={g:P C(gis bad forC)≤1/(2q)}
+has massM = 1 −o(1)by Markov’s inequality. For everyg∈R a uniform ordered equal partition
+(C′
+1,...,C ′
+q)has probability at least1/2thatgis good for all blocks. Defineν=µ(·|R).
+13
+
+Page 14
+We use Lemma 4.1: if a functionFon a finite group is in the span of matrix coefficients of a
+collectionΛof irreducibles, then
+max|F|2 ≤
+
+∑
+τ∈Λ
+(dimτ) 2
+
+EU|F|2.(5.2)
+The sum counts distinct types, since equivalent copies have the same space of coefficient functions.
+Fix a partition and restrictρto its direct product of block subgroups. Decompose orthogonally
+into tensor-product constituents, including all multiplicity spaces. Every constituent has product
+of factor degrees at mostD. Assign it to one factor with degree at mostD1/q. This splits a vector
+v= ∑
+ivi orthogonally, withvi using onlyHC′
+i
+-types of degrees at mostD1/q. Fix a test vectorw
+and setFi(g) = ⟨w,ρ(g)vi⟩. On a cosetgHC′
+i
+it belongs to the coefficient space in(5.2), whose
+dimension is at most ∑
+b≤D1/q
+b2 ≤C1D3/q.
+The sum counts each irreducible type once; multiplicities do not increase the function space of
+matrix coefficients. Summing the coset maximum bound only over good cosets, and using Schur
+orthogonality onG, yields
+∑
+ggood forC ′
+i
+µ(g)|Fi(g)|2 ≤2C1D3/q−1∥w∥2∥vi∥2.(5.3)
+Only a bound on total coset mass was used here.
+For g∈R insert the all-good partition event, whose probability is at least1/2, before splitting
+the coefficient. It follows that
+|⟨w,ˆν(ρ)v⟩|≤ 2
+ME(C′
+i)
+∑
+i
+∑
+ggood forC ′
+i
+µ(g)|Fi(g)|.
+Cauchy–Schwarz and(5.3), followed by∑
+i∥vi∥≤ √q∥v∥, prove(5.1). The dependence ofvi on
+the partition is harmless because the estimate holds for each fixed partition.
+The sign coefficient obeys|ˆν(sgn)|≤ (1−M)/M = o(1), since the original sign coefficient is zero.
+The same argument works when that coefficient iso(1). Fourier Plancherel in the normalization of
+Lemma 2.4 gives
+4∥ν∗r −UG∥2
+TV ≤
+∑
+ρ̸=1
+Dρ∥ˆν(ρ)r∥2
+HS.
+Forq=r= 8, the nonsign sum is at most an absolute constant times
+∑
+ρ̸=1,sgn
+D2−r(1−3/q)
+ρ =
+∑
+ρ̸=1,sgn
+D−3
+ρ =o(1)
+by Lemma 2.1. The sign term also vanishes, and∥µ∗8 −ν∗8∥TV ≤8(1−M) =o(1).
+6 Symmetric-group degrees: the quantitative toolkit
+The lifting estimates involve sums of negative powers of dimensions. The short proof in Lemma 2.1
+already supplies every positive inverse power. Here we develop the quantitative estimates used
+by the later transfers: tableau and hook constructions, exponential growth in the deficit from a
+longest line, and sharper bounds near a row or column.
+14
+
+Page 15
+Theorem 6.3 combines summability with the uniform deficit bound. Lemmas 6.4 and 6.5
+then control near-row dimensions and the number of restriction types. Appendix A retains the
+independent fixed-power proofs, including routes that use only coarse partition counts or avoid
+the hook formula.
+For a partitionλ⊢n , writeDλ = fλ for the dimension of its complex irreducible representation
+and λ′for its transpose. We use the classical standard-tableau dimension theorem and hook-length
+formula [13, 4]:
+Dλ = #{standard tableaux of shapeλ}= n!∏
+x∈λh(x).
+We setD∅ = 1and
+(a
+−1
+)
+= 0. A standard tableau increases along rows and columns;h(x)is one
+plus the number of boxes strictly to the right of or belowx. Transposition preserves dimension.
+Put
+L(λ) = max(λ1,λ′
+1), k(λ) =n−L(λ), Z u(n) =
+∑
+λ⊢n, λ/∈{(n),(1n)}
+D−u
+λ .
+The excluded diagrams are a set, so coincide whenn= 1. They are exactly the one-dimensional
+types: transpositions are conjugate and generateSn, so a one-dimensional character takes the
+same value1or−1on all transpositions.
+6.1 Counting constructions
+Let p(j)be the number of partitions ofj, with p(0) = 1. We will use each of the elementary
+bounds
+p(j)≤2 j−1 ≤2 j, p(j)≤(j+ 1) 2⌈√j⌉, p(j)≤e 3√j (j≥1).(6.1)
+The first follows by counting compositions. For the second, record the multiplicities of parts at
+most ⌈√j⌉and a zero-padded list of the at most√j larger parts. Each entry has at mostj+ 1
+possibilities. For the third, evaluate the partition generating product atx= e−1/√j. Its logarithm
+is ∑
+r≥1
+1
+r(er/√j −1) ≤
+√
+j
+∑
+r≥1
+r−2 ≤2
+√
+j,
+and extracting the coefficient ofxj costs e
+√j. At a fixed positive value ofk(λ)there are at most
+2p(k)shapes, since deleting a longest row or column leaves a partition ofk. Also L(λ) ≥√n,
+because the diagram is contained in a square of sideL(λ).
+Lemma 6.1(Tableau constructions).Suppose a diagram has first row of lengtha, lower diagram
+γof sizek, and second row of lengthc(putc= 0ifk= 0).
+1. Every tableau on a Young subdiagram extends to the whole diagram. For0≤b≤min (a,k),
+Dλ ≥
+(
+a
+b
+)
+, D λ ≥
+(
+a+k−c
+k
+)
+.(6.2)
+2. Ifk≤a, ballot interleavings give
+Dλ ≥
+(
+a+k
+k
+)
+−
+(
+a+k
+k−1
+)
+=
+(
+a+k
+k
+)
+a−k+ 1
+a+ 1 ≥ 1
+k+ 1
+(
+2k
+k
+)
+.(6.3)
+In particular a two-row rectangle of widthbhas
+(2b
+b
+)
+/(b+ 1)tableaux.
+15
+
+Page 16
+3. If the nonempty diagonals of constant row-plus-column index have sizest1,...,t q, then
+Dλ ≥
+q∏
+j=1
+tj!≥2 n−q, D λ ≥
+(n
+qe
+)n
+.(6.4)
+Thus width and height at mostrgiveq≤2r−1andD λ ≥2 n−2r+1.
+Proof. A Young subdiagram is closed under moving up and left. Add its remaining boxes in
+row-major order with successive larger labels; every predecessor is already present. To prove
+the first bound, retain the whole first row and a Young subdiagram ofb lower boxes. Such a
+subdiagram is obtained by removing lower corners. Fill the firstb top boxes with1,...,b ; choose
+the b lower labels from the remaininga labels and fill them in the relative order of one fixed
+standard tableau. All lower boxes lie in the firstb columns, so filling the rest of the top row
+increasingly is valid. For the second bound, reserve only the firstc top labels and choose allk
+lower labels from the remaininga+k−clabels.
+For the ballot bound, fix a standard order of the lower boxes and interleave their additions
+with those of the top row. Require each prefix to have at least as many top-row additions as lower
+additions. The jth lower box lies in a column at mostj, so its top predecessor has been inserted.
+Reflection at the first violating prefix counts the valid words by the displayed binomial difference.
+A valid balanced word withk additions of each kind, followed bya−k top additions, gives the last
+bound. For an actual two-row rectangle the word condition is also necessary, proving the exact
+count.
+Finally, put successive batches of labels on increasing diagonals, in arbitrary order within each
+diagonal. Every row or column predecessor lies on an earlier diagonal. This gives the product of
+factorials. The first estimate usest! ≥2t−1; the second usest! ≥(t/e)t and convexity oftlogt to
+obtain ∑
+j tj logtj ≥nlog(n/q).
+Lemma 6.2(Separating the first-row hooks).With the notation of Lemma 6.1, letbj be the
+number of lower boxes in columnj. Then
+Dλ =
+(
+a+k
+k
+)
+Dγ
+a∏
+j=1
+(
+1 + bj
+a−j+ 1
+)−1
+(6.5)
+≥
+(
+a+k
+k
+)
+Dγ exp
+(
+−k(1 + loga)
+a
+)
+.(6.6)
+Ifk≤a, a second lower bound is
+Dλ ≥
+(
+a+k
+k
+)
+Dγ exp
+(
+− k
+a−k+ 1
+)
+.(6.7)
+Proof. The lower hooks are unchanged, and the top hooks area−j + 1 +bj, which proves the
+identity. The sequencebj decreases while(a−j +1)−1 increases. The opposite-order rearrangement
+inequality therefore gives
+a∑
+j=1
+bj
+a−j+ 1 ≤k
+a
+a∑
+j=1
+1
+j ≤k(1 + loga)
+a .
+For completeness, the rearrangement inequality follows by expanding∑
+i,j(bi −bj)(ci −cj) ≤0for
+oppositely ordered sequencesbi,ci. Apply log(1 + x) ≤x to the product. For the last estimate,
+bj = 0forj >k, so every relevant denominator is at leasta−k+ 1, and ∑
+j bj =k.
+16
+
+Page 17
+6.2 All positive powers and the first-row deficit
+Theorem 6.3(Every positive inverse power).For every fixed realu>0,
+Cu := sup
+n≥1
+∑
+λ⊢n
+D−u
+λ <∞, Z u(n)−→0.(6.8)
+Moreover there are absolute constantsc1,c2 >0such that, for all sufficiently largen and every
+λ⊢n,
+Dλ ≥c1ec2k(λ).(6.9)
+For each fixed positivek, these dimensions tend uniformly to infinity among shapes withk(λ) = k.
+Proof. Put L= L(λ)and k= n−L. IfL≤n/ 16, every hook is at most2L, soDλ ≥(n/(2eL))n ≥
+2n. Otherwise orient the diagram with first rowL, and fork≥ 1retain b= min(k,⌊L/3⌋)lower
+boxes. For sufficiently largen,b≥1, and Lemma 6.1 gives
+Dλ ≥
+(
+L
+b
+)
+≥(L/b) b ≥3 b, b≥k/48−1.
+Indeed L > n/16implies ⌊L/3⌋> n/48 −1 ≥k/ 48 −1. Thus one may take c1 = 1 /3and
+c2 = (log 3)/48after enlarging the size threshold. For a fixed positivek, eventuallyb= k, and
+Dλ ≥
+(n−k
+k
+)
+→∞uniformly.
+There are at most2p(k)shapes at deficit k. By (6.1) and (6.9), their total inverseuth powers
+are bounded by a constant depending onutimes e3
+√
+k−uc2k. This is summable ink, and each fixed
+positive-k contribution tends to zero. Dominated convergence provesZu(n) →0. The full sum
+tends to two; its finitely many initial values are finite, including the value one atn= 1.
+There are two other ways to obtain the full positive-power range. The next proof uses ballot
+words; the short proof from Lemma 2.1 uses a central-binomial subdiagram.
+A ballot proof of the summability assertions.Fork≥1andL=n−k≥n/2, (6.3) gives
+Dλ ≥
+(
+n
+k
+)
+n−2k+ 1
+n−k+ 1 ≥ 2k
+k+ 1 .
+For the second inequality, the ballot fraction is at least1/(k+ 1)and
+(n
+k
+)
+≥(n/k)k ≥2k. The
+majorant2 p(k)(k+ 1)u2−uk is summable, and the first binomial expression diverges for each fixed
+k≥ 1. If L<n/ 2but L≥n/ 10, retain a row of lengthL and L lower boxes. The ballot count(2L
+L
+)
+/(L+ 1)is exponential in n. If L<n/ 10, the hook formula gives(5/e)n. The subexponential
+bound for p(n)handles both remaining ranges. Adding the one-dimensional terms proves the
+uniform bound.
+The third all-positive-power route is the one already proved in Lemma 2.1. Its three ranges
+are1 ≤k≤n/ 3, k>n/ 3with L≥n/ 10, andL<n/ 10. The respective bounds are
+(n−k
+k
+)
+≥2k,
+2L/(L+ 1), and(5/e)n. Thus it uses the same initial-row construction with a central-binomial
+subdiagram, rather than the deficit-exponential or ballot estimates.
+Lemma 6.4(Near-row dimensions and inverse-first summability).For1 ≤k = k(λ) ≤n/4, with
+γthe lower diagram after orienting a longest line as the first row,
+Dλ ≥e−1/2
+(
+n
+k
+)
+Dγ ≥1
+2
+(
+n
+k
+)
+.(6.10)
+17
+
+Page 18
+For k > n/4and all sufficiently large n, Dλ ≥e n/100. These estimates independently give
+Z1(n)→0andC 1 <∞.
+Proof. Equation (6.7) has exponent k/(n− 2k + 1) ≤1/2, proving (6.10). If k > n/4and
+L≥n/ 8, keep the first row andb = ⌊n/32⌋lower boxes. For largen,1 ≤b≤L/ 4. The same
+hook bound gives dimension at least1
+2
+(L+b
+b
+)
+≥4b/2. If L < n/8, every hook is shorter than
+n/4, giving(4 /e)n. Both exceed en/100 for sufficiently largen. The near-row inverse sum is
+bounded by4 ∑
+1≤k≤n/4 p(k)/
+(n
+k
+)
+. Each term vanishes at fixedk and is bounded by4p(k)4−k;
+the remaining contribution is at mostp(n)e−n/100 = o(1). This proves both assertions about
+inverse-first sums.
+Lemma 6.5(Absorbing the number of tail types).LetM(k) = ∑k
+j=0 p(j). For every fixedB≥ 1
+and all sufficiently largen, uniformly overλ⊢nwithk(λ)≥1,
+4BM(k(λ))≤D 1/4
+λ .(6.11)
+Proof. The partition bounds givelogM(k) = O(
+√
+klog (k+ 1)) = o(k). Fork >n/4, Lemma 6.4
+gives logDλ ≥n/ 100, whereas logM(k) = o(n)uniformly for k≤n . For k≤n/ 4, use Dλ ≥
+1
+2
+(n
+k
+)
+≥1
+2 4k once k exceeds a fixed sufficiently large cutoff. The finitely many positivek below that
+cutoff are handled by the uniform divergence of
+(n
+k
+)
+. One size threshold works for all shapes.
+7 One-dimensional characters in subgroups of controlled index
+A coset cap also controls a Fourier projection obtained from a one-dimensional subgroup char-
+acter. This gives a different route to the full isotypic estimates: first find one nonzero character
+space, then average it over conjugates. The construction here assigns boxes to rows or columns.
+Appendix C gives an independent construction by successively removing longest lines, together
+with its reciprocal-degree proof and transfer.
+Lemma 7.1(A character from a row–column assignment).For every irreducible complex rep-
+resentation ofSn, of degreeD, there are a subgroupJ≤S n and a characterχ : J→{ 1,−1}
+occurring in its restriction such that
+[Sn :J]≤D 1024.
+Proof. We use the polytabloid realization of the Specht module of shapeλ; see [13, 4]. Fix a
+labeling of its boxes. A row tabloid remembers which labels lie in each row while forgetting their
+order within that row; its polytabloid is the signed sum of its translates under the column stabilizer.
+Assign every box either to its row or to its column. LetR permute the assigned set in each row
+and letC permute the assigned set in each column. These sets are disjoint, soJ = R×C . GiveR
+the trivial character and each factor ofCthe sign character.
+Let e be the polytabloid of the labeled diagram. It transforms by sign under the full column
+stabilizer, hence underC. The averagev = |R|−1 ∑
+r∈Rre is fixed byR and still transforms by
+sign underC. It is nonzero. Indeed the original row tabloid has coefficient one ine, since the
+full row and column stabilizers intersect trivially. Every element ofR fixes that tabloid, so its
+coefficient is also one inv. This proves character occurrence for every assignment.
+It remains to choose the assignment with controlled index. The arm and leg of a box count
+boxes strictly to its right and strictly below it. Assign a box to its row when its arm is at least its
+leg, and to its column otherwise. Its hook length is at most twice the lengthl of the line receiving
+18
+
+Page 19
+it. If that line receivesaboxes, thena! ≥(a/e)a; we give a line witha= 0zero contribution below.
+Consequently
+log
+∏
+x∈λh(x)∏
+assigned lines a! ≤nlog 2 +
+∑
+lines
+{a+alog(l/a)}≤(log 2 + 1 + 2/e)n≤3n.
+Here alog (l/a) ≤l/e and the total length of all rows and columns is2n. The hook-length formula
+therefore gives an assignment with index
+I= [S n :J]≤De 3n.(7.1)
+We convert the exponential factor into a power ofD. Put L= max(λ1,λ′
+1). Suppose first that
+n≥ 64and L≤ 3n/4. IfL≤n/ 8, all hooks are at most2L, andD≥ (n/(2eL))n ≥(4/e)n ≥en/64.
+Otherwise transpose so that the first row has lengthL, and retain a Young order ideal ofs= ⌊L/4⌋
+boxes below it. Such an ideal exists becausen−L≥L/ 3; moreovers≥n/ 64. For the retained
+diagram, letcj count its lower boxes in columnj. Dividing its hook formula by the lower diagram’s
+formula gives
+D≥
+(
+L+s
+s
+) L∏
+j=1
+(
+1 + cj
+L−j+ 1
+)−1
+≥
+(
+L+s
+s
+)
+exp
+(
+− s
+L−s+ 1
+)
+.
+The first inequality also uses extension of tableaux from a subdiagram. For the second,cj = 0
+for j > sand ∑
+j cj = s. Since s≤L/ 4, the logarithm of the last expression is at least
+slog 5 −s/(L−s + 1) ≥s. Thus logD≥n/ 64throughout this case. Equation (7.1) now gives
+I≤D 193.
+Suppose instead thatL> 3n/4. Orient a longest line as the top row, of lengthL, and writeζ
+for the lower diagram of sizes= n−L . Assign the entire top row to its row and use the preceding
+arm–leg assignment onζ. Hook comparison and (7.1) applied to the tail give
+I≤
+(
+n
+s
+)
+Dζe3s, D≥
+(
+n
+s
+)
+Dζ exp
+(
+− s
+L−s+ 1
+)
+.
+Ifs≥1, then
+(n
+s
+)
+≥(n/s) s ≥4 s andL−s+ 1≥2. Hence
+logD≥s(log 4−1/2),log(I/D)≤ 7
+2 s.
+These bounds implyI≤D 1024. Transposing the assignment back preserves the subgroup index
+and interchanges trivial and sign factors. Ifs = 0, take the full group and its trivial or sign
+character. Finally, forn< 64and D> 1, the trivial subgroup has indexn! ≤6464 <21024 ≤D1024.
+Degree-one representations again use the full group. This covers every case.
+7.1 From a character space to an isotypic space
+The index bound is useful because a subgroup character gives an orthogonal projection through a
+signed average. Positivity of the original mass function controls that signed average. The next
+lemma also explains why repeated copies of a subgroup representation cause no loss.
+Lemma 7.2(Averaging character projections).Let G be a finite group,H≤G , and letf≥ 0
+have massz≤ 1and satisfy f(gH) ≤B/ [G: H]for every g∈G . Letτ∈Irr (H)have degree dτ.
+19
+
+Page 20
+Suppose J≤H has a one-dimensional unitary characterχ occurring inτ|J, and putI = [H : J].
+Forρ∈Irr(G)of degreeD, letQ τ be the fullτ-isotypic projection inρ|H. Then
+D∥ˆf(ρ)Qτ∥2
+HS ≤BzId τ.(7.2)
+All copies ofτare included inQ τ.
+Proof. Define the complex mass functioneJ,χ to beχ(j)/|J|on J and zero elsewhere. Its Fourier
+transform is the orthogonal projectionP onto vectors satisfyingρ(j)v= χ(j)v for allj∈J . With
+UH,UJ denoting uniform probability masses on the subgroups, positivity gives
+|f∗e J,χ|≤f∗U J ≤I(f∗U H)≤ IB
+|G|,
+∑
+g
+|(f∗e J,χ)(g)|≤z.
+Plancherel therefore impliesD∥ˆf(ρ)P∥2
+HS ≤IBz . Every conjugate of(J,χ)inside H satisfies the
+same bound.
+Average the corresponding projections, writingP = |H|−1 ∑
+h∈H ρ(h)Pρ(h)∗. On the full
+H-isotypic spaceVη ⊗Aη, a group-algebra element acts onVη tensored with the identity on the
+multiplicity spaceAη. Schur’s lemma thus gives
+P|Vη⊗Aη = rank(P|Vη)
+dη
+I.
+These scalars are nonnegative and the scalar forη= τ is at least1/dτ. Hence P≥d −1
+τ Qτ. Test
+this positive-operator inequality againstˆf(ρ)∗ˆf(ρ), and average the preceding Plancherel bounds.
+The result is (7.2).
+Theorem 7.3(Character-projection transfer).Let Hi = Sym(Mi) ≤Sn,1 ≤i≤b , for disjoint
+nonempty setsMi. Letf≥0have massz≤1and suppose
+f(gHi)≤ B
+[Sn :Hi] (g∈S n,1≤i≤b).
+For every irreducibleρof degreeD,
+∥ˆf(ρ)∥2
+HS ≤BzbC 1D−1+1026/b,(7.3)
+where C1 = supm≥1
+∑
+τ∈Irr(Sm) d−1
+τ . More generally, ifa≥ 0and every type of every Hi has a
+one-dimensional subcharacter of index at mostda
+τ, the exponent1026/b in (7.3) may be replaced
+by(a+ 2)/b.
+Proof.For each typeτofH i, Lemma 7.2 and the assumed subcharacter give
+D∥ˆf(ρ)Qi,τ∥2
+HS ≤Bzd a+1
+τ .
+Restrict ρ to the product of theHi. In any occurring joint type, the product of the factor
+dimensions is at mostD, including when that type has multiplicity greater than one. Some factor
+therefore has dimension at mostR = D1/b. The sum of the commuting projectionsQi,τ with
+dτ ≤Rdominates the identity. Taking its trace againstˆf(ρ)∗ˆf(ρ)gives
+D∥ˆf(ρ)∥2
+HS ≤Bz
+b∑
+i=1
+∑
+dτ≤R
+da+1
+τ ≤BzbC 1Ra+2.
+The last inequality usesda+1
+τ ≤Ra+2d−1
+τ . Lemma 7.1 suppliesa= 1024.
+20
+
+Page 21
+For example, takeb= 8192and B = 2. Iffn ≤µn has mass tending to one andˆµn(sgn) = o(1),
+then (7.3) and Proposition 2.5 give∥µ∗4
+n −USn∥TV →0. Indeed ε= 1026/8192 <1/4, and the
+nonlinear Plancherel sum for four factors is bounded by(2bC1)4 ∑
+Dλ>1 D1−4(1−ε)
+λ , which tends to
+zero even using only the inverse-first-degree sum. This statement requires only the displayed caps,
+mass and sign input.
+8 Joint restriction types and multiplication on two sides
+For a fixed collection of disjoint block subgroups, we can retain the number of distinct joint
+restriction types rather than summing all small factor degrees. This gives an operator estimate
+by orbit spans. It also gives a product estimate when one measure is capped on left cosets and
+another is capped on right cosets. These two conclusions use the same type count, but different
+Fourier estimates.
+Let M1,...,M b be disjoint nonempty subsets of{1,...,n} , and putHi = Sym(Mi), acting
+trivially on the complement. On an irreducibleVλ of Sn, restriction toH = H1 ×···×H b has the
+form
+Vλ|H =
+⨁
+τ
+(Vτ1 ⊗···⊗V τb)⊗Aτ .(8.1)
+The sum ranges over distinct occurring joint types; the nonzero spaceAτ records their arbitrary
+multiplicities. WriteKλ for the number of terms in this sum andQτ for their orthogonal projections.
+Lemma 8.1(Counting joint types).Put k = n−max (λ1,λ′
+1)and M(k) = ∑k
+j=0 p(j), where
+p(0) = 1andp(j)is the partition number. Then
+Kλ ≤M(k) b.(8.2)
+For every fixedband every fixedη >0,
+∑
+λ⊢n:Dλ>1
+K2
+λD−η
+λ −→0.(8.3)
+The statement is uniform over the disjoint setsMi and does not require them to have equal sizes.
+Proof. By branching, a type ofHi has shapeν⊆λ and size|Mi|. Orient λ so that a longest line
+is a row. Every suchν has at mostk boxes below its first row. For a fixed lower sizej, the lower
+partition determines the first row because|ν|= |Mi|is fixed. There are therefore at mostM(k)
+possibilities for each factor. If the longest line was a column, transpose all diagrams. This proves
+(8.2); absent tuples only reduce the count.
+There are at most2p(k)ambient diagrams with this deficit. The partition boundp(j) ≤e3√j
+gives, for a constantCb,
+2p(k)M(k) 2b ≤eCb
+√
+k (k≥1).
+By Theorem 6.3,Dλ ≥c 1ec2k and, at each fixed positivek, the dimensions tend uniformly to
+infinity. Thus the contribution at deficitk is bounded byc−η
+1 eCb
+√
+k−ηc2k, a summable sequence,
+and tends to zero for fixedk. Dominated convergence proves(8.3). Multiplicities do not affect
+either counting step.
+21
+
+Page 22
+8.1 An operator estimate retaining the joint-type count
+Theorem 8.2(Joint-type orbit transfer).Let f≥ 0be a mass function on Sn, of total mass
+z≤1, such thatf(gH i)≤B/[S n :Hi]for everyg,i. WithK λ as in(8.1),
+∥ˆf(λ)∥op ≤
+√
+BzKλD−1/2+1/b
+λ .(8.4)
+Proof. First letv lie in a singleHi-isotypic space of typeτi. The orbit spanW = span{ρλ(h)v:
+h∈H i}has dimension at mostd2
+τi. To see this in the presence of multiplicity, write the full
+Hi-isotypic space asVτi ⊗A; the orbit lies in the image of the linear mapA↦→(A⊗I )v from
+End(Vτi).
+For a test vectorw,
+|⟨w,ρλ(g)v⟩|≤∥v∥∥P ρλ(g)Ww∥.
+The squared projected norm is constant on eachgHi, and its uniform mean is(dimW/Dλ)∥w∥2:
+the average of the conjugate projections is scalar by Schur’s lemma, and its trace isdimW.
+Cauchy–Schwarz for the mass functionf, followed by its coset cap, gives
+|⟨w, ˆf(λ)v⟩|2 ≤zB dimW
+Dλ
+∥v∥2∥w∥2 ≤zBd2
+τi
+Dλ
+∥v∥2∥w∥2.
+Thus this single-type bound holds before any joint decomposition. In a joint type of(8.1), the
+factor degrees satisfy∏
+idτi ≤D λ, since the entire tensor representation occurs at least once.
+Choose iwith dτi ≤D1/b
+λ and apply the preceding bound. For an arbitraryv, decompose it into its
+Kλ orthogonal joint components and sum their bounds. Their norms have sum at most√Kλ∥v∥,
+proving (8.4).
+The following two specializations keep two useful ways of comparing the joint-type count
+with the ambient dimension. The four-block argument uses a uniform linear lower bound in the
+broad-diagram range. The eight-block argument uses a different cutoff for the longest line and a
+direct hook estimate below that cutoff.
+Corollary 8.3(Four-block transfer).Partition n points into four sets of sizen/4, and letHi
+permute those sets. For all sufficiently large suchn, every subprobabilityf with f(gHi) ≤2/[Sn :
+Hi]satisfies
+∥ˆf(λ)∥op ≤D−1/8
+λ (Dλ >1).
+Proof. Theorem 8.2 gives∥ˆf(λ)∥op ≤√2KλD−1/4
+λ , and Lemma 8.1 giveslog(2Kλ) = O(
+√
+k). We
+verify directly thatlogDλ/
+√
+k→∞uniformly overk≥1.
+Orient a longest line as the first row, of lengtha = n−k . For1 ≤k≤n/ 3, the tableau
+construction of Lemma 6.1 gives
+Dλ ≥
+(
+n−k
+k
+)
+≥((n−k)/k) k.
+For k above a fixed cutoff, divide the logarithm by
+√
+k and use( n−k )/k≥ 2; for the finitely
+many smaller positivek, the same expression tends to infinity withn. Fork>n/ 3and a≤n/ 10,
+the hook formula givesDλ ≥(n/(2ea))n ≥(5/e)n. If insteada>n/ 10, retain the first row and
+r = ⌊a/2⌋lower boxes; there are enough lower boxes becausek > n/3 > a/2. Their tableaux
+extend to the full diagram, and the same construction givesDλ ≥
+(a
+r
+)
+≥2r ≥ecn for an absolute
+c >0and all large n. This proves the asserted uniform divergence. Consequently2Kλ ≤D 1/4
+λ
+eventually, which yields the displayed operator bound.
+22
+
+Page 23
+Corollary 8.4(Eight-block transfer).Partition n points into eight sets of sizen/8, and letHi
+permute those sets. For all sufficiently large suchn, every subprobabilityf with f(gHi) ≤2/[Sn :
+Hi]satisfies
+∥ˆf(λ)∥op ≤D−1/4
+λ (Dλ >1).
+Proof. Here the joint-type estimate is√2KλD−3/8
+λ . Fork≤n/ 3, useKλ ≤M (k)8 and Dλ ≥
+(n−k
+k
+)
+exactly as above to getlog(2Kλ)/logD λ →0uniformly. For k>n/ 3, the equal block sizes give
+the coarser countKλ ≤p(n/8)8, whose logarithm isO(√n). Let a again be the longest line. If
+a≥n 3/4, retain that line andr = ⌊a/3⌋lower boxes, possible becausek >n/3 >a/3. Tableau
+extension givesDλ ≥
+(a
+r
+)
+≥3 r, sologD λ ≥cn3/4. Ifa<n 3/4, all hooks are at most2n3/4, and
+Dλ ≥ n!
+(2n3/4)n ≥
+(
+n1/4
+2e
+)n
+.
+Thus2Kλ ≤D1/4
+λ uniformly for all largen, and the result follows.
+These are exact specializations of the joint-type orbit argument, including its multiplicity
+treatment. For reference, the four-block proof also gives∑
+Dλ>1 D−4
+λ = o(1)directly: at k≤n/ 3
+use the summable majorant2e3
+√
+k2−4k and fixed-k divergence; at k > n/3use the linear-in-n
+logarithmic dimension bound againstp(n). The eight-block proof gives the inverse-third-power
+statement by the same summation, with majorant2e3
+√
+k2−3k and its n3/4 lower bound in the
+remaining range. With mass and sign input, these reproduce respectively the 24-factor and
+10-factor Fourier completions through Proposition 2.5: the nonlinear Plancherel exponents are
+respectively −4and −3. Alternatively, a final independent probability law with zero sign mean
+removes the sign coefficient exactly. Its Fourier matrices have operator norm at most one, so this
+extra convolution preserves both nonlinear estimates. This alternative does not require small sign
+mean in the law supplying the coset caps.
+8.2 A product with caps in opposite orientations
+For a mass functionα, a cap onHig controls left multiplication of its Fourier matrix by an
+Hi-isotypic projector. A cap ongHi controls right multiplication. The product below places these
+two controlled sides together. There is no assertion that either cap implies the other.
+Theorem 8.5(Two-sided Fourier multiplication).Let H1,...,H b be the disjoint symmetric block
+subgroups above. Letα,β≥0have massesa,c≤1and satisfy
+α(Hig)≤ BL
+[Sn :Hi], β(gH i)≤ BR
+[Sn :Hi] (g∈S n,1≤i≤b).(8.5)
+Then every irreducibleλ⊢nsatisfies
+Dλ∥ˆβ(λ) ˆα(λ)∥2
+HS ≤BLBRacK2
+λD−1+4/b
+λ .(8.6)
+In particular, for eight blocks andBL =BR = 2, the bound is4K2
+λD−1/2
+λ .
+Proof. Use densitiesA = |Sn|α and B = |Sn|β with respect to uniform probability onG = Sn.
+Write
+∫
+G and
+∫
+Hi for normalized counting averages. The two caps read
+∫
+Hi
+A(h−1g)dh≤B L,
+∫
+Hi
+B(gh−1)dh≤B R.(8.7)
+23
+
+Page 24
+Indeed these averages are respectively[G: Hi]α(Hig)and[ G: Hi]β(gHi). The density transform∫
+GA(g)ρλ(g) dg equals the mass transformˆα(λ), and similarly forB. These conventions give
+[β∗α= ˆβˆα.
+For a typeτofH i of degreedτ and characterχτ, its full isotypic projector is
+Pi,τ =dτ
+∫
+Hi
+χτ(h)ρλ(h)dh.
+Centrality makes this scalar on each irreducible carrier, and character orthogonality identifies the
+scalar as one on typeτ and zero otherwise. It acts as the identity on all multiplicity copies ofτ.
+Consider the density
+C(g) =d τ
+∫
+Hi
+χτ(h)A(h−1g)dh.
+Weighted Cauchy–Schwarz and nonnegativity give
+|C(g)|2 ≤d2
+τ
+(∫
+Hi
+A(h−1g)dh
+)(∫
+Hi
+|χτ(h)|2A(h−1g)dh
+)
+.
+The first factor is at mostBL. The average overG of the second factor isa
+∫
+Hi |χτ|2 = a. The
+Fourier matrix ofCisP i,τˆα(λ). Plancherel, retaining theλterm, therefore yields
+Dλ∥Pi,τˆα(λ)∥2
+HS ≤BLad2
+τ, D λ∥ˆβ(λ)Pi,τ∥2
+HS ≤BRcd2
+τ.(8.8)
+For the second inequality usedτ
+∫
+Hi χτ(h)B(gh−1) dh, whose transform isˆβ(λ)Pi,τ, and the second
+cap in (8.7).
+The projectors for the different disjoint factors commute, andQτ = ∏
+iPi,τi are the orthogonal
+joint projections in(8.1). On a nonzero joint space,∏
+idτi ≤D λ, so somedτi ≤D 1/b
+λ . Since
+Qτ ≤Pi,τi, the two bounds in (8.8) imply
+∥ˆβQτ ˆα∥HS ≤∥ˆβQτ ∥HS∥Qτ ˆα∥HS
+≤
+√
+BLBRacD−1+2/b
+λ .
+Sum over theKλ joint types before squaring, and then multiply byDλ. This gives(8.6). The
+factorK 2
+λ is retained; no multiplicity-free restriction has been assumed.
+Corollary 8.6(Two-factor completion).Fix b> 4and finite constants BL,BR. Suppose probabil-
+ities µn,νn on Sn dominate subprobabilitiesαn,βn, respectively, whose masses tend to one and
+which satisfy(8.5)forbdisjoint nonempty blocks. If ˆνn(sgn)ˆµn(sgn)→0, then
+∥νn ∗µn −USn∥TV −→0.
+In particular this applies to a single law with small sign mean when separate subprobabilities supply
+its two cap orientations.
+Proof. Use Lemma 8.1 withη= 1 −4/b> 0in Theorem 8.5. It makes the sum of the nonlinear
+Plancherel terms forβn ∗αn tend to zero. Its trivial coefficient is the product of the two masses,
+tending to one. Domination bounds the error in each sign coefficient by the corresponding lost
+mass, so its sign coefficient also tends to zero. Lemma 2.4 now gives convergence to uniform in
+ℓ1. Finally,βn ∗αn ≤νn ∗µn and the difference has mass one minus the product of the retained
+masses. Adding that mass proves the conclusion.
+24
+
+Page 25
+9 Equivariant kernels and their multiplicity spaces
+Partial-permutation information can be imposed on a transition kernel without first selecting
+a starting permutation. This preserves a group action on the entire state space. The resulting
+Fourier decomposition has two parts: an irreducible carrier, on which the kernel acts as the identity,
+and a multiplicity space, on which it may act nontrivially. The latter space can be large even when
+the carrier is one-dimensional. We prove two amplification results that retain these multiplicities.
+Throughout this section kernels act on functions by
+(Af)(x) =
+∑
+y
+A(x,y)f(y).
+All Hilbert–Schmidt norms use counting measure and the ordinary trace. For a finite state space
+Ω, letUΩ be the matrix with every entry1/|Ω|. Thus UΩ is the orthogonal projection onto the
+normalized constant vector. A nonnegative matrix with row and column sums at most one is a
+contraction onℓ2(Ω): indeed,
+∑
+x
+⏐⏐⏐⏐⏐
+∑
+y
+A(x,y)f(y)
+⏐⏐⏐⏐⏐
+2
+≤
+∑
+x,y
+A(x,y)|f(y)|2 ≤
+∑
+y
+|f(y)|2.
+We will use this fact for kernels obtained by deleting entries of a doubly stochastic kernel.
+9.1 Sixteen separately truncated factors
+Let A and V be two sets of sizen, and letΩ = Bij(A,V )be the set of bijections from labels to
+positions. PartitionAinto sixteen blocksA 1,...,A 16, of sizesmi, and write
+Hi =SAi, H=
+16∏
+i=1
+Hi.
+These groups act onΩon the right by composition:x·h = x◦h . The quotientXi = Ω/Hi records
+the positions of every label outsideAi. Its size is Li = n!/mi!, and each of its fibers hasmi!
+elements.
+If a kernelK obeys K(xh,yh) = K(x,y)for h∈H , its quotient kernel onXi is well defined by
+qi(a,b) =
+∑
+y:πi(y)=b
+K(x,y), π i(x) =a,
+where πi : Ω →Xi is the quotient map. Equivariance underHi makes the right side independent
+of the representativex. Fix a numberε>0and define a retained kernel by
+Ti(x,y) =K(x,y)1
+{
+qi(πi(x),πi(y))≤ 1 +ε
+Li
+}
+.(9.1)
+Since Hi is normal inH, the quotient has a rightH-action. Equivariance ofK gives qi(ah,bh) =
+qi(a,b)forh∈H. The cutoff therefore preserves the action of all ofH.
+We specify one further hypothesis onTi. In the orthogonalHi-isotypic decomposition
+ℓ2(Ω) =
+⨁
+α∈ˆHi
+Vα ⊗Mi,α, T i =
+⨁
+α
+IVα ⊗T α
+i ,
+Mi,α is the full multiplicity space, including all quotient fibers. In particularTsgn
+i denotes the
+operator on the sign multiplicity space, not a single scalar Fourier coefficient.
+25
+
+Page 26
+Theorem 9.1(Sixteen equivariant subkernels).Consider a sequence of the preceding state spaces
+and partitions withminimi →∞. Let K be a doubly stochastic,H-equivariant kernel. Suppose
+that, for everyi,
+1
+Li
+∑
+a∈Xi
+1
+2
+∑
+b∈Xi
+|qi(a,b)−L −1
+i |≤δ,(9.2)
+whereδ→0. Chooseε→0withδ/ε→0, form the kernels(9.1), and assume also that
+βi :=∥T sgn
+i ∥2
+HS −→0 (1≤i≤16).(9.3)
+Then 1
+|Ω|
+∑
+x∈Ω
+∥K16(x,·)−U Ω(x,·)∥TV −→0.
+If K is equivariant under a transitive group of permutations ofΩ, the same conclusion holds for
+the maximum over starting states.
+More precisely, putT = T1 ···T 16. For a product typeα = (α1,...,α 16), setfi = dimαi and
+D= ∏
+ifi. IfTi,α is the operator on its fullH-multiplicity space, then
+∥Ti,α∥2
+HS ≤(1 +ε) f2
+i
+D, D∥T 1,α ···T 16,α∥2
+HS ≤(1 +ε) 16D−13.(9.4)
+Proof. We first bound the deleted mass, then use each of the sixteen quotient caps on its corre-
+sponding factor. Write
+γi = 1
+|Ω|
+∑
+x,y
+(K(x,y)−T i(x,y)).
+On an atom withqi(a,b) >(1 + ε)/Li, its positive excess over uniform is at leastεqi(a,b)/(1 + ε).
+Summing over such atoms and then averaging overagives
+γi ≤1 +ε
+ε δ=o(1).(9.5)
+Every Ti is row- and column-substochastic. A uniform starting distribution remains dominated by
+uniform after any product of these kernels. The average mass lost inT is consequently at most
+Γ = ∑
+iγi. Also0 ≤T≤K 16 entrywise. The triangle inequality followed by Cauchy–Schwarz over
+all|Ω|2 entries gives
+1
+|Ω|
+∑
+x
+∥K16(x,·)−U Ω(x,·)∥TV ≤Γ
+2 + 1
+2∥T−U Ω∥HS.(9.6)
+Fix iand first decompose only underHi. Each quotient fiber is a regularHi-set. After choosing
+one representative per fiber, the block ofTi between fibers a,b is convolution by nonnegative
+weights of total mass
+ti(a,b) =q i(a,b)1{qi(a,b)≤(1 +ε)/L i}.
+On the multiplicity space of a regular-fiber typeα, of degreefα, this block is a weighted sum of
+unitary fα by fα matrices. Its Hilbert–Schmidt norm is at most√fαti(a,b). Since each row ofti
+has mass at most one, the cap gives
+∥Tα
+i ∥2
+HS ≤fα
+∑
+a,b
+ti(a,b) 2 ≤(1 +ε)f α.(9.7)
+26
+
+Page 27
+Now decompose under the whole productH. Itsα-isotype is
+
+
+16⨂
+j=1
+Vαj
+
+⊗Mα.
+Viewed only as anHi-space, it contributesD/fi copies ofMα to the multiplicity ofαi. Thus(9.7)
+implies
+D
+fi
+∥Ti,α∥2
+HS ≤(1 +ε)f i.
+Multiplying these inequalities and using Hilbert–Schmidt submultiplicativity proves (9.4).
+For u >0, write Zu(m) = ∑
+α∈ˆSm
+(dimα)−u. The degree estimate of Theorem 6.3 gives
+Z13(m)→2. The total squared Hilbert–Schmidt contribution of all product types withD>1is
+therefore at most
+(1 +ε) 16
+(16∏
+i=1
+Z13(mi)−2 16
+)
+=o(1).(9.8)
+The subtracted types are precisely the products of trivial and sign representations, since eventually
+everymi ≥2.
+It remains to handle these216 scalar carrier types; their multiplicity spaces have not been
+discarded. If a product type has a sign coordinatei, itsTi block has squared Hilbert–Schmidt
+norm at mostβi by (9.3). All the other factors are operator contractions. Hence its product block
+has squared Hilbert–Schmidt norm at mostβi. The sum over these finitely many types tends to
+zero.
+For the all-trivial type, letTi,0 be its multiplicity operator and letu= |Ω|−1/21be the constant
+vector in that space. The restriction ofUΩ is Pu = uu∗. Equation (9.7) for the trivialHi type
+gives∥Ti,0∥2
+HS ≤1 +ε, whereas
+⟨u,Ti,0u⟩= 1−γ i.
+Consequently
+∥Ti,0 −Pu∥2
+HS =∥Ti,0∥2
+HS + 1−2⟨u,T i,0u⟩≤ε+ 2γ i.(9.9)
+Telescoping the product againstP16
+u = Pu, with operator contractions on either side of each
+difference, gives
+∥T1,0 ···T 16,0 −Pu∥HS ≤
+16∑
+i=1
+√
+ε+ 2γi =o(1).
+This is a bound on the entire all-trivial multiplicity space.
+The three estimates prove∥T−UΩ∥HS →0, so(9.6)proves average mixing. Finally, equivariance
+under a transitive group makes all row distances ofK16 from uniform equal. That additional
+symmetry gives the worst-start conclusion.
+The sign hypothesis concerns the retained factors themselves. A probabilistic construction can
+verify it by cancellation inside each retained fiber block. The quotient total-variation estimate
+alone supplies the mass loss and the general type bound, but does not control the sign multiplicity
+operator.
+27
+
+Page 28
+9.2 Three groups and two-sided quotient control
+The next result uses only three label groups, at the cost of controlling every quotient row and
+column. All three cutoffs are imposed on one kernel. Fourier analysis then gives one matrix for
+each product type, and fifteen powers of that matrix supply the summable dimension saving.
+Let Sbe a nonempty finite set of sizeM, letHi = Smi for1 ≤i≤ 3, and putH = H1 ×H2 ×H3
+andΩ =S×H. The rightH-action is(s,g)h= (s,gh). Its equivariant kernels have the form
+K((s,g),(s ′,g′)) =ps,s′(g′g−1).(9.10)
+Indeed simultaneous right multiplication reduces the source group coordinate to the identity. We
+always take the functionsps,s′ :H→[0,∞)to satisfy
+∑
+s′,h
+ps,s′(h) = 1 (s∈S),
+∑
+s,h
+ps,s′(h) = 1 (s ′∈S).(9.11)
+These are exactly the row and column normalizations ofK. ForH−i = ∏
+j̸=i Hj, define
+qi(s,s′,h−i) =
+∑
+hi∈Hi
+ps,s′(h), M i =M|H −i|.
+The associated quotient state consists ofs and the two retained group coordinates. Its uniform
+transition probability is1 /Mi. Transposition of K replaces the fibers by¯ps′,s(h) = ps,s′(h−1).
+Thus a quotient row estimate for the transpose is exactly the quotient column estimate below,
+after inversion ofh−i.
+Theorem 9.2(Three-group two-sided truncation).Consider a sequence of kernels(9.10) satisfying
+(9.11), withmin imi →∞. Supposeδ→0and, for everyi,
+∑
+s′,h−i
+|qi(s,s′,h−i)−M −1
+i |≤2δ(s∈S),(9.12)
+∑
+s,h−i
+|qi(s,s′,h−i)−M −1
+i |≤2δ(s ′∈S).(9.13)
+Letχ(h) = ∏3
+i=1 sgn(hi), and assume that the untrimmed all-sign matrix
+Aχ(s,s′) =
+∑
+h∈H
+ps,s′(h)χ(h−1)
+has absolute row and column sums at mosta, wherea→ 0. Then K15 mixes in average row total
+variation: 1
+|Ω|
+∑
+x
+∥K15(x,·)−U Ω(x,·)∥TV −→0.
+The maximum row distance also tends to zero ifK is equivariant under a transitive group of
+permutations ofΩ.
+Specifically, retain the fibers
+˜ps,s′(h) =ps,s′(h)
+3∏
+i=1
+1{qi(s,s′,h−i)≤2/M i},(9.14)
+28
+
+Page 29
+and let˜K be the corresponding kernel. At most6δ mass is removed from every row and column.
+For an irreducible product typeρ= ρ1 ⊗ρ2 ⊗ρ3, putDi = dimρi and D= ∏
+iDi. Its multiplicity
+matrix is theMbyMblock matrix
+Bρ(s,s′) =
+∑
+h∈H
+˜ps,s′(h)ρ(h−1),(9.15)
+with blocks of sizeDbyD, and it satisfies
+∥Bρ∥2
+HS ≤4 Di∏
+j̸=i Dj
+(1≤i≤3), D∥B 15
+ρ ∥2
+HS ≤2 30D−4.(9.16)
+Proof. For fixeds, the entries of eachqi sum to one. The same is true for fixeds′ by (9.11).
+Therefore the positive excess over uniform in either a quotient row or a quotient column is at most
+δ. On an atom exceeding twice uniform, its mass is at most twice its positive excess. Each cutoff
+loses at most2δ in every row and column. Taking the union of the three deleted sets proves the
+loss bound6 δ. The retained kernel is row- and column-substochastic, so its blocks are operator
+contractions. Also itsith quotient marginal is everywhere bounded by2/Mi: an original atom
+above that value has been entirely deleted.
+We check the Fourier orientation before estimating the blocks. The unitary regular decomposi-
+tion of the rightH-action has carrierVρ and multiplicityDon each fibers. In the matrix-coefficient
+basisρ(g −1)ab, left multiplicationg↦→hgreplaces
+ρ(g−1)byρ(g −1h−1) =ρ(g−1)ρ(h−1).
+For each fixed carrier indexa, the indexb, together withs, is therefore acted on by(9.15). Each
+such matrix occursD times. In particular composition of the deck kernels gives powers ofBρ,
+with no adjoint or reversal of the factors.
+Fixs,s ′and an indexi. First sum over its group coordinate:
+F(h−i) =
+∑
+hi
+˜ps,s′(h)ρi(h−1
+i ).
+The quotient cap and unitarity give∥F(h−i)∥HS ≤2√Di/Mi. Applying Plancherel entry by entry
+onH −i yields
+∑
+σ∈ˆH−i
+(dimσ)
+
+∑
+h−i
+σ(h−1
+−i)⊗F(h −i)
+
+2
+HS
+=|H−i|
+∑
+h−i
+∥F(h−i)∥2
+HS ≤4Di
+M2 .
+Keep the termσ= ⨂
+j̸=i ρj and sum over theM2 pairs( s,s′). A unitary permutation of tensor
+factors identifies the resulting matrix withBρ, proving the first bound in(9.16). Choose an index
+withD i ≤D1/3. Then
+∥Bρ∥2
+HS ≤4D−1/3, D∥B 15
+ρ ∥2
+HS ≤D(4D −1/3)15 = 230D−4.
+Hilbert–Schmidt submultiplicativity suffices here; no normality is assumed. By Theorem 6.3, the
+sum overD>1is at most
+230
+( 3∏
+i=1
+Z4(mi)−8
+)
+=o(1).
+29
+
+Page 30
+We have controlled every carrier of dimension greater than one. The eight scalar carriers
+remain: one is all-trivial, six contain both a trivial and a sign factor, and one is all-sign. In every
+case the correspondingMbyMmatrix has Hilbert–Schmidt norm at most two, by (9.16).
+Consider first one of the six mixed types. Choose an indexi where ρi is trivial, so that its
+matrix entries are the signed sums of the retained marginal˜qi. Replacing that marginal by1/Mi
+gives zero, since at least one of the other two factors is sign and its group sum vanishes. In each
+row and column, ∑
+|˜qi −M −1
+i |≤
+∑
+|qi −M −1
+i |+
+∑
+(qi −˜qi)≤8δ.
+Thus Bρ has absolute row and column sums at most8δ, and the same Cauchy–Schwarz argument
+used for nonnegative kernels, applied to absolute entries, gives∥Bρ∥op ≤8δ. Hence
+∥B15
+ρ ∥HS ≤2(8δ) 14 =o(1).
+For the all-trivial type, uniform replacement instead gives the matrixJ with every entry
+1/M. Write B0 = J + E. The preceding row and column estimate gives∥E∥op ≤8δ, while
+∥E∥HS ≤∥B0∥HS + ∥J∥HS ≤3. Expand( J+ E)15 into ordered words. The word containing only
+J equals J, becauseJ is an orthogonal projection. Every word containing both letters has a factor
+J of Hilbert–Schmidt norm one and at least one factorE of operator norm at most8δ, so its
+Hilbert–Schmidt norm tends to zero. The wordE15 has norm at most3(8δ)14. There are only215
+words. This proves
+∥B15
+0 −J∥HS =o(1)
+without bounding the sizeMof the trivial multiplicity space.
+Finally consider the all-sign type. Its untrimmed matrix isAχ. Deleting at most6δ mass from
+each row and column changes each corresponding absolute sum by at most6δ. Consequently
+∥Bχ∥op ≤a+ 6δ,∥B 15
+χ ∥HS ≤2(a+ 6δ) 14 =o(1).
+This is precisely where the separate all-sign hypothesis is used.
+The uniform kernel has only the all-trivial blockJ. Summing all blocks with their carrier
+multiplicities D now gives∥˜K15 −UΩ∥HS = o(1). For all sufficiently large members of the sequence
+6δ <1. Every row of˜K15 has mass at least(1−6δ)15 and is dominated by the corresponding row
+ofK 15. Thus, as in (9.6),
+1
+|Ω|
+∑
+x
+∥K15(x,·)−U Ω(x,·)∥TV ≤45δ+ 1
+2∥˜K15 −UΩ∥HS =o(1).
+The final transitive-equivariance assertion follows because the untrimmed kernel then has the same
+row distance at every state.
+The two-sided assumptions have distinct roles. Quotient rows bound the forward mass removed;
+quotient columns bound the reverse mass removed and the operator norms of the scalar error
+matrices. The all-sign estimate is additional data. In applications where it is proved by cancellation
+at the end of a time block, the distribution just before that canceling step must also be controlled
+in both orientations.
+30
+
+Page 31
+10 Selecting coefficient tests and omitted sets
+The common coset truncation of Section 3 already applies to the marginal hypotheses considered
+here. This section gives two different constructions of a retained measure. With a fixed partition,
+we delete points detected by large coefficient tests and control the union of all those tests. With
+an average over omitted sets, we instead retain permutations for which most restrictions have
+bounded density. The good omitted sets then depend on the permutation; we do not select a fixed
+partition on which the retained law has all its coset caps. Recovering a vector from their subgroup
+projections is the new step, because projections for overlapping sets need not commute.
+Write[ n] = {1,...,n} and letUn be uniform onSn. ForR⊆ [n], putHR = Sym(R), acting
+trivially outsideR, and writeg−R = g|[n]\R. Its fibers are the left cosetsgHR: two permutations
+have the same restriction precisely when they differ by right composition with an element ofHR.
+For a probabilityµ on Sn, letµ−R and U−R be the restriction laws underµ and Un, respectively.
+Every average overRbelow is uniform over subsets of its stated size.
+10.1 Pruning coefficient tests for a fixed partition
+The first argument uses each marginal estimate once, on a union of tests chosen during a finite
+deletion procedure. Applying the marginal estimate separately at each deletion would multiply its
+error by the number of tests and lose the conclusion.
+Theorem 10.1(Spectral pruning).Let n→∞ through multiples of16. For eachn, partition[ n]
+intob= 16equal blocksR i, and letµn be a probability onSn satisfying
+∥(µn)−Ri −U−Ri∥TV ≤δn (1≤i≤16), δ n −→0.
+There is a nonnegative measure0≤νn ≤µn of mass1−γ n, withγn →0, such that
+∥ˆνn(ρ)∥op ≤D−1/8 for every irreducibleρof degreeD>1.
+The operator bound has constant one, andνn is not normalized.
+Proof. Put a = 1/8and Ki = HRi. Fix an irreducible ρ of degree D >1. Every tensor type
+in its restriction to∏
+iKi has product of factor degrees at mostD. Assign each entire isotypic
+space to one factor whose degree is at mostD1/b. This yields an orthogonal decomposition of any
+unit vectorv as v= ∑
+ivi, wherevi contains only these smallKi-types. ForWi = spanρ(Ki)vi,
+Lemma 3.1 counts each type once, including all its multiplicities. Together with Lemma 6.4, it
+gives
+dimWi ≤C1D3/b, C 1 = sup
+m≥1
+∑
+τ∈ˆSm
+(dimτ) −1.
+For fixed unitu,v, the score
+Hρ,u,v,i(g) =∥Proj ρ(g)Wi u∥
+depends only ong−Ri. Its uniform second moment isdimWi/D by Schur averaging [4, Proposi-
+tion 3.14]. Consequently
+Un{Hρ,u,v,i >D−a/(2b)}≤4b 2C1D−1+2a+3/b.(10.1)
+If |⟨u,ρ(g)v⟩|>D −a/2, at least one score exceedsD−a/(2b), because∥vi∥≤ 1and |⟨u,ρ(g)vi⟩|≤
+Hρ,u,v,i(g).
+31
+
+Page 32
+Start with the measureν = µn. Whenever its claimed operator bound fails, chooseρ,u,v with
+|⟨u,ˆν(ρ)v⟩|>D −a, record this test, and delete all remaining mass on
+{g:|⟨u,ρ(g)v⟩|>D −a/2}.
+The mass deleted is greater thanD−a/2: outside this event the coefficient has absolute value at
+most D−a/2, everywhere it has absolute value at most one, and the current measure has mass at
+most one. Since all deleted pieces are disjoint, any one representation of degreeD can be selected
+at most2 Da times. There are finitely many irreducibles, so the procedure terminates with all the
+required bounds. The choices are made from deterministic current measures; thus the eventual
+finite list of tests is fixed, not selected anew for a sampled permutation.
+For eachi, letEi be the union of its score events in(10.1) over the complete list of recorded
+tests. It is a single event determined byg−Ri. Counting tests for each representation gives
+Un(Ei)≤8b 2C1
+∑
+ρ:dimρ>1
+D−1+3a+3/b = 8b2C1
+∑
+ρ:dimρ>1
+D−7/16 =o(1),
+by Theorem 6.3. Apply the marginal hypothesis to this entire union to getµn(Ei) ≤Un(Ei) + δn.
+Every deleted point belongs to someEi, so the total mass loss is at most∑
+iµn(Ei) = o(1). This
+proves the theorem.
+10.2 A common truncation and its low-dimensional types
+We first give the truncation and the projection estimates with a variable number of omitted blocks.
+This identifies exactly which part of the two transfers below is shared.
+Lemma 10.2(Good domains and averaged projections).Letq≥ 2divide n, putr= n/q, and let
+µbe a probability onSn. Define
+δ=E |R|=r∥µ−R −U−R∥TV, e R(g) =1{µ(gH R)≤2/[S n :HR]},
+and
+E={g:E ReR(g)≥7/8}.
+Then µ(E) ≥1−16δ. If µ(E) ≥1/2, the probabilityν = µ( ·|E )satisfies ∥ν−µ∥TV = 1 −µ(E) ≤
+16δ.
+Fix an irreducible unitary representationρ of Sn on V, withD = dimV > 1, and fixξ >0.
+Let PR project onto the sum of theHR-isotypic spaces whose irreducible type has degree at most
+Dξ. Then
+ERPR =cI, c≥1− 1
+qξ.(10.2)
+Forz∈Vwith∥z∥≤1, putW R(z) = span{ρ(h)PRz:h∈H R}. With the absolute constant
+C2 = sup
+m≥1
+∑
+τ∈ˆSm
+(dimτ) −2
+from Lemma A.2, one has
+dimWR(z)≤C 2D4ξ.(10.3)
+Ifµ(E)≥1/2, then for every unitu∈V,
+Eg∼νeR(g)|⟨u,ρ(g)PRz⟩|≤2
+√
+C2 D−1/2+2ξ.(10.4)
+32
+
+Page 33
+Proof.For any probabilityaand uniform probabilitybon a finite set,
+∑
+x:a(x)>2b(x)
+a(x)≤2
+∑
+x:a(x)>b(x)
+(a(x)−b(x)) = 2∥a−b∥ TV.
+Apply this to each restriction law. Underg∼µ , the expected fraction of sets witheR(g) = 0is
+at most2 δ. Markov’s inequality givesµ(Ec) ≤16δ. Conditioning onE changes the law in total
+variation by exactlyµ(Ec).
+Conjugating HR by a∈S n replaces it by HaR and conjugates PR by ρ(a). Hence the
+average projection commutes withρ(Sn)and is scalar. To estimate its trace, choose one partition
+(R1,...,R q)into equal blocks. The restriction of V to ∏
+iHRi is an orthogonal sum of tensor
+types, with arbitrary multiplicities. If a type has factor degreesd1,...,d q, then∏
+idi ≤D, since
+at least one copy of that type occurs inV. Consequently at most1/ξ factors have degree greater
+than Dξ. On this tensor type,I−P Ri is either the identity or zero according to that inequality.
+Summing traces, including multiplicities, gives
+q∑
+i=1
+rank(I−P Ri)≤D/ξ.
+All these ranks agree by conjugacy. This proves(10.2). Commutation was used only for the
+disjoint subgroups in this rank calculation.
+For the orbit bound, Lemma 3.1 gives, with all multiplicities included,
+dimWR(z)≤
+∑
+dimτ≤Dξ
+(dimτ) 2 ≤D4ξ∑
+τ
+(dimτ) −2,
+which is (10.3).
+It remains to turn the orbit estimate into a coefficient estimate. The spaceW = WR(z)is
+HR-invariant, soρ(g)Wdepends only ongH R. For unitu, Schur averaging and the trace give
+Eg∼Un∥Proj ρ(g)W u∥2 = dimW
+D .
+On a coset witheR = 1, theν-mass is at most four times its uniform mass: the original cap is two
+and normalization costs at most two. Since|⟨u,ρ(g)PRz⟩|≤∥Proj ρ(g)W u∥, Cauchy–Schwarz gives
+EνeR(g)|⟨u,ρ(g)PRz⟩|≤
+(
+4dimW
+D
+)1/2
+.
+This proves (10.4).
+10.3 A normalized expansion for 1024 omitted blocks
+Both transfers below use the eventE and conditional lawν constructed in the preceding lemma,
+with their respective values ofq. The first uses the small lost rank in(10.2) to normalize the
+average of the retained projections. Its complement is then the average of only the discarded
+projections. This gives a rapidly decreasing remainder.
+Theorem 10.3(Omitted-set transfer).Let n→∞ through multiples of1024, and let µn be
+probabilities onSn such that
+δn =E |R|=n/1024∥(µn)−R −U−R∥TV −→0.
+33
+
+Page 34
+For all sufficiently largen, condition µn on the eventE of Lemma 10.2, obtainingνn. Then
+∥νn −µn∥TV ≤16δn, and there is an absoluteC such that every irreducible representationρ of
+degreeD>1satisfies
+∥ˆνn(ρ)∥op ≤CD −1/4.
+If in additionEµn sgn(g) =o(1), then∥µ ∗8
+n −Un∥TV →0.
+Proof. Suppress n, fixρ, and use Lemma 10.2 withq= 1024and ξ= 1/16. Thus c≥ 63/64, and
+the right side of (10.4) isAD−3/8, whereA= 2 √C2. Forg∈Edefine
+Qg =E ReR(g)PR, F g =I−Q g/c=c −1ER(1−e R(g))PR.
+The equality forFg uses the scalar identityERPR = cI; it does not require the individual projections
+to commute. These are positive operators, and∥Fg∥op ≤1/(8c). Put s= ⌈logD⌉, with natural
+logarithms. The finite identity
+I=
+s−1∑
+j=0
+(Qg/c)Fj
+g +F s
+g (10.5)
+holds becauseQg/c=I−F g.
+We now bound the expected coefficient of each term while preserving its projection order. For
+fixed unit vectorsu,w, the jth summand in(10.5) expands as an average over independently
+chosenR0,...,R j, with scalar factorc−(j+1), indicator
+eR0(g)
+j∏
+i=1
+(1−e Ri(g)),
+and vectorPR0PR1 ···P Rjw. Fix the sets before integrating overg. The vectorz= PR1 ···P Rjwis
+then deterministic with norm at most one. Take absolute values and discard the failure indicators
+for i≥ 1. Equation (10.4) now bounds the expected coefficient byc−(j+1)AD−3/8. In particular
+the argument never exchanges two projections.
+The remainder has norm at most(8c)−s. Summing gives
+Eν|⟨u,ρ(g)w⟩|≤Asc −sD−3/8 + (8c)−s ≤CD −1/4.
+For the last inequality,c−s ≤c −1Dlog(1/c) and log(1/c) ≤log (64/63) < 1/32; the remaining
+logarithmic factor is absorbed byD3/32. Also log(8c) >1/4. Taking the supremum over the unit
+vectors proves the operator bound.
+To obtain the convolution conclusion, the sign coefficient ofνn is o(1), since the original sign
+coefficient iso(1)and∥ν n −µn∥TV =o(1). Plancherel and∥B∥HS ≤
+√
+D∥B∥op yield
+4∥ν∗8
+n −Un∥2
+TV ≤o(1) +C 16 ∑
+ρ:dimρ>1
+D2−16/4 =o(1) +C 16 ∑
+ρ:dimρ>1
+D−2 −→0
+by Lemma A.2. Replacing the eight independent factorsνn by µn costs at most8∥νn −µn∥TV =
+o(1).
+10.4 A power expansion for 256 omitted blocks
+The second transfer uses the unnormalized average of good projections. The preceding lemma
+supplies its input withq= 256and the same thresholdD1/16. Here a lower operator bound on
+34
+
+Page 35
+that average controls the remainder, while expanding its complement costs the sum of the absolute
+polynomial coefficients. This gives the stated, weaker exponent without the scalar normalization
+used above.
+For probabilitiesp,q on a finite set, writeD(p∥q) = ∑
+xp(x) log(p(x)/q(x))for relative entropy,
+using natural logarithms,0 log(0/q) = 0, and value+∞if p gives positive mass whereq vanishes.
+Theorem 10.4(Random-domain transfer).Let n→∞ through multiples of256, and letµn be
+probabilities onSn satisfying
+δn =E |R|=n/256∥(µn)−R −U−R∥TV −→0.
+Condition on the event that at least7/8of the sets R satisfy µn(gHR) ≤2/[Sn : HR], and call the
+resulting lawνn. For all sufficiently largen it is defined, satisfies∥νn −µn∥TV ≤16δn, and obeys
+∥ˆνn(ρ)∥op ≤CD −1/8 (D= dimρ>1)
+with an absoluteC. If Eµn sgn(g) = o(1), then∥µ∗32
+n −Un∥TV →0. The averaged relative-entropy
+hypothesis
+E|R|=n/256D((µn)−R∥U−R) =o(1)
+is sufficient for these conclusions.
+Proof. Use Lemma 10.2 withq = 256and ξ = 1/16. In particular c≥ 15/16. For a retained
+permutation put
+Mg =E ReR(g)PR.
+Removing at most1/8of the projections from their scalar average gives
+1
+2 I≤ 13
+16 I≤M g ≤I.(10.6)
+For fixed unit vectorsu,vand every integerp≥1,
+Eν|⟨u,ρ(g)Mp
+gv⟩|≤AD −3/8, A= 2
+√
+C2.(10.7)
+Indeed, expandMp
+g over R1,...,R p in that order. After taking absolute values, retain only the
+indicator eR1(g). For the fixed sets, apply(10.4) to the deterministic vectorz= PR2 ···P Rpv, of
+norm at most one. This proves (10.7), even when the omitted sets overlap.
+The estimates for positive powers must now recover the original vector. PutL= ⌊(log2 D)/8⌋.
+The identity
+v=
+L−1∑
+j=0
+Mg(I−M g)jv+ (I−M g)Lv
+holds also whenL = 0, with an empty sum. Its remainder has norm at most2−L by (10.6).
+Expand eachMg(I−M g)j as a polynomial inMg. The absolute values of its coefficients sum to
+2j, so (10.7) gives
+Eν|⟨u,ρ(g)v⟩|≤2 −L +A
+L−1∑
+j=0
+2jD−3/8 ≤2 −L +A2 LD−3/8 ≤CD −1/8.
+Here2 −L ≤2D−1/8 and2 L ≤D1/8, includingL= 0. This proves the asserted operator bound.
+35
+
+Page 36
+The sign coefficient is againo(1). For32factors the remaining Plancherel sum is at most
+C64 ∑
+ρ:dimρ>1
+D2−64/8 =C 64 ∑
+ρ:dimρ>1
+D−6 −→0,
+because D−6 ≤D−2 and Lemma A.2 applies. The total-variation cost of replacing the32factors
+is at most32∥νn −µn∥TV =o(1). Finally Pinsker’s inequality and Jensen’s inequality give
+δn ≤
+(
+1
+2 ERD((µn)−R∥U−R)
+)1/2
+,
+which proves the entropy version. In this normalization Pinsker’s inequality reads∥p−u∥2
+TV ≤
+D(p∥u)/2. To check the factor, takeA = {p≥u} , seta = p(A)and b = u(A), and group the
+entropy sum overAand its complement. The log-sum inequality givesD(p∥u) ≥D(Ber(a)∥Ber (b)).
+As a function ofa, the binary relative entropy on the right vanishes with zero derivative ata= b
+and has second derivative1/[a(1 −a)] ≥4. It is therefore at least2(a−b )2 = 2∥p−u∥2
+TV, with
+boundary cases obtained by limits.
+11 Entropy comparisons for every change of measure
+The domain transfers use marginal information about one fixed law. Here the hypothesis instead
+compares entropy under every change of measure supported on one common event. We condition
+on a large representation coefficient and show that the resulting law puts mass on complementary-
+restriction events that are rare under uniform measure. The entropy comparison then bounds the
+probability of that coefficient event. The common event must be chosen before the representation
+and its two test vectors; an estimate only for the original law would not suffice after this conditioning.
+Let(Ω ,F,P )be a probability space, and letg: Ω →Sn be a measurable endpoint map. For a
+law σ on this space andX⊆ [n], denote the law ofg|X by σX and its uniform injection reference
+byUX. Relative entropy uses natural logarithms:
+D(σ∥P) =
+∫
+log
+(dσ
+dP
+)
+dσ
+whenσ≪P, and is+∞otherwise.
+Theorem 11.1(Arbitrary-tilt entropy transfer).Let128divide n, let G ∈ F, and suppose
+a= P(G) >0. Assume thateveryprobability law σ on(Ω ,F)supported on G(σ(G) = 1) satisfies
+D(σ∥P)≥E X:|X|=n−n/128 D(σX∥UX)−n −2.(11.1)
+There is an absoluteC such that, for every irreducible unitary representationρ of Sn of degreeD
+and all unit vectorsu,z,
+P{G,|⟨z,ρ(g)u⟩|≥D −1/8}≤CD −1/256.(11.2)
+Ifηis the endpoint law conditioned onG, then
+∥ˆη(ρ)∥op ≤D−1/8 + C
+aD−1/256.(11.3)
+In particular, whena≥ 1/2, this is at mostC′D−1/256 for an absoluteC′. The statement therefore
+applies uniformly to a sequence withP(G) = 1−o(1).
+36
+
+Page 37
+Proof. Put b= 128. The claim forD= 1follows by increasing C, so assumeD> 1. Fix u,z and
+let A be the event on the left side of(11.2). There is nothing to prove ifP(A) = 0. Otherwise set
+σ=P(·|A). Thenσis supported on the sameGas in the hypothesis, and
+D(σ∥P) = log 1
+P(A).(11.4)
+The reference law here remainsP, notP( ·|G ). Thus this identity controls the unconditioned
+probability ofA; the factora−1 enters only when we pass to the endpoint lawη at the end. Our
+goal is to lower-bound this entropy by a positive multiple oflogD. We do so using tests visible
+from complementary restrictions.
+Fix an ordered partition(C1,...,C b)of[ n]into equal blocks. Let Xi = [n] \Ci and Ki =
+Sym(Ci). On Vρ, letSi project onto the sum of theKi-isotypic spaces with type degree at most
+D1/b. The subgroupsKi commute, as do their isotypic projections. On each tensor type in the
+product-group restriction, the product of its factor degrees is at mostD. At least one factor is
+therefore at mostD1/b, giving
+b∏
+i=1
+(I−S i) = 0.
+Consequently
+u=
+b∑
+i=1
+ui, u i =Si
+∏
+j<i
+(I−S j)u,∥u i∥≤1.(11.5)
+Let Wi = span{ρ(h)ui : h∈K i}. Lemma 3.1 bounds its dimension by the sum of the squared
+type degrees, independently of their multiplicities. Lemma A.1 supplies the finite constant
+C20 = sup
+m≥1
+∑
+τ∈ˆSm
+(dimτ) −20.
+It follows that
+dimWi ≤
+∑
+f≤D1/b
+f2 ≤C20D22/b,(11.6)
+where the sum counts irreducible types once, not their multiplicities.
+Because Wi is Ki-invariant,ρ(g)Wi depends only ong|Xi. Let Ei be the subset of injections
+onX i for which
+∥Proj ρ(g)Wi z∥≥D −1/8/b.
+Schur averaging gives uniform mean square projection lengthdimWi/D. Markov’s inequality and
+(11.6) imply
+UXi(Ei)≤C 20b2D−1+22/b+1/4 =C20b2D−37/64 ≤C20b2D−1/2.(11.7)
+For each endpoint onA, the coefficient threshold and (11.5) force at least one of these tests:
+D−1/8 ≤|⟨z,ρ(g)u⟩|≤
+∑
+i
+∥Proj ρ(g)Wi z∥.
+Thus, for this partition,
+b∑
+i=1
+σXi(Ei)≥1.(11.8)
+37
+
+Page 38
+We have found complementary restrictions on whichσ assigns substantial mass to events that
+are rare under the uniform law. To convert that fact to entropy, putpi = σXi(Ei)and qi = UXi(Ei).
+Data processing for the binary test gives
+D(σXi∥UXi)≥p ilog 1
+qi
+−log 2≥ 1
+2 pilogD−log(2C 20b2).
+The first inequality follows by expanding binary relative entropy and using that binary Shannon
+entropy is at mostlog 2; its term(1−pi) log(1/(1−qi))is nonnegative. Empty tests havepi = qi = 0
+and satisfy the displayed bound as well. The second inequality uses (11.7) and0≤pi ≤1.
+Average overi, using(11.8), and then over uniform ordered equal-block partitions. EachXi is
+uniform of sizen−n/b, so
+E|X|=n−n/bD(σX∥UX)≥ logD
+2b −log(2C20b2).
+Now apply (11.1) to this particularσ. Together with (11.4), it gives
+log 1
+P(A) ≥logD
+256 −log(2C20b2)−n −2.
+This proves (11.2), for example withC= 2eC20b2.
+Finally the absolute coefficient is at most one. Split its expectation underP( ·|G )at D−1/8,
+and use(11.2) for the upper part. This proves(11.3) after taking the supremum over the unit
+vectors. All partitions and tests in the proof were chosen afteru,z were fixed; the hypothesis
+covering every law on the common event is what permits the rare-event conditioning at the first
+step.
+12 Rare events and signed palettes
+An estimate for a typical partial permutation need not remain useful after conditioning on a
+very rare mapping event. The first result below explains how a single retained event resolves
+this difficulty. It converts a bound on the accumulated conditional errors, valid at every retained
+setting, into simultaneous bounds on many coset probabilities. We then choose the cosets by
+the representation being tested. Both steps are statements about finite probability spaces and
+permutation groups; no dynamics enter their proofs.
+Let n = 2h and partition[ n] = A⊔B , with |A|= |B|= h. Apalette on B is a partition
+B=B 1 ⊔···⊔B u into nonempty color classes. Its subgroup is
+H=
+u∏
+i=1
+SBi ≤Sn,
+acting identically onA. Put li = |Bi|, pi = li/h, andH(p) = −∑
+ipilogpi. We use the analogous
+definitions for palettes onA. A left cosetxH prescribes each image inAseparately and prescribes
+the image set of every color class inB.
+12.1 An information bound valid under rare conditioning
+Here is the precise reveal experiment. Let(Ω,P)be a finite probability space andg: Ω →Sn an
+endpoint map. For each fixed orderingo= (c1,...,c n)of the labels, letYo
+1 ,...,Y o
+n be observations
+38
+
+Page 39
+onΩsuch that Yo
+j determines g(cj). These observations may contain more information than the
+endpoint. WriteFo
+r = σ(Yo
+1 ,...,Y o
+r ). At a feasible history the previously observed endpoints leave
+exactly m= n−r available sites. Suppose∆o
+r ≥0is Fo
+r-measurable and, for every subsetQ of
+these sites,
+P{g(cr+1)∈Q|F o
+r}≤ |Q|
+n−r +n∆ o
+r.(12.1)
+All conditional statements concern histories of positive reference probability. LetEAB denote
+averaging over independent uniform orders withinA and B, with all labels ofA first; defineEBA
+by reversing the two halves.
+Lemma 12.1(Information from a retained reveal experiment).In the experiment just described,
+fix an integer0 ≤v <h and an eventG⊆ Ωof reference probabilityz >0. Assume that(12.1)
+holds for both half-first order conventions and every0≤r < n−v. Suppose that everyω∈G
+satisfies
+EAB
+n−v−1∑
+r=0
+∆o
+r(ω) +E BA
+n−v−1∑
+r=0
+∆o
+r(ω)≤a n.(12.2)
+Let µ be the law ofg under P( ·|G ). For every palette on either half, its subgroupH, and every
+x∈S n,
+µ(xH)≤ 1
+[Sn :H] exp{vH(p) +n2an −logz}.(12.3)
+In particular, ifan ≤n−6 and z= 1 −o(1), the last two terms in the exponent areo(1), uniformly
+over all palettes and cosets.
+Proof. The eventGand the retained endpoint lawµ are fixed before choosing the palette. Fix
+now a palette onB and a cosetxH, and putE = G∩{g∈xH} . If P(E) = 0the conclusion is
+immediate. Otherwise writeQ=P(·|E). The three laws are related by
+P(E) =zµ(xH), D(Q∥P) =−logP(E).
+Choose the reveal order independently of the setting, using theAB convention under bothP and
+Q. Since E does not involve the order, conditioning the setting onE leaves this order uniformly
+distributed. For a fixed order, data processing followed by the entropy chain rule gives
+−logP(E)≥
+n−v−1∑
+r=0
+EQD
+(
+LQ(Yo
+r+1 |Fo
+r)∥LP(Yo
+r+1 |Fo
+r)
+)
+.
+For labels inA, membership inxH prescribes a singleton target; for a label inBi it prescribes the
+target setxBi. At a history that occurs underQ, letar ≥1be the number of unoccupied sites in
+this target. The next endpoint lies in that target withQ-probability one. For any probabilityR
+supported on an eventF of positive reference probability, the identityD(R∥P′) = D(R∥P′( ·|
+F)) −logP ′(F)shows that its entropy is at least−logP ′(F). Apply this observation to the next
+observation and then use (12.1). Sincem=n−r≤n,
+−log
+(ar
+m +n∆ o
+r
+)
+= log(m/ar)−log
+(
+1 + nm∆o
+r
+ar
+)
+≥log(m/ar)−n 2∆o
+r.
+39
+
+Page 40
+This lower bound is valid even when the displayed upper bound on the reference probability
+exceeds one. Averaging the chain rule over orders therefore yields
+−logP(E)≥E ABEQ
+n−v−1∑
+r=0
+log((n−r)/a r)−n 2an.(12.4)
+The error bound uses(12.2) pointwise onE. It does not use an average error estimate underP
+after the change of law toQ.
+It remains to count the information lost by omitting the lastv labels. If all n labels were
+revealed, the numerator counts would multiply ton!, while the target counts would multiply to∏
+ili!. The full logarithmic sum is consequentlylog[Sn : H], independently of the compatible
+observations. The lastv labels are inB. Forv= 0the missing contribution is zero. Forv >0, if
+their color counts aret1,...,t u, it is
+log v!∏
+iti! ≤vH((ti/v)i).
+The inequality follows because the multinomial probability of these counts under probabilities
+ti/v is at most one. The lastv labels form a uniform subset ofB under the order average, so
+EAB(ti/v) = pi. Concavity of entropy gives expected missing contribution at mostvH(p). Insert
+this bound in(12.4), exponentiate, and useµ(xH) = P(E)/z. The BA order gives the same result
+for palettes onA. Every error term is independent of the chosen palette and coset, which proves
+simultaneous uniformity.
+12.2 Choosing a palette for a representation
+We next relate the entropy of a suitable palette to the dimension of a representation. We use the
+characteristic-zero branching rule [6, Theorem 9.2] and the hook-length formula [4, Theorem 4.53].
+The horizontal Pieri rule is the one-row case of the induction rule in [6, Section 16]; its vertical
+form follows by transposition and sign twist [6, Theorem 6.7]. WriteDγ for the dimension of the
+irreducible representation indexed by a partitionγ.
+Lemma 12.2(A dimension estimate in terms of the longest row or column).There is an absolute
+c0 >0such that, for all sufficiently largeb, ifγ⊢b,L= max(γ 1,γ′
+1), andk=b−L>0, then
+logDγ ≥
+{
+c0klog(b/k), k≤b/2,
+c0b, k >b/2. (12.5)
+In particularlogD γ ≥c1kfor an absolutec 1 >0.
+Proof. Transpose the diagram if necessary, so its first row has lengthL. Apply the first-row hook
+bound (6.6) with row lengthL, klower boxes, and total sizeb. The dimension of the lower diagram
+is at least one, so
+logDγ ≥log
+(
+b
+L
+)
+−k(1 + logL)
+L .
+If k≤b/ 2, the correction isO(klogb/b )and
+(b
+k
+)
+≥(b/k)k, proving the first case. Ifb/10 ≤L<b/ 2,
+the binomial coefficient has logarithm at leastLlog (b/L) ≥(b/10) log 2, and the correction is
+O(logb). If L < b/10, every hook is at most2L < b/5, soDγ ≥(b/e)b/(b/5)b = (5/e)b. These
+bounds prove the second case and the stated consequence.
+40
+
+Page 41
+Lemma 12.3(Signed palettes with controlled entropy).There is an absoluteC0 <∞ such that,
+for every sufficiently largeh and everyβ⊢h , there are positive integersl1,...,l u summing toh
+and a product characterθ= θ1 ⊗···⊗θ u of H = Sl1 ×···×S lu, eachθi either trivial or sign, for
+which
+HomH(θ,Vβ)̸= 0, hH((l i/h)i)≤C 0 logDβ.(12.6)
+The same character occurrence holds for every placement of the classes of these sizes on an
+h-element set.
+Proof. Starting withβ, remove a first row or a first column of maximal length, and repeat on the
+remaining partition until it is empty. The successive lengths are theli. Assign a trivial character
+to a row removal and a sign character to a column removal. If a first row is removed, the remaining
+partition interlaces the original one: putting back its size is a horizontal-strip addition in the Pieri
+rule. Transposing gives a vertical-strip addition for a first column. Iterated Pieri, transitivity of
+induction, and Frobenius reciprocity give the character occurrence. Conjugation supplies every
+placement.
+Let L= l1 and k = h−L . Every hook in a strip of lengthl at the time of its removal is at
+most2 l, becausel is the longer of the current first row and first column. Its hook product is at
+most(2 l)l ≤(2e)ll!. For the first strip use the sharper boundL!ek, obtained fromlog(1 + x) ≤x
+and the fact that the sum of the numbers of boxes below the strip isk. Remaining hooks are
+unchanged by each removal. Thus, ifM=h!/∏
+ili!, the hook formula yields
+logM≤logD β + (1 + log(2e))k.
+To compare this multinomial count with entropy, setf(j) = jlogj−logj !, withf(0) = 0. Then
+f(j)≥0and0≤f(j)−f(j−1)≤1. Consequently
+hH((li/h)i)−logM=f(h)−
+∑
+i
+f(li)≤f(h)−f(L)≤k.
+If k >0, Lemma 12.2 absorbs this totalO(k)error into C0 logDβ. If k= 0, the representation is
+trivial or sign, and the one-color palette has entropy zero.
+12.3 The transfer from both halves
+Fix once and for all
+0<δ < 1
+4,2δC 0 ≤ 1
+10, v=⌊δn⌋.(12.7)
+The next theorem receives only coset caps. In particular, it can be applied to the output of
+Lemma 12.1 without referring again to its reveal experiment.
+Theorem 12.4(Signed-palette transfer).Let n tend to infinity through even integers. For each
+n, partition[ n] = A⊔B into equal halves and letµ be a probability onSn. Suppose thatεn →0
+and that, for every palette on either half, every placement of its classes, its subgroupH, and every
+x∈S n,
+µ(xH)≤[S n :H] −1 exp{vH(p) +εn}.(12.8)
+Hereδandvsatisfy(12.7). For all sufficiently largen, uniformly overλ /∈{(n),(1 n)},
+∥ˆµ(λ)∥2
+HS ≤D−1/3
+λ ,(12.9)
+∥ˆµ(λ)∥op ≤D−1/6
+λ .(12.10)
+41
+
+Page 42
+If in addition|ˆµ(sgn)|= o(1), then∥µ∗4 −USn∥TV = o(1), and consequently∥µ∗30 −USn∥TV = o(1)
+as well. Both conclusions also hold withµ replaced in every factor by a probabilityµ0 satisfying
+∥µ0 −µ∥TV =o(1).
+Proof. Put J = ˆµ(λ)and D= Dλ, using a unitary modelρλ. We first boundJ on each half-isotypic
+component, including its multiplicities. Combining the halves will bound each joint component;
+we then absorb the number of joint types into a small power ofD. For a typeβ of SB, choose its
+signed palette from Lemma 12.3. Equations (12.7) and (12.8) give, for largen,
+µ(xH)≤
+2D1/10
+β
+[Sn :H] .(12.11)
+This holds for every conjugate of the chosen subgroup withinSB.
+Let PH,θ be the orthogonal projection onto theθ-character space in the restriction toH. Define
+the signed massθH to equalθ(h)/|H|on H and zero elsewhere. Right convolution byθH has
+Fourier matrixJPH,θ. On a cosetxH each resulting mass has absolute value at mostµ(xH)/|H|.
+Hence
+|Sn|
+∑
+x∈Sn
+|(µ∗θ H)(x)|2 ≤[Sn :H]
+∑
+C∈Sn/H
+µ(C)2 ≤2D1/10
+β .
+Plancherel, retaining theλterm, proves
+D∥JPH,θ∥2
+HS ≤2D1/10
+β .(12.12)
+LetΠ B,β denote the entireβ-isotypic projection. AveragePH,θ over conjugation bySB. On
+the β carrier its rank is at least one, so Schur’s lemma makes this average at leastD−1
+β I on that
+carrier. The group algebra acts as the identity on its multiplicity space. The average is therefore
+at leastD−1
+β ΠB,β in positive semidefinite order on the full representation. Tracing againstJ∗J in
+(12.12) gives
+∥JΠB,β∥2
+HS ≤
+2D11/10
+β
+D .(12.13)
+The identical estimate holds for a typeαofSA.
+Every constituent of the product of the two halves has a small carrier on at least one side.
+Indeed, the commuting projectionsΠA,αΠB,β decompose the identity orthogonally, and every
+nonzero such component hasDαDβ ≤D. Use (12.13) for the smaller degree to obtain
+∥JΠA,αΠB,β∥2
+HS ≤2D−9/20.(12.14)
+We verify that the number of type pairs costs only a vanishing power ofD. LetL= max(λ1,λ′
+1)
+and k= n−L> 0. Branching forces every half-type diagram to be contained inλ. If the longest
+line is a column, transposeλ and every contained half-type diagram for this count. Containment
+and dimensions are preserved, and each resulting tail beyond the first row has at mostk boxes.
+The number of choices for either half-type is at mostBk = ∑k
+j=0 p(j), wherep(j)is the number of
+partitions ofj. The partition bound (6.1) gives
+Bk ≤(k+ 1)e 3
+√
+k =eO(
+√
+k).
+Lemma 12.2 implies logBk/logD→ 0uniformly: if k≤ √n, its denominator is at least
+(c0/2)klogn , and ifk >√n, it is at leastc1k. Thus B2
+k = Do(1) uniformly over the nontrivial,
+nonsign diagrams. Orthogonality of the domain projections in (12.14) now yields
+∥J∥2
+op ≤∥J∥2
+HS ≤2B 2
+kD−9/20 ≤D−1/3
+42
+
+Page 43
+for sufficiently largen. This proves both (12.9) and (12.10).
+For four factors, Hilbert–Schmidt submultiplicativity, Plancherel and Cauchy–Schwarz give
+4∥µ∗4 −USn∥2
+TV ≤|ˆµ(sgn)|8 +
+∑
+λ/∈{(n),(1n)}
+D1−4/3
+λ =o(1),
+since the nonlinear sum isZ1/3(n) →0by Theorem 6.3. Replacing the four factors byµ0 costs at
+most4 ∥µ0 −µ∥TV = o(1). Convolution contracts total variation and preserves uniform measure,
+so each four-factor conclusion implies its thirty-factor counterpart.
+There is also a direct thirty-factor completion using only the operator bound(12.10). It gives
+4∥µ∗30 −USn∥2
+TV ≤|ˆµ(sgn)|60 +
+∑
+λ/∈{(n),(1n)}
+D−8
+λ .
+The sum tends to zero. To see this directly, group the diagrams byk= n−max (λ1,λ′
+1). There
+are at most2p(k)diagrams in each group. Lemma 12.2 gives the summable majorant2e3
+√
+k−8c1k,
+while each fixedk >0has Dλ →∞ as n→∞ . Dominated convergence applies. Replacing the
+thirty factors one at a time changes total variation by at most30∥µ0 −µ∥TV.
+The order of choices is now visible. First choose the absoluteC0 in Lemma 12.3, thenδ in
+(12.7). A reveal construction supplies the reference conditional bound(12.1), together with a
+common event of mass1−o(1)on which (12.2) holds withan ≤n−6 down tov unrevealed labels.
+Lemma 12.1 supplies all the caps required by Theorem 12.4 withεn = n−4 −logz . The sign
+expectation remains a separate scalar input.
+13 Entropy clipping and large representation dimensions
+Small total variation error is one way to obtain a useful coset cap. A weaker entropy estimate
+can also suffice when only representations above a prescribed dimension threshold need to be
+controlled. The cutoff below preserves the original, unnormalized retained measure. Its loss of
+mass is separated from its Fourier estimate.
+For probabilitiesp,uon a finite set, withupositive, write
+D(p∥u) =
+∑
+x
+p(x) log p(x)
+u(x);
+zero summands have value zero and logarithms are natural. ForG= Sn and H≤G , writewH(gH)
+for the mass of the left cosetgH under a probabilityw on G, andUG/H for the uniform law on
+left cosets. These are the cosets that record the images of a list whose pointwise stabilizer isH.
+Theorem 13.1(Entropy clipping and isotypic transfer).Partition{1,...,n} into q≥ 1nonempty
+blocks, and letHi be the subgroup supported on blocki. Suppose a probabilitywonSn satisfies
+q∑
+i=1
+D(wHi∥UG/Hi)≤K.(13.1)
+43
+
+Page 44
+For everyt>0there is a subprobabilityv≤w, of massm, such that
+1−m≤ K+q/e
+t ,(13.2)
+v(gHi)≤e t|Hi|
+|G| (g∈G,1≤i≤q),(13.3)
+∑
+h∈Hi
+(ˇv∗v)(h)≤e t|Hi|
+|G|,(13.4)
+∥ˆv(λ)∥2
+HS ≤qCuetD−1+(u+2)/q
+λ (λ⊢n,u>0).(13.5)
+Here ˇv(g) = v(g−1), Cu is the constant in Theorem 6.3, the Fourier transform is the mass transform
+ˆv(λ) = ∑
+gv(g)ρλ(g), and the Hilbert–Schmidt norm is unnormalized.
+Proof. For a densityprelative to a probabilityu, the negative part of the logarithm has expectation
+at most1/eunderpu, sincepmax(−logp,0)≤1/e. Consequently
+Epu(logp) + ≤D(pu∥u) + 1/e.
+For each i let pi be the density of wHi relative to UG/Hi. Restrict w to those g for which
+pi(gHi) ≤et for everyi, and call the resultv. Markov’s inequality and a union bound prove(13.2);
+the restriction proves(13.3). Zero-density cosets have zerow-mass and create no logarithmic
+exception.
+The convolutionˇv∗v is the law, with its subprobability mass, ofg−1
+1 g2. Membership inHi
+means thatg1,g2 belong to the same left coset. Thus
+∑
+h∈Hi
+(ˇv∗v)(h) =
+∑
+gHi
+v(gHi)2 ≤et|Hi|
+|G|
+∑
+gHi
+v(gHi)≤e t|Hi|
+|G|.
+We spell out the isotypic step to show exactly what the collision cap controls. PutEλ =
+ˆv(λ)∗ˆv(λ). For an irreducible τ of Hi of dimension dτ and character χτ, let PHi
+λ;τ be the full
+τ-isotypic projection inρλ|Hi, including all multiplicity copies. Fourier inversion and the central
+projection formula give
+∑
+h∈Hi
+(ˇv∗v)(h)χτ(h) = |Hi|
+|G|dτ
+∑
+λ⊢n
+Dλtr(EλPHi
+λ;τ).(13.6)
+Indeed ∑
+h∈Hi χτ(h)ρλ(h−1) = (|Hi|/dτ)PHi
+λ;τ. Every trace on the right is nonnegative, sinceEλ
+andP Hi
+λ;τ are positive. Since|χτ(h)|≤d τ, (13.4) yields
+tr(EλPHi
+λ;τ)≤e t d2
+τ
+Dλ
+.(13.7)
+This is the collision form of Lemma 3.4.
+The block subgroups form a direct product. Every irreducible constituent of its restriction has
+factor dimensions whose product is at mostDλ. At least one factor dimension is therefore at most
+D1/q
+λ . The commuting isotypic projections satisfy
+I≤
+q∑
+i=1
+∑
+τ:dτ≤D1/q
+λ
+PHi
+λ;τ.
+There are at mostCuDu/q
+λ such types in each subgroup: each contributes at leastD−u/q
+λ to its
+inverse-udegree sum. Taking traces againstEλ and using (13.7) proves (13.5).
+44
+
+Page 45
+Corollary 13.2(Selecting complementary lists by averaging).Letq divide n, putr= n/q, and
+suppose the image lawwI of a uniformly chosen ordered listIofn−rdistinct inputs satisfies
+EID(wI∥UI)≤K 0,
+where UI is uniform on ordered distinct output lists of that length. There is a partition intoq
+blocks of sizerfor which(13.1)holds withK=qK 0.
+Proof. Choose the equal partition uniformly. Each block complement is uniform among sets of
+size n−r . Entropy of an image list is unchanged by reordering its coordinates. Therefore the
+expected sum of theq complement entropies is at mostqK0; one deterministic partition has sum
+no greater than that expectation. Agreement on the complement is exactly membership in the
+same left coset of its block subgroup.
+Corollary 13.3(The logarithmic cutoff with 256 blocks).Let n = 2d and suppose, for each
+sufficiently large integerd, that a probabilityw has an equal partition intoq= 256blocks with total
+complement entropyO(d4). There isv≤wof mass1−O(d −2)such that
+∥ˆv(λ)∥2
+HS ≤256C32ed6
+D−1+34/256
+λ .(13.8)
+In particular, wheneverlogDλ >d8, this is at mostD−1/2
+λ for all sufficiently larged, uniformly in
+λ.
+Proof. Apply Theorem 13.1 witht= d6 and u= 32. The loss bound isO(d4)/d6 = O(d−2). The
+logarithm of the prefactor isd6 + log(256C32), while
+(1
+2 − 34
+256
+)
+logDλ >
+(1
+2 − 34
+256
+)
+d8.
+The latter eventually exceeds the former, proving the final bound.
+The hypotheses here concern only the entropy of a group law. Controlling dimensions below
+the cutoff requires an additional input on that law; the clipping theorem itself makes no assertion
+about those representations.
+14 Weak entropy and an independent sparse estimate
+A complementary marginal may have relative entropy from uniform of order(logn)4 and still be
+far from uniform in total variation. Such information is nevertheless sufficient for representations
+whose dimensions are large enough to absorb a growing coset cap. This section proves that
+assertion and combines it with an independent Fourier estimate for representations with a long
+first row. The second law must also annihilate every representation whose diagram has more than
+n/2rows. These two Fourier properties are explicit hypotheses; the construction of the second law
+plays no role in the transfer.
+Throughout this section,16divides n and[ n] = B1 ⊔···⊔B 16 is a fixed partition into equal
+blocks. LetHj = SBj, acting identically offBj. For a probabilityµon Sn, letµj be its pushforward
+to the cosetsSn/Hj, and letUj be uniform on this quotient. The cosetxHj specifies exactly the
+images underxof all labels outsideB j.
+45
+
+Page 46
+14.1 Clipping a weak entropy bound
+Lemma 14.1(One retained law for sixteen entropy bounds).Suppose
+En :=
+16∑
+j=1
+D(µj∥Uj)≤C(1 + logn) 4 (14.1)
+for a constantC independent ofn. Set bn = n1/50 and ηn = (En + 16/e)/bn. For all sufficiently
+largen, there is an eventG⊆S n withz:=µ(G)≥1−η n >0such thatν=µ(·|G)satisfies
+∥ν−µ∥ TV = 1−z≤η n =o(1), ν(xH j)≤ Mn
+[Sn :Hj], M n = 2 exp(n1/50).(14.2)
+The cap holds for everyx∈Sn and everyjunder this same lawν.
+Proof. Apply the clipping construction of Theorem 13.1 withq= 16, w= µ, K = En, andt= bn.
+It restrictsµ to the eventGon which all sixteen original quotient densities are at mostebn. The
+retained subprobability has massz≥ 1 −ηn and satisfies every coset cap with constantebn. Here
+ηn = o(1)by (14.1), so eventuallyz≥ 1/2. Normalizing this one retained measure increases all
+caps by the same factorz−1 ≤2, giving(14.2). Since the construction is an event restriction, its
+normalization is exactlyµ(·|G), at total-variation distance1−zfromµ.
+14.2 The representation range controlled by these caps
+Write Dλ for the dimension of the irreducible representationVλ of Sn, and putk= n−λ 1. Here
+k measures the number of boxes below the first row, without transposing the diagram. The
+restriction on the number of rows in the next lemma prevents a shape with a long first column
+from having small dimension whilekis large.
+Lemma 14.2(Dimension with at mostn/2rows).There is an absolute c> 0such that, for all
+sufficiently largen, everyλ⊢nwithλ ′
+1 ≤n/2andk >0satisfies
+logDλ ≥ck.(14.3)
+Proof. If both the first row and the first column are shorter thann/8, every hook has length
+less thann/4. The hook formula then givesDλ ≥(4/e)n, which suffices. Otherwise transpose if
+necessary so the first row has lengthm= max(λ1,λ′
+1) ≥n/8. The numbern−m of remaining
+boxes is at leastk/2: it isk without transposition, and after transposition the assumed bound on
+the number of rows givesn−m≥n/2≥k/2.
+Retain this first row and a Young subdiagram ofs = min(n−m,⌊m/ 2⌋)boxes below it.
+For largen, s≥k/ 17. To construct standard tableaux of the retained diagram, put1,...,s in
+the firsts boxes of its top row. Choose anys of the remainingm labels for the lower diagram,
+placed in a fixed standard order; fill the remaining top row in increasing order. Every column
+of the lower diagram is under one of the firsts top boxes, so these are valid tableaux. There
+are
+(m
+s
+)
+≥(m/s)s ≥2s choices, and each extends to the full diagram by successively adding the
+omitted boxes in a Young order. ThusDλ ≥2 s, proving the lemma.
+Proposition 14.3(Sixteen groups in the large-degree range).Let ν be any probability onSn
+satisfying the sixteen coset caps in(14.2). Uniformly over all partitions with
+k=n−λ 1 >n1/20, λ ′
+1 ≤n/2,
+46
+
+Page 47
+one has, for sufficiently largen,
+∥ˆν(λ)∥op ≤D−1/3
+λ .(14.4)
+Proof. Put D= Dλ and restrictVλ to H1 ×···×H 16. Its irreducible types are tensor products
+of sixteen carriers, with arbitrary multiplicities. For an occurring tensor type, the product of its
+carrier dimensions is at mostD, so at least one carrier has dimension at mostD1/16. Assign the
+whole isotypic component of that type to one such indexj. This decomposes every unit vector
+v into an orthogonal sumv= ∑16
+j=1 vj, wherevj is supported only onHj-types of dimension at
+mostD 1/16.
+Branching shows that eachHj-type diagram is a subdiagram ofλ; its tail below its first row
+has at mostkboxes. Letp(i)count the partitions ofi, withp(0) = 1. There are at most
+Bk =
+k∑
+i=0
+p(i),logB k =O(
+√
+klog(k+ 1)),
+such types, by the elementary multiplicity-and-list count in(6.1). Its sharper exponential bound
+also suffices.
+Let Wj be the span of theHj-orbit ofvj. For one type of degreea, collect all equivalent copies
+asV a ⊗Ma. The orbit of the component ofvj lies in the image of
+End(Va)−→V a ⊗Ma, T↦−→(T⊗I)v j.
+Its dimension is at mosta2, regardless of the multiplicity. Consequently
+dimWj ≤BkD1/8.(14.5)
+This is the point at which grouping equivalent copies is essential: counting each copy separately
+would lose the degree saving.
+We now use the caps to average these small orbit spaces over the full group. SinceWj is
+Hj-invariant, the spaceρλ(x)Wj depends only onxHj. Its projection, averaged uniformly over
+the group, is(dimWj/D)I by Schur’s lemma and the trace. For a unit vectorw, Cauchy–Schwarz
+and the coset cap therefore give
+|⟨w,ˆν(λ)vj⟩|≤∥v j∥
+(
+Ex∼ν∥Pρλ(x)Wjw∥2
+)1/2
+≤∥vj∥
+√
+MnBkD−7/8.
+Because ∑
+j ∥vj∥≤4, summing yields the quantitative bound
+∥ˆν(λ)∥op ≤4
+√
+MnBkD−7/16.(14.6)
+It remains to absorb the growing cap and the type count. Lemma 14.2 giveslogD≥ck ,
+whereas logMn = O(n1/50)and logBk = O(
+√
+klog (k+ 1)). For k > n1/20, both of the latter
+quantities areo(k)uniformly. Thus, for large n, log(16MnBk) ≤(5/24) logD. Squaring (14.6)
+and using this inequality gives16MnBkD−7/8 ≤D−2/3, as required.
+47
+
+Page 48
+14.3 Combining the large and small degrees
+The preceding proposition leaves two classes untreated: diagrams with more thann/2rows, and
+diagrams with at mostn1/20 boxes below the first row. The following theorem states exactly what
+a second law must provide on those classes.
+Theorem 14.4(Entropy and sparse-degree hybrid).Let n→∞ through multiples of16. For
+each n, letµ and K be probabilities onSn. Suppose a fixed equal sixteen-block partition satisfies
+(14.1)forµ. Suppose also thatKsatisfies
+∥ˆK(λ)∥op ≤n−k/10
+(
+1≤k=n−λ 1 ≤n1/20
+)
+,(14.7)
+ˆK(λ) = 0
+(
+λ′
+1 >n/2
+)
+.(14.8)
+Then the retained probabilityνfrom Lemma 14.1 satisfies
+∥ν∗12 ∗K∗40 −USn∥TV =o(1),∥µ ∗12 ∗K∗40 −USn∥TV =o(1).(14.9)
+All factors in these convolutions are independent. There is no assumed identity betweenK and a
+convolution root or power ofµ.
+Proof. Putσ= ν∗12∗K∗40. TheFouriermatricesmultiplyinthisorder. Eachfactorisacontraction,
+since it is an average of unitary matrices. Forλ′
+1 ≤n/ 2and k > n1/20, Proposition 14.3 gives
+∥ˆσ(λ)∥op ≤D −4
+λ . For more thann/2rows, (14.8) gives zero. For1 ≤k≤n 1/20, (14.7) gives
+∥ˆσ(λ)∥op ≤n−4k. These statements use submultiplicativity and do not require normality of any
+Fourier matrix.
+Plancherel bounds four times the squared total-variation distance by∑
+λ̸=(n) D2
+λ∥ˆσ(λ)∥2
+op. For
+each fixedk, there are at mostp(k)diagrams with n−λ 1 = k, since the boxes below the first row
+form a partition ofk. By Lemma 14.2, the contribution from the large-degree range is at most
+∑
+k>n1/20
+p(k)e−6ck =o(1).
+For the small-degree range, branching shows thatVλ occurs in the permutation representation on
+ordered distinctk-tuples: its restriction toSn−k contains the trivial representation because its
+first row has lengthn−k. ThusD λ ≤(n) k ≤nk, and that contribution is at most
+∑
+1≤k≤n1/20
+p(k)n2kn−8k ≤
+∑
+k≥1
+e3
+√
+kn−6k =o(1).
+This also explains why no separate sign hypothesis is needed here: the sign diagram has more
+than n/2rows and is annihilated byK. The first assertion follows. Convolution contracts total
+variation, so replacing twelve factors changes the distance by at most12∥µ−ν∥TV = o(1), proving
+the second.
+15 Signed tabloids and conditional products
+Information about the images of almost all positions can control a representation through a larger
+space with a particularly simple basis. In a signed tabloid representation, each permutation
+permutes the basis vectors and changes some signs. A cap on tuple probabilities therefore becomes
+a cap on matrix entries. We construct such a space containing each irreducible, with dimension
+48
+
+Page 49
+bounded by a fixed power of the irreducible dimension. This gives a normalized Hilbert–Schmidt
+bound. For two half-permutations which are independent after conditioning on an environment, a
+second averaging step converts that bound into an operator-norm estimate on the full symmetric
+group.
+For a finite setE, writeSE for its permutation group andUE for uniform measure on that
+group. An ordering of any subsetI⊆E is fixed when we writeg|I or g−1|I as a tuple. The uniform
+distribution on the possible tuples is independent of this choice of ordering. A subprobability is a
+nonnegative measure of total mass at most one. For a unitary representationρλ of dimensionDλ,
+our Fourier convention is
+ˆν(λ) =
+∑
+g
+ν(g)ρλ(g),∥B∥ 2
+HS = Tr(B∗B).
+Thus the Hilbert–Schmidt norm uses the ordinary, unnormalized trace. Compositionyx applies x
+first, and convolution has this same order.
+Theorem 15.1(Conditional-product transfer).Put C0 = 2,000,000, and fix an integerL≥ 2C0.
+Let V = A⊔C , where|A|= |C|= h and L divides h. Partition each half intoL buffers of size
+h/L, and putH = SA ×SC ⊆SV. Let ξ be a subprobability onSV such that, forJ = A,C and
+every ordered injectionv:J−→V,
+ξ{x:x −1|J =v}≤2U V{x:x −1|J =v}.(15.1)
+Let Z have any probability distribution. Measurably inz, lettz ∈SV and letνz
+A,νz
+C be subprobabil-
+ities onSA,SC, respectively. Suppose that for almost everyz, eachJ = A,C, each of its buffers
+B, and every ordered injectionw:J\B−→J,
+νz
+J{y:y| J\B =w}≤2U J{y:y| J\B =w}.(15.2)
+Regard the productνz
+A ⊗νz
+C as a measure onHand set
+ω=E Z
+[
+δtZ ∗(νZ
+A ⊗νZ
+C)
+]
+, θ=ω∗ξ.
+Then, for all sufficiently largeh, every irreducible representation ofSV withD λ >1satisfies
+∥ˆθ(λ)∥op ≤K0D−1/40
+λ , K 0 =
+√
+22.(15.3)
+The threshold onh and the constantK0 are independent of the environment, the transporters and
+all the measures.
+The product in the definition ofω is part of the hypothesis: after fixingz, the two factors
+are separate subprobabilities. The theorem allows their laws to depend arbitrarily onz, while
+the convolution withξ uses the same measure for every environment. The first measure controls
+inverse images of whole halves; the conditional factors control images of buffer complements. The
+proof below uses these two orientations at different steps.
+15.1 A signed tabloid containing each irreducible
+For positive part sizess1,...,s r summing tom, choose on each factor ofSs1 ×···×S sr either
+its trivial or its sign representation. Inducing their tensor product toSm gives a signed tabloid
+representation. It has an orthonormal basis indexed by ordered set partitions(T1,...,T r)of
+49
+
+Page 50
+{1,...,m} with |Ti|= si, and each group element acts by a signed permutation matrix. Its
+dimension is
+M= m!∏
+isi!.
+Tensoring the whole representation with sign preserves this basis property and interchanges the
+trivial and sign choices on all factors. We use the usual tableau description of irreducibles, the
+hook-length formula and the Pieri rule; see [13, 4].
+Lemma 15.2(Polynomial-size signed tabloid embedding).For everym≥ 1and every partition
+λ⊢m , the irreducible representationVλ occurs in a signed tabloid representation of dimensionM
+with
+M≤D C0
+λ , C 0 = 2,000,000.
+Proof. The subgroup constructed in Lemma 7.1 is a product of symmetric groups on disjoint
+assigned row or column sets. Those sets partition them labels, so after omitting empty sets it is
+conjugate toJ = Ss1 ×···×S sr. The occurring characterχ is trivial or sign on each factor. The
+full-group and trivial-subgroup choices in that lemma have the same form.
+Frobenius reciprocity now placesVλ in IndSm
+J χ. Its coset basis is indexed by the ordered set
+partitions of sizess1,...,s r, and each group element permutes this basis with signs becauseχ
+takes values in{1,−1}. It is therefore a signed tabloid representation, with
+M= [S m :J]≤D 1024
+λ ≤DC0
+λ .
+Appendix B gives an independent construction from diagonal arms and legs, together with a
+degree-sum proof using those same part sizes. The tuple estimate below needs only the signed
+basis and the polynomial dimension bound just proved.
+15.2 Tuple caps give a normalized Hilbert–Schmidt bound
+Lemma 15.3(Buffer-complement estimate).Let E have m elements, partitioned intoL buffers,
+and letν be a subprobability onSE. Suppose that for every bufferB, the marginal ofν on the
+ordered image tuple ofE\B is pointwise at most twice its uniform marginal. IfL≥ 2C0, then for
+every irreducibleγofS E,
+∥ˆν(γ)∥2
+HS
+Dγ
+≤min{1,2D −1/2
+γ }.(15.4)
+Proof. Fix two tabloids of part sizess1,...,s r, and letE0 be the event that a permutation takes
+the first to the second. For bufferBz, letsz
+i count the elements of the first tabloid’s partilying in
+Bz, and set
+M= m!∏
+isi!, M z = |Bz|!∏
+isz
+i!.
+Relax E0 by requiring the correct target part only for positions outsideBz. This relaxed event is
+determined by the corresponding image tuple. Conditional on any successful outside assignment,
+the unassigned target parts have sizessz
+i, so a uniform completion succeeds with probability1/Mz.
+Since UE(E0) = 1/M, the relaxed event has uniform probabilityMz/M. Its probability underν,
+and henceν(E0), is at most2Mz/M.
+50
+
+Page 51
+The product∏
+zMz counts the ways to assign the part names inside the buffers with these
+fixed counts; all such assignments are among theM unrestricted assignments with totalssi. Thus∏
+zMz ≤M, and some buffer hasMz ≤M 1/L. We have proved the uniform entry bound
+ν(E0)≤2M −1+1/L.
+In the signed tabloid representation, each absolute entry of the averaged matrix is bounded by this
+probability. Each column has absolute sum at mostν(SE) ≤1, since every group element acts by
+a signed permutation matrix. Its squared Hilbert–Schmidt norm is consequently at most2M1/L.
+Choose the signed tabloid containingγ from Lemma 15.2. Orthogonal decomposition into
+irreducibles shows that its squared Hilbert–Schmidt norm bounds the contribution of any one copy
+ofγ. Hence
+∥ˆν(γ)∥2
+HS
+Dγ
+≤2DC0/L−1
+γ ≤2D−1/2
+γ .
+The bound by one follows separately because the average of unitaries against a subprobability is a
+contraction.
+We also need to retain the multiplicity in restriction to two halves. The following elementary
+consequence of the Littlewood–Richardson rule is stronger than a count of the occurring types
+alone.
+Lemma 15.4(Two-factor multiplicity bound).Forλ⊢ 2hand α,β⊢h , letcλ
+αβ be the multiplicity
+ofV α ⊗Vβ in the restriction ofVλ toS h ×Sh. Then
+cλ
+αβ ≤min(Dα,Dβ).
+Proof. The Littlewood–Richardson rule counts certain tableaux of skew shapeλ/α and contentβ
+whose reading words satisfy the lattice condition. The word determines the tableau. Every prefix
+of such a word has weakly decreasing counts of the successive letters. All words of contentβ with
+this prefix condition are in bijection with standard tableaux of shapeβ: put the successive integers
+in the next available box of the row specified by the letter. The prefix condition makes each partial
+shape a partition. There areDβ such words, so the multiplicity is at mostDβ. Interchanging the
+two factors gives the bound byDα.
+15.3 Positive conjugation and the product transfer
+We now have the two ingredients needed for Theorem 15.1: a small normalized Hilbert–Schmidt
+norm for each conditional factor, and a bound on the multiplicity of each pair of factors. The
+remaining step is to use the first law’s inverse-image caps to average positive operators.
+Proof of Theorem 15.1.Fix an irreducibleρ= ρλ of SV, and putD= Dλ >1. For almost every
+z, let
+Bz =
+∑
+y∈H
+(νz
+A ⊗νz
+C)(y)ρ(y).
+Then
+ˆθ(λ) =E Z
+∑
+x
+ξ(x)ρ(tZ)BZρ(x).
+51
+
+Page 52
+Jensen’s inequality remains valid for a subprobability by adding the zero vector with its missing
+mass. Sinceρ(tZ)is unitary, for every vectoruwe obtain
+∥ˆθ(λ)u∥2 ≤E Z
+∑
+x
+ξ(x)∥BZρ(x)u∥2.(15.5)
+It is enough to bound the positive operator in the right side.
+Fixzfor the moment. The restriction toHdecomposes as
+Vλ
+⏐⏐
+H =
+⨁
+α,β⊢h
+Vα ⊗Vβ ⊗C cλ
+αβ.
+On one occurring block writea= Dα, b= Dβ and c= cλ
+αβ. Because the conditional measure is a
+product, the block ofBz is exactly
+BA(α)⊗B C(β)⊗I c, B J(γ) = ˆνz
+J(γ).
+Both factor matrices are contractions. The contribution of this block toB∗
+zBz is therefore bounded
+in positive-semidefinite order by the operatorQA whose block is
+BA(α)∗BA(α)⊗I b ⊗Ic
+and which is zero on the other blocks. In particularQA commutes withρ(SC).
+If x and x′have the same ordered inverse images onA, thenx′= kx for somek∈S C. Thus
+ρ(x)∗QAρ(x)depends only on x−1|A. It is positive, so the pointwise cap(15.1) gives an operator
+inequality:
+∑
+x
+ξ(x)ρ(x)∗QAρ(x)⪯2E x∼UV ρ(x)∗QAρ(x)
+= 2TrQA
+D I= 2 cab
+D
+∥BA(α)∥2
+HS
+a I.
+Here P⪯Q means thatQ−P is positive semidefinite; the uniform average is scalar by irreducibility,
+and its trace determines the scalar. Dropping theA factor instead gives the same estimate with
+∥BC(β)∥2
+HS/b, using the cap onx−1|C. Consequently the averaged contribution of this block is
+bounded by
+2cab
+D min
+{
+1,2a−1/2,2b−1/2
+}
+I,(15.6)
+where Lemma 15.3 supplies the two normalized norms.
+The weightscab/D sum to one. For blocks withmax(a,b) ≥D1/10, summing(15.6) therefore
+costs at most4D−1/20I. On each remaining block, Lemma 15.4 givesc≤D 1/10, socab/D≤D −7/10.
+By Theorem 6.3, for all sufficiently largeh the number of partitions ofh with degree less than
+D1/10 is at most
+D1/10 ∑
+α⊢h
+D−1
+α ≤3D1/10.
+There are at most9D1/5 such pairs. Their total contribution to(15.6) is at most18D−1/2I. Thus,
+uniformly inz,
+∑
+x
+ξ(x)ρ(x)∗B∗
+zBzρ(x)⪯(4D −1/20 + 18D−1/2)I⪯22D −1/20I.
+Insert this into (15.5) and take square roots. This proves (15.3).
+52
+
+Page 53
+15.4 Mass, sign and a fixed convolution power
+Corollary 15.5(Completion of the conditional-product bound).IdentifyV with {1,..., 2h}, and
+consider a sequence of the data of Theorem 15.1 withh→∞ and fixedL. Suppose thatµ is a
+probability onS2h satisfyingθ≤µpointwise,
+θ(S2h) = 1−o(1),| ˆµ(sgn)|=o(1).
+Then
+∥µ∗100 −U{1,...,2h}∥TV −→0.
+In particular the sign hypothesis holds ifµhas exactly zero expected sign.
+Proof. Write q= θ(S2h)and j = 100. Convolution preserves pointwise domination of nonnegative
+measures, soθ∗j ≤µ∗j, and the missing mass is1−qj =o(1). Also
+|ˆθ(sgn)|≤| ˆµ(sgn)|+ (1−q) =o(1).
+The trivial coefficient ofθ∗j −U is qj −1 = o(1), and its sign coefficient isˆθ(sgn)j = o(1). For all
+other irreducibles, operator-norm submultiplicativity and∥B∥HS ≤
+√
+D∥B∥op give
+∑
+Dλ>1
+Dλ∥ˆθ(λ)j∥2
+HS ≤K 2j
+0
+∑
+Dλ>1
+D2−2j/40
+λ
+=K 200
+0
+∑
+Dλ>1
+D−3
+λ =o(1),
+by Theorem 6.3. No normality assumption on the Fourier matrices is used.
+Finite-group Plancherel, including the trivial and sign terms, now yields
+(2h)!
+∑
+g
+⏐⏐⏐⏐θ∗j(g)− 1
+(2h)!
+⏐⏐⏐⏐
+2
+=o(1).
+Cauchy–Schwarz gives vanishing absolute sum of this difference. Adding the nonnegative missing
+measure of mass1−q j proves the asserted total-variation convergence forµ∗j.
+A Independent degree-summation arguments
+The quantitative toolkit in Section 6 proves every inverse-power limit needed by the transfers. The
+arguments below retain distinct ways to obtain those limits: some use only the composition bound
+on partitions, and some avoid the hook formula. We use the same notationL(λ), k(λ), Dλ, Cu
+andZ u(n)as in that section. The common tableau and hook estimates are Lemmas 6.1 and 6.2.
+A.1 A hook proof at the twentieth power
+The following proof needs only the composition bound on the number of partitions. Its explicit
+exponent is useful when an argument counts small subgroup types without the sharper partition
+estimate.
+Lemma A.1(Inverse-twentieth powers and type counts).One has Z20(n) →0. There is an
+absolute constantK0 such that, for alln≥1andR≥1,
+#{λ⊢n:D λ ≤R}≤K 0R20.(A.1)
+53
+
+Page 54
+Proof. Orient the first row to have lengthL = L(λ)and put k = n−L . If L < n/8, then
+Dλ ≥(4/e)n, so the contribution is at most[2(e/4)20]n = o(1). ForL≥n/ 8and k≥ 1, (6.6) gives
+Dλ ≥
+(
+n
+k
+)
+exp
+(
+−k(1 + logL)
+L
+)
+.
+There are at most2·2k shapes at eachk. For1 ≤k≤ √n, the exponent is uniformlyo(1)and(n
+k
+)
+≥(n/k) k ≥nk/2. The contribution is at most
+2eo(1)
+⌊√n⌋∑
+k=1
+(2n−10)k =o(1).
+For√n<k≤ 7n/8, use
+(n
+k
+)
+≥(8/7)k and k(1 + logL)/L≤ 7(1 + logn). This contribution is at
+most
+2e140n140 ∑
+k>√n
+[2(7/8)20]k =o(1),
+since2(7 /8)20 <1. The full inverse-twentieth sum is uniformly bounded after adjoining the row
+and column and the finitely many small sizes. Each type of dimension at mostR contributes at
+leastR −20 to that sum, proving (A.1).
+A.2 Direct reciprocal and inverse-square proofs
+These proofs share a summation step, not a dimension estimate. At deficitk≥ 1there are at most
+2p(k)shapes. A lower bound that diverges at each fixedk and has a summable inverse-power
+majorant therefore gives a vanishing near-row and near-column sum. In the remaining ranges,
+Dλ ≥ecn, or evenecn0.6
+, beatsp(n) ≤e3√n. Adding the row and column and finitely many small
+sizes then gives the corresponding constantCu. Each argument below specifies its dimension
+bounds and the partition count it uses.
+Lemma A.2(Direct inverse-square summability).One has C2 <∞ and Z2(n) →0. This
+conclusion admits each of the tableau, hook-ratio, and second-row proofs below.
+Initial-row interleavings and diagonals.Orient a longest line as the first rowL = n−k . For
+1 ≤k≤n/ 3, the boundDλ ≥
+(n−k
+k
+)
+≥2k and the composition count2p(k) ≤2 ·2k give the
+majorant2 ·2−k, with fixed-k divergence. Ifk >n/3and L≥n/ 8, retain⌊L/2⌋lower boxes to
+obtain
+Dλ ≥
+(
+L
+⌊L/2⌋
+)
+≥ 2L
+L+ 1 ≥ 2n/8
+n+ 1 .
+If L<n/ 8, diagonal filling givesDλ ≥23n/4. The shared summation step completes this hook-free
+proof.
+The alternative diagonal cutoff L < n/4gives Dλ ≥ 2n/2. For L≥n/ 4, retain b =
+min(k,⌊L/2⌋): k≤L/ 2gives the same2 k majorant, while k > L/2gives the exponential
+central-binomial bound.
+Initial-row interleavings with factorial or hook tails.At k≤n/ 4, use
+(n−k
+k
+)
+≥3k, with inverse-
+square majorant2(2/9)k; atk≤n/ 3, use2k and2 ·2−k. Either binomial diverges for fixed positive
+54
+
+Page 55
+k. The following rows give alternative completions of these near-row bounds. In each middle range
+retain the first row andblower boxes:
+middle range b lower bound forDλ
+k>n/4, L≥n/10 ⌊L/4⌋ 4b
+k>n/4, L≥n/8 ⌊L/4⌋ 4b
+k>n/4, L≥n/8 ⌊n/32⌋ 4b
+k>n/4, L≥n/8 ⌊n/16⌋ 2b
+k>n/3, L≥n/10 ⌊L/3⌋ 3b
+k>n/4, L≥n 0.6 ⌊L/4⌋ 4b
+Every row follows fromDλ ≥
+(L
+b
+)
+≥(L/b)b. There are enough lower boxes: k > n/4implies
+k > L/3, andk > n/3implies k > L/2; the stated cutoffs also ensureb≤L . The fixed-cutoff
+rows are exponential inn. Below L = n/10or n/8, the factorial form of diagonal filling gives,
+respectively,(5 /e)n or(4 /e)n. These are hook-free completions; using the hook formula gives the
+same two bounds independently. For the moving cutoff, the middle bound isecn0.6
+and hooks
+below the cutoff given!/(2n0.6)n. Thus every row completes the inverse-square sum.
+First-row hook ratios.For k≤n/ 4, (6.7) gives Dλ ≥e−1(n
+k
+)
+, so the inverse-square sum is at most
+2e2 ∑
+1≤k≤n/4
+2k(k/n)2k =o(1).
+The summands inside the sum are at most8−k and vanish at fixedk. In the remainderL< 3n/4,
+use(5 /e)n for L≤n/ 10; otherwise retainb = ⌊L/4⌋lower boxes. The hook ratio givesDλ ≥
+e−1(L+b
+b
+)
+≥e−14b, whereb≥n/50for largen.
+Two alternative hook cutoffs retain different quantitative losses. ForL≥n/ 2, opposite
+rearrangement gives
+Dλ ≥
+(
+n
+k
+)
+e−k(1+logL)/L ≥2 ke−k(1+logL)/L ≥(
+√
+2)k
+for largen. Here use2p(k) = eO(
+√
+k) for domination; the binomial gives fixed-k divergence. For
+n/10 ≤L<n/ 2,
+(n
+L
+)
+is exponential innand the logarithmic correction isO(logn); belown/10use
+(5/e)n. Alternatively, split atL= 3n/4and n/8: the first range has short-tail lossk/(L−k+1) ≤1,
+the middle uses the sameb = ⌊L/4⌋hook subdiagram, and the last uses(4/e)n. Each choice
+proves the limit by the shared summation argument.
+Second-row width and two-row rectangles.Writec=λ 2 after orientation. At1≤k≤n/4,
+Dλ ≥
+(
+n−c
+k
+)
+≥
+(
+n−k
+k
+)
+.
+Its ratio base is at least√n/2for k≤ √nand at least three for√n<k≤n/ 4, so the composition
+count gives vanishing geometric sums. In the remainder, hooks handleL<n/ 10. ForL≥n/ 10
+andc≤L/2,
+Dλ ≥
+(
+k+L−c
+k
+)
+≥2 min(k,L−c) ≥2 n/20.
+55
+
+Page 56
+The middle inequality follows by retainingmin(k,L−c )factors in the binomial product. Ifc>L/ 2,
+the diagram contains a two-row rectangle of width⌊n/20⌋, whose Catalan number is exponential
+in n. The subexponential total count finishes. The alternative near-row cutoffk≤n/ 3gives
+majorant2 ·2−k; in its remaindern/10 ≤L< 2n/3, the same minimum is at leastn/20, and the
+rectangle may have widthc.
+Direct reciprocal bounds by interleaving and ballot words.Interleaving givesDλ ≥
+(n−k
+k
+)
+≥3k on
+1 ≤k≤n/ 4. Use the sharper deficit count2p(k) ≤2e3
+√
+k to sum2 p(k)3−k. Fork>n/ 4, hooks
+give2 n if L<n/ (4e); otherwiseb= min(k,⌊L/2⌋)is a positive linear fraction ofn and
+(L
+b
+)
+≥2b.
+Equivalently, split atL= n/8, usingb= ⌊n/16⌋above and(4 /e)n below. Both giveC1 <∞ and
+Z1(n)→0without a near-row hook ratio.
+Ballot words permit the coarser composition count near a long row. ForL≥n/ 2, the binomial
+difference in(6.3) diverges at fixedk, while its Catalan bound is at least4k/((k+ 1)(2k+ 1)).
+The reciprocal contribution is therefore dominated by a constant times(k+ 1)(2k+ 1)2−k. For
+n/10 ≤L < n/2, retain L lower boxes and use their Catalan bound; belown/10, hooks give
+(5/e)n.
+A quarter-tail ballot completion instead splits atL= n/8and3 n/4. The first range has hook
+bound(4/e) n; in the middle,b=⌊L/4⌋lower boxes give
+Dλ ≥
+(
+L+b
+b
+)
+L−b+ 1
+L+ 1 ,
+exponential inn. For L >3n/4, the ballot fraction is at least1/2, so Dλ ≥1
+2
+(n
+k
+)
+≥1
+2 4k. The
+deficit count and fixed-kdivergence finish this version as well.
+A reciprocal hook proof.The hook estimates in Lemma 7.1 giveDλ ≥e n/64 for n≥ 64and
+L≤3n/4, which beats the subexponential total count. ForL>3n/4andk≥1,
+Dλ ≥e−1(n/k)k ≥e−14k.
+The composition count gives the reciprocal majorant2e2−k, and the first bound diverges at fixed
+k. Thus Z1(n) →0and C1 <∞ follow independently from the hook comparisons used to control
+the subgroup index.
+A.3 Coarse partition counts and square-root dimension bounds
+Lemma A.3(Elementary sixteenth and thirteenth powers).The conclusions Cu <∞ and
+Zu(n)→0foru= 13,16follow from tableau counting andp(n)≤2 n alone.
+Proof. If1 ≤k≤n/ 3, the initial-row construction givesDλ ≥
+(n−k
+k
+)
+≥2k, with at most2 ·2k
+shapes. The contribution is bounded by2·2−(u−1)k, and each fixed-kcontribution tends to zero.
+For k > n/3and L≥n/ 8, retain⌊L/2⌋lower boxes to getDλ ≥2n/8/(n+ 1). The remaining
+contribution in this range is at most
+(n+ 1) u2(1−u/8)n =o(1).
+ForL<n/ 8, diagonal filling givesDλ ≥23n/4, and the contribution is at most2(1−3u/4)n = o(1).
+At u= 16these two bounds are exactly(n+ 1)162−n and2 −11n. Atu= 13they vanish because
+13/8>1and39/4>1. The finitely many small-size sums give the uniform constants.
+56
+
+Page 57
+Lemma A.4(A tail-adapted diagonal bound).For all sufficiently largen and every shape of
+deficitk=k(λ)≥1,
+Dλ ≥2 k/2, D λ ≥L(λ)≥ √n.
+These inequalities andp(k)≤2 k proveC4 <∞andZ 4(n)→0.
+Proof. Let a be the largest value ofi+ j− 1over cells( i,j). Diagonal filling givesDλ ≥2n−a.
+Every cell satisfiesij≤n , so its smaller index is at most√n and a≤L + √n. If k<n/ 2, orient
+the first row asL. A lower cell satisfies(i−1)j≤k , whencei+ j−1 ≤k + 1 ≤L; thusa= L. If
+k≥n/ 2, thenn−a≥k− √n≥k/ 2for large n. This proves the first bound in both cases. A
+non-row, non-column shape contains(L,1)after orientation; that hook hasL tableaux, proving
+the second bound. For eachk, at most2p(k) ≤2 ·2k shapes occur, so their inverse fourth powers
+are bounded by2·2−k. At fixed positivek they tend to zero byDλ ≥√n. Dominated convergence
+and the finite-small-size argument finish.
+Lemma A.5(Inverse-tenth powers from a square-root first line).One hasC10 <∞ and Z10(n) →
+0, using only the first-row interleaving construction and the boundp(n)≤e3√n.
+Proof.Orient the longest line as the first rowL≥√n. For1≤k<L/2, useD λ ≥
+(L
+k
+)
+≥2 k; the
+contribution atk is at most2 ·2−9k and tends to zero for fixedk. Fork≥L/ 2, retain⌊L/2⌋lower
+boxes. The boundDλ ≥2 L/(L+ 1)gives total contribution at most
+e3√n(n+ 1) 102−10√n =o(1).
+This proves the limit and the uniform bound.
+Central-binomial powers eight and twenty.Divide atk≤n/ 3. Initial-row interleaving
+gives Dλ ≥
+(n−k
+k
+)
+≥2k, with fixed-k divergence and near-row majorants2·2−7k and2 ·2−19k. For
+k>n/ 3, one hask>L/ 2and L≥ √n. Retaining ⌊L/2⌋lower boxes givesDλ ≥2L/(L+ 1), so
+the remaining sums are at most
+e3√n(n+ 1) u2−u√n =o(1) (u= 8,20),
+because8 log 2 >3. This proves both limits directly from central-binomial interleavings, without
+ballot words.
+Weaker central-binomial estimates.For powers16and32, the same near-row cutoff and( L
+⌊L/2⌋
+)
+≥2 ⌊L/2⌋give
+e3√n2−u⌊√n/2⌋=o(1) (u= 16,32).(A.2)
+Unlike Lemma A.3, these proofs use only a square-root lower bound onL and no diagonal filling.
+For power12, divide atk≤⌊L/ 2⌋: the near-row bound
+(L
+k
+)
+≥2k gives majorant2 ·2−11k and
+fixed-kdivergence. In the remainder,
+( L
+⌊L/2⌋
+)
+≥2 L/2 for largeLgivese 3√n−6(log 2)√n =o(1).
+The ballot inverse-eighth route.For1 ≤k≤L , the ballot fraction is at least1/(k+ 1). Thus
+Dλ ≥2k/(k+ 1)gives summable majorant2 k(k+ 1)82−8k, using2 p(k) ≤2k; the full binomial
+difference diverges at fixedk. Fork>L , retainLlower boxes to getDλ ≥
+(2L
+L
+)
+/(L+1) ≥2L/(L+1).
+The remaining sum is at moste3√n(n+ 1)82−8√n = o(1). For every route, adjoining the two linear
+types and finitely many small sizes gives the complete sum’s uniform boundedness.
+57
+
+Page 58
+Lemma A.6(A square-root lower bound in the deficit).For everyn≥1andλ⊢n,
+logDλ ≥log 2
+2
+√
+k(λ).(A.3)
+In particularC32 <∞follows from this bound alone andp(k)≤e 3
+√
+k.
+Proof. Orient a longest line as the first row. Putb= λ2 and h= λ′
+1. Fork≥ 1, b(h−1) ≥k. If
+h−1 ≥
+√
+k, the diagram contains a hook with row and column lengthh, becauseL≥h . That
+hook has
+(2h−2
+h−1
+)
+≥2h−1 tableaux. Otherwiseb>
+√
+kand the diagram contains a two-row rectangle
+of widthb. Its Catalan number is at least2b−1: encode the2 b−1 compositions of b as distinct
+Dyck paths obtained by concatenating pyramids of those lengths. In this second caseb≥ 2, so
+b−1 ≥b/2 >
+√
+k/2. Subdiagram extension proves(A.3); the casek = 0is immediate. Finally
+sum over deficits using at most2p(k)shapes:
+∑
+λ⊢n
+D−32
+λ ≤2 +
+∑
+k≥1
+2e3
+√
+ke−16(log 2)
+√
+k <∞.
+A.4 Further direct fixed-power constructions
+Two final counts retain the larger powers that arise when only especially rough estimates are used.
+They are independent specializations of the tableau constructions, not deductions from an already
+proved smaller inverse power.
+For power30and1 ≤k≤n/ 4, choose allk lower labels from{2k+ 1,...,n} . Fill them in one
+fixed standard order and put the other labels increasingly in the first row. Since the first2k labels
+then lie in the top row, every lower predecessor condition holds. This gives
+Dλ ≥
+(
+n−2k
+k
+)
+≥(n/(2k)) k ≥2 k.(A.4)
+The2 ·2k shape count supplies the summable majorant2·2−29k and fixed-k convergence. For
+k>n/ 4, putb= ⌊√n/4⌋and retain the first rowL≥ √ntogether withblower boxes. Applying the
+same over-reserving construction to this subdiagram givesDλ ≥
+(L−b
+b
+)
+≥3b. Since30 log 3/4 >3,
+its inverse thirtieth power dominatesp(n)≤e3√n. HenceZ30(n)→0andC 30 <∞.
+For power32, a proof using the rough count2n separates three ranges. IfL≤n/ 8, hooks give
+(4/e)n, which is enough because32log(4/e) >log 2. If L>n/ 8and k >n/3, thenk >L/2and
+retaining ⌊L/2⌋lower boxes givesDλ ≥2⌊L/2⌋; its inverse thirty-second power also dominates2n.
+For1≤k≤n/3, use
+Dλ ≥
+(
+n−k
+k
+)
+,2 k+1
+( k
+n−k
+)32k
+≤2 1−31k,
+with fixed-k convergence. This proves the same complete inverse-thirty-second assertion without
+using the square-root partition bound.
+For power6, the hook ratio givesDλ ≥e−1(n
+k
+)
+for1 ≤k≤n/ 3. The near-row and near-column
+contribution is bounded by
+2e6 ∑
+1≤k≤n/3
+[2(k/n)6]k =o(1).(A.5)
+58
+
+Page 59
+For k≤ √n compare with the geometric series of base2n−3; fork> √n use2( k/n)6 ≤2/36 <1.
+In the remainderL≤ 2n/3. If L≥n/ (4e), retainb= ⌊L/2⌋lower boxes and apply the hook ratio
+to the resulting diagram, obtaininge−1(L+b
+b
+)
+≥e−13b. If L<n/ (4e), hooks give(n/(2eL))n >2n.
+These exponential bounds finish the sum withp(n) =eO(√n).
+A direct fourth-power proof.For power4, one may also use the near-row majorant2·2−3k on
+k≤n/ 3, the middle bound2L/(L+1)on n/8 ≤L< 2n/3, and the hook bound(4/e)n on L<n/ 8.
+This is a different use of the fourth power from the tail-adapted diagonal argument in Lemma A.4.
+It uses the subexponential total partition count in its last two ranges.
+The sharper quantitative estimate
+∑
+λ⊢n
+D−u
+λ = 2 +O(n−u) (u>0fixed)
+is due to Liebeck and Shalev [7, Theorem 2.6]. The arguments above supply the boundedness and
+vanishing assertions used here without that rate.
+The corresponding alternating-group statement is
+∑
+χ∈Irr(An)
+χ(1)−u = 1 +o(1) (u>0fixed).(A.6)
+Here An is the subgroup of even permutations. For completeness, the index-two restriction rule
+makes the two vanishing assertions equivalent. IfV is irreducible forSn, Frobenius reciprocity
+and IndSn
+An ResSn
+An V ∼= V⊕ (V⊗sgn )show that the endomorphism algebra of its restriction has
+dimension one or two. Thus the restriction is irreducible or is a sum of two distinct irreducibles.
+In the latter case an odd permutation exchanges the two summands, since otherwise either would
+be anSn-invariant proper subspace. Both therefore have dimensiondimV/2. Every irreducible of
+An occurs in some restriction, by induction and Frobenius reciprocity; it occurs in restrictions of
+at most twoSn-types, since its induced representation has dimension twice its own and each such
+type has at least its dimension. Forn≥ 5, writeZA
+u(n)for the sum over the nontrivialAn-types.
+The onlySn-types restricting to the trivial type are the trivial and sign representations, so the
+preceding counts give
+Zu(n)≤2Z A
+u(n), Z A
+u(n)≤2 u+1Zu(n).
+This proves the equivalence and(A.6), while retaining the sharper cited symmetric-group rate
+separately.
+B An independent signed-tabloid construction
+The proof of Lemma 15.2 in the main text uses the row–column assignment from Lemma 7.1.
+Here we construct the signed tabloid directly from diagonal arms and legs and prove its dimension
+bound from the hook formula. The same part sizes then give an independent reciprocal-degree
+argument. Throughout,C0 = 2,000,000as in Theorem 15.1.
+An arm–leg proof of Lemma 15.2.Transposingλtensors its representation with sign and does not
+change its dimension. We may therefore orient the diagram so thatλ1 ≥λ ′
+1, where the prime
+denotes transpose, and undo this orientation by a sign twist at the end. Letk be its diagonal
+length, and define
+ai =λi −i+ 1, b i =λ′
+i −i(1≤i≤k).
+59
+
+Page 60
+The ai count horizontal arms including their diagonal boxes; thebi count vertical legs below those
+boxes. They sum tom. Use the sizesa1,b1,...,a k,bk, omitting zero parts, with trivial factors on
+the arms and sign factors on the legs.
+To check occurrence, add arm1, leg1, arm2, leg2, and so on. Immediately before armi, rows
+above ihave their final lengths, while rowr≥i has lengthmin(i−1,λr). Adding armicompletes
+row i and is a horizontal strip. Adding legi then extends columni down to heightλ′
+i and is a
+vertical strip. Each intermediate shape is a partition. Repeated application of the horizontal and
+vertical Pieri rules therefore shows that the resulting induced representation containsVλ.
+It remains to compare its dimension withDλ. The hook-length formula gives
+M
+Dλ
+=
+∏
+1≤i,j≤k
+(ai +bj)
+( k∏
+i=1
+ai
+) ∏
+1≤i<j≤k
+(ai −aj)(bi −bj)
+.(B.1)
+Here is a direct verification of the identity. The hooks in the diagonalk by k square have lengths
+ai + bj. For any partition withk rows of lengthsri, allowing zero rows, the hook lengths in row
+i are the integers from1to ri + k−i with ri −rj + j−i omitted for everyj > i. Indeed its
+hook at columnt has lengthri −t + 1 + #{j >i: rj ≥t}; the gaps ast increases are precisely
+those omitted values. Apply this observation to the diagram to the right of the square, whose row
+lengths areλi −k, and to the transpose of the diagram below it, whose row lengths areλ′
+i −k.
+Their hook products are, respectively,
+∏
+i(ai −1)!∏
+i<j(ai −aj),
+∏
+ibi!∏
+i<j(bi −bj).
+Division by∏
+iai!bi!proves (B.1).
+When k = 1, orientation givesa1 ≥b1 + 1, so the ratio in(B.1) is at most two. A one-row
+diagram hasM = Dλ = 1. Every other such hook hasDλ ≥2, since the entry2can be placed
+either to the right of or below1and the resulting partial tableaux can be completed. The claimed
+bound follows in this case.
+Assume now thatk≥ 2. All logarithms in this proof are natural. Arithmetic–geometric mean
+bounds the numerator in(B.1) by( m/k)k2
+. The two sequencesai and bi are strictly decreasing
+integers, so their two Vandermonde products are at least∏k
+j=1((j−1)!) 2. For1≤j≤k,
+log((j−1)!)≥(j−1) logk−k.
+To see this, sumlog(r/k)for1 ≤r < j, and bound that sum below by the sum for1≤r≤k ,
+which is at least−kbyk!≥(k/e) k. Consequently
+log(M/Dλ)≤k 2(
+log(m/k2) + 3
+)
+.(B.2)
+We need two lower bounds onDλ to pay for this ratio. Every standard tableau of a contained
+diagram extends toλ by adding the remaining boxes in a fixed order compatible with rows and
+columns. In particular the containedkbyksquare gives
+Dλ ≥ (k2)!
+(2k)k2 ≥
+(k
+2e
+)k2
+.
+60
+
+Page 61
+It follows that
+logDλ ≥c0k2 logk, c 0 = 10−5.(B.3)
+For k≥ 64the displayed factorial estimate proves this directly. For2≤k <64, the contained
+two-square givesDλ ≥2, and10 −5632 log 63<log 2suffices.
+Orientation also givesa1 ≥m/(2k), since every arm and leg has size at mosta1. The diagram
+contains( a1,k,...,k )with k rows. Fill its firstk top-row boxes with the smallest entries. Then
+interleave the rest of the top row with any fixed standard order of thek(k−1)lower boxes. Each
+interleaving is a standard tableau, so
+Dλ ≥
+(
+a1 −k+k(k−1)
+k(k−1)
+)
+.
+If m≥ 16k3, putr= m/k3, u= a1 −k and v= k(k−1). Then u≥m/ (4k)and k2/2 ≤v≤k 2.
+Using
+(u+v
+v
+)
+≥((u+v)/v) v gives
+logDλ ≥k2
+2 log(r/4)≥ k2
+4 logr.(B.4)
+If m< 16k3, thenlog(m/k2) + 3 ≤13 logk, and(B.2)–(B.3) give logM≤ (1 + 13/c0) logDλ. If
+m≥16k 3, writelog(m/k2) + 3 = log(m/k3) + logk+ 3and use both degree bounds. This gives
+logM≤
+(
+5 + 1 + 3/log 2
+c0
+)
+logDλ.
+Both coefficients are less than2,000,000, completing the proof.
+This arm–leg construction also gives an independent way to sum reciprocal representation
+degrees. The same tabloid sizes therefore supply both the embedding and the degree estimates
+used for counting small restriction types and summing the final Fourier bounds.
+Lemma B.1(Degree sums from the tabloid embedding).For every fixeds>0,
+∑
+λ⊢m
+Dλ>1
+D−s
+λ −→0 (m−→∞).
+In particular∑
+λ⊢mD−1
+λ ≤3for all sufficiently largem.
+Proof. Let p(u)count partitions of u, withp(0) = 1. Foru≥ 1, evaluating its generating product
+atx=e −1/√u gives
+p(u)xu ≤
+∏
+j≥1
+(1−x j)−1,log
+∏
+j≥1
+(1−x j)−1 =
+∑
+i≥1
+1
+i(ei/√u −1) ≤√u
+∑
+i≥1
+i−2.
+Thus p(u) ≤e3√u. Orient λ so thatλ1 ≥λ′
+1, and use the preceding arm–leg construction with
+a1 = λ1 and j = m−a 1. For1 ≤j≤m/ 2, at most2 p(j)original diagrams have this value:
+delete the oriented first row, and remember whether a transpose was used. The tabloid dimension
+satisfiesM≥
+(m
+j
+)
+, and that construction gives
+D−s
+λ ≤M −s/C0 ≤
+(
+m
+j
+)−s/C0
+.
+61
+
+Page 62
+For each fixedj≥ 1this tends to zero. Since
+(m
+j
+)
+≥(m/j)j ≥2j on this range, the summable
+sequence2p(j)2 −js/C0 dominates the contributions. They therefore sum too(1).
+If j >m/2, every arm or leg used in the tabloid has size at mosta1 <m/2. Add some of these
+parts until their totalwfirst reachesm/4. Thenm/4≤w≤3m/4and
+M≥
+(
+m
+w
+)
+≥(m/w) w ≥(4/3) m/4.
+The total contribution of this range is at mostp(m)(4/3)−ms/(4C0) = o(1). The omitted j = 0
+diagrams are the row and column, whose representations are trivial and sign. They are the only
+one-dimensional representations form≥ 2, and their contribution to the inverse-first-degree sum
+is two.
+C Further fixed-coset transfer arguments
+The main transfer assigns each joint restriction type to one small factor, or covers the representation
+by small isotypic projections. The alternatives here retain different information. The first two
+arguments average many low-type projections before recovering a test vector; the third counts
+whole joint types. We also record parameter choices for these and the main estimates. Finally, a
+separate character construction removes whole longest lines instead of assigning individual boxes
+to rows or columns. Its dimension ratio, reciprocal-degree proof, and transfer are kept together.
+For the projection arguments and substitutions below, use the fixed-coset data of Section 4.
+Namely, letG= Sn, partition[ n] = M1 ⊔···⊔M b into nonempty blocks, and letHi = Sym(Mi)
+fix the complement. Letf≥0have mass at most one and satisfy
+f(gHi)≤ B
+[G:H i] (g∈G,1≤i≤b).
+Write D = dimρ for the degree of the ambient irreducible andCu = supm≥1
+∑
+λ⊢mD−u
+λ . The
+peeling construction concerns a single symmetric group first; its final transfer states its own
+equal-block data.
+C.1 Averages of many low-type projections
+Proposition C.1(Coefficient-space average).Forb= 32and capB= 4,
+∥ˆf(ρ)∥op ≤8
+3
+√
+C1 D−5/16.
+Proof. Let Pi now select factor degrees at mostD1/8. At most eight factors of any product type
+can exceed that threshold, so¯P = 32−1 ∑
+iPi ⪰3I/4. Lemma 4.1, the coset cap, and full-group
+Schur orthogonality give
+|⟨w, ˆf(ρ)Piv⟩|2 ≤4C1D−5/8∥w∥2∥Piv∥2.
+Here the selected coefficient space has dimension at mostC1D3/8. Thus ∥ˆfPi∥op ≤2√C1D−5/16.
+Average overiand multiply by ¯P−1, whose norm is at most4/3.
+Proposition C.2(Orbit-space average).Forb= 256and capB= 4,
+∥ˆf(ρ)∥op ≤4
+√
+C32D−1/4.
+62
+
+Page 63
+Proof. Let Pi select degrees at mostD2/b. At least half the factors of every product type meet
+this condition, so¯P = b−1 ∑
+iPi ⪰I/ 2. A vector in the range ofPi has orbit span of dimension at
+most C32D68/b by Lemma 3.1. The coset cap and Schur averaging, exactly as in Proposition 3.2,
+give
+∥ˆfPi∥op ≤2
+√
+C32D−1/2+34/b ≤2
+√
+C32D−1/4,
+since68 /256 ≤1/2. Average and use∥¯P−1∥op ≤2. This proof retains the geometric averaging
+mechanism and only uses the reciprocal power32.
+Proposition C.3(Four-factor coefficient decomposition).If there are four blocks and the sub-
+probability cap isB= 2, then
+∥ˆf(ρ)∥op ≤2C 2
+1/4D−1/8.
+Proof. Decompose a vector orthogonally into full product typesv = ∑
+τ vτ . If di are the four
+factor degrees, their product is at mostD. The sum of(∏
+idi)−1/4 over all possible product types
+is at mostC4
+1/4. Thus the numberTof occurring types is at mostC4
+1/4D1/4.
+For one type chooseiwith di ≤D1/4. The coefficient function ongHi belongs to a single type’s
+coefficient space, even when that type occurs repeatedly. Lemma 4.1 bounds its supremum bydi
+times its uniform root mean square. Sum over cosets with cap two, then apply Cauchy–Schwarz
+over the uniform cosets. Full-group Schur orthogonality yields
+∑
+g
+f(g)|⟨w,ρ(g)v τ ⟩|≤2d iD−1/2∥w∥∥vτ ∥≤2D −1/4∥w∥∥vτ ∥.
+Finally ∑
+τ ∥vτ ∥≤
+√
+T∥v∥, giving the claimed exponent and constant. The count here is of entire
+product types, unlike the blockwise assignment in Proposition 4.2.
+C.2 Exact substitutions
+For applications using a prescribed block count or reciprocal-degree power, the following substitu-
+tions give explicit constants and exponents. They are convenient choices, not optimal convolution
+counts. In Proposition 3.2,u= 16gives exponent −(1 −18/b)/2; u= 2gives −(1 −4/b)/2; u= 1,
+b= 8gives−5/16. Each substitution changes only the inequality ∑
+a≤D1/b a2 ≤CuD(u+2)/b.
+For Hilbert–Schmidt bounds, the coefficient proof withu= 2, b= 16, B = 3gives D∥ˆf∥2
+HS ≤
+9bC2D4/b. The pointwise character proof withu= 2, b= 8, B = 1gives ∥ˆf∥2
+HS ≤bC2D−1+6/b.
+The central-isotypic proof withu= 16, b= 64, B = 4gives4 bC16D−1+18/b. With respectively four,
+sixteen, and thirty-two convolutions, the nonsign exponents are−2, −3, and−22. The coefficient
+proof with u = 10gives B2bC10D−1+12/b; its sharper branching alternative is Proposition 4.6.
+These substitutions preserve the distinct proofs of the estimates even when a stronger estimate is
+also available.
+C.3 A separate construction by peeling longest lines
+The next construction chooses whole lines successively, instead of assigning individual boxes. Its
+index estimate is weaker, but its stepwise dimension inequality gives another proof of inverse-degree
+summability. The occurrence argument uses the horizontal- and vertical-strip cases of the Pieri
+rule [13].
+63
+
+Page 64
+Lemma C.4(A subcharacter obtained by peeling).Put Cpeel = 5122. Every irreducible represen-
+tation ofSm of degreeD has a one-dimensional character in its restriction to some subgroupJ
+with[ Sm : J] ≤DCpeel . At a step removing a longest first row or first column of lengthr, leaving
+sizesand degreeD ′, one has
+D
+D′ ≥
+(
+r+s
+r
+)1/Cpeel
+.(C.1)
+The degree of the empty remainder is one.
+Proof. Remove the longer of the first row and first column of the current diagram. In a row removal,
+the realigned lower diagramµis contained in the original diagramλ, andλ/µis a horizontal strip:
+every column loses exactly its bottom box. The Pieri rule and Frobenius reciprocity show that
+restriction toSs ×Sr contains Vµ tensored with the trivial representation ofSr. For a column
+removal use the sign representation and the transposed argument. Iteration supplies a product
+subgroup and a product of trivial and sign characters occurring in the original representation.
+To prove the index bound, it remains to compare dimensions at each step. Transpose so that a
+row is removed; then the diagram has height at mostr. If cj counts its lower boxes in columnj,
+the hook formula gives
+D
+D′ =
+(r+s
+r
+)
+R , R=
+r∏
+j=1
+(
+1 + cj
+r−j+ 1
+)
+,
+∑
+j
+cj =s.
+The cases= 0is immediate. Forr≥512ands≥16r, the boundc j ≤rgives
+R≤
+(
+2r
+r
+)
+≤4 r,
+(
+r+s
+r
+)
+≥(1 +s/r) r ≥17 r.
+ThusR≤
+(r+s
+r
+)1/2
+. For1≤s≤16r, the opposite ordering ofc j and(r−j+ 1) −1 instead gives
+logR≤ s
+r
+r∑
+j=1
+1
+j ≤s(1 + logr)
+r ,log
+(
+r+s
+r
+)
+≥slog(1 +r/s).
+Since(1 + logr)/r decreases for r≥ 512and is at most 1
+2 log(17/16)there, this also gives
+D/D′≥
+(r+s
+r
+)1/2
+.
+If r< 512and s> 0, thenr≥ 2and r+ s≤r 2. Each standard ordering of the lower diagram
+yields two distinct standard tableaux: fill the first row before that ordering, or fill its firstr−1
+boxes, the first lower box, the last top-row box, and then the remaining lower boxes in that ordering.
+The first lower box is in column one, so the second filling is also valid. These two constructions
+are injective and have disjoint images. HenceD/D′≥2, while
+(r+s
+r
+)
+≤2r2
+≤2Cpeel . This proves
+(C.1) in every case. Multiplying it through the successive steps telescopes the dimension ratios.
+The product of the binomial coefficients is exactly the index of the product subgroup constructed
+above, proving the assertion.
+Lemma C.5(Inverse-first-degree summability from peeling).The preceding stepwise estimate
+independently implies ∑
+λ⊢m:Dλ>1
+D−1
+λ −→0.
+Consequently, for all sufficiently largem and everyY≥ 1, Sm has at most3Y irreducible types of
+degree at mostY.
+64
+
+Page 65
+Proof. We use p(h) ≤e 3
+√
+h, which follows by evaluating the partition generating function at
+e−1/
+√
+h: the logarithm of the product is at most
+√
+h∑
+j≥1 j−2 ≤2
+√
+h, and the coefficient bound
+adds
+√
+h.
+The first removed lengthr is at least√m because both width and height are at mostr. If
+r<m/2, (C.1) gives
+logDλ ≥rlog(m/r)
+Cpeel
+.
+The concavity ofrlog (m/r)bounds it below on[ √m,m/2]by the smaller of 1
+2
+√mlogm and
+1
+2 mlog 2. After division by√m, this lower bound tends to infinity. It therefore dominates the
+logarithm3 √mof the number of all diagrams, proving a vanishing inverse sum in this range.
+If m/2 ≤r<m , puth= m−r≥ 1. At most2p(h)diagrams have this value, counting both
+orientations, and(C.1) gives Dλ ≥(m/h)h/Cpeel . For fixed h their inverse-degree contribution
+tends to zero. It is bounded by2e3
+√
+h2−h/Cpeel , a summable sequence. Dominated convergence
+handles this range. The remaining diagrams are the row and column, of degree one. Once the
+nonlinear reciprocal sum is at most one, at mostY nonlinear types have degree at mostY; adding
+the two linear types givesY+ 2≤3Y.
+Corollary C.6(The peeling character transfer).Letb= 2 22 and partitionn=bmpoints intob
+sets of sizem. LetHi permute theith set. Iff≥ 0has mass at most one andf(gHi) ≤2/[Sn : Hi]
+for everyg,i, then for all sufficiently largemand every irreducible of degreeD,
+∥ˆf(ρ)∥2
+HS ≤6bD−1+(Cpeel+2)/b.(C.2)
+Proof. Lemma 7.2, using Lemma C.4, bounds a full Hi-isotypic projection of degree dτ by
+2dCpeel+1
+τ /D in squared Hilbert–Schmidt norm. As in Theorem 7.3, the projections withdτ ≤Y =
+D1/b cover the identity. By Lemma C.5 there are at most3Y such types for each factor. Summing
+givesD −1 ·2b·3Y·Y Cpeel+1, which is (C.2).
+Here( Cpeel + 2)/b = (262144 + 2)/4194304 < 1/8. Thus four convolutions again tend to
+uniform whenever the retained mass tends to one and the original sign mean tends to zero, by
+Proposition 2.5. The peeling and box-assignment proofs supply the subcharacter hypothesis
+separately; neither uses the other’s subgroup construction.
+References
+[1] A. Czumaj, Random permutations using switching networks, inProceedings of the Forty-
+Seventh Annual ACM Symposium on Theory of Computing (STOC 2015), ACM, 2015, 703–712.
+doi:10.1145/2746539.2746629.
+[2] A. Czumaj and B. Vöcking, Thorp shuffling, butterflies, and non-Markovian couplings, in
+Automata, Languages, and Programming (ICALP 2014), Part I, Lecture Notes in Computer
+Science, vol. 8572, Springer, 2014, 344–355. doi:10.1007/978-3-662-43948-7_29.
+[3] P. Diaconis and M. Shahshahani, Generating a random permutation with random transposi-
+tions,Zeitschrift für Wahrscheinlichkeitstheorie und verwandte Gebiete57(1981), 159–179.
+doi:10.1007/BF00535487.
+65
+
+Page 66
+[4] P. Etingof, O. Golberg, S. Hensel, T. Liu, A. Schwendner, D. Vaintrob, and E. Yudovina,
+Introduction to Representation Theory, Student Mathematical Library, vol. 59, American
+Mathematical Society, 2011. Numbered references use the author’s lecture notes of January
+10, 2011:https://math.mit.edu/~etingof/replect.pdf.
+[5] J. S. Frame, G. de B. Robinson, and R. M. Thrall, The hook graphs of the symmetric group,
+Canadian Journal of Mathematics6(1954), 316–324. doi:10.4153/CJM-1954-030-1.
+[6] G. D. James,The Representation Theory of the Symmetric Groups, Lecture Notes in Mathe-
+matics, vol. 682, Springer-Verlag, 1978.
+[7] M. W. Liebeck and A. Shalev, Fuchsian groups, coverings of Riemann surfaces, subgroup
+growth, random quotients and random walks,Journal of Algebra276(2004), no. 2, 552–601.
+Proposition 2.5 and Theorem 2.6 appear on pages 15–16 of the author’s text.
+[8] B. Morris, Improved mixing time bounds for the Thorp shuffle andL-reversal chain,Annals
+of Probability37(2009), no. 2, 453–477. doi:10.1214/08-AOP409.
+[9] B. Morris, Improved mixing time bounds for the Thorp shuffle,Combinatorics, Probability
+and Computing22(2013), no. 1, 118–132. doi:10.1017/S0963548312000478.
+[10] OpenAI,Conditional information under deterministic coordinate sweeps, OpenAI Math Re-
+lease preprint OAI:Conditional-information-under-deterministic-coordinate-sweeps-September-
+26-2026, 2026.
+[11] OpenAI,Conditional permutations in a revealed switching environment, OpenAI Math Release
+preprint OAI:Conditional-permutations-in-a-revealed-switching-environment-September-26-
+2026, 2026.
+[12] OpenAI,Random coordinate frames and partial permutation laws, OpenAI Math Release
+preprint OAI:Random-coordinate-frames-and-partial-permutation-laws-September-26-2026,
+2026.
+[13] B. E. Sagan,The Symmetric Group: Representations, Combinatorial Algorithms, and Sym-
+metric Functions, second edition, Graduate Texts in Mathematics, vol. 203, Springer, 2001.
+doi:10.1007/978-1-4757-6804-6.
+[14] E. O. Thorp, Nonrandom shuffling with applications to the game of faro,Journal of the Amer-
+ican Statistical Association68(1973), no. 344, 842–847. doi:10.1080/01621459.1973.10481434.
+66

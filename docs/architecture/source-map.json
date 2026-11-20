@@ -16327,6 +16327,474 @@
       "role": "Fixed upstream manuscript or hashed public Workspace input"
     },
     {
+      "path": "benchmarks/openai-math-12/paper-progress/EgyptianFractions.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/EgyptianFractions.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/EntropyPhotonNumber.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/EntropyPhotonNumber.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/EuclideanRamsey.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/EuclideanRamsey.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/KMedianRefinedRecovery.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/KMedianRefinedRecovery.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/MatchingFPRAS.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/MatchingFPRAS.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/OneWayLiveness.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/OneWayLiveness.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/PartialPermutation.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/PartialPermutation.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/PowerFreeValues.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/PowerFreeValues.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/SecondKahnKalai.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/SecondKahnKalai.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/ShortEgyptianFractions.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/ShortEgyptianFractions.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/StronglyRayleighDPP.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/StronglyRayleighDPP.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/020/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/020/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/020/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/025/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/025/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/025/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/113/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/113/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/113/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/125/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/125/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/125/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/129/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/129/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/129/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/172/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/172/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/172/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/176/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/176/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/176/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/231/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/231/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/231/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/238/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/238/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/238/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/273/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/273/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/273/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
       "path": "benchmarks/openai-math-12/reference-solutions.json",
       "category": "benchmark inputs",
       "chapters": [

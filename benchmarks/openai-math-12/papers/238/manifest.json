@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "upstream_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/main.pdf",
+  "files": [
+    {
+      "path": "benchmark/paper.pdf",
+      "source_path": "238/paper.pdf",
+      "sha256": "88926b5e48099ed836f49f15c3ef759c14f7aabb140a14e9005ca7fe09727a8b"
+    },
+    {
+      "path": "benchmark/paper.txt",
+      "source_path": "238/paper.txt",
+      "sha256": "63cee62c1fa2a598bda99f39225deea69425ba996c045731c820aab7b42d9888"
+    }
+  ]
+}

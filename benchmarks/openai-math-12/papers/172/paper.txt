@@ -1,0 +1,1465 @@
+Page 1
+A classification of finite Euclidean Ramsey configurations
+OpenAI
+September 23, 2026
+Abstract
+We classify finite Euclidean Ramsey configurations by a necessary and sufficient tensor
+condition over their coordinate fields. The Ramsey property here concerns monochromatic
+congruent copies at the original scale under arbitrary finite colorings. The criterion
+shows that every nonempty subtransitive set and every nonempty set of at most five
+points on a circle is Ramsey. In particular, some Ramsey cyclic quadrilaterals are not
+subtransitive, disproving the necessity direction of the Leader–Russell–Walters conjectured
+characterization.
+Contents
+1 The classification problem 1
+1.1 The exact tensor criterion . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 2
+1.2 Geometric consequences . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+1.3 How the algebra forces a monochromatic copy . . . . . . . . . . . . . . . . . . 3
+2 Rational tensors and the coloring obstruction 4
+3 A finite lattice identity 7
+4 Exact coordinate permutations at two scales 9
+5 From paths to monochromatic copies 13
+5.1 Finite dimensions and synchronized weights . . . . . . . . . . . . . . . . . . . 14
+5.2 Realizing ultrafilter products by strings . . . . . . . . . . . . . . . . . . . . . 14
+5.3 The Hales–Jewett step . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 16
+6 From coordinate permutations to equal path endpoints 17
+6.1 Corrections supported on individual coordinates . . . . . . . . . . . . . . . . 17
+6.2 Averaging over coordinate permutations . . . . . . . . . . . . . . . . . . . . . 19
+6.3 Equal endpoints and completion of sufficiency . . . . . . . . . . . . . . . . . . 21
+7 Geometric consequences and examples 21
+7.1 Nine points on a circle . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 23
+7.2 Three concentric squares . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+1 The classification problem
+A finite nonempty setAin a Euclidean space isRamseyif, for every integerr≥ 2, there is an
+integer D≥ 1such that every mapc: RD →{1,...,r} is constant on a congruent copy ofA.
+1
+
+Page 2
+Congruence means preservation of every pairwise distance, at the original scale. The coloring
+is an arbitrary function. In particular, no measurability or other regularity is assumed.
+Erdős, Graham, Montgomery, Rothschild, Spencer and Straus introduced Euclidean
+Ramsey theory and proved that every finite Ramsey set is spherical [4, Theorem 13]. Graham
+later conjectured that sphericity is also sufficient [7]. Major positive results established the
+Ramsey property for nondegenerate triangles and then all nondegenerate simplices, by Frankl
+and Rödl [5, 6]; finite sets with a soluble transitive isometry group and cyclic trapezoids, by
+Kříž [13, 14]; and vertex sets of regular polytopes, by Cantwell [2].
+Leader, Russell and Walters proposed a different characterization: a finite set is Ramsey
+exactly when it embeds in a finite transitive Euclidean set [16, Conjecture A]. Transitivity
+means that the isometries of the finite set act transitively on its points. An isometric subset
+of such a set is calledsubtransitive. Their group-theoretic and Hales–Jewett formulations
+led to the Block Sets Conjecture; subsequent work studies the possible block sizes [10]. The
+link with soluble symmetry has also expanded: Karamanlis embedded every simplex in a
+finite product of regular polygons [12], and Behague constructed soluble transitive extensions
+for many known Ramsey classes and further permutation configurations [1]. Ivan, Leader
+and Walters developed generalized-prism constructions, with Ramsey conclusions under a
+soluble symmetry hypothesis [11]. Moore and, independently, Mirabi proved that adjoining a
+point outside the affine span of a Ramsey set preserves the Ramsey property [19, 18]. The
+affine-span restriction leaves the case of arbitrary coplanar circle points beyond this extension
+theorem.
+Pálvölgyi has recently given a seven-point circle configuration that is not Ramsey, disprov-
+ing the spherical conjecture [20, Theorem 1]. The appendix to that version also states that
+generic seven-point circle configurations are not Ramsey. Its author’s note announces a proof
+that all finite transitive sets are Ramsey and says that its exposition is still being prepared.1
+Our main theorem gives a necessary and sufficient algebraic condition for an arbitrary finite
+Euclidean configuration.
+1.1 The exact tensor criterion
+The problem is to characterize these finite sets up to congruence. A singleton is Ramsey.
+For any other set, letd≥ 1be its affine dimension, and choose a congruent representative
+A={a 1,...,a s}⊂R d whose affine span isRd. The points are distinct ands≥2. Define
+pi =
+(
+1
+ai
+)
+, F=Q
+(
+(ai)α : 1≤i≤s,1≤α≤d
+)
+, B=F⊗ Q F.
+The commutative ringBhas a multiplication homomorphism
+mF :B−→F, m F(x⊗y) =xy.
+An equality inB is stronger than the equality obtained by applyingmF; this map need not
+be injective. Index the entries ofpi and the rows and columns of a(d+ 1)-by-(d+ 1)matrix
+by0,1,...,d. Thus index0is the constant coordinate.
+Theorem 1.1(Classification).Let A= {a1,...,a s}⊂R d be a finite set of at least two points
+with affine spanRd, and definepi,F,B,m F as above. ThenA is Ramsey if and only if there
+is a matrixP∈Mat d+1(B)such that
+(pi ⊗1) TP(1⊗p i) = 0 (1≤i≤s),(1)
+mF(Pαβ) =δαβ (1≤α,β≤d).(2)
+1Pálvölgyi attributes the writing, proofs, and ideas in that manuscript to ChatGPT. He labels the additional
+appendix claims as unchecked by him.
+2
+
+Page 3
+Here the entries ofpi ⊗1and1 ⊗pi are formed componentwise. There are no separate
+conditions on the multiplied constant row or constant column ofP.
+The condition is independent of the chosen congruent representative in its affine dimen-
+sion; we also prove this directly through its tensor formulation. It uses exact relations in
+the coordinate field. It is not a procedure for recovering those relations from numerical
+approximations to arbitrary real coordinates.
+1.2 Geometric consequences
+Applyingm F to the evaluation equations gives an ordinary sphere equation
+∥ai∥2 +ℓ·a i +c= 0 (1≤i≤s)
+for someℓ∈F d and c∈F . The tensor condition requires the evaluation identities to hold
+before multiplication. This is the distinction between sphericity and the Ramsey property
+that the classification detects.
+Every subtransitive set satisfies the tensor condition. Another sufficient condition is that
+evaluation at the points of a spherical set gives independent functionals on the space of
+quadratic polynomials. It applies to every nonempty set of at most five points on a circle,
+and hence to every cyclic quadrilateral. In Corollary 7.5, we combine this result with the
+non-subtransitive cyclic kites of Leader, Russell and Walters [15, Corollary 2]. Those kites
+are Ramsey, disproving the necessity direction of their proposed characterization and their
+non-Ramseyness conjecture for the same family [15, Conjecture 3].
+Fornegativeexamples, ninepointsobtainedfromalgebraicallyindependentrealparameters
+inarationalparametrizationofacirclefailthetensorcondition. Pálvölgyi’sgenericseven-point
+claim [20, Theorem A.3] already implies this non-Ramseyness conclusion; our determinant
+calculation illustrates how to apply the classification directly. We also give a tensor obstruction
+for a twelve-point configuration consisting of three rotated coordinate squares, using the same
+type of weighted derivation moments as his heptagon construction. These consequences are
+proved after the classification and require no further Ramsey construction.
+1.3 How the algebra forces a monochromatic copy
+The proof begins by replacing the coordinate-field matrix with a finite rational combination of
+tensors of affine functions onRd. Its evaluations at all points ofA vanish as rational tensors,
+while its gradient Gram matrix isId. If no such tensor exists, algebraic separation produces
+a finite coloring that avoidsAin every dimension. This proves necessity.
+For sufficiency, the difficulty is to convert the tensor cancellations into a congruent copy
+at scale one: arbitrary colorings provide no continuity with which to absorb approximation
+errors. The proof has three stages.
+First, the tensor determines signed rational multiplicities for a finite list of affine functions.
+Ateverypointof A, thepositiveandnegativemultiplicitiescancelseparatelyateachevaluation
+value. A Gaussian construction, followed by discretization and rational approximation within
+a fixed convolution image, makes the negative gradient second moment small while retaining
+these cancellations exactly. The positive and negative multiplicities then give two lists of
+affine functions. Evaluating the lists atai gives vectorsfi,gi with
+∥fi −fj∥2 =∥ai −aj∥2,∥g i −gj∥2 =q∥ai −aj∥2,
+where q >0can be arbitrarily small, and eachgi is a coordinate permutation offi. Both the
+distances and the matching coordinate multisets are exact.
+3
+
+Page 4
+Second, we associate a free-group generator to each real sequence with finite support. A
+pathis an ordered product ofs-tuples: each factor either records an ordered scaled copy ofA
+or has the same group element in every position. Itsendpointis the coordinatewise product,
+and itsweightis the sum of the squared copy scales. We prove that equal endpoints with
+arbitrarily small weight ratios force the Ramsey property. The obstacle, familiar from the
+group and word methods of Leader, Russell and Walters [16, Sections 2–3], is the initially
+unknown numbertof variable positions in a Hales–Jewett line. After fixing the Hales–Jewett
+word lengthn, we prepare one endpoint at weights1,1/2,..., 1/n before coloring the words.
+An ultrafilter construction then realizes the products by finite strings, keeping common factors
+identical. The t variable positions give squared-distance multipliert(1/t) = 1. Compactness
+supplies a finite ambient dimension for each number of colors.
+Third, the permutation pairs from the first stage must be made to have equal path
+endpoints. Permutation averaging puts the discrepancies between their group entries in a
+subgroup whose elements can be corrected by appending paths of unit-scale copies. Further
+averaging makes the total correction weight small relative to the larger original weight.
+Appending these corrections produces the equal endpoints and arbitrarily small weight ratios
+required in the second stage.
+Sections 2–4 establish the algebraic formulation, necessity, and the exact pair construction.
+Section 5 states and proves the group-endpoint criterion that suffices for Ramsey forcing.
+Section 6 constructs the required endpoints and completes the proof of Theorem 1.1. Section 7
+derives the geometric examples. All arguments take place in ZFC.
+2 Rational tensors and the coloring obstruction
+We first express the matrix condition of Theorem 1.1 as a condition on affine functions. This
+formulation makes the obstruction to arbitrary colorings explicit and supplies the input for
+the construction in the next section. Throughout,s≥ 2, d≥ 1, andA= {a1,...,a s}affinely
+spans Rd; the fieldF, ringB, columnspi, and multiplication mapmF are as in the theorem.
+Put W = R×R d, regarded as a vector space overQ. An elementw= (v,u)specifies the
+affine functiona↦→v+a·u. For each label define theQ-linear evaluation map
+ei :W−→R, e i(v,u) =v+a i ·u.
+Let T(W)be the subspace ofW⊗Q W fixed by the flipw⊗w′↦→w′⊗w. Thus our symmetric
+tensors are flip-invariant tensors. The map
+(v,u)⊗(v ′,u′)↦−→u(u′)T
+is Q-linear on the tensor product and restricts to a mapG : T(W) →Sym d(R), where
+Symd(R)denotes the real symmetric matrices. In particular,G(w⊗w ) = uuT. The tensor
+condition is the existence ofT∈T(W)such that
+(ei ⊗ei)(T) = 0 (1≤i≤s), G(T) =I d.(3)
+The first identities hold inR⊗Q R. They are stronger than their images under real multipli-
+cation.
+Proposition 2.1.The matrix condition in Theorem 1.1 is equivalent to(3).
+Proof. WriteB = R⊗Q R, letτ(x⊗y ) = y⊗x , and letmR : B→R be multiplication. The
+coordinate decomposition ofW identifies W⊗Q W with arraysQ= (Qαβ)0≤α,β≤d over B.
+Under this identification, evaluation is
+Ei(Q) =
+d∑
+α,β=0
+(pi,α ⊗1)Qαβ(1⊗p i,β),
+4
+
+Page 5
+and the gradient matrix is the spatial block(mR(Qαβ))1≤α,β≤d. Tensor flip becomes
+Q∗
+αβ =τ(Q βα).
+Directly from the evaluation formula,Ei(Q∗) = τ(Ei(Q)), and multiplication ofQ∗transposes
+the multiplied array. Consequently 1
+2 (Q+ Q∗)preserves every zero evaluation and any
+multiplied spatial block equal toId. This proves the implication from a matrix overB to a
+symmetric tensor, using the natural inclusionB⊂B.
+For the converse, we show that extending the coefficient ring fromB to B introduces
+no new solutions. Choose anF-basis( rλ)λ∈Λ of R. Distributing tensor products over direct
+sums gives the freeB-module decomposition
+B=
+⨁
+λ,µ∈Λ
+B(rλ ⊗rµ).(4)
+Here a coefficientx⊗y∈B in the indicated summand represents(xrλ) ⊗(yrµ). If an array
+Qover B solves the evaluation equations and has multiplied spatial blockId, its entries have
+a common finite expansion
+Q=
+∑
+(λ,µ)∈J
+(rλ ⊗rµ)Pλµ, P λµ ∈Mat d+1(B).
+All coefficients in the mapsEi belong to B. Thus (4) implies Ei(Pλµ) = 0for each pair
+and each label. Let Cλµ ∈Mat d(F)be the multiplied spatial block of Pλµ. Applying
+multiplication to the expansion gives
+Id =
+∑
+(λ,µ)∈J
+rλrµCλµ.
+This finite linear system has coefficients and right-hand side inF. Since it is consistent overR,
+row reduction overF shows that it is consistent overF. Choose cλµ ∈F with Id = ∑ cλµCλµ.
+Then
+P=
+∑
+(λ,µ)∈J
+(cλµ ⊗1)P λµ
+is a solution overB. The individual matrices Cλµ need not be symmetric; the descent
+took place in the full spaceMatd(F). If a symmetric tensor is wanted after descent, the
+symmetrization already proved applies toP.
+Remark2.2.The finite coordinate presentation explains the algebraic nature of the criterion.
+Let F0 = Q[(ai)j], the subring ofR generated by all coordinates. It is a finitely generated
+domain andF = Frac(F0). The ringB is the localization ofF⊗Q F0 at the elements1 ⊗f
+for0 ̸= f∈F 0. The latter ring is a finitely generatedF-algebra, soB is Noetherian. The
+kernel of the finite evaluation system therefore has finitely manyB-module generators. Its
+multiplied spatial image is theF-span of their multiplied spatial blocks, because every scalar
+c∈F lifts toc⊗1. This description uses exact coordinate-field relations; it makes no claim
+to recover those relations from numerical real inputs.
+Remark2.3.The tensor condition is directly invariant under congruence. Ifa′
+i = Qai + t
+withQ∈O(d), the invertibleQ-linear map
+H:W−→W, H(v,u) = (v−t·Qu,Qu)
+satisfies e′
+i ◦H = ei and G((H⊗H )T) = QG(T)QT. It therefore carries certificates forA
+to certificates forA′; the inverse congruence gives the converse. Reordering labels merely
+reorders the equations. Any two congruent representatives in their affine dimension are
+related by such a map, so Proposition 2.1 also proves representative independence for the
+matrix criterion, even when their coordinate fields differ.
+5
+
+Page 6
+We next prove the necessary direction of the classification. Failure of(3) gives an algebraic
+functional, and its values provide a fixed finite coloring that works in every ambient dimension.
+The invariant-and-coloring strategy goes back to Erdős et al. [4, Theorem 13 and Lemma 15];
+here rational tensor separation supplies the invariant, and the modular coloring is proved
+directly. Their real-variable coloring lemma extends Rado’s work on partition regularity [21].
+Proposition 2.4.If (3) has no solution, then there is an integerr0 ≥2such that every
+RD admits anr0-coloring with no monochromatic congruent copy ofA. In particular, every
+Euclidean Ramsey set satisfies the matrix condition of Theorem 1.1.
+Proof.Regard
+Y= (R⊗ Q R)s ⊕Sym d(R)
+as aQ-vector space and define theQ-linear map
+Φ :T(W)−→Y,Φ(T) =
+(
+(ei ⊗ei)(T)
+)s
+i=1 ⊕G(T).
+By assumptiony0 = (0,..., 0,Id)is outside its image. In the quotient vector spaceY/im Φ,
+extend the nonzero class ofy0 to a basis overQ. Sending that basis element to1and the
+others to0gives aQ-linear functionalℓ:Y→Rsuch that
+ℓ◦Φ = 0, ℓ(y 0) = 1.
+Write its components asℓi : R⊗Q R→R and L: Symd(R) →R , and puthi(x) = ℓi(x⊗x ).
+ApplyingℓtoΦ(w⊗w)gives
+s∑
+i=1
+hi(v+a i ·u) +L(uu T) = 0, L(I d) = 1.(5)
+Takingu= 0shows that
+s∑
+i=1
+hi(x) = 0 (x∈R).(6)
+These are purely algebraic functionals; no continuity or measurability is asserted or needed.
+Fix Dand defineHi(z) = ∑D
+j=1 hi(zj)for z∈R D. We claim that every ordered congruent
+copy(b1,...,b s)satisfies
+s∑
+i=1
+Hi(bi) =−1.(7)
+Indeed, equality of the pairwise distances gives equality of the Gram matrices of(ai −a1)i
+and( bi −b1)i by polarization. Thus sending eachai −a1 to bi −b1 defines an inner-product-
+preserving linear map on their span: any relation among the first differences has squared
+norm zero for the corresponding combination of the second. SinceA affinely spansRd, there
+are a linear isometryQ: Rd →R D and t∈R D such thatbi = t+ Qai. WritinguT
+j for the
+jth row ofQ, we have
+(bi)j =ei(tj,uj),
+D∑
+j=1
+ujuT
+j =QTQ=I d.
+Sum (5) over j. The finite additivity ofL proves (7). Also (6) gives ∑
+iHi(z) = 0at every
+single pointz.
+Choose K = 2s+1and partition[0 ,2)into Khalf-open intervals of equal length2/K <1/s.
+Color a pointz by thes-tuple of interval labels of the representatives ofHi(z)modulo2.
+6
+
+Page 7
+This uses at mostr0 = Ks colors, independently ofD. If b1,...,b s were monochromatic,
+there would be integersni and real numbersεi, with|εi|<2/K, such that
+Hi(bi)−H i(b1) = 2ni +εi.
+Summation yields
+−1 = 2
+∑
+i
+ni +
+∑
+i
+εi,
+⏐⏐⏐⏐⏐
+∑
+i
+εi
+⏐⏐⏐⏐⏐<1.
+The first identity makes the error sum an odd integer, contradicting the second. This coloring
+avoidsAin every dimension and completes the proof.
+The remaining direction begins with a tensor satisfying(3). Its evaluations vanish before
+multiplication, and that exact cancellation will produce equal coordinate histograms for two
+embeddings at different scales.
+3 A finite lattice identity
+Assume that the tensor condition holds. We begin the sufficiency proof by turning its
+rational tensor equalities into exact cancellation identities for finitely many affine functions.
+These identities will let us construct two copies of the configuration at different scales whose
+corresponding points have the same coordinates in different orders.
+Recall thatW = R×R d is viewed overQ, and thatei(v,u) = v+ ai·u. LetT∈W⊗ Q W
+be symmetric, with
+(ei ⊗ei)T= 0 (1≤i≤s), G(T) =I d.
+A tensor uses only finitely many vectors. Choose a basisw1,...,w k over Q for a finite-
+dimensional subspace containing its factors, and write
+T=
+k∑
+a,b=1
+Cabwa ⊗wb, C∈Mat k(Q), C=C T.
+Forλ∈Q k, put
+w(λ) =
+k∑
+j=1
+λjwj.
+Writewj = (vj,uj)and let U = (u1 ···u k)be the real d×k matrix whose columns are their
+gradients. The gradient identity forTis
+UCUT =Id.(8)
+SetΓ =Z k and define the evaluation lattices
+Λi ={λ∈Γ :e i(w(λ)) = 0}, V i = spanQ Λi.
+Clearing denominators shows thatVi is the kernel of the rational linear mapλ↦→ei(w(λ))on
+Qk. Thus Qk/Vi embeds intoR over Q. Tensoring this injection with itself remains injective,
+so the tensor represented byChas zero image in(Qk/Vi)⊗Q (Qk/Vi).
+The next lemma converts these tensor equalities into a finitely supported rational function
+onΓ. Vanishing of its sums on each coset will record exact cancellation among equal
+evaluations.
+7
+
+Page 8
+Lemma 3.1(Finite lattice identity).Let k,s≥ 1, letΛ 1,..., Λs be subgroups ofΓ =Zk, and
+put Vi = spanQ Λi. LetC∈Mat k(Q)be symmetric. Suppose that the image of∑
+a,bCabεa⊗εb
+in( Qk/Vi) ⊗Q (Qk/Vi)is zero for everyi, whereε1,...,ε k is the standard basis ofQk. There
+is a finitely supported functionν: Γ→Qsuch that
+∑
+γ∈q
+ν(γ) = 0 (q∈Γ/Λ i,1≤i≤s)(9)
+and ∑
+γ
+ν(γ) = 0,
+∑
+γ
+ν(γ)γ= 0,
+∑
+γ
+ν(γ)γγT =C.(10)
+Proof.The Laurent polynomial ring
+R=Q[X ±1
+1 ,...,X ±1
+k ]
+is the group algebra ofΓ, withXγ = ∏
+j Xγj
+j . The quotient mapΓ →Γ/Λi induces a ring
+homomorphism whose kernel is
+Ji = (Xh −1 :h∈Λ i).
+Indeed, its kernel consists of Laurent polynomials with zero coefficient sum on each coset.
+Within a coset, choose a representativeγ0 from the finite support; a zero-sum polynomial on
+that coset is a sum of termscγ(Xγ −Xγ0 ), each inJi.
+We will find a Laurent polynomial in everyJi with prescribed terms through degree
+two near X = (1 ,..., 1). To use the tensor hypothesis, we pass to formal logarithmic
+coordinates, in which the generatorsXh −1become linear forms multiplied by units. Put
+m = ( X1 −1,...,X k −1)and complete R with respect to m. With Zj = Xj −1, its
+completion is ˆR = Q[[Z1,...,Z k]]: the factors1 + Zj are already invertible modulo each
+power of(Z1,...,Z k). The formal changes of variables
+Yj = log(1 +Zj), Z j = exp(Yj)−1
+identify this ring withQ[[Y1,...,Y k]]and identifym ˆRwith(Y 1,...,Y k). For eachh∈Γ,
+Xh −1 = exp(h·Y)−1 = (h·Y)
+∑
+n≥0
+(h·Y) n
+(n+ 1)! .
+The final factor is a unit. Hence
+Ji ˆR= (h·Y:h∈Λ i) ˆR.(11)
+Consider the quadratic polynomial
+Q2(Y) = 1
+2 YTCY.
+Identify Q[Y1,...,Y k]with the symmetric algebra ofQk by sendingεj to Yj. The map to
+the symmetric algebra ofQk/Vi has kernel generated byVi in degree one. This follows, for
+example, by extending a basis ofVi to a basis ofQk. The tensor hypothesis therefore puts
+Q2 in the ideal generated by the linear formsh·Y,h∈Λ i. By (11),Q2 ∈Ji ˆRfor everyi.
+The ringR is Noetherian, being a localization of a polynomial ring overQ. Its m-adic
+completion is therefore flat overR [23, Lemma 10.97.2, Tag 00MB]. IfI = ⋂s
+i=1 Ji, the
+injection
+R/I−→
+s⨁
+i=1
+R/Ji
+8
+
+Page 9
+remains injective after tensoring withˆR. Consequently
+IˆR=
+s⋂
+i=1
+Ji ˆR,
+andQ 2 ∈I ˆR.
+We now recover a finite Laurent polynomial while retaining exact membership inI. Write
+Q2 =
+N∑
+a=1
+faαa, f a ∈I, α a ∈ˆR,
+as a finite sum. For eacha, truncate the formalZ-expansion ofαa through degree two to
+obtainb a ∈Rwithb a −αa ∈m 3 ˆR. Thenf= ∑
+afaba ∈Iand
+f(eY1 ,...,e Yk) = 1
+2 YTCY(mod (Y 1,...,Y k)3).
+Write the finite Laurent expansion asf = ∑
+γ ν(γ)Xγ. Membership in each Ji gives (9).
+Finally,
+Xγ = exp(γ·Y) = 1 +γ·Y+ 1
+2 (γ·Y) 2 (mod (Y) 3).
+Comparing the constant term, gradient, and Hessian atY= 0gives (10).
+Apply Lemma 3.1 to the matrix and evaluation lattices constructed above. Ifγ,γ′∈Γ,
+then ei(w(γ)) = ei(w(γ′))exactly when γ−γ ′ ∈Λi. Thus (9) says that the positive and
+negative weights cancel separately at every evaluation value. The second moment in(10),
+together with (8), gives their prescribed difference in gradient Gram matrices. We next
+redistribute these weights so that the negative part has arbitrarily small gradient second
+moment, while all these equalities remain exact.
+4 Exact coordinate permutations at two scales
+The tensor condition will now produce two configurations with the same coordinate values
+at each label, but with arbitrarily different scales. The equality of coordinate values is an
+equality of finite multisets, including multiplicities.
+Lemma 4.1(Two-scale configurations).Let A = {a1,...,a s}⊂R d have affine spanRd,
+with s≥ 2. LetW = R1+d be regarded as a vector space overQ. Suppose that a symmetric
+tensorT∈W⊗ Q Wsatisfies
+(ei ⊗ei)(T) = 0 (1≤i≤s), G(T) =I d,
+where ei(v,u) = v+ ai ·u. For everyη >0, there are an integerℓ≥ 1and vectors fi,gi ∈R ℓ
+such that
+∥fi −fj∥2 =∥ai −aj∥2,∥g i −gj∥2 =q∥ai −aj∥2, q= η
+1 +η,(12)
+for everyi,j, andg i is a permutation of the coordinates offi for eachi.
+The finite functionν from Lemma 3.1 supplies signed rational weights whose sums vanish
+on every evaluation class. Positive and negative weights can therefore become two lists of
+coordinates with identical multisets of values. Their second moments control the difference
+of their gradient Gram matrices. The remaining task is to make the negative list’s Gram
+matrix arbitrarily small. We first obtain the required inequality by smoothing, and then
+obtain finite rational weights while preserving all cancellation identities exactly.
+9
+
+Page 10
+For a real symmetrick×kmatrixC, write
+DC = 1
+2
+k∑
+j,l=1
+Cjl∂j∂l, r + = max{r,0}, r −= max{−r,0}(r∈R).
+Lemma 4.2(A compactly supported smoothing function).Let C be a real symmetrick×k
+matrix and letU∈Mat d×k(R), whered≥ 1and UCUT = Id. For everyη >0, there is a
+nonnegativeb∈C ∞
+c (Rk)such that
+∫
+Rk
+b(x)dx>0,
+∫
+Rk
+(DCb)−(x)∥Ux∥2 dx<η
+∫
+Rk
+b(x)dx.(13)
+Proof. We will average Gaussian densities with covariance matrices running fromS to S+ C.
+We first construct a positive definiteS for whichS+ C is positive definite andtr(USUT)is
+small.
+The identityUCUT = Id implies thatU has rankd. Set H = im(UT)and V = kerU,
+so thatRk = H⊕V orthogonally. The restriction of the quadratic formC to H is positive
+definite: if0̸=h=U Ty, then
+hTCh=y TUCUTy=∥y∥ 2 >0.
+Choose ϵ> 0with ϵtr (UUT) <η/8. We claim that, for a sufficiently largeL> 0, the matrix
+S=ϵP H +LPV
+is positive definite and so isS+ C. Here PH,PV are the orthogonal projections. To check
+the latter assertion, write
+S+C=
+(
+A B
+BT CVV +LIV
+)
+, A=C HH +ϵIH >0.
+Choose L such thatCVV + LIV −BTA−1B >0and use the Schur complement. IfV = {0},
+the second block is absent. SinceUPV = 0, this construction also gives
+tr(USUT) =ϵtr(UU T)<η/8.(14)
+Every matrixS+ tC,0 ≤t≤ 1, is positive definite, being a convex combination ofS and
+S+C.
+For a positive definitek×kmatrixQ, let
+ϕQ(x) = (2π)−k/2(detQ) −1/2 exp
+(
+−1
+2xTQ−1x
+)
+be the centered Gaussian density with covarianceQ. Differentiating the displayed formula,
+withQ t =S+tC, gives
+d
+dtϕQt(x) = 1
+2
+(
+xTQ−1
+t CQ−1
+t x−tr(Q −1
+t C)
+)
+ϕQt(x) =DCϕQt(x).
+This identity does not requireCto be positive semidefinite. The covariancesQt have uniformly
+bounded eigenvalues, bounded away from zero, so the densities and each of their spatial
+derivatives have uniform Gaussian decay. Consequently
+b∗(x) =
+∫1
+0
+ϕS+tC(x)dt
+10
+
+Page 11
+is a nonnegative Schwartz function of integral1, and differentiation under the integral gives
+DCb∗=ϕS+C −ϕS.
+The pointwise inequality(ϕS+C −ϕS)−≤ϕS and (14) imply
+∫
+Rk
+(DCb∗)−(x)∥Ux∥2 dx≤
+∫
+Rk
+ϕS(x)∥Ux∥2 dx= tr(USU T)<η/8.(15)
+To make the support compact, choose a smooth functionχ with0 ≤χ≤ 1, equal to1
+on the unit ball and zero outside the ball of radius2. PutχR(x) = χ(x/R)and bR = χRb∗.
+Then
+∫
+bR →1. The product rule reads
+DCbR =χRDCb∗+
+∑
+j,l
+Cjl(∂jχR)(∂lb∗) +b∗DCχR.
+The derivatives ofχR have bounds of ordersR−1 and R−2 and are supported whereR≤
+∥x∥≤2R. The Schwartz decay therefore implies
+∫
+Rk
+|DCbR −DCb∗|(x)∥Ux∥2 dx−→0.
+Since r↦→r−is1-Lipschitz, the corresponding weighted negative-part integrals converge as
+well. For sufficiently largeR, we have
+∫
+bR >1/2and the last displayed integral is less than
+η/8. Equation (15) now gives
+∫
+(DCbR)−∥Ux∥2 <η/4<η
+∫
+bR.
+Takingb=b R proves the lemma.
+Lemma 4.3(Finite rational weights).LetΓ = Zk, and letΛ 1,..., Λs be subgroups ofΓ.
+Suppose that a finitely supported functionν : Γ →Q has zero pushforward on eachΓ/Λi, and
+satisfies ∑
+γ
+ν(γ) = 0,
+∑
+γ
+ν(γ)γ= 0,
+∑
+γ
+ν(γ)γγT =C.
+Let U be a reald×k matrix withUCUT = Id, whered≥ 1. For everyη >0, there are an
+integer n≥ 1, a finitely supportedµ: Γ →Q , andζ∈Q >0 such thatµ has zero pushforward
+on eachΓ/Λ i and
+∑
+λ
+µ(λ)λ
+n
+λT
+n =ζC,(16)
+∑
+λ
+µ(λ)−
+Uλ
+n
+
+2
+<ηζ.(17)
+Proof.Takebfrom Lemma 4.2. For each positive integern, set
+dn(λ) =n2−kb(λ/n), µ n(λ) = (ν∗d n)(λ) =
+∑
+γ
+ν(γ)dn(λ−γ).
+These functions have finite support. Quotient pushforward commutes with convolution, so
+every required pushforward ofµn is zero. More generally, for any finitely supported real
+functiondonΓ, the moment identities forνgive
+∑
+λ
+(ν∗d)(λ) = 0,
+∑
+λ
+(ν∗d)(λ)λλ T =
+
+∑
+β
+d(β)
+
+C.(18)
+11
+
+Page 12
+Indeed, substituteλ= β+ γ in the double sum. The terms inββT, βγT and γβT vanish by
+the zeroth and first moments ofν. Thus, with
+ζn =n−2 ∑
+λ
+dn(λ) =n−k∑
+λ
+b(λ/n),
+the identity in (16) holds exactly for(µn,ζn), and Riemann sums giveζn →
+∫
+b>0.
+Forx=λ/n, Taylor expansion gives
+nkµn(λ) =n2 ∑
+γ
+ν(γ)b(x−γ/n)
+= 1
+2
+∑
+j,l
+Cjl∂j∂lb(x) +O(n−1) =DCb(x) +O(n−1).
+The error is uniform inx: the third derivatives ofb are bounded, and∑
+γ |ν(γ)|∥γ∥3 is finite.
+Moreover, the supports of bothµn(λ)and DCb(λ/n), after division of the lattice byn, lie in
+a single fixed ball for alln≥ 1. There areO(nk)relevant lattice points and the weight∥Ux∥2
+is bounded on that ball. The1-Lipschitz property of the negative part therefore shows that
+∑
+λ
+µn(λ)−∥Uλ/n∥2 −n−k∑
+λ
+(DCb(λ/n))−∥Uλ/n∥2 =O(n−1).
+The second sum is a Riemann sum for a continuous compactly supported function. By(13),
+it follows that ∑
+λ
+µn(λ)−∥Uλ/n∥2 −→
+∫
+(DCb)−∥Ux∥2 <η
+∫
+b.
+Fix a sufficiently largensuch thatζn >0and (17) holds strictly for(µn,ζn).
+It remains to obtain rational coefficients. LetE⊂ Γbe a finite set supportingdn. For
+functionsdsupported inE, the maps
+d↦−→ν∗d, d↦−→ζ=n −2 ∑
+λ
+d(λ)
+are linear, and the function
+d↦−→
+∑
+λ∈suppν+E
+(ν∗d)(λ) −∥Uλ/n∥2
+is continuous onRE. The two strict inequalitiesζ >0and (17) consequently persist in an
+open neighborhood ofdn. Choose a rational vectord in that neighborhood and extend it
+by zero outsideE. Put µ= ν∗d . Both µ and ζ are rational. Convolution still gives zero
+quotient pushforwards, and(18) still gives the exact second moment(16). This proves the
+lemma.
+We have now obtained finite rational weights with exact cancellation and the required
+second moment. The inequalities will only be used to add a common positive semidefinite
+Gram increment; no further approximation is needed.
+Proof of Lemma 4.1.Use the notation preceding Lemma 3.1 and the functionν supplied by
+that lemma:wj = (vj,uj),w(λ) = ∑
+j λjwj,U= (u 1 ···u k),Γ =Z k, and
+Λi ={λ∈Γ :e i(w(λ)) = 0}.
+The rational symmetric matrixC of the tensor satisfiesUCUT = Id. Apply Lemma 4.3 to
+obtain n,µ,ζ . Choose a positive integerM such that everyMµ(λ)is an integer. Form two
+12
+
+Page 13
+finite lists of affine rows: the positive list hasMµ(λ)+ repetitions ofw(λ/n), and the negative
+list hasMµ(λ) −repetitions.
+The zero total mass ofµ shows that the two lists have the same length. For each labeli,
+ei(w(λ/n)) =ei(w(λ′/n))⇐⇒λ−λ ′∈Λ i.
+Thus the zero pushforward onΓ/Λi says exactly that, after evaluating atai, every real
+coordinate value appears equally often in the two lists. The resulting evaluation vectors are
+coordinate permutations of one another.
+Divide every affine row in both lists by√ζM. Their gradient Gram matrices become
+B±= 1
+ζ
+∑
+λ
+µ(λ)±(Uλ/n)(Uλ/n) T.
+Equations (16) and (17) give
+B+ −B−=Id,tr(B −)<η.
+Since B− is positive semidefinite, each of its eigenvalues is at most its trace. HenceP =
+ηId −B− is positive semidefinite. Choose vectorsr1,...,r d ∈R d with ∑
+j rjrT
+j = P, for
+example the columns ofP1/2, and append the same affine rows(0,rj)to both lists. The two
+Gram matrices are now(1 +η)Id and ηId. Identical appended rows preserve equality of all
+coordinate multisets.
+Finally divide every row in both lists by√1 +η, and letfi,gi be their respective evaluation
+vectors atai. Their coordinate multisets remain equal. For any affine row(v,u), the difference
+of its evaluations atai and aj is( ai −aj) ·u. The two gradient Gram identities therefore
+give (12) exactly, withq=η/(1 +η).
+5 From paths to monochromatic copies
+We now give a criterion that converts products of scaled copies into the Ramsey property. The
+products will first be taken in a free group. A word construction then turns their algebraic
+relations into actual monochromatic point sets. Throughout this section,A= {a1,...,a s}is
+a finite Euclidean configuration withs≥2.
+LetE=R (N) be the Euclidean space of real sequences with finite support, and letKbe
+the free group on the symbolsξz, indexed byz∈E . Write∆ g= (g,...,g ) ∈K s for g∈K .
+Apathis a chosen finite sequence of factors inKs of the following two kinds:
+1. a diagonal factor∆g, assigned weight zero;
+2. a factorXb = (ξb1 ,...,ξ bs), whereb1,...,b s ∈Eand, for someu≥0,
+∥bi −bj∥2 =u∥ai −aj∥2 (1≤i,j≤s),
+assigned weightu.
+Theendpointis the product of the factors inKs, in their given order. Theweightis the sum
+of their assigned weights. The weight belongs to the chosen path, not to its endpoint. In
+particular, two paths with the same endpoint can have different weights.
+Proposition 5.1(A path criterion).Suppose that for every integer n≥ 1there are two
+paths with the same endpoint and weightsλ> 0and µ≥ 0satisfying µ/λ< 1/n. Then A is
+Euclidean Ramsey.
+We prove the proposition in three steps. We first reduce to colorings ofEand synchronize
+the available path weights. We then develop the ultrafilter facts needed to realize group
+products by finite strings. Finally, the Hales–Jewett theorem chooses the variable positions
+of a monochromatic string family.
+13
+
+Page 14
+5.1 Finite dimensions and synchronized weights
+The following finite-dimensional reduction is the compactness principle used in Euclidean
+Ramsey theory; compare [4, Proposition 4]. We include its proof for arbitrary colorings.
+Lemma 5.2.Fix an integer r≥ 2. If every r-coloring of E contains a monochromatic
+congruent copy ofA, then the same holds for everyr-coloring ofRD, for some finiteD.
+Proof. Suppose instead that everyRD admits anr-coloring avoidingA. Consider the compact
+product space{1,...,r} E. For each ordered congruent copy(b1,...,b s)of A in E, impose
+the condition that the colors of thebi are not all equal. This is a clopen condition depending
+on finitely many coordinates of the product space.
+Every finite collection of these conditions involves finitely many finite-support vectors.
+They all lie in the firstD coordinate positions for someD. An avoiding coloring of this
+RD, extended arbitrarily toE, satisfies the finite collection. Compactness therefore gives a
+coloring satisfying all the conditions, contrary to the hypothesis.
+Lemma 5.3.Fix an integer n≥ 1. Let two paths have the same endpoint and weightsλ> 0
+and µ≥ 0. If ρ= µ/λ< 1/n, then there is an endpointw∈K s admitting a path of weight
+1/tfor every integer1≤t≤n.
+Proof.Set
+αt = 1/t−ρ
+1−ρ (1≤t≤n).
+These numbers satisfy0 < αn <···< α 1 = 1. Partition[0 ,1]at these points. For each
+resulting interval of lengthl>0, apply to both paths the endomorphism ofKdefined by
+ξz ↦−→ξ√
+l/λz.
+It preserves diagonal factors and multiplies every copy-factor weight byl/λ. The two new
+paths thus have the same endpoint and weightslandρl.
+Concatenate the interval paths in increasing interval order. The resulting endpoint is
+independent of which of the two paths is chosen on each interval. For a givent, choose the
+larger weight on the intervals beforeαt and the smaller weight on the remaining intervals.
+The total weight is
+αt +ρ(1−α t) = 1
+t.
+The fixed order of concatenation gives one endpointw for allt; no commutation of factors is
+used.
+5.2 Realizing ultrafilter products by strings
+Let Sbe the monoid of finite strings on the alphabetE, with concatenation as multiplication
+and the empty stringϵ as identity. Choose pairwise disjoint infinite coordinate blocks inE,
+and letJj : E→E be the corresponding linear isometric embeddings, one for eachj≥ 1. For
+a finite stringz= (z1,...,z L), define
+Φ(z) =
+L∑
+j=1
+Jjzj.
+For two strings of the same length,
+∥Φ(z)−Φ(z ′)∥2 =
+L∑
+j=1
+∥zj −z′
+j∥2.(19)
+14
+
+Page 15
+Thus we seek a realization in which each copy factor supplies its prescribed one-letter strings,
+while each diagonal factor supplies one common string in alls roles. Common strings will
+contribute zero to the squared distances; the remaining contribution will be the path weight
+times the corresponding squared distance inA. Diagonal factors may contain group inverses,
+so they cannot in general be evaluated directly in the string monoid. We instead mapK into
+a group of ultrafilters onSand then realize its common factors by common strings.
+The following standard construction fixes the multiplication convention; see [9, Theo-
+rem 2.5, Corollary 2.6, and Theorem 1.42]. The classical idempotent argument also appears in
+Ellis’s semigroup lemma [3, Lemma 1]; taking the opposite semigroup matches the one-sided
+continuity convention used here.
+An ultrafilter onSis a maximal proper filter of subsets ofS. WriteβSfor the space of
+all such ultrafilters. ForB⊆S, its basic clopen set is
+B={u∈βS:B∈u}.
+This space is compact and Hausdorff: the ultrafilter conditions define a closed subset of
+{0,1}P(S) . For a stringx, putx−1B = {y∈S : xy∈B} ; this notation denotes a preimage
+under concatenation, not a string inverse. Define the product of ultrafilters by
+B∈uv⇐⇒ {x∈S:x −1B∈v}∈u.(20)
+The principal ultrafilter atxis denoted byδx.
+Lemma 5.4.The operation in(20) makes βSa compact right-topological semigroup with
+identityδ ϵ. It contains an idempotentpsuch thatp(βS)pis a group with identityp.
+Proof. For fixedv, the mapB↦→{x: x−1B∈v} preserves finite intersections and comple-
+ments. Thus (20) defines an ultrafilteruv. Foru,v,w∈βS, both parenthesizations of their
+product containBprecisely when
+{x:{y:{z:xyz∈B}∈w}∈v}∈u.
+This proves associativity. For fixedv, the inverse image ofB under u↦→uvis {x:x −1B∈v} ,
+so right translation is continuous. The assertion aboutδϵ follows directly from the definition.
+Choose a minimal nonempty compact left idealL0 in βS. Such an ideal exists because
+every chain of nonempty compact left ideals has a nonempty intersection. For eachv∈L 0,
+the set(βS)vis a nonempty compact left ideal contained inL0, hence
+(βS)v=L 0.(21)
+The idealL0 is also a compact subsemigroup.
+Choose a minimal nonempty compact subsemigroupH0 ⊆L0. Forx∈H 0, the setH0xis
+compact and is a subsemigroup:(ax)(bx) = a(xb)x∈H 0x for a,b∈H 0. Minimality gives
+H0x=H 0. Consequently
+{y∈H 0 :yx=x}
+is nonempty, compact, and a subsemigroup. It equalsH0 by minimality, sox2 = x. In
+particularL 0 contains an idempotentp.
+The cornerG= p(βS)p is a monoid with identityp. Every y∈G lies inL0, so(21) gives
+p=vyfor somev∈βS. Sincepy=y,
+(pvp)y=pvy=p.
+Thus every element ofG has a left inverse inG. A monoid with this property is a group: if
+ay=pandba=p, thenb=b(ay) = (ba)y=y, whenceya=pas well.
+15
+
+Page 16
+The next lemma explains why common ultrafilter factors can be replaced by common
+strings. This is the step that will preserve the distances between the different roles in a
+monochromatic configuration.
+Lemma 5.5(Simultaneous realization).Let qi,j ∈βS for1 ≤i≤s and1 ≤j≤M , where
+M≥1. Suppose that every columnjhas one of the following specified forms:
+1.q i,j =qj is independent ofi;
+2.q i,j =δzi,j for prescribed stringszi,j ∈S.
+If B∈q i,1 ···q i,M for everyi, there are stringsxi,j such that all productsxi,1 ···x i,M belong
+to B, withxi,j independent ofiin each column of the first form andxi,j = zi,j in each column
+of the second form.
+Proof. Choose the strings from left to right. Before columnj, letPi be the already chosen
+prefix and maintain the invariant
+P−1
+i B∈q i,j ···q i,M.
+Initially Pi = ϵ. Put vi = qi,j+1 ···q i,M, interpreting an empty product here asδϵ. By (20),
+the set
+Ei ={x:x −1(P−1
+i B)∈v i}
+belongs toqi,j. In a common column, the finite intersection⋂
+iEi belongs to the common
+ultrafilter and is nonempty; choose the same string from it for alli. In a prescribed principal
+column, zi,j ∈Ei, so choose that string. ReplacingPi by Pixi,j preserves the invariant. After
+the last column it saysP−1
+i B∈δ ϵ, which is preciselyPi ∈B.
+We now have both ingredients for the word construction: a group in which the path
+endpoints can be evaluated, and a way to realize their products by strings while choosing
+every common factor equally in all roles.
+5.3 The Hales–Jewett step
+Proof of Proposition 5.1.Fix r≥ 2and an arbitrary coloringc: E→{ 1,...,r} . Choose n
+such that everyr-coloring of {1,...,s} n has a monochromatic combinatorial line, by the
+Hales–Jewett theorem [8]; see also Shelah’s proof and primitive-recursive bound [22, p. 686
+and Section 1]. We use only existence of the length. Such a line has a nonempty set of
+variable positions, occupied by one common letter, and fixed letters in all other positions.
+In the group formulation of Leader, Russell and Walters [16, Conjecture C and the
+following discussion], the number of varying positions is prescribed before coloring; without
+that restriction, ordinary Hales–Jewett applies. Here we allow the line to choose that number
+and prepare all the required path weights in advance. The hypothesis and Lemma 5.3 give an
+endpointw= (w 1,...,w s)∈K s and a path of weight1/tending atwfor every1≤t≤n.
+ColorSbyc◦Φ, and write its color classes asB 1,...,B r.
+Choosepas in Lemma 5.4. The freeness ofKgives a homomorphism
+ψ:K−→p(βS)p, ψ(ξ z) =pδ(z)p,
+where( z)is the one-letter string with entryz. Color a wordi1 ···i n by the unique indexk
+for which
+Bk ∈ψ(wi1 )···ψ(w in).
+Every ultrafilter contains exactly one class of a finite partition, so this defines anr-coloring.
+16
+
+Page 17
+Fix the number of colorsr.
+Choose a Hales–Jewett lengthn.
+Prepare one endpointw
+with paths of weights1,1
+2 ,..., 1
+n.
+Color words usingw.
+A monochromatic line
+has t variable positions.
+Use the path of weight1/t
+at each variable position.
+Squared-distance factor: t(1/t) = 1.
+Figure 1: The order of choices in the path criterion. Every possible variable count is
+accommodated before the word coloring is defined. Choosing a path representation later
+leaves its endpoint unchanged; common factors become common strings, so only the variable
+blocks contribute to pairwise distances.
+Take a monochromatic combinatorial line and lett be its number of variable positions.
+Figure 1 records the order of these choices.
+For each of the line’ss words, expand the factor at every variable position using the
+chosen path ending atw with weight1/t. A diagonal path factor contributes one common
+ultrafilter ψ(g). A copy factor contributespδ(bi)pin rolei: the twopfactors are common and
+the middle factor is principal at a prescribed one-letter string. Unexpanded fixed positions
+are common factors as well. The identity of the corner group isp; if an empty group product
+occurs, it is retained as this common factor. The expanded products therefore have the
+column forms required by Lemma 5.5, and all contain the same color classBk.
+Apply that lemma. It produces stringsz(1),...,z (s) in Bk. Every common factor was
+realized by the same string in all roles, and every varying factor has length one. Hence the
+resulting strings have equal lengths and their entries align. Common strings contribute zero
+to their pairwise squared distances. Each of thet expanded paths contributes∥ai −aj∥2/t
+by its weight. Equation (19) consequently gives
+∥Φ(z(i))−Φ(z (j))∥2 =t 1
+t∥ai −aj∥2 =∥ai −aj∥2.
+Their images form a monochromatic congruent copy ofA in E. Lemma 5.2 now supplies a
+finite forcing dimension for thisr. Sincerwas arbitrary,Ais Euclidean Ramsey.
+6 From coordinate permutations to equal path endpoints
+We now turn the two images of Lemma 4.1 into the equal-endpoint paths required by
+Proposition 5.1. Recall thatE= R(N), thatK is the free group on the lettersξz for z∈E ,
+and that path weights count the squared-distance scales of their copy factors. The two images
+give paths of very different weights. Their endpoints need not agree. Our task is to correct
+those endpoints at a cost small relative to the larger weight.
+6.1 Corrections supported on individual coordinates
+Let M⊂K s be the monoid generated by the diagonal subgroup∆ K and the tuples
+Xb = (ξbi)s
+i=1 associated to ordered congruent copiesb of A. Thus a chosen expression for an
+element ofM is a path using only copy factors of weight one. Itsdegreeis the number of
+those factors; diagonal factors have degree zero. Degrees always refer to chosen expressions.
+Suppose two paths have endpointsD+,D−∈K s. If we can write
+D−1
++ D−=uv−1 (u,v∈M),
+17
+
+Page 18
+then D+u = D−v. Appending the chosen expressions for u and v therefore gives equal
+endpoints, with added weightsdegu and degv, respectively. We will make their sum small
+relative to the larger original path weight, so that correcting the endpoints retains the small
+ratio of weights.
+To construct these corrections, let
+N= ker
+(
+K−→Z, ξz ↦−→1
+)
+.
+For distinct labelsi,j, writeM ij for the image ofMunder projection onto coordinatesi,j.
+Lemma 6.1.For everyi̸=j, the monoidM ij is a group containingN×N.
+Proof. Put r = ∥ai −aj∥> 0. Every ordered pair z,z′ ∈E at distance r extends to an
+ordered congruent copy ofA. Indeed, send the direction ofaj −ai to( z′−z)/r, extend it to
+an orthonormal frame for the affine span ofA, and translate to sendai to z. The frame can
+be chosen inside a finite-dimensional coordinate subspace ofE.
+Setx=ξ z andy=ξ z′ . Both(x,y)and(y,x)therefore belong toM ij, and
+(x,y) −1 = (x−1,x−1)(y,x)(y−1,y−1)∈M ij.
+The diagonal generators are also invertible withinMij, so this monoid is a group. It contains
+(x,y)(y−1,y−1) = (xy−1,1),(x,y)(x −1,x−1) = (1,yx−1),
+and their conjugates by diagonal elements.
+The graph onEjoining points at distancer is connected. To see this, subdivide any
+displacement into pieces of length at most2r. The endpoints of each piece have a common
+point at distancer: choose an appropriate perpendicular displacement from their midpoint.
+An additional coordinate supplies the perpendicular direction if needed. Differences of
+letters along graph edges consequently generate, after taking their normal closure inK, all
+differences ξzξ−1
+z′ . That normal closure isN, since identifying all free generators gives the
+infinite cyclic group. The two displayed types of elements and diagonal conjugation thus give
+N×N⊂M ij.
+Forg∈K , letg[i] ∈K s have valuegin coordinateiand identity in every other coordinate.
+Define
+Li ={g∈K:g [i] =uv−1 for someu,v∈M}.
+We calluv−1 aright fraction. Its cost, with chosen expressions foru,v, is the sum of their
+degrees. Forg∈L i, letci(g)be the minimum cost of a right fraction representingg[i]. The
+minimum exists because its possible costs form a nonempty set of nonnegative integers.
+We will only multiply right fractions when their supports permit an explicit construction
+of a new denominator. No closure assertion for the whole setMM−1 is needed.
+Lemma 6.2.EachL i is a normal subgroup ofK, and its cost satisfies
+ci(g−1) =ci(g), c i(kgk−1) =ci(g), c i(gh)≤c i(g) +ci(h)
+for g,h∈L i and k∈K . Every tuple( gi)s
+i=1 with gi ∈Li has a represented right fraction of
+cost at most∑
+ici(gi). Moreover,
+N(s−2) ⊂Li (1≤i≤s),(22)
+whereN (0) =NandN (r+1) = [N(r),N(r)].
+18
+
+Page 19
+Proof. Inversion of a right fraction interchanges its numerator and denominator. Ifd= ∆(k),
+then
+(kgk−1)[i] = (du)(dv)−1 wheneverg [i] =uv−1.
+These operations preserve the represented cost. Applying each operation in both directions
+proves inversion and conjugation invariance.
+The following multiplication rule supplies the cost estimate. Given any represented right
+fraction uv−1 and g∈L i, puth= v−1
+i gvi and chooseh[i] = ab−1 of costci(h) = ci(g). Then
+uv−1g[i] =uh[i]v−1 =uab−1v−1 = (ua)(vb)−1.(23)
+The resulting cost is at most the previous cost plusci(g). This proves product closure and
+subadditivity forLi; together with inversion and conjugation it proves normality. Successively
+applying (23) to the single-coordinate factors of(gi)i proves the asserted tuple cost bound.
+For the derived subgroup inclusion, we also need a multiplication rule for fractions
+supported on a pair of coordinates. Suppose thatz= cd−1 is such a fraction, supported on
+a pairJ, and letuv−1 be any right fraction. Since the projection ofM onto J is a group,
+choose b∈M such thatt= vb is the identity onJ. The tuplest and z commute, because
+their supports are disjoint. Consequently
+uv−1z=ubt −1z=ubzt −1 =ubcd−1t−1 = (ubc)(td)−1.(24)
+This is a right fraction of finite cost. We require no bound on the cost of the auxiliaryb.
+We now prove(22) by induction on the number of coordinates. The proof applies to
+any submonoid ofKs containing the diagonal whose pair projections are groups containing
+N×N . Fors= 2, the whole monoid is its pair projection and containsN×N , which proves
+the claim. Fors≥ 3, fix distinct indicesi,j,k . The monoid obtained by projecting awayj
+satisfies the same abstract hypotheses. By induction, everya∈N (s−3) has a right fraction in
+that projection supported ati. Lift its numerator and denominator toM. Their quotient is
+a right fractionza supported on{i,j}, with valuea at i. Projecting awayk similarly gives a
+right fractionzb supported on{i,k}with any prescribedb∈N (s−3) ati.
+The four factors ofzazbz−1
+a z−1
+b are pair-supported right fractions; inverses remain fractions
+by interchanging numerator and denominator. Repeated use of(24) makes their product
+a right fraction. Its only possibly nonidentity coordinate is i, where its value is[ a,b].
+Thus[ a,b] ∈L i. Since Li is a subgroup, it contains the subgroup generated by all these
+commutators, namelyN(s−2).
+Set
+L=N (s−2), c(g) = max
+1≤i≤s
+ci(g) (g∈L).(25)
+The subgroupLis normal inK. Lemma 6.2 shows thatcis finite, symmetric under inversion,
+subadditive, and invariant under conjugation by every element ofK. We have therefore
+identified a subgroup of allowable endpoint corrections and a cost for each one. We next
+construct long paths for which the needed corrections have small cost relative to their degree.
+6.2 Averaging over coordinate permutations
+Let H be a finite group of coordinate permutations acting onE, and letZ⊂E be a finite
+H-invariant set. Consider represented tuplesw = (wx)x∈Z ∈K Z obtained by multiplying
+diagonal factors and factors
+(ξhx)x∈Z, h∈H.
+The degree of such an expression is the number of factors of the latter kind. Right multiplica-
+tion by a diagonal element has degree zero. Replacingwx by whx preserves the degree: it
+sends a generator indexed byg∈Hto the generator indexed bygh.
+19
+
+Page 20
+Lemma 6.3.Let H be a finite group of coordinate permutations ofE, and letZ⊂E be a
+finite H-invariant set. For everyδ >0, there is a tuplew∈K Z represented by diagonal
+factors and factors(ξhx)x∈Z,h∈H, with degreem>0, for which
+wxw−1
+y ∈L, c(w xw−1
+y )≤δmwheneverx,ybelong to the sameH-orbit.(26)
+Proof. We first arrange membership inL, then make the costs small. Start withwx = ξx,
+represented with degree one; its differenceswxw−1
+y belong toN.
+Suppose the differences on an orbitO belong toN(r). Choose x0 ∈O and right-multiply
+by the diagonal elementw−1
+x0 . After this operation, every value onO belongs toN(r), and
+every difference on every orbit is unchanged. Replace the resulting tuple by
+w′
+x =
+∏
+h∈H
+whx,(27)
+using a fixed order onH. Forx∈O , the list(hx)h∈H visits every point ofO with the same
+multiplicity |H|/|O|. The products in (27) therefore have the same image in the abelian
+groupN (r)/N(r+1) for everyx∈O. Their differences belong toN (r+1).
+This procedure preserves any normal-subgroup condition already obtained on another
+orbit. Indeed, ifwxw−1
+y ∈G there for a normal subgroupG◁K , corresponding factors of
+the two products have the same image inK/G. Their products have the same image as well.
+Process the finitely many orbits, increasing the derived depth on each tos−2. Every degree
+stays positive, and we obtain membership inL for all within-orbit differences. Whens= 2,
+the initial tuple already has this property.
+Fix one orbitO. Right-normalize atx0 ∈O once more, so all values onO lie inL, and
+write B = maxx∈Oc(wx). Put h= |H|. If h= 1, all orbits are singletons and(26) already
+holds. Hence supposeh≥2. Repeatedly perform the operation
+w′
+x =
+
+∏
+g∈H
+wgx
+
+w−1
+x0 .(28)
+For eachx∈O, one factor in the product isa=w x0 . Write the product asPaQ. Then
+w′
+x =P(aQa −1), c(w ′
+x)≤c(P) +c(Q)≤(h−1)B.
+All new values onOstill lie inL, and their represented degree ishtimes the preceding degree.
+Thus, afterk repetitions starting from degreem0, the maximum difference cost divided by
+degree is at most
+2B
+m0
+(h−1
+h
+)k
+.(29)
+Here the factor two usesc(wxw−1
+y )≤c(w x) +c(wy). The bound tends to zero.
+It remains to check that treating this orbit does not spoil a bound on another orbit. If
+ajb−1
+j ∈Lfor1≤j≤h, conjugation invariance and subadditivity give
+c
+(
+(a1 ···a h)(b1 ···b h)−1)
+≤
+h∑
+j=1
+c(ajb−1
+j ).(30)
+For completeness, writeAj =a1 ···a j andB j =b1 ···b j, withA0 =B0 = 1. The identity
+AjB−1
+j =
+(
+Aj−1(ajb−1
+j )A−1
+j−1
+)(
+Aj−1B−1
+j−1
+)
+proves (30) inductively. Consequently the product in(28) multiplies the maximum difference
+cost on any other orbit by at mosth, while multiplying the degree by exactlyh. The appended
+common right factor does not change differences. Their cost divided by degree cannot increase.
+We may therefore achieve the boundδ on one orbit after another; there are only finitely many
+orbits.
+20
+
+Page 21
+6.3 Equal endpoints and completion of sufficiency
+We can now compare the two paths supplied by coordinate permutations. The preceding
+lemma makes their endpoint discrepancies inexpensive, and Lemma 6.2 realizes all discrepan-
+cies by actual paths of unit-scale copies.
+Proposition 6.4.Supposeq >0andf i,gi ∈R ℓ satisfy
+∥fi −fj∥2 =∥ai −aj∥2,∥g i −gj∥2 =q∥ai −aj∥2 (1≤i,j≤s),
+and eachgi is a coordinate permutation offi. For everyδ >0there exist two paths with the
+same endpoint and weightsλ>0andµ≥0such that
+µ
+λ ≤q+sδ.
+Proof. Embed Rℓ into E, letH be its full coordinate permutation group, acting trivially on
+the remaining coordinates, and letZ be the union of theH-orbits of thefi and gi. It is finite,
+andf i,gi lie in the same orbit for eachi. Apply Lemma 6.3 with the givenδand letm>0
+be the degree of its represented tuplew.
+Restricting the same expression to the labelsfi gives the endpointD+ = (wfi)s
+i=1 of a
+path of weightm. Restricting it to the labelsgi gives the endpointD−= (wgi)s
+i=1 of a path
+of weightqm. Indeed, each counted factor acts by a coordinate permutation, so it preserves
+the corresponding distances; diagonal factors stay diagonal.
+For eachi, put ri = wfiw−1
+gi . By (26), ri ∈L and c(ri) ≤δm . The ith component of
+D−1
++ D−is
+w−1
+fi wgi =w−1
+fi r−1
+i wfi,
+so it too belongs toL and has cost at mostδm. Lemma 6.2 supplies representedu,v∈M
+such that
+D−1
++ D−=uv−1,degu+ degv≤sδm.
+ThusD+u=D −v. Writinga= deguandb= degv, the two resulting paths have weights
+λ=m+a>0, µ=qm+b≥0, µ
+λ ≤qm+b
+m ≤q+sδ.
+Completion of the sufficiency implication in Theorem 1.1.Assume the matrix condition of
+the theorem. By Proposition 2.1, the tensor condition(3) holds. For every integern≥ 1,
+Lemma 4.1 supplies two images as in Proposition 6.4 with0< q <1/(2n). Apply that
+proposition withδ= 1/(2sn). It gives equal-endpoint paths whose weight ratio is strictly less
+than1 /n. Proposition 5.1 now implies thatA is Ramsey. All choices are made after fixingn;
+no bound uniform innon the degrees or the number of coordinates is required.
+7 Geometric consequences and examples
+The criterion separates two different questions about a spherical set: whether its ordinary
+quadratic equations admit the required identity block, and whether that solution lifts to the
+tensor ring. We first give positive examples, then exhibit two failures of the lift.
+Corollary 7.1.Every finite Euclidean Ramsey set is spherical.
+21
+
+Page 22
+Proof. A singleton is spherical. Otherwise use the notation and a matrixP from Theorem 1.1,
+and putH=m F(P), entrywise. Multiplying the evaluation equations gives
+∥ai∥2 +ℓ·a i +c= 0, c=H 00, ℓ α =H0α +Hα0 (1≤α≤d).
+Thus all points lie on the sphere with center−ℓ/2and squared radius ∥ℓ∥2/4 −c. The radius
+is positive because the set has at least two distinct points. No symmetry of the constant row
+and column ofHis needed.
+A finite Euclidean set istransitiveif its distance-preserving permutations act transitively
+on its points.
+Corollary 7.2.Every nonempty subset of a finite transitive Euclidean set is Ramsey.
+Proof. Singletons are immediate. LetA= {a1,...,a s}⊂R d, withs≥ 2, affinely spanRd,
+and suppose an isometric embedding mapsai to yi in a finite transitive setY⊂R n. Write
+H for the finite group of distance-preserving permutations ofY. For eachh∈H , the map
+ai ↦→h(yi)extends to an affine isometry. Letwhj ∈W = R1+d be itsjth affine coordinate
+row, so thatei(whj) = (h(yi))j. The gradient Gram matrix of thesenrows isId.
+Letc hj = ((h(y1))j,0)∈W, a constant affine row. The symmetric rational tensor
+T= 1
+|H|
+∑
+h∈H
+n∑
+j=1
+(
+whj ⊗whj −chj ⊗chj
+)
+has G(T) = Id. For eachi, the multiset(h(yi))h∈H contains every point ofY exactly |H|/|Y|
+times. Consequently
+∑
+h,j
+(h(yi))j ⊗(h(yi))j =
+∑
+h,j
+(h(y1))j ⊗(h(y1))j,
+and(e i ⊗ei)(T) = 0. Proposition 2.1 and Theorem 1.1 now give the Ramsey property.
+Quadratic interpolation gives another source of tensor certificates. The row-independence
+hypothesis below says that quadratic polynomials can prescribe arbitrary values on the
+configuration.
+Proposition 7.3.Let A = {a1,...,a s} ⊂Rd be spherical and affinely spanRd. Put
+pi = (1,ai)T and letFbe its coordinate field. If thesrow vectors
+(piαpiβ)0≤α,β≤d (1≤i≤s)
+are linearly independent overF, thenAis Ramsey.
+Proof. The singleton case is immediate, so assumes≥ 2. WriteN = (d+1)2. Sphericity gives
+a real matrix with spatial blockId and quadratic values zero at everypi. These requirements
+are a linear system overF, so a solution exists overF as well, by Gaussian elimination.
+Denote such a matrix, written as a vector inFN, byh.
+Let D∈Mat s×N(B)be the tensor evaluation matrix, whose entry in rowi and column
+(α,β)is piα ⊗piβ. Lift h to b∈B N by applyingx↦→x⊗1entrywise. The assumed row
+independence allows us to selectscolumns ofDwhose square submatrixMhas
+δ=m F(detM)̸= 0.
+22
+
+Page 23
+Let ι: Bs →B N insert a vector into these selected coordinates, so thatDι= M. Multiplying
+by detM allows us to cancel the tensor evaluation errorDb through the selected columns:
+the adjugate identity gives
+z= (detM)b−ιadj(M)Db∈kerD.
+Since mF(D)h = 0, multiplication givesmF(z) = δh. Multiplying z by δ−1 ⊗1therefore
+produces a solution of the criterion in Theorem 1.1. This argument does not requiredetM
+to be a unit ofB.
+For at most five circle points, products of two line equations supply the required interpo-
+lation. The same observation appears in Pálvölgyi’s analysis of derivation obstructions [20,
+proof of Theorem A.2].
+Corollary 7.4.Every nonempty set of at most five distinct points on a circle is Ramsey. In
+particular, every cyclic quadrilateral is Ramsey.
+Proof. Work in the plane of the circle and extend the set, if necessary, to five distinct points
+on that circle. LetFbe the coordinate field of the resulting five-point set. Fix one of these
+points ai, partition the other four into two pairs, and take the product of affine equations
+for the two lines through those pairs. No three circle points are collinear, so this quadratic
+polynomial vanishes at the other four points and is nonzero atai. Its coefficients lie in the
+coordinate fieldF. Rescaling the five resulting polynomials shows that quadratic evaluation
+onto F5 is surjective. Its five rows are therefore independent, and Proposition 7.3 makes
+the five-point set Ramsey. A monochromatic copy of that set contains a copy of the original
+set.
+Corollary 7.5.For every transcendentala∈(−1,1), the cyclic quadrilateral
+Ka =
+{
+(−1,0),(1,0),(a,
+√
+1−a 2),(a,−
+√
+1−a 2)
+}
+is Ramsey and is not subtransitive.
+Proof. The four points are distinct and lie on the unit circle, so Corollary 7.4 makesKa
+Ramsey. Leader, Russell and Walters proved thatKa does not embed in any finite transitive
+Euclidean set [15, Corollary 2].
+Thus the necessity direction of the Leader–Russell–Walters subtransitive characterization
+fails [16, Conjecture A]. The same family also disproves their conjecture that these kites are
+not Ramsey [15, Conjecture 3].
+7.1 Nine points on a circle
+The tensor equations can have full rank even when their multiplied versions admit a sphere
+equation. The following determinant calculation illustrates this distinction. Pálvölgyi’s earlier
+generic-seven-point claim [20, Theorem A.3] already implies its non-Ramsey conclusion by
+taking a subset; the source labels its appendix as unchecked. We give a direct proof from the
+tensor criterion.
+Proposition 7.6.Let t1,...,t 9 be algebraically independent real numbers overQ. The nine
+points
+ai =
+(
+1−t 2
+i
+1 +t2
+i
+, 2ti
+1 +t2
+i
+)
+,1≤i≤9,
+form a spherical set that is not Ramsey.
+23
+
+Page 24
+Proof. The parametrization lies on the unit circle and is injective, sinceti = (ai)2/(1 + (ai)1).
+Thus the points are distinct, affinely spanR2, and have coordinate fieldF = Q(t1,...,t 9).
+Algebraic independence identifies this field with a rational function field. Consequently
+B = F⊗Q F is the localization ofQ[T1,...,T 9,U1,...,U 9]obtained by inverting all nonzero
+polynomials in theT variables alone and all nonzero polynomials in theU variables alone. In
+particular,Bis a domain and embeds inQ(T1,...,T 9,U1,...,U 9).
+Put
+p(t) =
+(
+1,1−t 2
+1 +t2 , 2t
+1 +t2
+)T
+.
+Over this fraction field, the nine tensor evaluation equations have coefficient matrixD with
+rows( pα(Ti)pβ(Ui))0≤α,β≤2. We claim thatdetD̸ = 0. To check the claim, specialize the
+nine pairs( Ti,Ui)to the grid {0,1,−1}2, with both coordinates ordered as0,1,−1. All
+denominators in the displayed matrix remain nonzero. The resulting matrix is the ordinary
+Kronecker productC⊗C, where
+C=
+
+
+1 1 0
+1 0 1
+1 0−1
+
+,detC= 2.
+Its determinant is2 6 = 64, proving the claim. This evaluates the specific determinant
+expression; no specialization of the entire localized ringBis asserted.
+Thus the only solution ofDvec (P) = 0over the fraction field isP = 0. Injectivity of the
+embedding ofB shows that the same holds overB. Such a matrix cannot have multiplied
+spatial blockI2, so Theorem 1.1 excludes the Ramsey property.
+7.2 Three concentric squares
+A second example uses only one transcendental parameter. It also shows how a derivation
+can detect the failure of the tensor equations directly inside the coordinate field. Its weighted
+cancellation is related to the derivation obstruction in Pálvölgyi’s smaller circular example [20,
+Theorem 1]; the calculation below is independent of that proof. The parameter is Liouville’s
+constant [17].
+Proposition 7.7.Set
+t=
+∞∑
+m=1
+10−m!, u= 1−t 2
+1 +t2 , v= 2t
+1 +t2 , Q 0 ={(±1,0),(0,±1)},
+and define
+R+ =
+(
+u−v
+v u
+)
+, R −=
+(
+u v
+−v u
+)
+, X=R +Q0 ∪R−Q0 ∪Q0.
+ThenXis a twelve-point subset of the unit circle that is not Ramsey.
+Proof. First,0 .11 < t <0.12and t is transcendental. Indeed, the rational partial sums
+tm =pm/qm, withqm = 10m!, satisfy
+0<t−t m <2q−(m+1)
+m (m≥2).
+Ifthad an irreducible polynomialP∈Z[T]of degreed, thenP(t m)̸= 0and|P(t m)|≥q −d
+m .
+A boundC≥ 1for |P′|on[0 ,1]would give q−d
+m <2Cq−(m+1)
+m , a contradiction for largem.
+The rotations R+ and R− have anglesθ = 2 arctant and −θ, where0 < θ < π/4. Their
+24
+
+Page 25
+differences from each other and from zero are nonzero and smaller thanπ/2in absolute value.
+Hence the three squares are disjoint. They lie on the unit circle, andQ0 already affinely
+spans the plane.
+The coordinate field ofX is F = Q(t): its coordinates includeu,v, andt= v/(1 + u).
+On this field define the derivation
+∂= 1 +t2
+2
+d
+dt.
+It satisfies ∂u = −v and ∂v = u. Write R0 = I2, label the points by xϵ,q = Rϵq for
+ϵ∈{ +,−, 0}and q∈Q 0, and assign weightsβ+,q = β−,q = 1, β0,q = −2. For these twelve
+labels putpi = (1,xi)T. We have the three augmented moment identities
+∑
+i
+βipipT
+i = 0,
+∑
+i
+βi(∂pi)pT
+i = 0,
+∑
+i
+βi(∂pi)(∂pi)T =
+(
+0 0
+0 4I 2
+)
+.(31)
+Here the block sizes are1and2. To verify them, use ∑
+q∈Q0 q = 0and ∑
+q∈Q0 qqT = 2I2.
+With J =
+(0−1
+1 0
+)
+, the derivatives are∂R+ = R+J, ∂R−= −R−J, and∂R0 = 0. The first
+spatial moment is2(1 + 1−2)I2 = 0; the mixed moment is2J− 2J = 0; and the derivative
+moment is2 I2 + 2I2 = 4I2. The constant and vector entries vanish by the same square
+symmetries.
+Define theQ-linear mapΦ : F⊗Q F→F byΦ( a⊗b) = (∂a)(∂b). For everyP∈Mat 3(B),
+the product rule and (31) give
+∑
+i
+βiΦ
+(
+(pi ⊗1) TP(1⊗p i)
+)
+= 4
+2∑
+α=1
+mF(Pαα).(32)
+For completeness, expand each entry ofP into pure tensorsa⊗b . In ∂(piαa)∂(piβb), the
+terms involving∂a or ∂b vanish after summing withβi by the first two moment identities and
+the transpose of the second. The remaining term isab(∂piα)(∂piβ), and the third identity
+gives exactly the right side of (32).
+A matrix satisfying the classification criterion would make the left side zero and the right
+side8. This contradiction proves the claim. The argument uses a derivation only onF, and
+imposes no regularity condition on the colorings in the Ramsey definition.
+References
+[1] Natalie Behague. Nearly all known Euclidean Ramsey sets are subsoluble.arXiv preprint
+arXiv:2510.15677, 2025. Version 3, 4 December 2025.
+[2] Kristal Cantwell. All regular polytopes are Ramsey.Journal of Combinatorial Theory,
+Series A, 114(3):555–562, 2007.
+[3] Robert Ellis. Distal transformation groups.Pacific Journal of Mathematics, 8(3):401–405,
+1958.
+[4] Paul Erdős, Ronald L. Graham, Peter Montgomery, Bruce L. Rothschild, Joel Spencer,
+and Ernst G. Straus. Euclidean Ramsey theorems. I.Journal of Combinatorial Theory,
+Series A, 14(3):341–363, 1973.
+[5] Peter Frankl and Vojtěch Rödl. All triangles are Ramsey.Transactions of the American
+Mathematical Society, 297(2):777–779, 1986.
+[6] Peter Frankl and Vojtěch Rödl. A partition property of simplices in Euclidean space.
+Journal of the American Mathematical Society, 3(1):1–7, 1990.
+25
+
+Page 26
+[7] Ronald L. Graham. Recent trends in Euclidean Ramsey theory.Discrete Mathematics,
+136(1–3):119–127, 1994.
+[8] A. W. Hales and R. I. Jewett. Regularity and positional games.Transactions of the
+American Mathematical Society, 106(2):222–229, 1963.
+[9] Neil Hindman and Dona Strauss.Algebra in the Stone–Čech Compactification: Theory
+and Applications, volume 27 ofde Gruyter Expositions in Mathematics. Walter de
+Gruyter, Berlin and New York, 1998.
+[10] Maria-Romina Ivan, Imre Leader, and Mark Walters. Block sizes in the block sets
+conjecture.Forum of Mathematics, Sigma, 14:e67, 2026.
+[11] Maria-Romina Ivan, Imre Leader, and Mark Walters. Generalised prisms and Euclidean
+Ramsey theory.arXiv preprint arXiv:2606.13472, 2026. Version 1, 11 June 2026.
+[12] Miltiadis Karamanlis. Simplices and regular polygonal tori in Euclidean Ramsey theory.
+The Electronic Journal of Combinatorics, 29(3):Paper No. 3.66, 2022.
+[13] Igor Kříž. Permutation groups in Euclidean Ramsey theory.Proceedings of the American
+Mathematical Society, 112(3):899–907, 1991.
+[14] Igor Kříž. All trapezoids are Ramsey.Discrete Mathematics, 108(1–3):59–62, 1992.
+[15] Imre Leader, Paul A. Russell, and Mark Walters. Transitive sets and cyclic quadrilaterals.
+Journal of Combinatorics, 2(3):457–462, 2011.
+[16] Imre Leader, Paul A. Russell, and Mark Walters. Transitive sets in Euclidean Ramsey
+theory.Journal of Combinatorial Theory, Series A, 119(2):382–396, 2012.
+[17] Joseph Liouville. Sur des classes très-étendues de quantités dont la valeur n’est ni
+algébrique, ni même réductible à des irrationnelles algébriques.Journal de Mathématiques
+Pures et Appliquées, 16:133–142, 1851.
+[18] Mostafa Mirabi. One-point extensions of Euclidean Ramsey sets.arXiv preprint
+arXiv:2608.11736, 2026. Version 1, 12 August 2026.
+[19] Kenneth Moore. A pyramid with a Ramsey base is Ramsey.arXiv preprint
+arXiv:2608.09649, 2026. Version 1, 10 August 2026.
+[20] Dömötör Pálvölgyi. A cyclic non-Ramsey heptagon.arXiv preprint arXiv:2609.23327,
+2026. Version 1, 20 September 2026.
+[21] Richard Rado. Note on combinatorial analysis.Proceedings of the London Mathematical
+Society, 48:122–160, 1945.
+[22] Saharon Shelah. Primitive recursive bounds for van der Waerden numbers.Journal of
+the American Mathematical Society, 1(3):683–697, 1988.
+[23] The Stacks Project Authors. The Stacks project, 2026. Lemma 10.97.2, Tag 00MB;
+accessed 23 September 2026.
+26

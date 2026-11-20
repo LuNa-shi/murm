@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "upstream_path": "preprints/Short-Egyptian-fractions-September-25-2026/Short-Egyptian-fractions-September-25-2026.pdf",
+  "files": [
+    {
+      "path": "benchmark/paper.pdf",
+      "source_path": "025/paper.pdf",
+      "sha256": "25eebdc1f077f2451bada4d3f8301b59f8158dcdb9019425ce555c5e9c5a2646"
+    },
+    {
+      "path": "benchmark/paper.txt",
+      "source_path": "025/paper.txt",
+      "sha256": "beeb20c4680dfb16e0b84c1d259d1e88834123acc972a4f737bfb6e5279f991c"
+    }
+  ]
+}

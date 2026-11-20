@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "upstream_path": "preprints/A-Fully-Polynomial-Randomized-Approximation-Scheme-for-Perfect-Matchings-in-General-Graphs-September-23-2026/main.pdf",
+  "files": [
+    {
+      "path": "benchmark/paper.pdf",
+      "source_path": "113/paper.pdf",
+      "sha256": "1510b15725ee7e92a6c543484c6c02ce7f26347a32c1a11cd66c5890b94c6de1"
+    },
+    {
+      "path": "benchmark/paper.txt",
+      "source_path": "113/paper.txt",
+      "sha256": "f1c9f21bfae2ac97b42fb01ef120097e1445d7be42ad79f096bb029fff10ac17"
+    }
+  ]
+}
