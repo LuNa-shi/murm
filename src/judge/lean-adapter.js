@@ -30,17 +30,22 @@ function toolchainVersion(value) {
 
 async function lockedInputPath(projectRoot, problemFile) {
   if (isAbsolute(problemFile)) return resolve(problemFile);
-  const direct = resolve(projectRoot, problemFile);
-  try {
-    await access(direct);
-    return direct;
-  } catch {
-    // PutnamBench manifests name files from the repository root (for example
-    // `lean4/src/...`) while the locked Lean project root is the `lean4`
-    // subdirectory.  Resolve that repository-root form before declaring the
-    // input unavailable.
-    return resolve(dirname(projectRoot), problemFile);
+  // Manifests may name the problem from the fixture repository root while the
+  // Lean project is nested several directories below it. Try the project root
+  // first, then each ancestor, preserving the existing one-level fallback.
+  let directory = resolve(projectRoot);
+  while (true) {
+    const candidate = resolve(directory, problemFile);
+    try {
+      await access(candidate);
+      return candidate;
+    } catch {
+      const parent = dirname(directory);
+      if (parent === directory) break;
+      directory = parent;
+    }
   }
+  return resolve(projectRoot, problemFile);
 }
 
 export function runProcess(command, args, { cwd, env = process.env, timeoutMs = 120_000, maxOutputBytes = 1_000_000 } = {}) {

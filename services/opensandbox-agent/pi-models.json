@@ -23,6 +23,13 @@
           "reasoning": true,
           "contextWindow": 500000,
           "maxTokens": 128000
+        },
+        {
+          "id": "gpt-6.2-sol",
+          "name": "GPT 6.2 Sol",
+          "reasoning": true,
+          "contextWindow": 500000,
+          "maxTokens": 128000
         }
       ]
     }

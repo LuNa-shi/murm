@@ -8,6 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261120-02` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Completed · Seymour, 4h, protocol valid, general theorem unsolved | `4c2f193` | [Single Seymour run](EXP-20261120-02-seymour-single-4h.md) |
+| `EXP-20261120-01` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Stopped after 25m48s wall · Core 3 discovery failure, operator stop | `b56d030` | [First pair](EXP-20261120-01-openai-math-first-pair.md) |
 | `EXP-20261117-07` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) / [#135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **REGISTERED · Q20 fresh12h /4Cores; matched-time comparison** | `9f62722` | [Q20 twelve-hour comparison](EXP-20261117-07-q20-subtree-12h.md) |
 | `EXP-20261117-06` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) | **B1 accepted; protocol/cleanup PASS; natural resource-error recovery** | `ccdd5c7` | [Nested-resource acceptance](EXP-20261117-06-nested-resource-acceptance.md) |
 | `EXP-20261117-05` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) | **B1 accepted, protocol/cleanup PASS; diagnostic repair incomplete** | `30908fc` | [Issue137 Putnam acceptance](EXP-20261117-05-issue137-putnam-acceptance.md) |
@@ -49,6 +51,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 Use [TEMPLATE.md](TEMPLATE.md) for each new formal study. An approved Issue may delegate a bounded matrix and repeated runs, so a separate human approval is not needed for every execution. The human decides the value/importance of research hypotheses and any material scope change.
 
 ## Retrospective diagnostics
+
+- [OpenAI Math PartialPermutation one-hour diagnostic](openai-math-partial-permutation-1h-diagnostic.md) records the first natural-deadline single-project validation on PR #147. It is an engineering diagnostic and has no formal EXP ID.
 
 - [Issue #122 formal24 gap analysis](issue122-formal24-gap-analysis.md) records the one-hour run at `7c5836f`, reconstructs each Bot lifecycle, and compares observed behavior with Phase 02.
 

@@ -17,6 +17,13 @@ export const FINAL_TREE_SOURCE_PINS = Object.freeze({
   lean4export: '15f6055e299ad5b89345e533cc2192f4cc00f659',
   mathlib: '0df444a360eaa60ab8c11dca51a86af692955474',
 });
+export const OPENAI_MATH_SOURCE_PINS = Object.freeze({
+  lean: '4.34.1',
+  lean_commit: '5045d0056413266e57c625dcd7c365b10e377c52',
+  comparator: '3927ad383f208ae977c340a91c48ac9b497d2097',
+  lean4export: '15f6055e299ad5b89345e533cc2192f4cc00f659',
+  mathlib: 'd13f23b723b8a846827a245b89c10fc7d3f11612',
+});
 const fltContractPath = fileURLToPath(new URL('../../benchmarks/flt10/projection-contract.json', import.meta.url));
 const fltPins = Object.freeze({ ...FINAL_TREE_SOURCE_PINS,
   mathlib: 'db584cd6d46c92f209a44c0f1c829460d327499d',
@@ -25,6 +32,7 @@ const fltPins = Object.freeze({ ...FINAL_TREE_SOURCE_PINS,
 function sourcePins(configuration) {
   if (configuration.benchmarkProfile == null) return FINAL_TREE_SOURCE_PINS;
   if (['flt10-dag-v1', 'flt10-subtree-v1'].includes(configuration.benchmarkProfile)) return fltPins;
+  if (configuration.benchmarkProfile === 'openai-math-v1') return OPENAI_MATH_SOURCE_PINS;
   throw failure('Unknown checker benchmark profile');
 }
 const hash = value => createHash('sha256').update(stableStringify(value)).digest('hex');
@@ -121,10 +129,13 @@ function selected(configuration) {
     ...(configuration.projectJobs === undefined ? {} : { projectJobs: configuration.projectJobs }),
     ...(configuration.projectChecks === undefined ? {} : { projectChecks: configuration.projectChecks }),
     ...(configuration.benchmarkProfile == null ? {} : {
-      benchmarkProfile: configuration.benchmarkProfile, checkpoint: configuration.checkpoint,
-      projectionRoot: configuration.projectionRoot,
+      benchmarkProfile: configuration.benchmarkProfile,
+      ...(configuration.checkpoint === undefined ? {} : { checkpoint: configuration.checkpoint }),
+      ...(configuration.projectionRoot === undefined ? {} : { projectionRoot: configuration.projectionRoot }),
       ...(configuration.benchmarkProfile === 'flt10-subtree-v1'
         ? { foundationSha256: configuration.foundationSha256, requireCompleteProject: true }
+        : configuration.benchmarkProfile === 'openai-math-v1'
+          ? { requireCompleteProject: true, projectChecks: true }
         : { preserveFixturePrefix: true }),
     }),
   };
@@ -178,7 +189,7 @@ async function artifacts(configuration, expected = null) {
   return locked;
 }
 
-async function verifyVersion(leanRoot, bubblewrap = null) {
+async function verifyVersion(leanRoot, bubblewrap = null, pins = FINAL_TREE_SOURCE_PINS) {
   const command = bubblewrap ?? join(leanRoot, 'bin/lean');
   const args = bubblewrap ? [
     '--unshare-all', '--unshare-user', '--disable-userns', '--die-with-parent', '--clearenv',
@@ -188,7 +199,7 @@ async function verifyVersion(leanRoot, bubblewrap = null) {
     '--proc', '/proc', '--dev', '/dev', '/toolchain/bin/lean', '--version',
   ] : ['--version'];
   const { stdout } = await exec(command, args, { env: {}, timeout: 5000, maxBuffer: 4096 });
-  if (!stdout.startsWith(`Lean (version ${FINAL_TREE_SOURCE_PINS.lean},`) || !stdout.includes(`commit ${FINAL_TREE_SOURCE_PINS.lean_commit},`)) {
+  if (!stdout.startsWith(`Lean (version ${pins.lean},`) || !stdout.includes(`commit ${pins.lean_commit},`)) {
     throw failure('Observed Lean toolchain differs from the approved build');
   }
 }
@@ -295,7 +306,7 @@ async function verifyFltFoundation(configuration) {
 /** Trusted operator tool. This attests to the supplied source/build deployments. */
 export async function createFinalTreeArtifactLock({ configuration, sources }) {
   const deployment = selected(configuration);
-  await verifyVersion(deployment.leanRoot);
+  await verifyVersion(deployment.leanRoot, null, sourcePins(deployment));
   const { sourceRoots, dependencyPins } = await verifySources(deployment, sources);
   const manifest = {
     version: 1, configuration: deployment, sources: sourcePins(deployment), sourceRoots, dependencyPins,
@@ -329,7 +340,7 @@ export async function createLockedFinalTreeVerifier({ configuration, problem }) 
   }
   if (!Array.isArray(manifest.artifacts)) throw failure('Final-tree artifact lock lacks an artifact set');
   await artifacts(deployment, manifest.artifacts);
-  await verifyVersion(deployment.leanRoot, deployment.bubblewrap);
+  await verifyVersion(deployment.leanRoot, deployment.bubblewrap, sourcePins(deployment));
   const resources = await verifyCheckerProcessLimits(deployment.resources);
   const identity = { ...deployment.identity, environment_ref: `${deployment.identity.environment_ref}:sha256:${sha256}` };
   const adapter = new LeanFinalTreeVerifier({

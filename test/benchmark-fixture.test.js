@@ -46,6 +46,14 @@ test('fixture rejects abbreviated and nonmatching commit references', async t =>
   await assert.rejects(verifyBenchmarkFixtureCheckout(input), /does not match pinned commit/);
 });
 
+test('embedded repository fixtures may pin an ancestor while retaining current project metadata', async t => {
+  const input = await fixture(t);
+  git(input.root, '-c', 'user.email=fixture@example.test', '-c', 'user.name=Fixture', 'commit', '--allow-empty', '-qm', 'Add embedded metadata');
+  await assert.rejects(verifyBenchmarkFixtureCheckout(input), /does not match pinned commit/);
+  await verifyBenchmarkFixtureCheckout({ ...input, allowDescendant: true });
+  assert.equal((await readBenchmarkFixture({ ...input, commit: input.commit })).sourceHash, 'dfd66e8ad1aadebbeafb01591478b8d0b1153b5ce76d63a09b87210ea1dddac5');
+});
+
 test('fixture rejects path escapes and symlink substitutions even when bytes are unchanged', async t => {
   const input = await fixture(t);
   for (const path of ['/tmp/outside.lean', '../outside.lean', 'lean4/../outside.lean', 'lean4\\outside.lean']) {

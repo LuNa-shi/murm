@@ -12,6 +12,8 @@ const config = JSON.parse(await readFile(process.env.SWARMENV_JUDGE_PEER_CONFIG,
 const deployment = config.finalTreeConfiguration
   ? await createLockedFinalTreeVerifier({ configuration: config.finalTreeConfiguration, problem: config.problem }) : null;
 const checker = new LeanChecker({ ...config.checker,
+  checkerRef: config.fixtureManifest?.checker_ref ?? 'lean',
+  checkerVersion: config.fixtureManifest?.checker_version ?? 'mvp-1',
   runner: deployment?.adapter.runSourceDiagnostic.bind(deployment.adapter),
   projectChecker: deployment?.adapter.projectChecks ? deployment.adapter.checkProject.bind(deployment.adapter) : null });
 const peer = createJudgeServicePeer({ ...config, database: process.env.SWARMENV_SERVICE_DATABASE,

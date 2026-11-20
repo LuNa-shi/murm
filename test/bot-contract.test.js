@@ -6,8 +6,136 @@ import { join } from 'node:path';
 import { TaskService } from '../src/task/task-service.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { takeTaskWithAgent, observedEligibleWorkCount, projectReport, runBenchmarkBatch, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
+import { runTurn, takeTaskWithAgent, recordCoreExecutionRelease, observedEligibleWorkCount, projectReport, runBenchmarkBatch, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
 import { BOT_SKILLS, BOT_SYSTEM_HASH, botServiceDirectory } from '../src/agent/bot-contract.js';
+import { CoreParallelismTracker } from '../src/benchmark/parallelism.js';
+
+test('continuation begin rejection is contained without replacing the active turn owner', async () => {
+  const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: Date.now() - 100 });
+  tracker.beginAgentTurn(1);
+  const session = { rpcRecords: [], waitForReady: async () => { throw new Error('overlap must not dispatch'); } };
+  const owner = { session, executionId: 'E' };
+  const core = { index: 1, session, taskId: 'T', executionId: 'E', agentTurnOwner: owner,
+    agentTurnSession: session, turnInFlight: false, parallelism: tracker, turns: 0,
+    turnStartedAt: Date.now(), errors: [], turnDurationsMs: [], toolEvents: [] };
+  await runTurn(core, 'continue', 1000);
+  assert.equal(core.agentTurnOwner, owner);
+  assert.equal(tracker.openAgentTurns.size, 1);
+  assert.equal(core.turnInFlight, false);
+  assert.equal(core.lastTurn.status, 'error');
+  assert.equal(core.errors.length, 1);
+});
+
+test('a delayed old Execution release retains history without idling the newer Core', () => {
+  const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: Date.now() - 100 });
+  tracker.transition(1, 'RUNNING', { task_id: 'new-task', execution_id: 'new-execution' });
+  tracker.beginAgentTurn(1, { task_id: 'new-task', execution_id: 'new-execution' });
+  const events = [], session = { bound: true }, owner = { session, executionId: 'new-execution' };
+  const currentLatency = { taken_at: 'current-take' }, oldLatency = {};
+  const core = { index: 1, taskId: 'new-task', executionId: 'new-execution', take: { current: true }, session,
+    agentTurnOwner: owner, agentTurnSession: session, turnInFlight: true, dispatchReserved: true,
+    takeActive: true, turns: 7, takeHistory: [], parallelism: tracker,
+    latencyByExecution: new Map([['old-execution', oldLatency], ['new-execution', currentLatency]]), observe: event => events.push(event) };
+  recordCoreExecutionRelease(core, { getExecution: () => ({ state: 'SUCCEEDED' }) }, { taskId: 'old-task', executionId: 'old-execution' });
+  assert.deepEqual(events.map(event => event.kind), ['execution_released']);
+  assert.equal(events[0].executionId, 'old-execution');
+  assert.equal(events[0].payload.state, 'SUCCEEDED');
+  assert.equal(tracker.openIntervals.get(1).state, 'RUNNING');
+  assert.equal(tracker.openIntervals.get(1).execution_id, 'new-execution');
+  assert.equal(tracker.openAgentTurns.size, 1);
+  assert.equal(core.agentTurnOwner, owner);
+  assert.equal(core.executionId, 'new-execution');
+  assert.equal(core.taskId, 'new-task');
+  assert.equal(core.turnInFlight, true);
+  assert.equal(core.dispatchReserved, true);
+  assert.equal(core.takeActive, true);
+  assert.equal(core.turns, 7);
+  assert.deepEqual(currentLatency, { taken_at: 'current-take' });
+  assert.ok(oldLatency.core_released_at);
+});
+
+test('discovery close during take preparation retires its turn before the replacement Bot prompt', async t => {
+  const tasks = new TaskService(); t.after(() => tasks.close());
+  tasks.createMission({ mission_id: 'M-prepare-close', goal: 'Reconcile preparation failure' }, makeEnvelope({ actorRef: 'operator:test' }));
+  const register = id => {
+    tasks.registerBot({ botId: id, missionId: 'M-prepare-close', coreId: 'core-1', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    tasks.recordBotSandbox(id, { provider: 'controlled', sandboxId: `sandbox-${id}` }); tasks.markBotReady(id);
+  };
+  register('old');
+  const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: Date.now() - 100 });
+  let active = false, prompts = 0;
+  const old = { sessionId: 'old-session', rpcRecords: [], prompt: async () => {
+    active = true; core.taskId = 'preparing-task'; core.executionId = 'preparing-execution';
+    throw Object.assign(new Error('Session closed before preparation completes'), { code: 'PROCESS_EXITED' });
+  } };
+  const core = { index: 1, botId: 'old', session: old, botDiscoveryTurns: 0, errors: [], toolEvents: [], turns: 0, turnDurationsMs: [],
+    startConfig: { options: {} }, bridge: { getCapabilityProfile: () => ({ services: [] }) }, stateRef: { problem: {} },
+    runtime: { taskService: tasks, missionWorkspaceId: 'W', hasActiveExecution: () => active,
+      missionWorkspace: { get: async () => ({ workspace_id: 'W', mission_id: 'M-prepare-close', main_revision: '0.1' }) }, recordBotWorkspacePreview() {} }, parallelism: tracker };
+  assert.deepEqual(await takeTaskWithAgent(core, []), { take_deferred: true });
+  assert.equal(tracker.openAgentTurns.size, 0, 'closed transport must retire the initial discovery turn even while preparation is active');
+  active = false; core.taskId = null; core.executionId = null;
+  tasks.requestBotStop('old', 'selection-budget'); tasks.finalizeBotClose('old');
+  register('replacement'); core.botId = 'replacement';
+  core.session = { sessionId: 'replacement-session', rpcRecords: [], prompt: async () => {
+    prompts += 1; tasks.requestBotStop('replacement', 'no-work'); return { data: { disposition: 'handled' } };
+  } };
+  assert.equal((await takeTaskWithAgent(core, [])).no_work, true);
+  assert.equal(prompts, 1);
+  assert.equal(tracker.openAgentTurns.size, 0);
+  tasks.finalizeBotClose('replacement');
+  register('overlap'); core.botId = 'overlap';
+  const existing = { session: core.session, executionId: null };
+  tracker.beginAgentTurn(1);
+  core.agentTurnOwner = existing;
+  core.agentTurnSession = core.session;
+  assert.equal((await takeTaskWithAgent(core, [])).take_failed, true);
+  assert.equal(core.agentTurnOwner, existing, 'failed begin cannot replace a still-owned turn');
+  assert.equal(tracker.openAgentTurns.size, 1, 'genuine overlap remains prohibited');
+  assert.equal(prompts, 1);
+  assert.equal(core.turnInFlight, false, 'failed begin must not manufacture an in-flight transport');
+});
+
+test('a delayed retired discovery finally cannot end or unreserve its successor turn', async t => {
+  const tasks = new TaskService(); t.after(() => tasks.close());
+  tasks.createMission({ mission_id: 'M-delayed-finally', goal: 'Fence delayed transport cleanup' }, makeEnvelope({ actorRef: 'operator:test' }));
+  const register = id => {
+    tasks.registerBot({ botId: id, missionId: 'M-delayed-finally', coreId: 'core-1', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    tasks.recordBotSandbox(id, { provider: 'controlled', sandboxId: `sandbox-${id}` }); tasks.markBotReady(id);
+  };
+  const gate = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+  const oldEntered = gate(), oldExit = gate(), nextEntered = gate(), nextExit = gate();
+  register('retired');
+  const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: Date.now() - 100 });
+  const old = { sessionId: 'retired-session', rpcRecords: [], prompt: async () => {
+    oldEntered.resolve(); await oldExit.promise; return { data: { disposition: 'handled' } };
+  } };
+  const core = { index: 1, botId: 'retired', session: old, botDiscoveryTurns: 0, errors: [], toolEvents: [], turns: 0, turnDurationsMs: [],
+    startConfig: { options: {} }, bridge: { getCapabilityProfile: () => ({ services: [] }) }, stateRef: { problem: {} },
+    runtime: { taskService: tasks, missionWorkspaceId: 'W', hasActiveExecution: () => false,
+      missionWorkspace: { get: async () => ({ workspace_id: 'W', mission_id: 'M-delayed-finally', main_revision: '0.1' }) }, recordBotWorkspacePreview() {} }, parallelism: tracker };
+  const retiring = takeTaskWithAgent(core, []); await oldEntered.promise;
+  // Controlled Runtime release boundary: physical shutdown has completed,
+  // while the retired transport's awaited promise/finally is delayed.
+  tasks.requestBotStop('retired', 'no-work'); tasks.finalizeBotClose('retired');
+  tracker.endAgentTurn(1); core.agentTurnOwner = null; core.agentTurnSession = null; core.turnInFlight = false;
+  register('next'); core.botId = 'next'; core.botDiscoveryTurns = 0;
+  core.session = { sessionId: 'next-session', rpcRecords: [], prompt: async () => {
+    nextEntered.resolve(); await nextExit.promise;
+    tasks.requestBotStop('next', 'no-work'); return { data: { disposition: 'handled' } };
+  } };
+  const next = takeTaskWithAgent(core, []); await nextEntered.promise;
+  const nextOwner = core.agentTurnOwner;
+  oldExit.resolve(); await retiring;
+  assert.equal(core.agentTurnOwner, nextOwner);
+  assert.equal(tracker.openAgentTurns.size, 1);
+  assert.equal(core.turnInFlight, true);
+  assert.equal(core.takeActive, true);
+  assert.equal(core.dispatchReserved, true);
+  nextExit.resolve(); await next;
+  assert.equal(tracker.openAgentTurns.size, 0);
+  assert.equal(core.turnInFlight, false);
+});
 
 test('four Core discovery send paths carry current durable identity and pinned preview from a zero-Task Mission', { timeout: 10_000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'bot-message-'));

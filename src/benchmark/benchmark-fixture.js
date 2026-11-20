@@ -20,13 +20,21 @@ async function git(root, ...args) {
   return stdout;
 }
 
-export async function verifyBenchmarkFixtureCheckout({ root, commit }) {
+export async function verifyBenchmarkFixtureCheckout({ root, commit, allowDescendant = false }) {
   assertFullCommit(commit);
   const [head, checkout] = await Promise.all([
     git(root, 'rev-parse', '--verify', 'HEAD^{commit}'),
     git(root, 'rev-parse', '--show-toplevel'),
   ]);
-  if (head.toString('ascii').trimEnd() !== commit || checkout.toString('utf8').replace(/\n$/, '') !== await realpath(root)) {
+  const pinned = head.toString('ascii').trimEnd() === commit;
+  let descendant = false;
+  if (!pinned && allowDescendant) {
+    try {
+      await git(root, 'merge-base', '--is-ancestor', commit, 'HEAD');
+      descendant = true;
+    } catch { /* A non-ancestor remains rejected below. */ }
+  }
+  if ((!pinned && !descendant) || checkout.toString('utf8').replace(/\n$/, '') !== await realpath(root)) {
     throw new TypeError(`PutnamBench checkout does not match pinned commit ${commit} at its repository root`);
   }
 }
@@ -56,9 +64,9 @@ export async function readBenchmarkFixture({ root, path, commit = null }) {
 }
 
 /** Verify the selected fixture again at the timed-run entry point. */
-export async function verifyBenchmarkRunFixture({ root, commit, problem }) {
+export async function verifyBenchmarkRunFixture({ root, commit, problem, allowDescendant = false }) {
   const { problem_file: path, source, source_hash: sourceHash, source_path: sourcePath } = problem;
-  await verifyBenchmarkFixtureCheckout({ root, commit });
+  await verifyBenchmarkFixtureCheckout({ root, commit, allowDescendant });
   const verified = await readBenchmarkFixture({ root, path, commit });
   if (source !== verified.source || sourceHash !== verified.sourceHash || sourcePath !== verified.sourcePath) {
     throw new TypeError('Prepared benchmark problem does not match the pinned Git fixture');

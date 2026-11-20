@@ -1,0 +1,19 @@
+{
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "lean_toolchain": "leanprover/lean4:v4.34.1",
+  "mathlib_version": "d13f23b723b8a846827a245b89c10fc7d3f11612",
+  "solutions": [
+    {"problem_id":"oai_seymour_second_neighborhood","module":"OAI.Combinatorics.SecondNeighborhood.Main","theorems":["OAI.SeymourSecondNeighborhood.exists_goodVertex"]},
+    {"problem_id":"oai_one_way_liveness","module":"OAI.Combinatorics.Automata.Main","theorems":["OAI.OneWayLiveness.main_theorem"]},
+    {"problem_id":"oai_partial_permutation","module":"OAI.RepresentationTheory.PartialPermutation.Main","theorems":["OAI.PartialPermutation.complementaryCosets_finite"]},
+    {"problem_id":"oai_short_egyptian_fractions","module":"OAI.NumberTheory.ShortEgyptian.Main","theorems":["OAI.ShortEgyptian.main"]},
+    {"problem_id":"oai_power_free_values","module":"OAI.NumberTheory.PowerFree.Main","theorems":["OAI.QuarticPowerFree.allDegrees"]},
+    {"problem_id":"oai_second_kahn_kalai","module":"OAI.Combinatorics.GraphThreshold.Main","theorems":["OAI.LeanBlast.SecondKahnKalai.secondKahnKalaiBounds"]},
+    {"problem_id":"oai_euclidean_ramsey","module":"OAI.Combinatorics.EuclideanRamsey.Main","theorems":["OAI.EuclideanRamsey.classification"]},
+    {"problem_id":"oai_entropy_photon_number","module":"OAI.InformationTheory.PhotonNumber.Inequality","theorems":["OAI.EntropyPhotonNumber.entropy_photon_number_inequality"]},
+    {"problem_id":"oai_strongly_rayleigh_dpp","module":"OAI.Probability.StrongRayleigh.Main","theorems":["OAI.Problem336AdditiveD139.finite_strongly_rayleigh_response","OAI.Problem336AdditiveD139.strongly_rayleigh_group_factor","OAI.Problem336AdditiveD139.finite_positive_contraction_dpp_is_strongly_rayleigh","OAI.Problem336AdditiveD139.countable_positive_contraction_dpp_exists_unique","OAI.Problem336AdditiveD139.invariant_positive_contraction_dpp_factor","OAI.Problem336AdditiveD139.translation_invariant_kernel_dpp_factor"]},
+    {"problem_id":"oai_kmedian_refined_recovery","module":"OAI.Combinatorics.KMedianRecovery.Refined.Recovery","theorems":["OAI.MetricKMedianRecovery.RefinedRecovery.refined_recovery"]},
+    {"problem_id":"oai_matching_fpras","module":"OAI.Combinatorics.MatchingCount.Main","theorems":["OAI.MatchingFPRAS.thm_main"]},
+    {"problem_id":"oai_egyptian_fractions","module":"OAI.NumberTheory.EgyptianFractions.Main","theorems":["OAI.Problem337.main_double_log_order"]}
+  ]
+}
