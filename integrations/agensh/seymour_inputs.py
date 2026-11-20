@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tarfile
+import tempfile
 
 TARGET = 'benchmarks/openai-math-12/lean/ComparatorChallenges/SeymourSecondNeighborhood.lean'
 TARGET_HASH = 'fa4a37831405b3fe7f6a88a2dce8918982195ee1757e05e4623055822d36ca98'
@@ -114,5 +115,14 @@ printf '%s\n' 'import Mathlib.Data.Fintype.Card' 'example : Fintype.card (Fin 2)
 git add .
 lean-check "$parent/WorkerProbe.lean"
 """
-    subprocess.run([*command, image, '-ec', script, 'probe', TARGET], input=challenge.read_bytes(),
-                   check=True, timeout=180)
+    with tempfile.TemporaryDirectory(prefix='agensh-uid-probe-') as directory:
+        cid = Path(directory) / 'container-id'
+        try:
+            subprocess.run([*command, '--cidfile', str(cid), image, '-ec', script, 'probe', TARGET],
+                           input=challenge.read_bytes(), check=True, timeout=180)
+        except BaseException:
+            # Docker CLI termination does not guarantee the daemon stopped the build.
+            if cid.is_file() and (container := cid.read_text().strip()):
+                subprocess.run(['docker', 'rm', '-f', container], timeout=30, check=False,
+                               stdout=subprocess.DEVNULL)
+            raise
