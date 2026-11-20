@@ -34,7 +34,7 @@
     {
       "id": "PF03",
       "title": "移动代数簇的统一仿射点计数",
-      "statement": "固定1≤r≤N、degree界e₀、C>0、正权ω_l及δ₁,…,δ_r。若S⊂ℤ^N满足|z_l|≤CX^ω_l且位于degree≤e₀、dim≤r的Z；对每个固定degree界e、每个与S相交的ℚ定义不可约A⊂Z、dim h>0，统一地或|S∩A|≪_(e,α)X^α(每α>0)，或H_A(T)≥T^h/(h!δ_h^h)−C_eT^(h−1)，则|S|≪_εX^(Σ_(h=1)^r E_h+ε)，E_h=max_(h≤s≤r)δ_s。",
+      "statement": "固定1≤r≤N、degree界e₀、C>0、正权ω_l及δ₁,…,δ_r。若S⊂ℤ^N满足|z_l|≤CX^ω_l且位于degree≤e₀、dim≤r的Z；对每个固定degree界e、每个与S相交的在 ℂ 上不可约且定义于 ℚ 的 A⊂Z、dim h>0，统一地或|S∩A|≪_(e,α)X^α(每α>0)，或H_A(T)≥T^h/(h!δ_h^h)−C_eT^(h−1)，则|S|≪_εX^(Σ_(h=1)^r E_h+ε)，E_h=max_(h≤s≤r)δ_s。",
       "allowed_assumptions": [
         "H_A(T)=dim span{z^α|_A:ω·α≤T}；所有假设中的常数对X,Z,S,A统一。"
       ],

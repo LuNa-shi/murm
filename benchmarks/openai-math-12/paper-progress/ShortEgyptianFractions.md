@@ -40,13 +40,13 @@ OAI.ShortEgyptian.main；仅论文主定理，不计表示1的计数和指定分
 
 **验收**　包含追加1/b、排序、最短值及最大值的连接；不得限于有限长度或分母样例。
 
-[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/Short-Egyptian-fractions-September-25-2026/build/elementary.tex#L150-L170)
+[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/Short-Egyptian-fractions-September-25-2026/build/elementary.tex#L147-L170)
 
 ## SE04 · 共同分母和列表的构造接口
 
 对每个允许的S,C，先有互异素数p₁,…,p_m∈[S^K,2S^K]；对任意R块各2m个该区间素数样本，可在同一个M中容纳T₀的全部子集积及T_i的全部二选一乘积，列表均有2^m个索引，所有条目t|M、1≤t≤e^((K+1)S)，e^S<M≤e^(D_M S)，且最小的≥S^D₀的2幂整除M。
 
-**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S充分大，m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；e^(D_C S)≤C≤e^(2D_C S)，C_j=C当X_j>e^S，否则1。 素数池基数至少S^(K−1)需证明；允许素数重复采样。
+**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S 为充分大的实数，层级 j、d 是非负整数，分子或余数 u 取整数，频率索引 ℓ 取正整数；m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；C 是满足 e^(D_C S)≤C≤e^(2D_C S) 的正整数，C_j=C当X_j>e^S，否则1。 素数池基数至少S^(K−1)需证明；允许素数重复采样。
 
 **依赖**　无
 
@@ -70,7 +70,7 @@ OAI.ShortEgyptian.main；仅论文主定理，不计表示1的计数和指定分
 
 对SE04的T₀，任意j<d且X_j>e^S、任意1≤ℓ≤⌊e^(4ηm)⌋，有X_j⁻¹Σ_(X_(j+1)<u≤X_j)|2^(−m)Σ_(t∈T₀)e(ℓCt/u)|²≤e^(−0.01m)。
 
-**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S充分大，m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；e^(D_C S)≤C≤e^(2D_C S)，C_j=C当X_j>e^S，否则1。 SE04的同一互异素数列表；所有阈值对允许C统一。
+**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S 为充分大的实数，层级 j、d 是非负整数，分子或余数 u 取整数，频率索引 ℓ 取正整数；m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；C 是满足 e^(D_C S)≤C≤e^(2D_C S) 的正整数，C_j=C当X_j>e^S，否则1。 SE04的同一互异素数列表；所有阈值对允许C统一。
 
 **依赖**　SE04
 
@@ -82,7 +82,7 @@ OAI.ShortEgyptian.main；仅论文主定理，不计表示1的计数和指定分
 
 独立均匀从至少S^(K−1)个[S^K,2S^K]内素数中抽取p_(j,ε)，置t_I=∏p_(j,I_j)。若D₀log S≤log u≤S、w=min(m,log u)、1≤ℓ≤e^(0.005w)，则E|2^(−m)Σ_I e(ℓt_I/u)|²≤e^(−0.01w)。
 
-**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S充分大，m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；e^(D_C S)≤C≤e^(2D_C S)，C_j=C当X_j>e^S，否则1。 同一块全部2m个样本独立均匀；不要求t_I彼此独立。
+**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S 为充分大的实数，层级 j、d 是非负整数，分子或余数 u 取整数，频率索引 ℓ 取正整数；m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；C 是满足 e^(D_C S)≤C≤e^(2D_C S) 的正整数，C_j=C当X_j>e^S，否则1。 同一块全部2m个样本独立均匀；不要求t_I彼此独立。
 
 **依赖**　无
 
@@ -94,7 +94,7 @@ OAI.ShortEgyptian.main；仅论文主定理，不计表示1的计数和指定分
 
 存在同一个M,T₀,…,T_R，满足SE04，并使每个j<d除至多X_j e^(−0.001m)个u∈(X_(j+1),X_j]外，至少ρ2^m/2个选定列表索引t满足u⌈C_jt/u⌉−C_jt≤X_(j+1)；选定列表为高层T₀、其余T₁。同时每个S^D₀<u≤e^m都有某i∈{1,…,R}及t∈T_i使u⌈t/u⌉−t≤u^(1−η)。
 
-**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S充分大，m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；e^(D_C S)≤C≤e^(2D_C S)，C_j=C当X_j>e^S，否则1。 SE04–07可作显式输入。
+**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S 为充分大的实数，层级 j、d 是非负整数，分子或余数 u 取整数，频率索引 ℓ 取正整数；m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；C 是满足 e^(D_C S)≤C≤e^(2D_C S) 的正整数，C_j=C当X_j>e^S，否则1。 SE04–07可作显式输入。
 
 **依赖**　SE04、SE05、SE06、SE07
 
@@ -118,7 +118,7 @@ OAI.ShortEgyptian.main；仅论文主定理，不计表示1的计数和指定分
 
 对SE08的同一M，存在绝对B₀使所有1≤u≤X_d都有u/M的≤B₀log S项展开。递归定义G_d=[1,⌊X_d⌋]及G_j=G_(j+1)∪{1≤u≤X_j:某选定t的余数∈G_(j+1)∪{0}}，则每个u∈G_j有u/(MC_j)的≤B₀log S+d−j项展开。
 
-**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S充分大，m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；e^(D_C S)≤C≤e^(2D_C S)，C_j=C当X_j>e^S，否则1。 SE08；原始展开允许重复，分母均≥2。
+**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S 为充分大的实数，层级 j、d 是非负整数，分子或余数 u 取整数，频率索引 ℓ 取正整数；m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；C 是满足 e^(D_C S)≤C≤e^(2D_C S) 的正整数，C_j=C当X_j>e^S，否则1。 SE08；原始展开允许重复，分母均≥2。
 
 **依赖**　SE08
 
@@ -130,7 +130,7 @@ OAI.ShortEgyptian.main；仅论文主定理，不计表示1的计数和指定分
 
 固定r≥max(2,8K_d)，K_d=3D_X/η、α=1−1/r。对SE10的同一G_j，令H_j=[1,⌊X_j⌋]\G_j、δ_j=|H_j|/X_j，则δ_d=0且每个j<d满足δ_j≤e^(−0.001m)+e^(2S^(1/4))δ_(j+1)^α。
 
-**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S充分大，m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；e^(D_C S)≤C≤e^(2D_C S)，C_j=C当X_j>e^S，否则1。 SE08–10；r固定且不随S增长。
+**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S 为充分大的实数，层级 j、d 是非负整数，分子或余数 u 取整数，频率索引 ℓ 取正整数；m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；C 是满足 e^(D_C S)≤C≤e^(2D_C S) 的正整数，C_j=C当X_j>e^S，否则1。 SE08–10；r固定且不随S增长。
 
 **依赖**　SE08、SE09、SE10
 
@@ -142,7 +142,7 @@ OAI.ShortEgyptian.main；仅论文主定理，不计表示1的计数和指定分
 
 在同一M,G₀上证明δ₀≤d exp(2rS^(1/4)−0.001mS^(−1/4))→0。因此存在绝对L,S₀，对于所有S≥S₀及允许C，|[1,⌊e^(D_XS)⌋]\G₀|≤e^(D_XS)/8，且每个u∈G₀有u/(MC)的≤Llog S项展开。
 
-**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S充分大，m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；e^(D_C S)≤C≤e^(2D_C S)，C_j=C当X_j>e^S，否则1。 SE10–11；d≤K_dlog S及α^d≥S^(−1/4)需证明。
+**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S 为充分大的实数，层级 j、d 是非负整数，分子或余数 u 取整数，频率索引 ℓ 取正整数；m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；C 是满足 e^(D_C S)≤C≤e^(2D_C S) 的正整数，C_j=C当X_j>e^S，否则1。 SE10–11；d≤K_dlog S及α^d≥S^(−1/4)需证明。
 
 **依赖**　SE10、SE11
 
@@ -166,13 +166,13 @@ OAI.ShortEgyptian.main；仅论文主定理，不计表示1的计数和指定分
 
 令S=log b，取T=e^(D_CS)。对SE13的余项A/C及SE12的同一M,G，找到正整数g及u,v∈G使u+v=gAM、X/2≤gAM≤X。合并u/(MC),v/(MC)的展开并将所有分母乘g，恢复A/C；接回前缀、清理重复，得到每个1≤a<b都有≤c₂log log b项严格展开，c₂、阈值与a无关。
 
-**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S充分大，m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；e^(D_C S)≤C≤e^(2D_C S)，C_j=C当X_j>e^S，否则1。 SE02、12、13；b充分大，X=e^(D_XS)。
+**允许前提**　K=100、R=1000、D₀=100000、η=10⁻⁴、D_M=(2R+2)(K+2)、D_X=D_M+2、D_C=4D_X；S 为充分大的实数，层级 j、d 是非负整数，分子或余数 u 取整数，频率索引 ℓ 取正整数；m=⌊S/log S⌋，ρ=e^(−ηm)，X_j=e^(D_X S)ρ^j，d为X_d≤e^m的最小索引；C 是满足 e^(D_C S)≤C≤e^(2D_C S) 的正整数，C_j=C当X_j>e^S，否则1。 SE02、12、13；b充分大，X=e^(D_XS)。
 
 **依赖**　SE02、SE12、SE13
 
 **验收**　整数g、u,v与同一G,M绑定；不能只证明对大多数分子成立。
 
-[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/Short-Egyptian-fractions-September-25-2026/build/elementary.tex#L114-L148)
+[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/Short-Egyptian-fractions-September-25-2026/build/elementary.tex#L114-L145)
 
 ## SE15 · 恢复配置根的完整量词
 

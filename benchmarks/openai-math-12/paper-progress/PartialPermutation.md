@@ -28,7 +28,7 @@ OAI.PartialPermutation.complementaryCosets_finite；论文Complementary cosets c
 
 **验收**　维数、分拆个数和固定j极限都要证明；保留n,j范围，任何正确推导可验收。
 
-[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex#L18-L31)
+[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex#L16-L27)
 
 ## PP03 · 远离行列的统一指数下界
 
@@ -40,7 +40,7 @@ OAI.PartialPermutation.complementaryCosets_finite；论文Complementary cosets c
 
 **验收**　指数常数与λ,n无关，不能只检查固定分拆。
 
-[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex#L32-L36)
+[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex#L29-L30)
 
 ## PP04 · 所有正幂的倒数维数和一致有界
 
@@ -52,7 +52,7 @@ OAI.PartialPermutation.complementaryCosets_finite；论文Complementary cosets c
 
 **验收**　证明可求和主控与尾部趋零，不能只证明各固定n有限；把论文C_u对应到题面sSup不可约维数和。
 
-[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex#L6-L37)
+[论文论证](https://github.com/openai/math/blob/4eaee87548250b2682affda7d05d947c05554bae/preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex#L6-L30)
 
 ## PP05 · 全部乘积类型由小维数投影覆盖
 

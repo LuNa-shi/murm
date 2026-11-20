@@ -28,8 +28,8 @@
       ],
       "acceptance": "维数、分拆个数和固定j极限都要证明；保留n,j范围，任何正确推导可验收。",
       "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex",
-      "line_start": 18,
-      "line_end": 31
+      "line_start": 16,
+      "line_end": 27
     },
     {
       "id": "PP03",
@@ -43,8 +43,8 @@
       ],
       "acceptance": "指数常数与λ,n无关，不能只检查固定分拆。",
       "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex",
-      "line_start": 32,
-      "line_end": 36
+      "line_start": 29,
+      "line_end": 30
     },
     {
       "id": "PP04",
@@ -61,7 +61,7 @@
       "acceptance": "证明可求和主控与尾部趋零，不能只证明各固定n有限；把论文C_u对应到题面sSup不可约维数和。",
       "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex",
       "line_start": 6,
-      "line_end": 37
+      "line_end": 30
     },
     {
       "id": "PP05",
