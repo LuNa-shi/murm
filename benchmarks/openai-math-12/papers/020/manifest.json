@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "upstream_path": "preprints/Squarefree-values-of-quartics-and-power-free-values-of-polynomials-September-24-2026/manuscript.pdf",
+  "files": [
+    {
+      "path": "benchmark/paper.pdf",
+      "source_path": "020/paper.pdf",
+      "sha256": "c0320233615387079f999f6d955807230607689d7df0e6988893b2a947c06ba1"
+    },
+    {
+      "path": "benchmark/paper.txt",
+      "source_path": "020/paper.txt",
+      "sha256": "faf0a3908e4b96d6a911bdfc8856142e18eca00bf62fef2eb39290a798500535"
+    }
+  ]
+}

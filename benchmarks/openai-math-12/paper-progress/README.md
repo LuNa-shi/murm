@@ -2,9 +2,22 @@
 
 实验前固定每题的配置根、论文版本、验收项、允许的公共背景、资源预算和观测时刻。执行者只取得该组配置的输入，评估者保存本目录。这里的局部指标衡量论文证明义务的覆盖率。各项可能相差很多工时；沿其他路线已经证明、尚无法对应清单的成果另列数学结论和证据。
 
-| 配置目标 | 论文与评分范围 | 等权项数 |
-|---|---|---:|
-| [SeymourSecondNeighborhood](SeymourSecondNeighborhood.md) | [固定论文](../papers/173/paper.pdf) · 反例归约、剪枝、极值矛盾 | 19 |
+12 个配置目标对应 11 篇论文，共 168 项。每题的链接页给出完整命题、允许前提、依赖、验收条件及固定版本的论文行号。两道埃及分数题分别评分；若比较论文家族，可在实验前选其中一题，或单独报告按家族平均的结果。
+
+| 配置目标 | 论文 | 等权项数 | 评分时要核实的连接 |
+|---|---|---:|---|
+| [SeymourSecondNeighborhood](SeymourSecondNeighborhood.md) | [PDF](../papers/173/paper.pdf) | 19 | 反例归约、共同秩系数和剪枝；区分两种极小性。 |
+| [OneWayLiveness](OneWayLiveness.md) | [PDF](../papers/129/paper.pdf) | 12 | 同一放大链的支撑上界和逐次秩损失须能共同用于机器下界。 |
+| [PartialPermutation](PartialPermutation.md) | [PDF](../papers/238/paper.pdf) | 9 | 沿 isotypic 分解交付两种范数界；采用其他分解仍可直接证明原根。 |
+| [ShortEgyptianFractions](ShortEgyptianFractions.md) | [PDF](../papers/025/paper.pdf) | 15 | 同一组分母同时覆盖中层和终端，并能恢复原展开。与 EgyptianFractions 共用论文。 |
+| [PowerFreeValues](PowerFreeValues.md) | [PDF](../papers/020/paper.pdf) | 18 | 四至八次的计数、数值证书和九次以上的引用各自验收。大项的难度仍需试评。 |
+| [SecondKahnKalai](SecondKahnKalai.md) | [PDF](../papers/176/paper.pdf) | 10 | 在同一棵树上验证采样、剪枝成功概率、容量与路径恢复。 |
+| [EuclideanRamsey](EuclideanRamsey.md) | [PDF](../papers/172/paper.pdf) | 13 | 工具结论可限定于实际构形，但须覆盖原判据所用的全部实例。 |
+| [EntropyPhotonNumber](EntropyPhotonNumber.md) | [PDF](../papers/273/paper.pdf) | 20 | 固定辅助参数，仅令 ζ 趋零。无限维谱和算子域的条件须单独核实。 |
+| [StronglyRayleighDPP](StronglyRayleighDPP.md) | [PDF](../papers/231/paper.pdf) | 9 | 只计有限响应定理。按论文用齐次化与总数守恒建立协方差行界。 |
+| [KMedianRefinedRecovery](KMedianRefinedRecovery.md) | [PDF](../papers/125/paper.pdf) | 10 | 按论文给定 anchor 的抽样恢复算法验收。证书只能用于分析，实际机器仍须可执行。 |
+| [MatchingFPRAS](MatchingFPRAS.md) | [PDF](../papers/113/paper.pdf) | 18 | 对采样、冷却、有限随机位和最终机器逐步验收；更换算法可能绕过部分项目。 |
+| [EgyptianFractions](EgyptianFractions.md) | [PDF](../papers/025/paper.pdf) | 15 | 按这一配置根的量词恢复稠密供给、坏集和真实展开。与 ShortEgyptianFractions 属同一题族。 |
 
 ## 判分
 
