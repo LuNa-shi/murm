@@ -24,6 +24,8 @@ The operator compared the actual seed with all three approved hashes. At the see
 
 At 10:16:26 UTC the single-attempt launcher entered the queue behind EXP-20261120-08. At 10:33 UTC the owner authorized parallel execution and the operator released the queue. Waiting time is excluded. The four-hour budget starts at native launch. Repository tests passed (736 passed, 38 skipped), four dedicated regressions passed on Lean 4.34.1 and both review axes reported no blocking finding. [Live ten-minute register](https://github.com/LuNa-shi/SwarmEnv/issues/157#issuecomment-7036953360)
 
+**Running.** Native launch was 10:35:53.994 UTC and the first wake was 10:36:46.988 UTC. The four-hour deadline is 14:35:53.994 UTC. All four containers matched the audited mount plan and were attached only to the internal network. Gitea seed 38573d17 contained the three exact benchmark files alongside native README and CODEOWNERS metadata. Each of the four fresh Pi sessions received the paper instruction. Text returned by worker tools first matched the manuscript at 10:37:33.207, 10:38:00.212, 10:38:39.165 and 10:39:06.910 UTC respectively. By the startup check all four had successful responses (64 HTTP 200 total). The initial main failed the fixed Judge as expected. No audited reference-module or credential marker appeared in these four startup sessions. Evidence at startup covers supplied files and observed tool returns through this cut.
+
 ## Analysis
 
 Pending observation. Module counts alone cannot establish mathematical progress or integration.
