@@ -234,7 +234,7 @@
       "title": "entropy production 的dual恒等式",
       "statement": "对每个s，σ_s=||q_s||*²−(e′_s−nr_s)，e′_s=Trρ_sN_s−|μ_s|²。",
       "allowed_assumptions": [
-        "EP14绝对log sums、EP15合法generator/log pairings。"
+        "EP12 的绝对 log 求和界、EP15合法generator/log pairings。"
       ],
       "depends_on": [
         "EP12",

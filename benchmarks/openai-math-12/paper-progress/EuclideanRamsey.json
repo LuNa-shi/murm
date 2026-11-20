@@ -40,7 +40,7 @@
         "ER01",
         "ER02"
       ],
-      "acceptance": "颜色上界先于 D 固定；每个颜色与任意同色点族须排除总和 −1；覆盖任意着色，无可测性限制。",
+      "acceptance": "颜色上界先于 D 固定；每个颜色与任意同色点族须排除总和 −1；对每个 D 构造一个遵守同一色数上界的着色，并对所有全等副本证明非单色。此着色无需可测。",
       "paper_path": "preprints/A-classification-of-finite-Euclidean-Ramsey-configurations-September-23-2026/build/sections/02-tensors.tex",
       "line_start": 203,
       "line_end": 224
@@ -111,7 +111,7 @@
     {
       "id": "ER08",
       "title": "当前构形的单坐标右分式修正",
-      "statement": "令 E=ℝ^(ℕ) 有限支撑，K 为以 ξ_z(z∈E) 为生成元的自由群，M⊆K^s 由对角元和当前 a 的单位尺度副本元生成，degree 数副本因子。N=ker(K→ℤ,ξ_z↦1)。令 L_i={g:g^[i]=uv^(−1),u,v∈M}，c_i 为最小 degree(u)+degree(v)。则 L_i 为正规子群、c_i 对逆与共轭不变且次可加，N^(s−2)⊆L_i；任意 g_i∈L_i 的元组有成本≤Σ_i c_i(g_i) 的同一右分式。",
+      "statement": "令 E=ℝ^(ℕ) 有限支撑，K 为以 ξ_z(z∈E) 为生成元的自由群，M⊆K^s 由对角元和当前 a 的单位尺度副本元生成，degree 数副本因子。N=ker(K→ℤ,ξ_z↦1)。其导出列定义为 N^{(0)}=N，N^{(r+1)}=[N^{(r)},N^{(r)}]。令 L_i={g:g^[i]=uv^(−1),u,v∈M}，c_i 为最小 degree(u)+degree(v)。则 L_i 为正规子群、c_i 对逆与共轭不变且次可加，N^{(s−2)}⊆L_i；任意 g_i∈L_i 的元组有成本≤Σ_i c_i(g_i) 的同一右分式。",
       "allowed_assumptions": [
         "当前 a 单射且 s≥2；题面距离定义；degree 依赖选择的表达式。"
       ],
@@ -124,7 +124,7 @@
     {
       "id": "ER09",
       "title": "有限坐标群平均的共同轨道误差界",
-      "statement": "令 L=N^(s−2)、c(g)=max_i c_i(g)（g∈L）。对当前构形对应自由群和任意有限坐标置换群 H、有限 H 不变集 Z⊆E、δ>0，存在同一元组 w∈K^Z 及对角/轨道生成元的表达式，degree=m>0，使全部同轨道 x,y 满足 w_xw_y^(−1)∈L 且 c(w_xw_y^(−1))≤δm。",
+      "statement": "令 L=N^{(s−2)}、c(g)=max_i c_i(g)（g∈L）。对当前构形对应自由群和任意有限坐标置换群 H、有限 H 不变集 Z⊆E、δ>0，存在同一元组 w∈K^Z 及对角/轨道生成元的表达式，degree=m>0，使全部同轨道 x,y 满足 w_xw_y^(−1)∈L 且 c(w_xw_y^(−1))≤δm。",
       "allowed_assumptions": [
         "ER08 的完整群与成本结论；H 有限，Z 有限 H 不变。"
       ],

@@ -75,7 +75,12 @@ test('every configured goal has a pinned paper and a connected paper-route rubri
       assert.ok(row.title && row.statement && row.acceptance && row.allowed_assumptions.length, row.id);
       assert.ok(row.paper_path.startsWith(dirname(manifest.upstream_path) + '/'), row.id);
       assert.ok(row.line_start > 0 && row.line_start <= row.line_end, row.id);
-      assert.ok(article.includes('## ' + row.id + ' · ' + row.title), row.id);
+      const citation = 'https://github.com/openai/math/blob/' + rubric.upstream_commit + '/' +
+        row.paper_path + '#L' + row.line_start + '-L' + row.line_end;
+      for (const detail of ['## ' + row.id + ' · ' + row.title, row.statement, row.acceptance,
+        ...row.allowed_assumptions, citation]) {
+        assert.ok(article.includes(detail), row.id);
+      }
       const dependencies = new Set();
       for (const dep of row.depends_on) {
         assert.ok(ancestors.has(dep), row.id + ' requires ' + dep);

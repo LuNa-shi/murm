@@ -32,6 +32,6 @@
 ## Seymour 校准样例
 
 - **ssn01 正例**　参考声明 `exists_minimal_counterexample` 返回同一非空图的全部性质，包含在同顶点类型所有反例中弧数最小。
-- **ssn01 边界**　EXP-20261120-02 的 `exists_arcMinimalBad_stronglyConnected_inducedMinimal`（0.87）只量化当前图的真删边子关系。它提供有价值的归约，尚缺与任意其他反例的弧数比较。单凭该声明不计这一项。
+- **ssn01 边界**　EXP-20261120-02 的 `exists_arcMinimalBad_stronglyConnected_inducedMinimal`只量化当前图的真删边子关系。它提供有价值的归约，尚缺与任意其他反例的弧数比较。单凭该声明不计这一项。
 - **ssn07/08 见证**　两侧子式分别在不同赋值上非零，不能交付同一赋值同时满足条件。若构造了同一个赋值并核验两侧性质，变量名或矩阵表示的机械变更可接受。
 - **ssn19 整题**　参考根证明或经原 checker 验收的替代整题证明均置 1。仅有最小出度至多五的证明仍有额外假设。

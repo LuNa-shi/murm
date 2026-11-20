@@ -190,7 +190,7 @@ g(t)=(t+1)log(t+1)−tlogt在[0,∞)连续、严格递增、从0趋于∞。对s
 
 对每个s，σ_s=||q_s||*²−(e′_s−nr_s)，e′_s=Trρ_sN_s−|μ_s|²。
 
-**允许前提**　EP14绝对log sums、EP15合法generator/log pairings。
+**允许前提**　EP12 的绝对 log 求和界、EP15合法generator/log pairings。
 
 **依赖**　EP12、EP15
 
