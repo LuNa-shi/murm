@@ -1,0 +1,907 @@
+Page 1
+An exponential two-way deterministic
+state lower bound for one-way liveness
+OpenAI
+September 25, 2026
+Abstract
+One-way liveness on h points accepts a word of binary relations when their ordered
+product is nonempty. For every h≥ 2, it has a nondeterministic automaton withh+ 3
+states and no left moves, whereas every equivalents-state two-way deterministic automaton
+satisfies4( s+ 2)2 ≥2⌊(h−2)/31⌋. Partial transition rules, stay moves, and nonaccepting infinite
+computations are allowed. The alphabets are finite and grow withh, so the result rules out an
+alphabet-independent polynomial state bound for deterministic two-way simulation, already
+for one-way nondeterministic sources.
+1 Introduction
+Two-way deterministic automata recognize the same languages as one-way finite automata, as
+established by Rabin and Scott and by Shepherdson [13, 15]. Allowing the head to return to a
+symbol can nevertheless change the amount of finite control needed to recognize a language. How
+much finite control is needed to replace nondeterministic choices by deterministic head motion?
+Sakoda and Sipser posed the state cost of converting one-way and two-way nondeterministic finite
+automata to two-way deterministic automata in 1978 [14]. The question concerns succinctness:
+the simulator may revisit the input, but must store all information other than the head position in
+its finite state. A polynomial simulation would make nondeterminism inexpensive in this measure
+even when the source machine itself moves in both directions.
+The witness used here is Sakoda and Sipser’s complete familyBh, now calledone-way liveness:
+each letter specifies a binary relation on anh-element set, and a word is live when the product
+of its letters is nonempty. Their Theorem 2.3 establishes this family’s completeness for one-way-
+nondeterministic to two-way-deterministic state conversion [14]. Our proof below gives the small
+source automaton and the context-separation property directly, with the conventions and exact
+state counts used here.
+Earlier exponential lower bounds restrict the motion of the deterministic target. Sipser proved
+an exponential separation for sweeping automata, whose head changes direction only at an
+endmarker [17]. Kapoutsis extended this phenomenon to deterministic machines constrained to
+make sublinearly many reversals as a function of input length [8]. An unrestricted target can
+instead reverse at an interior cell and make arbitrarily many reversals as the input length grows.
+Quadratic lower bounds against unrestricted two-way deterministic targets already occur in
+Chrobak’s work on unary languages [5, 6]. For the promise restriction of one-way liveness to
+words of exactly three relation letters, Kapoutsis proved the optimal orderΘ(h2/logh )[ 9]; the
+alphabet there is still the full relation alphabet. Adeogun and Kapoutsis [1] prove a quadratic
+lower bound for unrestricted deterministic two-way automata against one-way liveness. We prove
+1
+
+Page 2
+an exponential bound for that unrestricted target model. The source automata use no left moves,
+whereas the lower bound permits stay moves, partial transition rules, and nonaccepting infinite
+computations in the target.
+The main representation difficulty is to account for repeated visits to a cell while assigning
+each input symbol a fixed object independent of its neighbors. We use the Brauer diagram monoid,
+whose matchings underlie Brauer’s algebras [4, 3]: its elements are perfect matchings on two equally
+sized sets of ports, and multiplication glues the adjoining sets and contracts paths. Determinism
+makes the configurations reaching a designated accepting sink form a tree. A tour of that tree
+gives the required matching representation, with separate leaves for unused transition candidates
+ensuring that each cell’s wiring depends only on its own symbol. The algebraic part then proves
+an exponential lower bound on the number of ports whenever matching products retain all the
+information in arbitrary relation products. All diagram and relation-monoid facts needed for this
+argument are proved below.
+1.1 Model and statement
+An automaton has a finite state set and one read-only head on a finite word over an alphabet
+Σ, bracketed by two distinct endmarkers outsideΣ. Its head starts at the left endmarker in a
+designated initial state. A transition changes the state and moves the head left, right, or not at all;
+the head cannot cross an endmarker. A transition depends only on the current state and scanned
+symbol. Deterministic transition rules may be partial. A nondeterministic rule permits several
+successors. There are no additional heads, writable cells, work tapes, advice, or randomness. All
+states, including initial and accepting states, are counted.
+Acceptance means that a finite computation reaches an accepting state; a nonaccepting infinite
+computation rejects. We initially count an accepting initial configuration as success. If success
+instead requires a positive transition into an accepting state, the normalization in Section 4 uses
+one additional initial copy. The main bound below includes this extra state and holds with either
+convention.
+For a finite setH, letRH be the monoid of all binary relations onH. Products are in path
+order from left to right:
+(x,z)∈AB⇐⇒there existsy∈Hwith(x,y)∈A,(y,z)∈B.
+Write IF = {(x,x) : x∈F} for F⊆H ; the identity isIH and the zero is the empty relation0.
+ForH= [h]define
+OWLh ={R1 ···R ℓ ∈(R[h])∗:R1 ···R ℓ ̸= 0}.(1.1)
+The product of the empty word isI[h], soε∈OWL h.
+Theorem 1.1.For every integerh≥ 2, the languageOWLh is recognized by a nondeterministic
+automaton withh+3states using no left moves. Every equivalent deterministic two-way automaton
+withsstates satisfies
+4(s+ 2) 2 ≥2 ⌊(h−2)/31⌋.(1.2)
+If an initially accepting configuration counts as acceptance,s+ 2in (1.2) may be replaced bys+ 1.
+Corollary 1.2.There are no absolute constants C,c > 0such that every n-state two-way
+nondeterministic automaton over every finite alphabet has an equivalent two-way deterministic
+automaton with at mostCnc states.
+2
+
+Page 3
+Proof.Putn=h+ 3in Theorem 1.1. Every deterministic equivalent for this family has at least
+2
+1
+2 ⌊(n−5)/31⌋−1 −2
+states. This bound exceeds Cnc for every fixedC,c when n is large enough. For eachh the
+alphabet has2 h2
+symbols and is finite. Since the constants in the proposed simulation must be
+independent of the alphabet, the family is within its scope.
+1.2 Proof architecture
+WriteDk for the matching monoid of degreek. The proof compares two bounds onk. Theorem 4.1
+represents eachs-state deterministic machine by symbol diagrams inDk, withk≤ 4(s+ 2)2. For
+a machine recognizingOWLh, Lemma 5.2 gives a unital surjection from the submonoid generated
+by its ordinary-symbol diagrams ontoR[h]. Concretely, the map sends each word diagram to its
+relation product, preserves multiplication and the empty product, and reaches every relation on
+[h]. These three properties, including the full image, are the algebraic input to the lower bound.
+Corollary 3.2 then forcesk≥ 2⌊(h−2)/31⌋. These three statements give the deterministic lower
+bound in Theorem 1.1.
+We prove the algebraic bound first. Therankof a matching diagram counts its pairs joining
+opposite sides. A diagrame isidempotentif e2 = e; itscornerconsists of the diagrams z with
+ez= ze= z, with identitye. Section 2 reduces the corner of an idempotent of rankr to degreer,
+preserving rank and controlling the indices at which the diagram differs from the identity. An
+idempotent of rankr in Dk differs from the identity on at most2(k−r )indices. The support
+control is uniform: a family supported in one set remains supported in a single set of no greater
+size after reduction. Section 3 uses32conjugates of one idempotent to make256successive relation
+additions. A common support set bounds their total rank loss, while each addition yields a further
+corner representing all relations onh−31points. Comparing these bounds doubles the required
+rank loss every31points.
+Section 4 obtains local symbol diagrams by converting acceptance to reachability of a designated
+sink. Its undirected component is a tree, whose doubled tour supplies the matching test. This
+traversal has precedents in Sipser’s halting method and in the reversible simulation of Lange,
+McKenzie, and Tapp [16, 10]. Candidate transition slots completed by separate leaves make
+the construction independent of neighboring symbols. Finally, Section 5 obtains the quotient by
+using singleton-identity context letters to test each pair in a relation product. No input-length or
+running-time bound is imposed.
+1.3 Related results
+Adeogun and Kapoutsis also analyze limitations of their earlier lower-bound construction [2]. They
+prove a quadratic ceiling for its sequences of connectivity properties and state a general-property
+extension whose proof is deferred. The amplification here uses a fixed chain of256additions.
+Its exponential bound comes from the inductive lower bound on each rank loss in a smaller full
+relation corner, together with one common support budget for all additions.
+The companion paper [11, Theorem 1.1] proves that a nondeterministic two-way automaton for
+the complement ofOWLh requires at least1
+2 2⌊(h−2)/127⌋−1states. The present proof establishes
+the deterministic bound directly using matching diagrams. Both results concern state succinctness
+over growing alphabets; neither yields a uniform logarithmic-space separation or a bound measured
+by transition-table size.
+3
+
+Page 4
+2 Matching and relation corners
+We first establish the algebraic properties used in the rank argument. All monoid products in
+this paper are in path order: in a productab, the factora is placed to the left of the factorb. A
+homomorphism is calledunitalwhen it preserves the designated identities.
+2.1 Matching diagrams, rank, and support
+For an integerm≥ 0, let[ m] = {1,...,m} , with[0] = ∅. Amatching diagram of degreem is a
+perfect matching on two disjoint sets of ports, a left set and a right set, each indexed by[m]. Only
+the paired ports matter; crossings in a drawing have no significance. LetDm be the set of these
+diagrams.
+To multiplya,b∈D m, identify the right port indexedi of a with the left port indexedi of b,
+for everyi∈ [m]. In the resulting finite multigraph, each outside port has degree one and each
+identified port has degree two. Thus every component meeting an outside port is a path with two
+outside endpoints. Pair these endpoints and discard the components without outside ports. The
+result isab. Parallel edges, when they occur at the interface, are counted separately.
+This multiplication is associative. Indeed, in any string of glued diagrams, a substring can be
+replaced by the matching of its boundary endpoints: each path through the substring is replaced
+by one edge with the same endpoints. This preserves the connections between the outer ports
+of the whole string. Components internal to the substring have no connection to those ports.
+Contracting the first or the last two factors in a string of three therefore gives the same outside
+matching. The diagram1m pairing each left portiwith right portiis an identity. In particular,
+D0 = {10}is the one-element monoid. The monoidsDm are the Brauer diagram monoids, whose
+matchings underlie Brauer’s algebras [4]. Their semigroup structure and transversal rank have
+been studied in particular by Auinger and by East and Gray [3, 7].
+A pair joining opposite sides is atransversal; a pair on one side is acap. Writerank(a)for the
+number of transversals ofa, and define
+supp(a) ={i∈[m] :adoes not pair leftiwith righti}.
+We say thataissupported inJ⊆[m]ifsupp(a)⊆J.
+Lemma 2.1(Rank and support).Fora,b∈D m,
+rank(ab)≤min{rank(a),rank(b)}, m−rank(a)≤|supp(a)|.
+The units ofDm are exactly its rank-mdiagrams, which are the permutation diagrams. The only
+rank-m idempotent is1 m. Conjugation by a permutation diagram preserves rank. For every
+J⊆[m], the diagrams supported inJform a submonoid ofD m.
+Proof. Each transversal path in the product uses a transversal ofaand a transversal ofb. Different
+product paths are disjoint, so they use distinct transversals of either factor. This proves the rank
+inequality. Every index outsidesupp(a)supplies a fixed transversal, proving the support inequality.
+A rank-mdiagram is a bijection between its two sides and has the inverse permutation diagram
+as a two-sided inverse. Conversely, the rank inequality forces every unit to have rankm. An
+idempotent in a group is its identity, proving the assertion about idempotents. Ifuis a permutation
+diagram, the rank inequality givesrank(uau−1) ≤rank (a); applying it toa= u−1(uau−1)u gives
+the reverse inequality.
+If botha and b fix the transversal at an indexi, their product also fixes it. Hence any product
+of diagrams supported inJis supported inJ, and1 m is supported in every such set.
+4
+
+Page 5
+2.2 Reduction at an idempotent
+Ife 2 =ein a monoid andSis a subset closed under multiplication and containinge, itscorner
+eSe={ese:s∈S}
+is a monoid with identitye. In particular, everyz∈eSe satisfies ez= ze= z. This is the standard
+local-monoid construction of finite-semigroup theory [12, Section 2.7]. Form≥ 3, Auinger observes
+that the corner of the standard rank-(m−2)projection in Dm is isomorphic toDm−2 [3, Section 3].
+The following reduction treats an arbitrary idempotent and realizes its matching corner on fewer
+ports. Its third part controls one common support set for an entire family of sandwiches.
+Lemma 2.2(Matching corners).Lete∈D m be idempotent and letr= rank(e).
+(i) There is a unital injective homomorphism
+Re :eDme−→Dr
+satisfyingrank(R e(z)) = rank(z)for allz∈eD me.
+(ii) The idempotent satisfies
+|supp(e)|≤2(m−r).
+(iii) For everyJ⊆ [m]there is a setJ′⊆[r], depending only one, J, and the numbering chosen
+forR e, such that|J′|≤|J|and
+supp(Re(eae))⊆J ′ for everya∈D m supported inJ.
+Proof. Let X,Y⊆ [m]be the indices of the left and right transversal endpoints ofe, respectively.
+Its transversals define a bijectionp:X→Y, with|X|=|Y|=r.
+We describe the connector at the interface between two copies ofe. Keep two distinct tagged
+rows of vertices,Ri and Li for i∈ [m], and put an edgeRiLi between each matching pair of
+indices. On theR row put the right caps ofe, and on theL row put the left caps ofe. Thus the
+degree-one vertices are precisely
+{Ry :y∈Y} ∪ {Lx :x∈X},
+and all other vertices have degree two. These tagged vertices remain distinct even whenX and Y
+overlap. Pairing the endpoints of its paths, and discarding its closed components, gives a matching
+on the2rdisplayed vertices.
+This is exactly the connector encountered by the transversals ine1me= e2. Sincerank(e2) = r,
+all r left transversal endpoints of the first copy must reach the right boundary of the second.
+Consequently the connector cannot pair twoR endpoints or twoL endpoints: it pairsRy with
+Lγ(y) for a bijectionγ : Y→X . The path from an outer left endpointx∈X ends at the right
+endpointp(γ(p(x))). Equalitye 2 =egives
+p(γ(p(x))) =p(x),henceγ(p(x)) =x.
+Thusγ=p −1.
+Every diagramz∈eD me contains the left caps ofe on its outer left side and the right caps
+of e on its outer right side. Delete precisely these prescribed caps. The remaining ports are the
+5
+
+Page 6
+idempotente∈D 4
+1 1
+2 2
+3 3
+4 4
+X={1,2},Y={1,4}
+p(1) = 1, p(2) = 4
+glue
+connector ine1 4e
+R1 L1
+R2 L2
+R3 L3
+R4 L4
+γ(1) = 1, γ(4) = 2
+retain and
+renumber
+Re(e) =1 2
+1
+2
+1
+2
+xandp(x)share a number;
+right4 =p(2)becomes2
+Figure 1: A rank-2idempotent of degree4and its reduction. In the left panel, the gray caps
+are prescribed and the colored transversals are retained. The connector paths areR1–L1 and
+R4–L4–L3–R3–R2–L2, givingγ = p−1. Numbering leftx and rightp(x)alike yields Re(e) =1 2.
+For a general corner elementz, only the prescribed outer caps are deleted; every pair among
+retained ports, including caps, remains.
+left ports indexed byX and the right ports indexed byY, and they retain a perfect matching.
+In particular, any additional caps among these retained ports remain in the reduced diagram.
+Number X by[ r]in any fixed way, and give the right endpointp(x)the same number asx. This
+definesR e(z).
+Figure 1 illustrates the connector and the numbering for a rank-2idempotent.
+Restoring the prescribed caps and the original indices reconstructsz, soRe is injective. Only
+nontransversal pairs were deleted, so it preserves rank, and by constructionRe(e) =1 r. To check
+multiplication, letz,w∈eD me. The fixed caps at their middle interface are the right caps and
+left caps ofe. Their connector is therefore the one just computed: the retained right portp(x)of
+z is connected to the retained left portx of w. In the reduced numbering these ports have the
+same index. Contracting the connector, including when the reduced diagrams have caps of their
+own, thus gives ordinary multiplication inDr. It follows thatRe(zw) =R e(z)Re(w), proving (i).
+For (ii), suppose thati∈X∩Y . The verticesRi,Li in the connector have no incident caps,
+so their edgeRiLi is an entire connector path. Henceγ(i) = i, andγ = p−1 implies p(i) = i. Thus
+every index inX∩Yis fixed bye, and
+supp(e)⊆([m]\X)∪([m]\Y).
+Both complements have sizem−r, which proves the bound.
+For (iii), consider the full glued graphe1me, keeping the middle identity diagram explicit. Its
+transversal paths have the same outside endpoint pairs ase, and so are indexed by ther numbers
+used in the reduction. Mark a transversal path if it uses any middle identity edge whose index
+belongs toJ. Let J′ be the numbers of the marked paths. A transversal path may use several
+middle identity edges; the only counting fact needed is that different paths are disjoint. Each
+middle identity edge therefore marks at most one transversal path, and|J′|≤|J|.
+Now replace the middle identity by any diagrama supported inJ. Every middle identity edge
+at an index outsideJ remains present. An unmarked transversal path used only such edges, so
+that entire path survives with the same outside endpoints. Each of its internal vertices still has
+its two original incident edges; a new path cannot attach to it. In particular, changes to closed
+components or to paths with both endpoints on the same side cannot join an unmarked transversal:
+all its middle ports are already paired by the unchanged identity edges. Its corresponding reduced
+6
+
+Page 7
+port is therefore still paired with the equally indexed port on the other side. Only numbers inJ′
+can belong tosupp(Re(eae)). The construction ofJ′did not depend ona, as required.
+When r= 0, the prescribed caps exhaust all outside ports. Theneae= e for everya, and the
+corner is identified with the singletonD0. The reduction above is its unique map, and (iii) holds
+withJ ′=∅; (ii) also holds since|supp(e)|≤m.
+The reduction will also be applied to a submonoideSe. We writeRe(eSe)for its image inDr.
+It contains the ambient identity1r. When discussing support in this reduced monoid, the port set
+is[r]; support in the original monoid still refers to[m].
+2.3 Homomorphic images and permutation lifts
+Every element of a finite semigroup has an idempotent positive power. Indeed, for an elementx
+there are integersa≥ 1and d≥ 1such that xk+d = xk for allk≥a . Choose N≥a divisible byd.
+Then x2N = xN. If a multiplicative map sendsx to an idempotentq, the same is true of every
+positive power ofx, including this idempotent power.
+Lemma 2.3(Unit lifts from a minimum-rank corner).LetS⊆D m be nonempty and closed under
+multiplication, and letϕ: S→M be an onto multiplicative map to a monoidM. Let q∈M be
+idempotent. There is an idempotente∈S with ϕ(e) = q. For every suche, the reduced monoid
+Re(eSe)has a unital surjection
+ϕe :Re(eSe)−→qMq, ϕ e(Re(z)) =ϕ(z).
+If e has minimum rank among all idempotents inS mapping to q, then every element ofeSe
+mapping to a unit ofqMq reduces to a permutation diagram. In particular, every unit ofqMq has
+a permutation lift inRe(eSe), and that lift is a unit of the reduced monoid.
+Proof. The setsS and M are finite becauseDm is finite andϕis onto. Take any preimage ofq and
+then an idempotent positive power to obtaine. The image ofeSe under ϕis exactlyqMq: for any
+v∈M , a preimages∈S gives ϕ(ese) = qvq. Its identitye maps to the identityq of this corner.
+Lemma 2.2(i) makes the displayed definition ofϕe well-defined and transfers both multiplication
+and surjectivity.
+Suppose now thate has the stated minimum rank, putr= rank(e), and lety∈eSe map to a
+unit u of qMq. The group of units ofqMq is finite, sout = q for some positive integert. Take an
+idempotent positive powerz of yt. Then z∈S is idempotent andϕ(z) = q. The rank inequalities
+and minimum choice ofegive
+r≤rank(z)≤rank(y)≤r.
+The last inequality usesy∈eSe . Hence Re(y)has rank r in Dr and is a permutation diagram.
+Its inverse is a power of the same finite-order permutation, so lies inRe(eSe). Surjectivity ofϕe
+supplies a lift for each unituand completes the proof.
+2.4 Corners of the relation monoid
+For a finite setH and a subsetF⊆H , we regard a relation onF as a relation onH containing no
+pairs outsideF×F . With i= IF, these are precisely the relationsA satisfying A= iAi. Under
+this identification their monoid isiRHi with identityi. Permutations of a finite set are identified
+with their graph relations.
+7
+
+Page 8
+Lemma 2.4(A relation corner).Let P∈R H be idempotent, and letF⊆H satisfy IFPIF = IF.
+Put i = IF and Q = PiP. Then Q is idempotent,PQ = QP = Q, and restriction is a unital
+isomorphism
+θ:QR HQ−→RF, θ(Z) =iZi.
+Its inverse sendsA∈R F toPAP=QAQ.
+Proof.The identitiesP 2 =PandiPi=igive
+Q2 =PiP 2iP=P(iPi)P=Q, PQ=QP=Q.
+They also giveiQ= iP, Qi= Pi, andiQi= i. If Z∈QR HQ, thenZ = QZQ and PZP = Z.
+Consequently
+Z=PiPZPiP=PiZiP.(∗)
+Thus its restrictioniZideterminesZuniquely.
+Conversely, ifA∈R F, so thatA=iAi, then
+QAQ=QiAiQ=PiAiP=PAP, i(PAP)i=iPiAiPi=A.
+Hence every relation onF is a restriction of an element of the corner, andA↦→PAP is the inverse
+bijection by(∗).
+For multiplication, writeZ = PAP and W = PBP , whereA= iZi and B = iWi are relations
+onF. SinceA=AiandB=iB, we have
+ZW=PAP 2BP=PAPBP=PA(iPi)BP=PABP.
+Restricting this equality givesθ(ZW) = AB = θ(Z)θ(W). Finally, the identityQ of the source
+corner restricts toi, the identity ofRF. This proves unitality and the claimed isomorphism.
+3 An exponential rank-loss bound
+We now bound the rank lost by an idempotent diagram whose image adds one off-diagonal pair
+to the identity relation. The amplification step uses32conjugates of that diagram to construct
+256successive relation additions. Their joint support bounds the total rank loss, while a smaller
+relation corner bounds the loss at each addition.
+For every integerh≥2, set
+L(h) = 2⌊(h−2)/31⌋.(3.1)
+All reductions below are the mapsRe of Lemma 2.2. Their ranges are regarded as submonoids of
+the indicated smaller matching monoids. In particular, their identities are the ambient identity
+diagrams, and they preserve absolute rank.
+The theorem first assumes permutation lifts in addition to a unital surjection onto theentire
+relation monoid. A surjection onto only the relations generated by the displayed additions would
+not suffice: the proof must also lift arbitrary elements of smaller relation corners. Corollary 3.2
+removes the extra lift assumption by passing to a minimum-rank idempotent corner.
+Theorem 3.1(Rank loss for a single relation addition).LetH be a finite set of sizeh≥ 2, let
+m≥ 0, and letS⊆D m be a submonoid containing1. Suppose that ϕ : S→R H is a unital
+8
+
+Page 9
+surjection and that every permutation ofH has a lift inS which is a permutation diagram. If
+a∈Sis idempotent and
+ϕ(a) =IH ∪{(x,y)}, x,y∈H, x̸=y,
+then
+m−rank(a)≥L(h).
+Proof. We induct onh, simultaneously for every ambient degreem and every choice ofS,ϕ,a
+satisfying the hypotheses. Putt= 16. For2 ≤h< 2t+ 1 = 33, one hasL(h) = 1. A full-rank
+diagram is a permutation, and an idempotent permutation is the identity. Sinceϕ is unital and
+ϕ(a)̸=I H, the rank ofais strictly smaller thanm. This proves the base cases.
+Now leth≥33and assume the theorem for every smaller size at least two. Write
+c=m−rank(a).
+Conjugates with a common support bound.Choose pairwise disjoint sets
+U={u 1,...,u t}, V={v 1,...,v t},{z}
+in H. For each ordered pair of distinct points ofH, a permutationπ can send( x,y)to that pair.
+Choose a permutation-diagram lift˜π∈S . Its inverse belongs toS because a permutation diagram
+has finite order. In path order,
+ϕ(˜π−1a˜π) =π −1(
+IH ∪{(x,y)}
+)
+π=I H ∪{(π(x),π(y))}.
+Using the pairs(ui,z)and(z,v j)in this construction gives idempotentssi,s′
+j ∈Ssuch that
+ϕ(si) =IH ∪{(ui,z)}, ϕ(s ′
+j) =IH ∪{(z,v j)}(1≤i,j≤t).(3.2)
+Conjugation by permutation diagrams preserves rank, so all these idempotents have rankm−c .
+By Lemma 2.2(ii), each has support of size at most2c. Thus the set
+J=
+t⋃
+i=1
+supp(si)∪
+t⋃
+j=1
+supp(s′
+j)⊆[m]
+has size at most4tc. Every productsis′
+j is supported inJ, because diagrams supported in a fixed
+set form a submonoid.
+A chain oft2 additions.Put P0 = IH\{z}. Choose an idempotentb0 ∈S with ϕ(b0) = P0: take
+any lift ofP0 and then a positive idempotent power. The image staysP0 because P0 is idempotent.
+For1≤i,j≤t, define
+gij =b0sis′
+jb0 ∈b0Sb0.
+In path order, the two added pairs in(3.2) allow the pathui,z,v j. The outer factorsP0 delete
+pairs with endpointz, so
+ϕ(gij) =P0 ∪{(ui,vj)}.(3.3)
+Figure 2 shows how the same2tconjugates provide allt2 choices of the pair(ui,vj).
+9
+
+Page 10
+u1
+ui
+ut
+...
+...
+z
+v1
+vj
+vt
+...
+...
+ϕ(si) ϕ(s′
+j)
+incoming
+family
+outgoing
+family
+sandwich
+byP0
+ui vj
+ϕ(gij) =P0 ∪{(ui,vj)}
+Figure 2: The gray arrows are alternatives from the two families of relation images; each individual
+image has one added arrow. The highlighted path creates the selected pair after both outer factors
+delete endpoints atz. Identity loops are omitted. Only relations onH are shown. The common
+matching support bound comes from taking the union of the supports of the32conjugates and
+reducing atb0; the same conjugates provide all256choices.
+Let r0 = rank(b0). Applying Lemma 2.2(iii) atb0 to the single setJ gives one setJ0 ⊆[r0],
+with|J 0|≤4tc, such that
+supp
+(
+Rb0 (gij)
+)
+⊆J0 (1≤i,j≤t).(3.4)
+This set is common to allt2 generators.
+List the pairs(i,j) ∈[t] ×[t]in any order, without repetition. LetEℓ be the set of relation
+pairs(u i,vj)in the firstℓpositions, and set
+Pℓ =P0 ∪Eℓ (0≤ℓ≤t 2).
+All additional pairs go fromU to V, andU∩V = ∅. Consequently two additional pairs cannot
+be composed with each other; the identity pairs inP0 preserve their endpoints. Thus
+(P0 ∪A)(P0 ∪B) =P 0 ∪(A∪B) (A,B⊆U×V).(3.5)
+In particular,P2
+ℓ =Pℓ.
+Starting fromb0, constructbℓ as follows. If(i,j)occupies position ℓ, takebℓ to be a positive
+idempotent power of
+bℓ−1gijbℓ−1.
+Inductively, its image before taking the power isPℓ, by(3.3) and (3.5); the power has the same
+image. Hence
+b2
+ℓ =bℓ, b ℓ ∈bℓ−1Sbℓ−1, ϕ(b ℓ) =Pℓ.(3.6)
+Every bℓ also belongs tob0Sb0. Indeed, this is true initially, and this latter set is a submonoid
+containing everygij; it is therefore preserved by the construction.
+Write
+rℓ = rank(bℓ) (0≤ℓ≤t 2),∆ ℓ =rℓ−1 −rℓ (1≤ℓ≤t 2).
+The nested corners in(3.6) and Lemma 2.1 give∆ℓ ≥0. In the single coordinate system obtained
+by reducing atb0, the starting element is the identity and all generators are supported inJ0 by
+(3.4). The same is true of every constructed product and power, in particularRb0 (bt2 ). Rank
+preservation and the elementary bound of rank defect by support size give
+t2
+∑
+ℓ=1
+∆ℓ =r0 −rt2 ≤
+⏐⏐supp(Rb0 (bt2 ))
+⏐⏐≤|J0|≤4tc.(3.7)
+10
+
+Page 11
+The loss at one addition.We claim that for every1≤ℓ≤t 2,
+2∆ℓ ≥L(h−2t+ 1).(3.8)
+Each local argument uses fresh port coordinates to certify this bound on the already defined
+absolute rank difference∆ℓ in (3.7). Fix ℓ, let( i,j)be its pair, and putP = Pℓ−1. Reduce atbℓ−1
+and define
+T=R bℓ−1 (bℓ−1Sbℓ−1)⊆D rℓ−1 , β=R bℓ−1 (bℓ)∈T.
+Here T contains the ambient identityRbℓ−1 (bℓ−1) =1. The unital-surjection assertion of Lemma 2.3
+gives
+θ:T−→PR HP, θ(R bℓ−1 (w)) =ϕ(w) (w∈b ℓ−1Sbℓ−1).
+Moreover,βis idempotent,θ(β) =P ℓ, and rank preservation gives
+rank(β) =r ℓ,|supp(β)|≤2∆ ℓ,(3.9)
+where support now refers to the indices[rℓ−1].
+A full relation corner on fewer points.Set
+F={u i,vj}∪
+(
+H\(U∪V∪{z})
+)
+, E=I F, Q=PEP.
+Thus |F|= h−2t+ 1 = h−31. Among the possible extra pairs inP, the only one with both
+endpoints inF is( ui,vj), which has not yet been added. Every point ofF is different fromz.
+Therefore
+EPE=E.
+Lemma 2.4 shows thatQ is idempotent,PQ = QP = Q, and restrictionZ↦→EZE is a unital
+isomorphism fromQRHQontoR F. In particular,
+Q(PRHP)Q=QR HQ.
+Equation (3.5) also givesPPℓ =PℓP=P ℓ. SinceEQ=EPandQE=PE, we obtain
+E(QPℓQ)E=EPP ℓPE=EP ℓE=I F ∪{(ui,vj)}.(3.10)
+The second reduction and the induction hypotheses.Among the idempotentsd∈T
+with θ(d) = Q, choose one of minimum rank. Such idempotents exist becauseθ is onto and an
+idempotent power of a lift ofQ still maps toQ. This minimum is taken insideT, in its current
+coordinates inDrℓ−1 . Putr′= rank(d)and reduce once more, defining
+T′=Rd(dTd)⊆D r′.
+The identity ofT′is Rd(d) =1. Its induced map ontoQ(PRHP)Q, followed by restriction toF,
+is the unital surjection
+ψ:T ′−→RF, ψ(R d(w)) =Eθ(w)E(w∈dTd).
+By Lemma 2.3 and the minimum-rank choice ofd, every unit ofQ(PRHP)Q has a permutation-
+diagram lift inT′. The restriction isomorphism preserves units, so every permutation ofF has
+such a lift underψ.
+11
+
+Page 12
+Let Jℓ = supp(β) ⊆[rℓ−1]. Apply Lemma 2.2(iii) to the idempotentdin this ambient matching
+monoid. There is a setK⊆[r ′]with|K|≤|J ℓ|≤2∆ ℓ such that
+supp
+(
+Rd(dβd)
+)
+⊆K.
+The sandwichdβd need not be idempotent. Choose a positive idempotent powerv of its reduction
+Rd(dβd)in T′. Support remains inK under taking powers. By(3.10), the image before taking
+the power isIF ∪{(ui,vj)}, an idempotent relation; hence
+v2 =v, ψ(v) =I F ∪{(ui,vj)},|supp(v)|≤2∆ ℓ.
+We have obtained an identity-containing submonoid ofDr′, a unital surjection ontoRF with
+permutation lifts, and the required idempotent above a single off-diagonal addition. These are all
+the hypotheses of the theorem at size|F|= h−31, which lies between2and h−1. The induction
+hypothesis and the support bound therefore give
+L(h−31)≤r ′−rank(v)≤|supp(v)|≤2∆ ℓ.
+This proves (3.8) for the chosenℓ, and hence for every step of the chain.
+Completion of the recurrence.The bounds established above are collected in Table 1. The
+support is measured once, in the coordinates ofb0; the separate smaller corners certify each
+summand in the resulting rank-loss budget.
+Quantity General expressiont= 16
+Conjugates2t32
+Successive additionst 2 256
+Common support budget4tc64c
+Retained relation pointsh−2t+ 1h−31
+Loss per addition 1
+2 L(h−2t+ 1) 1
+2 L(h−31)
+Total required loss t2
+2 L(h−2t+ 1) 128L(h−31)
+Table 1: The support upper bound and the inductive rank-loss lower bound are applied to the
+same chain. Herec=m−rank(a).
+Summing (3.8) and applying (3.7) yields
+4tc≥
+t2
+∑
+ℓ=1
+∆ℓ ≥t2
+2 L(h−2t+ 1).
+Witht= 16, it follows that
+c≥2L(h−31) = 2 1+⌊(h−33)/31⌋= 2⌊(h−2)/31⌋=L(h).
+This completes the induction.
+Corollary 3.2(Degree bound for a unital relation-monoid divisor).LetH be a finite set of size
+h≥2. If an identity-containing submonoidS⊆D k admits a unital surjectionϕ:S→R H, then
+k≥L(h) = 2 ⌊(h−2)/31⌋.
+No hypothesis about permutation lifts is required here.
+12
+
+Page 13
+Proof. Choose an idempotente∈S of minimum rank among those withϕ(e) = IH. The set
+of choices is nonempty, since the identity ofS is one such idempotent. Putr = rank(e). By
+Lemmas 2.2 and 2.3, the reduced corner
+T=R e(eSe)⊆D r
+contains the ambient identity and maps unitally ontoIHRHIH = RH. The minimum-rank choice
+supplies permutation-diagram lifts for all permutations ofH.
+Choose distinctx,y∈H . Surjectivity supplies a lift inT of IH∪{(x,y)}. A positive idempotent
+power of that lift is an idempotenta∈T with the same image. Theorem 3.1 applies to this
+representation, so
+L(h)≤r−rank(a)≤r≤k.
+4 Local matching representation of deterministic machines
+Fix a finite alphabetΣ. We use one read-only head on an input⊢w⊣ , wherew∈ Σ∗and the two
+endmarkers are distinct symbols outsideΣ. A deterministic machine has a finite state setQ, an
+initial stateq0, a setA⊆Qof accepting states, and a partial transition function
+δ:Q×(Σ∪{⊢,⊣})⇀Q×{−1,0,1}.
+The three moves are left, stay, and right. A transition at an endmarker never moves beyond that
+endmarker. The initial configuration is(0,q0), with cell0carrying ⊢. In this section a computation
+accepts when an accepting state occurs at any time, including time0. A missing transition halts
+the computation; an infinite computation without an accepting state rejects. All states, including
+initial and accepting states, count towards=|Q|.
+Theorem 4.1(Local matching representation).For every s-state deterministic machine in this
+model, there is a map
+η: Σ∪{⊢,⊣}−→D k, k= 4(s+ 1) 2,
+with the following property. Designate ports1,2on each of the two sides as test ports. For every
+wordw=a 1 ···a ℓ, the machine acceptswif and only if the diagram
+η(⊢)η(a1)···η(a ℓ)η(⊣)
+pairs a left test port with a right test port. Each symbol diagram is independent of the input length,
+the symbol’s position, and its neighboring symbols.
+If acceptance instead requires entry into an accepting state after a positive number of transitions,
+the same conclusion holds withk= 4(s+ 2) 2.
+The diagrams will encode a tour of an undirected graph. Determinism is used to ensure
+that the component of one designated vertex is a tree; no condition is imposed on the other
+components. Configuration-tree traversal also underlies Sipser’s halting method [16] and the
+reversible simulation of Lange, McKenzie, and Tapp [10, Section 3.1]. We prove the traversal facts
+needed here and then realize them by matching diagrams. The candidate-slot construction below
+supplies the further requirement that each diagram depend only on the symbol at its own cell,
+with the stated quadratic degree.
+13
+
+Page 14
+4.1 A sink and its tree
+Lemma 4.2(Sink component).Let V be finite, letσ: V ⇀V be a partial function, and lett∈V
+have no successor. Make an undirected multigraph onV with one edge for each defined successor
+v↦→σ(v), retaining self-loops and distinct edges with the same endpoints. Then a vertex lies in
+the connected component oft if and only if some finite sequence of successor steps takes it tot.
+This component is a tree.
+Proof. Let B be the set of vertices reachingt, allowing a sequence of length zero. For every
+successor edgeu↦→v, one hasu∈B if and only ifv∈B . One implication prepends that edge
+to a path tot; the other removes the first step of the unique successor path fromu to t. This
+removal is legitimate becauseu̸= t. Thus membership inB is constant along undirected edges.
+Since t∈B , its entire component lies inB. Conversely, a successor path is an undirected path, so
+every element ofBbelongs to that component.
+If the component hasv vertices, each of its vertices other thant has exactly one outgoing
+edge, andt has none. All these edges stay in the component, and every edge in the component
+is counted once at its source. Hence the connected multigraph hasv−1edges and is a tree. In
+particular, it has neither self-loops nor parallel edges.
+To apply the lemma, add one new statef to the machine and putN = s+ 1. This is an
+auxiliary successor rule for a reachability test, not a change in the language to be recognized. For
+everyb∈Σ∪{⊢,⊣}, define
+ˆδ(q,b) =
+
+
+
+(f,0), q∈A,
+δ(q,b), q∈Q\A,
+(f,1), q=f, b̸=⊣,
+undefined, q=f, b=⊣.
+The first case applies even when the old transition was undefined. Only the rows at old nonaccepting
+states retain their old partial rules, including undefined entries.
+For a fixed input of lengthℓ, let
+c0 = (0,q0), t= (ℓ+ 1,f).
+The original machine accepts precisely when the modified successor rule reachest from c0. Indeed,
+the computations agree until the first accepting state, which now leads intof and then tot.
+Conversely, the first entry intof must come from an old accepting state. This also covers
+acceptance initially or on an endmarker. LetG be the undirected successor multigraph on all
+configurations( i,q), where0 ≤i≤ℓ + 1and q∈Q∪{f} . Lemma 4.2 shows that the component
+of t is a tree, and thatc0 belongs to it exactly on accepted inputs. Nonaccepting cycles in other
+components require no further modification.
+4.2 Tours determined by cyclic orders
+An incidence of an edge at a vertex records its endpoint there. A loop has two incidences at its
+vertex. Choose a cyclic order of the incidences at every vertex of positive degree. Regard each
+edge as having two directed traversals. Upon arriving at a vertex along one incidence, depart
+along the next incidence in its cyclic order. At a vertex of degree one this means returning along
+the same edge.
+14
+
+Page 15
+Lemma 4.3(Tree tour).For a finite tree with at least one edge, this rule has a single cycle on its
+directed edge traversals, for every choice of cyclic orders. If the two joins at two distinct leaves are
+opened, the resulting two paths each connect a tip at one leaf to a tip at the other.
+Proof. The rule is a permutation of the directed traversals: a departure has exactly one preceding
+arrival, determined by the preceding incidence in the cyclic order. A tree consisting of one edge
+gives a cycle of its two traversals.
+For the induction step, remove a leafz with neighborv from a tree with more than one edge.
+Restrict the cyclic order atv by removing the incidence ofvz. The smaller tree has one tour cycle
+by induction. Insertingvzback into that order replaces one transition
+(u,v)↦−→(v,w)
+of the smaller tour by
+(u,v)↦−→(v,z)↦−→(z,v)↦−→(v,w).
+Here u= w is allowed. No other transition changes. Thus two new traversals are inserted into the
+existing cycle, proving the first assertion.
+Realize the tour as a circular wire, using one lane for each directed traversal and a join for
+each arrival-to-departure step. The joins at two different leaves are two different points on this
+circle. Opening both cuts the circle into two paths, each running between the two cuts. Each path
+consequently has one tip at each of the two leaves.
+4.3 Cell diagrams and their composition
+Proof of Theorem 4.1.Use the modified successor rule with itsN = s+ 1states, numbered by
+[N]. We first augment its undirected graph by leaves so that each cell’s portion of the graph can
+be determined from that cell’s symbol alone.
+Candidate edges at an internal boundary.At every boundary between two neighboring
+cells, reserve one slot for each triple
+(d,p,q)∈{←,→}×[N]×[N].
+The directiond specifies which cell is the prospective source and which is the prospective target.
+The slot represents a candidate transition from statep in the source cell to stateq in the target
+cell. It carries two lane ports, labeled by the absolute directions of travel→and ←. These labels,
+together with(d,p,q), give a fixed enumeration of the
+k= 2·N 2 ·2 = 4N 2
+ports on either side of a cell. Equal labels are identified when neighboring cell diagrams are
+multiplied.
+For each slot put an undirected edge across the boundary. At its target end, always attach it to
+the target cell’s state vertexq. At its source end, attach it to state vertexpif the modified transition
+from p on the source cell’s symbol is exactly the transition specified by the slot. Otherwise attach
+that end to a new degree-one vertex in the source cell. Use a different new vertex for each unused
+slot.
+Every actual crossing successor edge is represented once, in its own slot. Each other slot
+contributes a single leaf edge attached to a state vertex. Keep every actual stay edge inside its cell,
+15
+
+Page 16
+with two distinct incidences when it is a loop. The resulting graph is thereforeG with additional
+leaves and leaf edges. It has the same connectivity between state vertices asG, and the component
+oftis still a tree.
+The target-end attachment makes the construction local: a target cell does not need to know
+whether its neighbor uses a slot. Every possible incoming slot is attached to its indicated state
+there. Only the source cell decides between its state vertex and a fresh leaf, using its own scanned
+symbol and successor rule. Figure 3 isolates this choice for one slot.
+Active slot Unused slot
+p q
+p
+fresh leaf
+q
+source cell target cell source cell target cell
+Figure 3: One candidate transition slot withd=→, with its two travel lanes. The target end is
+always attached to stateq. Only the source attachment changes: an actual transition uses statep,
+and an unused slot uses its own new leaf, adding no state-to-state connection. Thus the target cell
+needs no information about the source symbol. Other slots and local cyclic joins are omitted; lane
+arrows indicate traversal, not two machine transitions.
+The two outward boundaries.An ordinary cell has a neighbor on each side. The left-marker
+cell has only its right neighbor, and the right-marker cell only its left neighbor. Use candidate
+slots exactly on these inward boundaries. On the outward side of the left marker, instead attach a
+test edge fromc0 to a new outer leafzL. On the outward side of the right marker attach a test
+edge fromtto another new outer leafzR.
+Each test edge has two lanes whose outer tips occupy ports1,2of the corresponding outward
+side; the same indices serve as ordinary candidate-lane ports on internal sides. These tips will
+remain unjoined at the outer leaf. Pair the other outward ports as(3,4),(5,6),..., (k− 1,k),
+independently of all graph edges. This uses all remaining ports becausek is even. Denote the
+graph including the two test leaves byˆG. Its component containingt is a tree, and its two test
+leaves are connected if and only if the machine accepts.
+Lanes and local joins.Place two travel lanes on every edge ofˆG, one in each direction of
+traversal. Each incidence consequently has an incoming tip and an outgoing tip. For an edge with
+incidences iand j, its lanes connect the outgoing tip atito the incoming tip atj, and the outgoing
+tip atj to the incoming tip ati. This prescription applies also to a loop, whose incidences are
+different even though their vertices coincide.
+For a crossing edge, each half-lane ends at the corresponding boundary port. Absolute travel
+directions determine the following local correspondence:
+side of the cell →lane←lane
+left incoming tip outgoing tip
+right outgoing tip incoming tip
+Thus equal-index gluing connects an outgoing half-lane in one cell to an incoming half-lane in its
+neighbor, as required.
+16
+
+Page 17
+At every vertex other thanzL,zR, choose a cyclic order of its incidences and join the incoming
+tip at each incidence to the outgoing tip at the next incidence. A leaf reflects one lane into the
+other; a vertex of degree zero requires no joins. Choose these orders separately for each symbol
+type and then use the same orders at every occurrence of that symbol. This is possible because all
+incidences are local: incoming crossing slots are always present, outgoing attachments depend only
+on the scanned symbol, and stay edges are internal. Marker incidences, including their test edges,
+are likewise fixed by marker type. Incidences can, for example, be ordered by their slot labels and
+their roles in internal edges.
+Contracting one cell.Inside a cell, every lane tip is incident with one lane and one local join.
+The only exposed ends are its boundary ports, each used exactly once, including the separately
+paired outward ports. Hence the finite wiring inside the cell has degree two at internal points
+and degree one at its ports. Every component containing a port is a path ending at exactly one
+other port. Discard components without ports and pair the two endpoints of each remaining path.
+The result is a perfect matching on the cell’s2k ports, hence an element ofDk. Let η(a)be this
+matching for symbola.
+All preceding choices for one cell depend only ona, which proves the asserted symbol locality.
+Gluing cells with equal port indices reconstructs their full wiring. Contracting paths first within
+cells or only after gluing yields the same pairing of outside ports, by the definition of diagram
+multiplication. Consequently the whole-input diagram in the theorem is precisely the pairing
+obtained from the wires ofˆG, with the two test-leaf joins omitted and the unused outward ports
+separately paired. Figure 4 shows the test-port part of this contraction in the accepted case.
+glued local cell wirings,
+each fixed by its symbol
+L1
+L2
+R1
+R2
+contract paths;
+same endpoints
+test-port part of the
+product of cell matchings
+L1
+L2
+R1
+R2
+Figure 4: The accepted case, restricted to the four test ports already exposed on the marker
+outward sides:Li and Ri name portiat the left and right. For the connected sink tree, Lemma 4.3
+shows that restoring the dashed test-leaf reflections closes one tour cycle; opening them leaves two
+arcs, each joining the two sides. Contracting within cells before gluing or after gluing preserves
+these outside endpoints and their pairing. The displayed cross pairing is one possibility. Other
+ports, caps, and wire components of the degree-kconstruction are omitted.
+Reading acceptance.If a wire pairs a left test port to a right test port, it travels only along
+edges and joins within one component ofˆG. The separately paired outward ports are disconnected
+from these wires. ThuszL andz R lie in the same component, and the machine accepts.
+Conversely, on an accepted input both test leaves lie in the tree component containingt.
+Temporarily add their degree-one reflection joins. Lemma 4.3 gives a single circular wire containing
+both joins. Removing them again gives two paths, each from a left test port to a right test port.
+This proves the acceptance criterion. Other components, including components with cycles, cannot
+affect these paths.
+17
+
+Page 18
+When w= ε, the input still has two distinct adjacent marker cells. Their inward sides glue by
+exactly the same slot scheme, and both outward test edges are present. In the connected case the
+tree has at least these two edges, so the nonempty-tree hypothesis of Lemma 4.3 holds. Thus the
+argument also gives the criterion forη(⊢)η(⊣).
+Finally, under the positive-transition acceptance convention, first perform the following op-
+eration on the original machine, before the sink normalization above. Add a new nonaccepting
+initial stateq′
+0 with partial rowδ′(q′
+0,b) = δ(q0,b)for every scanned symbolb, using the original
+partial transition function. Keep all old states and accepting states, and leave every transition
+destination in the old state set. Starting atq′
+0 simulates exactly the original computation from its
+first transition onward, so acceptance with the time-zero convention for this(s+ 1)-state machine
+is the desired positive-transition acceptance of the original. Apply the construction already proved
+to obtain degree4(s+ 2) 2.
+Extend η to body words by multiplication, withη(ε) =1. If η(u) = η(v), then for every
+x,y∈ Σ∗the whole-input diagrams ofxuy and xvy coincide. The theorem therefore makesu and
+vindistinguishable in all input contexts, including empty contexts.
+5 From relation products to the state lower bound
+We now connect the two representations. The use of the full relation alphabet makes this step
+elementary: every relation occurs as a single letter, and two additional letters select any one entry
+of a product. This is the context-separation property of one-way liveness [1].
+Proposition 5.1.For h≥ 2, the languageOWLh has a nondeterministic automaton withh+ 3
+states, with no left moves.
+Proof. Use thehelements ofH = [h]as path states, together with three distinct statesqin,qacc,qrej.
+Start inqin on the left endmarker and move right into any path statep∈H . At a letterR∈R H
+in path statep, move right into anyq with( p,q) ∈R. If there is no suchq, enterqrej by a stay
+move. At the right endmarker in any path state, enterqacc by a stay move. Declare onlyqacc
+accepting. The rejecting state stays forever, and all unused rules may enter it by a stay move.
+An accepting computation onR1 ···R ℓ specifies statesp0,...,p ℓ with( pj−1,pj) ∈Rj for every
+j. Such states exist exactly whenR1 ···R ℓ ̸= 0. For the empty word, the first right move goes
+directly from the left marker to the right marker in a path state, and the next step accepts. This
+agrees with IH ̸= 0. All transitions respect the boundaries, allh+ 3states are counted, and
+acceptance always follows a positive transition.
+Lemma 5.2.Let H be a nonempty finite set. Suppose a deterministic automaton recognizing
+nonzero relation products overRH has a symbol-diagram representation inDk as in Theorem 4.1.
+Let S⊆D k be the submonoid generated by the ordinary-symbol diagrams, including the empty
+product. Then there is a unital surjectionS→R H sending each ordinary-symbol diagram to its
+relation letter.
+Proof. For a body wordw, letd(w) ∈S be its diagram product and letr(w) ∈RH be its relation
+product. Supposed(u) =d(v). For any body wordsx,y, associativity gives
+dL d(x)d(u)d(y)dR =dL d(x)d(v)d(y)dR,
+where dL,dR are the fixed marker diagrams. The recognition rule therefore gives the same
+membership decision forxuyandxvy.
+18
+
+Page 19
+If r(u) ̸= r(v), choose( i,j)belonging to exactly one of them. Takex to be the single letter
+I{i}andythe single letterI {j}. For any relationA,
+I{i}AI{j}=
+{
+{(i,j)},(i,j)∈A,
+0,(i,j)/∈A.
+Exactly one of the two surrounded words would belong to the language, a contradiction. Thus
+d(u) =d(v)impliesr(u) =r(v), andϕ(d(w)) =r(w)is well-defined onS.
+Concatenation proves thatϕ preserves multiplication. The empty word givesϕ(1) = IH,
+including when a nonempty word also has diagram product1. Every relation is the image of its
+one-letter diagram, soϕis surjective.
+Proof of Theorem 1.1.The source-state assertion is Proposition 5.1. Let an arbitrarys-state
+deterministic two-way automaton recognizeOWLh on all finite words. Under initial-configuration
+acceptance, Theorem 4.1 gives a representation inDk with k= 4(s+ 1)2. Lemma 5.2 supplies a
+unital surjection from the generated submonoid ontoR[h]. Corollary 3.2 then gives
+4(s+ 1) 2 =k≥L(h) = 2 ⌊(h−2)/31⌋.
+With positive-transition acceptance, use the additional initial copy in Theorem 4.1; its degree is
+4(s+ 2) 2. This proves both stated bounds.
+Remark5.3.The auxiliary vertices and wires used in the matching representation are an algebraic
+encoding of a computation graph, not additional memory granted to the deterministic simulator.
+The lower bound is proved for every machine in the ordinary model stated in the introduction.
+The family uses a growing finite alphabet, as permitted by the required alphabet-independent
+constants; the proof makes no separate fixed-alphabet claim.
+References
+[1] Kehinde Adeogun and Christos Kapoutsis. A quadratic lower bound for 2DFAs against
+one-way liveness. arXiv:2602.24279v2 [cs.FL], 2026. Version 2, revised 6 July 2026.
+[2] Kehinde Adeogun and Christos A. Kapoutsis. Unrestricted 2DFA simulation of 1NFAs: A
+quadratic limitation to a new lower bound. arXiv:2609.13793v2 [cs.FL], 2026. Version 2,
+revised 15 September 2026.
+[3] Karl Auinger. Krohn–Rhodes complexity of Brauer type semigroups.Portugaliae
+Mathematica, 69(4):341–360, 2012.
+[4] Richard Brauer. On algebras which are connected with the semisimple continuous groups.
+Annals of Mathematics, 38(4):857–872, 1937.
+[5] Marek Chrobak. Finite automata and unary languages.Theoretical Computer Science,
+47:149–158, 1986. Erratum in Theoretical Computer Science 302 (2003), 497–498.
+[6] Marek Chrobak. Errata to: “finite automata and unary languages”.Theoretical Computer
+Science, 302:497–498, 2003.
+19
+
+Page 20
+[7] James East and Robert D. Gray. Diagram monoids and Graham–Houghton graphs:
+Idempotents and generating sets of ideals.Journal of Combinatorial Theory, Series A,
+146:63–128, 2017.
+[8] Christos Kapoutsis. Nondeterminism is essential in small two-way finite automata with few
+reversals.Information and Computation, 222:208–227, 2013.
+[9] Christos A. Kapoutsis. Optimal 2DFA algorithms for one-way liveness on two and three
+symbols. In Hans-Joachim Böckenhauer, Dennis Komm, and Walter Unger, editors,
+Adventures Between Lower Bounds and Higher Altitudes: Essays Dedicated to Juraj
+Hromkovič on the Occasion of His 60th Birthday, volume 11011 ofLecture Notes in
+Computer Science, pages 33–48. Springer, Cham, 2018.
+[10] Klaus-Jörn Lange, Pierre McKenzie, and Alain Tapp. Reversible space equals deterministic
+space.Journal of Computer and System Sciences, 60(2):354–367, 2000.
+[11] OpenAI. An exponential state lower bound for two-way nondeterministic complementation.
+OpenAI Math Release preprint OAI:An-exponential-state-lower-bound-for-two-way-
+nondeterministic-complementation-September-25-2026, 2026.
+[12] Jean-Éric Pin. Syntactic semigroups. In Grzegorz Rozenberg and Arto Salomaa, editors,
+Handbook of Formal Languages, volume 1, pages 679–746. Springer, Berlin–Heidelberg, 1997.
+[13] Michael O. Rabin and Dana Scott. Finite automata and their decision problems.IBM
+Journal of Research and Development, 3(2):114–125, 1959.
+[14] William J. Sakoda and Michael Sipser. Nondeterminism and the size of two way finite
+automata. InProceedings of the Tenth Annual ACM Symposium on Theory of Computing,
+STOC ’78, pages 275–286, New York, NY, USA, May 1978. Association for Computing
+Machinery.
+[15] John C. Shepherdson. The reduction of two-way automata to one-way automata.IBM
+Journal of Research and Development, 3(2):198–200, 1959.
+[16] Michael Sipser. Halting space-bounded computations.Theoretical Computer Science,
+10(3):335–338, 1980.
+[17] Michael Sipser. Lower bounds on the size of sweeping automata.Journal of Computer and
+System Sciences, 21(2):195–202, 1980.
+20

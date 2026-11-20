@@ -1,0 +1,144 @@
+{
+  "problem": "PartialPermutation",
+  "scope": "OAI.PartialPermutation.complementaryCosets_finite；论文Complementary cosets control Fourier matrices。",
+  "limitations": "所有证明依赖须在固定 Lean/Mathlib 背景中核验；表内上游结论可作为显式条件参数，应用到原题时须补齐。允许等价表示和更强结论；参考证明使用的证明技术不作强制要求。 论文同时给出orbit与isotypic两种路线。当前中间项选择更强的isotypic全矩阵路线；采用完整orbit路线且只得到op界时不能冒认HS根完成。 经典Specht分类/hook等在论文为输入，在固定形式环境中是否免费取决于实际提供的可信库，须逐项核对。 这些接口颗粒度不相等，需要校准；篇幅与证明难度没有被转换为等权依据。",
+  "milestones": [
+    {
+      "id": "PP01",
+      "title": "对称群不可约表示的维数语义",
+      "statement": "建立Sym(Fin n)的全部不可约复表示类型与分拆λ⊢n的对应，维数D_λ等于标准Young表数量，满足hook公式D_λ=n!/∏_(x∈λ)h(x)。",
+      "allowed_assumptions": [
+        "所有n≥1；有限群表示、Young图和标准表的定义。"
+      ],
+      "depends_on": [],
+      "acceptance": "论文将这些视为经典输入；固定Mathlib若未提供，必须随候选提交完整证明依赖，不能当作额外公理。覆盖全部不可约类型。",
+      "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex",
+      "line_start": 13,
+      "line_end": 18
+    },
+    {
+      "id": "PP02",
+      "title": "近行分拆的统一维数与个数界",
+      "statement": "令j=n−max(λ₁,λ′₁)，1≤j≤n/3时该亏损的形状至多2p(j)种，D_λ≥C(n−j,j)≥2^j；固定j>0时维数下界随n趋于无穷。并有p(j)≤exp(3√j)。",
+      "allowed_assumptions": [
+        "PP01；λ可转置以最长边作为首行。"
+      ],
+      "depends_on": [
+        "PP01"
+      ],
+      "acceptance": "维数、分拆个数和固定j极限都要证明；保留n,j范围，任何正确推导可验收。",
+      "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex",
+      "line_start": 16,
+      "line_end": 27
+    },
+    {
+      "id": "PP03",
+      "title": "远离行列的统一指数下界",
+      "statement": "当max(λ₁,λ′₁)<2n/3，存在绝对c>0和阈值，使D_λ≥exp(cn)；证明同时控制最长边≥n/10与<n/10两种情况，或交付等强统一结论。",
+      "allowed_assumptions": [
+        "PP01；全部分拆λ⊢n。"
+      ],
+      "depends_on": [
+        "PP01"
+      ],
+      "acceptance": "指数常数与λ,n无关，不能只检查固定分拆。",
+      "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex",
+      "line_start": 29,
+      "line_end": 30
+    },
+    {
+      "id": "PP04",
+      "title": "所有正幂的倒数维数和一致有界",
+      "statement": "对每个实u>0，去掉行列两个一维类型后的Z_u(n)=ΣD_λ^(−u)→0，故C_u=sup_(n≥1)Σ_(λ⊢n)D_λ^(−u)<∞，每个n≥1的完整和≤C_u。",
+      "allowed_assumptions": [
+        "PP01–03；u固定后n趋于无穷。"
+      ],
+      "depends_on": [
+        "PP01",
+        "PP02",
+        "PP03"
+      ],
+      "acceptance": "证明可求和主控与尾部趋零，不能只证明各固定n有限；把论文C_u对应到题面sSup不可约维数和。",
+      "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/foundations.tex",
+      "line_start": 6,
+      "line_end": 30
+    },
+    {
+      "id": "PP05",
+      "title": "全部乘积类型由小维数投影覆盖",
+      "statement": "对任意有限X的非空不交分块M₁,…,M_b，b>0；H_i为固定块外点的置换群。任意D维酉表示限制到∏H_i时，每个非零乘积等型分量包含某因子类型τ，dimτ≤D^(1/b)。令P_(i,τ)为完整H_i等型正交投影，则I≼Σ_(i,dimτ≤D^(1/b))P_(i,τ)。",
+      "allowed_assumptions": [
+        "有限维酉表示、D>0；分块覆盖X；有限群张量型分解需有完整证明。"
+      ],
+      "depends_on": [],
+      "acceptance": "同一ρ和子群族，包含所有重数。只选一个不可约拷贝不能验收；论文L136–143也给出正算子形式。",
+      "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/core.tex",
+      "line_start": 130,
+      "line_end": 144
+    },
+    {
+      "id": "PP06",
+      "title": "一个子群类型的完整傅里叶能量界",
+      "statement": "任意有限群G、H≤G，f≥0、z=Σf≤1且每个gH满足f(gH)≤B/[G:H]；任意不可约H类型τ维数a，其完整等型投影P_(ρ,H,τ)满足Σ_(ρ∈Irr G)D_ρ‖f̂(ρ)P_(ρ,H,τ)‖²_HS≤Bza²。",
+      "allowed_assumptions": [
+        "有限群酉表示及计数测度Fourier归一化f̂=Σf(g)ρ(g)。"
+      ],
+      "depends_on": [],
+      "acceptance": "含所有环境不可约ρ与所有重数；必须核验中心幂等元、卷积或等价能量推导。仅对某向量或某选定拷贝的界不够。",
+      "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/core.tex",
+      "line_start": 90,
+      "line_end": 127
+    },
+    {
+      "id": "PP07",
+      "title": "小维数截断和与原题常数连接",
+      "statement": "对每个块H_i≅Sym(M_i)、阈值R=D^(1/b)、u>0，Σ_(τ∈Irr H_i,dimτ≤R)(dimτ)²≤C_uD^((u+2)/b)。",
+      "allowed_assumptions": [
+        "PP04；每个M_i非空；有限群同构转移表示及维数的证明。"
+      ],
+      "depends_on": [
+        "PP04"
+      ],
+      "acceptance": "使用每个实际块的阶数，C_u与题面相同；所有群同构与归一化适配需可核验。",
+      "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/core.tex",
+      "line_start": 48,
+      "line_end": 56
+    },
+    {
+      "id": "PP08",
+      "title": "覆盖与能量汇合为全矩阵界",
+      "statement": "对同一ρ、f、H_i，D‖f̂(ρ)‖²_HS≤Bz b C_u D^((u+2)/b)，从而‖f̂(ρ)‖²_HS≤bBC_uD^(−1+(u+2)/b)。",
+      "allowed_assumptions": [
+        "PP05–07；ρ不可约酉，D=dimρ>0；原题全部左余类约束、f≥0及z≤1。"
+      ],
+      "depends_on": [
+        "PP05",
+        "PP06",
+        "PP07"
+      ],
+      "acceptance": "证明正算子覆盖对f̂* f̂的trace推论及能量求和；同一投影族同时满足覆盖和能量，不能拼接不兼容表示。",
+      "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/core.tex",
+      "line_start": 130,
+      "line_end": 145
+    },
+    {
+      "id": "PP09",
+      "title": "恢复配置根中的两种范数界",
+      "statement": "对原题任意有限X及全部原假设，交付OAI.PartialPermutation.complementaryCosets_finite，Hilbert–Schmidt范数平方及算子范数平方均≤bBC_uD^(−1+(u+2)/b)。",
+      "allowed_assumptions": [
+        "PP08；‖A‖²_op≤‖A‖²_HS的完整证明或固定Mathlib结果。"
+      ],
+      "depends_on": [
+        "PP08"
+      ],
+      "acceptance": "保持全部量词、任意有限X、题面sSup常数与左右余类约定；恢复完整合取并由配置checker验收。可通过任何完整路线直接满分。",
+      "paper_path": "preprints/From-partial-permutation-information-to-Fourier-bounds-September-26-2026/build/sections/introduction.tex",
+      "line_start": 18,
+      "line_end": 37
+    }
+  ],
+  "root": "OAI.PartialPermutation.complementaryCosets_finite",
+  "paper": "../papers/238/manifest.json",
+  "rubric_version": "paper-v1",
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae"
+}

@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "upstream_path": "preprints/The-second-Kahn-Kalai-conjecture-September-24-2026/paper.pdf",
+  "files": [
+    {
+      "path": "benchmark/paper.pdf",
+      "source_path": "176/paper.pdf",
+      "sha256": "dd0c26b99de9e1d01d25f9b646a1fca1cd92fe34180ba7e5042ddcf91b61eb85"
+    },
+    {
+      "path": "benchmark/paper.txt",
+      "source_path": "176/paper.txt",
+      "sha256": "028f6fe92e2dcaa8ac42c006ef8a7eb4ed5291445ca9ec361d05e56a328c98c9"
+    }
+  ]
+}

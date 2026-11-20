@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "upstream_path": "preprints/The-free-uniform-spanning-forest-is-a-factor-of-IID-September-25-2026/The-free-uniform-spanning-forest-is-a-factor-of-IID-September-25-2026.pdf",
+  "files": [
+    {
+      "path": "benchmark/paper.pdf",
+      "source_path": "231/paper.pdf",
+      "sha256": "478f5137621e0b3b41f2b9ab0bd45133d6d03f2c4e68a1eecc8fbc60344aac84"
+    },
+    {
+      "path": "benchmark/paper.txt",
+      "source_path": "231/paper.txt",
+      "sha256": "bec5aa01f63479b633cfba6b6a80e647b9173472e1ec5ff4f2239b61f2f73449"
+    }
+  ]
+}

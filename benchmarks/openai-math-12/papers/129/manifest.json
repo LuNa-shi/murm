@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "upstream_path": "preprints/An-exponential-two-way-deterministic-state-lower-bound-for-one-way-liveness-September-25-2026/main.pdf",
+  "files": [
+    {
+      "path": "benchmark/paper.pdf",
+      "source_path": "129/paper.pdf",
+      "sha256": "612819217a2929102a0e55c00cc4fb606b733d1f90dda513d42bf47783e0a92e"
+    },
+    {
+      "path": "benchmark/paper.txt",
+      "source_path": "129/paper.txt",
+      "sha256": "71a1011d7f1afcab524714e9b8b0e9cb6398a2664b03a5b375c3286c5cf3726a"
+    }
+  ]
+}

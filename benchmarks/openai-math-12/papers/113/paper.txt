@@ -1,0 +1,2411 @@
+Page 1
+A Fully Polynomial Randomized Approximation Scheme
+for Perfect Matchings in General Graphs
+OpenAI
+September 23, 2026
+Abstract
+We give a fully polynomial randomized approximation scheme (FPRAS) for counting perfect
+matchings in arbitrary finite simple undirected graphs, resolving the general-graph perfect-
+matching approximation problem. The algorithm returns zero with certainty when no perfect
+matching exists. Otherwise, it achieves relative errorε with failure probability at mostδ in
+worst-case bit time polynomial in the input length,ε−1, andlogδ −1.
+Contents
+1 Introduction 2
+1.1 History and significance . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 3
+1.2 Proof architecture . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 4
+2 Preliminaries 5
+2.1 Weighted matchings and holes . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 5
+2.2 Bottleneck similarities . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+2.3 Tree bags . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+2.4 Dirichlet energy and approximation . . . . . . . . . . . . . . . . . . . . . . . . . . . 6
+3 Controlling the cost of unmatched vertices 7
+4 A subdivision with controlled holes 10
+4.1 The path profile . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 10
+4.2 The enlarged matching law . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 12
+4.3 Exact accounting for deleted vertices . . . . . . . . . . . . . . . . . . . . . . . . . . 13
+4.4 Charging the pairing capacity . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 15
+5 A quadrangulation adapted to the labels 17
+6 A two-coordinate energy inequality 21
+6.1 The pair kernel . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 21
+6.2 An exact identity on a cycle . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 22
+6.3 Encoding the demands . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 24
+6.4 Controlling context errors by cycle swaps . . . . . . . . . . . . . . . . . . . . . . . 26
+6.5 Completion of the energy proof . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 27
+1
+
+Page 2
+7 A sampler from replicated adjacent tiers 28
+7.1 An exact refresh at unit activities . . . . . . . . . . . . . . . . . . . . . . . . . . . . 28
+7.2 The product chain . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 29
+7.3 A quantitative sampling guarantee . . . . . . . . . . . . . . . . . . . . . . . . . . . 31
+8 From samples to the number of perfect matchings 33
+8.1 The schedule and vertex scales . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 33
+8.2 Observables from one marked sample . . . . . . . . . . . . . . . . . . . . . . . . . . 34
+8.3 Estimating and restoring balance . . . . . . . . . . . . . . . . . . . . . . . . . . . . 35
+8.4 Success probability and output . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 36
+9 A bounded-bit implementation 37
+9.1 Sizes of the parameters and state spaces . . . . . . . . . . . . . . . . . . . . . . . . 38
+9.2 Rational bit lengths . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 38
+9.3 Random choices with a fixed number of bits . . . . . . . . . . . . . . . . . . . . . . 39
+9.4 Total bit cost . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 40
+10 Prescribed-degree subgraphs and fixed-cardinality matchings 41
+10.1 Constant-fibre reductions . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . 41
+10.2 A deletion sampler for perfect matchings . . . . . . . . . . . . . . . . . . . . . . . . 42
+1 Introduction
+Let G= (V,E)be a finite simple undirected graph. A perfect matching is a set of edges incident
+to each vertex exactly once. Write
+Z(G) = #{M⊆E:Mis a perfect matching ofG}.
+A fully polynomial randomized approximation scheme approximatesZ(G)within a prescribed
+relative error, with a prescribed success probability, in time polynomial in the input length and the
+reciprocal error. The confidence parameter enters through its logarithm. We prove the following
+theorem, including a bound on the time of every execution.
+Theorem 1.1.There is a uniform classical randomized algorithm which, givenG and rational
+parameters0<ε<1and0<δ <1/2, returns a nonnegative rational number ̂Zsuch that
+P
+[
+(1−ε)Z(G)≤ ̂Z≤(1 +ε)Z(G)
+]
+≥1−δ.
+If Z(G) = 0, the output is zero with certainty. The worst-case bit running time is polynomial in
+the input encoding length,ε−1, andlogδ −1.
+As consequences, Section 10 gives counting schemes for edge subsets with prescribed vertex
+degrees and for matchings of a specified size. On feasible inputs, its samplers always return a
+feasible object and approximate the corresponding uniform law in total variation.
+2
+
+Page 3
+1.1 History and significance
+Perfect matchings illustrate the distinction between finding a combinatorial structure and counting
+its realizations. Edmonds gave a polynomial-time algorithm for finding a maximum matching in a
+general graph [5]. Valiant proved that exact counting is #P-complete even for bipartite graphs,
+where it is the permanent of a zero–one matrix [19]. Pfaffian methods give polynomial-time exact
+counting for planar graphs [13].
+For approximation, three problems must be distinguished: counting all matchings, counting
+bipartite perfect matchings, and counting perfect matchings in general graphs. Jerrum and
+Sinclair gave an FPRAS for the total number of matchings in an arbitrary graph, summed over
+all cardinalities [10, Corollary 4.5]. Their perfect-matching algorithm applied when the ratio of
+near-perfect matchings, which leave exactly two vertices unmatched, to perfect matchings was
+bounded by a fixed polynomial [10, Theorem 5.3]. Without such a bound, perfect matchings can
+carry too little stationary mass for this sampling approach. Approximating the total number of
+matchings therefore does not isolate its perfect-matching contribution with relative accuracy.
+Jerrum, Sinclair, and Vigoda removed the ratio restriction in the bipartite setting and obtained
+an FPRAS for the permanent of every nonnegative matrix [11, Theorem 1.1]. Their method
+assigns weights to near-perfect states according to their two unmatched vertices and learns suitable
+weights while gradually changing edge activities. The general-graph question was explicitly raised
+by Jerrum and Sinclair [10, Section 7(i)] and remained a benchmark for approximate counting. Cai
+and Liu relate it to approximation for the eight-vertex model [2]; Fei, Goldberg, and Lu distinguish
+the spin-system parameter line equivalent to general perfect-matching approximation from the
+region covered by their FPRAS [7, Proposition 1.2 and Theorem 1.5]. Theorem 1.1 answers the
+general-graph perfect-matching approximation problem affirmatively.
+A direct extension of the bipartite chain faces a precise obstruction. Štefankovič, Vigoda,
+and Wilmes constructed graphs on which every JSV-type chain has either exponentially small
+stationary probability of perfect matchings or exponentially slow mixing, even with arbitrary
+weights depending on the hole pattern [16, Definition 2.1 and Theorem 2.2 in the full version].
+Here JSV type means the perfect-and-near-perfect state space with the specified Broder proposals
+and a Metropolis acceptance rule. The sampler below uses a different state space: a product
+of perfect-matching spaces on an enlarged colored graph, with exchanges of alternating cycles
+between coordinates. Its energy comparison is proved for these states and moves.
+Subsequent permanent algorithms sharpen the bipartite result. Bezáková, Štefankovič, Vazirani,
+and Vigoda accelerated the cooling schedule and improved the analysis of the matching chain [1].
+Chen, Vigoda, and Yang obtain a further improvement through restricted Poincaré inequalities and
+coupled flows [4]; Chen, Guo, Vigoda, and Yang develop an energy-weighted multicommodity-flow
+comparison and improve the running time again [3]. These results concern bipartite perfect
+matchings.
+For nonbipartite graphs, Yi gives deterministic relative approximation for hafnians, the weighted
+sums over perfect matchings, when then-vertex support has minimum degree at least(1/2 + γ)n
+and nonzero weights lie in[θ,1][ 21, Theorem 1.1]. Here0 < γ <1/2and0 < θ≤1are fixed
+constants, and the polynomial running-time exponent may depend on them. Theorem 1.1 has no
+density promise on its simple unweighted input.
+The proof below also builds on the methodological framework of weighted matching chains.
+Alternating overlays and weight-preserving switches underlie the encodings of Jerrum and Sinclair
+and of Jerrum, Sinclair, and Vigoda [10, 11]. Their sampling-to-counting strategy learns local
+partition ratios while gradually changing activities. Here these ratios are exposed by marked edges
+3
+
+Page 4
+in an enlarged graph, and vertex scaling maintains a row-wise balance condition. The capacity
+bound, subdivision and marked-edge identities needed for this construction are proved explicitly.
+Energy comparison through weighted demands has classical antecedents in multicommodity-
+flow bounds for mixing [15]. Our comparison differs from routing every demand along a path of
+chain transitions: long-arc conversions enter a signed identity and need not be legal single updates.
+The resulting estimate initially controls only additive functions of two matching coordinates. The
+separate product-space argument is essential to obtain a spectral gap for arbitrary functions. It
+uses the classical orthogonal decomposition into coordinate interactions [6, Section 2]; the ordered
+assignment of residual terms and the replication estimate are proved below.
+1.2 Proof architecture
+The counting algorithm starts with the complete graph, whose perfect matchings are easy to count,
+and gradually suppresses the nonedges ofGby decreasing their positive activities. It estimates the
+ratios of successive partition functions and multiplies them. To keep the observations statistically
+useful, it updates vertex scales from estimates of the two-hole partition ratios: partition functions
+after deleting two vertices, divided by the current partition function. Accurate estimates keep each
+row maximum between two absolute constants. A vertex scale multiplies every complete matching
+weight by the same factor, preserving the probability law used to estimate the current counting
+ratio.
+The purpose of balance is to control the extra mass introduced by an auxiliary graph. We
+replace each logical edge by a weighted path, with a bijection between logical perfect matchings
+and matchings using only these real path edges. We then add weak clique edges in overlapping
+bags indexed by a tree. Under balance, the added edges increase the partition function by at most
+a factor of two, so a sample uses only real edges with probability at least one half. A specially
+marked auxiliary edge exposes the corresponding two-hole partition ratio. These are exact event
+identities; they provide both the counting estimate and the data for the next scale update.
+To prove the inflation bound, Theorem 3.1 assigns a pairing capacity to each even hole set
+using the strongest bottleneck paths between its vertices. The capacity pays for the weights of
+possible added edges on those holes. Subdivision transfers this bound to the real graph while
+making incident effective strengths comparable. The resulting geometry supplies the tree of clique
+bags. Thus the hole estimates control the probability of the observable events, while the tree-bag
+structure supplies a sampler for their law.
+That sampler uses local switches in one matching and exchanges alternating cycles between
+two matching coordinates. Its energy comparison initially controls only additive functions of the
+two coordinates. A quadrangulation adapted to the bag labels gives an exact signed identity
+for a whole-cycle difference (Lemma 5.1 and Theorem 6.1). The identity is not a route through
+chain transitions: long arc conversions may change many edges. Two-matching encodings instead
+compare its terms with local switches and cycle exchanges, with polynomially bounded multiplicity.
+A ladder of nearby weight distributions then places many independent coordinates at each tier.
+An ordered orthogonal decomposition ensures that each coordinate-interaction term is charged to
+at most one pair. Replication reduces the coefficient of their combined contribution enough to
+absorb it. This yields a spectral gap for arbitrary functions of the product state (Lemma 7.2). The
+bottom tier has unit activities and admits exact counting and ideal sampling by a tree dynamic
+program. The sampler requires no balance assumption. It therefore remains defined, with the same
+time bound, after an inaccurate empirical estimate; balance is used only to prove that accurate
+estimates propagate through the counting stages.
+4
+
+Page 5
+Table 1 summarizes the changes of law. Finally, Sections 8 and 9 account for all arithmetic
+and finite-bit random choices. Every polynomial has an absolute degree; the constants are chosen
+for transparent estimates rather than practical efficiency.
+Object Vertices Relation of matching laws
+InputG nThe target is its unweighted countZ(G).
+Complete graphnRaw activitiesw (j) gradually suppress the nonedges ofG.
+Vertex scalingnActivitiesλpreserve the normalized raw matching law.
+Real pathsN Subdivision gives a matching bijection with a common weight
+multiplier.
+Colored bagsN Their activitiesW recover the real law when every sampled edge
+is revealed as real.
+Weight tiersN Common-interval clamps ofW connect the unit-activity law to
+the bag law on one colored state space.
+Table 1: The successive graphs and probability laws. Heren is the original vertex count andN
+the enlarged count. Scaling, subdivision, conditioning, and clamping have distinct roles.
+The specialized combinatorial and sampling arguments are proved here. We use Edmonds’s
+algorithm for the initial matching-existence test and Hoeffding’s bounded-variable inequality for
+concentration and confidence amplification [5, 9].
+2 Preliminaries
+Logarithms are natural unless a base is indicated.
+2.1 Weighted matchings and holes
+We allow parallel edges distinguished by colors. A matching specifies the actual colored edges it
+uses. For positive rational activitiesa= (ae), put
+wta(M) =
+∏
+e∈M
+ae, Z a(−U) =
+∑
+M∈M(H−U)
+wta(M), Z a =Za(−∅),
+where H is the underlying graph andM(H−U )is its set of perfect matchings after deletingU.
+The empty graph has one perfect matching, of weight one. WheneverZa >0, define
+ga(U) = Za(−U)
+Za
+, π a(M) = wta(M)
+Za
+.
+These weighted colored graphs are intermediate spaces constructed from the simple input graph.
+Theirrepresentationisexplicit: vertices, colorededges, andrationalactivitiesarestoredindividually.
+The main theorem retains the finite simple undirected input model; it does not assert a counting
+algorithm for compressed edge multiplicities or for singleton-covering loops.
+We call the vertices inU holes. For distinct vertices we abbreviatega({i1,...,i k})to ga(i1 ···i k).
+Collapsing parallel activities into their sum preserves every partition function. Conditional on a
+collapsed edge, its original type can be recovered with probabilities proportional to the summands.
+The union of two matchings, with common edges retained twice, has maximum degree two.
+Its nontrivial components are alternating paths and even alternating cycles. Swapping the layers
+along a component preserves the product of their weights. In the union of two perfect matchings,
+5
+
+Page 6
+deleting common identical edges leaves disjoint alternating cycles; different colors on the same
+pair of vertices form a cycle of length two. We fix a vertex order and a color order once and for all.
+They resolve every combinatorial tie in the proof.
+2.2 Bottleneck similarities
+For a positive weighted connected graph define
+Bij = max
+{
+1,max
+P:i⇝j
+min
+e∈P
+ae
+}
+(i̸=j).(2.1)
+Simple paths suffice. This symmetric similarity satisfiesBij ≥min{Bik,Bkj}: concatenating two
+paths and erasing loops cannot lower their minimum activity. Fort> 1, its equivalence classes
+are the connected components of the graph retaining edges of activity at leastt. Singletons are
+included. Att= 1we take one class containing every vertex, consistently with the floor at one.
+For an even setUdefine itspairing capacity
+ΦB(U) = max
+P
+∏
+ij∈P
+Bij,Φ B(∅) = 1,(2.2)
+where Pruns over pairings ofU. We use this quantity only in proofs; the counting algorithm
+never needs to enumerate pairings or computeΦB(U)for a general hole set.
+2.3 Tree bags
+Definition 2.1.Atree-bag graphconsists of a finite rooted tree of labels and a finite even vertex
+set. A labell at levelk has heighthl = 2k; the root has level zero and a child has level one greater
+than its parent. Each vertex belongs to either one label or two adjacent labels. The bag atl is
+the set of vertices belonging tol. For each unordered pair of distinct vertices and each common
+label l, there is one edge of colorl. There are no other edges. For an integer parameterD≥ 1, its
+reference activities obey
+hl
+D ≤Wxy,l ≤3hl.(2.3)
+We also consider activities obtained by clamping allWe to one common interval[a,b]⊂(0,∞).
+Every vertex pair has at most two edge colors. At any bag, the interfaces with its parent
+and its different children are disjoint: a vertex in two such interfaces would have at least three
+memberships. Empty bags and repeated underlying vertex sets are permitted. Clamping is
+monotone and does not increase the ratio of a larger activity to a smaller one. In particular,
+reference activities of nearby labels remain comparable after clamping.
+2.4 Dirichlet energy and approximation
+For a finite reversible Markov kernelPwith stationary lawµ, its Dirichlet energy is
+Eµ,P(f) = 1
+2
+∑
+x,y
+µ(x)P(x,y)(f(x)−f(y)) 2.(2.4)
+A Poincaré inequalityVarµf≤γ −1Eµ,P(f)means that the spectral gap is at leastγ. A symmetric
+proposal Q has Metropolis acceptance probability [8, 14] min{1,µ(y)/µ(x)}for a proposed move
+fromxtoy. Its off-diagonal stationary capacity is
+µ(x)P(x,y) =Q(x,y) min{µ(x),µ(y)}.(2.5)
+6
+
+Page 7
+We regard inapplicable proposals as holding moves. All state spaces used below contain at least
+one perfect matching; thus their positive activities define probability laws with full support on
+that space.
+Total variation is ∥µ−ρ∥ TV = 1
+2
+∑
+x|µ(x) −ρ(x)|. A deterministic map, or a common
+randomized postprocessing kernel, does not increase total variation, by the triangle inequality.
+Two finite laws at total variation distanceη admit a coupling that disagrees with probability
+η: first match the common massesmin(µ(x),ρ(x)), then couple the remainders. Applying this
+construction successively bounds the discrepancy probability of an adaptive simulation by the sum
+of its conditional one-step errors.
+3 Controlling the cost of unmatched vertices
+This section proves the bound that will control the additional edges in our sampling graph. It
+uses only alternating paths and differentiation of a finite partition function.
+Let V have even cardinalityn≥ 2, and give every edge of the complete logical graphKV a
+positive activityλij. Use the weighted matching notation of Section 2, abbreviatingM(KV −U )
+toM(−U). For any positive activity arrayaon this graph, define the row maxima
+ri(a) = max
+j̸=i
+ga(ij).
+The activitiesaarebalancedif1 /4 ≤ri(a) ≤1for every i. Let B be the bottleneck similarity ofλ
+from (2.1), and letΦB be its pairing capacity from (2.2).
+The estimate we need controls every even hole set, although balance only bounds the two-hole
+ratios:
+Theorem 3.1(Logical hole bound).Let λ be balanced, letB be its bottleneck similarity, and set
+D0 = 108(n+ 1) 4.
+For every even setU⊆V,
+gλ(U)ΦB(U)≤2D |U|/2
+0 .(3.1)
+To prove this, we will add a small activity proportional toBij on every pair. Bounds for two
+and four holes keep the resulting partition inflation below two. Any pairing of an arbitrary hole
+set can then be inserted using the added edges, giving the stated bound.
+We use two elementary alternating-path comparisons. Such weight-preserving overlays also
+underlie the weighted matching encodings in [10, 11]; the comparisons and their constants needed
+here are proved below. In an overlay of two matchings, edges retain their layer. Common edges
+can be kept as two parallel copies. A path starting at a vertex unmatched in exactly one layer is
+then uniquely determined, and switching its edges between the layers preserves the product of
+their weights.
+Lemma 3.2(Four-hole inequality).For any positive activitiesµand four distinct verticesa,b,c,d ,
+gµ(abcd)≤g µ(ab)gµ(cd) +gµ(ac)gµ(bd) +gµ(ad)gµ(bc).
+Consequently, if every row maximum is at most4, then
+gµ(∅) = 1, g µ(U)≤4 (|U|= 2), g µ(U)≤48 (|U|= 4).(3.2)
+7
+
+Page 8
+Proof. Overlay M∈M (−{a,b,c,d})and P∈M (−∅). The alternating path froma ends at
+one of b,c,d , say b. Switch that path between the layers. The output layers miss{c,d} and
+{a,b}, respectively, and their product weight is unchanged. This map is injective for the specified
+endpoint b: in the output overlay, follow the path froma and switch it back. The same argument
+applies to endpointsc,d. Summing the three injective comparisons and dividing byZ2
+µ proves the
+inequality. The remaining assertions follow immediately.
+The four-hole comparison controls small hole sets by row maxima. We next need an additional
+factor when two holes are joined by a strong path. Normalizing by the row maximum at the
+moving hole will make the successive relocation errors add, without multiplying along the path.
+The next lemma is stated withµ≥λ so that it continues to apply while we add activities to
+the graph. Its bottleneck similarity always remains the one defined fromλ.
+Lemma 3.3(Relocating a hole along a strong path).LetB be defined by(2.1), and suppose that
+µe ≥λe for every edge and
+1
+8 ≤ri(µ)≤4 (i∈V).
+If|U|∈{2,4}andi,j∈Uare distinct, then
+gµ(U)≤ 105n
+Bij
+.(3.3)
+Proof. Throughout this proof, omit the subscriptµ from g and r. WriteB = Bij. ForB≤ 8, the
+assertion follows from(3.2). Suppose therefore thatB >8, and choose a simple path fromi to j
+whoseλ-activities, and hence itsµ-activities, are all at leastB.
+We first give one step of the relocation. Leta be the hole currently on this path, letS be the
+current hole set, and letz be the next vertex. Thusa∈S and µaz ≥B . If z∈S , insertingaz in
+a matching missingSis injective and increases its weight byµaz. Hence
+g(S)
+ra
+≤g(S\{a,z})
+Bra
+≤32
+B.(3.4)
+The last inequality uses|S|≤4, (3.2), andr a ≥1/8.
+Now supposez /∈S. Choose p̸= z with g(zp) = rz. Inserting az gives g(az) ≤1/µaz ≤1/B <
+1/8, sop̸= a. OverlayM∈M (−S)and P∈M (−{z,p}). The path froma starts with an edge
+ofP. Its endpoint belongs to exactly one of the following three cases.
+(i) It ends atz. Switching the path gives layers missingS\{a}∪{z} and {a,p}. The product
+weight is unchanged.
+(ii) It ends atp, which requiresp /∈S. Switching gives layers missingS\{a}∪{p} and {a,z}.
+Insertazin the second layer, making it perfect. The product weight increases byµaz ≥B.
+(iii) It ends atx∈S\{a,p} . Switching gives layers missingS\{a,x} and {z,p,a,x} . Insert az
+in the second layer; its remaining holes are{p,x}. Again the product weight increases by at
+leastB.
+These cases exhaust the possibilities. Indeed, the degree-one vertices in the overlay are exactly the
+symmetric difference of the two hole sets; ifp∈S , thenpis isolated and cannot be an endpoint of
+the path.
+The edgeaz is absent from both input layers, since the first missesa and the second missesz.
+Switching cannot create an edge absent from the overlay. Each map is injective when its case and
+8
+
+Page 9
+endpoint are specified. For case (i), the inverse switches the output path froma. For cases (ii)
+and (iii), first remove the inserted edgeaz from the second output layer, then switch the path
+from ain the resulting overlay. This reconstructs both input layers, including their common edges.
+Summing over all inputs, usingg(ap)≤ra, and dividing byZ2
+µrz yields
+g(S)≤ ra
+rz
+g(S\{a}∪{z})
++ 1
+Brz
+⎡
+⎣1{p/∈S}g(S\{a}∪{p}) +
+∑
+x∈S\{a,p}
+g(S\{a,x})g(px)
+⎤
+⎦.
+(3.5)
+An inapplicable first term inside the brackets is omitted entirely. The brackets are at most96: for
+|S|= 4their first term is at most48and their at most three product terms are each at most16;
+for|S|= 2the corresponding bound is8. After division byr a, therefore,
+g(S)
+ra
+≤g(S\{a}∪{z})
+rz
++ 6144
+B .(3.6)
+Starting ata = i, apply this recurrence along the chosen path, keeping all holes inU\{i}
+fixed. Stop just before reaching the first of these fixed holes; such a hole exists because the path
+ends atj. The path is simple, so there are at mostn−2recurrence steps, followed by(3.4). The
+normalization by the current row maximum makes the leading terms telescope. Sinceri ≤4,
+g(U)≤ 4
+(
+6144(n−2) + 32
+)
+B ≤105n
+B ,
+as required.
+Proof of Theorem 3.1.Temporarily add a distinguished parallel edge of activitytBij/D0 to every
+pairij, where0≤t≤1. Collapsing parallel edges gives activities
+µij(t) =λij +tBij/D0.
+WriteZ(t) = Zµ(t) and gt = gµ(t); Bremains fixed. All partition functions involved are polynomials
+int, andZ(t)>0. Differentiation of their finite sums gives
+d
+dtlogZ(t) = 1
+D0
+∑
+ij
+Bijgt(ij),(3.7)
+where sums over edges are unordered, and for distinctx,y,
+d
+dtgt(xy) = 1
+D0
+∑
+ij:{i,j}∩{x,y}=∅
+Bijgt(xyij)−g t(xy) d
+dtlogZ(t).(3.8)
+On any initial time interval during which all row maxima belong to[1/8,4], Lemma 3.3 bounds
+every summandBijgt(ij)and every summandB ijgt(xyij)by10 5n. Since
+(n
+2
+)
+105n
+D0
+<η, η= 10 −3,
+we obtain, throughout that interval,
+0≤ d
+dtlogZ(t)≤η,−ηg t(xy)≤ d
+dtgt(xy)≤η.
+9
+
+Page 10
+Integrating gives
+e−ηtg0(xy)≤g t(xy)≤g 0(xy) +ηt.
+For the lower row bound, fix a neighbor maximizing the row at time zero; the moving row maximum
+is at least this one evolving entry. Consequently, balance at time zero implies
+1
+4e−η ≤ri(µ(t))≤1 +η.
+Both bounds lie strictly inside[1/8,4]. By continuity, the row maxima cannot first leave this
+interval before time1: at a proposed first exit the displayed strict bounds still hold and persist on
+a neighborhood. Thus all preceding estimates hold on[0,1], and
+Z(1)
+Z(0) ≤eη <2.(3.9)
+Choose a pairingQ of U attainingΦ B(U). At time1, keep the original and added parallel
+edges distinguished. To each original matching inM(−U), add the edges ofQusing theiradded
+copies, of activitiesBij/D0. This is an injective map into perfect matchings at time1, and it
+multiplies every weight byΦB(U)/D|U|/2
+0 . Hence
+Zλ(−U) ΦB(U)
+D|U|/2
+0
+≤Z(1).
+Divide byZ(0) =Z λ and apply (3.9).
+4 A subdivision with controlled holes
+The sampler will use additional clique edges. To control the mass these edges introduce, we first
+replace each logical edge by a path. The path profile has two roles: equal adjacent factors make
+the ratio of its two matching patterns telescope, and the gradual change from each endpoint to
+the middle makes incident effective strengths comparable. We first construct the enlarged graph
+and identify its marked laws, then bound the mass introduced by its additional edges.
+Throughout this section the logical graph is the complete graph on an even numbern≥ 2of
+vertices, with positive rational activitiesλuv ≤4K, whereK≥ 0is an integer. Write B for its
+bottleneck similarity, and put
+Hu = max
+v̸=u
+Buv, p= 2K+ 2, N=n+ 4p
+(
+n
+2
+)
+, D= 100N 2D0.(4.1)
+HereD 0 = 108(n+ 1) 4 is the constant in Theorem 3.1. Thus1≤Buv ≤Hu ≤4 K.
+4.1 The path profile
+Orient each logical edgee=uvby the fixed vertex order, and replace it by a path
+x0 =u,x 1,...,x 4p,x4p+1 =v.
+10
+
+Page 11
+Internal vertices of different paths are distinct. Denote the activity ofxj−1xj by tj = te
+j. For
+1≤r≤p, set
+t2r−1 =t2r = max{Buv,Hu2−(r−1)},
+t4p+3−2r =t4p+2−2r = max{Buv,Hv2−(r−1)},(4.2)
+t2p+1 =λuv.
+We call these therealedges and write Z′ and g′ for their partition function and hole ratios.
+Let B′be their bottleneck similarity. The two innermost equal pairs have activityBuv, because
+Hu2−(p−1),Hv2−(p−1) ≤1/2.
+Lemma 4.1.The real graph hasN vertices. Its perfect matchings are in bijection with logical
+perfect matchings, and
+Z′=C0Zλ, C 0 =
+∏
+e
+∏
+1≤j≤4p+1
+jeven
+te
+j.(4.3)
+On a noncentral real edge, its effective strengthB′ equals its activity. On the central edge of the
+path foruv, it equalsBuv. Incident effective strengths differ by a factor of at most two. For an
+internal vertexxj, its maximum incident effective strength is
+Tj =
+{
+tj,1≤j≤2p,
+tj+1,2p+ 1≤j≤4p.
+Itshome terminalis u in the first case andv in the second. Every edge on its leg to its home has
+activity at leastTj.
+Proof. An intact path has exactly two ways to match its internal vertices: the even-indexed edges,
+which use neither terminal, or the odd-indexed edges, which use both. The ratio of the latter
+weight to the former isλuv, since all the noncentral factors cancel in equal adjacent pairs. A real
+perfect matching therefore chooses the odd tiling precisely on a logical perfect matching. This
+proves the bijection and Equation (4.3).
+Every noncentral edge has an equal-activity twin sharing an internal vertex of degree two. A
+path connecting its endpoints that avoids that edge must use the twin. Its bottleneck therefore
+cannot exceed the edge activity, and the direct edge attains that activity.
+The minimum activity on the full path replacinge is λe. Consequently, for everyt> 1, real
+edges of activity at leastt connect two terminals exactly when logical edges of activity at leastt
+connect them: a simple path between terminals traverses complete subdivision paths. In particular
+B′restricted to terminals isB. Let a= x2p and b= x2p+1 be the ends of the central edge. The
+legs froma,b to u,v have minimum activityBuv. If Buv >max{1,λuv}, a logical path attaining
+Buv avoids uv, and its subdivision together with these legs connectsa to b with bottleneckBuv.
+If Buv = max{1,λuv}, the central edge and the floor at one already give the lower bound. For
+the upper bound, any alternative path froma to b must first use an edge on a leg of activityBuv.
+ThusB ′
+ab =Buv in all cases.
+Along each half of a path the displayed profile is nonincreasing toward the center and successive
+values differ by at most two. The effective strength at the center agrees with both innermost pairs.
+At a terminalu, every first edge has activityHu. These facts give all remaining assertions.
+11
+
+Page 12
+4.2 The enlarged matching law
+For each integer0 ≤k≤⌊log 2 maxuHu⌋, take one label for every component of the enlarged
+graph whose retained edges have effective strength at least2k, including singleton components. A
+label at levelk >0has as parent its containing component at levelk−1. At level zero there is
+one component; these labels therefore form a rooted tree. Components recurring at different levels
+are still different labels.
+Label each real edgexy by the component containing it at level⌊log2 B′
+xy⌋. A vertex belongs
+precisely to the labels of its incident real edges. Equal-level incident labels are identical, and the
+factor-two bound in Lemma 4.1 implies that there are at most two incident levels. If there are
+two, they are consecutive and their labels are parent and child. Thus these memberships satisfy
+Definition 2.1. In particular, a bag is the set of vertices with that membership; it need not be the
+entire threshold component defining its label.
+Within every bag of labelland heighthl, add a virtual edge of activityhl/Dfor each vertex
+pair. Collapse any real edge of colorl into the virtual edge with the same endpoints and color,
+adding its activity. This gives one colored edge per common label, of activity
+Wxy,l =hl/D+
+{
+txy, xyis a real edge with labell,
+0,otherwise.
+Since a real edge assigned tol has txy ≤B ′
+xy <2hl, these weights satisfy Equation (2.3). Also
+1/D≤W xy,l ≤3·4 K.
+For each logical edgee, split off activity1/D from the virtual activity on its central colored
+edge, and mark that portion as theprobe fore. This is possible becausehl ≥1. After sampling a
+colored matching, independently reveal the portion of each used edge in proportion to its real,
+probe, and remaining virtual activities; zero portions are omitted.
+Figure 1 shows the two real tilings and the probe on one illustrative path.
+Let Zbag be the colored partition function of the enlarged graph, and putI = Zbag/Z′. This
+ratio measures the mass introduced by the auxiliary edges.
+Proposition 4.2(Marked matching laws).For arbitrary positive logical activities, sample from
+the bag matching law and reveal the edge portions as above. The all-real event has probability1/I;
+conditional on this event, the decoded logical matching has lawπλ. For each logical edgeuv,
+P(probe foruvis used and all other edges are real) =gλ(uv)
+DI .(4.4)
+Conditional on this event, the residual logical matching has theλ-weighted perfect-matching law on
+the vertices other thanu,v.
+Proof. Revealing portions recovers the weighted law before the real and virtual activities were
+collapsed. The all-real matchings have total weightZ′ = C0Zλ, and their normalized law is
+transported toπλ by Lemma 4.1.
+Now require the probe on the path foruv and real edges everywhere else. The probe matches
+x2p to x2p+1. The remaining vertices on its path have unique real tilings: the left one usesu, and
+the right one usesv. Equal adjacent activities in(4.2) show that their combined weight is exactly
+the even-edge baseline weight of this path. Other paths incident tou or v must use their even
+tilings. The remaining paths retain their even and odd alternatives, with ratioλe. Consequently
+these marked matchings are in bijection with logical matchings missingu,v, and every weight is
+multiplied byC0/D. Their total mass isC0Zλ(−uv)/D. Dividing byZbag = IC0Zλ proves (4.4);
+the same constant weight multiplier proves the conditional-law assertion.
+12
+
+Page 13
+1/D
+u x8 x9 v
+u x8 x9 v
+u x8 x9 v
+4 4 2 2 2 2 2 2
+1
+2 2 2 2 2 2 2 2 2
+even tiling
+odd tiling
+sole probe
+Figure 1: One subdivision path withK = 1, p = 4and4 p+ 1 = 17edges. The top labels are
+the real activities:Hu = 4,H v =Buv = 2, andλuv = 1/2; the central edge has effective strength
+B′
+x8x9 = 2. Solid edges show the selected real tiling. The even tiling uses neither terminal, and the
+odd tiling uses both; the odd-to-even weight ratio isλuv. The last row uses the probe portion of
+the central colored bag edge and real portions elsewhere. Here the central label has heighthl = 2,
+so its collapsed activity1/2 + 2/D consists of real activity1/2, probe activity1/D, and remaining
+virtual activity1 /D. The probe forces the real edges on the two outer legs to use both terminals.
+Their combined weight equals the even-tiling weight, so the remaining paths represent a logical
+matching withu,vdeleted.
+The identities show what the enlarged graph provides to the counting algorithm. To use its
+all-real event with polynomially many samples, we also need a uniform lower bound on that event’s
+probability. The next lower-bound estimate requires balance; the construction and the exact laws
+above do not.
+Proposition 4.3(Bounded inflation).If the logical activities are balanced, then
+1≤I≤2.(4.5)
+We prove this bound in the remainder of the section. A collection of virtual edges leaves a set
+U of endpoints to be removed from a real matching. Its added weight must therefore be compared
+with g′(U). The next two subsections transfer the logical hole estimate to these enlarged hole sets.
+4.3 Exact accounting for deleted vertices
+We next describe exactly what deleting internal vertices does to the logical graph. A path isbroken
+if at least one of its internal vertices is deleted. LetEbr(U)be the set of logical edges whose paths
+are broken by a hole setU.
+Consider the ordered internal holes on a broken path. If a real completion exists, successive
+hole indices alternate in parity, because the intervening internal run must have even order. A first
+hole of even index forces the prefix to match the terminalu; we say that this holeconsumesuand
+map it tou. A last hole of odd index similarly consumes and maps tov. Remove all consumed
+holes (zero, one, or two) from the list. The remaining holes split, in their order, into pairs(j,k)
+with j odd andk even; call theseneutral pairs. There is no ambiguity when the list has one hole,
+since it cannot both have even and odd index.
+13
+
+Page 14
+Let Rbe the set of explicitly deleted terminals together with all consumed terminals. Feasibility
+requires these terminals to be distinct. To each consumed holexj assign the factor
+fj =
+{
+1,if it maps to its home terminal,
+λe/Tj,if it maps to the other terminal.
+For a neutral pair(j,k)assign
+fjk =
+⎧
+⎪⎪⎨
+⎪⎪⎩
+T−1
+j , j,k≤2p,
+T−1
+k , j,k≥2p+ 1,
+λe/(TjTk), j≤2p<k.
+(4.6)
+Let F = F(U)be the product of all these factors on all broken paths; an empty product is one.
+BothRandFdepend only onUand the fixed path profiles, not on a choice of completion.
+For a setE0 of logical edges, write Zλ(−R; E0 forbidden)for the partition function after
+deletingRand forbidding those edges.
+Lemma 4.4.If an even hole setUhas a real completion, thenRis even,|R|≤|U|, and
+Z′(−U) =C 0F(U)Zλ
+(
+−R;Ebr(U)forbidden
+)
+.(4.7)
+In particular,g′(U)≤F(U)g λ(R).
+Proof. Fix a broken path. A prefix ending immediately before a first hole of indexj has j− 1
+internal vertices. If j is odd it uses the even tiling and leavesu unused; if j is even it uses
+the odd tiling and consumesu. The suffix has the analogous alternatives. Every run between
+consecutive holes has a unique tiling, since its order is even. These parity conditions prove the
+stated description of consumed holes and neutral pairs. On each path the number of consumed
+holes has the same parity as the number of internal holes. Adding explicit terminal holes gives
+|R|≡|U| (mod 2). Distinctness and |R|≤|U| follow from feasibility and the fact that each
+consumed terminal is charged to a different hole.
+For completeness, all factors can be obtained from one prefix ratio. For evenj, define
+P(j) =
+∏
+i≤j, iodd ti
+∏
+i≤j, ieven ti
+, P(0) = 1.
+The profile gives
+P(j) =
+{
+1, j≤2p,
+λe/Tj, j≥2p+ 2.
+This is the factor for a first even-indexed hole consumingu; reflection gives the factor for a last
+odd-indexed hole consumingv. For a neutral pair(j,k), its shifted tiling relative to the even-edge
+baseline contributes ∏
+i=j+2,j+4,...,k−1 ti
+∏
+i=j+1,j+3,...,k ti
+= P(k)
+P(j−1)t j
+.
+If j is odd on the left, its denominator isTj; ifj is odd on the right, its denominator isλe, also
+when j = 2p+ 1. Substitution proves Equation (4.6). Prefixes and suffixes that do not consume
+a terminal, and runs outside these shifted intervals, retain their baseline even edges. Thus the
+productFaccounts for all changes to the baseline on broken paths.
+14
+
+Page 15
+Every completion now determines a logical matching on the intact paths, using exactly the
+terminals outsideR. Conversely, take any logical perfect matching on the vertices outsideR that
+uses no broken edge. Give its selected intact paths their odd tilings, give other intact paths their
+even tilings, and fill all broken paths by the uniquely forced runs just described. The distinctness
+conditions ensure that no terminal is used twice or is both used and deleted. This reconstructs a
+real completion and is inverse to the first map. Its weight isC0F times the logical weight, which
+proves Equation (4.7). Omitting the forbidden-edge condition and dividing by Equation (4.3) gives
+the inequality.
+4.4 Charging the pairing capacity
+The deletion identity gives a factorF(U)and a logical hole setR. To transfer the logical bound,
+we must compare the pairing capacity ofU with that ofR. The next lemma expresses both
+capacities through threshold classes. Throughout the comparison, these classes belong to the
+original undeleted graphs, so they are independent of the completion being counted.
+Lemma 4.5(Pairings in a hierarchy).Let B≥ 1be a symmetric similarity on a finite vertex set
+X, satisfyingBij ≥min{Bik,Bkj}. LetCt be the equivalence classes ofB≥t , including singletons.
+For every even setU⊆X,
+log ΦB(U) =
+∫ ∞
+1
+∑
+C∈Ct
+⌊|C∩U|
+2
+⌋dt
+t .(4.8)
+There is one pairing that attains the maximum number of internal pairs in every threshold class
+simultaneously.
+Proof.For any pairingQ,
+log
+∏
+ij∈Q
+Bij =
+∫ ∞
+1
+|{ij∈Q:B ij ≥t}| dt
+t .
+Inside a threshold classC, there are at most⌊|C∩U|/2⌋pairs ofQ, proving the upper bound.
+The threshold classes form a laminar family: any two are disjoint or one contains the other.
+Process its finitely many distinct classes from smaller to larger, starting with the singletons. In
+each class, pair its currently unpaired elements ofU arbitrarily until at most one remains. When
+a classC has been processed, exactly⌊|C∩U|/ 2⌋pairs lie inside it. Subsequent processing cannot
+create another pair insideC, because at most one element ofC∩U remains unpaired. The final
+class isX, and|U|is even, so the procedure produces a pairing. It attains every floor count, and
+therefore attains the integral upper bound.
+Lemma 4.6.If the logical activities are balanced, then for every even setUof enlarged vertices,
+g′(U)ΦB′(U)≤2D |U|/2
+0 .
+More precisely, for everyUwith a real completion, the deterministic quantities above satisfy
+F(U)Φ B′(U)≤Φ B(R).(4.9)
+15
+
+Page 16
+Proof. The assertion is immediate ifU has no completion, so suppose otherwise. For a threshold
+t>1and any setAof enlarged vertices, let
+S′
+t(A) =
+∑
+C
+⌊|A∩C|
+2
+⌋
+,
+where C ranges over the threshold classes ofB′. Define St on logical vertices in the same way
+using B. These definitions make sense even whenA has odd cardinality. The threshold partitions
+remain those of the undeleted graphs throughout this proof; only the sets of holes are changed.
+By Lemma 4.1, an internal vertexxj is isolated in the threshold partition precisely whenTj <t;
+otherwise it is connected to its home terminal. Call itactivein the latter case. The threshold
+relation induced on terminals is exactly the logical relation. These statements can equivalently
+be checked using raw real edges of activity at leastt, since taking the bottleneck closure leaves
+threshold components unchanged.
+Remove the neutral pairs one at a time from the current hole set. For a pair on the same side,
+its active vertices lie in one class. Removing it reducesS′
+t by at most
+1{max(Tj,Tk)≥t}.
+Indeed, two active holes are removed from one class, one active hole reduces a class floor by at most
+one, and an inactive hole is in a singleton class and contributes zero. On the leftmax(Tj,Tk) = Tj;
+on the right it isTk. For a cross pair, the loss is at most
+1{Tj≥t}+1 {Tk≥t}−1 {λe≥t}.
+To see the subtracted term, whenλe ≥t both vertices are active and are connected by the full
+path, so their removal reduces a single class floor by one. Otherwise the bound is the sum of
+the separate active-hole bounds. These arguments apply to the current set after any preceding
+removals.
+Next consider each consumed hole mapping away from home. If it is active andλe <t, discard
+it. The floor loss is at most
+1{Tj≥t}−1 {λe≥t}.
+The expression is nonnegative, sinceTj ≥Be ≥λe. Every remaining active consumed hole can
+be mapped to its consumed terminal within its threshold class: a home mapping always has this
+property, and an away mapping retained by the rule hasλe ≥t. Together with explicitly deleted
+terminals, these maps are injective, by the distinctness in Lemma 4.4. Inactive internal holes lie in
+singleton classes and contribute no floor. Hence the floor sum remaining after the removals and
+discards is at mostSt(R).
+Integrate these bounds against dt/t on(1 ,∞). By Lemma 4.5, the integral of S′
+t(U)is
+log ΦB′(U), and that ofSt(R)is log ΦB(R). For a same-side neutral pair the integrated charge is
+exactly−logf jk. For a cross pair it is
+logTj + logTk −log max{1,λe}≤−logf jk.
+For an away-mapped hole it is
+logTj −log max{1,λe}≤−logf j.
+Homemappingscostzero. Summingproves log ΦB′(U) ≤log ΦB(R)−logF, whichisEquation (4.9).
+Finally, Lemma 4.4 and Theorem 3.1 give
+g′(U)ΦB′(U)≤g λ(R)ΦB(R)≤2D |R|/2
+0 ≤2D|U|/2
+0 .
+16
+
+Page 17
+Proof of Proposition 4.3.Expand the partition function before collapsing real and virtual portions.
+A nonempty partial matchingQ of a colored virtual edges, with endpoint setU, contributes
+relative toZ′the mass
+g′(U)
+∏
+xy,l∈Q
+hl
+D.
+Vertices sharingl lie in the same threshold component athl, sohl ≤B ′
+xy. Their pairing therefore
+gives
+g′(U)
+∏
+xy,l∈Q
+hl
+D ≤D−ag′(U)ΦB′(U)≤2(D 0/D)a
+by Lemma 4.6. A vertex pair has at most two common labels, so there are fewer thanN2 colored
+virtual edges and at mostN2a choices forQ. The emptyQcontributes one. Consequently,
+1≤I≤1 + 2
+∑
+a≥1
+(N2D0/D)a = 1 + 2
+99 <2.
+5 A quadrangulation adapted to the labels
+We now turn to the sampling branch of the proof. Its input is a tree-bag graph as in Definition 2.1;
+no balance assumption is needed. To compare two alternating matchings on a cycle, we shall
+subdivide its polygon into four-corner cells. A cell side may stand for a long arc of the original
+cycle. We first describe the matching patterns on such an arc and the endpoint repairs the cells
+must permit, then construct a quadrangulation with those properties.
+Let Cbe a simple even cycle of lengthm≥ 4in the colored bag graph. Each edge retains its
+color, which is a node of the label tree. For a vertexvofC, define
+Sv ={labels of the two edges ofCincident tov}.
+Thus Sv is a singleton or consists of two adjacent tree nodes. These sets refer to theoriginal full
+cyclethroughout the construction; adding a diagonal never changes them. In particular, the cyclic
+sequence of edge labels is a walk on the tree, with repetitions allowed.
+Anarcis one of the two paths in Cbetween distinct vertices, specified together with its
+endpoints. Its length is its number of edges. We use only odd arcs. An arc isadmissibleif its
+endpoints u,v satisfy Su ∩Sv ̸= ∅. The clique property then supplies an edge joining them with
+any chosen label in this intersection.
+For an admissible odd arcJ= (v0,...,v s), choose such a colored endpoint chordeJ and put
+TJ ={v0v1,v2v3,...,v s−1vs}, N J ={v1v2,v3v4,...,v s−2vs−1}, C J =NJ ∪{eJ}.
+All path edges retain their cycle colors. Thethrough patternTJ and theclosed pattern CJ both
+perfectly match the vertices ofJ; theinterior pattern NJ leaves only its two endpoints unmatched.
+The symbolCJ denotes a matching, not the original cycle. CallJ shortif s= 1andlongotherwise.
+On a short arc choose its actual cycle edge aseJ, soTJ = CJ. When a diagonal later represents
+two complementary arcs, we use the same colored chord in both patterns. Figure 2 shows these
+patterns on a long arc.
+17
+
+Page 18
+eJ
+v0
+v0
+v1
+v1
+v2
+v2
+v3
+v3
+v4
+v4
+v5
+v5
+TJ
+CJ
+through
+NJ ∪{eJ}
+Figure 2: The two patterns on a long odd arc, illustrated forJ = (v0,...,v 5). Solid edges form
+the indicated matching; faint dashed edges only locate the underlying path. BothTJ and CJ
+perfectly match the same vertices. The latter uses the interior patternNJ and the endpoint chord
+eJ; their unionTJ ∪CJ is the alternating cycle consisting ofJ and its chord. ReplacingTJ by CJ
+can change interior edges; this replacement need not be a single chain update.
+Besides closing an arc with a chord, we shall sometimes need to free its endpoints while starting
+from its through pattern. Removing the first and last edges of a long arc fromTJ uncovers its
+endpoints and its twoleavesv1,vs−1. CallJgoodif it is short or if
+Sv1 ∩Svs−1 ̸=∅.
+For a good long arc, choose an edge between its leaves with a label in this intersection, called a
+leaf repair. After the two boundary edges are removed, inserting this repair matches all internal
+vertices and leaves both endpoints free. For a short arc, deleting its sole edge does the same. This
+is the matching operation encoded by the good-arc condition. Theboundary edges of an arcmean
+only its first and last edges, which coincide for a short arc.
+Realize the vertices ofCin their cyclic order as a convex polygon. A quadrangulation is a
+subdivision of this polygon into quadrilaterals by noncrossing diagonals. A side of a cell represents
+the arc of the original cycle from one corner to the next corner, containing no other corner of that
+cell. Consequently the four sides of each cell represent four consecutive arcs partitioning the entire
+cycle. An interior diagonal has two occurrences as a cell side, and their arcs are complementary in
+the original cycle.
+Lemma 5.1(Label-adapted quadrangulation).The polygon of Chas a quadrangulation such that
+every cell side represents an admissible odd arc and the following hold in every cell:
+(i)some opposite pair of sides consists of good arcs;
+(ii)if both arcs in an opposite pair are long, both arcs in the other opposite pair are good.
+There are(m−2)/2cells and( m−4)/2interior diagonals. One can construct the quadrangulation
+in time polynomial inmand the encoding length of the label tree.
+Each diagonal may be assigned any common label from the fixed sets at its endpoints, used
+consistently in its two occurrences. For a short side, use the color of its actual cycle edge. These
+choices need not coincide with the auxiliary labels used in the construction.
+Proof. We give a recursive splitting rule. A subproblem is an admissible odd arcJ = (v0,...,v s);
+itsexterioris its complementary arc in the full cycle. Choose a labelP∈S v0 ∩Svs, and writeai
+for the label ofvivi+1,0 ≤i<s . Adjacent terms of this sequence are equal or adjacent in the tree.
+Ifs= 1, no cell is needed. Fors≥3, we find indices
+0<p 1 <p2 <s, p 1 odd, p 2 even,(5.1)
+18
+
+Page 19
+such that the three subarcs with successive endpoint pairs
+(v0,vp1 ),(v p1 ,vp2 ),(v p2 ,vs)
+are admissible. They and the exterior arc form the four sides of the new cell. We call these the
+first, middle, third, and exterior sides, respectively.
+We repeatedly use the following elementary fact about a tree. If a contiguous part of the label
+walk avoidsP and its first and last labels are adjacent toP, these two labels coincide: the walk
+lies in a single component of the tree withP removed, and that component has just one node
+adjacent toP.
+The exterior is good.It suffices to make either the middle side short or both the first and
+third sides short. Either alternative immediately implies (i) and (ii), because the exterior is good.
+First ensure that someai equals P. If none does, a0 and as−1 are adjacent toP, because
+the endpoint sets containP. The elementary tree fact givesa0 = as−1 = Q for a neighborQ of
+P. Replace P by Q, which also lies in both endpoint sets. We now distinguish the exhaustive
+possibilities below.
+(a) Suppose ai = P for an oddi. Set p1 = i and p2 = i+ 1. The middle side is short. The first
+side’s two endpoints containP, as do the third side’s two endpoints, so all three sides are
+admissible.
+(b) Otherwise all occurrences ofPhave even indices. If their first index isi>0, setp1 =i−1
+andp 2 =i. The prefixa 0,...,a i−1 avoidsP, and its first and last labels are adjacent toP.
+They therefore equal the same neighborQ. The first side’s endpoints both containQ, and
+the third side’s endpoints both containP. The middle side is short.
+(c) Suppose the first occurrence is at0, but the last occurrence is atj <s−1. Set p1 = j+ 1
+and p2 = j+ 2. The suffixaj+1,...,a s−1 avoids P and has its two end labels adjacent toP,
+so they equal one neighborQ. The first side’s endpoints containP, the third side’s endpoints
+containQ, and the middle side is short.
+(d) In the remaining casea0 = as−1 = P. Set p1 = 1and p2 = s−1. Both outer sides are short,
+and the middle side’s endpoints both containP.
+All indices satisfy(5.1). For example, in (b) the even indexi is at least2, and in (c) the even
+indexjis at mosts−3.
+The exterior is not good.The exterior is then long. At least one of its leaves lacksP in its
+fixed label set, since otherwise its two leaves would shareP. Reverse the indexing ofJ if necessary
+so that this leaf is the exterior neighbor ofv0. The exterior edge atv0 cannot have labelP. Since
+P∈S v0 , the first edge ofJmust have labela0 =P.
+If as−1 = P as well, choosep1 = 1,p2 = s−1. Both outer sides are short, and the middle side
+is admissible. Otherwise lett−1be the last index withat−1 = P. Thus1 ≤t≤s− 1. The suffix
+at,...,a s−1 avoids P. Its first label is adjacent toP, and its last label is adjacent toP because
+P∈S vs. Hence
+at =as−1 =Q
+for the same neighborQofP.
+•If t is even, setp1 = 1,p2 = t. The first side is short. The middle side’s endpoints both
+contain P, and the third side’s endpoints both containQ. The third side is good: if long,
+both its boundary edges have labelQ, so both its leaves containQ.
+19
+
+Page 20
+•If t is odd, setp1 = t,p2 = s−1. The third side is short. The first side’s endpoints both
+contain P, and the middle side’s endpoints both containQ. The first side is good because, if
+long, both its boundary edges have labelP.
+The required strict inequalities follow fromt≥ 2in the even case andt≤s− 2in the odd case.
+In either case the first and third sides are good and at least one is short. This proves (i). The
+only opposite pair that can contain two long sides is the middle–exterior pair, and its other pair is
+good, proving (ii).
+Recursion and consistent diagonals.Start with any arc of lengthm−1, whose exterior is
+the remaining single cycle edge. Its endpoints share that edge’s label. Apply the splitting rule and
+recurse on each of the three subarcs whose length exceeds one, always using the original setsSv
+and the complement in the original cycle as exterior. The three subpolygons have disjoint interiors,
+so all diagonals are noncrossing. Each recursive child has odd length and admissible endpoints by
+the construction. The splitting labelP is only an auxiliary witness to admissibility; it does not
+constrain the color of the closing diagonal. Thus each diagonal can be colored once and the same
+color used on both sides.
+For an odd arc of lengths, the resulting number of cells is(s−1)/2: this is zero fors= 1, and
+a split into odd lengthss1 +s2 +s3 =sgives
+1 +
+3∑
+i=1
+si −1
+2 = s−1
+2 .
+The root therefore gives(m−2)/2cells. Each nonroot recursive subproblem that creates a cell
+has one closing diagonal, giving one fewer interior diagonals than cells. A direct implementation
+scans at mostm labels in each of the(m−2)/2nontrivial subproblems; the recursion also has
+m−1short leaf arcs. Fixing total orders for any choices makes the construction deterministic,
+withO(m 2)label comparisons and polynomial bit cost.
+For each cell, choose its colored side chords as in Lemma 5.1; for each good long side, choose one
+leaf repair. These are precisely the additional edges needed for the local matching constructions in
+the next section.
+Lemma 5.2(Comparability within a cell).Consider the four colored side chords of a cell, the
+first and last cycle edges of each of its four arcs, and one leaf repair for each good long arc. The
+labels of any two edges in this collection have tree distance at most6. Consequently their activities
+lie within a factor
+A0 = 1000D
+of one another. The same conclusion holds after clamping every edge activity to any common
+interval[a,b]⊂(0,∞).
+Proof. Two consecutive side chords have labels in the same fixed setSv at their common cell
+corner, so their labels are equal or adjacent. Any two of the four side-chord labels therefore have
+distance at most2. A boundary edge of an arc and its side chord have labels in the sameSv at
+the relevant endpoint, giving distance at most1. A leaf repair and the boundary edge at either
+of its leaves have labels in that leaf’s fixed set, again giving distance at most1. Thus each edge
+in the stated collection is at distance at most2from its side chord, and the diameter is at most
+2 + 2 + 2 = 6.
+20
+
+Page 21
+Adjacent labels have heights differing by a factor2. If edgese,f have labelsℓ,ℓ′with distance
+at most6, the assumed activity bounds imply
+We
+Wf
+≤ 3hℓ
+hℓ′/D ≤3D2 6 = 192D≤A 0.
+The same bound holds withe,f exchanged. Finally the common clampψ(x) = max{a,min{b,x}}
+satisfies
+1≤ ψ(x)
+ψ(y) ≤x
+y (x≥y >0).
+Forexamplethisfollowsbyobservingthat logψ(eu)istheclampof uto[ loga,logb ], anondecreasing
+1-Lipschitz function. Clamping therefore preserves the factor bound.
+6 A two-coordinate energy inequality
+This section proves the sampling argument’s main inequality. The four side chords of each cell
+give a two-edge switch whose changed edges have comparable activities. Long arc conversions are
+used in an exact signed identity and need not be individual chain moves. We control the resulting
+context errors by swapping an alternating cycle with an independent matching. Encodings by two
+matchings change only a bounded number of edges in their multiset union, and their preimage
+counts give polynomial load bounds. The variance-to-energy comparison is related to the flow
+method of [15], but we do not invoke a path-congestion theorem: the signed identity and its
+context-error estimates are established for the present pair kernel.
+Fix a tree-bag graph onN≥ 2vertices, with at least one perfect matching, and letw be either
+its reference activities or any common clamp of them. Writeπ(M) = wtw(M)/Zw and Mfor its
+colored perfect matchings. Throughout this section put
+A0 = 1000D,T= (10N) 30, L= (10 4ND)100.(6.1)
+6.1 The pair kernel
+On(A,B)∈M 2, choose each of the following proposal types with probability1/3.
+(1) Two-edge switch.Choose an unordered pair of distinct edges ofA uniformly, and choose
+either alternative pairing of their four endpoints with probability1/2. For each proposed
+edge, choose index1or2with probability1 /2from the ordered list of common labels of its
+endpoints. If an index is absent, stay put. IfAhas fewer than two edges, stay put.
+(2) Color change.Choose an edge ofAuniformly and choose index1or2from the common-label
+list with probability1/2. An absent index gives a holding move.
+(3) Cycle swap.Choose uniformly one discrepancy cycle ofA,B and interchange its two layers.
+If there is no discrepancy cycle, stay put.
+Accept each proposal by the Metropolis rule forπ⊗π . Denote the resulting kernel byP and
+its energy byE. The proposal is symmetric. For the first two types, the reverse choice has the
+same edge, pairing, and color-index probabilities; the possible holding choices do not change this
+fact. For the third type, the discrepancy cycles and their number are unchanged by the swap.
+In particular, a cycle swap always has acceptance probability one, since its product weight is
+unchanged.
+21
+
+Page 22
+Theorem 6.1(Pair energy inequality).For every two real functionsf1,f2 onM,
+Varπf1 ≤LE
+(
+(A,B)|→f 1(A) +f2(B)
+)
+.(6.2)
+The same constant works for every common-interval clamp of the reference activities.
+In the proof writeF(A,B) = f1(A) + f2(B)and E = E(F). A two-edge switch is calledsafeif
+its four removed or inserted colored edges have activities within a factorA0 of one another. Let
+S(A)be its possible safe destinations, and letK(A)be its possible destinations by changing one
+edge color. Consecutive labels have comparable heights, so every color change has activity ratio in
+[A−1
+0 ,A0].
+Lemma 6.2(Elementary energy bounds).With the notation above,
+∑
+A
+π(A)
+∑
+A′∈S(A)
+(f1(A)−f 1(A′))2 ≤60N 2A2
+0E,(6.3)
+∑
+A
+π(A)
+∑
+A′∈K(A)
+(f1(A)−f 1(A′))2 ≤12NA 0E,(6.4)
+∑
+A,B
+π(A)π(B)
+∑
+C∈C(A,B)
+(
+F(A,B)−F((A,B) C)
+)2 ≤6NE.(6.5)
+HereC(A,B)denotes the discrepancy cycles, and(A,B) C is the pair after swappingC.
+Proof. Every specified legal two-edge switch has proposal probability at least1/(30N2); its
+Metropolis acceptance is at leastA−2
+0 when safe. Every specified color change has proposal
+probability at least1 /(6N)and acceptance at least A−1
+0 . These moves change only the f1
+summand ofF, so summing the second-coordinate law and using the factor1/2in the energy
+proves the first two bounds. There are at mostN discrepancy cycles. Each specified swap therefore
+has proposal probability at least1/(3N)and is accepted; this proves the third bound.
+6.2 An exact identity on a cycle
+Fix a pair of demand matchings(I1,I2)and a simple discrepancy cycleC of length at least four.
+All orientations and choices below are deterministic, using the orders fixed in Section 2. LetR be
+the edges ofI1 outside C, and letO0 = I1 and O1 be the matching obtained by togglingC in I1.
+Thus both orientations useRoutsideC. Put
+DC =f1(O0)−f 1(O1).
+Apply Lemma 5.1 and fix the colors of its diagonals consistently. A cell’s four sides always mean
+the four odd arcs of theoriginal whole cycle, not paths formed from earlier diagonals.
+Use the through, interior, and closed patternsTJ,NJ,CJ from Section 5, with the chosen chord
+colors. A sideJisthroughinO ε ifT J ⊆Oε. Exactly one orientationOε containsTJ; define
+HJ = (Oε \TJ)∪C J, g J =f1(Oε)−f 1(HJ).(6.6)
+For a short side, the chord is its actual cycle edge, sogJ = 0.
+The reason for using the original cycle on every cell side is already visible on a six-cycle
+C= (v 0,...,v 5,v0). Take
+O0 =R∪{v 0v1,v2v3,v4v5}, O 1 =R∪{v 1v2,v3v4,v5v0},
+22
+
+Page 23
+and suppose the diagonale= v0v3 is admissible. In the two cells it represents the complementary
+arcs J = (v3,v4,v5,v0)and ¯J = (v0,v1,v2,v3), respectively. Both conversions yield the same
+matching
+HJ =H ¯J =H=R∪{v 1v2,e,v 4v5}.
+Thus g¯J −gJ = f1(O0) −f1(O1) = DC; the shared diagonal contributes one whole-cycle differ-
+ence, not zero. Figure 3 displays this common converted matching. This example isolates the
+complementary-gain identity. Its cells have only one long side each, so the context errors introduced
+below vanish; cells with two opposite long sides require a further estimate.
+e
+¯J
+J
+ev0
+v1 v2
+v3
+v4v5
+v0
+v1 v2
+v3
+v4v5
+two cells, complementary arcs common converted matchingH
+Figure 3: An admissible diagonale = v0v3 cuts a six-cycle into two cells. In the upper cell its
+side follows the lower boundary arcJ; in the lower cell its side follows the upper boundary arc¯J.
+The two occurrences use the same colored edgee. Converting the through pattern on either arc
+gives the restriction ofH shown on the right (the common outside matchingR is omitted), so
+their signed gains sum toDC. The drawing concerns the signed identity, not a sequence of chain
+transitions.
+In a cell, letP be its opposite pair of sides through inO0, andQ its opposite pair through in
+O1. Let AP use NJ on every side and the chords of the two sides ofP, together withR. Define
+AQ analogously and put
+∆ =f1(AP)−f 1(AQ).
+These are legal perfect matchings: the interior vertices are matched by theNJ’s, and the two
+chosen chords match the four corners. Their difference is a safe two-edge switch by Lemma 5.2.
+Order each opposite pair as(Y,X). For the orientation in which both are through, first convert
+Y and thenX. WriteA(0) = Oε and A(1) = HY for the two pre-conversion contexts ofX. For a
+matchingR′on the vertices outsideX, define
+∂Xf(R′) =f(T X ∪R′)−f(C X ∪R′).(6.7)
+The context error of the ordered opposite pair is
+EY,X =∂Xf1(A(1) \TX)−∂ Xf1(A(0) \TX).(6.8)
+It is zero if either side is short. Denote these errors byEP,EQ for the two ordered pairs of the cell.
+Lemma 6.3(Cell identity and cancellation).The quantities just defined satisfy
+DC = ∆ +
+∑
+J∈P
+gJ −
+∑
+J∈Q
+gJ +EP −EQ (6.9)
+23
+
+Page 24
+for each cell. Consequently,
+DC =
+∑
+cells ofC
+(∆ +EP −EQ).(6.10)
+Proof. The first conversion in an opposite pair has its canonical gain. The second has its canonical
+gain plus the error in (6.8). Thus
+f1(O0)−f 1(AP) =
+∑
+J∈P
+gJ +EP, f 1(O1)−f 1(AQ) =
+∑
+J∈Q
+gJ +EQ.
+Subtracting proves (6.9).
+Consider an interior diagonal with complementary arcsJ, ¯J. They are through in opposite
+whole-cycle orientations, and their converted matchings coincide:
+HJ =H ¯J =R∪N J ∪N ¯J ∪{eJ}.
+Therefore the two signed canonical gains contributed by this diagonal sum tof1(O0)−f1(O1) = DC.
+The signs here are precisely those in(6.9): the arc through inO0 has positive sign and the other
+negative sign. Boundary sides have zero gain. Summing(6.9) over the cells therefore gives one
+copy of DC per cell on the left and one per interior diagonal on the right, in addition to the
+displayed local terms. The number of cells is one more than the number of diagonals, which proves
+(6.10).
+6.3 Encoding the demands
+Aswitch demandspecifies( I1,I2), a simple discrepancy cycleC, and one cell of its fixed quad-
+rangulation. Its value is∆above. Anerror demandspecifies these data and one opposite pair
+with two long sides, in its fixed order(Y,X). Its value isEY,X. The weight of either demand is
+ρ(d) = π(I1)π(I2). Repeated demands from different cells or different cycles are included separately
+in all sums.
+Lemma 6.4(Encodings with a bounded number of preimages).Every switch demand has an
+encoding( AP,B)by two perfect matchings, and every error demand has encodings(A(j),B(j))for
+j= 0,1, with the following properties.
+(i)For each encoding(A,B),ρ(d)≤A 4
+0π(A)π(B).
+(ii) For each encoding type and each fixed output pair, there are at mostT demand preimages.
+This bound includes the choices of cycle, cell, opposite pair, and context.
+(iii)For an error demand, both guide matchings satisfyCX ⊆B (j).
+Proof. We first describe a repair operation. Start with the union of the four through patternsTJ
+in a cell. Each corner is covered twice, once by each incident side. Select a good opposite pair
+of sides. For each selected short side delete its sole edge. For each selected long side delete its
+first and last edges, and insert its chosen leaf repair. Each corner loses exactly one incident edge.
+On a long selected side the only newly uncovered internal vertices are its two leaves, which the
+repair matches. Thus the resulting edges form a perfect matching of all cycle vertices. This verifies
+legality also for a side of length three: its two leaves are distinct and its repair is an ordinary
+colored edge between them.
+24
+
+Page 25
+Switch demands.Use AP as the first output. In the second output retain the edges ofI2
+outside C, start with all four through patterns, and apply the preceding repair operation to a
+good opposite pair, which exists by Lemma 5.1(i). Call the resultB. Before these modifications,
+the original multiset union contains exactly oneTJ and oneNJ on each side. The output union
+adds the twoP-chords and the leaf repairs and drops the selected boundary edges. Ifr∈{ 0,1,2}
+selected sides are long, the numbers added and dropped are both2 +r≤4.
+Error demands, context zero.The first output is A(0) = Oε, the canonical orientation in
+which X,Y are through. Start the second output with the complementary cycle orientation and
+the edges ofI2 outside C. It has theN patterns onX,Y . Insert their two chords. The other
+opposite pair is good by Lemma 5.1(ii), becauseX,Y are both long. On that other pair delete
+boundary edges and insert leaf repairs as above. The result is a perfect matchingB(0), containing
+both CX and CY. Again, the multiset union differs from the original by equally many added and
+dropped edges, at most four of each.
+Error demands, context one.Interchange the patterns TY and CY between A(0),B(0). Each
+pattern perfectly matches the entire vertex set ofY, so the interchange is legal and givesA(1) = HY
+and a guideB(1). The vertex sets of the opposite arcsX,Y are disjoint; henceB(1) still contains
+CX. This interchange does not change the multiset union or product weight.
+In every case all added and dropped edges are among the chords, boundary edges, and good-side
+leaf repairs of this one cell. They have pairwise activity ratio at mostA0 by Lemma 5.2. Since the
+two lists have equal length at most four, the input product weight is at mostA4
+0 times the output
+product weight. Division byZ2
+w proves (i).
+For completeness we give an inverse, including the information it needs. Attach a tag consisting
+of the four cell corners in cyclic order, lists of the added and dropped colored edges padded to
+length four each, one orientation bit, and fixed flags for the encoding type (switch, error context
+zero, or error context one), opposite pair, and order. An edge in these lists is an occurrence in the
+multiset union; coincident colored edges retain their multiplicities. Given the output pair and tag,
+remove the added occurrences and reinsert the dropped occurrences in its multiset union. This
+recovers the original colored unionI1 ⊎I2. Its component containing the first tagged corner is the
+active simple cycleC. The orientation bit specifies which of the two alternating classes at that
+corner belongs toI1, so alternation determines both original layers on all ofC. Outside C, the
+output layers were unchanged; they recoverI1,I2 there directly. The fixed quadrangulation can
+now be reconstructed. Its tagged corners identify the cell, and the flags identify the term and, if
+appropriate, its ordered pair. Thus this is an inverse on every tag produced by the construction.
+There are at most2N2 possible colored edges. Allowing a padding symbol, the tags have at
+most
+128N4(1 + 2N2)8 ≤128·3 8N20 <(10N) 30 =T
+possibilities forN≥ 2. Here the factor128more than covers the orientation bit and the fixed
+flags; the lists themselves may be stored in the fixed colored-edge order. This proves (ii), and the
+constructions already proved (iii).
+The encodings provide two kinds of control. Their bounded preimage count converts a sum
+over demands to a sum over pairs of matchings. For context errors, the guide also contains a
+prescribed closed arc; this additional condition must survive that summation. We use the bounded
+preimage count for switches below, then retain the closed-arc condition when treating context
+errors in the next subsection.
+25
+
+Page 26
+We apply this lemma first to switches. For a fixed encoded pair(A,B)there are at mostT
+demands, and each has its associated destinationAQ inS(A). Therefore
+∑
+dswitch
+ρ(d)∆2
+d ≤A4
+0T
+∑
+A,B
+π(A)π(B)
+∑
+A′∈S(A)
+(f1(A)−f 1(A′))2
+≤60N 2A6
+0TE.(6.11)
+6.4 Controlling context errors by cycle swaps
+Here an identityX means a directed, colored, simple odd path of length at least three together
+with a specified colored edge joining its endpoints. It determinesTX,CX and (6.7). We may sum
+over all such identities: this is a finite proof device, and the algorithm does not enumerate them.
+Put
+pX =π{B:C X ⊆B}.
+We omit identities withpX = 0. Every identity arising from an error demand haspX >0, by the
+guide constructed in Lemma 6.4. For any first matchingA⊇T X and eitherj = 0,1, that lemma
+gives the followingconditional demand-mass bound:
+∑
+derror:X(d)=X
+A(j)(d)=A
+ρ(d)≤A 4
+0Tπ(A)p X.(6.12)
+Indeed, for each guideB⊇C X there are at mostT preimages of( A,B); now sum its product
+weight over these guides. The factorpX is essential and will cancel the conditioning below.
+The next comparison averages over precisely those guides counted bypX. That conditional law
+can be concentrated on a very rare event. We therefore retainpX in the demand bound instead of
+estimating it from below.
+For a fresh guideB∼π, define
+µX =E
+[
+∂Xf2(B\C X)|C X ⊆B
+]
+.
+For an error demand, (6.8) and(a−b)2 ≤2(a−c) 2 + 2(b−c) 2 imply
+E2
+d ≤2
+1∑
+j=0
+(
+∂Xf1(A(j) \TX)−µ X
+)2.
+Applying (6.12), and then Jensen’s inequality to the conditional expectation definingµX, gives
+∑
+derror
+ρ(d)E2
+d ≤4A4
+0T
+∑
+X
+∑
+A⊇TX
+π(A)pX
+(
+∂Xf1(A\T X)−µ X
+)2
+≤4A4
+0TΣ swap,(6.13)
+where
+Σswap =
+∑
+X
+∑
+A⊇TX
+B⊇CX
+π(A)π(B)
+(
+∂Xf1(A\T X)−∂ Xf2(B\C X)
+)2.(6.14)
+In detail, for a fixedX,AJensen bounds the squared difference fromµX by
+1
+pX
+∑
+B⊇CX
+π(B)
+(
+∂Xf1(A\T X)−∂ Xf2(B\C X)
+)2.
+Multiplication by thepX in (6.12) removes this denominator exactly. No lower bound onpX is
+used.
+26
+
+Page 27
+Lemma 6.5(Swap sum).The sum in(6.14)satisfiesΣ swap ≤12N 2E.
+Proof. For a pair in(6.14), the matchingsTX and CX cover exactly the same vertex set, and their
+union is one alternating cycle: the pathX together with its closing chord. Their edges are disjoint
+since X is long and simple. Thus this is an entire discrepancy component ofA,B, not a portion of
+a larger one. Swapping it changesFby exactly
+∂Xf1(A\T X)−∂ Xf2(B\C X).
+For a fixed fresh pair(A,B)and one of its discrepancy cycles, an identityX is determined by
+marking the closing chord in the second matching and choosing a direction around that cycle.
+The remaining colored path is then read from the pair. There are at most2N such choices.
+Consequently
+Σswap ≤2N
+∑
+A,B
+π(A)π(B)
+∑
+C∈C(A,B)
+(
+F(A,B)−F((A,B) C)
+)2 ≤12N 2E
+by (6.5).
+6.5 Completion of the energy proof
+Proof of Theorem 6.1.Take independentI1,I2 with lawπ. Toggle their discrepancy cycles in the
+order of their least vertices, convertingI1 to I2. Cauchy–Schwarz over the at mostN cycles gives
+(f1(I1)−f 1(I2))2 ≤N
+∑
+C
+(thef 1 difference at the step forC)2.
+For each selectedC, toggle all earlier cycles inbothdemand matchings. This preserves their
+product weight, their union, and the selected cycle. It is its own inverse, since the union fixes the
+same cycle order. The term at that step becomesD2
+C for the new demand pair, with the definition
+used above. SinceVarπf1 = 1
+2 E(f1(I1) −f1(I2))2, we obtain the convenient slightly weaker bound
+Varπf1 ≤N
+∑
+I1,I2
+π(I1)π(I2)
+∑
+C∈C(I1,I2)
+D2
+C.(6.15)
+A length-two discrepancy cycle is a color change inI1. For a fixedI1 and specified change,
+summing the mass ofI2 that supplies the other color costs at most one. Its total contribution to
+the sum in (6.15) is therefore at most12NA0E, by (6.4).
+For a simple cycle, there are fewer thanNcells, so (6.10) and Cauchy–Schwarz give
+D2
+C ≤3N
+∑
+cells
+(∆2 +E2
+P +E2
+Q).
+Sum over all such cycle demands. The errors with a short side vanish; all others are precisely the
+error demands already bounded. Equations(6.11), (6.13), and Lemma 6.5 bound the simple-cycle
+contribution by
+3N
+(
+60N2A6
+0T+ 48N 2A4
+0T
+)
+E.
+Combining the two cycle types in (6.15) and usingA0,T ≥1yields
+Varπf1 ≤
+(
+12N2A0 + 324N4A6
+0T
+)
+E≤1000N 4A6
+0TE.
+Finally
+1000N4A6
+0T= 10 51N34D6 ≤(10 4ND)100 =L.
+All comparisons used only Lemma 5.2 and the adjacent-label comparison for color changes. Both
+hold under any common clamp, proving the final assertion as well.
+27
+
+Page 28
+7 A sampler from replicated adjacent tiers
+The two-coordinate inequality controls an additive function of a pair; it is not a Poincaré inequality
+for all functions of that pair. We now turn it into a Poincaré inequality on a larger product
+space. The construction uses adjacent weight tiers, with many independent copies at each tier.
+Orthogonality of product projections controls the terms involving both members of a pair. The
+slot order ensures that no orthogonal interaction component occurs in two different pair residuals.
+Averaging over many guides then makes their total contribution small enough to absorb. Using
+several adjacent distributions in one product chain has antecedents in replica Monte Carlo [17, 20].
+Here the coordinates are colored perfect matchings, the pair moves exchange alternating cycles,
+and the effect of replication is quantified by the proof below.
+Throughout this section, the tree-bag graph hasN≥ 2vertices, btree labels, maximum level at
+most2 K, and the integer parameterD of Definition 2.1, whereK is a nonnegative integer. Its
+reference activities are positive rationals. LetMdenote its common, nonempty set of colored
+perfect matchings. By Equation (2.3),
+D−1 ≤We ≤3·4 K.(7.1)
+7.1 An exact refresh at unit activities
+Lemma 7.1.The unit-activity partition function is computable by a dynamic program on the label
+tree. With exact rational categorical choices, its tables also produce an exact sample. The tables
+can be computed withO((btree + 1)(N + 1)3)arithmetic operations on counts ofO(Nlog (N + 1))
+bits. Label and loop indices useO(log(btree + 1) +log(N + 1))additional bits. Once the tables are
+available, a sample uses polynomially many integer operations and at most4(btree + N+ 1)rational
+categorical choices, each with at mostN + 1outcomes. A positive table also yields a matching by
+entirely deterministic backtracking.
+Proof. A colored matching assigns each vertex to the color of its matched edge. Conversely, assign
+each vertex to one of its one or two bags, and pair the vertices assigned to each bag. These two
+operations are inverse. Thus, ifal vertices are assigned to bagl, the number of matchings for that
+assignment is∏
+lJ(al), where
+J(0) = 1, J(a) = (a−1)!!for evena>0, J(a) = 0for odda.
+The values ofJcount pairings of a complete graph.
+For a nonroot bagC, writeSC for its interface with its parent, and putsC = |SC|; for the
+root useSC = ∅. Let uC be the number of vertices belonging toC alone. All interfaces incident
+to a bag are disjoint. For a fixed subset ofk vertices ofSC assigned toC, letFC(k)count the
+assignments and pairings within the subtree ofC; the other vertices ofSC are assigned to its
+parent. The answer depends only onk: vertices ofSC belong to no bag other thanC and its
+parent, and they are interchangeable in the complete clique of colorC.
+If C1,...,C d are the children ofC, setsi = sCi. Choosing ℓi vertices of theith interface to be
+assigned downward gives the recurrence
+FC(k) =
+s1∑
+ℓ1=0
+···
+sd∑
+ℓd=0
+J
+(
+uC +k+
+d∑
+i=1
+(si −ℓi)
+) d∏
+i=1
+(
+si
+ℓi
+)
+FCi(ℓi).(7.2)
+28
+
+Page 29
+The required partition function isFroot(0). There is no exponential enumeration in evaluating this
+recurrence. Form the polynomial
+HC(z) =
+d∏
+i=1
+(si∑
+ℓ=0
+(
+si
+ℓ
+)
+FCi(ℓ)zsi−ℓ
+)
+.
+Its degree is at mostN, and
+FC(k) =
+N∑
+a=0
+[za]HC(z)J(uC +k+a),
+with impossible indices contributing zero. Naive convolutions suffice for the asserted arithmetic
+bound. The intermediate counts enumerate assignments and partial pairings on at mostN vertices.
+There are at most2N assignments, and for any one assignment at mostN!such pairings, so2 NN!
+bounds these counts. This gives the bit bound.
+For sampling, begin at the root withk = 0. At a visited bag, choose a with probability
+proportional to[za]HC(z)J(uC+k+a). Backtrack the stored convolutions to choose the individual
+ℓi, then choose uniformly the corresponding interface subsets. Recurse on each child with its
+chosen subset, and independently choose a uniform pairing of the vertices assigned to the current
+bag. Every choice is proportional to its number of completions in Equation (7.2); induction on
+the subtree therefore gives the uniform law on colored matchings. A uniform subset is generated
+by sequential inclusion choices, and a uniform pairing by repeatedly pairing the least remaining
+vertex with a uniformly chosen other vertex. The total number of interface vertices is at mostN,
+since a shared vertex belongs to exactly one interface. There are at mostN/2partner choices, btree
+total-size choices, andbtree −1convolution choices. This proves the stated draw bound. Choosing
+any positive-count branch instead yields a deterministic matching.
+7.2 The product chain
+Set
+c= 1 +N −2, T= min{t∈Z ≥0 :ct ≥max(D,3·4 K)}, q= 32L,(7.3)
+where L= (104ND)100 is the integer in Theorem 6.1. At tiert∈{ 0,...,T} , clamp every reference
+activity to[ c−t,ct]and denote the matching law byπt. Thusπ0 is the uniform colored matching
+law andπT is the desired law. Moreover,
+1
+2 ≤πt−1(A)
+πt(A) ≤2 (A∈M,1≤t≤T).(7.4)
+Indeed, an individual activity changes by a factor in[c−1,c], so unnormalized matching weights
+and partition functions each change by factors in[c−N/2,cN/2]. The probability ratio is therefore
+in[c −N,cN], andcN ≤exp(1/N)<2. Alsolog(1 +N −2)≥(2N 2)−1, whence
+T≤1 + 2N 2 log max(D,3·4 K) =O
+(
+N2(K+ logD+ 1)
+)
+.(7.5)
+Here and below, unbased logarithms are natural.
+Useqslots at each tier, with product stationary law
+ν=
+T⨂
+t=0
+π⊗q
+t .
+29
+
+Page 30
+An allowed pair(x,y)consists of a slotxat tiert≥ 1and any sloty at tiert−1. On this pair use
+exactly the symmetric proposal of Theorem 6.1, with local proposals acting onx, and accept by
+Metropolis forπt ⊗πt−1. Across unequal tiers a cycle swap uses this Metropolis acceptance ratio
+as well; the acceptance-one observation for two identical laws in Section 6 no longer applies. For
+each base slot there is instead the update that refreshes it fromπ0, using Lemma 7.1. There are
+M=Tq 2 +q(7.6)
+updates. The chainP holds with probability1/2; otherwise it chooses one of theseM updates
+uniformly. Every update preservesνand is reversible, so the same is true ofP.
+Write Exy for the energy of one allowed pair update, with all other coordinates integrated
+againstν, andE i for the energy of a refresh of base sloti. In this notation
+Eν,P(f) = 1
+2M
+(∑
+xy
+Exy(f) +
+∑
+ibase
+Ei(f)
+)
+.(7.7)
+For later use, the two-coordinate inequality also applies across adjacent tiers. The pair state
+space and symmetric proposal are identical for the targetsπt⊗πt and πt⊗πt−1. By Equation (7.4),
+the latter target density is at least half the former at every pair state. The Metropolis capacity
+formula Equation (2.5) thus shows that the unequal-tier energy dominates half the equal-tier
+energy. Consequently, for any functionsaandbof the two slots,
+Varπt a≤2LE xy
+(
+a(x) +b(y)
+)
+.(7.8)
+In this display the energy is on the two slots alone; it can also be applied conditionally on any
+fixed values of other slots.
+Lemma 7.2.The lazy product chain has spectral gap at least3/(8M), and hence at least1/(20LM).
+The dependence onLin the stronger bound is carried byq= 32L, and hence byM.
+Proof. Order the slots from highest tier to lowest, resolving ties arbitrarily. Thus every allowed
+guideyfollows its upper slotx. For each slotx, letU x be the set of its predecessors and put
+hx =E[f|U x,x]−E[f|U x].
+These are the orthogonal martingale increments, so
+Varν f=
+∑
+x
+∥hx∥2
+L2(ν).(7.9)
+Fix an allowed pair(x,y), abbreviateU=U x, and define
+kxy =E[f|U,y]−E[f|U], g xy =E[f|U,x,y],
+rxy =gxy −E[f|U]−h x −kxy.(7.10)
+For fixedU, hx is centered overx and kxy over y. Applying Equation (7.8) and then averaging
+overUgives
+∥hx∥2
+2 ≤2LExy(hx +kxy).
+Conditional expectation onto U,x,y decreases Exy: the pair kernel is independent of all the
+other coordinates, and Jensen’s inequality applies to each difference across a transition. For any
+30
+
+Page 31
+stationary Markov kernel, Equation (2.4) and(a−b )2 ≤2a2 + 2b2 give E(v) ≤2∥v∥2
+2. Using
+Equation (7.10), and observing that functions ofUhave zero pair energy, we conclude that
+∥hx∥2
+2 ≤2L
+(
+2Exy(gxy) + 2Exy(rxy)
+)
+≤4LExy(f) + 8L∥rxy∥2
+2.(7.11)
+We now have an estimate for one upper slot and one guide, but it contains a residual involving
+both slots. Replication helps only if these residual terms can be charged collectively. The ordering
+of slots makes that collective estimate possible.
+The key point is that the residuals in this bound are orthogonalover all allowed pairs. To
+verify it explicitly, use the orthogonal product (ANOVA) decomposition of Efron and Stein [6,
+Section 2], written here as
+f=
+∑
+S
+fS, f S =
+∑
+A⊆S
+(−1)|S|−|A|E[f|A],
+where S ranges over subsets of the slot set. EachfS depends only on the coordinates inS and is
+centered in each coordinate ofS. Therefore distinctfS are orthogonal, andE[f|A ] = ∑
+S⊆AfS.
+Substitution into Equation (7.10) gives
+rxy =
+∑
+S⊆Ux∪{x,y}
+x,y∈S
+fS.(7.12)
+Every setS in this sum hasylast andxpenultimate in the fixed slot order: all its other coordinates
+lie inUx. These two positions determine the allowed pair uniquely. Thus even pairs that share a
+slot use disjoint sets of orthogonal components. Since every component here is nonconstant,
+∑
+xy
+∥rxy∥2
+2 ≤Var ν f.(7.13)
+This decomposition is only an identity in the proof; the algorithm does not compute it.
+For a base sloti, conditional expectation ontoUi,i similarly decreases its refresh energy. The
+refresh energy ofhi equals ∥hi∥2
+2, because hi is centered overi given Ui. Hence ∥hi∥2
+2 ≤Ei(f).
+Average Equation (7.11) over theq guides of each nonbase slot and sum over slots. Equations (7.9)
+and (7.13) yield
+Varν f≤ 4L
+q
+∑
+xy
+Exy(f) + 8L
+q Varν f+
+∑
+ibase
+Ei(f).
+Sinceq= 32L, absorption gives
+Varν f≤ 1
+6
+∑
+xy
+Exy(f) + 4
+3
+∑
+ibase
+Ei(f)≤ 8M
+3 Eν,P(f).
+This proves the first gap bound. The second follows fromL≥1.
+7.3 A quantitative sampling guarantee
+Theorem 7.3.DefineT,q,Mby Equations(7.3)and(7.6), and put
+Λ = 10Nq(T+ 1)
+(
+K+⌈log 2(ND+ 2)⌉+ 1
+)
+,(7.14)
+s(ξ) =
+⌈
+20LM
+(
+Λ +⌈log 2(1/ξ)⌉+ 1
+)⌉
+(0<ξ <1).(7.15)
+31
+
+Page 32
+Initialize all slots to any one colored perfect matching and run the exact chain fors(ξ)steps. The
+resulting product law is at total variation distance at mostξ from ν. In particular, any top-tier
+slot has law withinξof the desired weighted matching law.
+All tables, state representations, and transition probabilities are computable by rational arith-
+metic. Their sizes, arithmetic operation counts, and rational bit lengths are polynomial inN,D,K ,
+btree, log(1/ξ), and the bit lengths of the reference activities. Exact rational choices here define an
+ideal process; the bounded-bit implementation in Section 9 adds at mostξ to the total variation
+error.
+Proof. Every colored matching consists ofN/2vertex pairs, each with at most two color choices.
+In particular,|M|≤ (2N2)N. At every tier, all activities remain in the interval Equation (7.1).
+For anyA∈Mthis gives
+πt(A)≥ 1
+(2N2)N(3D4K)N/2 .
+Taking the product overq(T+ 1)slots and usingN≥2,D≥1shows that
+log 1
+minν ≤Λ.(7.16)
+For example, witha= ⌈log2(ND + 2)⌉, the logarithm of the denominator in the preceding display
+is at mostN(K+ 5
+2 a+ 2), which is at most10N(K+a+ 1).
+For completeness, the finite-state spectral argument gives a direct mixing bound. Reversibility
+makes P self-adjoint onL2(ν). Its laziness makes its eigenvalues nonnegative, and Lemma 7.2
+bounds every eigenvalue on the centered subspace above by1−γ, whereγ = 1/(20LM). Starting
+from a pointz, the centered initial density has squared norm1/ν(z) −1. By diagonalization,
+reversibility, and Equation (7.16),
+∥Ps(z,·)−ν∥ TV ≤1
+2(1−γ) s
+√
+1
+ν(z) −1≤ 1
+2 exp(−γs+ Λ/2).
+Substitution of Equation (7.15) makes this at mostξ. Projection onto a chosen top-tier coordinate
+cannot increase total variation.
+It remains to specify the computation represented by this chain. The unit-activity tables are
+supplied by Lemma 7.1; a positive table supplies an initial matching if one has not already been
+constructed. There are at mostN2 colored edges andq(T + 1)matching coordinates. Precompute
+the clamped activities at every tier using rational powers ofc. The tier bound Equation (7.5)
+is polynomial in the stated parameters, and these powers have polynomial bit length. A scan
+choice can be made by an integer in{1,...,M} , decoding either a base slot or an upper tier and
+two slot indices. A pair proposal is implemented by inspecting two matchings: the alternating
+components can be listed by following the union of their edges, and the local switch and color
+proposals require only finite lists of edges and at most two color choices per new edge. Metropolis
+acceptance uses a ratio of products of at most2N activities; the unknown partition functions
+cancel. A refresh uses the precomputed integer tables. Thus a step has polynomial arithmetic
+cost and rational probabilities of polynomial bit length. The bounds(ξ)is itself polynomial in the
+displayed parameters, which proves the assertion about the ideal computation.
+For the finite-bit assertion in this generality, including arbitrarily many empty bags, use the
+draw and option bounds
+Rgen
+draw = 100(s(ξ) + 1)(btree +N+ 1), R opt = 10(M+N 2 + 1).
+32
+
+Page 33
+Indeed a refresh uses at most4(btree + N+ 1)categorical choices, and laziness and the scan use two
+more. A pair step uses at most eight choices. A final revelation of edge types, when present, uses
+at mostN further choices. These fit the displayed draw bound. Every choice has at mostRopt
+options. Take a fixed integerk with2 k ≥2Rgen
+drawRopt/ξ. Lemma 9.1 and successive coupling then
+bound the cumulative simulation discrepancy byξ. This precision and the resulting bit cost are
+polynomial in the stated parameters, includingbtree. For the hierarchy constructed in Section 4,
+the smaller specialized bookkeeping in Section 9 follows frombtree ≤N(2K+ 1).
+8 From samples to the number of perfect matchings
+We now give the counting algorithm. Its sampling calls use only the tree-bag sampler proved
+above. In particular, neither balancing nor estimating a partition ratio requires an additional
+oracle. Positive completion, gradual suppression of nonedges, and estimation of successive partition
+ratios follow the annealing framework used for the permanent [11]. The marked observables and
+vertex-scale update below supply the general-graph implementation and its balance guarantees.
+8.1 The schedule and vertex scales
+If n = |V| = 0, return one. If a binary vertex count is used andn >2|E|, return zero: the
+listed edges cannot cover all vertices. On the remaining nonempty input, perform a deterministic
+perfect-matching existence test and return zero if it fails. Thus the remaining case has evenn≥ 2
+andZ(G)≥1. Set
+b= 1 + 1
+n, K= min
+{
+k∈N:k≥1, n n/2b−k ≤ ε
+32
+}
+.(8.1)
+Sincelog(1 + 1/n)≥1/(2n),
+K≤1 + 2n
+(n
+2 logn+ log(32/ε)
+)
+.(8.2)
+At stagej∈{0,...,K}the complete logical graph has raw activities
+w(j)
+uv =
+{
+1, uv∈E,
+b−j, uv /∈E.
+WriteZj for its perfect-matching partition function. Then
+Z0 = (n−1)!!, Z K = (n−1)!!
+K−1∏
+j=0
+Zj+1
+Zj
+.(8.3)
+For sampling, we additionally maintain positive vertex scalessi and use activitiesλij = w(j)
+ij sisj.
+Every perfect matching has the same vertex factor∏
+isi. Consequently
+Zλ =Zj
+∏
+i
+si, g λ(ij) = gw(j) (ij)
+sisj
+.(8.4)
+Initializes i = 1/
+⌊√n−1
+⌋
+. At stage zero,
+gλ(ij) =
+⌊√n−1
+⌋2
+n−1 ∈[1/4,1],
+33
+
+Page 34
+so the logical graph is balanced. The update defined below always multiplies each scale by a
+positive number at most two, whether or not the estimates succeed. Starting from scales at most
+one and making at mostKupdates, we therefore have at every sampling call
+0<λ ij ≤4 K.(8.5)
+We use the same structural parameters throughout a trial:
+D0 = 108(n+ 1) 4, p= 2K+ 2, N=n+ 4p
+(
+n
+2
+)
+, D= 100N 2D0.(8.6)
+For each currentλ, construct the enlarged graph and marked bag edges of Section 4.
+8.2 Observables from one marked sample
+Let λ+ denote the activities at the next raw stage, with thecurrentvertex scales retained. IfP is
+a logical perfect matching, or a logical matching missing one specified pair of vertices, put
+u(P) =b −#{e∈P:e/∈E}.
+Thuswt λ+ (P) =u(P) wt λ(P)and
+1
+2 <b−n/2 ≤u(P)≤1.(8.7)
+The strict left inequality follows from(1 + 1/n)n/2 <e 1/2 <2.
+Sample a colored perfect matching from the bag graph and reveal the real, virtual, and probe
+portions of its edges. Define the following observables, all in[0,1]:
+a=1 {all edges real},
+d=1 {all edges real}u(P),
+zij =1 {probeijand all other edges real}u(P).
+Here P is decoded only on the indicated event; elsewhere the observable is zero. On the all-real
+event it is a full logical perfect matching. On the sole-probe event it is a logical perfect matching
+missing i,j. Write I = Zbag/Z′ for the inflation factor. Under the exact marked bag law, the
+means satisfy
+Ea= 1
+I,Ed= Zλ+
+IZλ
+,Ez ij = Zλ+ (−ij)
+DIZλ
+.(8.8)
+The all-real probability in Proposition 4.2 gives the first equality. The other two follow by
+multiplying the weights in that event, or in the sole-probe identity(4.4), byu(P)and summing.
+In particular,
+R:= Zj+1
+Zj
+= Zλ+
+Zλ
+= Ed
+Ea, g λ+ (ij) =D Ezij
+Ed .(8.9)
+Thus one batch of marked samples will estimate both the next raw partition ratio and the two-hole
+ratios needed to choose the next vertex scales.
+34
+
+Page 35
+8.3 Estimating and restoring balance
+Use
+α= 10 −5, σ= min
+{ α
+100D, ε
+1000K
+}
+, S=
+⌈
+10σ−2(n+K+ 1)
+⌉
+, ξ= 1
+1000KS.
+(8.10)
+At each stage makeS independent fresh sampler runs, each with marked output law at total
+variation distance at most3ξ from the exact marked bag law. Section 9 implements these runs in
+bounded bit time. Let bars denote the empirical means of the observables. Set
+̂R=
+{¯d/¯a,¯a>0,
+1,¯a= 0. (8.11)
+If ¯d>0, form the symmetric array
+Gij = max
+{
+α,min
+{
+3,D ¯zij
+¯d +α
+}}
+(i̸=j).(8.12)
+If ¯d= 0, set allGij = 1. The following elementary balancing procedure will be useful.
+Lemma 8.1.Suppose G is symmetric andα≤G ij ≤3for i̸= j. Initialize vi = 2for every
+vertex and visit the vertices in their fixed order, setting
+vi ←max
+j̸=i
+Gij
+vj
+.(8.13)
+Every coordinate only decreases, all final coordinates lie in[α/2,2], and the final vector satisfies
+vivj ≥Gij with an equality in every row.
+Proof. Initially all products equal four and hence dominateG. At an update, feasibility shows
+that the new value is at most the old value. The definition restores all constraints involvingi and
+leaves all other constraints unchanged. Since every other coordinate is at most two, the new value
+is at leastα/2. At least one constraint involvingi is tight. If its neighbor is visited later, that
+neighbor cannot decrease without violating this tight constraint. Thus the equality persists to the
+end.
+After estimating the current ratio, perform this procedure and replacesi by sivi. These scales
+are used with the next raw stage.
+Algorithm outline.After the zero test, one trial uses the parameters in Equations (8.1), (8.6)
+and (8.10) and the initial scales above. Forj= 0,...,K−1:
+1. Formλuv =w(j)
+uvsusv and its marked bag graph.
+2. Obtain S independent fresh marked samples using the bounded-bit implementation of The-
+orem 7.3. Compute the empirical means, then ̂Rj and G by Equations (8.11) and (8.12),
+including their zero-denominator conventions.
+3. Run the one-pass update (8.13) onG, replacesi bysivi, and advance to the next raw stage.
+The trial returnsY = (n− 1)!! ∏K−1
+j=0 ̂Rj; the final algorithm takes the median of independent
+trials as specified below. The current scales are held fixed during each ratio estimate, so their
+common factors cancel. Every empirical history executes these same steps with the unconditional
+caps above. Balance is used only to prove the accuracy of histories whose estimates succeed.
+35
+
+Page 36
+Lemma 8.2.Suppose the current logical activities are balanced and every empirical mean is within
+σof its exact mean. Then the next scaled activities are balanced and
+⏐⏐⏐⏐⏐
+̂R
+R −1
+⏐⏐⏐⏐⏐≤10σ≤ ε
+100K.(8.14)
+Proof.By Proposition 4.3 and (8.7),
+Ea≥ 1
+2,Ed≥ 1
+4, 1
+2 ≤R≤1.
+Reweighting both a full matching and a matching with two holes by factors in[1/2,1]gives
+1
+2gλ(ij)≤g λ+ (ij)≤2g λ(ij).
+In particular the pre-update row maxima lie in[1/8,2]. Writeg+
+ij = gλ+ (ij). Since ¯d≥Ed−σ > 0,
+⏐⏐⏐⏐D¯zij
+¯d −g+
+ij
+⏐⏐⏐⏐≤
+D|¯zij −Ezij|+g +
+ij|¯d−Ed|
+Ed−σ
+≤(D+ 2)σ
+1/4−σ <α.
+The last inequality follows fromD≥ 1and σ≤α/ (100D). Since0 ≤g+
+ij ≤2, both truncations in
+(8.12) preserve
+g+
+ij ≤Gij ≤g+
+ij + 2α.(8.15)
+During the scaling procedure every updated coordinate satisfiesvi ≥max j Gij/2 ≥1/16. At
+the end all entries of the newly scaled two-hole matrix are at most one, by feasibility and(8.4). In
+each row choose a final tight neighbor. For that pair,
+g+
+ij
+vivj
+≥1− 2α
+vivj
+≥1−512α> 1
+4.
+This proves balance.
+For the ratio estimate, usingR≥1/2and¯a≥1/2−σ,
+⏐⏐⏐⏐⏐
+̂R
+R −1
+⏐⏐⏐⏐⏐≤|¯d−Ed|+R|¯a−Ea|
+R(Ea−σ) ≤ 2σ
+(1/2)(1/2−σ) <10σ.
+The final bound in (8.14) is the other choice in (8.10).
+8.4 Success probability and output
+The form of Hoeffding’s inequality [9, Theorem 2] used here is: ifX1,...,X S are independent,
+take values in[0,1], and have a common meanµ, then, for everyt>0,
+P
+[⏐⏐⏐⏐⏐S−1
+S∑
+i=1
+Xi −µ
+⏐⏐⏐⏐⏐>t
+]
+≤2 exp(−2St2).(8.16)
+The theorem applies separately to each observable; the observables within a single sample need
+not be independent.
+36
+
+Page 37
+Condition on any history in which all preceding stages succeeded. By Lemma 8.2, the current
+activities are balanced. For independent ideal samples, a union bound over the at mostn2 + 2
+observables gives failure probability at most
+2(n2 + 2) exp(−2Sσ2)≤2(n 2 + 2) exp(−20(n+K+ 1))< 1
+100K.
+One elementary verification of the last strict inequality islog(200K(n2 + 2)) ≤6 + K+ 2n <
+20(n+ K+ 1)for n≥ 2,K≥ 1. The actual fresh runs can be coupled to these ideal samples
+with disagreement probability at most3Sξ = 3/(1000K). Therefore the conditional probability of
+failure at the first unsuccessful stage is at most13/(1000K). Summing over allK stages proves
+that a whole trial succeeds with probability at least1−13/1000>0.9.
+The trial output is the nonnegative rational
+Y= (n−1)!!
+K−1∏
+j=0
+̂Rj.(8.17)
+On success, Lemma 8.2 and∏
+i(1−t i)≥1− ∑
+iti fort i ∈[0,1]imply
+(1−ε/100)Z K ≤Y≤exp(ε/100)Z K.
+Everymatchingusinganonedgehasrawfinalweightatmost b−K. Thereareatmost( n−1)!! ≤nn/2
+perfect matchings on the complete graph, so
+Z(G)≤Z K ≤Z(G) +n n/2b−K ≤(1 +ε/32)Z(G).(8.18)
+For0 <ε< 1, the resulting lower bound exceeds(1−ε)Z(G), and the upper bound is at most
+(1 +ε)Z(G). For example,exp(ε/100)≤1 +ε/50, which gives
+exp(ε/100)(1 +ε/32)≤1 +
+(1
+50 + 1
+32 + 1
+1600
+)
+ε<1 +ε.
+To amplify, letℓ= ⌈log2(1/δ)⌉, computed by rational comparisons with powers of two. Run
+r = 10(ℓ+ 1) + 1independent trials and return their median. This is an odd number of trials.
+Since each succeeds with probability at least0.9, Hoeffding’s inequality for their success indicators
+bounds the probability of fewer than half succeeding by
+exp
+(
+−2(0.4)2r
+)
+≤exp
+(
+−3.2(ℓ+ 1)
+)
+<2 −ℓ ≤δ.
+Whenever a majority succeed, the median belongs to the desired interval. The deterministic zero
+branch was taken before any trials. This proves the correctness and probability assertions of
+Theorem 1.1, subject only to the bit implementation established next.
+9 A bounded-bit implementation
+We finish by specifying a classical finite-bit implementation and proving a worst-case bound.
+The argument is uniform over all empirical histories, including histories on which balance is
+lost. Balance controls the statistical accuracy of a successful trial; the unconditional caps in the
+algorithm control its running time.
+37
+
+Page 38
+9.1 Sizes of the parameters and state spaces
+Letbbe the total binary input length. We use a standard explicit encoding of a finite graph and of
+the two rationals. If isolated vertices are specified by a binary vertex count, first return zero when
+n> 2|E|. This test is valid for every nonempty graph admitting a perfect matching and ensures
+that the nonzero branch hasn≤ 2|E|= O(b). The deterministic existence test [5] therefore has
+polynomial bit cost on the original graph. It is the only matching-existence oracle used.
+Equation (8.2) boundsKpolynomially inb. It can be found without logarithms by iterating
+rational powers ofband comparing the two sides of(8.1). The parametersp,N,D 0,D are integers
+of polynomial numerical size inn,K. The hierarchy has at most
+Htree =N(2K+ 1)(9.1)
+nodes, since its levels are0,..., 2K and every level has at mostN components. The number of
+colored edges is less thanN2.
+Use the ladder parametersc,T,L,q,M, Λfrom Equations (6.1), (7.3), (7.6) and (7.14), and
+write
+tmix =s(ξ),
+where s(ξ)is defined in (7.15). The structural parametersN,D,K are fixed throughout a trial.
+Hence the sameT makes the final tier unclamped on every empirical history, by Equations (7.1)
+and (8.5). It can be found by iterating rational powers ofc until the defining inequality in(7.3)
+holds. The bound (7.5) is polynomial inN,K,D . Ceilings of binary logarithms are found by
+integer or rational comparisons with powers of two. These bounds and the product-state size
+q(T+ 1)are polynomial inbandε −1. Indeed,
+σ−1 ≤C(D+Kε −1), S=O
+(
+(D2 +K2ε−2)(n+K+ 1)
+)
+, ξ −1 = 1000KS,
+for an absolute constantC. The exponent100inLis fixed.
+There is no initial-sampling problem at the upper tiers. Pair the logical vertices in their fixed
+order and expand this matching by the path tilings. All logical activities are positive, so this is an
+available real perfect matching with assigned colors. Initialize every slot to that matching. The
+mixing bound applies from this deterministic product state.
+9.2 Rational bit lengths
+We record explicitly why the adaptive scales do not create an arithmetic blowup. Put
+BG = 1 +n⌈log 2(n+ 1)⌉+⌈log 2(S+ 1)⌉+⌈log 2(D+ 1)⌉.(9.2)
+Absolute multiplicative constants in the bit bounds below are independent of the input.
+Every nonzero sample contribution is(n/(n+ 1))a for some0 ≤a≤n/ 2. These fractions have
+the common denominatorQ= (n+ 1)n/2. Thus empirical means, their ratios, and the capped
+entries Gij have O(BG)numerator and denominator bits. This bound does not involve the current
+scales.
+An assignment in(8.13) chooses one maximizerj and sets vi = Gij/vj. At that moment
+vj is either the initial value two or an expression formed at an earlier update. Following such
+dependencies strictly decreases the update index, so it produces a chain of at mostnfactors. Each
+vi consequently hasO(nBG)bits. Accumulating at most K scale updates givesO(KnBG)bits
+per scale. The raw activities haveO(Klog (n+ 1))bits. These estimates apply even when all
+observations are unfavorable, because the clipping and branch conventions are unconditional.
+38
+
+Page 39
+Bottleneck entries Bij and the maxima Hi = maxj̸=i Bij select from finitely many input
+activities and one; they do not involve sums over paths. InitializeBij = max{1,λij}and, for each
+vertexk, update the entries with distincti,j̸=kby
+Bij ←max{Bij,min{Bik,Bkj}}.
+This is the max–min Floyd–Warshall recurrence: after processingk, the entries allow the processed
+vertices as internal path vertices. It usesO(n3)rational comparisons. The path profiles add only
+powers of two of bit lengthO(K). Bag activities are sums of a real activity and a dyadic height
+divided byD. Finallyc ±t hasO(Tlog(N+ 1))bits fort≤T.
+It follows that every single-edge activity used by the sampler has numerator and denominator
+lengths at most the integer bound
+BW =C1
+(
+KnBG +K+⌈log 2(D+ 1)⌉+T⌈log 2(N+ 1)⌉+ 1
+)
+,(9.3)
+where C1 is a sufficiently large absolute positive integer. A product of at mostN such activities
+has O(NBW)bits. In a Metropolis acceptance ratio the unknown normalizing constants cancel.
+Thus even a cycle exchange at unequal tiers requires only rational products of this size. The real
+and probe revelation probabilities are likewise rational, respectively the real portion divided by
+the collapsed activity and1/(DW)for the probe portion.
+By Lemma 7.1, the bottom-tier dynamic program uses counts ofO(Nlog (N + 1))bits. Its
+categorical normalizers count the same partial completions and obey the same bound. Label
+and loop indices use an additionalO(log(Htree + 1) +log(N + 1))bits, since btree ≤Htree in the
+constructed hierarchy. The table computation and sampling therefore use polynomially many
+integer operations with polynomial bit lengths.
+9.3 Random choices with a fixed number of bits
+Lemma 9.1.Let p1,...,p r be nonnegative rational numbers summing to one. Choose a uniform
+integer J∈ {0,..., 2k −1}using exactly k fair bits, and return the least indexi such that
+J/2k <∑
+j≤i pj. The output law is at total variation distance at most2r2−k from(pi)r
+i=1.
+Proof. For any interval[a,b) ⊆[0,1), the number of grid pointsj/2k in the interval differs from
+2k(b−a )by at most two. Apply this to the successive cumulative-probability intervals and sum
+the absolute probability discrepancies. The factor one half in total variation only improves the
+stated bound. An outcome withpi = 0has an empty interval and is never returned.
+The exact categorical choices in the unit-tier dynamic program define an ideal transition law.
+The actual algorithm implements each such choice, along with every proposal and acceptance
+choice, by the fixed grid in Lemma 9.1. Hence exactness of the dynamic program is a counting
+identity; sampling from its tables in bounded bit time incurs the error budget derived below.
+Every choice in the chain is either uniform on an explicitly indexed finite set, Bernoulli, or
+proportional to a list of nonnegative integers supplied by the dynamic program. For each used
+edge, final revelation is a rational categorical choice with at most three outcomes. Subsets and
+pairings are sampled sequentially, so no exponential list is needed. Uniform choices among theM
+scan positions can be implemented by integer arithmetic on the index rather than by enumerating
+the scan positions.
+A bound on the number of random choices in one complete sampler run, including marking its
+output, is
+Rdraw = 100(tmix + 1)(N+ 1) 2(K+ 2).(9.4)
+39
+
+Page 40
+To see this, laziness and the scan take two choices per step, and a pair update takes at most eight
+further choices. By Lemma 7.1, a refresh takes at most4(Htree + N + 1)choices. Allowing both
+bounds at every step and adding the at mostNchoices for final marking gives
+tmix
+(
+10 + 4(Htree +N+ 1)
+)
++N.
+Since Htree = N(2K+ 1), this is bounded by(9.4). The bound therefore includes every categorical
+choice made by the implemented sampler. The number of options in any one choice is at most
+Ropt = 10(M+N 2 + 1).(9.5)
+Choose the same bit budgetkfor all these choices, with
+2k ≥2RdrawRopt
+ξ .(9.6)
+This integer is found by doubling;k is polynomially bounded. By Lemma 9.1, the sum of all
+conditional simulation errors is at mostξ. Successive coupling, while the simulated and exact
+histories agree, bounds the total variation error of the whole run and its marking byξ. The
+exact-kernel mixing error is at mostξ, so the implemented marked sample is within2ξ, and in
+particular3 ξ, of the required law. The number of fair bits used has a deterministic boundkRdraw.
+There is no rejection loop or random convergence test.
+9.4 Total bit cost
+The preceding bounds already give a polynomial-time implementation. To make the accounting
+explicit, take a common bit bound
+B∗=C
+(
+NBW +Nlog(N+ 1) +b+ log(M+ 1) + log(t mix + 1) + log(ξ−1 + 1) + 1
+)
+with a sufficiently large absolute constantC and BW from (9.3). In particularNBW dominates
+KBG, the bit cost of multiplying theK empirical ratios. The boundB∗covers all integers used
+in weight products, dynamic-program counts, cumulative choices, acceptance comparisons, and
+output products. All categorical laws just described admit common-denominator integer weights,
+so computing their cumulative sums respects the same bound. Schoolbook arithmetic and the
+Euclidean algorithm perform the needed operations withinO(B3
+∗)bit time per operation.
+A deliberately loose bound ofO((Htree + 1)(N + 1)4)arithmetic operations covers graph
+construction, the bottom-tier tables, and any one transition or refresh; storing the product state
+additionally takesO(q(T + 1)NB∗)bits. Thus a trial, including allK stages andS fresh runs at
+each stage, has bit cost bounded by a fixed polynomial in
+K, S, tmix, Htree, N, q(T+ 1), B∗.
+For example, the sum of
+CKS(tmix + 1)(Htree + 1)(N+ 1) 4B3
+∗ andCKSq(T+ 1)(N+ 1)B 3
+∗
+is a valid coarse envelope for arithmetic, repeated initialization, and storage operations. Each
+displayed parameter is polynomial inband ε−1. The r= 10(⌈log2(1/δ)⌉+ 1) + 1repetitions and
+the rational comparisons used to select their median add a factor polynomial inlogδ−1 and the
+input length.
+All data structures, loop bounds, and rational comparisons have now been specified by finite
+procedures. Every auxiliary parameter is bounded by a polynomial of fixed degree, and the bound
+holds on every random history. Together with Section 8, this completes the proof of Theorem 1.1.
+40
+
+Page 41
+10 Prescribed-degree subgraphs and fixed-cardinality matchings
+We record two counting consequences of Theorem 1.1 and a corresponding output-sampling
+guarantee. Throughout this section, the input hostG = ( V,E)is a finite simple undirected
+unweighted graph whose vertices and edges are explicitly listed, including any isolated vertices.
+Only edges inE may be selected, so absent edges may be forbidden arbitrarily. The objects
+counted are labeled edge subsets, not isomorphism classes. For binary-encoded integer demands
+f= (f v)v∈V and a binary-encoded integerk, define
+F(G,f) ={F⊆E: deg F(v) =fv for everyv∈V},
+Mk(G) ={M⊆E:Mis a matching and|M|=k}.
+Corollary 10.1.For either family A= F(G,f)or A= Mk(G), there are uniform classical
+randomized algorithms with the following guarantees.
+(i) Given rational0 < ε <1and0 < δ <1/2, the counting algorithm returns a nonnegative
+rational ̂Nsuch that
+P[(1−ε)|A|≤ ̂N≤(1 +ε)|A|]≥1−δ.
+If Ais empty, it returns zero with certainty. Its bit running time on every execution is
+polynomial in the full input encoding length,ε−1, andlogδ −1.
+(ii) Given rational0 < τ <1, the sampling algorithm reports infeasibility exactly whenAis
+empty. Otherwise it returns a memberXofAon every execution, and
+TV(L(X),UA)≤τ,
+where UA is the uniform law onAand TV(µ,ν) = 1
+2
+∑
+x|µ(x) −ν(x)|. Its bit running time
+on every execution is polynomial in the full input encoding length andτ−1.
+Only the stated total-variation and polynomial-in-τ−1 sampling guarantee is asserted. In
+particular, the statement does not assert exact or pointwise almost-uniform sampling. The explicit
+simple unweighted host model does not encode edge weights or compressed multiplicities.
+10.1 Constant-fibre reductions
+Writen=|V|,m=|E|, andd v = degG(v).
+The prescribed-degree reduction.We use Tutte’s reduction of prescribed degrees to perfect
+matchings [18, pp. 348–349], keeping the dummy vertices labeled so that its counting multiplicity
+is explicit. If somefv is outside0 ≤fv ≤dv, the family is empty and we return zero or report
+infeasibility, as appropriate. For valid demands putsv = dv −fv. Construct a simple unweighted
+graph Hf with one tagged port(v,e)for every incidence of an edgee at v. For each original
+edge e = {u,v}, join( u,e)to( v,e)by a cross edge. At eachv, addsv labeled private dummy
+vertices, each adjacent to alldv ports atv. There are no other edges. The tags distinguish ports
+and dummies, so simplicity ofGmakesHf simple. Its sizes satisfy
+|V(Hf)|= 2m+
+∑
+v
+sv = 4m−
+∑
+v
+fv ≤4m,|E(H f)|=m+
+∑
+v
+dvsv ≤m+ 2m(n−1).
+Thus the gadget is explicit and polynomial in the host size; the initial demand check prevents
+expansion of arbitrarily large binary demands.
+41
+
+Page 42
+Project a perfect matching ofHf to the original edges whose cross edges it contains. Each
+dummy atv uses a distinctv-port. The remainingfv ports must use cross edges, so the projection
+lies inF(G,f). Conversely, anf-factor fixes its cross edges. Its remainingsv ports atv can be
+bijected to the labeled dummies insv!ways, independently at each vertex. Hence every factor has
+the same number of preimages, and
+Cf =
+∏
+v
+(dv −fv)!, Z(H f) =Cf|F(G,f)|.(10.1)
+The fibre may be factorial, butlogCf = O(mlog (n+ 1)), soCf has polynomial bit length. For
+an edgeless host with all demands zero, both the unique factor and the gadget’s unique perfect
+matching are empty, andCf = 1by0! = 1. Other infeasible valid inputs give gadgets without
+perfect matchings by the same correspondence.
+The fixed-cardinality reduction.If k <0or2 k > n, the family is empty, so return zero
+or report infeasibility, as appropriate. Otherwise putq= n−2k. FormHk by addingq labeled
+dummy vertices toG, joining each dummy to every original vertex, and adding no edges between
+dummies. Keep all original edges. This is a simple unweighted graph with at most2n vertices
+and m+ n2 edges. In every perfect matching, the dummies useq distinct original vertices; the
+remaining2 k original vertices are paired by exactlyk host edges. Conversely, ak-matching leaves
+qoriginal vertices, which can be bijected to the dummies inq!ways. Therefore
+Ck = (n−2k)!, Z(H k) =Ck|Mk(G)|.(10.2)
+Here logCk = O(nlog (n+ 1)). The same bijection coversk = 0,2 k = n, andn= k = 0, using
+0! = 1.
+Proof of Corollary 10.1(i).Apply Theorem 1.1 to the appropriate gadget and divide its nonneg-
+ative rational output by the corresponding positive integerCf or Ck. Compute these factorial
+products exactly and perform exact rational division, without rounding to an integer. Their dis-
+played bit lengths and the polynomial gadget sizes preserve the asserted relative error, confidence,
+certain-zero behavior, and every-execution bit bound. This proves the counting assertion. The
+correspondences also make feasibility equivalent to perfect-matching feasibility in the gadget.
+10.2 A deletion sampler for perfect matchings
+The conversion from counts to samples uses the self-reduction framework of Jerrum, Valiant, and
+Vazirani [12, Section 6]. We give the deletion procedure explicitly to retain feasibility on every
+execution and to track its total-variation and bit-time bounds. It uses Theorem 1.1 only through
+its counting guarantee.
+Lemma 10.2.Given a finite simple undirected unweighted graphH0 whose vertices and edges
+are explicitly listed, and a rational0<τ <1, there is a uniform classical randomized algorithm
+that reports infeasibility exactly whenH0 has no perfect matching. Otherwise it returns a perfect
+matching on every execution, and its output law is at total variation distance at mostτ from the
+uniform perfect-matching law. Its bit running time on every execution is polynomial in the full
+input encoding length andτ−1.
+42
+
+Page 43
+Proof. First decide perfect-matching feasibility by the deterministic polynomial-time matching
+algorithm of Edmonds [5]. Report infeasibility if appropriate, and return the empty matching
+whenV(H 0) =∅. Otherwise setm 0 =|E(H 0)|andm ∗= max{1,m0}. Choose
+η=γ= τ
+8m∗
+, t= min{j∈N: 2 j ≥8m∗/τ}.
+The integertis computed by doubling and exact rational comparison.
+Maintain a feasible residual graphH and the already selected edges. Choose the first residual
+edge e= uv in a fixed deterministic ordering. Perfect matchings ofH excluding e are counted
+by Z(H−e ); those includinge correspond bijectively, after deletinge, to perfect matchings of
+H−u−v . Test both child graphs for feasibility exactly. At least one is feasible. If only one is
+feasible, take it. If both are feasible, make two fresh calls to Theorem 1.1, with relative errorη
+and failure probabilityγ, obtaining nonnegative rational estimatesA for Z(H−u−v )and B for
+Z(H−e ). If A+ B = 0, take the exclusion child. Otherwise put̂p= A/(A+ B), draw exactlyt
+fresh fair bits as a uniform integerJ∈{ 0,..., 2t −1}, and take the inclusion child precisely when
+J <
+⌊
+2t̂p
+⌋
+.
+Replace H by the chosen child. Whenever the inclusion child is taken, including a forced choice,
+append e to the selected edges. All ratio and floor operations are exact rational or integer
+operations.
+Every chosen child is feasible, regardless of the estimates. Each decision removes at least one
+residual edge, so there are at mostm0 decisions. When no residual edges remain, feasibility forces
+the residual vertex set to be empty. The selected edges then form a perfect matching ofH0 on
+every execution.
+For the error bound, compare this process to the ideal deletion sampler that takes the inclusion
+child with its exact count ratio. These exact ratios telescope, giving the uniform perfect-matching
+law. At a history where both children are feasible, write their positive counts asz+ and z−, with
+p= z+/(z+ + z−). When both estimates succeed, writeA= z+(1 + a)and B = z−(1 + b), where
+|a|,|b|≤η. Then
+|̂p−p|= z+z−|a−b|
+(z+ +z−)(z+(1 +a) +z −(1 +b)) ≤ η
+2(1−η) .
+The last step usesz+z−≤(z+ + z−)2/4. Fresh call randomness bounds the conditional probability
+that either estimate fails by2γ, at every adaptive history. On failure the branch law can change
+by at most one in total variation, while the dyadic floor changes the successful branch probability
+by at most2−t. The fallbackA+ B = 0occurs only on a failed estimate when both true counts
+are positive. Thus the conditional branch-law error is at most
+β= η
+2(1−η) + 2γ+ 2 −t.
+Forced branches have zero error. Couple the two deletion processes until their prefixes differ. With
+at mostm0 decisions, the output total-variation error is at mostm0β. Since η <1/8and2 −t ≤η,
+we haveβ≤4ηand hence
+m0β≤4m ∗η=τ/2<τ.
+There are at most2m0 counting calls and2m0 + 1exact feasibility tests, all on simple graphs
+no larger thanH0. The inverse relative error is8m∗/τ, and the logarithmic confidence cost is
+43
+
+Page 44
+log(8m∗/τ). The every-execution bit bound of Theorem 1.1 also bounds the bit lengths of its
+outputs on failed calls. Therefore the exact ratio and floor computations, thet= O(log(m∗/τ))
+fresh bits per branch, and all graph updates have bit cost polynomial in the full input length and
+τ−1 on every execution. No rejection loop or random stopping criterion is used.
+Proof of Corollary 10.1(ii).For sampling, apply Lemma 10.2 toHf or Hk and decode by keeping
+the original edges represented by selected cross edges, or by discarding the dummy-incident edges,
+respectively. Exact feasibility testing of the gadget reports infeasibility precisely for an empty
+target family. Uniform perfect matchings project to the uniform target law because the fibres
+in (10.1) and (10.2) are constant across target members. Deterministic decoding cannot increase
+total variation and takes polynomial time, without enumerating any fibre. Every decoded output
+is feasible, which proves the sampling assertion.
+References
+[1] Ivona Bezáková, Daniel Štefankovič, Vijay V. Vazirani, and Eric Vigoda. Accelerating
+simulated annealing for the permanent and combinatorial counting problems.SIAM Journal
+on Computing, 37(5):1429–1454, 2008. doi: 10.1137/050644033.
+[2] Jin-Yi Cai and Tianyu Liu. Counting perfect matchings and the eight-vertex model. In
+Artur Czumaj, Anuj Dawar, and Emanuela Merelli, editors,47th International Colloquium
+on Automata, Languages, and Programming (ICALP 2020), volume 168 ofLeibniz Interna-
+tional Proceedings in Informatics, pages 23:1–23:18. Schloss Dagstuhl–Leibniz-Zentrum für
+Informatik, 2020. doi: 10.4230/LIPIcs.ICALP.2020.23. URLhttps://drops.dagstuhl.de/
+entities/document/10.4230/LIPIcs.ICALP.2020.23.
+[3] Xiaoyu Chen, Heng Guo, Eric Vigoda, and Xiongxin Yang. Fast FPRAS for the permanent.
+Preprint, arXiv:2609.20717v1, 2026. URLhttps://arxiv.org/abs/2609.20717v1.
+[4] Xiaoyu Chen, Eric Vigoda, and Xiongxin Yang. Faster FPRAS for the permanent via
+restricted Poincaré inequalities and coupled flows. Preprint, arXiv:2608.26599v1, 2026. URL
+https://arxiv.org/abs/2608.26599v1.
+[5] Jack Edmonds. Paths, trees, and flowers.Canadian Journal of Mathematics, 17:449–467,
+1965. doi: 10.4153/CJM-1965-045-4.
+[6] Bradley Efron and Charles Stein. The jackknife estimate of variance.The Annals of Statistics,
+9(3):586–596, 1981. doi: 10.1214/aos/1176345462.
+[7] Yumou Fei, Leslie Ann Goldberg, and Pinyan Lu. Two-state spin systems with negative
+interactions.Information and Computation, 307:105340, 2025. doi: 10.1016/j.ic.2025.105340.
+[8] W. K. Hastings. Monte Carlo sampling methods using Markov chains and their applications.
+Biometrika, 57(1):97–109, 1970. doi: 10.1093/biomet/57.1.97.
+[9] Wassily Hoeffding. Probability inequalities for sums of bounded random variables.Journal
+of the American Statistical Association, 58(301):13–30, 1963. doi: 10.1080/01621459.1963.
+10500830.
+44
+
+Page 45
+[10] Mark Jerrum and Alistair Sinclair. Approximating the permanent.SIAM Journal on
+Computing, 18(6):1149–1178, 1989. doi: 10.1137/0218077.
+[11] Mark Jerrum, Alistair Sinclair, and Eric Vigoda. A polynomial-time approximation algorithm
+for the permanent of a matrix with nonnegative entries.Journal of the ACM, 51(4):671–697,
+2004. doi: 10.1145/1008731.1008738.
+[12] Mark R. Jerrum, Leslie G. Valiant, and Vijay V. Vazirani. Random generation of combinatorial
+structures from a uniform distribution.Theoretical Computer Science, 43:169–188, 1986. doi:
+10.1016/0304-3975(86)90174-X.
+[13] P. W. Kasteleyn. Dimer statistics and phase transitions.Journal of Mathematical Physics, 4
+(2):287–293, 1963. doi: 10.1063/1.1703953.
+[14] Nicholas Metropolis, Arianna W. Rosenbluth, Marshall N. Rosenbluth, Augusta H. Teller,
+and Edward Teller. Equation of state calculations by fast computing machines.The Journal
+of Chemical Physics, 21(6):1087–1092, 1953. doi: 10.1063/1.1699114.
+[15] Alistair Sinclair. Improved bounds for mixing rates of Markov chains and multicommodity
+flow.Combinatorics, Probability and Computing, 1:351–370, 1992. URLhttps://people.
+eecs.berkeley.edu/~sinclair/flow.pdf.
+[16] Daniel Štefankovič, Eric Vigoda, and John Wilmes. On counting perfect matchings in general
+graphs. In Michael A. Bender, Martín Farach-Colton, and Miguel A. Mosteiro, editors,LATIN
+2018: Theoretical Informatics, volume 10807 ofLecture Notes in Computer Science, pages 873–
+885. Springer, 2018. doi: 10.1007/978-3-319-77404-6_63. Full version: arXiv:1712.07504v1.
+URLhttps://arxiv.org/abs/1712.07504v1.
+[17] Robert H. Swendsen and Jian-Sheng Wang. Replica Monte Carlo simulation of spin-glasses.
+Physical Review Letters, 57(21):2607–2609, 1986. doi: 10.1103/PhysRevLett.57.2607.
+[18] W. T. Tutte. A short proof of the factor theorem for finite graphs.Canadian Journal of
+Mathematics, 6:347–352, 1954. doi: 10.4153/CJM-1954-033-3.
+[19] Leslie G. Valiant. The complexity of computing the permanent.Theoretical Computer Science,
+8(2):189–201, 1979. doi: 10.1016/0304-3975(79)90044-6.
+[20] Jian-Sheng Wang and Robert H. Swendsen. Replica Monte Carlo simulation (revisited).
+Progress of Theoretical Physics Supplement, 157:317–323, 2005. doi: 10.1143/PTPS.157.317.
+Preprint version:https://arxiv.org/abs/cond-mat/0407273v1.
+[21] Zihong Yi. Diffuse Gaussian truncation for deterministic approximate counting. Preprint,
+arXiv:2609.04079v1, 2026. URLhttps://arxiv.org/abs/2609.04079v1.
+45
