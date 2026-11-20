@@ -16273,6 +16273,60 @@
       "role": "Embedded OpenAI Math challenge, dependency or local audit input"
     },
     {
+      "path": "benchmarks/openai-math-12/paper-progress/README.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/SeymourSecondNeighborhood.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/SeymourSecondNeighborhood.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/173/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/173/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/173/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
       "path": "benchmarks/openai-math-12/reference-solutions.json",
       "category": "benchmark inputs",
       "chapters": [

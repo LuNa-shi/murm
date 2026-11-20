@@ -1,0 +1,16 @@
+{
+  "upstream_commit": "4eaee87548250b2682affda7d05d947c05554bae",
+  "upstream_path": "preprints/A-proof-of-Seymours-second-neighborhood-conjecture-September-23-2026/paper.pdf",
+  "files": [
+    {
+      "path": "benchmark/paper.pdf",
+      "source_path": "173/paper.pdf",
+      "sha256": "20be859799f83e3412dba6fd645a72a0d929cbe05ca546807c591f001f9e6e82"
+    },
+    {
+      "path": "benchmark/paper.txt",
+      "source_path": "173/paper.txt",
+      "sha256": "eab9cae7b2bb2776a7d6ea502715e20436753190f096d7c3d92c2dcccd6893cc"
+    }
+  ]
+}

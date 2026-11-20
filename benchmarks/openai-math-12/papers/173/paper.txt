@@ -1,0 +1,734 @@
+Page 1
+A proof of Seymour’s second-neighborhood conjecture
+OpenAI
+September 23, 2026
+Abstract
+We prove that every nonempty finite oriented graph has a vertex with at least as many
+vertices at directed distance two as at directed distance one. This resolves Seymour’s second
+neighborhood conjecture positively.
+1 Introduction
+An oriented graphis a finite directed graph with no loops, no multiple arcs, and no pair of opposite
+arcs. Its underlying undirected graph need not be complete or connected. For a vertexv, write
+N+
+1 (v) = {u: v→u}, N +
+2 (v) = {w /∈{v}∪N+
+1 (v) : there is a vertexu with v→u→w}.
+Thus N+
+2 (v) consists of the vertices at directed distance exactly two fromv. Each vertex is counted
+once, regardless of the number of paths reaching it. Seymour’s second neighborhood conjecture
+asserts that some vertex satisfies|N+
+1 (v)|≤| N+
+2 (v)|.
+Theorem 1.1. Every nonempty finite oriented graph has a vertexv such that
+|N+
+1 (v)|≤| N+
+2 (v)|.
+Theorem 1.1 resolves the conjecture positively, without a connectivity or degree hypothesis. In
+particular, a sink already satisfies the conclusion. The conjecture is a basic comparison between
+the first two out-neighborhoods: removing vertices already reached in one step is essential to its
+assertion.
+The theorem also gives the established vertex- and arc-weighted forms of the conjecture through
+Seacrest’s equivalences [19]. The vertex-weighted conclusions have two different quantifier orders:
+for every nonnegative weighting there is a suitable vertex, and there is a weighting of total mass
+one for which every vertex is suitable. Section 5 states these forms precisely. Section 6 records
+consequences for short directed cycles. In particular, a graph with minimum in- and outdegree at
+least one third of its order contains a directed triangle.
+The conjecture was recorded by Dean and Latka [8]. A tournament is an oriented graph
+with an arc between every pair of distinct vertices. This case, also known as Dean’s conjecture,
+was proved by Fisher [12] using a probability distribution obtained from Farkas’ lemma. Havet
+and Thomassé gave a combinatorial proof using local median orders [14]. Fidler and Yuster [11]
+extended the tournament theorem to tournaments missing a matching, a star, or a clique. Ghazal
+corrected the star-case proof and treated generalized stars [13]. Subsequent advances include a
+matching together with a star [7] and two stars [6].
+1
+
+Page 2
+Other approaches impose degree conditions or weaken the desired ratio. Kaneko and Locke
+established the conjecture for minimum outdegree at most six [16]; a recent computer-assisted
+preprint treats minimum outdegree seven [18]. Chen, Shen and Yuster proved a universal second-to-
+first neighborhood ratio of approximately0.657298 [5]. Huang and Peng raise this to approximately
+0.715538 and additionally report a computational bound of0.74530 [15]. Botler, Moura and Naia [2],
+followed by Espuny Díaz, Girão, Granet and Kronenberg [10], studied every orientation of binomial
+random graphs; the latter result covers every fixed edge probability below1/2, with probability
+tending to one as the order tends to infinity. Brukhman’s recent dense-case preprint concerns
+graphs of ordern≤2δ+ 2, whereδ is the minimum outdegree [4].
+Our proof builds on the minimal-counterexample and graph-product methods of Brantner,
+Brockman, Kay and Snively [3] and on Seacrest’s subset perspective [20]. We adapt the edge-
+deletion idea in the proof of Seacrest’s Lemma 4 to obtain the stronger subset inequality needed
+here, and give that argument in full. The exact set-image convention and inequality are stated
+below. The main additional ingredient is a pruning bound for arbitrary finite binary relations. Its
+deletion cost depends on the points left uncovered after pruning; this dependence makes the final
+extremal argument possible.
+Proof strategy. For a digraphD and a setS of its vertices, define
+FD(S) = {y: there isx∈S with x→y}, F 2
+D(S) = FD(FD(S)).
+The operatorFD does not subtractS. In an oriented graph there is no directed walk of length
+two from a vertex to itself, and henceN+
+2 (v) = F2
+D({v}) \FD({v}).
+We first suppose that a counterexample exists and choose one with minimum order and then
+minimum number of arcs. Deleting carefully chosen arcs shows that every nonempty proper vertex
+set S satisfies
+|F2
+D(S) \FD(S)|<|FD(S) \S|.
+Replacing each vertex by a sufficiently large transitive tournament turns this into a strict inequality
+|U|+ |F2
+G(U)|<2|FG(U)| (1)
+for every nonempty proper subsetU of the new oriented graphG. Every vertex ofG has positive
+indegree. These reductions are proved in Section 2.
+The obstruction to(1) is an extremal argument on two families of ordered pairs inV(G)×V(G).
+A coordinate image advances that coordinate along an arc ofG and leaves the other coordinate
+fixed. The families are compatible when the first-coordinate image of the left family and the
+second-coordinate image of the right family are disjoint. A point in neither image is called
+uncovered. Require both families to contain the diagonal, writeM for their combined size and
+d for the number of uncovered points, and maximizeM + d over all such compatible pairs. The
+columns of the left family and the rows of the right family are nonempty proper vertex sets, so
+(1) applies to each of them. Taking complements of the second iterated images then produces
+prospective families with combined size greater thanM + 2d.
+These families may conflict, but their diagonal members are still present and conflict-free.
+The pruning lemma in Section 3, valid for every finite binary relation, restores compatibility and
+preserves their diagonal members. In this application its two deletion-cost terms are at mostd
+and d′, whered′ is the number of points left uncovered by the retained families. Thus at most
+d+ d′members are deleted, and the new extremal objective is strictly greater than
+M + 2d−(d+ d′) + d′= M + d.
+2
+
+Page 3
+Section 4 proves these bounds and obtains the contradiction. This is why the pruning lemma must
+charge part of its cost to the points left uncovered after deletion.
+The pruning proof bounds a matching in an augmented bipartite graph. Changing the two
+coordinates of a pair in opposite orders factors the same matrix through two different index sets
+attached to a conflict. A simultaneous maximum-rank choice of the entries makes the kernels
+of these maps control the matching size. The full argument is independent of the orientation
+assumption and is given in Section 3.
+2 From a counterexample to a strict subset inequality
+We first convert a hypothetical counterexample into a graph whose first image is larger than the
+average of a set and its second image. Throughout this section,F = FD denotes the ordinary
+union of the out-neighborhoods in a specified base graphD; in particular, F(S) need not be
+disjoint fromS.
+Proposition 2.1(Counterexample reduction). If Theorem 1.1 has a counterexample, then there
+is a finite nonempty oriented graphG in which every vertex has positive indegree and
+|U|+ |F2
+G(U)|<2|FG(U)| for every∅ ̸= U ⊊ V(G). (2)
+There are two steps. Minimality first gives a strict deficit for subsets of a counterexample.
+Replacing each vertex by a sufficiently large transitive tournament then turns that deficit into(2).
+The arc-deletion argument below adapts the proof idea of [20, Lemma 4]. Specializing Seacrest’s
+parameter λto 1, his statement gives|F2(S) \F(S)|<|F(S)|in an edge-minimal counterexample
+when F(S) is nonempty. Lemma 2.2 replaces this right-hand bound by|F(S) \S|for nonempty
+proper S, under the stronger choice of minimum order and then minimum arc count. We prove
+this strengthened form in full.
+Lemma 2.2 (Subset deficit). Let D be a finite nonempty oriented graph such that|N+
+1 (v)|>
+|N+
+2 (v)|for every v ∈V(D). Choose D with minimum order and, subject to that, minimum
+number of arcs among all graphs with this property. ThenD is strongly connected, every vertex
+has positive indegree, and
+|F2(S) \F(S)|<|F(S) \S| for every∅ ̸= S ⊊ V(D). (3)
+Proof. A sink satisfies the second-neighborhood inequality, soD has no sink and has more than
+one vertex. If D were not strongly connected, take a strongly connected component with no
+outgoing arc to another component. All first and second out-neighborhoods of its vertices lie in
+that component. Its induced graph would therefore be a smaller counterexample, contrary to the
+choice ofD. ThusD is strongly connected, and every vertex has an in-neighbor.
+Fix a nonempty proper subsetS and put
+I = F(S) ∩S, E = F(S) \S, g (T) = |F(T) \(I∪T)| (T ⊆E).
+Strong connectivity givesE ̸= ∅. We will enlargeT from ∅ to E so that the increase ing(T) is
+strictly smaller than the number of newly adjoined vertices at every step.
+For T ⊊ E, let DT be obtained from the original graphD by deleting all arcs fromS to
+E\T. Since every vertex ofE\T receives an arc fromS, at least one arc is deleted. Minimality
+of the number of arcs gives a vertexv satisfying |N+
+1,DT(v)|≤| N+
+2,DT(v)|. If v had lost no first
+3
+
+Page 4
+out-neighbor, deleting arcs could only shrink its exact second out-neighborhood, so it would still
+violate this inequality. Consequentlyv∈S, and the set
+Q= F({v}) ∩(E\T)
+is nonempty. It is exactly the set of first out-neighbors thatv loses. The original first out-
+neighborhood ofv is contained inI∪T ∪Q, and the remaining first out-neighbors lie inI∪T.
+We compare the exact second out-neighborhoods before and after deletion. A two-step path
+from v in DT through a vertex ofI ⊆S ends inI∪T, since all arcs fromS to E\T were deleted.
+A path through a vertex ofT ends inF(T). Thus
+F2
+DT({v}) ⊆I∪T ∪F(T). (4)
+Every newly counted exact second out-neighbor must have been a first out-neighbor inD: deletion
+creates no paths, andv itself is never an exact second out-neighbor. Such a vertex lies inQ, and
+(4), together withQ∩(I∪T) = ∅, places it inQ∩F(T).
+On the other hand, define
+C = F(Q) \
+(
+I∪T ∪Q∪F(T)
+)
+.
+Every vertex ofC was reached fromv in two steps throughQ, and none was a first out-neighbor.
+Also v /∈F(Q): an arc from a vertex ofQ back tov would oppose the arc fromv to that vertex.
+Hence C ⊆N+
+2,D(v). By (4), no vertex ofC remains reachable in two steps inDT.
+Writed1 = |N+
+1,D(v)|and d2 = |N+
+2,D(v)|. The gains and losses just identified imply
+d1 −|Q|≤| N+
+2,DT(v)|≤ d2 −|C|+ |Q∩F(T)|.
+The change ing is exact: adjoiningQ removes the pointsQ∩F(T) from the previously counted
+image and adds preciselyC. Since d2 <d1, it follows that
+g(T ∪Q) −g(T) = |C|−|Q∩F(T)|≤| Q|+ d2 −d1 <|Q|. (5)
+Starting withT = ∅, repeat this step untilT = E. Each deletion is performed afresh on the
+original D, so the same minimality argument applies at every step. EachQ is a nonempty subset
+of the part ofE not yet adjoined; hence the process terminates. Summing(5) and usingg(∅) = 0
+gives g(E) <|E|. Finally,F(S) = I∪E and F(I) ⊆F(S), so
+F2(S) \F(S) =
+(
+F(I) ∪F(E)
+)
+\(I∪E) = F(E) \(I∪E).
+Its cardinality isg(E), proving (3).
+We next amplify the integer deficit in(3). Each unit of the base deficit contributes the entire
+block size; the remaining internal contribution costs at most one unit per base vertex. The
+construction below is the lexicographic productD[Tm], whereTm is a transitive tournament. The
+same graph-product construction appears in [3, Theorem 4.3]; here we need an estimate for every
+nonempty proper subset, rather than only for individual vertices.
+Lemma 2.3 (Transitive-tournament blowup). Let D be an oriented graph onn ≥1 vertices,
+all of positive indegree, satisfying(3) for every nonempty proper subset ofV(D). For an integer
+m>n , replace each vertex by a transitive tournament onm vertices. For every arcv→w of D,
+put all arcs from the block atv to the block atw, and put no other arcs between distinct blocks.
+The resulting graphG is oriented, all its indegrees are positive, and it satisfies(2).
+4
+
+Page 5
+Proof. Label the vertices within each block by1,...,m , with arcs from smaller to larger labels.
+Let f be the image operator within this transitive tournament. For a nonempty setT of labels
+with least elementa, we havef(T) = {a+ 1,...,m }. Thus
+|T|−|f(T)|≤ 1, f 2(T) ⊆f(T), |T|−2|f(T)|+ |f2(T)|≤ 1. (6)
+The construction produces an oriented graph. Every vertex receives arcs from an incoming base
+block, so all indegrees inGare positive. Call an arc external if it joins distinct blocks, and internal
+otherwise.
+Fix ∅ ̸= U ⊊ V(G). Write Tv for the labels selected byU in the block atv, and define its
+support and a set of base vertices by
+S = {v∈V(D) : Tv ̸= ∅}, H 0 = F(S) ∪F2(S).
+Every block indexed byF(S) is filled byFG(U). In each remaining block the first image consists
+exactly off(Tv), so
+|FG(U)|= m|F(S)|+
+∑
+v∈S\F(S)
+|f(Tv)|.
+A two-step path using two external arcs ends in anF2(S)-block. One using exactly one external
+arc ends in anF(S)-block, regardless of the order of its internal and external steps. Paths using
+only internal arcs contributef2(Tv). Therefore
+|F2
+G(U)|≤ m|H0|+
+∑
+v∈S\H0
+|f2(Tv)|.
+Combining these estimates gives the sharper bound
+|U|−2|FG(U)|+ |F2
+G(U)|≤ m
+(
+|H0|−2|F(S)|
+)
++
+∑
+v∈S
+|Tv|
+−2
+∑
+v∈S\F(S)
+|f(Tv)|+
+∑
+v∈S\H0
+|f2(Tv)|. (7)
+Since F(S) ⊆H0, extending the last sum toS\F(S) only adds nonnegative terms. This may
+count internal second images in blocks already bounded by a full block in(7); it remains a valid
+upper bound. Now use|Tv|≤ m on S∩F(S) and (6) onS\F(S) to obtain
+|U|−2|FG(U)|+ |F2
+G(U)|≤ m
+(
+|H0|−2|F(S)|+ |S∩F(S)|
+)
++ |S\F(S)|
+≤m
+(
+|F2(S) \F(S)|−|F(S) \S|
+)
++ n.
+If S ⊊ V(D), the parenthesized difference is an integer strictly less than zero by(3). The last
+bound is consequently at most−m+ n< 0.
+It remains to considerS = V(D), for which the subset-deficit hypothesis does not apply.
+Positive indegrees inD give F(S) = V(D), soFG(U) = V(G). Positive indegrees inG then give
+F2
+G(U) = V(G) as well. In this case
+|U|−2|FG(U)|+ |F2
+G(U)|= |U|−|V(G)|<0,
+because U is proper. This proves the required inequality for every allowedU.
+Proof of Proposition 2.1.Choose a counterexample of minimum order and then minimum number
+of arcs. Lemma 2.2 supplies positive indegrees and the subset deficit, so Lemma 2.3, with any
+integer m> |V(D)|, supplies the required graphG.
+5
+
+Page 6
+3 Pruning two families of pairs
+We now prove a deletion bound for two families of ordered pairs. The bound charges the deleted
+members to two sets of pairs: one determined by the original conflicts, and the other consisting of
+points left uncovered after deletion. This dependence on the surviving families will be essential in
+Section 4. The result holds for every finite binary relation; no orientation assumption is needed.
+Lemma 3.1 (Pruning). Let X be a finite set with a binary relation denoted by→, and let
+R,C⊆ X×X be two families, regarded as separate copies even when their coordinates agree. Say
+that (p,j) ∈R and (i,s) ∈C conflict if
+p→i and s→j.
+Define
+Z = {(i,j) : some (p,j) ∈R conflicts with some(i,s) ∈C},
+H = {(p,s) : some (p,j) ∈R conflicts with some(i,s) ∈C}.
+A point(i,j) is covered by a member(p,j) ∈R when p→i, and by a member(i,s) ∈C when
+s→j. These are the only ways a member covers a point.
+There are subfamiliesR′ ⊆R and C′ ⊆C with no conflicts between them such that every
+initially conflict-free member is retained and
+|R\R′|+ |C\C ′|≤| H|+ |{z∈Z : z is covered by no member ofR′∪C′}|. (8)
+The two sides are counted separately throughout.
+The proof will bound a matching in an augmented bipartite graph by using matrix ranks. We
+first record the elementary rank fact that makes the argument work. For finite index setsI,J , a
+matrix supported onT ⊆I×J means a real matrix whose entries outsideT are zero; entries inT
+are allowed to vanish.
+Lemma 3.2 (Kernels at maximum support rank). Let T ⊆I ×J, where I and J are finite.
+Suppose thatD: RJ →RI has maximum rank among all real matrices supported onT. Then, for
+every x∈kerD, everyy∈kerDT, and every(s,j) ∈T, one hasxjys = 0.
+Proof. Suppose instead thatxjys ̸= 0. For a nonzero realτ, the matrixDτ = D+ τeseT
+j is still
+supported onT, and
+Dτx= τxjes.
+Thus es ∈im Dτ. Moreover, for everyw∈RJ,
+Dw = Dτw−τwjes ∈im Dτ,
+so the entire old imageim D is contained inim Dτ. On the other hand,y annihilates im D and
+ys ̸= 0, soes /∈im D. Therefore rank Dτ >rank D, a contradiction.
+Proof of Lemma 3.1.If there are no conflicts, retain every member; thenZ = H = ∅ and the
+assertion is immediate. In what follows, all vector spaces have their usual coordinate bases. Empty
+minors have determinant1, so the rank arguments also apply when a matching or an index set is
+empty.
+6
+
+Page 7
+The augmented graph and the required matching bound.Form a bipartite graphΓ with parts
+VL = R⊔ZL, VR = C⊔ ZR,
+where ZL and ZR are separate copies ofZ, disjoint also from the two original families. Join
+conflicting original members. Also join each original member to the opposite copy of every point
+of Z that it covers. There are no edges betweenZL and ZR. Figure 1 displays the three edges
+forced by one conflict.
+zL c r zR
+covers z conflict covers z
+ZL C : ( i, s) R : ( p, j) ZR
+Figure 1: A conflict betweenr = (p,j) and c = (i,s) forces this path, wherez = (i,j) ∈Z.
+The copieszL and zR are distinct vertices. The vertices alternate between the two sides of the
+bipartition. Different conflicts can share vertices and edges; the full augmented graph need not be
+a disjoint union of such paths.
+An initially conflict-free member is isolated inΓ. Indeed, if(p,j) ∈R covered (i,j) ∈Z, an
+original conflict witnessing(i,j) ∈Z would supply a member(i,s) ∈C with s→j. This member
+would conflict with(p,j). The same argument with the sides exchanged applies toC.
+It suffices to find a vertex coverK of Γ of size at most|Z|+ |H|, omitting isolated vertices.
+Delete precisely its original members. No conflict then survives. Ifq points ofZ are uncovered by
+the surviving members, each of the other|Z|−q points has a surviving member adjacent to one of
+its two copies. That copy must lie inK. Distinct points require distinct new vertices, whence
+|K∩(R⊔C )|≤| K|−(|Z|−q) ≤|H|+ q. (9)
+Thus the cover gives exactly (8) and retains every initially conflict-free member.
+We will obtain this cover by proving that a maximum matching inΓ has size at most|Z|+ |H|
+and then giving the usual alternating-path construction of the cover. Choose a maximum matching
+Mwith the fewest edges between original members. Writek for the number of these edges, and
+let α and β be its edges inR×ZR and ZL ×C, respectively. Put
+ℓ= |α|, t = |β|, |M|= k+ ℓ+ t.
+Each ofα and β is a maximum matching in its own subgraph. For example, if theR–ZR
+subgraph had a larger matching, its symmetric difference withα would contain anα-augmenting
+path, starting at anα-unmatched member ofRand ending at anα-unmatched vertex ofZR. The
+latter vertex is unmatched inM, and every internal vertex of the path is matched byα. If the
+starting member is unmatched inM, augmenting gives a larger matching inΓ. Otherwise it lies
+on an original–original edge ofM; remove that edge and augment along the path. This preserves
+the total size and reducesk. Both conclusions contradict the choice ofM. The proof forβ is
+identical with the sides exchanged. Denote byRα ⊆R and Cβ ⊆C the original vertices matched
+by these two matchings.
+Four maps and a simultaneous choice of coefficients.To boundk+ ℓ+ t, we encode the two
+maximum matchings by matrix ranks. For each arrowx→y, introduce independent variablesaxy
+7
+
+Page 8
+and bxy, with the two arrays independent of one another. Set both entries to zero whenx̸→y. We
+shall choose real values for all the variables shortly. For any real assignment, define four maps by
+RR L−−→RZ
+B
+↓ ↓N
+RH A−−→RC
+with entries
+L(i,j),(p,j) = api, N (i,s),(i,j) = bsj,
+B(p,s),(p,j) = bsj, A(i,s),(p,s) = api.
+(10)
+The row and column indices in each formula range over its indicated coordinate sets, and every
+entry not of a listed form is zero. The mapsL,A change the first coordinate forward alongp→i;
+N,B change the second coordinate backward fromj to salong s→j. For a conflict, the two routes
+from (p,j) to (i,s) change the coordinates in opposite orders, through(i,j) ∈Z or (p,s) ∈H. For
+a fixed column(p,j) ∈R and row(i,s) ∈C, the only possible intermediate index inNL is (i,j),
+and the only possible one inAB is (p,s). If the two endpoints conflict, these indices belong to
+Z and H, respectively, and both products have entryapibsj. If they do not conflict, at least one
+factor is zero in both products. Hence
+NL = AB. (11)
+We seek an assignment for which
+rank L= ℓ, rank N = t, dim kerA≥k.
+These three conditions give the desired matching bound. Indeed, rank–nullity andNL = AB
+would give
+|H|= dim kerA+ rankA
+≥k+ rankA≥k+ rank(NL)
+≥k+ ℓ+ t−|Z|. (12)
+The last inequality follows by restrictingN to im L:
+rank(NL) = dim imL−dim(im L∩kerN) ≥ℓ−(|Z|−t).
+The first two rank conditions will come fromα and β. For the third, we will lift thek original left
+endpoints to vectorsur ∈ker L and show that their imagesBur are independent. The identity
+AB = NL places these images inker A.
+Our choice of coefficients uses the correspondence between generic matrix rank and maximum
+matching size [9, Section 5, Theorem 1]. We apply the determinant argument within coordinate
+blocks and verify that all required minors can be nonzero at the same assignment. We choose the
+coefficients so thatrank L = ℓ, with itsRα columns a basis ofim L, andrank NT = t, with its
+Cβ columns a basis ofim NT. To justify this choice, a nonzero minor ofL requires a matching
+between its column and row indices: a nonzero term in its determinant supplies the matching.
+Since αis maximum,rank L≤ℓfor every coefficient assignment. The square minor using precisely
+the endpoints ofα is, up to row and column ordering, block diagonal by the second coordinate
+j. In each block all allowed entries are distinct variablesapi. The matching gives a determinant
+monomial that cannot cancel, because different permutations use different sets of these variables.
+8
+
+Page 9
+Each block determinant is therefore a nonzero polynomial, and so is their product. Variables may
+occur in more than one block, but a product of nonzero polynomials remains nonzero. This proves
+the required independence when that minor does not vanish. ForNT the same argument uses
+blocks with the first coordinatei fixed and distinct variablesbsj within each block.
+One additional finite collection of rank conditions will be needed. For every arrowp→i, define
+Jp = {j : (p,j) ∈R}, S i = {s: (i,s) ∈C}, D p,i = (bsj)s∈Si, j∈Jp.
+We requireDp,i to have maximum rank among all matrices supported on
+Tp,i = {(s,j) ∈Si ×Jp : s→j}.
+These matrices will let Lemma 3.2 compare restrictions of vectors inker B and ker NT. The
+allowed entries of each individualDp,i are independent variables. A minor attaining its maximum
+possible rank at some assignment is therefore a nonzero polynomial in theb variables. Choose one
+such minor for each arrow, taking the empty minor when the maximum rank is zero. Multiply
+these finitely many polynomials with the two matching minors just described. The product is
+nonzero in the polynomial ring generated by allaand bvariables, even though variables are shared
+between different matrices. A nonzero real polynomial is nonzero at some real assignment, as
+follows by induction on its number of variables. Fix such an assignment once and for all. It gives
+these support ranks and the two basis properties simultaneously.
+For every edge(r,c) of Mbetween original members, the basis properties now give vectors
+ur = er +
+∑
+a∈Rα
+λr
+aea ∈ker L,
+vc = ec +
+∑
+b∈Cβ
+µc
+beb ∈ker NT.
+(13)
+The original–original endpoints are disjoint fromRα and Cβ, respectively. In particular, theur
+restrict to distinct unit vectors on thek original left endpoints, andvc
+c = 1.
+The kernel restriction and the matching bound.It remains to show that thek lifts just constructed
+give independent vectorsBur. The key assertion, at our fixed coefficient assignment, is
+upjvis = 0 for every conflict((p,j),(i,s)), u ∈kerB, v ∈ker NT. (14)
+Here the assertion quantifies overall vectors in the two kernels.
+To prove it, fix an arrowp→i. Foru∈ker B, consider the vector(upj)j∈Jp. If a rows∈Si of
+Dp,i has an allowed entry, choosej ∈Jp with s→j. Then (p,j) and (i,s) conflict, so(p,s) ∈H.
+The complete equation ofBu = 0 at this coordinate is
+∑
+j∈Jp
+bsjupj = 0. (15)
+If the row has no allowed entry, this equation holds because all its coefficients are zero. Thus it holds
+for everys∈Si, including rows for which(p,s) is absent fromH. Consequently(upj)j∈Jp ∈kerDp,i.
+Similarly, letv∈kerNT. If a columnj ∈Jp of Dp,i has an allowed entry, chooses∈Si with
+s→j. The resulting conflict implies(i,j) ∈Z, and the complete equation ofNTv = 0 at this
+coordinate is ∑
+s∈Si
+bsjvis = 0. (16)
+9
+
+Page 10
+Columns with no allowed entries satisfy the same equation automatically. Hence(vis)s∈Si ∈
+ker(Dp,i)T. Since Dp,i has maximum rank on its allowed support, Lemma 3.2 givesupjvis = 0
+whenever s→j, proving(14). The hypothetical single-entry perturbation in that lemma concerns
+only Dp,i; it need not preserve any other rank condition. The conclusion holds for every pair of
+kernel vectors at the fixed, original assignment.
+For each original–original matched edge(r,c), substitutev= vc in (14). Since vc
+c = 1, every
+vector inker B vanishes atr. It follows that the vectorsBur, asr ranges over thek original left
+endpoints, are linearly independent. Indeed, a relation
+∑
+r
+θrBur = 0
+puts the single vectoru= ∑
+rθrur in ker B. Its coordinate at each such endpointr is ur = θr, by
+(13). All these coordinates vanish, so everyθr is zero. Furthermore,
+A(Bur) = NLur = 0
+by (11). Thus dim kerA ≥k, establishing the third rank condition. Equation(12) now gives
+|M|= k+ ℓ+ t≤|Z|+ |H|, as required.
+From the matching bound to a pruning.For completeness, we give the matching-to-cover argument
+in Kőnig’s theorem [17]. Starting at all unmatched vertices ofVL, follow edges outsideMfrom
+left to right and edges inMfrom right to left. LetWL,WR be the reached vertices on the two
+sides. No unmatched right vertex is reached, since an alternating path to one would augment the
+maximum matching. The endpoints of a matched edge are either both reached or both unreached:
+a reached right endpoint leads to its mate, and a matched left endpoint can only have been reached
+through its mate. It follows that
+K = (VL \WL) ∪WR
+covers every edge. Indeed, an edge from a reached left vertex to an unreached right vertex could
+be neither an unmatched edge, which would be traversed, nor a matched edge, whose endpoints
+have the same reachability. The cover contains exactly one endpoint of each matched edge and no
+unmatched vertices. Hence|K|= |M|≤| Z|+ |H|; it also omits isolated vertices. Applying(9) to
+this K proves the lemma.
+4 The extremal contradiction
+We use Lemma 3.1 to rule out the graph supplied by Proposition 2.1. The proof converts the strict
+subset inequalities into a strict increase of an extremal quantity associated with two families of
+ordered pairs.
+Proposition 4.1. There is no nonempty finite oriented graphG in which every vertex has an
+in-neighbor and whose one-step image operator
+F(U) = {y∈V(G) : x→y for somex∈U}
+satisfies
+|U|+ |F2(U)|<2|F(U)| (∅ ̸= U ⊊ V(G)), (17)
+where F2 = F ◦F.
+10
+
+Page 11
+Proof. Suppose that such a graph exists, and putX = V(G). For S ⊆X×X, define the two
+coordinate image operators by
+F1S = {(i,j) : (p,j) ∈S and p→i for somep∈X},
+F2S = {(i,j) : (i,s) ∈S and s→j for somes∈X}.
+Write F2
+1 = F1 ◦F1, F2
+2 = F2 ◦F2, and∆ = {(v,v) : v ∈X}. Call P,Q ⊆X×X compatible if
+F1P ∩F2Q= ∅. Equivalently, no left member(p,j) ∈P and right member(i,s) ∈Qsatisfy both
+p→i and s→j; this is precisely the conflict relation in Lemma 3.1.
+The pairP = Q = ∆ is compatible: a point(i,j) in both images would requirej →i and
+i→j, contrary to orientation. Thus we may choose, among all compatible pairs with∆ ⊆P ∩Q,
+one maximizingM + d, where
+M = |P|+ |Q|, d = |X|2 −|F1P|−|F2Q|.
+Such a maximum exists becauseX is finite. Compatibility makesd the number of points outside
+F1P ∪F2Q. Including these uncovered points in the objective lets the points left uncovered by
+pruning offset the corresponding part of the deletion cost.
+Every columnPj = {p: (p,j) ∈P}is nonempty, sincej ∈Pj. It is also proper. Indeed, positive
+indegrees giveF(X) = X, soPj = X would implyX×{j}⊆ F1P. Choose an in-neighborw of j.
+Then (w,j) ∈F2∆ ⊆F2Q, contradicting compatibility. Likewise every rowQi = {s: (i,s) ∈Q}
+contains i. If Qi = X, then{i}×X ⊆F2Q; choosingw →i gives (i,w) ∈F1∆ ⊆F1P, again a
+contradiction. We can therefore sum(17) over the columns ofP and over the rows ofQ to obtain
+|P|+ |F2
+1 P|<2|F1P|, |Q|+ |F2
+2 Q|<2|F2Q|. (18)
+Define new left and right families by taking complements inX×X:
+R= (X×X) \F2
+2 Q, C= (X×X) \F2
+1 P.
+The two strict inequalities in (18) give
+|R|+ |C|= 2|X|2 −|F2
+2 Q|−|F2
+1 P|
+>2|X|2 + M −2
+(
+|F1P|+ |F2Q|
+)
+= M + 2d.
+(19)
+These families need not be compatible. We will apply the pruning lemma, first verifying that the
+diagonal survives and then bounding the cost.
+Both families contain∆. If (v,v) ∈F2
+2 Q, there is ans→v with (v,s) ∈F2Q. But (s,s) ∈P
+gives (v,s) ∈F1P, a contradiction. If(v,v) ∈F2
+1 P, there is ap →v with (p,v) ∈F1P. Now
+(p,p) ∈Q gives (p,v) ∈F2Q, the same contradiction.
+Moreover, each diagonal member is conflict-free in the new families. A conflict between the
+left member (v,v) and a right member(i,s) ∈C would give the paths →v →i. Starting at
+(s,s) ∈P and expanding its first coordinate twice would then put(i,s) in F2
+1 P, contrary to
+its membership inC. A conflict between a left member(p,j) ∈R and the right member(v,v)
+would givep→v→j. Expanding the second coordinate of(p,p) ∈Q twice would put(p,j) in
+F2
+2 Q, again a contradiction. The preservation clause of Lemma 3.1 thus applies to every diagonal
+member on both sides.
+Let H,Z ⊆X×X be the sets associated withR,Cin that lemma. Thus each conflict
+(p,j) ∈R, (i,s) ∈C, p →i, s →j
+11
+
+Page 12
+contributes (p,s) to H and (i,j) to Z. We claim that
+H ⊆(X×X) \(F1P ∪F2Q), and hence |H|≤ d. (20)
+To see this, fix such a conflict. If(p,s) ∈F1P, choose(u,s) ∈P with u→p. The pathu→p→i
+then puts(i,s) in F2
+1 P, contrary to(i,s) ∈C. If (p,s) ∈F2Q, choose(p,t) ∈Q with t→s. The
+path t→s→j puts (p,j) in F2
+2 Q, contrary to(p,j) ∈R. This proves (20).
+Apply Lemma 3.1 to obtain conflict-free familiesP′⊆R and Q′⊆C. They still contain∆,
+and their lack of conflicts meansF1P′∩F2Q′= ∅. Set
+d′= |X|2 −|F1P′|−|F2Q′|.
+A point is covered by a kept left member exactly when it belongs toF1P′, and by a kept right
+member exactly when it belongs toF2Q′. Consequently at mostd′points ofZ are uncovered after
+pruning. By Lemma 3.1 and(20), at mostd+ d′members were deleted, counting the two sides
+separately. Using (19), we conclude that
+|P′|+ |Q′|+ d′≥|R|+ |C|− (d+ d′) + d′
+>M + 2d−(d+ d′) + d′= M + d.
+This contradicts the choice ofP,Q and proves the proposition.
+Proof of Theorem 1.1.If the theorem were false, Proposition 2.1 would produce a nonempty
+finite oriented graph with positive indegrees satisfying(17) for every nonempty proper vertex set.
+Proposition 4.1 rules out such a graph.
+5 Weighted consequences
+The following corollary applies Theorem 1.1 through Seacrest’s established equivalences of the
+corresponding assertions over all nonempty finite oriented graphs [19]. The equivalences themselves
+are not new here.
+Corollary 5.1(Weighted second-neighborhood forms). Let D be a nonempty finite oriented graph,
+and writeA(D) for its arc set. For a vertex weightingη: V(D) →[0,∞), writeη(S) = ∑
+x∈Sη(x).
+Then the following hold.
+(i) For every vertex weightingη: V(D) →[0,∞), there is a vertexv∈V(D) such that
+η(N+
+1 (v)) ≤η(N+
+2 (v)).
+(ii) There is a vertex weightingη: V(D) →[0,∞) with ∑
+x∈V(D) η(x) = 1 such that
+η(N+
+1 (v)) ≤η(N+
+2 (v)) for everyv∈V(D).
+The entries of this weighting need not all be positive.
+(iii) For every arc weightingw: A(D) →[0,∞), extend the notation by settingw(vs) = 0 when
+vs /∈A(D). Forv,s ∈V(D), put
+βw
+v (s) = max
+(
+{0}∪{w(us) −w(vs) : u∈V(D), v→u→s}
+)
+.
+12
+
+Page 13
+Then there is a vertexv∈V(D) such that
+∑
+s∈V(D)
+βw
+v (s) ≥
+∑
+u∈N+
+1 (v)
+w(vu).
+The maximum is zero if there is no indicated two-step path. Such paths are determined by
+the arcs ofD, so an arc of weight zero is still present and is not treated as a missing arc.
+Proof. Seacrest’s Proposition 2 proves that his arc-weighted Conjecture 4 is equivalent to the
+unweighted conjecture, so Theorem 1.1 gives (iii).
+To obtain (i), setw(us) = η(s) on every arc. For eachv,s,
+βw
+v (s) =
+{
+η(s), s ∈N+
+2 (v),
+0, s / ∈N+
+2 (v).
+Indeed, when v →s, every eligible differencew(us) −w(vs) is zero. At an exact second out-
+neighbor, w(vs) = 0 and the maximum isη(s); no other endpoint contributes. Thus the two
+sides of (iii) becomeη(N+
+2 (v)) and η(N+
+1 (v)). This is the specialization noted immediately after
+Seacrest’s Proposition 2.
+For (ii), letMD have entry1 at (v,s) when s∈N+
+2 (v), entry−1 when s∈N+
+1 (v), and zero
+otherwise. Reversing all arcs transposes this matrix:M← −D = MT
+D. Seacrest’s Theorem 1 applies
+Farkas’ lemma to give either a nonzeroη≥0 with MDη≥0, or aξ≥0 with MT
+Dξ <0 at every
+coordinate. The latter contradicts (i) on← −D. Normalize the former weighting to total weight one,
+proving (ii).
+6 Directed-cycle consequences
+In an oriented graph with no directed triangle, every exact second out-neighbor is a non-neighbor.
+Combining this observation with Theorem 1.1 gives degree and order bounds. The first assertion
+below is the oriented-graph form of Thomassé’s non-neighbor statement recorded by Sullivan [21,
+Conjecture 6.12]. The consequence using both minimum indegree and minimum outdegree is
+also noted in [21, Section 3]. The regular case gives the girth-four lower bound in the Behzad–
+Chartrand–Wall minimum-order conjecture [1], also recorded by Sullivan [21, Section 4].
+Corollary 6.1(Non-neighbors and directed cycles). Let D be a nonempty finite oriented graph of
+order n. Forv∈V(D), write
+N−
+1 (v) = {u: u→v}, d ±(v) = |N±
+1 (v)|, δ ±(D) = min
+x∈V(D)
+d±(x).
+Define the non-neighbors ofv, excludingv itself, by
+Z(v) = V(D) \
+(
+{v}∪N+
+1 (v) ∪N−
+1 (v)
+)
+.
+Then the following hold.
+(i) If D has no directed3-cycle, then some vertexv satisfies
+d+(v) ≤|Z(v)|, n −1 ≥2d+(v) + d−(v).
+(ii) If δ+(D) ≥n/3 and δ−(D) ≥n/3, thenD contains a directed3-cycle.
+13
+
+Page 14
+(iii) If r≥1 is an integer,d+(v) = d−(v) = r for every vertex, andD has directed girth exactly
+four, thenn≥3r+ 1.
+Here directed girth is the length of a shortest directed cycle.
+Proof. Suppose thatD has no directed3-cycle. If w ∈N+
+2 (v), choose a pathv →u→w. The
+exact-distance definition excludesw = v and w ∈N+
+1 (v). If w ∈N−
+1 (v), the arcw →v would
+close a directed3-cycle. ThusN+
+2 (v) ⊆Z(v) for everyv. Theorem 1.1 now gives a vertex with
+d+(v) ≤|N+
+2 (v)|≤| Z(v)|.
+Since D is oriented, its first in- and out-neighborhoods are disjoint, and their cardinalities are the
+corresponding degrees. Hence
+n−1 = d+(v) + d−(v) + |Z(v)|≥ 2d+(v) + d−(v),
+proving (i).
+Under the hypotheses of (ii), absence of a directed3-cycle would therefore give
+n−1 ≥2δ+(D) + δ−(D) ≥n,
+a contradiction. The integer degree thresholds areδ±(D) ≥⌈n/3⌉, so this includes the endpoint
+when 3 divides n. Finally, directed girth four excludes directed3-cycles; in the regular case the
+count in (i) becomesn−1 ≥3r, proving (iii).
+References
+[1] Mehdi Behzad, Gary Chartrand, and Curtiss E. Wall. On minimal regular digraphs with
+given girth.Fundamenta Mathematicae, 69(3):227–231, 1970. doi.
+[2] Fábio Botler, Phablo F. S. Moura, and Tássio Naia. Seymour’s second neighborhood conjecture
+for orientations of (pseudo)random graphs.Discrete Mathematics, 346(12):113583, 2023.
+[3] James Brantner, Greg Brockman, Bill Kay, and Emma Snively. Contributions to Seymour’s
+second neighborhood conjecture.Involve, 2(4):387–395, 2009.
+[4] Jake Brukhman. A dense-case theorem for Seymour’s second neighborhood conjecture, 2026.
+arXiv:2608.11530v1, August 12, 2026.
+[5] Guantao Chen, Jian Shen, and Raphael Yuster. Second neighborhood via first neighborhood
+in digraphs. Annals of Combinatorics, 7(1):15–20, 2003.
+[6] Moussa Daamouch, Darine Al-Mniny, and Salman Ghazal. About the second neighborhood
+conjecture for tournaments missing two stars or disjoint paths.Contributions to Discrete
+Mathematics, 20(2):363–383, 2025.
+[7] Suresh Dara, Mathew C. Francis, Dalu Jacob, and N. Narayanan. Extending some results on
+the second neighborhood conjecture.Discrete Applied Mathematics, 311:1–17, 2022.
+[8] Nathaniel Dean and Brenda J. Latka. Squaring the tournament—an open problem.Congressus
+Numerantium, 109:73–80, 1995.
+14
+
+Page 15
+[9] Jack Edmonds. Systems of distinct representatives and linear algebra.Journal of Research of
+the National Bureau of Standards, Section B, 71B(4):241–245, 1967.
+[10] Alberto Espuny Díaz, António Girão, Bertille Granet, and Gal Kronenberg. Seymour’s second
+neighbourhood conjecture: random graphs and reductions.Random Structures & Algorithms,
+66(1):e21251, 2025.
+[11] Dror Fidler and Raphael Yuster. Remarks on the second neighborhood problem.Journal of
+Graph Theory, 55(3):208–220, 2007.
+[12] David C. Fisher. Squaring a tournament: A proof of Dean’s conjecture.Journal of Graph
+Theory, 23(1):43–48, 1996. doi.
+[13] Salman Ghazal. Seymour’s second neighborhood conjecture for tournaments missing a
+generalized star. Journal of Graph Theory, 71(1):89–94, 2012.
+[14] Frédéric Havet and Stéphan Thomassé. Median orders of tournaments: A tool for the second
+neighborhood problem and Sumner’s conjecture.Journal of Graph Theory, 35(4):244–256,
+2000. doi.
+[15] Hao Huang and Fei Peng. An improved bound on Seymour’s second neighborhood conjecture,
+2024. arXiv:2412.20234v1, December 28, 2024.
+[16] Yoshihiro Kaneko and Stephen C. Locke. The minimum degree approach for Paul Seymour’s
+distance 2 conjecture.Congressus Numerantium, 148:201–206, 2001.
+[17] Dénes Kőnig. Graphok és matrixok.Matematikai és Fizikai Lapok, 38:116–119, 1931. In
+Hungarian.
+[18] Arpan Sadhukhan, R. B. Sandeep, and Sagnik Sen. A proof of Seymour’s second neighborhood
+conjecture for oriented graphs with minimum out-degree equal to 7, 2026. arXiv:2606.30588v1,
+June 29, 2026.
+[19] Tyler Seacrest. The arc-weighted version of the second neighborhood conjecture.Journal of
+Graph Theory, 78(3):219–228, 2015. Preprint (numbering used here): arXiv:1212.1883v1.
+[20] Tyler Seacrest. Seymour’s second neighborhood conjecture for subsets of vertices, 2019.
+arXiv:1808.06293v3 [math.CO], revised 12 April 2019.
+[21] Blair D. Sullivan. A summary of results and problems related to the Caccetta–Häggkvist
+conjecture. American Institute of Mathematics, 2006. AIM workshop report dated April 14,
+2006; report; Section 3 and Conjecture 6.12.
+15

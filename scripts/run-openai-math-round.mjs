@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { beginPrivateAudit } from '../src/observability/private-audit-retention.js';
 import { loadBenchmarkConfig, runBenchmarkBatch } from '../src/benchmark/putnam-runner.js';
+import { selectOpenAiMathContext } from '../src/benchmark/benchmark-context.js';
 import { readBenchmarkFixture } from '../src/benchmark/benchmark-fixture.js';
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -45,18 +46,23 @@ if (!Number.isSafeInteger(projectParallelism) || projectParallelism < 1 || proje
   throw new TypeError('OPENAI_MATH_PROJECT_PARALLELISM must be 1 or 2');
 }
 
-const config = await loadBenchmarkConfig(configPath, {
+const sourceConfig = await loadBenchmarkConfig(configPath, {
   putnamBenchRoot: repositoryRoot,
   verifyPinnedCheckout: true,
 });
-const requestedIds = (process.env.OPENAI_MATH_PROBLEM_IDS ?? config.problems.slice(0, 2).map(problem => problem.id).join(','))
+const requestedIds = (process.env.OPENAI_MATH_PROBLEM_IDS ?? sourceConfig.problems.slice(0, 2).map(problem => problem.id).join(','))
   .split(',').map(value => value.trim()).filter(Boolean);
 if (requestedIds.length < 1 || requestedIds.length > 2 || new Set(requestedIds).size !== requestedIds.length) {
   throw new TypeError('OPENAI_MATH_PROBLEM_IDS must contain one or two distinct problem IDs');
 }
 if (projectParallelism > requestedIds.length) throw new TypeError('OPENAI_MATH_PROJECT_PARALLELISM cannot exceed the problem count');
-const problems = requestedIds.map(id => config.problems.find(problem => problem.id === id));
-if (problems.some(problem => !problem)) throw new TypeError(`Unknown OpenAI Math problem ID in ${requestedIds.join(',')}`);
+const selected = requestedIds.map(id => sourceConfig.problems.find(problem => problem.id === id));
+if (selected.some(problem => !problem)) throw new TypeError(`Unknown OpenAI Math problem ID in ${requestedIds.join(',')}`);
+const paperMode = process.env.OPENAI_MATH_PAPER_MODE ?? 'none';
+const { config, problems } = await selectOpenAiMathContext(sourceConfig, selected, paperMode);
+const paperInputs = Object.fromEntries(problems.map(problem => [problem.id, {
+  mode: paperMode, manifest: problem.context_manifest ?? null, sha256: problem.context_sha256 ?? null,
+}]));
 for (const problem of problems) {
   const verified = await readBenchmarkFixture({ root: repositoryRoot, path: problem.problem_file, commit: config.fixture_commit });
   if (verified.sourceHash !== problem.source_hash) throw new TypeError(`embedded source digest mismatch for ${problem.id}`);
@@ -86,6 +92,7 @@ try {
     repository_commit: process.env.GIT_COMMIT ?? null,
     stop_signal: stopSignal,
     config_path: configPath,
+    paper_inputs: paperInputs,
     fixture_commit: config.fixture_commit,
     problem_ids: requestedIds,
     checker_lock: artifactLockPath,
@@ -137,10 +144,11 @@ try {
   for (const report of reports) {
     const problemId = report.project?.problem_id;
     if (!problemId) continue;
-    report.run = { ...report.run, stop_signal: stopSignal, checker_policy: checkerPolicy };
+    report.run = { ...report.run, paper_input: paperInputs[problemId], stop_signal: stopSignal, checker_policy: checkerPolicy };
     await writeFile(join(reportDir, problemId, 'report.json'), JSON.stringify(report, null, 2) + '\n');
   }
   const summary = {
+    paper_inputs: paperInputs,
     checker_policy: checkerPolicy,
     repository_commit: process.env.GIT_COMMIT ?? null,
     stop_signal: stopSignal,
