@@ -8,7 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261120-08` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Running · Seymour paper, Pass@1, 4h | `dfe8d8f` | [Single solver](EXP-20261120-08-seymour-paper-pass1.md) |
+| `EXP-20261120-08` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Accepted · Seymour paper, Pass@1, 1h08m52.480s | `dfe8d8f` | [Single solver](EXP-20261120-08-seymour-paper-pass1.md) |
 | `EXP-20261120-07` | [Issue #159](https://github.com/LuNa-shi/SwarmEnv/issues/159) / [#153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Accepted · Seymour paper, 4 Cores, 58m54.716s | `dfe8d8f` | [Paper run](EXP-20261120-07-seymour-paper.md) |
 | `EXP-20261120-02` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Completed · Seymour, 4h, protocol valid, general theorem unsolved | `4c2f193` | [Single Seymour run](EXP-20261120-02-seymour-single-4h.md) |
 | `EXP-20261120-01` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Stopped after 25m48s wall · Core 3 discovery failure, operator stop | `b56d030` | [First pair](EXP-20261120-01-openai-math-first-pair.md) |
