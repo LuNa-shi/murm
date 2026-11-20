@@ -779,7 +779,7 @@ test('registered CLI take pins verified Material and warns when the trusted prev
   const merged = await runtime.missionWorkspace.merge({ workspaceId, fromRevision: saved.revision });
   const writer = service.createTask({ mission_id: bot.mission_id, summary: 'Produce exact input for the independent Task', expected_output: 'Material', acceptance_conditions: ['Published'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
   const producer = service.takeTask(writer.task_id, { owner_ref: 'diagnostic:producer', take_key: 'take-input-producer' }).execution;
-  const material = context.dispatch('context_publish_material', { kind: 'fact', scope: 'mission', content: 'Immutable supporting note' },
+  const material = context.dispatch('context_publish_material', { content: 'Immutable supporting note' },
     makeEnvelope({ actorRef: producer.owner_ref, taskId: producer.task_id, executionId: producer.execution_id,
       fencingVersion: producer.fencing_version, stateVersion: producer.state_version, specVersion: producer.spec_version })).material;
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Read the latest project and pinned input Material', expected_output: 'Independent note',

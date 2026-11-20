@@ -81,7 +81,7 @@ for (const loseResponse of [false, true]) test(`independent Context preserves re
       revision: '0.1', git_commit: 'controlled-commit', content_hash: 'controlled-content',
       material_inputs: [{ material_id: 'material:historical', content_hash: 'x'.repeat(1_100_000) }] } }, env('initial-workspace'));
   tasks.dispatch('start_execution', {}, env('start'));
-  const input = { content: 'A verified public observation', evidence_state: 'observed' };
+  const input = { content: 'A verified public observation' };
   if (loseResponse) {
     assert.throws(() => context.dispatch('context_publish_material', input, env('publish')), { code: 'SERVICE_UNAVAILABLE' });
     assert.throws(() => tasks.dispatch('task_finish', { outcome: 'incomplete' }, env('premature-finish')), { code: 'SERVICE_NOT_READY' });

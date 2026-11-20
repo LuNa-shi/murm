@@ -298,9 +298,7 @@ function compactMaterial(value) {
   if (!value || typeof value !== 'object') return value;
   return dashboardValue({
     material_id: value.material_id,
-    kind: value.kind,
-    scope: value.scope,
-    evidence_state: value.evidence_state,
+    media_type: value.media_type,
     version: value.version,
     producer_task_id: value.producer_task_id,
     producer_execution_id: value.producer_execution_id,
@@ -1032,21 +1030,18 @@ export class ObservabilityServer {
     const contentSummary = material.summary ?? material.description ?? content.summary ?? content.description ?? content.title ?? content.text ?? content.path ?? null;
     const fields = {
       material_id: material.material_id,
-      kind: material.kind,
-      scope: material.scope,
-      evidence_state: material.evidence_state,
+      title: material.title,
+      media_type: material.media_type,
       version: material.version,
       producer_task_id: material.producer_task_id,
       producer_execution_id: material.producer_execution_id,
       supersedes: material.supersedes,
       created_at: material.created_at,
-      content_ref: material.content_ref,
     };
     const advanced = {
       content_hash: material.content_hash,
       provenance_json: material.provenance_json,
       provenance: material.provenance,
-      content_ref: material.content_ref,
       source_event_id: sourceEventId,
       observed_at: observedAt,
     };

@@ -161,7 +161,7 @@ test('isolated hosts remain discoverable while Context fails closed without Miss
 
 
     const inputPath = join(root, 'material.json');
-    await writeFile(inputPath, JSON.stringify({ kind: 'fact', scope: 'mission', role: 'experience', content: { marker: 'persisted-material' }, evidence_state: 'observed' }));
+    await writeFile(inputPath, JSON.stringify({ content: { marker: 'persisted-material' } }));
     const published = await runCli(['material', 'publish', '--input', inputPath, '--actor-ref', 'operator:isolated-probe', '--json'], cliEnv);
     assert.notEqual(published.code, 0);
     assert.match(published.stderr, /SERVICE_NOT_READY|authenticated Mission authority/);

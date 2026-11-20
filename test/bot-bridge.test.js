@@ -203,7 +203,7 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
   await assert.rejects(run('task', 'view', task.task_id, '--actor-ref', 'operator:fake'), /identity overrides/);
   await assert.rejects(run('workspace', 'read', 'notes.txt', '--workspace-id', 'W-foreign'), /configured Mission Workspace/);
   const materialPath = join(root, 'material.json');
-  await writeFile(materialPath, JSON.stringify({ role: 'experience', content: 'A public research note with its assumptions' }));
+  await writeFile(materialPath, JSON.stringify({ content: 'A public research note with its assumptions' }));
   const published = await run('material', 'publish', '--input', materialPath, '--request-id', 'cli-material');
   assert.equal(published.material.producer_bot_id, 'bot:cli-flow');
   const current = service.getExecution(taken.execution.execution_id);

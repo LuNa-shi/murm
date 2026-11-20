@@ -308,7 +308,7 @@ test('sanitized analysis joins bounded Material consumer and downstream observat
   observation.append({
     experimentId: 'fixture-run', source: 'context-service', kind: 'material_published',
     taskId: TASK, executionId: EXECUTION, payload: {
-      material_id: MATERIAL, kind: 'artifact', scope: 'proof_relevant',
+      material_id: MATERIAL,
       producer_task_id: TASK, producer_execution_id: EXECUTION,
     },
   });
@@ -345,7 +345,7 @@ test('sanitized analysis preserves bounded operator IDs beyond the generic summa
   observation.append({
     experimentId: 'fixture-run', source: 'context-service', kind: 'material_published',
     taskId: TASK, executionId: EXECUTION, payload: {
-      material_id: MATERIAL, kind: 'artifact', scope: 'proof_relevant',
+      material_id: MATERIAL,
       producer_task_id: TASK, producer_execution_id: EXECUTION,
     },
   });

@@ -50,7 +50,7 @@ test('publication names only exact consumed Materials from the active Execution'
 
 test('one committed publication emits one dependency event and its retry remains exact', t => {
   const { tasks, actor } = fixture(t); const one = actor('one'); const events = [];
-  tasks.onDependencyEvent(event => events.push(event));
+  tasks.subscribeTaskEvents(event => events.push(event));
   const payload = { content: 'A public result' };
   const first = one('context_publish_material', payload, 'publish');
   assert.deepEqual(one('context_publish_material', payload, 'publish'), first);
