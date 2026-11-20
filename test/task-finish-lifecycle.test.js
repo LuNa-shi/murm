@@ -7,14 +7,14 @@ import { ContextService } from '../src/context/context-service.js';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope, operationPayload } from '../src/protocol/envelope.js';
 
-function fixture(t, database) {
+function fixture(t, database, taskContract = {}) {
   const service = new TaskService(database);
   t.after(() => service.close());
   const actor = 'bot:finish';
   const mission = service.createMission({ mission_id: 'mission:finish', goal: 'Complete independent local responsibilities' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
   const create = (taskId, extra = {}) => service.createTask({ mission_id: mission.mission_id, task_id: taskId, summary: `Investigate the independent responsibility ${taskId}`, goal: `Resolve ${taskId}`, expected_output: 'A reusable result', acceptance_conditions: ['The result addresses this local question'], ...extra }, makeEnvelope({ actorRef: actor })).task;
-  const task = create('task:first');
-  const execution = service.takeTask(task.task_id, { owner_ref: actor, core_id: 'core-1', take_key: 'first', workspace_mode: 'clean' }).execution;
+  const task = create('task:first', taskContract);
+  const execution = service.takeTask(task.task_id, { owner_ref: actor, core_id: 'core-1', take_key: 'first' }).execution;
   const envelope = (operationId) => {
     const current = service.getExecution(execution.execution_id);
     return makeEnvelope({ operationId, actorRef: actor, taskId: task.task_id, executionId: current.execution_id, specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version });
@@ -107,10 +107,10 @@ test('a closing Execution cannot publish new Materials even with refreshed versi
   const { service, envelope } = fixture(t);
   const context = new ContextService(':memory:', { taskService: service });
   t.after(() => context.close());
-  const payload = { kind: 'fact', scope: 'mission', content: 'A public conclusion' };
-  const before = context.dispatch('material_publish', payload, envelope('publish:before'));
+  const payload = { content: 'A public conclusion' };
+  const before = context.dispatch('context_publish_material', payload, envelope('publish:before'));
   service.dispatch('task_finish', { outcome: 'incomplete' }, envelope('finish:publish'));
-  assert.throws(() => context.dispatch('material_publish', payload, envelope('publish:after')), (error) => error.code === 'NOT_ALLOWED');
+  assert.throws(() => context.dispatch('context_publish_material', payload, envelope('publish:after')), (error) => error.code === 'NOT_ALLOWED');
   assert.equal(context.getMaterial(before.material.material_id).content, 'A public conclusion');
 });
 
@@ -151,4 +151,34 @@ test('Task detail exposes durable finish records after the Bot is gone', (t) => 
   assert.equal(detail.finishes[0].outcome, 'incomplete');
   assert.equal(detail.finishes[0].reason, 'No result was saved');
   assert.ok(detail.finishes[0].closed_at);
+});
+
+
+test('Task completion uses link purpose while handoff keeps producer provenance', t => {
+  const { service, task, execution, envelope } = fixture(t);
+  const context = new ContextService(':memory:', { taskService: service });
+  service.contextService = context;
+  t.after(() => context.close());
+  const material = context.dispatch('context_publish_material', { content: 'Public handoff result' }, envelope('handoff:publish')).material;
+  const result = service.dispatch('task_finish', { outcome: 'incomplete', handoff_material_id: material.material_id }, envelope('handoff:finish'));
+  assert.equal(result.execution.state, 'CLOSING');
+  const link = service.db.prepare("SELECT * FROM task_material_links WHERE task_id = ? AND material_id = ? AND role = 'handoff'").get(task.task_id, material.material_id);
+  assert.equal(link.producer_execution_id, execution.execution_id);
+  assert.equal(Object.hasOwn(context.getMaterial(material.material_id), 'role'), false);
+});
+
+
+test('Material completion counts distinct links with the required Task purpose', t => {
+  const { service, task, envelope } = fixture(t, undefined, { completion_contract: { required_materials: [{ role: 'experience', min_count: 1 }] } });
+  const context = new ContextService(':memory:', { taskService: service });
+  service.contextService = context;
+  t.after(() => context.close());
+  const material = context.dispatch('context_publish_material', { content: 'A reusable result' }, envelope('required:publish')).material;
+  service.dispatch('task_link_material', { material_id: material.material_id, role: 'handoff' }, envelope('required:handoff'));
+  assert.throws(() => service.dispatch('task_finish', { outcome: 'done' }, envelope('required:missing')), error =>
+    error.code === 'INVALID_CONTRACT' && error.details.missing.includes('materials:experience'));
+  service.dispatch('task_link_material', { material_id: material.material_id, role: 'experience' }, envelope('required:experience'));
+  const result = service.dispatch('task_finish', { outcome: 'done' }, envelope('required:done'));
+  assert.equal(result.execution.state, 'CLOSING');
+  assert.equal(service.getTask(task.task_id).state, 'RUNNING');
 });

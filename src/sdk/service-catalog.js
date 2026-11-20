@@ -68,15 +68,15 @@ const TOOL_DEFINITIONS = Object.freeze([
     parameters: { type: 'object', properties: { from_revision: { type: 'integer', minimum: 1 }, to_revision: { type: 'integer', minimum: 1 } }, additionalProperties: false },
   },
   {
-    name: 'context_read', service: 'context', operation: 'read_materials', version: '1.0',
+    name: 'read_materials', service: 'context', operation: 'read_materials', version: '1.0',
     description: 'List one page of shared Material summaries. Use an exact Material ID to read its complete content.',
     scope: 'public-read', side_effect: false,
     parameters: { type: 'object', properties: { mission_id: { type: 'string' }, material_id: { type: 'string' }, task_id: { type: 'string' },
-      source_task: { type: 'string' }, source_execution: { type: 'string' }, include_history: { type: 'boolean' },
+      producer_task_id: { type: 'string' }, producer_execution_id: { type: 'string' }, include_history: { type: 'boolean' },
       limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false },
   },
   {
-    name: 'context_consume', service: 'context', operation: 'consume_materials', version: '1.0',
+    name: 'consume_materials', service: 'context', operation: 'consume_materials', version: '1.0',
     description: 'Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.',
     scope: 'execution-write', side_effect: true,
     parameters: {
@@ -90,12 +90,6 @@ const TOOL_DEFINITIONS = Object.freeze([
       },
       additionalProperties: false,
     },
-  },
-  {
-    name: 'context_publish', service: 'context', operation: 'publish_material', version: '1.0',
-    description: 'Publish a versioned shared Material for other Executions.',
-    scope: 'execution-write', side_effect: true,
-    parameters: { type: 'object', required: ['kind', 'scope', 'content'], properties: { kind: { type: 'string', enum: ['assumption', 'fact', 'conjecture', 'experience', 'failure', 'artifact', 'steer', 'check_result'] }, scope: { type: 'string' }, content: {}, evidence_state: { type: 'string', enum: ['proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale'] } }, additionalProperties: true },
   },
   {
     name: 'judge_workspace_check', service: 'judge', operation: 'workspace_check', version: '1.0',
@@ -160,7 +154,6 @@ const publicTaskTools = [
         mission_id: { type: 'string' },
         ...TASK_REVISION_FIELDS,
         goal: { type: 'string' },
-        task_type: { type: 'string' },
         required_capabilities: { type: 'array', items: { type: 'string', minLength: 1 } },
         completion_contract: { type: 'object' },
         workspace: { type: 'object', description: 'Compatibility input. If both workspace.revision and base_revision are supplied, they must match.' },
@@ -192,7 +185,7 @@ const publicTaskTools = [
     parameters: { type: 'object', required: ['outcome'], properties: {
       outcome: { type: 'string', enum: ['done', 'incomplete', 'blocked', 'cancelled'] },
       material_ids: { type: 'array', items: { type: 'string' } }, workspace_revision: { type: 'string' }, check_result_id: { type: 'string' },
-      handoff_material_id: { type: 'string' }, blocker: { type: 'object' }, dependency: { type: 'object' }, wait_for: { type: ['string', 'object'] }, replacement_task_id: { type: 'string' }, reason: { type: 'string' },
+      handoff_material_id: { type: 'string' }, blocker: { type: 'object' }, wait_for: { type: 'string' }, replacement_task_id: { type: 'string' }, reason: { type: 'string' },
     }, additionalProperties: false },
   },
 
@@ -238,7 +231,7 @@ const publicContextTools = [
     description: 'Search immutable Material summaries by keyword, Task, producer, or Mission. Follow continuation cursors and read exact IDs for full content.',
     scope: 'context-read', side_effect: false,
     parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, task_id: { type: 'string' },
-      source_task: { type: 'string' }, source_execution: { type: 'string' }, include_history: { type: 'boolean' },
+      producer_task_id: { type: 'string' }, producer_execution_id: { type: 'string' }, include_history: { type: 'boolean' },
       relation_kind: { type: 'string', enum: ['supersede', 'dispute'] }, related_material_id: { type: 'string' },
       limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false },
   },
@@ -279,7 +272,7 @@ const publicMissionWorkspaceTools = [
     parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' } }, additionalProperties: false } },
   { name: 'workspace_public_history', service: 'task', operation: 'workspace_public_history', version: '1.0',
     description: 'Read main history by default or all saved revisions, with provenance and bounded snapshot pagination.', scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
-    parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' }, all: { type: 'boolean' }, source_task: { type: 'string' }, source_execution: { type: 'string' }, material_id: { type: 'string' }, path: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false } },
+    parameters: { type: 'object', required: ['workspace_id'], properties: { workspace_id: { type: 'string' }, all: { type: 'boolean' }, producer_task_id: { type: 'string' }, producer_execution_id: { type: 'string' }, material_id: { type: 'string' }, path: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false } },
   { name: 'workspace_public_diff', service: 'task', operation: 'workspace_public_diff', version: '1.0',
     description: 'Compare any two published Mission Workspace revisions, including unmerged saves. Pages pin both revisions.',
     scope: 'mission-read', side_effect: false, capability: 'mission-workspace',

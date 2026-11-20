@@ -13,13 +13,11 @@ import {
   createServiceManifest,
   createServiceHost,
   buildCapabilityProfile,
-  composeAgentPrompt,
   makeEnvelope,
   registerUserService,
   createBuiltinServiceRegistry,
-  runtimeCapabilityList,
 } from '../src/index.js';
-import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
+import { botServiceDirectory } from '../src/agent/bot-contract.js';
 
 async function sourceFixture() {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-mathlib-'));
@@ -197,14 +195,7 @@ test('Mathlib Search Service crosses the independent HTTP Host and Registry adap
     registerUserService(registry, { manifest, adapter: createHttpJsonAdapter({ token: 'mathlib-test-token' }) });
     const profile = buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry });
     assert.deepEqual(profile.capabilities.map((capability) => capability.name), ['mathlib_search']);
-    const prompt = composeAgentPrompt({ role: AGENT_ROLES.BOUND, profile });
-    assert.match(prompt, /Mathlib Search/);
-    assert.match(prompt, /mathlib_search/);
-    assert.match(prompt, /before proposing a proof/);
-    const registeredTools = [];
-    await swarmenvExtension({ registerTool(tool) { registeredTools.push(tool); } }, { profile });
-    assert.deepEqual(registeredTools.map((tool) => tool.name), ['swarmenv_mathlib_search']);
-    assert.ok(!registeredTools.some((tool) => tool.name === 'swarmenv_call'));
+    assert.equal(botServiceDirectory(profile)[0].provider_service, 'mathlib-search');
     const result = await registry.invoke({
       serviceId: 'mathlib-search',
       capability: 'mathlib_search',
@@ -227,7 +218,7 @@ test('Mathlib Search Service crosses the independent HTTP Host and Registry adap
   }
 });
 
-test('A registered HTTP Mathlib capability is visible in the Bound prompt and executes through its named Pi tool', async () => {
+test('A registered HTTP Mathlib capability is discoverable and executes through the Bridge', async () => {
   const fixture = await sourceFixture();
   const provider = createMathlibSearchService({
     sourceRoot: fixture.root,
@@ -274,25 +265,11 @@ test('A registered HTTP Mathlib capability is visible in the Bound prompt and ex
   process.env.SWARMENV_BRIDGE_TOKEN = bridgeEnvironment.SWARMENV_BRIDGE_TOKEN;
   try {
     const profile = bridge.getCapabilityProfile();
-    const prompt = composeAgentPrompt({
-      role: AGENT_ROLES.BOUND,
-      profile,
-      task: { task_id: 'task-named-tool', goal: 'find the relevant declaration', expected_output: 'a declaration reference' },
-      execution: { execution_id: 'execution-named-tool', workspace_revision: 1 },
-    });
-    assert.match(prompt, /swarmenv_mathlib_search/);
-    assert.match(prompt, /mathlib_search/);
-    assert.match(prompt, /before proposing a proof or API research Task/);
-    assert.doesNotMatch(prompt, /swarmenv_call|request_wait|execution_wait|parent_review/i);
-
-    const registeredTools = [];
-    await swarmenvExtension({ registerTool(tool) { registeredTools.push(tool); } }, { profile });
-    assert.deepEqual(registeredTools.map((tool) => tool.name), ['swarmenv_mathlib_search']);
-    const tool = registeredTools[0];
-    const invocation = await tool.execute('named-tool-call', { query: 'distance_nonneg', max_results: 2 });
-    assert.equal(invocation.details.backend, 'source-index');
-    assert.equal(invocation.details.mathlib_revision, 'mathlib-named-tool-test');
-    assert.equal(invocation.details.results[0].name, 'distance_nonneg_demo');
+    assert.equal(botServiceDirectory(profile)[0].provider_service, 'mathlib-search');
+    const result = await bridge.call({ operation: 'mathlib_search', payload: { query: 'distance_nonneg', max_results: 2 } });
+    assert.equal(result.backend, 'source-index');
+    assert.equal(result.mathlib_revision, 'mathlib-named-tool-test');
+    assert.equal(result.results[0].name, 'distance_nonneg_demo');
   } finally {
     if (previousBridgeUrl === undefined) delete process.env.SWARMENV_BRIDGE_URL;
     else process.env.SWARMENV_BRIDGE_URL = previousBridgeUrl;
@@ -413,7 +390,7 @@ test('Bound Agent Bridge invokes a registered user Service without a generic ser
 test('Built-in Registry exposes the current Task contract without legacy lifecycle capabilities', () => {
   const fake = { dispatch() { return {}; } };
   const registry = createBuiltinServiceRegistry({ taskService: fake, contextService: fake, judgeService: fake });
-  const profile = buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry, runtimeCapabilities: runtimeCapabilityList() });
+  const profile = buildCapabilityProfile({ role: AGENT_ROLES.BOUND, registry });
   const names = profile.capabilities.map((capability) => capability.name);
   assert.ok(names.includes('task_finish'));
   assert.equal(new Set(names).size, names.length);

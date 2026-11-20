@@ -14,7 +14,7 @@ Read the Mission and relevant public Tasks, Materials, and Workspace files withi
 ````
 ## Registered Bot discovery: complete synthetic example
 
-Body SHA-256: `afcd567b25d3c49e0b39defb14841918f0593e7c3aaa794520330288a2ec94f3`
+Body SHA-256: `3d03284eacad4ab24f161da1e147b4323536159bd0c180f59adcd4ee0e1f6271`
 
 ````text
 你已在全新的 sandbox/Pi Session 启动，尚无 Execution。通过 swarm CLI 读取相关公开工作，在预算内优先选择合适的已有 Task。下方只是一页当前可领 Task。若无合适项且 Mission 仍开放、选工仍有额度，查询 swarm mission submission view，从当前 main 和公开成果定位一个具体缺口，可提出多个有 gap、交付、完成条件和明确 priority 的独立责任供后继选择；也可直接 take 合适已有 Task，不要求自提自领。
@@ -22,7 +22,7 @@ Body SHA-256: `afcd567b25d3c49e0b39defb14841918f0593e7c3aaa794520330288a2ec94f3`
 {
   "protocol_version": "swarm-bot-v1-draft.3",
   "observed_at": "2026-11-14T00:00:00.000Z",
-  "system_prompt_sha256": "5bb9a191d10fefc19d91f4b2abdcd80a4892de34d37b40788fe151848da4f5ec",
+  "system_prompt_sha256": "7c93d2320bb74c6fa150e500366606fd594dbd8e535995295fd3b044bdf5520f",
   "mission": {
     "mission_id": "<MISSION_ID>",
     "goal": "<MISSION_GOAL>",
@@ -77,7 +77,7 @@ Body SHA-256: `afcd567b25d3c49e0b39defb14841918f0593e7c3aaa794520330288a2ec94f3`
       "name": "material",
       "provider_service": "context",
       "provider_version": "builtin-1",
-      "manifest_hash": "453e81ad42ab6062e37da4bbe99db8d3b4ad29e60053a85b1c60880581e4a8f4",
+      "manifest_hash": "5185c188b03c5327bca01a9653f18a4ed364b88326243ddbdd1024b460e17a23",
       "help": "swarm material --help",
       "manifest_help": "swarm service view context --json",
       "documentation": [],
@@ -97,7 +97,7 @@ Body SHA-256: `afcd567b25d3c49e0b39defb14841918f0593e7c3aaa794520330288a2ec94f3`
       "name": "mission",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "ec7561264d86a052218462cb177537711cd38bd4d49f0763bf5ff46e5e9798bf",
+      "manifest_hash": "8a15810bfe35a42b7b8868ab6c336acf82bcc1b249081217a2ba8142bda30b0c",
       "help": "swarm mission --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -107,7 +107,7 @@ Body SHA-256: `afcd567b25d3c49e0b39defb14841918f0593e7c3aaa794520330288a2ec94f3`
       "name": "task",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "ec7561264d86a052218462cb177537711cd38bd4d49f0763bf5ff46e5e9798bf",
+      "manifest_hash": "8a15810bfe35a42b7b8868ab6c336acf82bcc1b249081217a2ba8142bda30b0c",
       "help": "swarm task --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -117,7 +117,7 @@ Body SHA-256: `afcd567b25d3c49e0b39defb14841918f0593e7c3aaa794520330288a2ec94f3`
       "name": "workspace",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "ec7561264d86a052218462cb177537711cd38bd4d49f0763bf5ff46e5e9798bf",
+      "manifest_hash": "8a15810bfe35a42b7b8868ab6c336acf82bcc1b249081217a2ba8142bda30b0c",
       "help": "swarm workspace --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -127,7 +127,7 @@ Body SHA-256: `afcd567b25d3c49e0b39defb14841918f0593e7c3aaa794520330288a2ec94f3`
       "name": "bot",
       "provider_service": "task",
       "provider_version": "builtin-1",
-      "manifest_hash": "ec7561264d86a052218462cb177537711cd38bd4d49f0763bf5ff46e5e9798bf",
+      "manifest_hash": "8a15810bfe35a42b7b8868ab6c336acf82bcc1b249081217a2ba8142bda30b0c",
       "help": "swarm bot --help",
       "manifest_help": "swarm service view task --json",
       "documentation": [],
@@ -140,7 +140,7 @@ Body SHA-256: `afcd567b25d3c49e0b39defb14841918f0593e7c3aaa794520330288a2ec94f3`
       "version": "draft.3",
       "path": "/opt/swarmenv/src/agent/bot-contract/plan-task.md",
       "description": "在有限选工预算内发现、提出或选择 Task，处理竞争、阻塞和正常退出。",
-      "sha256": "e6f2fd8e8c7f7e89ada43a475a1dffa604981bbe1d93bcdffe0ee6d6e255b3f7"
+      "sha256": "3cfae26c7423640d02b00402bd9dcbf6c6242935382ba1b889a0b7c3eae78ef6"
     },
     {
       "name": "use-material",
@@ -188,10 +188,9 @@ Body SHA-256: `afcd567b25d3c49e0b39defb14841918f0593e7c3aaa794520330288a2ec94f3`
             "checker_version": "<CHECKER_VERSION>"
           }
         },
-        "priority": 110,
+        "priority": "medium",
         "state": "OPEN",
         "age_ms": 0,
-        "fairness_protected": false,
         "selection_rank": 0
       }
     ],

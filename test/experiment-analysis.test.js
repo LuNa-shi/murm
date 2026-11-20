@@ -45,7 +45,7 @@ async function createProjectDatabase(path) {
     );
     create table materials (
       material_id text primary key, kind text, scope text, evidence_state text,
-      source_task text, source_execution text, version integer, created_at text
+      producer_task_id text, producer_execution_id text, version integer, created_at text
     );
     create table check_results (
       check_result_id text primary key, request_key text, artifact_material_id text,
@@ -108,8 +108,8 @@ async function createFixture({ agent = true, service = true, workspace = true, m
       { timestamp: T3, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'workspace_check', ok: true, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING', artifact_material_id: MATERIAL } } },
     ]);
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'context-service.ndjson'), [
-      { timestamp: T2, scope: 'context-service', event: 'dispatch.start', service: 'context', operation: 'publish_material', envelope: { operation_id: 'op-publish', task_id: TASK, execution_id: EXECUTION } },
-      { timestamp: T2, scope: 'context-service', event: 'dispatch.complete', service: 'context', operation: 'publish_material', ok: true, result: { material: { material_id: MATERIAL, kind: 'artifact', evidence_state: 'proposed', source_task: TASK, source_execution: EXECUTION } } },
+      { timestamp: T2, scope: 'context-service', event: 'dispatch.start', service: 'context', operation: 'context_publish_material', envelope: { operation_id: 'op-publish', task_id: TASK, execution_id: EXECUTION } },
+      { timestamp: T2, scope: 'context-service', event: 'dispatch.complete', service: 'context', operation: 'context_publish_material', ok: true, result: { material: { material_id: MATERIAL, kind: 'artifact', evidence_state: 'proposed', producer_task_id: TASK, producer_execution_id: EXECUTION } } },
       { timestamp: T3, scope: 'context-service', event: 'dispatch.start', service: 'context', operation: 'read_materials', envelope: { operation_id: 'op-read', task_id: TASK, execution_id: EXECUTION } },
       { timestamp: T3, scope: 'context-service', event: 'dispatch.complete', service: 'context', operation: 'read_materials', ok: true, result: [{ material_id: MATERIAL }] },
     ]);
@@ -225,10 +225,10 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
   try {
     const first = await analyzeExperiment(root, { outputPath: firstPath });
     const second = await analyzeExperiment(root, { outputPath: secondPath });
-    // Fixed window ordering/evidence after adding explicit Bridge pairing
-    // metadata. Repeated public-entry analysis must remain deterministic.
+    // Fixed window ordering and evidence with canonical Context operations
+    // and producer identities. Repeated analysis remains deterministic.
     assert.equal(createHash('sha256').update(JSON.stringify(first.executions.map(item => item.windows))).digest('hex'),
-      '02c6eed9436cf77374f0f96566e21b47997132064114fca3f6bf5b4490acd19a');
+      '261b6859d65290b63e1c3906c0ab73e1e25f87f3f16d53dd1405086eb196a531');
     assert.equal(first.inventory.evidence.find((entry) => entry.class === 'agent').status, 'present');
     assert.equal(first.inventory.evidence.find((entry) => entry.class === 'workspace').status, 'present');
     assert.equal(first.executions.length, 1);
@@ -238,6 +238,7 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
     assert.ok(first.report.includes('Judge FAIL'));
     assert.ok(first.report.includes('## Error analysis'));
     assert.ok(first.report.includes('## Optimization recommendations'));
+    assert.doesNotMatch(first.report, /parent review|child Task|research Tasks|proof Tasks|waiting Root|open Child/);
     assert.ok(first.report.includes('## Candidate/Judge review'));
     assert.ok(first.report.includes('## Coordination layer'));
     assert.ok(first.report.includes('## Tool layer'));
@@ -303,12 +304,12 @@ test('sanitized mode keeps structural evidence but does not parse raw Agent oper
 test('sanitized analysis joins bounded Material consumer and downstream observations', async () => {
   const root = await createFixture();
   const observation = new ObservationStore(join(root, 'observability.sqlite'));
-  observation.registerExperiment({ experimentId: 'fixture-run', rootTaskId: TASK, status: 'RUNNING' });
+  observation.registerExperiment({ experimentId: 'fixture-run', status: 'RUNNING' });
   observation.append({
     experimentId: 'fixture-run', source: 'context-service', kind: 'material_published',
     taskId: TASK, executionId: EXECUTION, payload: {
       material_id: MATERIAL, kind: 'artifact', scope: 'proof_relevant',
-      source_task: TASK, source_execution: EXECUTION,
+      producer_task_id: TASK, producer_execution_id: EXECUTION,
     },
   });
   observation.append({
@@ -340,12 +341,12 @@ test('sanitized analysis joins bounded Material consumer and downstream observat
 test('sanitized analysis preserves bounded operator IDs beyond the generic summary cap', async () => {
   const root = await createFixture();
   const observation = new ObservationStore(join(root, 'observability.sqlite'));
-  observation.registerExperiment({ experimentId: 'fixture-run', rootTaskId: TASK, status: 'RUNNING' });
+  observation.registerExperiment({ experimentId: 'fixture-run', status: 'RUNNING' });
   observation.append({
     experimentId: 'fixture-run', source: 'context-service', kind: 'material_published',
     taskId: TASK, executionId: EXECUTION, payload: {
       material_id: MATERIAL, kind: 'artifact', scope: 'proof_relevant',
-      source_task: TASK, source_execution: EXECUTION,
+      producer_task_id: TASK, producer_execution_id: EXECUTION,
     },
   });
   const materialIds = [...Array.from({ length: 21 }, (_, index) => `noise-material-${index}`), MATERIAL];
@@ -458,7 +459,7 @@ test('modern analysis reads split stores and recognizes bounded public operation
     } finally { database.close(); }
     const envelope = { task_id: TASK, execution_id: EXECUTION };
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'modern.ndjson'), [
-      { timestamp: T2, event: 'dispatch.complete', operation: 'publish_material', envelope, result: { material: {
+      { timestamp: T2, event: 'dispatch.complete', operation: 'context_publish_material', envelope, result: { material: {
         material_id: 'modern-note', producer_task_id: TASK, producer_execution_id: EXECUTION, content: 'private modern material body',
       } } },
       { timestamp: T3, event: 'dispatch.complete', operation: 'read_materials', envelope, result: { materials: [{ material_id: 'modern-note' }], next_cursor: 'opaque' } },

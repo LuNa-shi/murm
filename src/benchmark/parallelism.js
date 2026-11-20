@@ -1,4 +1,4 @@
-export const CORE_SLOT_STATES = Object.freeze(['IDLE', 'ASSIGNED', 'RUNNING', 'WAITING', 'STOPPING']);
+export const CORE_SLOT_STATES = Object.freeze(['IDLE', 'ASSIGNED', 'RUNNING', 'STOPPING']);
 
 function assertCore(core, coreCount) {
   if (!Number.isInteger(core) || core < 1 || core > coreCount) {
@@ -70,7 +70,7 @@ function sampleDurations(samples, startedAt, endedAt) {
 
 /**
  * Intervals in which every Core was idle and no eligible work existed. This
- * is a stalled Mission, not a quiet scheduler: r12 spent 84 of 120 minutes
+ * is a stalled Mission, not a quiet readiness scan: r12 spent 84 of 120 minutes
  * here while only per-Core idle totals were reported.
  */
 function stallIntervalsFromSamples(samples, coreCount, startedAt, endedAt) {
@@ -159,7 +159,7 @@ export class CoreParallelismTracker {
     this.agentTurnIntervals = [];
     this.openAgentTurns = new Map();
     this.readySamples = [];
-    this.schedulerPollMs = 0;
+    this.readinessPollMs = 0;
     this.takeConflictCount = 0;
     this.takeConflictKeys = new Set();
     this.judgeTimeMs = 0;
@@ -230,9 +230,9 @@ export class CoreParallelismTracker {
     this.readySamples.push({ at_ms: timestamp(at), ready_count: readyCount, idle_core_count: idleCoreCount, eligible_work_count: eligibleWorkCount });
   }
 
-  recordSchedulerPoll(durationMs) {
-    if (!Number.isFinite(durationMs) || durationMs < 0) throw new TypeError('scheduler poll duration must be non-negative');
-    this.schedulerPollMs += durationMs;
+  recordReadinessPoll(durationMs) {
+    if (!Number.isFinite(durationMs) || durationMs < 0) throw new TypeError('readiness poll duration must be non-negative');
+    this.readinessPollMs += durationMs;
   }
 
   recordTakeConflict(key = null) {
@@ -308,16 +308,13 @@ export class CoreParallelismTracker {
       ...[...this.openIntervals.values()].map((interval) => ({ ...interval, end_ms: end })),
     ], this.startedAt, end);
     const byState = {};
-    const waitingMsByCore = {};
     const idleMsByCore = {};
     for (let core = 1; core <= this.coreCount; core += 1) {
-      waitingMsByCore[core] = 0;
       idleMsByCore[core] = 0;
     }
     for (const interval of intervals) {
       const duration = interval.end_ms - interval.start_ms;
       addDuration(byState, interval.state, duration);
-      if (interval.state === 'WAITING') addDuration(waitingMsByCore, interval.core, duration);
       if (interval.state === 'IDLE') addDuration(idleMsByCore, interval.core, duration);
     }
     const hasAgentTurnEvidence = this.agentTurnIntervals.length > 0 || this.openAgentTurns.size > 0;
@@ -325,9 +322,8 @@ export class CoreParallelismTracker {
       ...this.agentTurnIntervals,
       ...[...this.openAgentTurns.values()].map((interval) => ({ ...interval, end_ms: end })),
     ], this.startedAt, end);
-    // Keep the transition-derived fallback for direct users of the tracker and
-    // older reports. The benchmark runner records explicit Agent turn evidence,
-    // which excludes discovery, polling, WAITING, and Judge-only time.
+    // Standalone interval users supply RUNNING transitions. The benchmark
+    // records explicit Agent turns to exclude discovery, polling and Judge time.
     const effectiveAgentIntervals = hasAgentTurnEvidence
       ? agentIntervals
       : intervals.filter((interval) => interval.state === 'RUNNING');
@@ -359,13 +355,12 @@ export class CoreParallelismTracker {
       eligible_concurrency_histogram_ms: eligibleConcurrencyHistogram,
       ready_work_ms: samples.readyWorkMs,
       ready_unassigned_ms: samples.readyUnassignedMs,
-      // All Cores idle with zero eligible work (sampled at scheduler polls).
+      // All Cores idle with zero eligible work (sampled at readiness polls).
       mission_stall_ms: stallMs,
       mission_stall_ratio: elapsedMs === 0 ? 0 : stallMs / elapsedMs,
       mission_stall_intervals: stallIntervals.map((interval) => ({ start: toIso(interval.start_ms), end: toIso(interval.end_ms), duration_ms: interval.end_ms - interval.start_ms })),
-      waiting_ms_by_core: waitingMsByCore,
       idle_ms_by_core: idleMsByCore,
-      scheduler_poll_ms: this.schedulerPollMs,
+      readiness_poll_ms: this.readinessPollMs,
       take_conflict_count: this.takeConflictCount,
       judge_time_ms: this.judgeTimeMs,
       turn_occupancy_ms: this.turnOccupancyMs,

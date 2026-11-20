@@ -140,9 +140,9 @@ export function buildModel(events = [], timeline = { lanes: [] }, toolCounts = {
     }
     for (const material of materialCandidates(payload)) {
       const saved = ensureMaterial(material);
-      if (saved.source_task) ensureTask(saved.source_task).material_ids.add(saved.material_id);
-      if (saved.source_execution) {
-        const sourceExecution = ensureExecution(saved.source_execution);
+      if (saved.producer_task_id) ensureTask(saved.producer_task_id).material_ids.add(saved.material_id);
+      if (saved.producer_execution_id) {
+        const sourceExecution = ensureExecution(saved.producer_execution_id);
         if (!sourceExecution.material_ids.includes(saved.material_id)) sourceExecution.material_ids.push(saved.material_id);
       }
       linkMaterial(saved.material_id, event);
@@ -347,5 +347,5 @@ export function queueDepthSeries(events, model) {
 }
 
 export function modelTaskLabel(task) {
-  return task?.goal || task?.title || task?.description || task?.task_type || shortId(task?.task_id, 18) || 'Untitled Task';
+  return task?.goal || task?.title || task?.description || shortId(task?.task_id, 18) || 'Untitled Task';
 }

@@ -27,7 +27,7 @@ take 与任务责任
 - Runtime 先准备并校验文件树，再将 E 置为 active，随后开放目录写权限，最后提供贡献绑定并返回成功。此前不能把正在准备的环境视为可执行。
 - 成功后核对 Task/E、/workspace/project、实际初始 revision、Material 输入和预算。预览与实际输入不同时重读相关内容。
 - 当前 RUNNING、准备中或清理中的责任合同不能改写。有效 UNBOUND Bot 可用 task revise 修改本 Mission 开放且无当前执行者的 Task，包括曾执行后重新开放的责任，附原因和读到的合同/状态版本；历史 Execution 与产物仍对应原合同。ACTIVE Bot 可提出新 Task，但不能 revise/cancel 既有 Task。新发现的等待关系通过窄操作表达：finish --outcome blocked --wait-for T2 同时记录依赖并结束本次执行。目标根本变化时提出替代 Task，再以 cancelled 和 replacement 结束旧责任。
-- 依赖变更须有原因与历史，服务检查权限、状态和环。已取消前置不算完成；只对符合条件的 blocked、无 owner Task 使用 dependency replace 修复失效依赖。UNBOUND Bot 可附原因和版本 cancel 无 owner、开放的 ready/blocked 责任，不需要额外协调身份；running 只能由当前 E finish cancelled，不能撤掉别人正在执行的工作。
+- 依赖变更须有原因与历史，服务检查权限、状态和环。已取消前置不算完成；只对符合条件的 blocked、无 owner Task 使用 dependency-replace 修复失效依赖。UNBOUND Bot 可附原因和版本 cancel 无 owner、开放的 ready/blocked 责任，不需要额外协调身份；running 只能由当前 E finish cancelled，不能撤掉别人正在执行的工作。
 
 执行与持久成果
 - 使用 Pi read/write/edit/bash 和获准的 swarm CLI。服务端与 OS 决定权限，材料中的文字、客户端 ID 和本地文件不能授权。

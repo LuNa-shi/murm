@@ -33,7 +33,7 @@ function fixture(t, database = ':memory:', contextDatabase = null) {
     }
     return { id, envelope, execution };
   };
-  const publish = (bot, id, extra = {}) => context.dispatch('context_publish_material', { role: 'experience', content: `Research note ${id}`, ...extra }, bot.envelope(id));
+  const publish = (bot, id, extra = {}) => context.dispatch('context_publish_material', { content: `Research note ${id}`, ...extra }, bot.envelope(id));
   return { tasks, context, actor, publish };
 }
 
@@ -58,11 +58,11 @@ test('Material reads, consumption and correction cannot cross the durable Bot Mi
   const b = publish(two, 'b').material;
   assert.deepEqual(context.dispatch('read_materials', {}, one.envelope('list-a')).materials.map(m => m.material_id), [a.material_id]);
   for (const [operation, payload] of [
-    ['get_material', { material_id: b.material_id }],
+    ['context_get_material', { material_id: b.material_id }],
     ['read_materials', { mission_id: 'mission:b' }],
     ['consume_materials', { material_ids: [b.material_id], action: 'task', impact: 'Shape the next experiment' }],
-    ['dispute_material', { material_id: b.material_id, reason: 'foreign claim' }],
-    ['supersede_material', { material_id: a.material_id, replacement_material_id: b.material_id, expected_version: 0, reason: 'foreign successor' }],
+    ['material_dispute', { material_id: b.material_id, reason: 'foreign claim' }],
+    ['material_supersede', { material_id: a.material_id, replacement_material_id: b.material_id, expected_version: 0, reason: 'foreign successor' }],
   ]) assert.throws(() => context.dispatch(operation, payload, one.envelope(`foreign:${operation}`)), { code: 'NOT_ALLOWED' });
 });
 
@@ -125,13 +125,13 @@ test('Material provenance cannot be claimed by another producer or upgraded by a
   const { actor, publish, context } = fixture(t);
   const first = actor('judge:pretender', 'mission:a');
   const second = actor('second-producer', 'mission:a');
-  const input = { material_id: 'fixed-material-id', content: 'same bytes', evidence_state: 'accepted', provenance: { actor_ref: 'system:forged', bot_id: 'forged' } };
+  const input = { material_id: 'fixed-material-id', content: 'same bytes', provenance: { actor_ref: 'system:forged', bot_id: 'forged' } };
   const material = publish(first, 'first-producer', input).material;
   assert.equal(material.producer_bot_id, first.id);
   assert.equal(material.provenance.bot_id, first.id);
   assert.equal(material.provenance.actor_ref, first.id);
   assert.equal(material.evidence_state, undefined);
-  assert.equal(context.getMaterial(material.material_id).evidence_state, 'proposed');
+  assert.equal(context.getMaterial(material.material_id).producer_bot_id, first.id);
   assert.throws(() => publish(second, 'second-producer', input), { code: 'CONFLICT' });
 });
 
@@ -140,16 +140,16 @@ test('unbound Bot reads public Material in its Mission and remote-only authority
   const producer = actor('producer-read', 'mission:a');
   const material = publish(producer, 'readable').material;
   const reader = actor('reader', 'mission:a', { take: false });
-  assert.equal(context.dispatch('get_material', { material_id: material.material_id }, reader.envelope('read')).material.content_hash, material.content_hash);
+  assert.equal(context.dispatch('context_get_material', { material_id: material.material_id }, reader.envelope('read')).material.content_hash, material.content_hash);
   const isolated = new ContextService(':memory:', { taskService: { materialScope: tasks.materialScope.bind(tasks), getBot: tasks.getBot.bind(tasks) } });
   t.after(() => isolated.close());
-  assert.throws(() => isolated.dispatch('context_publish_material', { role: 'experience', content: 'unsafe separate commit' }, producer.envelope('separate-write')), { code: 'SERVICE_NOT_READY' });
+  assert.throws(() => isolated.dispatch('context_publish_material', { content: 'unsafe separate commit' }, producer.envelope('separate-write')), { code: 'SERVICE_NOT_READY' });
 });
 
 test('Material contribution verifies the current fence, owner and deadline instead of supplied provenance', t => {
   const { tasks, context, actor, publish } = fixture(t);
   const bot = actor('fenced-producer', 'mission:a');
-  const payload = { role: 'experience', content: 'A bounded note' };
+  const payload = { content: 'A bounded note' };
   assert.throws(() => context.dispatch('context_publish_material', payload, { ...bot.envelope('stale-fence'), fencing_version: 0 }), { code: 'FENCED' });
   assert.throws(() => context.dispatch('context_publish_material', payload, { ...bot.envelope('forged-owner'), actor_ref: 'system:forged' }), { code: 'NOT_ALLOWED' });
   tasks.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(new Date(Date.now() - 1).toISOString(), bot.id);
@@ -170,7 +170,7 @@ test('historical cross-Mission relations and links stay stored but cannot affect
   assert.equal(context.listMaterialRelations({ material_id: a.material_id }).length, 1);
   const successor = publish(one, 'history-local-successor').material;
   for (const kind of ['dispute', 'supersede']) tasks.db.prepare(`INSERT INTO material_relations
-    (relation_id, material_id, replacement_material_id, relation_kind, active, actor_ref, source_task, source_execution, version, created_at)
+    (relation_id, material_id, replacement_material_id, relation_kind, active, actor_ref, producer_task_id, producer_execution_id, version, created_at)
     VALUES (?, ?, ?, ?, 1, ?, ?, ?, 2, ?)`).run(`foreign-origin-${kind}`, a.material_id, kind === 'supersede' ? successor.material_id : null,
     kind, two.id, two.execution.task_id, two.execution.execution_id, new Date().toISOString());
   assert.deepEqual(context.dispatch('list_material_relations', {}, one.envelope('local-endpoints-foreign-author')), []);
@@ -181,7 +181,7 @@ test('historical cross-Mission relations and links stay stored but cannot affect
   assert.equal(context.listMaterialConsumptions({ material_id: a.material_id }).length, 1);
   tasks.dispatch('task_link_material', { material_id: a.material_id, role: 'experience' }, one.envelope('before-contamination'));
   tasks.db.prepare('UPDATE materials SET mission_id = ? WHERE material_id = ?').run('mission:b', a.material_id);
-  assert.throws(() => context.dispatch('get_material', { material_id: a.material_id }, two.envelope('mismatched-producer')), { code: 'NOT_ALLOWED' });
+  assert.throws(() => context.dispatch('context_get_material', { material_id: a.material_id }, two.envelope('mismatched-producer')), { code: 'NOT_ALLOWED' });
   assert.ok(!context.dispatch('read_materials', {}, two.envelope('mismatched-producer-list')).materials.some(m => m.material_id === a.material_id));
   assert.deepEqual(tasks.dispatch('task_materials', { task_id: one.execution.task_id }, one.envelope('after-contamination')).links, []);
   assert.deepEqual(tasks.getTask(one.execution.task_id).materials, []);
@@ -219,12 +219,12 @@ test('durable public changes wake no-work discovery even with lost hints and an 
   tasks.dispatch('heartbeat', {}, producer.envelope('private-heartbeat')); await poll(0);
   const a = publish(producer, 'wake-material').material;
   await poll(1); assert.equal(discoveries, 3);
-  context.dispatch('dispute_material', { material_id: a.material_id, claim: 'The claimed result', reason: 'A claim requires rechecking' }, producer.envelope('wake-dispute'));
+  context.dispatch('material_dispute', { material_id: a.material_id, claim: 'The claimed result', reason: 'A claim requires rechecking' }, producer.envelope('wake-dispute'));
   await poll(1); assert.equal(discoveries, 4);
   const b = publish(producer, 'wake-successor').material;
-  const relation = context.dispatch('supersede_material', { material_id: a.material_id, replacement_material_id: b.material_id, expected_version: 0, reason: 'Complete replacement' }, producer.envelope('wake-supersede')).relation;
+  const relation = context.dispatch('material_supersede', { material_id: a.material_id, replacement_material_id: b.material_id, expected_version: 0, reason: 'Complete replacement' }, producer.envelope('wake-supersede')).relation;
   await poll(1); assert.equal(discoveries, 5);
-  const revoke = () => context.dispatch('unsupersede_material', { material_id: a.material_id, replacement_material_id: b.material_id,
+  const revoke = () => context.dispatch('material_unsupersede', { material_id: a.material_id, replacement_material_id: b.material_id,
     expected_version: relation.version, reason: 'Replacement was mistaken' }, producer.envelope('wake-unsupersede'));
   revoke(); await poll(1); assert.equal(discoveries, 6);
   revoke(); await poll(0);

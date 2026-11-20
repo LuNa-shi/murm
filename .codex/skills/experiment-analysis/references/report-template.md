@@ -15,7 +15,11 @@ The only formal publication template is [docs/experiments/TEMPLATE.md](../../../
 - [ ] **Execution:** Task/Execution/Session/Core/Workspace, versions, handoff, expiry and cleanup
 - [ ] **Tools/Judge:** For every recorded request/response pair, compare the expected result, actual result and next Agent action; keep checker source failures separate from infrastructure failures and treat replay/cache hits as non-iterations
 
-## 3. Tool contract details
+## 3. Decision and tool contract details
+
+- [ ] For selection studies, account for every Bot and identify what it could see at the decision timestamp, the chosen task, viable alternatives and any recorded reason
+- [ ] Link the delivered work to each relevant Mission obligation, its downstream consumer and the final acceptance evidence. State where the chain ended
+- [ ] Mark alternative explanations for outstanding gaps, including work still open at the time limit
 - [ ] Record the request, service outcome, returned information and Agent reaction for each meaningful Judge or Service call
 - [ ] Mark missing sources unknown rather than inferring a result from counts
 

@@ -30,73 +30,61 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `73ab71ce55eed396523afb690522f27df319028d3ee0ff054cd395b6d25dccf2` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `37325635022fa77efc87f5db03ed5b0b93140d7b26e80b507039d4a24f7c9b6e` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `3eb4dbc87d69a3341886b9f9cab68daca531ae7ea0386b50c072473aebc4a98a` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `2c52545ba9179f809fb99070f7107704425fe944587da9fb61e14162195dd168` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `686ef274ebf9866f7d84dad4e90d44788b105a17a693d15887d0237e128ae606` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `7564b0263d9509c8923e33c1a1c9e98fb5f28d2ca7c794fe66a26e3fa77598ca` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `65d1ce23f2921f6b3ce83fde591ae543cf719d93083b7e2adbe103c066d47fd2` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `3c4be7360135a813ea43386910cf26776ef9dd818368fe7f0ef79f16c9f7b4b9` |
-| [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `31c1ebcccd4d21129b7aed3d62d136d6a5ce6460b4c1ec592bb902d05fa99a5f` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `56dc9a0f3f2edbd8af8ff376c08703a57a4c9387a514163670f8ffab256bdbdd` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `c35931ffd28ef14602d640a49ebf2bb3aade44f0633c0b404d0cae4a26bc1589` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 
-### Exact tool exposure for the built-in benchmark
+### Exact built-in command operation surface
 
-The two profile columns describe the Task surface with and without Sandbox capabilities. Registered Bots receive the four native Pi tools (`read`, `write`, `edit`, `bash`), and call typed `swarm` commands through Bash; the `swarmenv_` names below are not a second set of tools loaded into those Bots. Optional registered Services add capabilities. Both built-in `bound` and `recovery` roles currently have the same named surface. Presence in this table does not bypass the Bridge's Task/Execution binding or Workspace-contract checks. `swarmenv_` is the Pi extension prefix.
+Bots use native Bash to invoke typed swarm commands. Registry declarations below describe authorized domain operations; no additional Pi tool registration is installed. Optional Services extend the Registry.
 
-| Capability identity | task; Sandbox off | task; Sandbox on |
+| Capability identity | Service | Operation |
 |---|---|---|
-| `catalog.catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` |
-| `catalog.catalog_list_services` | `swarmenv_catalog_list_services` | `swarmenv_catalog_list_services` |
-| `catalog.catalog_list_tools` | `swarmenv_catalog_list_tools` | `swarmenv_catalog_list_tools` |
-| `context.context_consume` | `swarmenv_context_consume` | `swarmenv_context_consume` |
-| `context.context_get_material` | `swarmenv_context_get_material` | `swarmenv_context_get_material` |
-| `context.context_publish_material` | `swarmenv_context_publish_material` | `swarmenv_context_publish_material` |
-| `context.context_read` | `swarmenv_context_read` | `swarmenv_context_read` |
-| `context.context_search_materials` | `swarmenv_context_search_materials` | `swarmenv_context_search_materials` |
-| `context.material_dispute` | `swarmenv_material_dispute` | `swarmenv_material_dispute` |
-| `context.material_supersede` | `swarmenv_material_supersede` | `swarmenv_material_supersede` |
-| `context.material_unsupersede` | `swarmenv_material_unsupersede` | `swarmenv_material_unsupersede` |
-| `judge.judge_get_check_result` | `swarmenv_judge_get_check_result` | `swarmenv_judge_get_check_result` |
-| `judge.judge_workspace_check` | `swarmenv_judge_workspace_check` | `swarmenv_judge_workspace_check` |
-| `runtime.sandbox_exec` | Absent | `swarmenv_sandbox_exec` |
-| `runtime.sandbox_job` | Absent | `swarmenv_sandbox_job` |
-| `runtime.workspace_diff` | `swarmenv_workspace_diff` | `swarmenv_workspace_diff` |
-| `runtime.workspace_get` | `swarmenv_workspace_get` | `swarmenv_workspace_get` |
-| `runtime.workspace_list_files` | `swarmenv_workspace_list_files` | `swarmenv_workspace_list_files` |
-| `runtime.workspace_read_file` | `swarmenv_workspace_read_file` | `swarmenv_workspace_read_file` |
-| `runtime.workspace_write_file` | `swarmenv_workspace_write_file` | `swarmenv_workspace_write_file` |
-| `task.bot_exit` | `swarmenv_bot_exit` | `swarmenv_bot_exit` |
-| `task.mission_get` | `swarmenv_mission_get` | `swarmenv_mission_get` |
-| `task.mission_submission_get` | `swarmenv_mission_submission_get` | `swarmenv_mission_submission_get` |
-| `task.mission_submit` | `swarmenv_mission_submit` | `swarmenv_mission_submit` |
-| `task.task_cancel` | `swarmenv_task_cancel` | `swarmenv_task_cancel` |
-| `task.task_create` | `swarmenv_task_create` | `swarmenv_task_create` |
-| `task.task_dependency_replace` | `swarmenv_task_dependency_replace` | `swarmenv_task_dependency_replace` |
-| `task.task_feedback` | `swarmenv_task_feedback` | `swarmenv_task_feedback` |
-| `task.task_finish` | `swarmenv_task_finish` | `swarmenv_task_finish` |
-| `task.task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` |
-| `task.task_list` | `swarmenv_task_list` | `swarmenv_task_list` |
-| `task.task_revise` | `swarmenv_task_revise` | `swarmenv_task_revise` |
-| `task.task_status` | `swarmenv_task_status` | `swarmenv_task_status` |
-| `task.task_take` | `swarmenv_task_take` | `swarmenv_task_take` |
-| `task.task_view` | `swarmenv_task_view` | `swarmenv_task_view` |
-| `task.workspace_current_diff` | `swarmenv_workspace_current_diff` | `swarmenv_workspace_current_diff` |
-| `task.workspace_merge` | `swarmenv_workspace_merge` | `swarmenv_workspace_merge` |
-| `task.workspace_public_apply` | `swarmenv_workspace_public_apply` | `swarmenv_workspace_public_apply` |
-| `task.workspace_public_diff` | `swarmenv_workspace_public_diff` | `swarmenv_workspace_public_diff` |
-| `task.workspace_public_files` | `swarmenv_workspace_public_files` | `swarmenv_workspace_public_files` |
-| `task.workspace_public_history` | `swarmenv_workspace_public_history` | `swarmenv_workspace_public_history` |
-| `task.workspace_public_read` | `swarmenv_workspace_public_read` | `swarmenv_workspace_public_read` |
-| `task.workspace_public_search` | `swarmenv_workspace_public_search` | `swarmenv_workspace_public_search` |
-| `task.workspace_public_view` | `swarmenv_workspace_public_view` | `swarmenv_workspace_public_view` |
-| `task.workspace_save` | `swarmenv_workspace_save` | `swarmenv_workspace_save` |
-| `task.workspace_status` | `swarmenv_workspace_status` | `swarmenv_workspace_status` |
-
-The Mission Task profile is the only Agent-facing Task model. The built-in Registry exposes only the canonical Task, Context, Judge and Catalog operations. Registered Bots use explicit save/publish and `task_finish`.
+| `catalog.catalog_get_service_metadata` | `catalog` | `get_service_metadata` |
+| `catalog.catalog_list_services` | `catalog` | `list_services` |
+| `catalog.catalog_list_tools` | `catalog` | `list_tools` |
+| `context.consume_materials` | `context` | `consume_materials` |
+| `context.context_get_material` | `context` | `context_get_material` |
+| `context.context_publish_material` | `context` | `context_publish_material` |
+| `context.context_search_materials` | `context` | `context_search_materials` |
+| `context.material_dispute` | `context` | `material_dispute` |
+| `context.material_supersede` | `context` | `material_supersede` |
+| `context.material_unsupersede` | `context` | `material_unsupersede` |
+| `context.read_materials` | `context` | `read_materials` |
+| `judge.judge_get_check_result` | `judge` | `get_check_result` |
+| `judge.judge_workspace_check` | `judge` | `workspace_check` |
+| `task.bot_exit` | `task` | `bot_exit` |
+| `task.mission_get` | `task` | `mission_get` |
+| `task.mission_submission_get` | `task` | `mission_submission_get` |
+| `task.mission_submit` | `task` | `mission_submit` |
+| `task.task_cancel` | `task` | `task_cancel` |
+| `task.task_create` | `task` | `task_create` |
+| `task.task_dependency_replace` | `task` | `task_dependency_replace` |
+| `task.task_feedback` | `task` | `task_feedback` |
+| `task.task_finish` | `task` | `task_finish` |
+| `task.task_link_material` | `task` | `task_link_material` |
+| `task.task_list` | `task` | `task_list` |
+| `task.task_revise` | `task` | `task_revise` |
+| `task.task_status` | `task` | `task_status` |
+| `task.task_take` | `task` | `task_take` |
+| `task.task_view` | `task` | `task_view` |
+| `task.workspace_current_diff` | `task` | `workspace_current_diff` |
+| `task.workspace_merge` | `task` | `workspace_merge` |
+| `task.workspace_public_apply` | `task` | `workspace_public_apply` |
+| `task.workspace_public_diff` | `task` | `workspace_public_diff` |
+| `task.workspace_public_files` | `task` | `workspace_public_files` |
+| `task.workspace_public_history` | `task` | `workspace_public_history` |
+| `task.workspace_public_read` | `task` | `workspace_public_read` |
+| `task.workspace_public_search` | `task` | `workspace_public_search` |
+| `task.workspace_public_view` | `task` | `workspace_public_view` |
+| `task.workspace_save` | `task` | `workspace_save` |
+| `task.workspace_status` | `task` | `workspace_status` |
 
 ### Service Catalog: 3 registered capabilities
 
@@ -291,7 +279,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "ec7561264d86a052218462cb177537711cd38bd4d49f0763bf5ff46e5e9798bf"
+  "manifest_hash": "8a15810bfe35a42b7b8868ab6c336acf82bcc1b249081217a2ba8142bda30b0c"
 }
 ```
 
@@ -773,9 +761,6 @@ Propose one independently useful responsibility with a short summary, Mission ga
       "goal": {
         "type": "string"
       },
-      "task_type": {
-        "type": "string"
-      },
       "required_capabilities": {
         "type": "array",
         "items": {
@@ -1089,14 +1074,8 @@ Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup close
       "blocker": {
         "type": "object"
       },
-      "dependency": {
-        "type": "object"
-      },
       "wait_for": {
-        "type": [
-          "string",
-          "object"
-        ]
+        "type": "string"
       },
       "replacement_task_id": {
         "type": "string"
@@ -1359,10 +1338,10 @@ Read main history by default or all saved revisions, with provenance and bounded
       "all": {
         "type": "boolean"
       },
-      "source_task": {
+      "producer_task_id": {
         "type": "string"
       },
-      "source_execution": {
+      "producer_execution_id": {
         "type": "string"
       },
       "material_id": {
@@ -2128,17 +2107,17 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "453e81ad42ab6062e37da4bbe99db8d3b4ad29e60053a85b1c60880581e4a8f4"
+  "manifest_hash": "5185c188b03c5327bca01a9653f18a4ed364b88326243ddbdd1024b460e17a23"
 }
 ```
 
-#### context.context_read
+#### context.read_materials
 
 List one page of shared Material summaries. Use an exact Material ID to read its complete content.
 
 ```json
 {
-  "name": "context_read",
+  "name": "read_materials",
   "operation": "read_materials",
   "description": "List one page of shared Material summaries. Use an exact Material ID to read its complete content.",
   "input_schema": {
@@ -2153,10 +2132,10 @@ List one page of shared Material summaries. Use an exact Material ID to read its
       "task_id": {
         "type": "string"
       },
-      "source_task": {
+      "producer_task_id": {
         "type": "string"
       },
-      "source_execution": {
+      "producer_execution_id": {
         "type": "string"
       },
       "include_history": {
@@ -2206,13 +2185,13 @@ List one page of shared Material summaries. Use an exact Material ID to read its
 }
 ```
 
-#### context.context_consume
+#### context.consume_materials
 
 Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.
 
 ```json
 {
-  "name": "context_consume",
+  "name": "consume_materials",
   "operation": "consume_materials",
   "description": "Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.",
   "input_schema": {
@@ -2505,10 +2484,10 @@ Search immutable Material summaries by keyword, Task, producer, or Mission. Foll
       "task_id": {
         "type": "string"
       },
-      "source_task": {
+      "producer_task_id": {
         "type": "string"
       },
-      "source_execution": {
+      "producer_execution_id": {
         "type": "string"
       },
       "include_history": {
@@ -2909,412 +2888,6 @@ Read a Judge CheckResult, checker process status, result class, retryability, an
 }
 ```
 
-### Runtime-owned capabilities
-
-These declarations are merged into a Session profile after deployment filtering. They are not registered HTTP providers. Most Runtime output schemas are empty strict-object placeholders; they do not enumerate the actual return fields described in the narrative chapters.
-
-#### runtime.workspace_get
-
-```json
-{
-  "id": "runtime.workspace_get",
-  "name": "workspace_get",
-  "operation": "get_workspace",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "Read the current task-scoped Workspace and its revision contract.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Read the Workspace contract before opening or changing files.",
-    "ref": "workspace://get"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.workspace_list_files
-
-```json
-{
-  "id": "runtime.workspace_list_files",
-  "name": "workspace_list_files",
-  "operation": "list_workspace_files",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "List files inside the current task-scoped Workspace.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "List files before reading or writing a declared path.",
-    "ref": "workspace://list-files"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.workspace_read_file
-
-```json
-{
-  "id": "runtime.workspace_read_file",
-  "name": "workspace_read_file",
-  "operation": "read_workspace_file",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "Read a text file from the current task-scoped Workspace.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Read only a path allowed by the Workspace contract.",
-    "ref": "workspace://read-file"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string",
-        "minLength": 1
-      },
-      "max_bytes": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 10000000
-      }
-    },
-    "required": [
-      "path"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.workspace_write_file
-
-```json
-{
-  "id": "runtime.workspace_write_file",
-  "name": "workspace_write_file",
-  "operation": "write_workspace_file",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "Write one declared output file in the current task-scoped Workspace and save a revision.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Write only declared outputs with the current Workspace revision.",
-    "ref": "workspace://write-file"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string",
-        "minLength": 1
-      },
-      "content": {
-        "type": "string"
-      },
-      "expected_revision": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
-    "required": [
-      "path",
-      "content"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.sandbox_exec
-
-```json
-{
-  "id": "runtime.sandbox_exec",
-  "name": "sandbox_exec",
-  "operation": "sandbox_exec",
-  "service_id": "runtime",
-  "service_title": "Task Sandbox",
-  "service_purpose": "Bounded command execution inside the Execution Sandbox",
-  "description": "Run a bounded shell command inside the current Execution Sandbox at /workspace. With an external provider, /workspace is provider-owned and must not be assumed to be the host Runtime Workspace until the provider worker integration is enabled; shell edits become durable only after the configured continuity path saves them.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Use for compilation, tests, rg, or other code execution inside the bound Workspace.",
-    "ref": "sandbox://exec"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "command": {
-        "oneOf": [
-          {
-            "type": "string",
-            "minLength": 1
-          },
-          {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "cwd": {
-        "type": "string",
-        "description": "Container path under /workspace."
-      },
-      "timeout_ms": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 3600000
-      },
-      "env": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
-        }
-      },
-      "background": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "command"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {
-      "execution_id": {
-        "type": "string"
-      },
-      "job_id": {
-        "type": "string"
-      },
-      "binding_version": {
-        "type": "integer"
-      },
-      "exit_code": {
-        "type": [
-          "integer",
-          "null"
-        ]
-      },
-      "timed_out": {
-        "type": "boolean"
-      },
-      "truncated": {
-        "type": "boolean"
-      },
-      "stdout": {
-        "type": "string"
-      },
-      "stderr": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.sandbox_job
-
-```json
-{
-  "id": "runtime.sandbox_job",
-  "name": "sandbox_job",
-  "operation": "sandbox_job",
-  "service_id": "runtime",
-  "service_title": "Task Sandbox",
-  "service_purpose": "Bounded command execution inside the Execution Sandbox",
-  "description": "Read or cancel a background Sandbox job created by this Execution.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Inspect or stop a background command before handing off the Execution.",
-    "ref": "sandbox://job"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "job_id": {
-        "type": "string",
-        "minLength": 1
-      },
-      "action": {
-        "type": "string",
-        "enum": [
-          "status",
-          "cancel"
-        ]
-      }
-    },
-    "required": [
-      "job_id"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.workspace_diff
-
-```json
-{
-  "id": "runtime.workspace_diff",
-  "name": "workspace_diff",
-  "operation": "workspace_diff",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "Compare two revisions in the current task-scoped Workspace.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Inspect the auditable file changes between revisions.",
-    "ref": "workspace://diff"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "from_revision": {
-        "type": "integer",
-        "minimum": 1
-      },
-      "to_revision": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
 ### Optional Mathlib Search manifest
 
 Exact repository bundle declaration. Loading the bundle additionally binds its documentation hashes into the normalized manifest; deployment endpoint overrides change the manifest hash. The implementation also returns `duration_ms` and, after fallback, `fallback`/`upstream_error_code`; these are not listed in this declaration's closed output schema.
@@ -3540,157 +3113,6 @@ This section records catalog declarations used by trusted service composition bu
     "additionalProperties": false
   }
 }
-```
-
-#### Catalog context.context_publish / publish_material
-
-```json
-{
-  "name": "context_publish",
-  "service": "context",
-  "operation": "publish_material",
-  "version": "1.0",
-  "description": "Publish a versioned shared Material for other Executions.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "kind",
-      "scope",
-      "content"
-    ],
-    "properties": {
-      "kind": {
-        "type": "string",
-        "enum": [
-          "assumption",
-          "fact",
-          "conjecture",
-          "experience",
-          "failure",
-          "artifact",
-          "steer",
-          "check_result"
-        ]
-      },
-      "scope": {
-        "type": "string"
-      },
-      "content": {},
-      "evidence_state": {
-        "type": "string",
-        "enum": [
-          "proposed",
-          "observed",
-          "checked",
-          "accepted",
-          "rejected",
-          "stale"
-        ]
-      }
-    },
-    "additionalProperties": true
-  }
-}
-```
-
-### Complete local SDK dispatch mapping
-
-The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates another SDK with merged context. The methods below are the complete direct read/write wrappers, extracted from the source. Each call constructs an envelope from its context and explicit write options; read calls also have an operation ID. `createMission` clears Task/Execution/fence binding, and `taskTake` supplies the context actor and configured Core lane.
-
-| SDK method | Dispatched operation | Wrapper |
-|---|---|---|
-| `createMission` | `mission_create` | write |
-| `getMission` | `mission_get` | read |
-| `createTask` | `task_create` | write |
-| `listMissionTasks` | `task_list` | read |
-| `taskStatus` | `task_status` | read |
-| `viewTask` | `task_view` | read |
-| `linkMaterial` | `task_link_material` | write |
-| `listTaskMaterials` | `task_materials` | read |
-| `finishTask` | `task_finish` | write |
-| `listServices` | `list_services` | read |
-| `getServiceMetadata` | `get_service_metadata` | read |
-| `listTools` | `list_tools` | read |
-| `readMaterials` | `read_materials` | read |
-| `searchMaterials` | `context_search_materials` | read |
-| `getMaterial` | `context_get_material` | read |
-| `publishCollaborationMaterial` | `context_publish_material` | write |
-| `consumeMaterials` | `consume_materials` | write |
-| `listMaterialConsumptions` | `list_material_consumptions` | read |
-| `getCheckResult` | `get_check_result` | read |
-| `taskTake` | `task_take` | write |
-| `taskFeedback` | `task_feedback` | write |
-| `heartbeat` | `heartbeat` | write |
-| `publishMaterial` | `publish_material` | write |
-
-### Complete local router operation sets
-
-Registry matches are resolved first by capability name or operation and must be unique. These sets are the trusted local routing boundary. Unlisted operations fail with no service route.
-
-#### TASK fallback operations
-
-```json
-[
-  "mission_create",
-  "mission_get",
-  "task_list",
-  "task_view",
-  "task_create",
-  "task_status",
-  "task_take",
-  "task_feedback",
-  "task_cancel",
-  "task_dependency_replace",
-  "task_link_material",
-  "task_materials",
-  "task_finish"
-]
-```
-
-#### CONTEXT fallback operations
-
-```json
-[
-  "publish_material",
-  "context.publish_material",
-  "context_publish_material",
-  "read_materials",
-  "context.read_materials",
-  "context_read_materials",
-  "search_materials",
-  "context.search_materials",
-  "context_search_materials",
-  "get_material",
-  "context.get_material",
-  "context_get_material",
-  "consume_materials",
-  "list_material_consumptions",
-  "material.publish",
-  "material_publish",
-  "material.read",
-  "material_read",
-  "material.search",
-  "material_search",
-  "material.get",
-  "material_get",
-  "material_dispute",
-  "material.dispute",
-  "material_supersede",
-  "material.supersede",
-  "material_unsupersede",
-  "material.unsupersede"
-]
-```
-
-#### JUDGE fallback operations
-
-```json
-[
-  "workspace_check",
-  "get_check_result"
-]
 ```
 
 ### Exact shared error-code vocabulary

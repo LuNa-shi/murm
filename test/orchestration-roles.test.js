@@ -603,7 +603,7 @@ test('four Cores discover a zero-Task Mission and hold distinct proposed Tasks c
         mission_id: mission.mission_id, summary: `Implement ${responsibility} independently of other CSV features.`, goal: responsibility,
         expected_output: `Reusable ${responsibility} result`, acceptance_conditions: ['Documented independently testable result'],
       }, makeEnvelope({ actorRef })).task;
-      return service.takeTask(task.task_id, { owner_ref: actorRef, core_id: `core-${index + 1}`, take_key: `take-${index}`, workspace_mode: 'clean' });
+      return service.takeTask(task.task_id, { owner_ref: actorRef, core_id: `core-${index + 1}`, take_key: `take-${index}` });
     },
     runExecution: async (take) => {
       active.push(take);
@@ -640,7 +640,7 @@ test('a bounded discovery page does not reject a newly proposed Task already acc
     listEligibleTasks: () => service.listEligibleTasks({ missionId: mission.mission_id, limit: 1 }),
     takeTask: () => {
       chosen = create('Investigate malformed CSV inputs without duplicating output review');
-      return service.takeTask(chosen.task_id, { owner_ref: 'bot:discover', core_id: 'core-discover', take_key: 'new-local-work', workspace_mode: 'clean' });
+      return service.takeTask(chosen.task_id, { owner_ref: 'bot:discover', core_id: 'core-discover', take_key: 'new-local-work' });
     },
     runExecution: async (take) => ({ execution: take.execution }),
   });
@@ -722,7 +722,7 @@ test('a real Bridge tool rejection preserves the take conflict for Core rescan',
   const service = new TaskService();
   const mission = service.dispatch('mission_create', { mission_id: 'mission-bridge-race', goal: 'Compare independent routes' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
   const task = service.dispatch('task_create', { mission_id: mission.mission_id, summary: 'Verify one existing route without duplicating another responsibility', expected_output: 'Verified route', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef: 'bot:first' })).task;
-  service.takeTask(task.task_id, { owner_ref: 'bot:winner', core_id: 'core-winner', take_key: 'winner', workspace_mode: 'clean' });
+  service.takeTask(task.task_id, { owner_ref: 'bot:winner', core_id: 'core-winner', take_key: 'winner' });
   const bridge = new ServicesBridge({ taskService: service, contextService: {}, runtime: {}, actorRef: 'bot:loser', coreId: 'core-loser' });
   const loop = new IdentityTaskLoop({
     coreId: 'core-loser', taskService: service, maxTakeRescans: 0,
@@ -741,19 +741,19 @@ test('a real Bridge tool rejection preserves the take conflict for Core rescan',
   } finally { service.close(); }
 });
 
-test('private checkpoints do not wake no-work discovery but public Materials do', async () => {
+test('private bookkeeping does not wake no-work discovery but public Materials do', async () => {
   let discoveries = 0;
   const loop = new IdentityTaskLoop({
     coreId: 'core-public-changes', listEligibleTasks: () => [],
     takeTask: async () => { discoveries += 1; return { no_work: true }; },
   });
   await loop.runOnce();
-  for (const operation of ['save_checkpoint', 'save_workspace_revision', 'task_feedback']) {
+  for (const operation of ['save_workspace_revision', 'task_feedback']) {
     loop.notifyPublicChange({ operation, changed: true });
     await loop.runOnce();
   }
   assert.equal(discoveries, 1);
-  loop.notifyPublicChange({ kind: 'material_published', operation: 'publish_material', changed: true });
+  loop.notifyPublicChange({ kind: 'material_published', operation: 'context_publish_material', changed: true });
   await loop.runOnce();
   assert.equal(discoveries, 2);
 });

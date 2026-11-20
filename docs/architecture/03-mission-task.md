@@ -18,15 +18,17 @@ A live UNBOUND Bot can make several proposals and take an existing responsibilit
 
 `task_revise` takes `task_id`, `expected_spec_version`, `expected_state_version`, a nonblank `reason` (maximum 4000), and nonempty `changes`. Supported changes are summary, gap, expected output, acceptance conditions, priority, instructions, input Material IDs, Workspace selector (`workspace`/`base_revision`), and prerequisites (`depends_on`). A priority-only change uses the same operation.
 
-After exact request replay, the transaction verifies live UNBOUND authority, no caller Execution binding, the same open Mission, and both observed Task versions. No extra coordination grant is required. The target must be OPEN or BLOCKED with no CREATED/RUNNING/CLOSING/WAITING Execution; an ACTIVE/CLOSING Bot or unclosed finish intent also blocks changes. This protects take, preparation and physical cleanup. Historical completed attempts do not prevent revision once cleanup finalizes and the Task reopens. DONE/cancelled Tasks stay closed. ACTIVE callers finish through their existing Execution lifecycle rather than editing contracts.
+After exact request replay, the transaction verifies live UNBOUND authority, no caller Execution binding, the same open Mission, and both observed Task versions. No extra coordination grant is required. The target must be OPEN or BLOCKED with no CREATED/RUNNING/CLOSING Execution; an ACTIVE/CLOSING Bot or unclosed finish intent also blocks changes. This protects take, preparation and physical cleanup. Historical completed attempts do not prevent revision once cleanup finalizes and the Task reopens. DONE/cancelled Tasks stay closed. ACTIVE callers finish through their existing Execution lifecycle rather than editing contracts.
 
 The service trims summary, gap and expected output before checking bounds, hashing and storing their normalized text. It validates the complete resulting contract and same-Mission prerequisites, rejecting cycles before writes. New prerequisites cannot be cancelled; an already cancelled prerequisite may remain during an unrelated revision and continues blocking the Task. It snapshots the old contract, writes changed fields and edges, advances spec/state versions, computes the new spec hash and registration fingerprint, reconciles readiness and appends the immutable new snapshot with actor/reason/time. Existing Execution spec/hash, CheckResults and Material production provenance are never rewritten. Stale update/take/cancel fails with `STALE_VERSION`. Exact request/payload replay returns the original receipt; changed payload under the same ID conflicts. Contract changes and replay receipt commit together, without process restart or lease extension.
 
 Task view returns `contract_history` ordered by spec version. `contract_history_after_version` defaults to zero; `contract_history_limit` defaults to 50 and is bounded to 1..100. `contract_history_page` exposes `complete` and `next_after_version`. Execution history exposes its original spec version/hash. Cancellation preserves its original contract plus reason and optional replacement; a cancelled prerequisite remains unsatisfied.
 
+Task Service accepts the canonical snake_case payload fields and exposes one `takeTask` host helper for the `task_take` operation. It does not translate camelCase payloads, private Workspace modes or predecessor selectors. Execution storage records immutable public inputs, ownership and lifecycle state; it has no wait/resume token, private checkpoint, instruction/session-generation or Workspace-selection compatibility fields. The current proposal validator and explicit `workspace_delivery` check remain authoritative.
+
 An ordinary Task is a bounded, separable responsibility with a goal, expected
 output, acceptance conditions, optional capability requirements, provenance and
-an evidence delivery path. It normally has one effective Execution at a time.
+an evidence delivery path. It permits exactly one active Execution at a time, including preparation and cleanup.
 Task proposals contain no hierarchy fields. Stored contract revisions and accepted request receipts remain readable and do not create a Task hierarchy or gate a take.
 
 The current Agent-facing operations are principally:
@@ -57,7 +59,7 @@ Tests use 505 matching Tasks, including a low-priority responsibility on the six
 
 A registered Bot's `task status` shows exact aggregate state counts and two bounded previews, one for the requested states and one for ready Tasks. If the ready preview is incomplete, `counts.eligible` is null and `eligible_page` gives the returned count and completeness. The preview limit is 100 and further discovery uses `task list`. Trusted in-process reporting retains its own status counts and bounded detail list.
 
-For a registered Bot, Task detail and Task mutation receipts use an explicit public Task projection. It includes the stable contract, state and versions, public input and Workspace selection, dependencies, Material links, and proposal actor, optional originating Task/Execution, and recorded time. The projection contains only the current Task contract and its recorded provenance. Task detail includes every Execution attempt, with the public input, timestamps, terminal reason, and accepted finish record when one exists. A failed startup without a finish is represented by that attempt and a null finish. At the final authenticated HTTP response boundary the Bridge also projects take/finish Execution receipts and Bot exit receipts. The successful take supplies the pinned public Workspace identity and manifest when Runtime has recorded them. Raw launch/resume tokens, prompt, controller Workspace descriptor and checkpoint references stay in trusted state. Internal Runtime callbacks and saved request receipts continue to use their full records.
+For a registered Bot, Task detail and Task mutation receipts use an explicit public Task projection. It includes the stable contract, state and versions, public input and Workspace selection, dependencies, Material links, and proposal actor, optional originating Task/Execution, and recorded time. The projection contains only the current Task contract and its recorded provenance. Task detail includes every Execution attempt, with the public input, timestamps, terminal reason, and accepted finish record when one exists. A failed startup without a finish is represented by that attempt and a null finish. At the final authenticated HTTP response boundary the Bridge also projects take/finish Execution receipts and Bot exit receipts. The successful take supplies the pinned public Workspace identity and manifest when Runtime has recorded them. Launch tokens, prompt and controller Workspace descriptors stay in trusted state. Internal Runtime callbacks and saved request receipts continue to use their full records.
 
 The take receipt records the actual immutable Workspace input and exact Material inputs.
 Runtime records the last Workspace revision sent to the same unbound Bot as its
@@ -96,8 +98,8 @@ are retained.
   against its textual contract; it does not establish scientific correctness.
 - `incomplete` may include a handoff Material but does not require one.
 - `blocked` requires a reason/blocker and a same-Mission, non-cancelled Task.
-  `wait_for` accepts a Task ID or the existing typed Task reference. A new edge
-  joins the same modern dependency graph as creation-time `depends_on`; it is
+  `wait_for` is the prerequisite Task ID. A new edge
+  joins the same flat dependency graph as creation-time `depends_on`; it is
   added without removing existing edges, with cycle checks spanning current and retained historical edges and rollback
   on any validation failure. Only `DONE` satisfies this graph's prerequisites.
 - `cancelled` requires a reason. Its optional replacement may already be done,
@@ -124,7 +126,7 @@ changes and cannot clear a successor's ownership.
 The original finish receipt remains an accepted `closing` receipt. Replaying
 its request ID with the same actor, Task, Execution, spec and payload returns
 that receipt, even with refreshed state/fence versions; changed content or
-identity conflicts. Exact old-format receipts also replay with their original envelope fingerprint. `getExecution` includes its persisted finish, and
+identity conflicts. `getExecution` includes its persisted finish, and
 `task_view.finishes` returns finish history with accepted/closed timestamps.
 These records distinguish accepted cleanup from completed cleanup. A new
 Runtime uses the durable Bot/resource identity and Mission-scoped provider
@@ -134,7 +136,7 @@ An ambiguous create or deletion retains cleanup ownership. An empty in-memory
 process map is insufficient to release the Task. See [Execution](02-execution.md)
 for the restart procedure and its evidence.
 
-The lifecycle tests exercise real Task/Context services, reopening and migrating
+The lifecycle tests exercise real Task/Context services, reopening current
 SQLite stores, dependency rollback, request replay and trusted finalization.
 Runtime cleanup tests add actual Runtime/Workspace/Bridge/benchmark composition
 with controlled model/provider boundaries. They do not establish deployed
@@ -148,16 +150,16 @@ is not a receipt; a receipt is not proof of a changed research route.
 
 ## Proposal replay during closeout
 
-For a registered Bot's Task proposal, the operation fingerprint excludes the volatile E state version while preserving Bot, Task/E identity, spec/fence and payload. This permits replay when a heartbeat or closeout reminder advanced the E version. Historical exact fingerprints remain accepted with their original envelope. A new request still passes durable Bot/Mission/binding, lease, hard deadline and soft-closeout checks; changing the payload under an accepted ID conflicts. An unbound Bot remains governed by its selection/hard budgets and does not acquire an E merely by proposing.
+For a registered Bot's Task proposal, the operation fingerprint excludes the volatile E state version while preserving Bot, Task/E identity, spec/fence and payload. This permits replay when a heartbeat or closeout reminder advanced the E version. A new request still passes durable Bot/Mission/binding, lease, hard deadline and soft-closeout checks; changing the payload under an accepted ID conflicts. An unbound Bot remains governed by its selection/hard budgets and does not acquire an E merely by proposing.
 
 
 ## Narrow coordination and repair
 
 Task Service stores a frozen `coordination_permissions` list on each Bot. The trusted `registerBot` interface accepts `unsupersede`, `task_dependency_replace` and `mission_submit`; the default is empty. Runtime forwards a trusted configuration list. The benchmark reads `mission_coordination_permissions` from its host configuration (or an explicit programmatic option), and startup context reports the actual grant. A CLI field, actor-name prefix or role label cannot grant permission. The synchronous authority check verifies the Bot's Mission, live UNBOUND/ACTIVE state, selection/hard deadline and, for ACTIVE, the exact current E, lease and fence. Closing or stopped Missions reject new coordination.
 
-`swarm task cancel ID --expected-spec-version N --expected-state-version V --reason ... [--replacement ID]` requires a live UNBOUND Bot in the same Mission and an unowned ready/blocked Task, with no extra grant. It refuses any current CREATED/RUNNING/WAITING/CLOSING owner and preserves done history. A replacement must exist in the same Mission, be non-cancelled, and create neither a self link nor a replacement cycle. The state update and cancellation audit commit with the operation receipt. Identical requests replay, while fresh requests with stale observed versions conflict.
+`swarm task cancel ID --expected-spec-version N --expected-state-version V --reason ... [--replacement ID]` requires a live UNBOUND Bot in the same Mission and an unowned ready/blocked Task, with no extra grant. It refuses any current CREATED/RUNNING/CLOSING owner and preserves done history. A replacement must exist in the same Mission, be non-cancelled, and create neither a self link nor a replacement cycle. The state update and cancellation audit commit with the operation receipt. Identical requests replay, while fresh requests with stale observed versions conflict.
 
-`swarm task dependency-replace ID --from-task-id OLD --to-task-id NEW --expected-spec-version N --expected-state-version V --reason ...` requires its own grant, an unowned blocked target, and an actually cancelled current prerequisite. The same-Mission replacement cannot be cancelled or create a dependency cycle. Only the specified logical edge changes; state_version advances even if other blockers remain, making it the repair CAS token. The original relation, author and reason remain in `task_dependency_replacements`. The current `depends_on` edge is replaced atomically and the replacement audit records the author and reason. MATERIAL and CHECK_RESULT dependencies retain their own semantics. Task detail/list/take agree about these blockers and show invalid-prerequisite and replacement hints. A completed replacement can make the target ready; otherwise remaining blockers remain.
+`swarm task dependency-replace ID --from-task-id OLD --to-task-id NEW --expected-spec-version N --expected-state-version V --reason ...` requires its own grant, an unowned blocked target, and an actually cancelled current prerequisite. The same-Mission replacement cannot be cancelled or create a dependency cycle. Only the specified logical edge changes; state_version advances even if other blockers remain, making it the repair CAS token. The original relation, author and reason remain in `task_dependency_replacements`. The current `depends_on` edge is replaced atomically and the replacement audit records the author and reason. Task detail/list/take agree about these blockers and show invalid-prerequisite and replacement hints. A completed replacement can make the target ready; otherwise remaining blockers remain.
 
 ## Fixed Mission submissions and results
 
@@ -190,3 +192,7 @@ The operator's local command displays the fixed acceptance conditions and accept
 A persisted PASS keeps the accepted main frozen and immediately blocks new Task proposals, takes, merge/apply and Judge work. The Runner fixes one closeout deadline at `min(run deadline, acceptance time + missionCloseoutMs)` (default 30 seconds). It stops selection loops and Controller and retains the original stop promise for final cleanup. Only already RUNNING Executions receive durable handoff reminders; a take still preparing its Workspace rechecks Mission state before activation and after asynchronous grant, and cannot hand a new active binding to its Bot after PASS. Existing work may save, publish useful increments and finish within its own remaining hard deadline.
 
 Acceptance callback retries keep the original deadline, skip committed reminders and complete the remaining notifications before acknowledgement. New background maintenance promises append to the existing stop list. No active Execution means immediate transition to cleanup; cleanup still joins unbound or preparing resources and never marks unfinished Tasks done. Model requests admitted during closeout stop at the earlier Bot, Execution, lease, Mission or closeout deadline. Optional financial mode additionally charges the reserved closeout allowance; default time-bounded mode records observed usage without asserting a monetary allowance.
+
+Each Task permits exactly one active Execution, including CREATED preparation, RUNNING work and CLOSING cleanup. A second take fails with CONFLICT, `condition: task_occupied`, and the occupying Execution ID and state; the caller can choose another responsibility or wait for confirmed cleanup. There is no configurable parallel quota, Task type/version, retry policy or attempt limit. The only terminal Task states are DONE and CANCELED; Bot CLOSED is a separate lifecycle state. Capability requirements use only `required_capabilities`.
+
+Material completion requirements count distinct Materials and may constrain the Task link role, minimum count, cross-Task producer and recorded consumption/action. Material type, scope and publication role are not predicates. A handoff reference must have current Task/Execution producer provenance and a durable `handoff` Task link; finish creates that link transactionally when needed.

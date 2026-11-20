@@ -9,7 +9,7 @@ import { ObservabilityServer } from '../src/observability/observability-server.j
 
 test('ObservabilityServer serves experiment queries and reconstructs Core execution segments', async () => {
   const store = new ObservationStore();
-  store.registerExperiment({ experimentId: 'run-http', rootTaskId: 'root' });
+  store.registerExperiment({ experimentId: 'run-http' });
   store.append({ experimentId: 'run-http', source: 'runtime', kind: 'core_state_changed', coreId: 'core-1', taskId: 'task-1', executionId: 'exec-1', occurredAt: '2026-10-20T00:00:00.000Z', payload: { state: 'RUNNING', reason: 'execution_bound', ended_at_ms: Date.parse('2026-10-20T00:00:02.000Z') } });
   store.append({ experimentId: 'run-http', source: 'runtime', kind: 'execution_assigned', coreId: 'core-1', taskId: 'task-1', executionId: 'exec-1', sessionId: 'session-1', occurredAt: '2026-10-20T00:00:00.000Z', payload: { state: 'RUNNING' } });
   store.append({ experimentId: 'run-http', source: 'agent', kind: 'tool_call_started', coreId: 'core-1', executionId: 'exec-1', sessionId: 'session-1', occurredAt: '2026-10-20T00:00:01.000Z', payload: { tool: 'task_list' } });
@@ -133,7 +133,7 @@ test('ObservabilityServer pushes cross-process Experiment registry updates over 
 
 test('ObservabilityServer keeps imported lifecycle facts and root-array projections usable', async () => {
   const store = new ObservationStore();
-  store.registerExperiment({ experimentId: 'run-imported', rootTaskId: 'task-root' });
+  store.registerExperiment({ experimentId: 'run-imported' });
   const append = (event) => store.append({ experimentId: 'run-imported', ...event });
   append({ source: 'runtime', kind: 'execution_assigned', taskId: 'task-root', executionId: 'exec-root', coreId: 'core-1', payload: { state: 'RUNNING' } });
   append({ source: 'runtime', kind: 'execution_observed', taskId: 'task-root', executionId: 'exec-root', payload: { task_state: 'WAITING', execution_state: 'WAITING' } });
@@ -142,7 +142,7 @@ test('ObservabilityServer keeps imported lifecycle facts and root-array projecti
   append({ source: 'judge', kind: 'judge_check_finished', taskId: 'task-root', executionId: 'exec-root', payload: { workspace_source_id: 'material-1', verdict: 'FAIL' } });
   append({ source: 'task-service', kind: 'dispatch.complete', taskId: 'task-root', executionId: 'exec-root', payload: { result: [{ task_id: 'task-root', goal: 'Imported task', state: 'WAITING' }, { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note' }] } });
   append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', args: { kind: 'artifact' } } } });
-  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', result: { details: { material: { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note', content: { summary: 'Readable material', proof: 'PROOFSECRET' }, source_task: 'task-root', source_execution: 'exec-root' } } } } } });
+  append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-1', toolName: 'swarmenv_context_publish', result: { details: { material: { material_id: 'material-1', kind: 'artifact', summary: 'Imported proof note', content: { summary: 'Readable material', proof: 'PROOFSECRET' }, producer_task_id: 'task-root', producer_execution_id: 'exec-root' } } } } } });
   append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_start', toolCallId: 'call-task-view', toolName: 'swarmenv_task_view', args: { task_id: 'task-root' } } } });
   append({ source: 'agent', kind: 'rpc_record', taskId: 'task-root', executionId: 'exec-root', payload: { record: { type: 'tool_execution_end', toolCallId: 'call-task-view', toolName: 'swarmenv_task_view', args: { task_id: 'task-root' }, result: { details: { task: { task_id: 'task-root', goal: 'Current task', task_instructions: 'PRIVATE INSTRUCTIONS', state: 'WAITING' } } } } } });
   const server = new ObservabilityServer({ observationStore: store });

@@ -36,7 +36,7 @@ The Task-owned `service_commit_gate` holds one unresolved exact command and dige
 | `task_material_links` | A Material's input/response/handoff/experience role for a Task and receiving Task, separate from immutable producer provenance. |
 | `task_notifications` | Durable typed feedback queue with Mission/Task/Execution targeting and fallback delivery/handling metadata. |
 | `task_notification_receipts` | Per-Execution receipt: two concurrent Executions can handle the same notification independently. Delivery is not handling. |
-| `materials` | Immutable content and producer IDs, title/summary/media type, Mission, body/attachment identity and provenance. Historical role/kind/evidence columns remain internal; registered projection uses current terms. Public reads also add `producer_task_id`/`producer_execution_id` aliases. |
+| `materials` | Immutable content and producer IDs, title/summary/media type, Mission, body/attachment identity and provenance. Historical role/kind/evidence columns remain internal; registered projection uses current terms. Storage and public reads use `producer_task_id` and `producer_execution_id` directly. |
 | `material_consumptions` | Explicit `(operation_id, material_id)` use with exact version/hash, reader Task/E, action and impact. Reading/searching alone does not create this row. |
 | `material_attachments` | Immutable content-addressed attachment descriptors and durable bytes; source reuse validates Mission scope/hash. |
 | `material_relation_heads`, `material_relations`, `material_relation_events` | Per-old-Material CAS version, immutable original dispute/supersede details and append-only revocation history. Active flags select current relationships without erasing past authors or reasons. |
@@ -60,7 +60,7 @@ Durable state can outlive a Session, but runtime recovery still has to validate 
 
 ## Generated SQL schema reference
 
-The SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors also migrate older databases as described above. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.
+The SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors initialize the current schema on new databases. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.
 
 ### Task-owned independent service commit gates
 
@@ -100,7 +100,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Model budget gateway
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `bbbe0e546b7da8fd78b0e68f06454d85fdb45c0ad14b7beda107ba5d292b8bed`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `ec5f264aedaccd2d2e86a542bb0e5b5d69c757ce7d7075c194343c48baabb76b`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS responses_budget_policies (
@@ -132,7 +132,7 @@ CREATE TABLE IF NOT EXISTS responses_budget_policies (
 
 ### Mission submission coordinator
 
-Source: [src/runtime/mission-submission.js](../../src/runtime/mission-submission.js); source SHA-256: `70cb8935240b1fa25cc8c8f85f672041a68c10c17f29180661a8cd0c7f648101`.
+Source: [src/runtime/mission-submission.js](../../src/runtime/mission-submission.js); source SHA-256: `21104a3b8d5ce8b79c142e221a6ec10083d137d9d209f3daf937f8df783354a5`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_final_check_policies (
@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `f606866f975c9be79d8283846c36c3de33d76a0fa870a0892f7ea4e849b4c4e1`.
+Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `5ad931cde9a7cbdab349a7c39a1ce1c8091834c8650d0ae20d81535e0be8172c`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -202,7 +202,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `588bac4e60d5358c896ece9621376315d4c885a370c48459ab69d28feb1c1d7f`.
+Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -368,8 +368,6 @@ CREATE INDEX IF NOT EXISTS task_material_links_material
 CREATE TABLE IF NOT EXISTS tasks (
   task_id TEXT PRIMARY KEY,
   owner_ref TEXT NOT NULL,
-  task_type TEXT NOT NULL,
-  task_type_version TEXT NOT NULL,
   goal TEXT NOT NULL,
   expected_output TEXT NOT NULL,
   priority INTEGER NOT NULL DEFAULT 0 CHECK (priority >= 0),
@@ -380,12 +378,9 @@ CREATE TABLE IF NOT EXISTS tasks (
   spec_version INTEGER NOT NULL,
   spec_hash TEXT NOT NULL,
   completion_contract_json TEXT NOT NULL,
-  parallel_quota INTEGER NOT NULL DEFAULT 1 CHECK (parallel_quota >= 1),
   state_version INTEGER NOT NULL DEFAULT 0,
-  state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED')),
+  state TEXT NOT NULL CHECK (state IN ('OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CANCELED')),
   block_reason TEXT,
-  max_attempts INTEGER NOT NULL,
-  retry_policy_json TEXT NOT NULL,
   cancelled_at TEXT,
   eligible_at TEXT,
   responsibility_key TEXT,
@@ -399,13 +394,11 @@ CREATE TABLE IF NOT EXISTS executions (
   execution_id TEXT PRIMARY KEY,
   task_id TEXT NOT NULL REFERENCES tasks(task_id),
   owner_ref TEXT NOT NULL,
-  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'CLOSING', 'WAITING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED')),
+  state TEXT NOT NULL CHECK (state IN ('CREATED', 'RUNNING', 'CLOSING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF')),
   state_version INTEGER NOT NULL DEFAULT 0,
   attempt_no INTEGER NOT NULL,
-  -- A Core binding is immutable for the lifetime of an Execution.  Legacy
-  -- records may be unbound and use NULL for the optional binding fields.
+  -- A Core binding is immutable for the lifetime of an Execution.
   core_id TEXT,
-  session_generation INTEGER NOT NULL DEFAULT 1,
   fencing_version INTEGER NOT NULL,
   runtime_generation INTEGER NOT NULL,
   lease_expires_at TEXT NOT NULL,
@@ -418,24 +411,15 @@ CREATE TABLE IF NOT EXISTS executions (
   input_material_refs_json TEXT NOT NULL,
   input_snapshot_hash TEXT NOT NULL,
   workspace_input_json TEXT,
-  workspace_selection_json TEXT NOT NULL DEFAULT '{}',
-  workspace_source_id TEXT,
   workspace_ref TEXT,
   workspace_revision INTEGER,
   workspace_content_hash TEXT,
-  checkpoint_ref TEXT,
-  checkpoint_hash TEXT,
   started_at TEXT,
   handoff_deadline TEXT,
   execution_deadline TEXT,
   handoff_reminder_sent_at TEXT,
   handoff_metadata_json TEXT,
   terminal_reason TEXT,
-  instruction_version INTEGER NOT NULL DEFAULT 1,
-  steer_material_refs_json TEXT NOT NULL,
-  wait_condition_json TEXT,
-  wait_deadline TEXT,
-  resume_token TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -502,7 +486,7 @@ CREATE TABLE IF NOT EXISTS take_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `b60cbb5e09bf265d42d4b0d961f1bacc034abb91aa4118d7561a7a4a59f181d7`.
+Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `beb3d52d141f9d4e0b02aff35f578907b9997835fd3084580ef18bd29a985ae7`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -515,30 +499,22 @@ CREATE TABLE IF NOT EXISTS operations (
 
 CREATE TABLE IF NOT EXISTS materials (
   material_id TEXT PRIMARY KEY,
-  kind TEXT NOT NULL CHECK (kind IN ('assumption', 'fact', 'conjecture', 'experience', 'failure', 'artifact', 'steer', 'check_result')),
-  -- Collaboration role is orthogonal to the evidence kind.
-  role TEXT NOT NULL DEFAULT 'experience' CHECK (role IN ('input', 'response', 'handoff', 'experience')),
-  mission_id TEXT,
-  scope TEXT NOT NULL,
-  evidence_state TEXT NOT NULL CHECK (evidence_state IN ('proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale')),
-  content_ref TEXT NOT NULL,
+  mission_id TEXT NOT NULL,
   content_hash TEXT NOT NULL,
   content_json TEXT NOT NULL,
   version INTEGER NOT NULL,
-  source_task TEXT,
-  source_execution TEXT,
+  producer_task_id TEXT,
+  producer_execution_id TEXT,
   producer_bot_id TEXT,
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
-  evidence_json TEXT NOT NULL DEFAULT '[]',
   title TEXT,
   summary TEXT,
   media_type TEXT,
   created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS materials_kind_scope ON materials(kind, scope);
-CREATE INDEX IF NOT EXISTS materials_source ON materials(source_task, source_execution);
+CREATE INDEX IF NOT EXISTS materials_producer ON materials(producer_task_id, producer_execution_id);
 CREATE INDEX IF NOT EXISTS materials_mission_scan ON materials(mission_id);
 
 CREATE TABLE IF NOT EXISTS material_attachments (
@@ -559,8 +535,8 @@ CREATE TABLE IF NOT EXISTS material_relations (
   reason TEXT,
   claim TEXT,
   actor_ref TEXT NOT NULL,
-  source_task TEXT,
-  source_execution TEXT,
+  producer_task_id TEXT,
+  producer_execution_id TEXT,
   version INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   UNIQUE(material_id, replacement_material_id, relation_kind, version)
@@ -585,8 +561,8 @@ CREATE TABLE IF NOT EXISTS material_relation_events (
   action TEXT NOT NULL CHECK (action IN ('created', 'revoked')),
   operation_id TEXT NOT NULL,
   actor_ref TEXT NOT NULL,
-  source_task TEXT,
-  source_execution TEXT,
+  producer_task_id TEXT,
+  producer_execution_id TEXT,
   reason TEXT NOT NULL,
   relation_version INTEGER NOT NULL,
   created_at TEXT NOT NULL
@@ -707,7 +683,7 @@ CREATE TABLE IF NOT EXISTS checker_preflights (
 
 ### Observation database
 
-Source: [src/observability/observation-store.js](../../src/observability/observation-store.js); source SHA-256: `f5074b99ddcad62fb1a4adb2936c2a74a55fef0d01b337592533937d2ff05fa5`.
+Source: [src/observability/observation-store.js](../../src/observability/observation-store.js); source SHA-256: `78d5da3d61469f0bc46443e44bf51fb714155fd1695211c24281bd05061cfefa`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -716,7 +692,6 @@ PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS experiments (
   experiment_id TEXT PRIMARY KEY,
-  root_task_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('CREATED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'FINISHED')),
   started_at TEXT NOT NULL,
   ended_at TEXT,
@@ -763,7 +738,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `f9647677004269e14d41ecedd0381857828d735ed4d79404ba5c80190ba20c88`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `0df7c34eabc180e4ef6d463f3eff4520b05a97a33782371134b0ba40b01abe7c`.
 
 #### mission_final_check_active
 

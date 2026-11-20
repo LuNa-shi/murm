@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { listTools } from '../sdk/service-catalog.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 export const AGENT_ROLES = Object.freeze({
@@ -9,20 +8,6 @@ export const AGENT_ROLES = Object.freeze({
 
 const PROFILE_VERSION = '1';
 const INTERNAL_AUDIENCES = new Set(['runtime', 'daemon', 'internal']);
-
-const CURRENT_AGENT_OPERATIONS = new Set([
-  'bot_exit',
-  'list_services', 'get_service_metadata', 'list_tools',
-  'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
-  'task_status', 'task_take', 'task_feedback', 'task_revise', 'task_cancel', 'task_dependency_replace',
-  'read_materials', 'consume_materials',
-  'context_search_materials', 'context_get_material', 'context_publish_material', 'material_dispute', 'material_supersede', 'material_unsupersede',
-  'workspace_check', 'get_check_result',
-  'get_workspace', 'list_workspace_revisions', 'list_workspace_files',
-  'read_workspace_file', 'write_workspace_file', 'workspace_diff',
-  'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_apply',
-  'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
-]);
 
 function clone(value) {
   return value === undefined ? undefined : structuredClone(value);
@@ -97,9 +82,7 @@ function normalizeCapability(capability, role) {
   const serviceId = serviceIdOf(capability);
   const runtimeOwned = capability.runtime_owned === true || serviceId === 'runtime';
   const audience = audienceOf(capability);
-  // Execution lease/process controls remain Runtime-owned. Only the read-only
-  // Execution projection may appear in a bound profile; typed Task actions
-  // are supplied separately as Runtime capabilities.
+  // Execution process controls remain Runtime-owned and are not public commands.
   const sideEffect = capability.side_effect ?? capability.sideEffect;
   if (serviceId === 'execution' && (sideEffect === true || sideEffect === 'write')) return null;
   if (audience.some((item) => INTERNAL_AUDIENCES.has(item))) return null;
@@ -127,20 +110,11 @@ function normalizeCapability(capability, role) {
   };
 }
 
-function sourceCapabilities({ registry, role, context, tools }) {
-  if (registry && typeof registry.getCapabilityProfile === 'function') {
-    const profile = registry.getCapabilityProfile(role, context);
-    if (profile && typeof profile === 'object') return { profile, capabilities: profile.capabilities ?? [] };
-  }
-  if (registry && typeof registry.getProfile === 'function') {
-    const profile = registry.getProfile(role, context);
-    if (profile && typeof profile === 'object') return { profile, capabilities: profile.capabilities ?? [] };
-  }
-  if (registry && typeof registry.listTools === 'function') {
-    return { profile: null, capabilities: registry.listTools(null, context) ?? [] };
-  }
-  const catalog = tools ?? listTools();
-  return { profile: null, capabilities: catalog.filter((capability) => CURRENT_AGENT_OPERATIONS.has(operationOf(capability))) };
+function sourceCapabilities({ registry, role, context }) {
+  if (!registry || typeof registry.getCapabilityProfile !== 'function') throw new TypeError('capability profile requires a Service Registry');
+  const profile = registry.getCapabilityProfile(role, context);
+  if (!profile || !Array.isArray(profile.capabilities)) throw new TypeError('Registry returned an invalid capability profile');
+  return { profile, capabilities: profile.capabilities };
 }
 
 function normalizeServices(capabilities, profileServices = []) {
@@ -181,10 +155,10 @@ function normalizeServices(capabilities, profileServices = []) {
  * profiles are authoritative; the built-in catalog fallback is only for the
  * projection and is intentionally normalized through the same projection.
  */
-export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = null, context = {}, tools = null, runtimeCapabilities = [] } = {}) {
+export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = null, context = {} } = {}) {
   const canonical = canonicalRole(role);
-  const source = sourceCapabilities({ registry, role: canonical, context: { ...context, runtimeCapabilities }, tools });
-  const candidates = [...(source.capabilities ?? []), ...runtimeCapabilities];
+  const source = sourceCapabilities({ registry, role: canonical, context });
+  const candidates = source.capabilities ?? [];
   const normalizedCapabilities = candidates
     .map((capability) => normalizeCapability(capability, canonical))
     .filter(Boolean)
@@ -238,44 +212,5 @@ export function buildCapabilityProfile({ role = AGENT_ROLES.BOUND, registry = nu
     profile_hash: profileHash,
     capabilities: disambiguatedCapabilities,
     services: normalizeServices(disambiguatedCapabilities, source.profile?.services),
-  };
-}
-
-export function profileToolNames(profile) {
-  return [...(profile?.capabilities ?? [])]
-    .map((capability) => capability.tool_name ?? capability.name)
-    .filter((name) => typeof name === 'string' && name.length > 0)
-    .sort();
-}
-
-export function capabilityDirectory(profile) {
-  const lines = [];
-  for (const service of profile?.services ?? []) {
-    lines.push(`- ${service.title || service.id}${service.purpose ? ` — ${service.purpose}` : ''}`);
-    for (const name of service.capabilities) {
-      const capability = profile.capabilities.find((candidate) => (candidate.tool_name ?? candidate.name) === name && candidate.service_id === service.id);
-      if (!capability) continue;
-      const guidance = capability.help?.when ?? capability.help?.usage ?? capability.help?.summary ?? null;
-      const effect = capability.side_effect === false || capability.side_effect === 'read' ? 'read-only' : 'writes state';
-      const schema = capability.input_schema && typeof capability.input_schema === 'object' && !Array.isArray(capability.input_schema)
-        ? capability.input_schema
-        : {};
-      const required = Array.isArray(schema.required) ? schema.required : [];
-      const properties = schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)
-        ? Object.keys(schema.properties).sort()
-        : [];
-      const inputSummary = `inputs required=[${required.join(',') || 'none'}] fields=[${properties.join(',') || 'none'}]`;
-      lines.push(`  - swarmenv_${name}: ${capability.description || 'Use the registered capability.'} (logical operation ${capability.service_id}.${capability.operation}; ${effect}; ${inputSummary}${guidance ? `; ${guidance}` : ''})`);
-    }
-  }
-  return lines.length > 0 ? lines.join('\n') : '- No callable provider capabilities are available in this Session.';
-}
-
-export function profileSnapshot(profile) {
-  return {
-    profile_version: profile?.profile_version ?? PROFILE_VERSION,
-    profile_hash: profile?.profile_hash ?? null,
-    role: profile?.role ?? null,
-    capabilities: profileToolNames(profile),
   };
 }

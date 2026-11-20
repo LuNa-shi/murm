@@ -264,8 +264,6 @@ function compactTask(value) {
   return dashboardValue({
     task_id: value.task_id,
     owner_ref: value.owner_ref,
-    task_type: value.task_type,
-    task_type_version: value.task_type_version,
     goal: value.goal,
     priority: value.priority,
     state: value.state,
@@ -304,8 +302,8 @@ function compactMaterial(value) {
     scope: value.scope,
     evidence_state: value.evidence_state,
     version: value.version,
-    source_task: value.source_task,
-    source_execution: value.source_execution,
+    producer_task_id: value.producer_task_id,
+    producer_execution_id: value.producer_execution_id,
     supersedes: value.supersedes,
     summary: overviewText(value.summary),
     description: overviewText(value.description),
@@ -461,7 +459,6 @@ function reportSummary(report) {
     state_time_ms: parallelism.state_time_ms ?? null,
     task_tree: (project.task_tree ?? []).map((task) => ({
       task_id: task.task_id,
-      task_type: task.task_type ?? null,
       goal: task.goal ?? null,
       state: task.state ?? task.task_state ?? null,
     })),
@@ -721,7 +718,7 @@ export class ObservabilityServer {
         send(response, 404, { ok: false, error: { code: 'NOT_FOUND', message: `unknown task: ${taskId}` } });
         return;
       }
-      send(response, 200, { task, children: [], executions: this.taskService.listExecutions(taskId) });
+      send(response, 200, { task, executions: this.taskService.listExecutions(taskId) });
       return;
     }
     if (parts[1] === 'tasks' && parts.length >= 3) {
@@ -734,7 +731,7 @@ export class ObservabilityServer {
         return;
       }
       const executions = [...new Set(events.map((event) => event.execution_id).filter(Boolean))].map((executionId) => this.#executionFromEvents(experimentId, executionId));
-      send(response, 200, { task: { task_id: taskId, state: this.#latestTaskState(events), task_type: this.#latestTaskField(events, 'task_type') }, children: [], executions, events });
+      send(response, 200, { task: { task_id: taskId, state: this.#latestTaskState(events) }, executions, events });
       return;
     }
     if (parts[1] === 'context' && parts[2] === 'materials' && this.contextService) {
@@ -907,8 +904,6 @@ export class ObservabilityServer {
           insight.task = dashboardValue({
             task_id: task.task_id,
             owner_ref: task.owner_ref,
-            task_type: task.task_type,
-            task_type_version: task.task_type_version,
             goal: task.goal,
             expected_output: task.expected_output,
             priority: task.priority,
@@ -1041,8 +1036,8 @@ export class ObservabilityServer {
       scope: material.scope,
       evidence_state: material.evidence_state,
       version: material.version,
-      source_task: material.source_task,
-      source_execution: material.source_execution,
+      producer_task_id: material.producer_task_id,
+      producer_execution_id: material.producer_execution_id,
       supersedes: material.supersedes,
       created_at: material.created_at,
       content_ref: material.content_ref,

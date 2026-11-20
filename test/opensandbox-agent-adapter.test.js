@@ -18,8 +18,9 @@ class FakeSandboxManager {
 
 test('OpenSandbox Agent adapter keeps Pi RPC inside the provider worker', async () => {
   const manager = new FakeSandboxManager();
-  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi', systemPrompt: BOT_SYSTEM_PROMPT });
+  const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', systemPrompt: BOT_SYSTEM_PROMPT });
   const session = await adapter.start({ executionId: 'execution-remote', bot: { bot_id: 'execution-remote' }, sessionId: 'session-remote', agentPrompt: 'inspect the task' });
+  assert.equal(manager.started.command, 'pi');
   assert.equal(manager.started.cwd, '/workspace/project');
   assert.deepEqual(manager.started.args.slice(0, 2), ['--mode', 'rpc']);
   assert.equal(manager.started.args.includes('--no-builtin-tools'), false);
@@ -101,8 +102,8 @@ test('adapter shutdown joins an in-flight provider creation and prevents a late 
   await assert.rejects(adapter.start({ executionId: 'after-shutdown', bot: { bot_id: 'after-shutdown' } }), /stopping/);
 });
 
-test('registered Bots reject the retired Service-tool extension', () => {
-  assert.throws(() => createOpenSandboxAgentAdapter({ sandboxManager: new FakeSandboxManager(), extensionPath: '/opt/swarmenv/src/agent/swarmenv-extension.mjs' }), /extensions are retired/);
+test('Agent startup rejects a launcher outside direct Pi before provider allocation', () => {
+  assert.throws(() => createOpenSandboxAgentAdapter({ sandboxManager: new FakeSandboxManager(), command: 'alternate-launcher' }), /requires direct Pi/);
 });
 
 test('OpenSandbox Agent adapter forwards only configured service environment and explicit secrets', async () => {
@@ -136,11 +137,10 @@ test('OpenSandbox Agent adapter forwards only configured service environment and
 
 test('OpenSandbox Agent adapter records versions resolved inside the provider guest', async () => {
   const manager = new FakeSandboxManager();
-  manager.agentVersions = async () => ({ piVersion: '1.3.0', nurouterVersion: '0.2.16', nodeVersion: '22.19.0' });
+  manager.agentVersions = async () => ({ piVersion: '1.3.0', nodeVersion: '22.19.0' });
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, provider: 'openai', model: 'gpt-6.1-sol', command: 'pi' });
   const session = await adapter.start({ executionId: 'execution-versions', bot: { bot_id: 'execution-versions' }, sessionId: 'session-versions' });
   assert.equal(session.manifest.pi_version, '1.3.0');
-  assert.equal(session.manifest.nurouter_version, null);
   assert.equal(session.manifest.node_version, '22.19.0');
 });
 
@@ -246,7 +246,7 @@ test('budgeted adapter strips upstream credentials and revokes local access befo
   manager.stopAgent = async () => { assert.ok(revoked.includes('budget-bot')); await originalStop(); };
   const adapter = createOpenSandboxAgentAdapter({ sandboxManager: manager, modelAccess: access, command: 'pi', provider: 'gpt_proxy', model: 'fixed',
     env: { SWARMENV_BRIDGE_TOKEN: 'bridge-token', PI_OTHER_BASE_URL: 'http://alternate' },
-    secretEnv: { PI_GPT_PROXY_API_KEY: 'upstream-secret', OPENAI_API_KEY: 'other-secret', NUROUTER_TOKEN: 'router-secret' } });
+    secretEnv: { PI_GPT_PROXY_API_KEY: 'upstream-secret', OPENAI_API_KEY: 'other-secret', UNUSED_TOKEN: 'unused-secret' } });
   const session = await adapter.start({ executionId: 'budget-bot', bot: { bot_id: 'budget-bot' } });
   assert.deepEqual(manager.started.secretEnvironment, { SWARMENV_BRIDGE_TOKEN: 'bridge-token', PI_GPT_PROXY_API_KEY: 'local-bot-token' });
   assert.equal(manager.started.env.PI_OTHER_BASE_URL, undefined);

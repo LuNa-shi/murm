@@ -17,7 +17,7 @@ Identify the tested Issue contract, code commit and clean state, actual inputs, 
 
 - Source-verified, deterministic tests, controlled probes and natural Agent runs are different evidence classes.
 - Missing sources or links are **unknown**, not zero. For a formal run, absent preregistration or unmatched comparison must be identified as retrospective or diagnostic-only.
-- Compare operations with the exact run schema or source commit; otherwise mark `schema unavailable`.
+- Start with the Architecture at the run commit. For each disputed decision, trace the Bot startup instructions, CLI help or discovery response, authenticated Bridge binding and provider operation that were available at that moment. Locate the actual request and returned content by ID. A stored column, Runtime maintenance operation or term from a different release supplies no evidence that this Bot saw a choice. If the run contract cannot be recovered, mark `schema unavailable`.
 - A source path that is only checked statically is `source-verified only`; missing runtime evidence remains unknown.
 - Preserve stable IDs. Do not assign an ambiguous record to the latest Session simply because the Core or timestamp is similar. Do not infer hidden model reasoning.
 
@@ -27,29 +27,21 @@ Follow a concrete Task through admission, claim, Runtime binding, effective work
 
 ### 2. Coordination question
 
-Build a **Task window** from proposal through all Executions and a **Material window** from production through intended recipient, read, decision and downstream action. A read or count alone does not prove reuse or value. Historical labels such as `closed at child scope` describe old evidence only.
+Build a **Task window** from proposal through all Executions and a **Material window** from production through intended recipient, read, decision and downstream action. For a task-selection question, compare the chosen responsibility with alternatives visible at that timestamp. Trace its deliverable through actual consumption, Workspace revision, integration on main and the fixed Mission submission wherever those steps occurred. Measure which Mission obligations that evidence settles.
 
 ### 3. Execution question
 
 Keep Task, Execution, identity, Session, Core, Workspace and revision separate. Establish predecessor/successor evidence and summarize each meaningful work window as Target, Action, Immediate result and Next effect. Preserve unknown lineage.
 
-### 4. Tool contract question
+### 4. Tools/Judge question
 
 For every recorded request/response pair, compare the expected result with the actual result and the Agent reaction. Keep checker infrastructure failures separate from mathematical source failures; a replay or cache hit is not a new research iteration.
 
-## Evidence reconstruction
+## Decision reconstruction for long runs
 
-Use [references/evidence-map.md](references/evidence-map.md) and trace each relevant Task from proposal/admission through Execution, delivery and termination.
+Use [the evidence map](references/evidence-map.md) for the ledger and joins. Account for every Bot, including selection without a take and gaps in the trace. At important decisions identify the timestamp, Mission gap, information actually returned, any stated rationale, chosen action, available alternatives and later effect. Distinguish an inferred motive from a recorded explanation. Prior reports can locate evidence. Verify conclusions against the original records for this run.
 
-**Orchestration:** Task selection, claim, authoritative owner/Execution, Runtime binding, waiting, release and cleanup. Distinguish ready work, discovery, productive execution and waiting.
-
-**Coordination:** Material producer, recipient, delivery, read, decision and subsequent action. A read or count alone does not establish useful reuse. Preserve each recipient's independent decision.
-
-**Execution:** Keep Task, Execution, identity, Session, Core, Workspace and revision separate. For meaningful windows explain target, action, immediate result and next effect. Establish actual predecessor/successor lineage and distinguish handoff, expiry, fencing and cleanup.
-
-**Tools/Judge:** Link requests, responses, error/diagnostic codes and subsequent action. Preserve Candidate input/checker/environment identity. A replay or cache hit is not necessarily an independent research iteration; checker source failure is not infrastructure failure.
-
-Group routine calls compactly and report mismatches with concrete evidence IDs and competing explanations.
+To distinguish a missed problem, repeated local choices and a short time budget, locate the earliest recorded recognition of each unresolved prerequisite. Follow the ensuing proposals, takes, deliveries and actual downstream use. At the cutoff record ready work, blockers and recent verified progress toward the missing obligations. Projected benefit from more time remains uncertain until a matched extension tests it.
 
 ## Report
 

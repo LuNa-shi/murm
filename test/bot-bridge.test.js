@@ -228,6 +228,14 @@ test('Bot public discovery refuses foreign Mission/Task identities and does not 
   const foreign = service.createTask({ mission_id: 'mission:foreign', gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect a distinct question in the foreign Mission', expected_output: 'Note', acceptance_conditions: ['Note'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
   await assert.rejects(bridge.call({ operation: 'task_view', payload: { task_id: foreign.task_id } }), /not readable/);
   await assert.rejects(bridge.call({ operation: 'task_list', payload: { mission_id: 'mission:foreign' } }), /Bot Mission/);
+  const task = summary => ({ mission_id: 'mission:auth', summary,
+    expected_output: 'A reusable result', acceptance_conditions: ['Result is readable'] });
+  const prerequisite = service.createTask(task('Check a prerequisite'), makeEnvelope({ actorRef: 'operator:test' })).task;
+  const dependent = service.createTask({ ...task('Use the checked prerequisite'), depends_on: [prerequisite.task_id] },
+    makeEnvelope({ actorRef: 'operator:test' })).task;
+  service.reconcileTask(dependent.task_id);
+  const blocked = await bridge.call({ operation: 'task_list', payload: { states: ['BLOCKED'] } });
+  assert.deepEqual(blocked.tasks.map(row => row.task_id), [dependent.task_id]);
   service.takeTask(foreign.task_id, { owner_ref: 'operator:foreign', core_id: 'foreign-core', take_key: 'foreign-take' });
   const status = await bridge.call({ operation: 'task_status', payload: {} });
   assert.deepEqual(status.lanes, []);

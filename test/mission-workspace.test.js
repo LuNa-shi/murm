@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MissionWorkspace, candidateFileRef } from '../src/runtime/mission-workspace.js';
-import { ServicesRouter } from '../src/sdk/service-router.js';
+import { dispatchMissionWorkspaceRead } from '../src/sdk/builtin-registry.js';
 
 test('MissionWorkspace keeps public immutable revisions separate from main and merges whole trees', async () => {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
@@ -66,16 +66,6 @@ test('MissionWorkspace apply materializes a public revision and freezes main dur
   await store.merge({ workspaceId: created.workspace_id, fromRevision: saved.revision, expectedMainRevision: '0.1' });
 });
 
-test('ServicesRouter exposes public Workspace reads and Mission submission as async operations', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
-  const workspace = new MissionWorkspace({ rootDir: root });
-  const created = await workspace.create({ missionId: 'mission:router', workspaceId: 'workspace-router', initialFiles: { 'notes.md': 'router' } });
-  const router = new ServicesRouter({ missionWorkspace: workspace });
-  const listing = await router.dispatchAsync('workspace_public_files', { workspace_id: created.workspace_id }, { actor_ref: 'bot:reader' });
-  assert.equal(listing.files[0].path, 'notes.md');
-  assert.throws(() => router.dispatch('workspace_public_files', { workspace_id: created.workspace_id }, { actor_ref: 'bot:reader' }), { code: 'SERVICE_UNAVAILABLE' });
-});
-
 test('public workspace pages pin revisions and reject a cursor for a different query', async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -123,7 +113,7 @@ test('concurrent creation across workspace stores allows one repository per Miss
   assert.equal((await stores[0].create({ missionId: 'M-other', workspaceId: 'W-other' })).mission_id, 'M-other');
 });
 
-test('Workspace Router and registry keep public diff inside the registered Bot Mission', async t => {
+test('Workspace registry keeps public diff inside the registered Bot Mission', async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-mission-workspace-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const missionWorkspace = new MissionWorkspace({ rootDir: root });
@@ -131,13 +121,9 @@ test('Workspace Router and registry keep public diff inside the registered Bot M
   await missionWorkspace.create({ missionId: 'foreign', workspaceId: 'W-foreign', initialFiles: { 'foreign.txt': 'foreign' } });
   const taskService = { getBot: actor => actor === 'B-own' ? { mission_id: 'own' } : null };
   const envelope = { actor_ref: 'B-own' };
-  const routers = [
-    new ServicesRouter({ taskService, missionWorkspace }),
-    new ServicesRouter({ taskService, missionWorkspace, registry: { listTools: () => [] } }),
-  ];
-  for (const router of routers) {
+  {
     const payload = { workspace_id: 'W-own', from: 'main', to: 'main' };
-    assert.equal((await router.dispatchAsync('workspace_public_diff', payload, envelope)).from.revision, '0.1');
-    await assert.rejects(router.dispatchAsync('workspace_public_diff', { ...payload, workspace_id: 'W-foreign' }, envelope), { code: 'NOT_ALLOWED' });
+    assert.equal((await dispatchMissionWorkspaceRead({ taskService, missionWorkspace }, 'workspace_public_diff', payload, envelope)).from.revision, '0.1');
+    await assert.rejects(dispatchMissionWorkspaceRead({ taskService, missionWorkspace }, 'workspace_public_diff', { ...payload, workspace_id: 'W-foreign' }, envelope), { code: 'NOT_ALLOWED' });
   }
 });

@@ -622,7 +622,7 @@
         "docs/architecture/02-execution.md",
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Sandbox-resident Pi/NuRouter worker and authenticated RPC/event HTTP surface"
+      "role": "Sandbox-resident Pi worker and authenticated RPC/event HTTP surface"
     },
     {
       "path": "scripts/project-install.mjs",
@@ -837,16 +837,6 @@
       "role": "Native Pi compatible-provider catalog with runtime environment interpolation"
     },
     {
-      "path": "src/agent/agent-prompt.js",
-      "category": "Agent and prompts",
-      "chapters": [
-        "docs/architecture/01-agent-core.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Stable identity SOP, prompt compositions, task-loop guide and hashes"
-    },
-    {
       "path": "src/agent/bot-contract.js",
       "category": "Agent and prompts",
       "chapters": [
@@ -942,7 +932,7 @@
         "docs/architecture/02-execution.md",
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Pi/NuRouter RPC adapter over an OpenSandbox worker endpoint"
+      "role": "Pi RPC adapter over an OpenSandbox worker endpoint"
     },
     {
       "path": "src/agent/pi-adapter.js",
@@ -973,16 +963,6 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Authenticated per-Core tool endpoint, binding and lifecycle orchestration"
-    },
-    {
-      "path": "src/agent/swarmenv-extension.mjs",
-      "category": "Agent and prompts",
-      "chapters": [
-        "docs/architecture/01-agent-core.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Pi named-tool registration and bounded text results"
     },
     {
       "path": "src/agent/version-manifest.js",
@@ -1512,17 +1492,6 @@
       "role": "Provider-compatible Mission, Bot and Execution identity labels"
     },
     {
-      "path": "src/runtime/runtime-capabilities.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Exact local Workspace/Sandbox/progress/lifecycle tool declarations"
-    },
-    {
       "path": "src/runtime/runtime.js",
       "category": "Execution and control",
       "chapters": [
@@ -1532,15 +1501,6 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Registered Bot binding, physical resource ownership, failure cleanup, fencing and rotation"
-    },
-    {
-      "path": "src/runtime/sandbox-manager.js",
-      "category": "Workspace and Sandbox",
-      "chapters": [
-        "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/09-known-boundaries.md"
-      ],
-      "role": "Docker image/container lifecycle, bounded command transport and job registry"
     },
     {
       "path": "src/runtime/task-controller.js",
@@ -1627,15 +1587,6 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Independent service transport, authorization, lifecycle and deployment"
-    },
-    {
-      "path": "src/sdk/http-domain-proxy.js",
-      "category": "service and Agent integration",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Bounded HTTP proxy for synchronous cross-domain service dependencies in isolated hosts"
     },
     {
       "path": "src/sdk/independent-services.js",
@@ -1766,26 +1717,6 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Provider registration, profile projection, readiness cache and invocation"
-    },
-    {
-      "path": "src/sdk/service-router.js",
-      "category": "services and contracts",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/10-service-api-reference.md",
-        "docs/architecture/11-storage-reference.md"
-      ],
-      "role": "Synchronous local control-plane routing and fallback operation sets"
-    },
-    {
-      "path": "src/sdk/services-sdk.js",
-      "category": "services and contracts",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/10-service-api-reference.md",
-        "docs/architecture/11-storage-reference.md"
-      ],
-      "role": "Public typed-by-convention wrappers and authorization envelope construction"
     },
     {
       "path": "src/services/mathlib-search-service.js",

@@ -1,17 +1,17 @@
+import { createDomainCommandClient } from './coordinator-peer-client.js';
 import { createHash } from 'node:crypto';
-import { createHttpDomainProxy } from './http-domain-proxy.js';
 import { ServiceCommitGate } from './service-commit-gate.js';
 import { captureServiceAuthority } from './service-authority-snapshot.js';
 import { CONTEXT_READ_METHODS, CONTEXT_READ_OPERATIONS } from './context-service-peer.js';
 import { stableStringify } from '../protocol/envelope.js';
-import { SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 export class RemoteContextService {
   constructor({ taskService, url, token, timeoutMs = 15_000, logger = null }) {
     this.taskService = taskService;
     this.logger = logger;
     this.gate = new ServiceCommitGate(taskService);
-    this.peer = createHttpDomainProxy({ serviceId: 'context', url, token, timeoutMs, actorRef: 'service:coordinator' });
+    this.command = createDomainCommandClient({ url, token, timeoutMs });
     for (const method of CONTEXT_READ_METHODS) this[method] = (...args) => this.#call(method, args);
   }
   close() { /* independent service owns its database and lifetime */ }
@@ -30,7 +30,7 @@ export class RemoteContextService {
     const pending = this.gate.pending();
     if (!pending) { this.gate.deliverEvents(); return; }
     if (pending.command.service !== 'context') throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Another service commit awaits reconciliation');
-    const receipt = this.peer.dispatch('domain_command', pending);
+    const receipt = this.command(pending);
     this.#settle(pending, receipt);
   }
   #settle(admission, receipt) {
@@ -56,7 +56,7 @@ export class RemoteContextService {
       const value = command();
       return { gate_id: null, digest: createHash('sha256').update(stableStringify(value)).digest('hex'), command: value };
     })();
-    const receipt = this.peer.dispatch('domain_command', admission);
+    const receipt = this.command(admission);
     if (write) this.#settle(admission, receipt);
     if (receipt.error) throw new SwarmEnvError(receipt.error.code, receipt.error.message, receipt.error.details, { retryable: receipt.error.retryable });
     return receipt.result;

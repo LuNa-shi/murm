@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile as defaultExecFile } from 'node:child_process';
-import { cp, mkdir, mkdtemp, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { dirname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -8,7 +8,6 @@ import { stableStringify } from '../protocol/envelope.js';
 import { WorkspaceRepository } from './workspace-repository.js';
 import {
   assertReadableWorkspacePath,
-  assertWritableWorkspacePath,
   normalizeWorkspaceContract,
   validateRequiredWorkspaceInputs,
 } from './workspace-contract.js';
@@ -77,30 +76,6 @@ export class WorkspaceManager {
     this.rootDir = resolve(requireString(rootDir, 'rootDir'));
   }
 
-  async #initializeGit(workspaceRef, message = 'Initialize Execution Workspace') {
-    await writeFile(join(workspaceRef, '.gitignore'), [
-      '.swarm/', '.env', '.env.*', '*.sqlite', '*.sqlite3', '*.db',
-      'experiments/', 'logs/', 'node_modules/', '.lake/', 'dist/', 'build/',
-    ].join('\n') + '\n', 'utf8');
-    await git(workspaceRef, ['init', '--initial-branch=main']);
-    await git(workspaceRef, ['add', '-A']);
-    await git(workspaceRef, ['-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid', 'commit', '--allow-empty', '-m', message]);
-    return git(workspaceRef, ['rev-parse', 'HEAD']);
-  }
-
-  async #commitWorkspace(workspaceRef, message) {
-    await git(workspaceRef, ['add', '-A']);
-    const status = await git(workspaceRef, ['status', '--porcelain']);
-    if (status) {
-      await git(workspaceRef, ['-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid', 'commit', '-m', message]);
-    }
-    return git(workspaceRef, ['rev-parse', 'HEAD']);
-  }
-
-  async #gitCommit(workspaceRef) {
-    return git(workspaceRef, ['rev-parse', 'HEAD']);
-  }
-
   workspacePath(executionId) {
     const id = requireString(executionId, 'execution_id');
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(id)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'execution_id is not a safe workspace path segment');
@@ -108,7 +83,7 @@ export class WorkspaceManager {
   }
 
   async createWorkspace(options) {
-    if (!options.publicSnapshot) return this.#createWorkspace(options);
+    if (!options.publicSnapshot) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'publicSnapshot is required for Execution preparation');
     const target = this.#assertWorkspacePath(options.workspaceRef ?? this.workspacePath(options.executionId));
     await mkdir(this.rootDir, { recursive: true });
     await this.#assertNoSymlinkAncestors(this.rootDir, target);
@@ -134,12 +109,11 @@ export class WorkspaceManager {
     });
   }
 
-  async #createWorkspace({ executionId, fencingVersion, task, workspaceManifest, workspaceRef = this.workspacePath(executionId), inputSnapshotManifest = {}, runtimeManifest = {}, publicSnapshot = null, publishedWorkspaceRef = workspaceRef }) {
+  async #createWorkspace({ executionId, fencingVersion, task, workspaceRef = this.workspacePath(executionId), publicSnapshot, publishedWorkspaceRef = workspaceRef }) {
     workspaceRef = this.#assertWorkspacePath(workspaceRef);
     await mkdir(this.rootDir, { recursive: true });
     await this.#assertNoSymlinkAncestors(this.rootDir, workspaceRef);
     await mkdir(join(workspaceRef, META_DIR, 'revisions'), { recursive: true });
-    await mkdir(join(workspaceRef, META_DIR, 'checkpoints'), { recursive: true });
     const metadataPath = join(workspaceRef, META_DIR, META_FILE);
     if (await exists(metadataPath)) {
       const existing = await this.#readMetadata(workspaceRef);
@@ -153,36 +127,7 @@ export class WorkspaceManager {
     }
     const taskWorkspace = task.workspace && typeof task.workspace === 'object' ? task.workspace : {};
     const workspaceContract = normalizeWorkspaceContract(taskWorkspace);
-    const files = publicSnapshot ? publicSnapshot.files : {
-      'README.md': [
-        `# ${task.goal}`,
-        '',
-        `Expected output: ${task.expected_output}`,
-        '',
-        'Acceptance conditions:',
-        '```json',
-        JSON.stringify(task.acceptance_conditions ?? {}, null, 2),
-        '```',
-        '',
-        'Task instructions:',
-        task.task_instructions ?? '',
-        '',
-      ].join('\n'),
-      'workspace-manifest.json': JSON.stringify({
-        task_id: task.task_id,
-        task_type: task.task_type,
-        goal: task.goal,
-        expected_output: task.expected_output,
-        workspace: taskWorkspace,
-        workspace_contract: workspaceContract,
-        workspace_manifest: workspaceManifest ?? null,
-        input_snapshot: inputSnapshotManifest,
-      }, null, 2),
-      'runtime-manifest.json': JSON.stringify(runtimeManifest, null, 2),
-    };
-    if (!publicSnapshot && typeof taskWorkspace.formal_source === 'string' && taskWorkspace.formal_source.length > 0) {
-      files[taskWorkspace.problem_file ?? 'problem.lean'] = taskWorkspace.formal_source;
-    }
+    const files = publicSnapshot.files;
     const fileManifest = Object.create(null);
     const normalizedFiles = Object.entries(files).map(([inputPath, content]) => [safePath(inputPath), content]);
     for (const [relativePath, content] of normalizedFiles) {
@@ -194,12 +139,10 @@ export class WorkspaceManager {
       fileManifest[relativePath] = contentEntry(content);
     }
     validateRequiredWorkspaceInputs(fileManifest, workspaceContract);
-    if (publicSnapshot && stableStringify(fileManifest) !== stableStringify(publicSnapshot.manifest)) {
+    if (stableStringify(fileManifest) !== stableStringify(publicSnapshot.manifest)) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Initial project bytes do not match the public revision manifest');
     }
-    const gitCommit = publicSnapshot
-      ? (await new WorkspaceRepository().createInitialTree(workspaceRef, files)).commit
-      : await this.#initializeGit(workspaceRef);
+    const gitCommit = (await new WorkspaceRepository().createInitialTree(workspaceRef, files)).commit;
     const metadata = {
       execution_id: executionId,
       workspace_ref: publishedWorkspaceRef,
@@ -210,9 +153,7 @@ export class WorkspaceManager {
       git_worktree: publishedWorkspaceRef,
       files: fileManifest,
       workspace_contract: workspaceContract,
-      public_workspace_input: publicSnapshot ? Object.fromEntries(Object.entries(publicSnapshot).filter(([key]) => key !== 'files')) : null,
-      checkpoint_ref: null,
-      checkpoint_hash: null,
+      public_workspace_input: Object.fromEntries(Object.entries(publicSnapshot).filter(([key]) => key !== 'files')),
       changed_files: Object.keys(fileManifest),
       released_at: null,
       created_at: new Date().toISOString(),
@@ -221,180 +162,6 @@ export class WorkspaceManager {
     await this.#writeMetadata(workspaceRef, metadata);
     await this.#writeRevisionSnapshot(workspaceRef, metadata);
     return this.#publicMetadata(metadata);
-  }
-
-  /**
-   * Materialize a new Workspace from a prior revision. A resumed Execution
-   * gets its own writable directory while retaining explicit parent lineage;
-   * the source Workspace is never re-owned by the new Execution.
-   */
-  async cloneWorkspace({ sourceWorkspaceRef, targetWorkspaceRef, executionId, fencingVersion, revision = null, task, workspaceManifest = {}, inputSnapshotManifest = {}, runtimeManifest = {} }) {
-    const source = await this.#readMetadata(sourceWorkspaceRef);
-    const workspaceContract = normalizeWorkspaceContract(task?.workspace ?? {}, source.workspace_contract ?? null);
-    const selectedRevision = revision ?? source.workspace_revision;
-    if (!Number.isInteger(selectedRevision) || selectedRevision < 1 || selectedRevision > source.workspace_revision) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace revision is outside the source Workspace history');
-    }
-    const revisionPath = join(source.workspace_ref, META_DIR, 'revisions', `${selectedRevision}.json`);
-    const selected = JSON.parse(await readFile(revisionPath, 'utf8'));
-    const selectedSnapshotRoot = join(source.workspace_ref, META_DIR, 'revisions', String(selectedRevision), 'files');
-    const target = this.#assertWorkspacePath(targetWorkspaceRef);
-    await this.#assertNoSymlinkAncestors(this.rootDir, target);
-    if (target === source.workspace_ref) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'resumed Workspace must use a new writable path');
-    const existingMetadataPath = join(target, META_DIR, META_FILE);
-    if (await exists(existingMetadataPath)) {
-      const existing = await this.#readMetadata(target);
-      if (existing.execution_id !== executionId || existing.fencing_version !== fencingVersion) {
-        throw new SwarmEnvError(ERROR_CODES.FENCED, 'target Workspace already belongs to another execution fence');
-      }
-      return this.#publicMetadata(existing);
-    }
-    const gitSourceCommit = selected.git_commit ?? source.git_commit ?? null;
-    if (gitSourceCommit) {
-      // Each Execution receives an independent Git checkout.  Restoring a
-      // Progress revision is an exact commit checkout, not a best-effort copy
-      // of the source directory's current files.
-      await mkdir(dirname(target), { recursive: true });
-      await execFile('git', ['clone', '--no-local', source.workspace_ref, target], { timeout: 30_000, maxBuffer: 2 * 1024 * 1024 })
-        .catch((error) => { throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `Workspace Git clone failed: ${error.message}`, undefined, { cause: error }); });
-      await git(target, ['checkout', '--detach', gitSourceCommit]);
-      await mkdir(join(target, META_DIR, 'revisions'), { recursive: true });
-      await mkdir(join(target, META_DIR, 'checkpoints'), { recursive: true });
-    }
-    if (!gitSourceCommit) {
-      await mkdir(join(target, META_DIR, 'revisions'), { recursive: true });
-      await mkdir(join(target, META_DIR, 'checkpoints'), { recursive: true });
-    }
-    // A fork keeps the selected revision as its current tip, but its local
-    // revision history must still be usable for diffs and later forks. The
-    // source Workspace is already Runtime-owned and path-checked, so copy the
-    // inherited metadata and snapshots before materializing the new tip.
-    for (let inheritedRevision = 1; inheritedRevision < selectedRevision; inheritedRevision += 1) {
-      const inheritedMetadataPath = join(source.workspace_ref, META_DIR, 'revisions', `${inheritedRevision}.json`);
-      const inheritedSnapshotRoot = join(source.workspace_ref, META_DIR, 'revisions', String(inheritedRevision), 'files');
-      const inheritedMetadata = JSON.parse(await readFile(inheritedMetadataPath, 'utf8'));
-      await writeFile(join(target, META_DIR, 'revisions', `${inheritedRevision}.json`), JSON.stringify({
-        ...inheritedMetadata,
-        execution_id: executionId,
-        workspace_ref: target,
-        fencing_version: fencingVersion,
-      }, null, 2), 'utf8');
-      await cp(inheritedSnapshotRoot, join(target, META_DIR, 'revisions', String(inheritedRevision), 'files'), { recursive: true });
-    }
-    const files = {};
-    for (const [relativePath, file] of Object.entries(selected.files ?? {})) {
-      if (gitSourceCommit) {
-        // Older metadata may point at a commit created before a Runtime
-        // support file was added. Materialize that one file from the pinned
-        // revision snapshot rather than allowing a restore to fail halfway
-        // through startup; normal new Workspaces never take this path.
-        if (!(await exists(join(target, relativePath)))) {
-          const sourceFile = join(selectedSnapshotRoot, relativePath);
-          await this.#assertNoSymlinkAncestors(source.workspace_ref, sourceFile);
-          await mkdir(dirname(join(target, relativePath)), { recursive: true });
-          await writeFile(join(target, relativePath), await readFile(sourceFile));
-        }
-        files[relativePath] = { content_hash: file.content_hash, bytes: file.bytes };
-        continue;
-      }
-      let content;
-      try {
-        await this.#assertNoSymlinkAncestors(source.workspace_ref, join(source.workspace_ref, relativePath));
-        await this.#assertNoSymlinkAncestors(source.workspace_ref, join(selectedSnapshotRoot, relativePath));
-        content = await readFile(join(selectedSnapshotRoot, relativePath));
-      } catch (error) {
-        // Workspaces created before revision snapshots existed can still be
-        // resumed at their current revision. Refuse to silently fork stale
-        // historical metadata when the requested revision has no content.
-        if (error instanceof SwarmEnvError) throw error;
-        if (selectedRevision !== source.workspace_revision) {
-          throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `workspace revision content is unavailable: ${error.message}`, undefined, { cause: error });
-        }
-        content = await readFile(join(source.workspace_ref, relativePath));
-      }
-      const targetPath = join(target, relativePath);
-      await this.#assertNoSymlinkAncestors(target, targetPath);
-      await this.#assertWritableFileTarget(targetPath);
-      await mkdir(dirname(targetPath), { recursive: true });
-      await writeFile(targetPath, content);
-      files[relativePath] = { content_hash: file.content_hash, bytes: file.bytes };
-    }
-    const metadata = {
-      execution_id: executionId,
-      workspace_ref: target,
-      fencing_version: fencingVersion,
-      workspace_revision: selectedRevision,
-      content_hash: selected.content_hash,
-      files,
-      workspace_contract: workspaceContract,
-      checkpoint_ref: null,
-      checkpoint_hash: null,
-      released_at: null,
-      parent_workspace_ref: source.workspace_ref,
-      parent_workspace_revision: selectedRevision,
-      task_id: task?.task_id ?? null,
-      workspace_manifest: workspaceManifest,
-      input_snapshot: inputSnapshotManifest,
-      changed_files: selected.changed_files ?? Object.keys(files),
-      runtime_manifest: runtimeManifest,
-      git_commit: gitSourceCommit,
-      git_worktree: target,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    if (gitSourceCommit) {
-      // A source checkout already contains the selected commit.  Metadata is
-      // intentionally ignored by .gitignore and does not alter the restored
-      // commit identity.
-      metadata.git_commit = gitSourceCommit;
-    } else {
-      metadata.git_commit = await this.#initializeGit(target, 'Restore Workspace revision');
-    }
-    await this.#writeMetadata(target, metadata);
-    await this.#writeRevisionSnapshot(target, metadata);
-    return this.#publicMetadata(metadata);
-  }
-
-  async saveWorkspaceRevision({ workspaceRef, executionId, fencingVersion, files = {}, expectedRevision = undefined }) {
-    const metadata = await this.#assertWritable(workspaceRef, executionId, fencingVersion);
-    if (expectedRevision !== undefined && expectedRevision !== metadata.workspace_revision) {
-      throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'workspace_revision is stale', {
-        expected: metadata.workspace_revision,
-        received: expectedRevision,
-      });
-    }
-    const revision = metadata.workspace_revision + 1;
-    const nextFiles = { ...metadata.files };
-    const changedFiles = [];
-    for (const [inputPath, rawContent] of Object.entries(files)) {
-      const relativePath = assertWritableWorkspacePath(inputPath, metadata.workspace_contract ?? normalizeWorkspaceContract({}));
-      if (typeof rawContent !== 'string' && !Buffer.isBuffer(rawContent)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `workspace file content must be text: ${relativePath}`);
-      }
-      const content = Buffer.isBuffer(rawContent) ? rawContent : String(rawContent);
-      const target = join(workspaceRef, relativePath);
-      await this.#assertNoSymlinkAncestors(workspaceRef, target);
-      await this.#assertWritableFileTarget(target);
-      await mkdir(dirname(target), { recursive: true });
-      await writeFile(target, content);
-      nextFiles[relativePath] = contentEntry(content);
-      changedFiles.push(relativePath);
-    }
-    const gitCommit = await this.#commitWorkspace(workspaceRef, `Save Workspace revision ${metadata.workspace_revision + 1}`);
-    const next = {
-      ...metadata,
-      workspace_revision: revision,
-      content_hash: hash({ revision, files: nextFiles }),
-      files: nextFiles,
-      changed_files: changedFiles,
-      git_commit: gitCommit,
-      git_worktree: workspaceRef,
-      released_at: null,
-      updated_at: new Date().toISOString(),
-    };
-    await this.#writeMetadata(workspaceRef, next);
-    await this.#writeRevisionSnapshot(workspaceRef, next);
-    return this.#publicMetadata(next);
   }
 
   async listFiles({ workspaceRef, executionId, fencingVersion = undefined, path = '' }) {
@@ -412,149 +179,6 @@ export class WorkspaceManager {
       workspace_contract: metadata.workspace_contract ?? normalizeWorkspaceContract({}),
       files,
     };
-  }
-
-  /**
-   * Read a public, immutable revision without taking ownership of the
-   * execution worktree. This is the read path used during task selection and
-   * by successor executions. The revision is resolved before the filesystem
-   * scan so callers can safely paginate against a fixed version.
-   */
-  async listFilesAtRevision({ workspaceRef, revision = undefined, path = '' }) {
-    const metadata = await this.#readMetadata(workspaceRef);
-    const selected = await this.#revisionMetadata(metadata, revision ?? metadata.workspace_revision);
-    const prefix = safeDirectoryPath(path);
-    const files = Object.entries(selected.files ?? {})
-      .filter(([relativePath]) => !prefix || relativePath === prefix || relativePath.startsWith(`${prefix}/`))
-      .map(([relativePath, file]) => ({ path: relativePath, type: 'file', ...file }))
-      .sort((left, right) => left.path.localeCompare(right.path));
-    return {
-      workspace_ref: metadata.workspace_ref,
-      workspace_revision: selected.workspace_revision,
-      git_commit: selected.git_commit ?? null,
-      content_hash: selected.content_hash,
-      files,
-    };
-  }
-
-  async readWorkspaceFileAtRevision({ workspaceRef, revision = undefined, path, maxBytes = 1_000_000 }) {
-    const metadata = await this.#readMetadata(workspaceRef);
-    const selected = await this.#revisionMetadata(metadata, revision ?? metadata.workspace_revision);
-    const relativePath = safePath(path);
-    const entry = selected.files?.[relativePath];
-    if (!entry) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace file is unavailable at the requested revision');
-    if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 10_000_000) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'max_bytes must be an integer between 1 and 10000000');
-    }
-    const snapshot = join(metadata.workspace_ref, META_DIR, 'revisions', String(selected.workspace_revision), 'files', relativePath);
-    await this.#assertNoSymlinkAncestors(join(metadata.workspace_ref, META_DIR, 'revisions', String(selected.workspace_revision), 'files'), snapshot);
-    await this.#assertReadableFileTarget(snapshot);
-    const content = await readFile(snapshot);
-    return {
-      workspace_ref: metadata.workspace_ref,
-      workspace_revision: selected.workspace_revision,
-      git_commit: selected.git_commit ?? null,
-      path: relativePath,
-      content: content.subarray(0, maxBytes).toString('utf8'),
-      content_hash: entry.content_hash,
-      bytes: content.byteLength,
-      truncated: content.byteLength > maxBytes,
-    };
-  }
-
-  async searchWorkspaceAtRevision({ workspaceRef, revision = undefined, query, path = '', maxResults = 100 }) {
-    requireString(query, 'search query');
-    if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 1000) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'max_results must be an integer between 1 and 1000');
-    }
-    const listing = await this.listFilesAtRevision({ workspaceRef, revision, path });
-    const matches = [];
-    for (const file of listing.files) {
-      if (matches.length >= maxResults) break;
-      const result = await this.readWorkspaceFileAtRevision({ workspaceRef, revision: listing.workspace_revision, path: file.path, maxBytes: 10_000_000 });
-      const lines = result.content.split(/\r?\n/);
-      for (let index = 0; index < lines.length && matches.length < maxResults; index += 1) {
-        if (lines[index].includes(query)) matches.push({ path: file.path, line: index + 1, text: lines[index] });
-      }
-    }
-    return { workspace_ref: listing.workspace_ref, workspace_revision: listing.workspace_revision, query, matches, truncated: matches.length >= maxResults };
-  }
-
-  async listPublicRevisions({ workspaceRef }) {
-    const metadata = await this.#readMetadata(workspaceRef);
-    const revisionDir = join(metadata.workspace_ref, META_DIR, 'revisions');
-    const names = await readdir(revisionDir);
-    const revisions = [];
-    for (const name of names.filter((candidate) => /^\d+\.json$/.test(candidate)).sort((left, right) => Number(left.slice(0, -5)) - Number(right.slice(0, -5)))) {
-      const revision = JSON.parse(await readFile(join(revisionDir, name), 'utf8'));
-      revisions.push({
-        workspace_ref: metadata.workspace_ref,
-        workspace_revision: revision.workspace_revision,
-        content_hash: revision.content_hash,
-        git_commit: revision.git_commit ?? null,
-        changed_files: revision.changed_files ?? [],
-      });
-    }
-    return revisions;
-  }
-
-  async readWorkspaceFile({ workspaceRef, executionId, fencingVersion = undefined, path, maxBytes = 1_000_000 }) {
-    const metadata = await this.#readOwnedMetadata({ workspaceRef, executionId, fencingVersion });
-    const relativePath = assertReadableWorkspacePath(path, metadata.workspace_contract ?? normalizeWorkspaceContract({}), new Set(Object.keys(metadata.files ?? {})));
-    if (!Number.isInteger(maxBytes) || maxBytes < 1 || maxBytes > 10_000_000) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'max_bytes must be an integer between 1 and 10000000');
-    }
-    const target = join(metadata.workspace_ref, relativePath);
-    await this.#assertNoSymlinkAncestors(metadata.workspace_ref, target);
-    await this.#assertReadableFileTarget(target);
-    const content = await readFile(target);
-    const entry = metadata.files?.[relativePath] ?? contentEntry(content);
-    const truncated = content.byteLength > maxBytes;
-    return {
-      workspace_ref: metadata.workspace_ref,
-      workspace_revision: metadata.workspace_revision,
-      path: relativePath,
-      content: content.subarray(0, maxBytes).toString('utf8'),
-      content_hash: entry.content_hash,
-      bytes: content.byteLength,
-      truncated,
-    };
-  }
-
-  async diff({ workspaceRef, executionId, fencingVersion = undefined, fromRevision = null, toRevision = null }) {
-    const current = await this.#readOwnedMetadata({ workspaceRef, executionId, fencingVersion });
-    const from = await this.#revisionMetadata(current, fromRevision ?? Math.max(1, current.workspace_revision - 1));
-    const to = await this.#revisionMetadata(current, toRevision ?? current.workspace_revision);
-    const paths = new Set([...Object.keys(from.files ?? {}), ...Object.keys(to.files ?? {})]);
-    const changedFiles = [...paths].sort().flatMap((path) => {
-      const before = from.files?.[path] ?? null;
-      const after = to.files?.[path] ?? null;
-      if (before?.content_hash === after?.content_hash && before?.bytes === after?.bytes) return [];
-      return [{
-        path,
-        status: before === null ? 'added' : after === null ? 'removed' : 'modified',
-        before,
-        after,
-      }];
-    });
-    return {
-      workspace_ref: current.workspace_ref,
-      from_revision: from.workspace_revision,
-      to_revision: to.workspace_revision,
-      changed_files: changedFiles,
-    };
-  }
-
-  async saveCheckpoint({ workspaceRef, executionId, fencingVersion, checkpoint = {}, checkpointRef = randomUUID() }) {
-    const metadata = await this.#assertWritable(workspaceRef, executionId, fencingVersion);
-    const content = JSON.stringify({ execution_id: executionId, workspace_revision: metadata.workspace_revision, checkpoint }, null, 2);
-    const checkpointHash = textHash(content);
-    const ref = join(workspaceRef, META_DIR, 'checkpoints', `${checkpointRef}.json`);
-    await writeFile(ref, content, 'utf8');
-    const next = { ...metadata, checkpoint_ref: ref, checkpoint_hash: checkpointHash, updated_at: new Date().toISOString() };
-    await this.#writeMetadata(workspaceRef, next);
-    await this.#writeRevisionMetadata(workspaceRef, next);
-    return { checkpoint_ref: ref, checkpoint_hash: checkpointHash, workspace_revision: metadata.workspace_revision, git_commit: metadata.git_commit ?? null };
   }
 
   async restoreWorkspace({ workspaceRef, executionId, fencingVersion = undefined }) {
@@ -581,8 +205,6 @@ export class WorkspaceManager {
       workspace_ref: metadata.workspace_ref,
       workspace_revision: revision.workspace_revision,
       content_hash: revision.content_hash,
-      checkpoint_ref: revision.checkpoint_ref,
-      checkpoint_hash: revision.checkpoint_hash,
       git_commit: revision.git_commit ?? null,
       git_worktree: revision.git_worktree ?? metadata.workspace_ref,
       changed_files: revision.changed_files ?? [],
@@ -601,20 +223,6 @@ export class WorkspaceManager {
     return this.#publicMetadata(next);
   }
 
-  /** Reopen a released Workspace only when its durable owner wakes the same
-   * WAITING Execution with the same fence.  Late writers stay rejected while
-   * the Execution is waiting, but the checkpoint lineage can be resumed. */
-  async reopenWorkspace({ workspaceRef, executionId, fencingVersion }) {
-    const metadata = await this.#readMetadata(workspaceRef);
-    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
-    if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace fence is stale');
-    if (!metadata.released_at) return this.#publicMetadata(metadata);
-    const next = { ...metadata, released_at: null, updated_at: new Date().toISOString() };
-    await this.#writeMetadata(workspaceRef, next);
-    await this.#writeRevisionMetadata(workspaceRef, next);
-    return this.#publicMetadata(next);
-  }
-
   async fenceWorkspace({ workspaceRef, executionId, fencingVersion, newFencingVersion }) {
     const metadata = await this.#readMetadata(workspaceRef);
     if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
@@ -624,14 +232,6 @@ export class WorkspaceManager {
     await this.#writeMetadata(workspaceRef, next);
     await this.#writeRevisionMetadata(workspaceRef, next);
     return this.#publicMetadata(next);
-  }
-
-  async #assertWritable(workspaceRef, executionId, fencingVersion) {
-    const metadata = await this.#readMetadata(workspaceRef);
-    if (metadata.execution_id !== executionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'workspace execution_id does not match');
-    if (metadata.fencing_version !== fencingVersion) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace write uses an old fencing version');
-    if (metadata.released_at) throw new SwarmEnvError(ERROR_CODES.FENCED, 'workspace has been released');
-    return metadata;
   }
 
   async #assertReadableFileTarget(target) {
@@ -679,18 +279,6 @@ export class WorkspaceManager {
       if (error?.code === 'ENOENT') return;
       if (error instanceof SwarmEnvError) throw error;
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Workspace path cannot be written: ${error.message}`, undefined, { cause: error });
-    }
-  }
-
-  async #revisionMetadata(metadata, revision) {
-    if (!Number.isInteger(revision) || revision < 1 || revision > metadata.workspace_revision) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace revision is outside the Workspace history');
-    }
-    if (revision === metadata.workspace_revision) return metadata;
-    try {
-      return JSON.parse(await readFile(join(metadata.workspace_ref, META_DIR, 'revisions', `${revision}.json`), 'utf8'));
-    } catch (error) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `workspace revision is unavailable: ${error.message}`, undefined, { cause: error });
     }
   }
 
@@ -757,14 +345,8 @@ export class WorkspaceManager {
       content_hash: metadata.content_hash,
       git_commit: metadata.git_commit ?? null,
       git_worktree: metadata.git_worktree ?? metadata.workspace_ref,
-      parent_workspace_ref: metadata.parent_workspace_ref ?? null,
-      parent_workspace_revision: metadata.parent_workspace_revision ?? null,
       task_id: metadata.task_id ?? null,
-      workspace_manifest: metadata.workspace_manifest ?? null,
       workspace_contract: metadata.workspace_contract ?? normalizeWorkspaceContract({}),
-      input_snapshot: metadata.input_snapshot ?? null,
-      checkpoint_ref: metadata.checkpoint_ref,
-      checkpoint_hash: metadata.checkpoint_hash,
       changed_files: metadata.changed_files ?? [],
       released_at: metadata.released_at,
     };

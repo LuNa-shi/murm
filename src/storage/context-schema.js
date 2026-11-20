@@ -9,30 +9,22 @@ CREATE TABLE IF NOT EXISTS operations (
 
 CREATE TABLE IF NOT EXISTS materials (
   material_id TEXT PRIMARY KEY,
-  kind TEXT NOT NULL CHECK (kind IN ('assumption', 'fact', 'conjecture', 'experience', 'failure', 'artifact', 'steer', 'check_result')),
-  -- Collaboration role is orthogonal to the evidence kind.
-  role TEXT NOT NULL DEFAULT 'experience' CHECK (role IN ('input', 'response', 'handoff', 'experience')),
-  mission_id TEXT,
-  scope TEXT NOT NULL,
-  evidence_state TEXT NOT NULL CHECK (evidence_state IN ('proposed', 'observed', 'checked', 'accepted', 'rejected', 'stale')),
-  content_ref TEXT NOT NULL,
+  mission_id TEXT NOT NULL,
   content_hash TEXT NOT NULL,
   content_json TEXT NOT NULL,
   version INTEGER NOT NULL,
-  source_task TEXT,
-  source_execution TEXT,
+  producer_task_id TEXT,
+  producer_execution_id TEXT,
   producer_bot_id TEXT,
   provenance_json TEXT NOT NULL,
   supersedes TEXT REFERENCES materials(material_id),
-  evidence_json TEXT NOT NULL DEFAULT '[]',
   title TEXT,
   summary TEXT,
   media_type TEXT,
   created_at TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS materials_kind_scope ON materials(kind, scope);
-CREATE INDEX IF NOT EXISTS materials_source ON materials(source_task, source_execution);
+CREATE INDEX IF NOT EXISTS materials_producer ON materials(producer_task_id, producer_execution_id);
 CREATE INDEX IF NOT EXISTS materials_mission_scan ON materials(mission_id);
 
 CREATE TABLE IF NOT EXISTS material_attachments (
@@ -53,8 +45,8 @@ CREATE TABLE IF NOT EXISTS material_relations (
   reason TEXT,
   claim TEXT,
   actor_ref TEXT NOT NULL,
-  source_task TEXT,
-  source_execution TEXT,
+  producer_task_id TEXT,
+  producer_execution_id TEXT,
   version INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
   UNIQUE(material_id, replacement_material_id, relation_kind, version)
@@ -79,8 +71,8 @@ CREATE TABLE IF NOT EXISTS material_relation_events (
   action TEXT NOT NULL CHECK (action IN ('created', 'revoked')),
   operation_id TEXT NOT NULL,
   actor_ref TEXT NOT NULL,
-  source_task TEXT,
-  source_execution TEXT,
+  producer_task_id TEXT,
+  producer_execution_id TEXT,
   reason TEXT NOT NULL,
   relation_version INTEGER NOT NULL,
   created_at TEXT NOT NULL

@@ -108,7 +108,7 @@ test('the first Mission proposal remains visible in ready and running work accou
     const first = service.createTask({ mission_id: mission.mission_id, gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Implement a reusable CSV filter with documented edge cases', expected_output: 'Filter implementation and evidence', acceptance_conditions: ['Test the documented input cases'] }, makeEnvelope({ actorRef: 'bot:first' })).task;
     const state = { taskService: service, missionId: mission.mission_id };
     assert.equal(observedEligibleWorkCount(state, service.listEligibleTasks({ missionId: mission.mission_id })), 1);
-    service.takeTask(first.task_id, { owner_ref: 'bot:first', core_id: 'core-1', take_key: 'first', workspace_mode: 'clean' });
+    service.takeTask(first.task_id, { owner_ref: 'bot:first', core_id: 'core-1', take_key: 'first' });
     assert.equal(observedEligibleWorkCount(state, []), 1);
     service.createTask({ mission_id: mission.mission_id, gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Implement JSON output independently of CSV filtering', expected_output: 'JSON output and examples', acceptance_conditions: ['Output matches documented format'] }, makeEnvelope({ actorRef: 'bot:second' }));
     assert.equal(observedEligibleWorkCount(state, service.listEligibleTasks({ missionId: mission.mission_id })), 2);
@@ -136,9 +136,10 @@ test('proposal-only report counts more than one page exactly without claiming pr
     assert.equal(Object.hasOwn(report.protocol, 'parallel_mode'), false);
     assert.equal(report.protocol.project_parallelism, 1);
     assert.equal(Object.hasOwn(report.project, 'structure'), false);
-    assert.equal(typeof report.project.task_tree[0].task_id, 'string');
+    assert.equal(typeof report.project.tasks[0].task_id, 'string');
     assert.equal(report.project.task_count, 105);
-    assert.equal(report.project.task_tree.length, 100);
+    assert.equal(report.project.tasks.length, 100);
+    assert.equal(Object.hasOwn(report.project, 'task_tree'), false);
     assert.equal(report.project.task_page.complete, false);
     assert.equal(report.parallelism.proposal_evidence.observed_task_count, 105);
     assert.equal(report.run.progress_evidence.proposed_task_count, 105);

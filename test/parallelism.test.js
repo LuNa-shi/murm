@@ -47,10 +47,10 @@ test('one Core handing work between executions remains one quarter utilization',
   assert.deepEqual(summary.concurrency_histogram_ms, { 1: 10_000 });
 });
 
-test('WAITING and idle intervals are excluded and state intervals do not overlap', () => {
+test('STOPPING and idle intervals are excluded and state intervals do not overlap', () => {
   const tracker = new CoreParallelismTracker({ coreCount: 2, startedAt: 100 });
   tracker.transition(1, 'RUNNING', { task_id: 'task-1', execution_id: 'execution-1' }, 100);
-  tracker.transition(1, 'WAITING', { task_id: 'task-1', execution_id: 'execution-1', reason: 'check_result' }, 1_100);
+  tracker.transition(1, 'STOPPING', { task_id: 'task-1', execution_id: 'execution-1', reason: 'cleanup' }, 1_100);
   tracker.transition(1, 'RUNNING', { task_id: 'task-1', execution_id: 'execution-1' }, 2_100);
   tracker.transition(1, 'IDLE', { reason: 'terminal' }, 3_100);
 
@@ -58,7 +58,7 @@ test('WAITING and idle intervals are excluded and state intervals do not overlap
   const intervals = summary.core_state_intervals.filter((interval) => interval.core === 1);
 
   assert.equal(summary.agent_time_ms, 2_000);
-  assert.equal(summary.waiting_ms_by_core[1], 1_000);
+  assert.equal(summary.state_time_ms.STOPPING, 1_000);
   assert.equal(summary.idle_ms_by_core[1], 1_000);
   const recomputedAgentTime = summary.core_state_intervals
     .filter((interval) => interval.state === 'RUNNING')
@@ -92,7 +92,7 @@ test('turn occupancy is reported separately from RUNNING Agent Time', () => {
   const tracker = new CoreParallelismTracker({ coreCount: 4, startedAt: 0 });
   tracker.transition(1, 'RUNNING', { task_id: 'task-1', execution_id: 'execution-1' }, 0);
   tracker.recordTurnTime(7_000);
-  tracker.transition(1, 'WAITING', { task_id: 'task-1', execution_id: 'execution-1' }, 2_000);
+  tracker.transition(1, 'STOPPING', { task_id: 'task-1', execution_id: 'execution-1' }, 2_000);
 
   const summary = tracker.snapshot({ endedAt: 4_000 });
 
@@ -178,4 +178,12 @@ test('all Cores idle with no eligible work is reported as a Mission stall (r12)'
   assert.equal(summary.mission_stall_ms, 5_000);
   assert.equal(summary.mission_stall_ratio, 0.5);
   assert.deepEqual(summary.mission_stall_intervals.map((interval) => interval.duration_ms), [5_000]);
+});
+
+test('readiness scans retain their bounded poll duration', () => {
+  const tracker = new CoreParallelismTracker({ coreCount: 1, startedAt: 0 });
+  tracker.recordReadinessPoll(3);
+  tracker.recordReadinessPoll(7);
+  assert.equal(tracker.snapshot({ endedAt: 100 }).readiness_poll_ms, 10);
+  assert.throws(() => tracker.recordReadinessPoll(-1), /non-negative/);
 });

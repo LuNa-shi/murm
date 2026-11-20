@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { listServices, listTools, getServiceMetadata } from '../src/sdk/service-catalog.js';
-import swarmenvExtension from '../src/agent/swarmenv-extension.mjs';
-import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
 
 test('Service catalog keeps internal ownership metadata and exposes the Task surface', () => {
   const services = listServices();
@@ -39,15 +37,4 @@ test('public and internal catalog metadata both omit retired lifecycle and paren
   assert.ok(!legacy.test(JSON.stringify(getServiceMetadata('task'))));
   assert.ok(!legacy.test(JSON.stringify(getServiceMetadata('execution'))));
   assert.ok(!legacy.test(JSON.stringify(listTools(null, { includeInternal: true }))));
-});
-
-test('Pi extension registers only the deterministic role profile', async () => {
-  const profile = buildCapabilityProfile({ role: AGENT_ROLES.BOUND });
-  const names = [];
-  await swarmenvExtension({ registerTool(tool) { names.push(tool.name); } }, { profile });
-  assert.deepEqual(names, profile.capabilities.map((tool) => `swarmenv_${tool.tool_name ?? tool.name}`));
-  assert.ok(names.length > 0);
-  assert.ok(!names.includes('swarmenv_call'));
-  assert.ok(names.includes('swarmenv_task_take'));
-  assert.ok(names.includes('swarmenv_task_create') || names.includes('swarmenv_task_task_create'));
 });

@@ -4,7 +4,7 @@ SwarmEnv runs Bot lifecycles against a Mission through authenticated services. T
 
 ```text
 Agent Core / Pi session
-        │ named tools and prompt contract
+        │ native tools and CLI contract
         ▼
 Services Bridge + Capability Profile
         │ authenticated, task-scoped calls

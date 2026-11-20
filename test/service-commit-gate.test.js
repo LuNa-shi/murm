@@ -13,7 +13,7 @@ test('an unresolved service commit fences lifecycle writes across coordinator re
   const path = join(root, 'task.sqlite');
   let tasks = new TaskService(path);
   tasks.createMission({ mission_id: 'mission:test', goal: 'Investigate one question' }, makeEnvelope({ actorRef: 'operator:test' }));
-  const command = { service: 'context', operation: 'publish_material', operation_id: 'publication:one' };
+  const command = { service: 'context', operation: 'context_publish_material', operation_id: 'publication:one' };
   const gate = new ServiceCommitGate(tasks);
   const admission = gate.acquire(command);
   const create = () => tasks.createMission({ mission_id: 'mission:next', goal: 'Later work' }, makeEnvelope({ actorRef: 'operator:test' }));

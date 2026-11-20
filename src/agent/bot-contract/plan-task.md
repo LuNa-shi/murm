@@ -46,6 +46,6 @@ swarm task revise T1 --expected-spec-version 1 --expected-state-version 2 --reas
 
 执行中发现必要前置时，先保存有用成果，再 finish --outcome blocked --wait-for T2。目标需要根本改变时提出新责任，再 cancelled --replacement T3 撤回旧项。
 
-前置取消不算完成。只有 blocked、无 owner 且旧前置已 cancelled 的 Task，才可用 dependency replace 窄操作（提交读到的 expected-spec-version 和 expected-state-version）指向合法替代项；说明原因，接受服务对状态、并发和环的检查。重复或已无价值但尚未运行的 ready/blocked Task，可由有效 UNBOUND Bot 用 task cancel，并记录原因/替代项；不能取消其他 E 正在执行的责任。
+前置取消不算完成。只有 blocked、无 owner 且旧前置已 cancelled 的 Task，才可用 dependency-replace 窄操作（提交读到的 expected-spec-version 和 expected-state-version）指向合法替代项；说明原因，接受服务对状态、并发和环的检查。重复或已无价值但尚未运行的 ready/blocked Task，可由有效 UNBOUND Bot 用 task cancel，并记录原因/替代项；不能取消其他 E 正在执行的责任。
 
 Task 的 done 是否要求 main 已包含改动，由完成条件决定；这不禁止当前有效 Bot 自主 merge 适合共同使用的简单成果。复杂独立整合才另建 Task。

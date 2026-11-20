@@ -127,7 +127,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
 export const MISSION_WORKSPACE_READS = Object.freeze({
   workspace_public_view: (workspace, input, signal) => workspace.get({ signal, workspaceId: input.workspace_id }),
   workspace_public_history: (workspace, input, signal) => workspace.history({ signal, workspaceId: input.workspace_id, all: input.all,
-    sourceTask: input.source_task, sourceExecution: input.source_execution, materialId: input.material_id, path: input.path, limit: input.limit, cursor: input.cursor }),
+    sourceTask: input.producer_task_id, sourceExecution: input.producer_execution_id, materialId: input.material_id, path: input.path, limit: input.limit, cursor: input.cursor }),
   workspace_public_diff: (workspace, input, signal) => workspace.diff({ signal, workspaceId: input.workspace_id, from: input.from, to: input.to,
     prefix: input.path, limit: input.limit, cursor: input.cursor }),
   workspace_public_files: (workspace, input, signal) => workspace.files({ signal, workspaceId: input.workspace_id, revision: input.revision,
@@ -155,7 +155,8 @@ function serviceDispatch(serviceId, services, registry) {
       }
       if (capability.operation === 'get_service_metadata') {
         const metadata = registry.getServiceMetadata(input?.service ?? null);
-        return { ...metadata, capabilities: metadata.capabilities.filter(allowed) };
+        const capabilities = metadata.capabilities.filter(allowed);
+        return { ...metadata, capabilities, documents: capabilities.length > 0 ? registry.getServiceDocumentation(metadata.service_id, { role }).documents : [] };
       }
       if (capability.operation === 'list_tools') {
         return { tools: registry.listTools(input?.service ?? null).filter(allowed) };
