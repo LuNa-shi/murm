@@ -28,7 +28,7 @@
 
 | ID | 方向 | 目标 theorem | source | closure | holes | 运行层级 |
 |---|---|---|---:|---:|---:|---|
-| `oai_seymour_second_neighborhood` | 组合图论 | `OAI.SeymourSecondNeighborhood.exists_goodVertex` | 40 | 4,901 | 1 | smoke / 中等 |
+| `oai_seymour_second_neighborhood` | 组合图论 | `OAI.SeymourSecondNeighborhood.exists_goodVertex` | 40 | 4,901 | 1 | 单题 4h 已测 |
 | `oai_one_way_liveness` | 自动机与组合 | `OAI.OneWayLiveness.main_theorem` | 105 | 4,159 | 1 | 第一组 |
 | `oai_partial_permutation` | 表示论 | `OAI.PartialPermutation.complementaryCosets_finite` | 116 | 6,083 | 1 | 第一组 |
 | `oai_short_egyptian_fractions` | 数论 | `OAI.ShortEgyptian.main` | 27 | 8,167 | 1 | 第一组 |
@@ -50,7 +50,7 @@
 - `KMedianRefinedRecovery` 与 `MatchingFPRAS` 的 closure 最大，适合在 smoke 和较小三题组稳定后运行。
 - 额外的 `PlaneColoring` 只作为流程 smoke 题，不计入上述 12 题。它的目标是 `OAI.Problem160.properColoring_seven`，文件和参考答案同样已经嵌入本目录。
 
-这份审核确认的是输入和依赖可用性，不代表模型一定能在给定预算内完成证明。
+Seymour 的 challenge 只有 40 行、一个证明空缺，但参考证明的传递依赖有 4,901 行。首题四小时实验验证了最小出度为 5 等特殊情形，一般定理仍未完成。因此将其保留为运行顺序的第一题，求解难度仍待更多观测。[四 Core 单题报告](../../docs/experiments/EXP-20261120-02-seymour-single-4h.md)
 
 ## PlaneColoring 四 Core 验证记录
 
