@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261120-07` | [Issue #159](https://github.com/LuNa-shi/SwarmEnv/issues/159) / [#153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Registered · Seymour paper, 4 Cores, 4h | `dfe8d8f` | [Paper run](EXP-20261120-07-seymour-paper.md) |
 | `EXP-20261120-02` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Completed · Seymour, 4h, protocol valid, general theorem unsolved | `4c2f193` | [Single Seymour run](EXP-20261120-02-seymour-single-4h.md) |
 | `EXP-20261120-01` | [Issue #153](https://github.com/LuNa-shi/SwarmEnv/issues/153) | Stopped after 25m48s wall · Core 3 discovery failure, operator stop | `b56d030` | [First pair](EXP-20261120-01-openai-math-first-pair.md) |
 | `EXP-20261117-07` | [Issue #137](https://github.com/LuNa-shi/SwarmEnv/issues/137) / [#135](https://github.com/LuNa-shi/SwarmEnv/issues/135) | **REGISTERED · Q20 fresh12h /4Cores; matched-time comparison** | `9f62722` | [Q20 twelve-hour comparison](EXP-20261117-07-q20-subtree-12h.md) |
