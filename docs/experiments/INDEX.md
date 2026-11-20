@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261120-06` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Conditionally registered · native Pi, one Q20 run, 4 workers × 8h | `51bb3c4` | [Q20 observation](EXP-20261120-06-agensh-pi-q20.md) |
 | `EXP-20261120-05` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Registered · native Agensh Pi, 2 workers, B1 remaining 1,662 s | `87b6a9b` | [Putnam pilot](EXP-20261120-05-agensh-pi-putnam.md) |
 | `EXP-20261120-04` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Provider rejected all requests · 138 s · protocol invalid | `e257540` | [Putnam pilot](EXP-20261120-04-agensh-pi-putnam.md) |
 | `EXP-20261120-03` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Setup failed before first wake · 0 model requests | `e257540` | [Putnam pilot](EXP-20261120-03-agensh-pi-putnam.md) |
