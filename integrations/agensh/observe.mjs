@@ -62,7 +62,7 @@ while (!closing) {
       await record({ kind: 'ref_observed', ref, tip, previous, commits });
       for (const commit of commits) {
         const tree = (await git('rev-parse', commit + '^{tree}')).toString().trim();
-        const changed = (await git('diff-tree', '--first-parent', '-m', '--root', '--no-commit-id', '--name-only', '-rz',
+        const changed = (await git('diff-tree', '--first-parent', '-m', '--root', '--no-commit-id', '--name-only', '-r', '-z',
           '--diff-filter=AM', commit)).toString().split('\0').filter(path => path.endsWith('.lean'));
         if (ref === 'main' && !changed.includes(problem.problem_file)) {
           const source = await git('show', commit + ':' + problem.problem_file).catch(() => null);
@@ -86,9 +86,10 @@ while (!closing) {
       lastTips.delete(ref);
     }
     if (pending.length && !checking) checking = checkPending().finally(() => { checking = undefined; });
-  } catch {
-    // Startup, brief transport loss or services shutting down. Do not log Git credential-bearing commands.
-    await record({ kind: 'sample_unavailable' });
+  } catch (error) {
+    // Keep failures visible without collecting authenticated commands or response bodies.
+    await record({ kind: 'sample_unavailable', exit_code: error.code ?? null,
+      operation: error.cmd?.includes(' diff-tree ') ? 'diff-tree' : 'git sample' });
   }
   if (await stat(join(launch.OUT_DIR, launch.TASK, 'export.json')).catch(() => null)) break;
   await sleep(15000);
