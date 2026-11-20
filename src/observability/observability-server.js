@@ -115,22 +115,13 @@ const OVERVIEW_EVENT_KINDS = [
 ];
 const OVERVIEW_RPC_RECORD_TYPES = new Set(['tool_execution_start', 'tool_execution_end', 'tool_call', 'tool_result']);
 const OVERVIEW_TOOL_NAMES = new Set([
-  'swarmenv_task_get',
   'swarmenv_task_list',
-  'swarmenv_task_list_executions',
-  'swarmenv_task_create_child',
   'swarmenv_task_take',
-  'swarmenv_task_accept',
-  'swarmenv_task_request_rework',
-  'swarmenv_execution_get',
   'swarmenv_context_publish',
   'swarmenv_context_read',
   'swarmenv_context_consume',
   'swarmenv_judge_workspace_check',
   'swarmenv_judge_get_check_result',
-  // Older Agent sessions used this transport wrapper. The projection resolves
-  // its operation to the corresponding named Service tool below.
-  'swarmenv_call',
 ]);
 const EXECUTION_DETAIL_LIFECYCLE_KINDS = new Set([
   'session_started',
@@ -179,18 +170,6 @@ function parseJson(value) {
   try { return JSON.parse(value); } catch { return value; }
 }
 
-const COMPATIBILITY_TOOL_NAMES = new Map(listTools().map((tool) => [tool.operation, `swarmenv_${tool.name}`]));
-// Older sanitized event streams use the transport operation names while the
-// current catalog uses semantic names. Keep the dashboard projection stable
-// without re-exposing those aliases to the Agent.
-for (const [legacy, semantic] of Object.entries({
-  publish_material: 'swarmenv_context_publish',
-  read_materials: 'swarmenv_context_search_materials',
-  consume_materials: 'swarmenv_context_consume',
-  get_task: 'swarmenv_task_get',
-  get_execution: 'swarmenv_execution_get',
-})) COMPATIBILITY_TOOL_NAMES.set(legacy, semantic);
-
 function rawToolName(record) {
   return record?.toolName ?? record?.tool_name ?? record?.name ?? null;
 }
@@ -199,21 +178,8 @@ function toolArguments(record) {
   return record?.args ?? record?.arguments ?? record?.params ?? record?.input ?? undefined;
 }
 
-function compatibilityOperation(record) {
-  if (rawToolName(record) !== 'swarmenv_call') return null;
-  const args = toolArguments(record);
-  return args?.operation
-    ?? record?.arguments?.operation
-    ?? record?.params?.operation
-    ?? record?.input?.operation
-    ?? null;
-}
-
 function dashboardToolName(record) {
-  const raw = rawToolName(record);
-  if (raw !== 'swarmenv_call') return raw;
-  const operation = compatibilityOperation(record);
-  return COMPATIBILITY_TOOL_NAMES.get(operation) ?? raw;
+  return rawToolName(record);
 }
 
 function isToolRecord(record, type) {
@@ -234,7 +200,6 @@ function toolCallId(record, fallback = null) {
 
 function compactToolRecord(record) {
   if (!record || typeof record !== 'object') return null;
-  const raw = rawToolName(record);
   const compact = {
     type: record.type,
     toolCallId: toolCallId(record),
@@ -243,10 +208,6 @@ function compactToolRecord(record) {
     result: isToolEnd(record) ? compactOverviewToolResult(record.result) : undefined,
     isError: record.isError,
   };
-  if (raw === 'swarmenv_call') {
-    compact.transport_tool = raw;
-    compact.compatibility_operation = compatibilityOperation(record);
-  }
   return dashboardValue(compact);
 }
 
@@ -302,11 +263,7 @@ function compactTask(value) {
   if (!value || typeof value !== 'object') return value;
   return dashboardValue({
     task_id: value.task_id,
-    root_id: value.root_id,
-    parent_id: value.parent_id,
     owner_ref: value.owner_ref,
-    task_type: value.task_type,
-    task_type_version: value.task_type_version,
     goal: value.goal,
     priority: value.priority,
     state: value.state,
@@ -341,12 +298,10 @@ function compactMaterial(value) {
   if (!value || typeof value !== 'object') return value;
   return dashboardValue({
     material_id: value.material_id,
-    kind: value.kind,
-    scope: value.scope,
-    evidence_state: value.evidence_state,
+    media_type: value.media_type,
     version: value.version,
-    source_task: value.source_task,
-    source_execution: value.source_execution,
+    producer_task_id: value.producer_task_id,
+    producer_execution_id: value.producer_execution_id,
     supersedes: value.supersedes,
     summary: overviewText(value.summary),
     description: overviewText(value.description),
@@ -502,8 +457,6 @@ function reportSummary(report) {
     state_time_ms: parallelism.state_time_ms ?? null,
     task_tree: (project.task_tree ?? []).map((task) => ({
       task_id: task.task_id,
-      parent_id: task.parent_id ?? null,
-      task_type: task.task_type ?? null,
       goal: task.goal ?? null,
       state: task.state ?? task.task_state ?? null,
     })),
@@ -763,7 +716,7 @@ export class ObservabilityServer {
         send(response, 404, { ok: false, error: { code: 'NOT_FOUND', message: `unknown task: ${taskId}` } });
         return;
       }
-      send(response, 200, { task, children: this.taskService.listChildren(taskId), executions: this.taskService.listExecutions(taskId) });
+      send(response, 200, { task, executions: this.taskService.listExecutions(taskId) });
       return;
     }
     if (parts[1] === 'tasks' && parts.length >= 3) {
@@ -776,7 +729,7 @@ export class ObservabilityServer {
         return;
       }
       const executions = [...new Set(events.map((event) => event.execution_id).filter(Boolean))].map((executionId) => this.#executionFromEvents(experimentId, executionId));
-      send(response, 200, { task: { task_id: taskId, state: this.#latestTaskState(events), task_type: this.#latestTaskField(events, 'task_type') }, children: [], executions, events });
+      send(response, 200, { task: { task_id: taskId, state: this.#latestTaskState(events) }, executions, events });
       return;
     }
     if (parts[1] === 'context' && parts[2] === 'materials' && this.contextService) {
@@ -943,16 +896,12 @@ export class ObservabilityServer {
       if (!isToolEnd(record)) continue;
       const details = toolDetails(record);
       if (!details || typeof details !== 'object') continue;
-      if (toolName === 'swarmenv_task_get') {
+      if (toolName === 'swarmenv_task_view') {
         const task = details.task ?? details;
         if (task && typeof task === 'object') {
           insight.task = dashboardValue({
             task_id: task.task_id,
-            root_id: task.root_id,
-            parent_id: task.parent_id,
             owner_ref: task.owner_ref,
-            task_type: task.task_type,
-            task_type_version: task.task_type_version,
             goal: task.goal,
             expected_output: task.expected_output,
             priority: task.priority,
@@ -963,22 +912,6 @@ export class ObservabilityServer {
             state: task.state,
           });
           insight.task_instructions = dashboardValue(task.task_instructions ?? task.initial_prompt ?? null, 'task_instructions');
-        }
-      } else if (toolName === 'swarmenv_execution_get') {
-        const execution = details.execution ?? details;
-        if (execution && typeof execution === 'object') {
-          insight.initial_prompt = dashboardValue(execution.agent_prompt ?? execution.initial_prompt ?? null, 'agent_prompt');
-          insight.workspace = dashboardValue({
-            workspace_manifest_ref: execution.workspace_manifest_ref,
-            workspace_ref: execution.workspace_ref,
-            workspace_revision: execution.workspace_revision,
-            workspace_content_hash: execution.workspace_content_hash,
-            input_snapshot_hash: execution.input_snapshot_hash,
-            input_material_refs: execution.input_material_refs,
-            workspace_selection: execution.workspace_selection,
-            checkpoint_ref: execution.checkpoint_ref,
-            parent_workspace_ref: execution.workspace_selection?.source_workspace_ref,
-          });
         }
       } else if (toolName === 'swarmenv_catalog_list_tools') {
         addCatalogTools(details);
@@ -1042,7 +975,7 @@ export class ObservabilityServer {
       const payload = event.payload ?? {};
       const record = payload.record;
       const candidates = [payload.task, payload.result?.task];
-      if (isToolEnd(record) && dashboardToolName(record) === 'swarmenv_task_get') {
+      if (isToolEnd(record) && dashboardToolName(record) === 'swarmenv_task_view') {
         const result = record.result ?? {};
         const details = result.details ?? result.result ?? result;
         candidates.unshift(details?.task ?? details);
@@ -1097,21 +1030,18 @@ export class ObservabilityServer {
     const contentSummary = material.summary ?? material.description ?? content.summary ?? content.description ?? content.title ?? content.text ?? content.path ?? null;
     const fields = {
       material_id: material.material_id,
-      kind: material.kind,
-      scope: material.scope,
-      evidence_state: material.evidence_state,
+      title: material.title,
+      media_type: material.media_type,
       version: material.version,
-      source_task: material.source_task,
-      source_execution: material.source_execution,
+      producer_task_id: material.producer_task_id,
+      producer_execution_id: material.producer_execution_id,
       supersedes: material.supersedes,
       created_at: material.created_at,
-      content_ref: material.content_ref,
     };
     const advanced = {
       content_hash: material.content_hash,
       provenance_json: material.provenance_json,
       provenance: material.provenance,
-      content_ref: material.content_ref,
       source_event_id: sourceEventId,
       observed_at: observedAt,
     };

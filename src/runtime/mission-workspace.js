@@ -105,8 +105,7 @@ function fileEntries(files) {
  * This module deliberately keeps Git and revision metadata outside an
  * Execution directory. Bots only receive materialized files and high-level
  * save/apply/merge operations; they never receive a repository path or Git
- * credentials. The older WorkspaceManager remains available for compatibility
- * with execution-local records while new callers should use this class.
+ * credentials.
  */
 export class MissionWorkspace {
   constructor({ rootDir, fault = null }) {
@@ -352,7 +351,6 @@ export class MissionWorkspace {
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
       const record = await this.#read(root);
-      this.#assertWritable(record);
       if (expectedMainRevision !== undefined && resolvedRevision(expectedMainRevision, record) !== record.main_revision) throw new SwarmEnvError('MAIN_MOVED', 'main revision changed before Mission submission');
       const next = { ...record, frozen_submission_id: submissionId,
         freeze_epoch: (record.freeze_epoch ?? 0) + (record.frozen_submission_id ? 0 : 1), updated_at: now() };
@@ -376,7 +374,6 @@ export class MissionWorkspace {
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
       const record = await this.#read(root);
-      this.#assertWritable(record);
       const result = inspect(this.#public(record));
       if (result?.then) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace freeze inspection must be synchronous');
       return result;
@@ -388,7 +385,6 @@ export class MissionWorkspace {
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
       const record = await this.#read(root);
-      this.#assertWritable(record);
       if (record.frozen_submission_id && record.frozen_submission_id !== submissionId) throw new SwarmEnvError(ERROR_CODES.FENCED, 'Workspace freeze belongs to another Mission submission');
       record.frozen_submission_id = null;
       record.updated_at = now();
@@ -471,7 +467,6 @@ export class MissionWorkspace {
       const replay = this.#replay(root, request);
       if (replay) return replay;
       const record = await this.#read(root);
-      this.#assertWritable(record);
       const base = revisionNumber(baseRevision ?? record.main_revision);
       const parents = parentRevisions ?? [base];
       if (!Array.isArray(parents) || parents.length === 0 || !parents.includes(base) || new Set(parents).size !== parents.length) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'save parents must include its actual base exactly once');
@@ -499,7 +494,6 @@ export class MissionWorkspace {
       const replay = this.#replay(root, request);
       if (replay) return { replay };
       const record = await this.#read(root);
-      this.#assertWritable(record);
       this.#assertMergeAllowed(record, guard);
       const expected = resolvedRevision(expectedMainRevision, record);
       if (expected !== record.main_revision) throw new SwarmEnvError('MAIN_MOVED', 'main revision changed', { expected: record.main_revision, received: expected });
@@ -668,10 +662,10 @@ export class MissionWorkspace {
     let record;
     try { record = JSON.parse(await readFile(join(root, META), 'utf8')); }
     catch (error) { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'unknown Workspace', undefined, { cause: error }); }
-    if (record.format_version === 2) this.repository.assertMain(root, record.main_commit);
+    this.repository.assertMain(root, record.main_commit);
     return record;
   }
-  // Caller holds the Task lifecycle writer lock also used by modern Git publication.
+  // Caller holds the Task lifecycle writer lock also used by Git publication.
   readDeliveryRevision({ workspaceId, missionId, revision }) {
     const root = this.workspacePath(workspaceId);
     const selected = revisionNumber(revision);
@@ -693,14 +687,7 @@ export class MissionWorkspace {
   async #snapshot(root, revision) { return (await this.#revisionMetadata(root, revision)).files; }
   async #tree(root, revision) {
     const metadata = await this.#revisionMetadata(root, revision);
-    if (metadata.git_tree) return this.repository.readTree(root, metadata.git_tree);
-    const tree = Object.create(null);
-    for (const path of Object.keys(metadata.files)) {
-      const bytes = await readFile(join(root, REVISION_DIR, revision, 'files', safePath(path)));
-      const text = bytes.toString('utf8');
-      tree[path] = Buffer.from(text).equals(bytes) ? text : bytes;
-    }
-    return tree;
+    return this.repository.readTree(root, metadata.git_tree);
   }
   #normalizeTree(files) {
     if (!files || typeof files !== 'object' || Array.isArray(files)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'save requires a complete file tree');
@@ -743,7 +730,6 @@ export class MissionWorkspace {
     const allowed = guard();
     if (allowed === false || allowed?.then) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace final authorization must be synchronous and current');
   }
-  #assertWritable(record) { if (record.format_version !== 2) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Historical Workspace format is read-only'); }
   #assertMergeAllowed(record, guard) {
     if (record.frozen_submission_id) throw new SwarmEnvError('MISSION_SUBMITTING', 'Workspace main is frozen for Mission submission');
     this.#guard(guard);

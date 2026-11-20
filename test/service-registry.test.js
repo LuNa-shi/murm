@@ -6,7 +6,6 @@ import {
   ERROR_CODES,
   JudgeService,
   ServiceRegistry,
-  ServicesRouter,
   SwarmEnvError,
   TaskService,
   builtInServiceManifest,
@@ -119,12 +118,6 @@ test('HTTP ServiceHost and adapter expose manifest, health, readiness, and struc
     assert.deepEqual((await adapter.readiness(remote)).ok, true);
     const envelope = makeEnvelope({ operationId: 'remote-1', actorRef: 'agent:bound' });
     assert.deepEqual(await registry.invoke({ serviceId: 'remote', capability: 'echo', input: { value: 'remote' }, envelope, role: 'bound' }), { capability: 'echo', value: 'remote', operation_id: 'remote-1' });
-    const router = new ServicesRouter({ registry });
-    assert.throws(
-      () => router.dispatch('echo', { value: 'sync-remote' }, envelope),
-      (error) => error.code === ERROR_CODES.SERVICE_UNAVAILABLE && error.details.dispatch === 'dispatchAsync',
-    );
-    assert.deepEqual(await router.dispatchAsync('echo', { value: 'async-remote' }, envelope), { capability: 'echo', value: 'async-remote', operation_id: 'remote-1' });
     const manifestResponse = await fetch(`${environment.url}/v1/manifest`);
     assert.equal(manifestResponse.status, 200);
     const manifestBody = await manifestResponse.json();

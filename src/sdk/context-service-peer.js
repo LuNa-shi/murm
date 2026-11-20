@@ -8,21 +8,15 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 export const CONTEXT_READ_METHODS = Object.freeze(['getMaterial', 'readMaterials', 'listMaterialConsumptions',
   'listMaterialRelations', 'publicChangeToken', 'readTakeMaterialInputs', 'readWorkspaceMaterialUses']);
-export const CONTEXT_READ_OPERATIONS = new Set(['read_materials', 'search_materials', 'list_material_relations',
-  'get_material', 'list_material_consumptions', 'context_search_materials', 'context_get_material',
-  'context_read_materials', 'context.search_materials', 'context.get_material', 'context.read_materials',
-  'material.read', 'material_read', 'material.search', 'material_search', 'material.get', 'material_get',
-  'material.relations', 'material_relations']);
+export const CONTEXT_READ_OPERATIONS = new Set(['read_materials', 'context_search_materials', 'list_material_relations',
+  'context_get_material', 'list_material_consumptions']);
 
 function eventsFor(command, result) {
-  const operation = ({ context_publish_material: 'publish_material', 'context.publish_material': 'publish_material',
-    'material.publish': 'publish_material', material_publish: 'publish_material', material_dispute: 'dispute_material',
-    'material.dispute': 'dispute_material', material_supersede: 'supersede_material', 'material.supersede': 'supersede_material',
-    material_unsupersede: 'unsupersede_material', 'material.unsupersede': 'unsupersede_material' })[command.args[0]] ?? command.args[0];
-  if (command.method !== 'dispatch' || !['publish_material', 'dispute_material', 'supersede_material', 'unsupersede_material'].includes(operation)) return [];
-  return [{ event_id: `context:${command.args[2].actor_ref}:${command.args[2].operation_id}`, kind: operation === 'publish_material' ? 'material_published' : 'material_corrected', operation,
-    task_id: result?.material?.producer_task_id ?? result?.material?.source_task ?? null,
-    execution_id: result?.material?.producer_execution_id ?? result?.material?.source_execution ?? null }];
+  const operation = command.args[0];
+  if (command.method !== 'dispatch' || !['context_publish_material', 'material_dispute', 'material_supersede', 'material_unsupersede'].includes(operation)) return [];
+  return [{ event_id: `context:${command.args[2].actor_ref}:${command.args[2].operation_id}`, kind: operation === 'context_publish_material' ? 'material_published' : 'material_corrected', operation,
+    task_id: result?.material?.producer_task_id ?? null,
+    execution_id: result?.material?.producer_execution_id ?? null }];
 }
 
 export function createContextServicePeer({ database, token, host = '127.0.0.1', publicUrl = null }) {

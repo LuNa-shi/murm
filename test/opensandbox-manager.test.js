@@ -1,4 +1,4 @@
-import { openSandboxBotKey, openSandboxExecutionKey, openSandboxMissionKey } from '../src/runtime/opensandbox-metadata.js';
+import { openSandboxBotKey, openSandboxMissionKey } from '../src/runtime/opensandbox-metadata.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -21,18 +21,18 @@ test('OpenSandbox creates an independent sandbox and executes through its Execd 
       if (url.endsWith('/sandboxes')) return response({ id: 'sbx-1', status: { state: 'Running' } }, { status: 202 });
       if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/sbx-1' });
       if (url === 'http://execd.test/sbx-1/command') return response('event: stdout\ndata: {"text":"hello\\n"}\n\nevent: execution_complete\ndata: {"exit_code":0}\n\n', { contentType: 'text/event-stream' });
-      if (url.includes('/sandboxes/sbx-1')) return response({});
+      if (url.includes('/sandboxes/sbx-1')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
-  const started = await manager.ensureExecution({ executionId: 'execution-1', workspaceRef: '/host/private', bindingVersion: 3 });
+  const started = await manager.ensureExecution({ executionId: 'execution-1', botId: 'execution-1', workspaceRef: '/host/private', bindingVersion: 3 });
   assert.equal(started.sandbox_id, 'sbx-1');
-  assert.equal(started.workspace, '/workspace');
+  assert.equal(started.workspace, '/workspace/project');
   assert.equal(started.host_workspace_ref, null);
   assert.equal(calls[0].options.headers['OPEN-SANDBOX-API-KEY'], 'test-key');
   const createBody = JSON.parse(calls[0].options.body);
   assert.equal(createBody.image.uri, 'swarmenv/agent:2026-11-11');
-  assert.equal(createBody.metadata.execution_key, openSandboxExecutionKey('execution-1'));
+  assert.equal(createBody.metadata.bot_key, openSandboxBotKey('execution-1'));
   assert.equal(createBody.metadata.binding_version, '3');
   assert.equal(createBody.workspace, undefined);
 
@@ -44,7 +44,7 @@ test('OpenSandbox creates an independent sandbox and executes through its Execd 
   assert.equal(execdCall.options.headers['X-EXECD-ACCESS-TOKEN'], 'execd-key');
   assert.equal(execdCall.options.headers['OPEN-SANDBOX-API-KEY'], undefined);
   await manager.stopExecution('execution-1');
-  assert.equal(calls.at(-1).options.method, 'DELETE');
+  assert.deepEqual(calls.slice(-2).map(call => call.options.method), ['DELETE', 'GET']);
 });
 
 test('OpenSandbox accepts Execd JSON-lines output and falls back from legacy argv validation', async () => {
@@ -59,11 +59,11 @@ test('OpenSandbox accepts Execd JSON-lines output and falls back from legacy arg
         return response({ code: 'INVALID_REQUEST_BODY', message: "RunCommandRequest.Command failed on required" }, { status: 400 });
       }
       if (url === 'http://execd.test/sbx-json-lines/command') return response('{"type":"stdout","text":"legacy-ok"}\n\n{"type":"execution_complete","exit_code":0}\n\n', { contentType: 'text/event-stream' });
-      if (url.includes('/sandboxes/sbx-json-lines')) return response({});
+      if (url.includes('/sandboxes/sbx-json-lines')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
-  await manager.ensureExecution({ executionId: 'e-json-lines' });
+  await manager.ensureExecution({ executionId: 'e-json-lines', botId: 'e-json-lines' });
   const result = await manager.exec({ executionId: 'e-json-lines', command: ['printf', 'legacy-ok'] });
   assert.equal(result.exit_code, 0);
   assert.equal(result.stdout, 'legacy-ok');
@@ -79,7 +79,7 @@ test('OpenSandbox rejects host paths, secret environment variables, and unbound 
     fetchImpl: async (url) => url.includes('/endpoints/') ? response({ url: 'http://execd.test/sbx-1' }) : response({ id: 'sbx-1' }),
   });
   await assert.rejects(() => manager.exec({ executionId: 'missing', command: 'pwd' }), (error) => error.code === ERROR_CODES.NOT_ALLOWED);
-  await manager.ensureExecution({ executionId: 'e1' });
+  await manager.ensureExecution({ executionId: 'e1', botId: 'e1' });
   await assert.rejects(() => manager.exec({ executionId: 'e1', command: 'pwd', cwd: '/etc' }), (error) => error.code === ERROR_CODES.INVALID_CONTRACT);
   await assert.rejects(() => manager.exec({ executionId: 'e1', command: 'pwd', cwd: '/workspace-escape' }), (error) => error.code === ERROR_CODES.INVALID_CONTRACT);
   await assert.rejects(() => manager.exec({ executionId: 'e1', command: 'env', env: { API_TOKEN: 'secret' } }), (error) => error.code === ERROR_CODES.NOT_ALLOWED);
@@ -105,7 +105,7 @@ test('OpenSandbox compensates a created sandbox when Execd endpoint resolution f
       return response({}, { status: 404 });
     },
   });
-  await assert.rejects(() => manager.ensureExecution({ executionId: 'e-failed' }), (error) => error.code === ERROR_CODES.SERVICE_UNAVAILABLE);
+  await assert.rejects(() => manager.ensureExecution({ executionId: 'e-failed', botId: 'e-failed' }), (error) => error.code === ERROR_CODES.SERVICE_UNAVAILABLE);
   assert.deepEqual(calls.map((call) => call.method), ['POST', 'GET', 'DELETE']);
   assert.equal(manager.snapshot().executions.length, 0);
 });
@@ -121,9 +121,9 @@ test('failed preparation retains the provider resource when compensation deletio
       return response({}, { status: 503 });
     },
   });
-  await assert.rejects(manager.ensureExecution({ executionId: 'pending-start' }));
+  await assert.rejects(manager.ensureExecution({ executionId: 'pending-start', botId: 'pending-start' }));
   assert.equal(manager.snapshot().executions[0].sandbox_id, 'partial-start');
-  await assert.rejects(manager.ensureExecution({ executionId: 'pending-start' }), /pending/);
+  await assert.rejects(manager.ensureExecution({ executionId: 'pending-start', botId: 'pending-start' }), /pending/);
   assert.equal(creates, 1);
   cleanupFails = false;
   await manager.stopExecution('pending-start');
@@ -146,7 +146,7 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
     },
   });
   await manager.ensureExecution({ executionId: 'e-worker', botId: 'e-worker' });
-  const started = await manager.startAgent({ executionId: 'e-worker', command: 'nurouter', args: ['pi', '--mode', 'rpc'] });
+  const started = await manager.startAgent({ executionId: 'e-worker', command: 'pi', args: ['--mode', 'rpc'] });
   assert.equal(started.worker_port, 44100);
   const sandboxCreate = calls.find((call) => call.url === 'http://sandbox.test/v1/sandboxes');
   const sandboxPayload = JSON.parse(sandboxCreate.options.body);
@@ -154,7 +154,7 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
   assert.match(sandboxPayload.env.SWARMENV_WORKER_TOKEN, /^[0-9a-f-]{36}$/);
   const launch = calls.find((call) => call.url === 'http://worker.test/sbx-worker/start');
   assert.equal(launch.options.headers.authorization.startsWith('Bearer '), true);
-  assert.deepEqual(JSON.parse(launch.options.body).args, ['pi', '--mode', 'rpc']);
+  assert.deepEqual(JSON.parse(launch.options.body).args, ['--mode', 'rpc']);
   await manager.stopExecution('e-worker');
 });
 
@@ -170,7 +170,7 @@ test('OpenSandbox keeps explicit Agent secrets in the authenticated worker start
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-secret' });
       if (url === 'http://worker.test/sbx-secret/health') return response({ ok: true });
       if (url === 'http://worker.test/sbx-secret/start') return response({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } });
-      if (url.includes('/sandboxes/sbx-secret')) return response({});
+      if (url.includes('/sandboxes/sbx-secret')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
@@ -190,74 +190,18 @@ test('OpenSandbox resolves Agent versions by executing inside the guest', async 
         ? response({ url: 'http://execd.test/sbx-versions' })
         : response({}),
   });
-  await manager.ensureExecution({ executionId: 'e-versions' });
+  await manager.ensureExecution({ executionId: 'e-versions', botId: 'e-versions' });
   const commands = [];
   manager.exec = async ({ command }) => {
     commands.push(command);
-    const versions = { pi: 'pi 1.3.0', nurouter: 'nurouter 0.2.16', node: 'v22.19.0' };
+    const versions = { pi: 'pi 1.3.0', node: 'v22.19.0' };
     return { exit_code: 0, stdout: versions[command[0]], stderr: '' };
   };
-  assert.deepEqual(await manager.agentVersions({ executionId: 'e-versions' }), { piVersion: '1.3.0', nurouterVersion: '0.2.16', nodeVersion: '22.19.0' });
-  assert.deepEqual(commands, [['pi', '--version'], ['nurouter', '--version'], ['node', '--version']]);
+  assert.deepEqual(await manager.agentVersions({ executionId: 'e-versions' }), { piVersion: '1.3.0', nodeVersion: '22.19.0' });
+  assert.deepEqual(commands, [['pi', '--version'], ['node', '--version']]);
 });
 
-test('OpenSandbox pulls bounded guest files back before the sandbox is removed', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-provider-pull-');
-  try {
-    const manager = createOpenSandboxManager({
-      lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
-      fetchImpl: async (url, options) => {
-        if (url.endsWith('/sandboxes')) return response({ id: 'sbx-pull' }, { status: 202 });
-        if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/sbx-pull' });
-        if (url === 'http://execd.test/sbx-pull/command') {
-          const body = JSON.parse(options.body);
-          return body.argv?.[2]?.startsWith('find ') ? response('event: execution_complete\ndata: {"exit_code":0}\n\n', { contentType: 'text/event-stream' })
-            : response('event: stdout\ndata: {"text":"aGVsbG8="}\n\nevent: execution_complete\ndata: {"exit_code":0}\n\n', { contentType: 'text/event-stream' });
-        }
-        if (url.includes('/sandboxes/sbx-pull')) return response({});
-        throw new Error(`unexpected URL: ${url}`);
-      },
-    });
-    await manager.ensureExecution({ executionId: 'e-pull' });
-    // The fake Execd listing is supplied by the command response above; make
-    // the command-specific branch explicit by replacing the response shape.
-    const originalExec = manager.exec.bind(manager);
-    manager.exec = async (input) => input.command?.[2]?.startsWith('find ')
-      ? { exit_code: 0, stdout: '/workspace/notes.txt\n', stderr: '' }
-      : originalExec(input);
-    await manager.syncWorkspaceBack({ executionId: 'e-pull', workspaceRef: root });
-    assert.equal(await readFile(join(root, 'notes.txt'), 'utf8'), 'hello');
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
 
-test('OpenSandbox workspace pull is idempotent after provider cleanup removed the record', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-provider-pull-race-');
-  try {
-    const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test' });
-    const result = await manager.syncWorkspaceBack({ executionId: 'already-stopped', workspaceRef: root });
-    assert.equal(result.skipped, true);
-    assert.equal(result.file_count, 0);
-  } finally {
-    await rm(root, { recursive: true, force: true });
-  }
-});
-
-test('OpenSandbox quarantines provider sandboxes whose Agent token cannot be recovered', async () => {
-  const manager = createOpenSandboxManager({
-    lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
-    fetchImpl: async (url, { method }) => {
-      if (url.includes('/sandboxes?pageSize=100')) return response({ items: [{ id: 'sbx-existing', metadata: { execution_id: 'e-existing', binding_version: '4' } }] });
-      if (url.includes('/sandboxes/sbx-existing')) return response({}, { status: method === 'DELETE' ? 204 : 404 });
-      throw new Error(`unexpected URL: ${url}`);
-    },
-  });
-  const result = await manager.reconcileExecutions({ executionIds: ['e-existing'] });
-  assert.deepEqual(result.adopted, []);
-  assert.equal(result.quarantined[0].execution_id, 'e-existing');
-  assert.equal(result.quarantined[0].sandbox_id, 'sbx-existing');
-});
 
 test('OpenSandbox normalizes the Docker provider bare Execd endpoint shape', async () => {
   const manager = createOpenSandboxManager({
@@ -266,11 +210,11 @@ test('OpenSandbox normalizes the Docker provider bare Execd endpoint shape', asy
       if (url.endsWith('/sandboxes')) return response({ id: 'sbx-bare-endpoint' }, { status: 202 });
       if (url.includes('/endpoints/44772')) return response({ endpoint: '172.30.0.4:40554/proxy/44772' });
       if (url === 'http://127.0.0.1:40554/proxy/44772/command') return response({ exit_code: 0, stdout: 'ok' });
-      if (url.includes('/sandboxes/sbx-bare-endpoint')) return response({});
+      if (url.includes('/sandboxes/sbx-bare-endpoint')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
-  const started = await manager.ensureExecution({ executionId: 'e-bare-endpoint' });
+  const started = await manager.ensureExecution({ executionId: 'e-bare-endpoint', botId: 'e-bare-endpoint' });
   assert.equal(started.execd_url, undefined);
   const result = await manager.exec({ executionId: 'e-bare-endpoint', command: 'printf ok' });
   assert.equal(result.stdout, 'ok');
@@ -281,17 +225,17 @@ test('OpenSandbox readiness falls back to Execd v1.1 ping when ready is absent',
   const calls = [];
   const manager = createOpenSandboxManager({
     lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test', waitForExecdReady: true,
-    fetchImpl: async (url) => {
+    fetchImpl: async (url, options) => {
       calls.push(url);
       if (url.endsWith('/sandboxes')) return response({ id: 'sbx-ping-ready' }, { status: 202 });
       if (url.includes('/endpoints/44772')) return response({ endpoint: '127.0.0.1:40555/proxy/44772' });
       if (url === 'http://127.0.0.1:40555/proxy/44772/ready') return response({}, { status: 404 });
       if (url === 'http://127.0.0.1:40555/proxy/44772/ping') return response({});
-      if (url.includes('/sandboxes/sbx-ping-ready')) return response({});
+      if (url.includes('/sandboxes/sbx-ping-ready')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
-  await manager.ensureExecution({ executionId: 'e-ping-ready' });
+  await manager.ensureExecution({ executionId: 'e-ping-ready', botId: 'e-ping-ready' });
   assert.equal(calls.some((url) => url.endsWith('/ready')), true);
   assert.equal(calls.some((url) => url.endsWith('/ping')), true);
   await manager.stopExecution('e-ping-ready');
@@ -308,11 +252,11 @@ test('OpenSandbox foreground session mode uses an interruptible Execd session', 
       if (url === 'http://execd.test/sbx-session/session') return response({ session_id: 'session-1' });
       if (url.endsWith('/session/session-1/run')) return response('event: stdout\ndata: {"text":"ok"}\n\nevent: execution_complete\ndata: {"exit_code":0}\n\n', { contentType: 'text/event-stream' });
       if (url.includes('/session/session-1')) return response({});
-      if (url.includes('/sandboxes/sbx-session')) return response({});
+      if (url.includes('/sandboxes/sbx-session')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
-  await manager.ensureExecution({ executionId: 'e-session' });
+  await manager.ensureExecution({ executionId: 'e-session', botId: 'e-session' });
   const result = await manager.exec({ executionId: 'e-session', command: 'echo ok', env: { CONTEXT_URL: 'http://context' }, internalEnvironment: { CONTEXT_TOKEN: 'secret-token' } });
   assert.equal(result.stdout, 'ok');
   const runCall = calls.find((call) => call.url.endsWith('/session/session-1/run'));
@@ -388,11 +332,11 @@ test('restart quarantines only durable Mission resources across provider pages w
       calls.push([method, path, page]);
       if (path.endsWith('/sandboxes')) return response({
         items: page === 1 ? [
-          { id: 'foreign', metadata: { mission_id: 'other', bot_id: 'B-foreign' } },
+          { id: 'foreign', metadata: { mission_key: openSandboxMissionKey('other'), bot_key: openSandboxBotKey('B-foreign') } },
           { id: 'legacy', metadata: { execution_id: 'E-legacy' } },
-          { id: 'conflict', metadata: { mission_id: 'other', bot_id: 'B-conflict' } },
+          { id: 'conflict', metadata: { mission_key: openSandboxMissionKey('other'), bot_key: openSandboxBotKey('B-conflict') } },
         ] : cleanupComplete ? [] : [
-          { id: 'registered', metadata: { mission_id: 'M', bot_id: 'B-unbound', resource_key: 'bot:unbound' } },
+          { id: 'registered', metadata: { mission_key: openSandboxMissionKey('M'), bot_key: openSandboxBotKey('B-unbound'), resource_key: openSandboxBotKey('bot:unbound') } },
         ],
         pagination: { page, hasNextPage: page === 1 },
       });
@@ -409,11 +353,10 @@ test('restart quarantines only durable Mission resources across provider pages w
     { mission_id: 'M', bot_id: 'B-missing', resource_key: 'bot:missing', state: 'STARTING' },
     { mission_id: 'other', bot_id: 'B-foreign', resource_key: 'bot:foreign' },
   ];
-  const first = await manager.reconcileExecutions({ missionId: 'M', bots, executionIds: ['E-legacy'] });
+  const first = await manager.reconcileExecutions({ missionId: 'M', bots });
   assert.deepEqual(calls.slice(0, 2), [['GET', '/v1/sandboxes', 1], ['GET', '/v1/sandboxes', 2]]);
-  assert.deepEqual(first.adopted, []);
   assert.deepEqual(first.confirmed_bot_ids, ['B-known']);
-  assert.deepEqual(first.quarantined.map(({ sandbox_id }) => sandbox_id), ['known-not-listed', 'legacy']);
+  assert.deepEqual(first.quarantined.map(({ sandbox_id }) => sandbox_id), ['known-not-listed']);
   assert.deepEqual(first.pending.map(({ bot_id, reason }) => [bot_id, reason]), [
     ['B-unbound', 'deletion_unconfirmed'], ['B-conflict', 'provider_identity_mismatch'], ['B-missing', 'creation_unconfirmed'],
   ]);
@@ -467,9 +410,9 @@ test('unknown create blocks new starts and local cleanup until the real resource
 test('restart records a newly found provider ID before deletion and never deletes conflicting matches', async () => {
   const deleted = [];
   const rows = [
-    { id: 's-found', metadata: { mission_id: 'M', bot_id: 'B-found', resource_key: 'bot:found' } },
-    { id: 's-duplicate-1', metadata: { mission_id: 'M', bot_id: 'B-duplicate', resource_key: 'bot:duplicate' } },
-    { id: 's-duplicate-2', metadata: { mission_id: 'M', bot_id: 'B-duplicate', resource_key: 'bot:duplicate' } },
+    { id: 's-found', metadata: { mission_key: openSandboxMissionKey('M'), bot_key: openSandboxBotKey('B-found'), resource_key: openSandboxBotKey('bot:found') } },
+    { id: 's-duplicate-1', metadata: { mission_key: openSandboxMissionKey('M'), bot_key: openSandboxBotKey('B-duplicate'), resource_key: openSandboxBotKey('bot:duplicate') } },
+    { id: 's-duplicate-2', metadata: { mission_key: openSandboxMissionKey('M'), bot_key: openSandboxBotKey('B-duplicate'), resource_key: openSandboxBotKey('bot:duplicate') } },
   ];
   const bots = [
     { mission_id: 'M', bot_id: 'B-found', resource_key: 'bot:found' },
@@ -513,7 +456,7 @@ test('restart does not delete an otherwise eligible first page if listing cannot
       return response({ items: [{ id: 's', metadata: { execution_id: 'E' } }], pagination: { page: 1, hasNextPage: true } });
     },
   });
-  await assert.rejects(manager.reconcileExecutions({ executionIds: ['E'] }), { code: ERROR_CODES.SERVICE_UNAVAILABLE });
+  await assert.rejects(manager.reconcileExecutions({ missionId: 'M', bots: [{ mission_id: 'M', bot_id: 'B', resource_key: 'bot:B' }] }), { code: ERROR_CODES.SERVICE_UNAVAILABLE });
   assert.deepEqual(methods, ['GET', 'GET']);
 });
 
@@ -609,4 +552,10 @@ test('worker quota and exact catalog attestations are required when configured',
     else await assert.rejects(started, { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
     await manager.stopExecution('B-quota');
   }
+});
+
+test('OpenSandbox refuses resource creation without a Bot before provider dispatch', async () => {
+  const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'image:test',
+    fetchImpl: async () => assert.fail('Unregistered creation must not reach the provider') });
+  await assert.rejects(manager.ensureExecution({ executionId: 'unregistered' }), /bot_id is required/);
 });

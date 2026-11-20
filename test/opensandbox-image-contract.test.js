@@ -6,11 +6,10 @@ import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { agentContract, BOT_PROTOCOL_VERSION, BOT_RESOURCES } from '../src/agent/bot-contract.js';
 
-test('OpenSandbox image carries the direct Pi model catalog without NuRouter', async () => {
+test('OpenSandbox image carries the direct Pi model catalog', async () => {
   const dockerfile = await readFile(new URL('../services/opensandbox-agent/Dockerfile', import.meta.url), 'utf8');
   assert.match(dockerfile, /COPY --chown=0:0 services\/opensandbox-agent\/pi-models\.json \/opt\/swarmenv\/pi-agent\/models\.json/);
   assert.match(dockerfile, /PI_CODING_AGENT_DIR=/);
-  assert.doesNotMatch(dockerfile, /nu-router|NUROUTER_SHA256|SWARMENV_NUROUTER_VERSION/);
   assert.match(dockerfile, /chmod 0555 \/opt\/swarmenv\/scripts\/swarm\.mjs/);
   assert.match(dockerfile, /mkdir -p \/workspace/);
   assert.match(dockerfile, /COPY --chown=0:0 src \/opt\/swarmenv\/src/);

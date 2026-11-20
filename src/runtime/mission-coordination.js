@@ -63,8 +63,8 @@ export function createMissionCoordination({
       const disputed = relations.some(row => row.material_id === ref.material_id && row.relation_kind === 'dispute');
       if (material.relation_version !== ref.relation_version || disputed !== ref.disputed ||
           stableStringify(successors) !== stableStringify([...ref.active_successor_ids].sort())) return false;
-      if (!material.source_task && !material.source_execution) return true;
-      return taskService.materialOriginMission(material.source_task, material.source_execution, material.producer_bot_id) === missionId;
+      if (!material.producer_task_id && !material.producer_execution_id) return true;
+      return taskService.materialOriginMission(material.producer_task_id, material.producer_execution_id, material.producer_bot_id) === missionId;
     });
   const validateCompletion = submission => running() && submission.mission_id === missionId &&
     submission.workspace_id === workspaceId && stableStringify(acceptance()) === stableStringify(submission.acceptance);

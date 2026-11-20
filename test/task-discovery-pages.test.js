@@ -83,8 +83,8 @@ test('state and text filters cannot consume an unbounded creation window', t => 
   assert.equal(second.scanned, 2); assert.deepEqual(second.tasks.map(task => task.task_id), ['needle']);
   const absent = list({ states: ['DONE'] });
   assert.equal(absent.scanned, 500); assert.deepEqual(absent.tasks, []); assert.ok(absent.next_cursor);
-  const plan = service.db.prepare('EXPLAIN QUERY PLAN SELECT task_id, rowid FROM modern_task_records WHERE mission_id = ? AND rowid > ? AND rowid <= ? ORDER BY rowid LIMIT 501').all('mission:pages', 0, 502);
-  assert.ok(plan.some(row => row.detail.includes('modern_task_records_mission_scan')));
+  const plan = service.db.prepare('EXPLAIN QUERY PLAN SELECT task_id, rowid FROM task_records WHERE mission_id = ? AND rowid > ? AND rowid <= ? ORDER BY rowid LIMIT 501').all('mission:pages', 0, 502);
+  assert.ok(plan.some(row => row.detail.includes('task_records_mission_scan')));
   assert.ok(plan.every(row => !row.detail.includes('TEMP B-TREE')));
 });
 
@@ -107,7 +107,7 @@ test('Task summaries include dependency, blocked and cancelled reasons without f
   assert.equal(byId.blocked.block_reason, 'dependency:prerequisite');
   assert.equal(byId['open-unsatisfied'].available, false);
   assert.deepEqual(byId.prerequisite.dependencies, { present: false, satisfied: true });
-  assert.equal(byId.cancelled.state, 'CANCELLED');
+  assert.equal(byId.cancelled.state, 'CANCELED');
   assert.equal(byId.cancelled.cancellation_reason, 'The responsibility was replaced');
   assert.ok(byId.cancelled.updated_at);
 });

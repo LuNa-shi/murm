@@ -17,22 +17,11 @@ export const CHECK_RESULT_CLASSES = Object.freeze([
   'unassessed',
 ]);
 
-// Older CheckResult rows predate the explicit result class and were migrated
-// with the safe `unassessed` default.  Their PASS/FAIL verdict is still the
-// only durable source-level signal, so readers may recover the legacy class
-// without changing the meaning of newly written rows.
-export function storedResultClass({ verdict, resultClass, checkerProcessStatus } = {}) {
-  if (resultClass && resultClass !== 'unassessed') return resultClass;
-  if (verdict === 'PASS') return 'PASS';
-  if (verdict === 'FAIL') return 'source_failure';
+export function storedResultClass({ resultClass } = {}) {
   return resultClass ?? 'unassessed';
 }
 
-export function storedCheckerProcessStatus({ verdict, resultClass, checkerProcessStatus } = {}) {
-  if (checkerProcessStatus && !(checkerProcessStatus === 'not_started' && (!resultClass || resultClass === 'unassessed') && ['PASS', 'FAIL'].includes(verdict))) {
-    return checkerProcessStatus;
-  }
-  if (['PASS', 'FAIL'].includes(verdict) && (!resultClass || resultClass === 'unassessed')) return 'completed';
+export function storedCheckerProcessStatus({ checkerProcessStatus } = {}) {
   return checkerProcessStatus ?? 'not_started';
 }
 

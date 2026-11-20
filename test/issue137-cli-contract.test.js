@@ -81,7 +81,7 @@ test('CLI through authenticated Bridges proposes several tasks and revises anoth
   const cancelled = await editor('task', 'cancel', two.task.task_id,
     '--expected-spec-version', String(two.task.spec_version), '--expected-state-version', String(two.task.state_version),
     '--reason', 'The first responsibility now covers this case', '--request-id', 'cancel-second');
-  assert.equal(cancelled.task.state, 'CANCELLED');
+  assert.equal(cancelled.task.state, 'CANCELED');
 });
 
 test('CLI process preserves service retryability and request diagnostic fields', async t => {

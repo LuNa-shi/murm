@@ -55,8 +55,8 @@ test('swarm CLI exposes offline help at every level', async () => {
   output = '';
   await runSwarmCli(['mission', 'submission', 'view', '--help'], { stdout });
   assert.match(output, /view \[id\].*\nWithout an ID, read current Mission state/);
-  await assert.rejects(runSwarmCli(['context', 'publish'], { stdout }), /retired.*swarm material/);
-  await assert.rejects(runSwarmCli(['context', '--help'], { stdout }), /retired.*swarm material/);
+  await assert.rejects(runSwarmCli(['context', 'publish'], { stdout }), /unknown command group/);
+  await assert.rejects(runSwarmCli(['context', '--help'], { stdout }), /unknown command group/);
 });
 
 test('swarm task command discovers a manifest and sends a typed JSON request', async () => {

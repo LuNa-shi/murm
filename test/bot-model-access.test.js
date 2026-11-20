@@ -176,7 +176,7 @@ test('timed model pairing uses the actual shipped Responses catalog and requires
   await assert.rejects(assertBenchmarkModelPair({ ...pair, provider: 'openai' }), /Responses catalog/);
   await assert.rejects(assertBenchmarkModelPair({ ...pair, provider: 'constructor' }), /Responses catalog/);
   await assert.rejects(assertBenchmarkModelPair({ ...pair, model: 'unsupported' }), /Responses catalog/);
-  await assert.rejects(assertBenchmarkModelPair({ ...pair, command: 'nurouter' }), /require direct Pi/);
+  await assert.rejects(assertBenchmarkModelPair({ ...pair, command: 'alternate-launcher' }), /require direct Pi/);
 });
 
 test('model reservation and upstream dispatch hold real Task authority against another connection exit', async t => {

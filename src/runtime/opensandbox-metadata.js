@@ -6,4 +6,3 @@ function key(prefix, identity) {
 
 export const openSandboxMissionKey = missionId => key('m', missionId);
 export const openSandboxBotKey = botId => key('b', botId);
-export const openSandboxExecutionKey = executionId => key('e', executionId);

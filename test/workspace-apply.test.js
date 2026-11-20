@@ -68,16 +68,14 @@ for (const width of [1, 9]) test(`apply records actual Git conflict marker lines
   assert.ok(markers.some(marker => marker.line.startsWith('>'.repeat(width) + ' ')));
 });
 
-test('concurrent coordinators migrate the old E schema under one SQLite write lock', async t => {
+test('concurrent coordinators initialize Execution Workspace tables under one SQLite write lock', async t => {
   const { DatabaseSync } = await import('node:sqlite');
   const { spawn } = await import('node:child_process');
-  const { EXECUTION_WORKSPACE_SCHEMA_SQL } = await import('../src/runtime/execution-workspace.js');
-  const root = await mkdtemp(join(tmpdir(), 'swarm-apply-migration-'));
+  const root = await mkdtemp(join(tmpdir(), 'swarm-apply-init-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, 'state.sqlite'), db = new DatabaseSync(path);
   t.after(() => db.close());
   db.exec('PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 1000');
-  db.exec(EXECUTION_WORKSPACE_SCHEMA_SQL.replace(' pending_apply INTEGER NOT NULL DEFAULT 0,', ''));
   db.exec('BEGIN IMMEDIATE');
   const module = new URL('../src/runtime/execution-workspace.js', import.meta.url).href;
   const children = Array.from({ length: 2 }, () => {

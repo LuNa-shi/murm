@@ -66,7 +66,7 @@ function pathEntries(value, field) {
       throw new SwarmEnvError('INVALID_CONTRACT', `${field}[${index}] must be a path or path descriptor`);
     }
     const path = normalizeWorkspacePath(entry.path, `${field}[${index}].path`);
-    const contentHash = entry.content_hash ?? entry.contentHash ?? entry.sha256 ?? null;
+    const contentHash = entry.content_hash ?? null;
     if (contentHash !== null && (typeof contentHash !== 'string' || !/^[0-9a-f]{64}$/i.test(contentHash))) {
       throw new SwarmEnvError('INVALID_CONTRACT', `${field}[${index}].content_hash must be a SHA-256 hash`);
     }
@@ -92,17 +92,17 @@ function unique(entries, field) {
  * Putnam tasks use it to identify the locked formalization.  Explicit
  * `required_inputs` and `allowed_outputs` are the extensible contract fields.
  */
-export function normalizeWorkspaceContract(workspace = {}, fallback = null) {
+export function normalizeWorkspaceContract(workspace = {}) {
   if (!workspace || typeof workspace !== 'object' || Array.isArray(workspace)) {
     throw new SwarmEnvError('INVALID_CONTRACT', 'Task workspace contract must be an object');
   }
-  const source = { ...(fallback && typeof fallback === 'object' ? fallback : {}), ...workspace };
-  const required = pathEntries(source.required_inputs ?? source.input_paths, 'required_inputs');
+  const source = workspace;
+  const required = pathEntries(source.required_inputs, 'required_inputs');
   if (source.problem_file !== undefined && source.problem_file !== null) {
     const problemPath = normalizeWorkspacePath(source.problem_file, 'workspace.problem_file');
     if (!required.some((entry) => entry.path === problemPath)) required.unshift({ path: problemPath });
   }
-  const outputsValue = source.allowed_outputs ?? source.output_paths ?? source.artifact_paths;
+  const outputsValue = source.allowed_outputs;
   const allowedOutputs = outputsValue === undefined || outputsValue === null
     ? null
     : unique(pathEntries(outputsValue, 'allowed_outputs'), 'allowed_outputs');
@@ -120,7 +120,7 @@ export function normalizeWorkspaceContract(workspace = {}, fallback = null) {
     }
   }
   return {
-    version: String(source.contract_version ?? source.workspace_contract_version ?? '1'),
+    version: String(source.contract_version ?? '1'),
     required_inputs: requiredInputs,
     allowed_outputs: allowedOutputs,
     forbidden_paths: forbidden,
@@ -158,33 +158,6 @@ export function assertReadableWorkspacePath(path, contract, existingPaths = new 
   return normalized;
 }
 
-export function assertWritableWorkspacePath(path, contract) {
-  const normalized = normalizeWorkspacePath(path);
-  const pathClass = workspacePathClass(normalized, contract);
-  if (pathClass === 'forbidden') {
-    throw new SwarmEnvError(WORKSPACE_ERROR_CODES.PATH_FORBIDDEN, `Workspace path is forbidden: ${normalized}`, {
-      path: normalized,
-      path_class: pathClass,
-      remediation: 'Write only a declared output path in the current Task Workspace.',
-    });
-  }
-  if (pathClass === 'required_input') {
-    throw new SwarmEnvError(WORKSPACE_ERROR_CODES.INPUT_READ_ONLY, `Required Workspace input is read-only: ${normalized}`, {
-      path: normalized,
-      path_class: pathClass,
-      remediation: 'Create a separate declared output or artifact instead of modifying the locked input.',
-    });
-  }
-  if (pathClass === 'undeclared') {
-    throw new SwarmEnvError(WORKSPACE_ERROR_CODES.OUTPUT_NOT_DECLARED, `Workspace output is not declared: ${normalized}`, {
-      path: normalized,
-      path_class: pathClass,
-      remediation: 'Add this relative path to the Task workspace allowed_outputs contract.',
-    });
-  }
-  return normalized;
-}
-
 export function validateRequiredWorkspaceInputs(fileManifest, contract) {
   const files = fileManifest && typeof fileManifest === 'object' ? fileManifest : {};
   for (const input of contract?.required_inputs ?? []) {
@@ -206,25 +179,4 @@ export function validateRequiredWorkspaceInputs(fileManifest, contract) {
     }
   }
   return true;
-}
-
-export function workspaceCapabilityDescriptor() {
-  return {
-    id: 'runtime.workspace',
-    title: 'Task Workspace',
-    purpose: 'Read declared inputs, create declared outputs, and inspect auditable revisions for the bound Task.',
-    ownership: 'runtime',
-    scope: 'bound-task',
-    roles: ['bound', 'recovery'],
-    tools: [
-      'workspace_get',
-      'list_workspace_revisions',
-      'list_workspace_files',
-      'read_workspace_file',
-      'write_workspace_file',
-      'workspace_diff',
-    ],
-    path_classes: ['required_input', 'allowed_output', 'forbidden'],
-    guidance: 'Use workspace_list_files as the authoritative existing-file index; write only declared allowed_outputs.',
-  };
 }

@@ -8,7 +8,7 @@ export function ensureServiceCommitSchema(db) {
 }
 
 export function assertServiceCommitSettled(db) {
-  // Older stores are migrated before this table exists.
+  // The table is created before a peer can issue a write.
   if (!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'service_commit_gate'").get()) return;
   const pending = db.prepare('SELECT gate_id FROM service_commit_gate WHERE singleton = 1').get();
   if (pending) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY,

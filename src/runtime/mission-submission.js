@@ -67,9 +67,6 @@ export class MissionSubmissionStore {
     this.shuttingDown = false;
     this.shutdownPromise = null;
     this.db.exec(MISSION_SUBMISSION_SCHEMA_SQL);
-    if (!this.db.prepare('PRAGMA table_info(mission_submission_audit)').all().some(column => column.name === 'details_json')) {
-      this.db.exec('ALTER TABLE mission_submission_audit ADD COLUMN details_json TEXT');
-    }
   }
 
   #transaction(action) {
