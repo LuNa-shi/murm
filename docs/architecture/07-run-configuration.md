@@ -485,6 +485,25 @@ back actual cgroup limits, and reports the effective profile and build jobs.
 Swap, termination grace, cleanup ownership and deadline clipping are unchanged.
 Research Core count is a separate setting and remains four in the Q20 study.
 
+## Historical continuation (Issue #149)
+
+`--resume-from <finished-experiment> --at <ISO timestamp with timezone>` selects a
+historical starting point after the source experiment has ended. Supply one
+`--problem` and a fresh `--experiment-dir`. The existing provider, image, fixture,
+checker and budget configuration remains required. This mode reconstructs the
+public main Workspace and service research data before opening live services, then
+starts the normal four-Core Swarm with new Bots and a fresh budget. It does not
+require saving a manual snapshot during the source run.
+
+The source stays read-only. The destination retains public Mission/Task/Material
+IDs, retires old runtime ownership locally, and records provenance in `resume.json`.
+The original problem and final checker identity must match. Missing historical
+evidence, an already accepted Mission, an unfinished source, incompatible inputs or
+an existing destination fail before new Bot work. History modes, legacy support,
+time semantics, operational handoff and verification are described in
+[Historical continuation](13-historical-resume.md). Historical reconstruction and service preflight run before the research clock.
+The normal admission event starts a full new window for the four Cores. This mode does not combine with Pass@K.
+
 ## Independent Pass@K execution (Issue #129)
 
 The existing benchmark CLI accepts `--pass-k K --problem <id>` with integer K from 1 through 4. Omitting it retains the four-Core Swarm protocol and its existing defaults. K=1 and K=4 use the same `runPassK` composition; each attempt invokes `runBenchmarkProject` with explicit `agentMode: solver`, one Core, a distinct run ID and positive attempt index. This is not a second runtime or checker. The CLI retains pinned-fixture verification, model routing, private audit retention and the existing production startup gates. Positive-duration solver attempts inherit the same independent Context/Judge deployment and current ordinary-check policy as Swarm (no cumulative quota, default four running/eight queued/120-second queue wait per Mission); Context is controller-only for solvers. Historical EXP05/06 retain their recorded 20/2 policy and do not establish results for this integrated configuration.

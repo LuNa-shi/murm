@@ -9,6 +9,7 @@ import { loadBenchmarkConfig, runBenchmarkBatch, runBenchmarkProject } from '../
 import { runPassK } from '../src/benchmark/pass-k.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
 import { beginPrivateAudit } from '../src/observability/private-audit-retention.js';
+import { assertResumeOutputPaths, parseReplayTime } from '../src/replay/resume-experiment.js';
 
 import { OBSERVABILITY_AUTH_VERSION, observabilityAccessMode } from '../src/observability/observability-server.js';
 const execFileAsync = promisify(execFile);
@@ -55,6 +56,7 @@ async function ensureObservabilityServer(options) {
       join(experimentRoot, '.observability', 'server.json'),
     ];
   const metadataPath = metadataPaths[0];
+  if (options.resumeFrom && !configuredMetadataPath) await assertResumeOutputPaths(options.resumeFrom, [databasePath, ...metadataPaths]);
   const accessMode = configuredMetadataPath ? null : observabilityAccessMode({
     host: options.observabilityHost, operatorPassword: process.env.SWARMENV_OBSERVABILITY_OPERATOR_PASSWORD ?? null,
   });
@@ -181,6 +183,8 @@ function optionsFromArgs(argv) {
       '--experiment-root': 'experimentRoot',
       '--experiment-dir': 'experimentDir',
       '--report-dir': 'reportDir',
+      '--resume-from': 'resumeFrom',
+      '--at': 'resumeAt',
       '--problem': 'problemId',
       '--cores': 'cores',
       '--pass-k': 'k',
@@ -226,12 +230,14 @@ function usage() {
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
     '    --report-dir reports/putnambench-runs/run-<id>',
+    '    --resume-from experiments/<finished-run> --at 2026-11-19T12:30:00Z --problem <id>',
     '    --observability             Opt in to the persistent observer server; disabled by default',
     '    --observability-host 127.0.0.1',
     '    --observability-port 8787',
     '    --observability-metadata /path/to/experiments/.observability/public-server.json',
     '',
     'Use --problem <id> to run one configured project as a pilot.',
+    'Historical resume reconstructs public research state at --at and starts four fresh Cores in a new --experiment-dir.',
     'Initial Bots start 60000 ms apart by default; replacement Bots do not repeat this stagger.',
     'The source diagnostic timeout defaults to 120000 ms and is capped by the locked checker timeout.',
     'Set the final-tree timeout in the trusted final_tree_checker configuration and regenerate its artifact lock.',
@@ -249,6 +255,14 @@ if (options.help) {
   process.exit(0);
 }
 if (!options.configPath || !options.putnamBenchRoot) throw new Error(usage() + '--problems and --putnambench-root are required');
+if (Boolean(options.resumeFrom) !== Boolean(options.resumeAt)) throw new Error('--resume-from and --at must be supplied together');
+if (options.resumeFrom) {
+  if (!options.problemId || options.k !== undefined) throw new Error('Historical resume requires one --problem and four fresh Cores');
+  options.resumeFrom = resolve(options.resumeFrom);
+  options.resumeAt = parseReplayTime(options.resumeAt);
+  await assertResumeOutputPaths(options.resumeFrom, [options.experimentDir, options.reportDir,
+    join(options.reportDir, options.problemId, 'report.json'), join(options.reportDir, 'aggregate-report.json')]);
+}
 if (options.k !== undefined) {
   if (!Number.isSafeInteger(options.k) || options.k < 1 || options.k > 4 || !options.problemId) throw new Error('--pass-k requires K from 1 to 4 and one --problem');
   options.initialBotStaggerMs = 0;
@@ -305,6 +319,7 @@ const metadata = {
   setup_elapsed_ms: null,
   started_at: null,
   status: 'preparing',
+  ...(options.resumeFrom ? { resume: { source_experiment: options.resumeFrom, requested_at: options.resumeAt } } : {}),
 };
 process.umask(0o077);
 const audit = await beginPrivateAudit({ root: options.experimentRoot, directory: options.experimentDir }).catch((error) => {
@@ -394,7 +409,7 @@ try {
       provider: options.provider,
       model: options.model,
       observability_enabled: options.observability,
-      input_policy: 'pinned formalization in Task-owned Workspace; no candidate or solution input',
+      input_policy: options.resumeFrom ? 'original pinned formalization and public research state reconstructed at the requested historical time' : 'pinned formalization in Task-owned Workspace; no candidate or solution input',
       raw_evidence_layout: 'logs/, state/, workspaces/',
       report_layout: resolve(options.reportDir),
     },
@@ -407,6 +422,7 @@ try {
   }) : null;
   if (observationAddress && !operatorStop.signal.aborted) {
     const observationDatabasePath = resolve(observationAddress.database_path ?? join(options.experimentRoot, '.observability', 'observability.sqlite'));
+    if (options.resumeFrom) await assertResumeOutputPaths(options.resumeFrom, [observationDatabasePath]);
     observationStore = new ObservationStore(observationDatabasePath);
     options.observationStore = observationStore;
     await writeFile(resolve(options.experimentDir, 'metadata', 'observability.json'), JSON.stringify({
@@ -472,7 +488,7 @@ try {
       ready_unassigned_ms: report.parallelism?.ready_unassigned_ms ?? null,
       proposed_task_count: report.run?.progress_evidence?.proposed_task_count ?? null,
       take_count: report.run?.take_count ?? null,
-      initial_task_count: null,
+      initial_task_count: report.protocol?.initial_task_count ?? null,
       dynamic_task_count: report.run?.dynamic_task_count ?? 0,
       mean_active_core_count: report.parallelism?.mean_active_core_count ?? null,
       eligible_mean_active_core_count: report.parallelism?.eligible_mean_active_core_count ?? null,

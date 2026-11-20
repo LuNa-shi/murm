@@ -1,7 +1,7 @@
 import { startIndependentServices } from '../sdk/independent-services.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { cpus, freemem, totalmem } from 'node:os';
 import { join, resolve, relative } from 'node:path';
@@ -38,6 +38,7 @@ import { OpenSandboxManager } from '../runtime/opensandbox-manager.js';
 import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { assertResumeOutputPaths, prepareExperimentResume } from '../replay/resume-experiment.js';
 
 const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
   execFile(command, args, { encoding: 'utf8' }, (error, stdout) => {
@@ -47,6 +48,24 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 });
 
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+async function validateResumeOutputPaths(options, problem, { freshProject = false } = {}) {
+  if (!options.resumeFrom) return;
+  const experimentDir = resolve(options.experimentDir ?? options.reportDir);
+  const reportDir = resolve(options.reportDir ?? join(experimentDir, 'reports'));
+  const artifactKey = options.agentMode === 'solver' ? `${problem.id}-attempt-${options.attemptIndex}` : problem.id;
+  const privateDirectories = ['state', 'logs', 'workspaces'].map(name => join(experimentDir, name, 'projects', artifactKey));
+  const paths = [experimentDir, reportDir, join(reportDir, artifactKey, 'report.json'),
+    join(resolve(options.reportDir ?? options.experimentDir), artifactKey, 'report.json'),
+    join(reportDir, 'aggregate-report.json'), ...privateDirectories];
+  const observationPath = options.observationStore?.databasePath ?? options.observationStore?.db?.location();
+  if (observationPath) paths.push(observationPath);
+  await assertResumeOutputPaths(options.resumeFrom, paths);
+  if (freshProject) for (const path of privateDirectories) {
+    const exists = await lstat(path).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
+    if (exists) throw new SwarmEnvError('REPLAY_DESTINATION_CONFLICT', 'Resume requires fresh project state, logs and working directories', { path });
+  }
+}
 
 class SerialTaskCreateAdmission {
   constructor() {
@@ -61,6 +80,8 @@ class SerialTaskCreateAdmission {
   }
 }
 function assertCurrentParallelConfiguration(options) {
+  if (Boolean(options.resumeFrom) !== Boolean(options.resumeAt)) throw new TypeError('Historical resume requires both resumeFrom and resumeAt');
+  if (options.resumeFrom && options.agentMode === 'solver') throw new TypeError('Historical resume requires four fresh Core loops');
   if (options.agentMode !== undefined && !['swarm', 'solver'].includes(options.agentMode)) throw new TypeError('Unknown agent mode');
   if (options.agentMode === 'solver') {
     if (options.cores !== 1 || !Number.isSafeInteger(options.attemptIndex) || options.attemptIndex < 1) throw new TypeError('Solver attempts require one Core and an explicit attemptIndex');
@@ -680,7 +701,8 @@ export async function takeTaskWithAgent(core, candidates) {
         supervisor_max_take_attempts: core.startConfig.options.maxStartupAttempts ?? 3,
         compaction_max: core.runtime.maxCompactions, context_closeout_fraction: core.runtime.handoffWindowRatio },
       services: botServiceDirectory(core.bridge.getCapabilityProfile()),
-      project: { project_id: core.stateRef.problem.id, problem_file: core.stateRef.problem.problem_file, source_hash: core.stateRef.problem.source_hash, input_policy: 'locked unsolved formalization only; no external answers or solution-derived candidates' },
+      project: { project_id: core.stateRef.problem.id, problem_file: core.stateRef.problem.problem_file, source_hash: core.stateRef.problem.source_hash,
+        input_policy: core.stateRef.resume ? 'original locked formalization and public research state reconstructed at the selected historical time' : 'locked unsolved formalization only; no external answers or solution-derived candidates' },
       eligibleTasks: selectionView(candidates), firstTurn: core.botDiscoveryTurns === 0,
     });
     core.runtime.recordBotWorkspacePreview({ botId: discoveryBotId, session, workspace });
@@ -1086,17 +1108,22 @@ export function projectReport(state, startedAt, deadline) {
     for (const session of core.sessionHistory) collectToolEvents(core, session.rpcRecords);
   }
   const materials = state.contextService.readMaterials({});
-  const materialConsumptions = state.contextService.listMaterialConsumptions({});
+  const missionConsumptions = state.contextService.listMaterialConsumptions({});
+  const inheritedExecutionIds = new Set(state.initialExecutionIds ?? []);
+  const materialConsumptions = missionConsumptions.filter(row => !inheritedExecutionIds.has(row.reader_execution));
   const taskEvidence = missionTaskEvidence(state);
   const tasks = taskEvidence.tasks;
   const takeHistory = state.cores.flatMap((core) => core.takeHistory);
   const allowedTaskIds = new Set(takeHistory.map((take) => take.task_id));
   const allowedExecutionIds = new Set(takeHistory.map((take) => take.execution_id));
+  const inheritedMaterialIds = new Set(state.initialMaterialIds ?? []);
   const materialBoundaryViolation = materials.some((material) =>
-    !allowedTaskIds.has(material.producer_task_id) || !allowedExecutionIds.has(material.producer_execution_id));
+    !inheritedMaterialIds.has(material.material_id) &&
+    (!allowedTaskIds.has(material.producer_task_id) || !allowedExecutionIds.has(material.producer_execution_id)));
   const inputMaterialViolation = state.publicWorkspace.mission_id !== state.missionId || state.publicWorkspace.metadata.input_snapshot_hash !== state.inputMaterialHash;
   const allowedInputMaterialIds = new Set(materials
-    .filter((material) => allowedTaskIds.has(material.producer_task_id) && allowedExecutionIds.has(material.producer_execution_id))
+    .filter((material) => inheritedMaterialIds.has(material.material_id) ||
+      (allowedTaskIds.has(material.producer_task_id) && allowedExecutionIds.has(material.producer_execution_id)))
     .map((material) => material.material_id));
   const workspaceViolation = takeHistory.some((take) => {
     const execution = state.taskService.getExecution(take.execution_id);
@@ -1173,12 +1200,14 @@ export function projectReport(state, startedAt, deadline) {
   const cleanupPending = (state.cleanupErrors?.length ?? 0) > 0;
   const invalid = cleanupPending || toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     workspaceSourceBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
-  const proposedTaskCount = taskEvidence.counts.total;
+  const taskCount = taskEvidence.counts.total;
+  const dynamicTaskCount = taskCount - state.initialTaskIds.length;
+  const proposedTaskCount = state.resume ? dynamicTaskCount : taskCount;
   const taskLifecycle = taskLifecycleEvents(state.taskService);
   const notifications = state.taskService.listNotifications?.({ missionId: state.missionId }) ?? [];
   const narratives = executionNarratives(state, tasks, materials);
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
-  const publishedMaterialCount = materials.length;
+  const publishedMaterialCount = materials.filter(material => !inheritedMaterialIds.has(material.material_id)).length;
   const checkCount = cores.reduce((count, core) => count + core.checks.length, 0);
   const madeProgress = workspaceWriteCount > 0 || publishedMaterialCount > 0;
   const parallelism = state.parallelism.snapshot({ endedAt });
@@ -1218,7 +1247,7 @@ export function projectReport(state, startedAt, deadline) {
       timebox_ms: state.timeboxMs ?? null,
       mission_id: state.missionId,
       workspace_id: state.workspaceId,
-      workspace_main_revision: '0.1',
+      workspace_main_revision: state.publicWorkspace.main_revision,
       candidate_model: 'workspace_file_ref',
       initial_task_count: state.initialTaskIds.length,
       proposed_task_count: proposedTaskCount,
@@ -1226,7 +1255,8 @@ export function projectReport(state, startedAt, deadline) {
       selection_timeout_ms: state.selectionTimeoutMs,
       execution_timeout_ms: state.executionTimeoutMs,
       handoff_reminder_ms: state.handoffReminderMs,
-      input_policy: 'pinned formalization only; no candidate or solution input',
+      input_policy: state.resume ? 'original pinned formalization and public research state reconstructed at the requested historical time' : 'pinned formalization only; no candidate or solution input',
+      ...(state.resume ? { historical_resume: state.resume } : {}),
       tool_policy: 'Pi read/write/edit/bash; services through authenticated swarm CLI; ambient extensions, skills, prompt templates and project context discovery disabled',
       registered_services: state.capabilityRegistry.listServices().map((service) => ({
         service_id: service.service_id,
@@ -1252,7 +1282,7 @@ export function projectReport(state, startedAt, deadline) {
       workspace_id: state.workspaceId,
       database_path: state.databasePath,
       input_workspace_hash: state.inputMaterialHash,
-      task_count: proposedTaskCount,
+      task_count: taskCount,
       task_page: taskEvidence.page,
       tasks: tasks.map((task) => ({
         expected_output: task.expected_output ?? null,
@@ -1286,7 +1316,7 @@ export function projectReport(state, startedAt, deadline) {
       ...parallelism,
       proposal_evidence: {
         definition: 'All admitted Mission Tasks, including the first proposal. Creation alone does not establish independent progress or successful execution.',
-        observed_task_count: proposedTaskCount,
+        observed_task_count: taskCount,
         ready_work_ms: parallelism.ready_work_ms,
         ready_unassigned_ms: parallelism.ready_unassigned_ms,
       },
@@ -1314,6 +1344,8 @@ export function projectReport(state, startedAt, deadline) {
       solved_at_ms: state.solvedAt === null ? null : state.solvedAt - startedAt,
       sandbox: state.sandboxManager?.snapshot() ?? null,
       material_count: materials.length,
+      ...(state.resume ? { inherited_material_count: inheritedMaterialIds.size, new_material_count: publishedMaterialCount,
+        inherited_material_consumption_count: missionConsumptions.length - materialConsumptions.length } : {}),
       material_consumption_count: materialConsumptions.length,
       material_consumptions: materialConsumptions.map((row) => ({
         operation_id: row.operation_id,
@@ -1343,7 +1375,7 @@ export function projectReport(state, startedAt, deadline) {
         created_at: notification.created_at,
       })),
       notification_count: notifications.length,
-      project_material_count: materials.filter((material) => allowedTaskIds.has(material.producer_task_id)).length,
+      project_material_count: materials.filter((material) => !inheritedMaterialIds.has(material.material_id) && allowedTaskIds.has(material.producer_task_id)).length,
       mission_final_check_budget: state.missionSubmissionStore?.getFinalCheckBudget(state.missionId) ?? null,
       judge_check_budget: state.judgeService?.getMissionCheckBudget(state.missionId) ?? null,
       check_count: cores.reduce((count, core) => count + core.checks.length, 0),
@@ -1377,12 +1409,13 @@ export function projectReport(state, startedAt, deadline) {
           .map((sample) => sample.take_to_first_turn_ms).filter(Number.isFinite),
       },
       // Count every Task admitted after Mission initialization.
-      dynamic_task_count: proposedTaskCount - state.initialTaskIds.length,
+      dynamic_task_count: dynamicTaskCount,
       dynamic_task_events: state.dynamicTaskEvents,
       task_lifecycle_events: taskLifecycle,
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       taken_core_count: new Set(state.cores.filter((core) => core.takeHistory.length > 0).map((core) => core.index)).size,
       take_count: takeHistory.length,
+      ...(state.resume ? { resume_count: 1 } : {}),
       checker_preflights: checkerPreflights,
       checker_infrastructure_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'infrastructure_failure').length, 0),
       checker_source_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'source_failure').length, 0),
@@ -1455,6 +1488,8 @@ async function createProjectState(problem, config, options) {
   const reportProjectDir = join(reportRoot, artifactKey);
   const workspaceRoot = join(experimentRoot, 'workspaces', 'projects', artifactKey);
   const missionWorkspaceRoot = join(projectDir, 'mission-workspace');
+  const resume = options.resumeFrom ? await prepareExperimentResume({ sourceExperimentDir: options.resumeFrom,
+    destinationProjectDir: projectDir, problem, config, at: options.resumeAt }) : null;
   const missionWorkspace = new MissionWorkspace({ rootDir: missionWorkspaceRoot });
   let missionSubmissionStore = null;
   let modelAccess = null;
@@ -1656,7 +1691,7 @@ async function createProjectState(problem, config, options) {
     const allowedAgentToolNames = [...BOT_TOOL_NAMES];
     const taskCreateMutex = new SerialTaskCreateAdmission();
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
-    const mission = taskService.createMission({
+    const mission = resume ? taskService.getMission(resume.missionId) : taskService.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
       goal: `${solver ? `Solve ${problem.id} independently.` : `Solve ${problem.id} through independent, shared Task work.`}${config.instructions_path ? ` Read ${config.instructions_path} for the benchmark task and input contract.` : ''}`,
       ...(workspaceMergeChecker ? { merge_required_check: workspaceMergeChecker.identity } : {}),
@@ -1668,8 +1703,14 @@ async function createProjectState(problem, config, options) {
         required_check: finalTreeChecker?.identity ?? null,
       },
     }, makeEnvelope({ actorRef: 'owner:benchmark', operationId: `benchmark:mission:create:${runId}` })).mission;
-    const workspaceId = `workspace-${problem.id}-${runId}`;
-    const publicWorkspace = await missionWorkspace.create({
+    if (resume && stableStringify(mission.acceptance_conditions.required_check ?? null) !== stableStringify(finalTreeChecker?.identity ?? null)) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Historical resume requires the original final checker identity');
+    }
+    if (resume && stableStringify(mission.merge_required_check ?? null) !== stableStringify(workspaceMergeChecker?.identity ?? null)) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Historical resume requires the original Workspace merge checker identity');
+    }
+    const workspaceId = resume?.workspaceId ?? `workspace-${problem.id}-${runId}`;
+    const publicWorkspace = resume ? await missionWorkspace.get({ workspaceId }) : await missionWorkspace.create({
       missionId: mission.mission_id,
       workspaceId,
       initialFiles: { ...await readBenchmarkContext(problem, config), [problem.problem_file]: problem.source },
@@ -1759,15 +1800,17 @@ async function createProjectState(problem, config, options) {
         // absent and Task admission will return a structured, actionable error.
       }
     }
-    // Swarm starts empty; Pass@K seeds one complete responsibility through Task Service.
+    const initialTasks = resume ? resume.initialTaskIds.map(id => taskService.getTask(id)) : [];
+    if (resume) for (const task of initialTasks) taskService.reconcileTask(task.task_id,
+      makeEnvelope({ actorRef: 'runtime:historical-resume', taskId: task.task_id }));
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: {
       problem_id: problem.id,
       mission_id: mission?.mission_id ?? null,
-      initial_task_count: 0,
+      initial_task_count: initialTasks.length,
       workspace_id: publicWorkspace.workspace_id,
     } });
-    observationStore.append({ experimentId: runId, source: 'runtime', kind: 'mission_started_zero_tasks', payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id } });
-    const initialTasks = [];
+    observationStore.append({ experimentId: runId, source: 'runtime', kind: resume ? 'mission_resumed_from_history' : 'mission_started_zero_tasks',
+      payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id, ...(resume ? { resume: resume.provenance } : {}) } });
     if (solver) initialTasks.push(taskService.createTask({
       mission_id: mission.mission_id, summary: `Independently solve the complete original theorem ${problem.id}`,
       goal: mission.goal, expected_output: 'Complete Lean proof accepted by the fixed final verifier',
@@ -2395,6 +2438,9 @@ async function createProjectState(problem, config, options) {
       databasePath,
       projectDir,
       initialTaskIds: initialTasks.map((task) => task.task_id),
+      initialExecutionIds: resume?.initialExecutionIds ?? [],
+      initialMaterialIds: resume?.initialMaterialIds ?? [],
+      resume: resume?.provenance ?? null,
       reportProjectDir,
       experimentDir: experimentRoot,
       logRoot,
@@ -2490,6 +2536,7 @@ async function runProject(problem, config, options) {
 }
 
 export async function runBenchmarkProject(problem, config, options = {}) {
+  await validateResumeOutputPaths(options, problem, { freshProject: true });
   const setupStartedAt = Date.now();
   let startedAt = null;
   const notify = options.onRunStarted;
@@ -2941,6 +2988,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
 }
 
 export async function writeUnavailableProjectReport(problem, options, error, { operatorStopped = false } = {}) {
+  await validateResumeOutputPaths(options, problem);
   const parallelism = new CoreParallelismTracker({ coreCount: options.agentMode === 'solver' ? 1 : 4, startedAt: 0 }).snapshot({ endedAt: 0 });
   const report = {
     schema_version: 1,
@@ -2982,6 +3030,7 @@ export async function writeUnavailableProjectReport(problem, options, error, { o
 
 export async function runBenchmarkBatch(problems, config, options = {}) {
   assertCurrentParallelConfiguration(options);
+  if (options.resumeFrom) throw new TypeError('Historical resume requires one selected problem');
   const concurrency = Math.max(1, Math.min(options.projectParallelism ?? 1, problems.length));
   const reports = [];
   let next = 0;

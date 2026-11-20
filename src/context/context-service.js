@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { installServiceHistory } from '../replay/service-history.js';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { operationPayload, stableStringify, validateEnvelope } from '../protocol/envelope.js';
@@ -103,6 +104,7 @@ export class ContextService {
     this.db.exec(`PRAGMA busy_timeout = ${busyTimeout}`);
     this.taskService = taskService;
     this.logger = logger;
+    installServiceHistory(this.db, { domain: 'context' });
   }
 
   close() {

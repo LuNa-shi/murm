@@ -18,6 +18,8 @@ Runtime delivers Task notifications to a live bound Session using `buildBotNotif
 
 Bridge command responses include structured results/errors and lifecycle notices. Native Bash carries these back into the model conversation; the Bridge does not create a separate turn for a tool response. Workspace conflicts also write an ordinary README artifact: it becomes model input only when read. Judge results carry actual checker diagnostics; successful request transport is not proof acceptance. Fixed guidance fields are catalogued separately from dynamic Task, Material, provider and checker content.
 
+On historical continuation, the runner reads the restored Mission, Task page and public main for each fresh Bot. Its startup message sets `project.input_policy` to `original locked formalization and public research state reconstructed at the selected historical time`. A replacement Bot follows the same discovery send path. [Historical continuation](13-historical-resume.md)
+
 ## Complete text and reproducible source inventory
 
 | Reference | Contents |

@@ -1,4 +1,6 @@
 import { assertServiceCommitSettled } from '../sdk/service-commit-gate.js';
+import { MANUAL_MISSION_REVIEW_SCHEMA_SQL } from '../runtime/manual-mission-review.js';
+import { installServiceHistory } from '../replay/service-history.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -163,6 +165,7 @@ export class TaskService {
     this.db = database instanceof DatabaseSync ? database : new DatabaseSync(database);
     this.db.exec(SCHEMA_SQL);
     this.db.exec(MISSION_SUBMISSION_SCHEMA_SQL);
+    this.db.exec(MANUAL_MISSION_REVIEW_SCHEMA_SQL);
     ensureJudgeSchema(this.db);
     this.contextService = contextService;
     if (contextService?.db === this.db && !contextService.taskService) contextService.taskService = this;
@@ -170,6 +173,7 @@ export class TaskService {
     this.executionStateListeners = new Set();
     this.taskEventListeners = new Set();
     this.notificationListeners = new Set();
+    installServiceHistory(this.db, { domain: 'task' });
   }
 
   close() {

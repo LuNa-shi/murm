@@ -179,6 +179,18 @@ recorded impact. A merge records the source revision’s explicit uses, while pa
 direct revisions with `workspace history --all --material-id ID`, and inspect Material
 corrections and the affected files before deciding whether they require revalidation.
 
+## Historical public Workspace reconstruction
+
+Normal public writes automatically retain committed events in `.swarm-history/`,
+including the main pointer, public revision index, freezes and request receipts.
+The publication intent still provides crash recovery. After an experiment ends,
+the historical importer can select a time, copy the then-visible Git objects and
+public revisions into a new repository, and continue normal writes. Old runs use
+recorded revision metadata and main's first-parent ancestry where sufficient;
+latest save is never treated as main by default. See
+[Historical continuation](13-historical-resume.md) for timestamp precision,
+compatibility, fresh-run ownership and evidence requirements.
+
 ## Lean projects across public revisions
 
 In a deployment with locked project checking, multiple Bots can save distinct Lean modules and integrate them through ordinary apply/save/merge. The complete fixed revision supplies imports; public main changes never alter a check already in flight. A project merge check compiles the actual combined tree, including unreferenced in-scope Lean modules, before the existing conditional main publication. It permits diagnostic warnings for unfinished work so auxiliary contributions can merge before the Mission theorem is complete. Final Mission verification still uses a frozen complete tree and the trusted theorem/proof check. An unmerged saved revision can be checked in the same way without advancing main. [Services](04-services.md#locked-lake-project-preparation-and-compilation) defines module roots, scope and failure classification.
