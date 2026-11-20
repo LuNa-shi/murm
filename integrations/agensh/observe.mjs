@@ -4,8 +4,7 @@ import { promisify } from 'node:util';
 import { appendFile, mkdir, readFile, stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { fixture, readTree } from './domain.mjs';
-import { createLockedFinalTreeVerifier } from '../../src/judge/final-tree-deployment.js';
+import { fixture, readTree, verifyDeployment } from './domain.mjs';
 
 const exec = promisify(execFile);
 const run = resolve(process.argv[2]);
@@ -24,7 +23,7 @@ await exec('git', ['init', '--bare', '--quiet', mirror]);
 const git = async (...args) => (await exec('git', ['--git-dir', mirror, ...args], { env, encoding: 'buffer', timeout: 60000, maxBuffer: 16 * 1024 ** 2 })).stdout;
 const journal = join(run, 'observations.ndjson');
 const record = event => appendFile(journal, JSON.stringify({ at: new Date().toISOString(), ...event }) + '\n', { mode: 0o600 });
-const deployment = createLockedFinalTreeVerifier({ configuration: config.final_tree_checker, problem });
+const deployment = verifyDeployment(config, problem);
 await deployment; // Establish a usable checker before announcing observer readiness.
 await record({ kind: 'observer_ready' });
 const pending = [];

@@ -2007,7 +2007,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [.gitmodules](../../.gitmodules) | Pinned third-party checkout location | [14-agensh-lean](14-agensh-lean.md) | `6160616b42057b75949236480e7505e9500561fd4d11194bb07bd5933b4d7a6c` |
-| [integrations/agensh/domain.mjs](../../integrations/agensh/domain.mjs) | Seed, export and check fixed Git trees | [14-agensh-lean](14-agensh-lean.md) | `450fe0cef194ba8e775f2bfc67ffa47a9928530c037b988762ef9dac59f7c803` |
+| [integrations/agensh/domain.mjs](../../integrations/agensh/domain.mjs) | Seed, export and check fixed Git trees | [14-agensh-lean](14-agensh-lean.md) | `1b89db1d38727f4d2c71dbb2182ec0c5098e8536d2f9437d11c63c353ccddd43` |
 | [integrations/agensh/lean-check](../../integrations/agensh/lean-check) | Local Lean elaboration command | [14-agensh-lean](14-agensh-lean.md) | `6f4beebf2107063b76ce9383990ca3a52d22296ad3af1c3bb934e3f1ee36a4af` |
 | [integrations/agensh/lean-proof/hooks/evaluate.sh](../../integrations/agensh/lean-proof/hooks/evaluate.sh) | Native pack evaluate hook | [14-agensh-lean](14-agensh-lean.md) | `7d287f931481ad46e589f823770c7ec348011c6e380e75a617575c3cd7e67458` |
 | [integrations/agensh/lean-proof/hooks/export.sh](../../integrations/agensh/lean-proof/hooks/export.sh) | Native pack export hook | [14-agensh-lean](14-agensh-lean.md) | `db56fb29f495e68517d730c2eed90fde0406f9aaea6e397103702a09883bf6f1` |
@@ -2022,11 +2022,11 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [integrations/agensh/lean-proof/prompts/objective.txt](../../integrations/agensh/lean-proof/prompts/objective.txt) | Math objective prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `7ac24696a94ed1bb29fb6aa7ef7c14f644df8b724835f6d599045eaf16cb69c8` |
 | [integrations/agensh/lean-proof/prompts/task_brief.txt](../../integrations/agensh/lean-proof/prompts/task_brief.txt) | Math task_brief prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `bbd184661094ffd8e262ce412e3dd91b1e2e1ceb54a15d268b747d5673b3a37b` |
 | [integrations/agensh/lean-proof/prompts/work_cycle.txt](../../integrations/agensh/lean-proof/prompts/work_cycle.txt) | Math work_cycle prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `a08c5b2585ba53ca2c9879878fe094e11243df211c4bfa85c70dd15fdb266ca5` |
-| [integrations/agensh/manifest.py](../../integrations/agensh/manifest.py) | Freeze and revalidate the effective profile, authority, inputs, service and worker images | [14-agensh-lean](14-agensh-lean.md) | `e69d94b043a9ae2831c971290b967a350526ec3b3b7b1c5924158372f6c94ae0` |
-| [integrations/agensh/observe.mjs](../../integrations/agensh/observe.mjs) | Read-only public Git observer and checker queue | [14-agensh-lean](14-agensh-lean.md) | `8346cf0f6e88a6234065206fc10c0307397a5ec7fa2fa56c65fc00962ea1df82` |
-| [integrations/agensh/provider_transport.py](../../integrations/agensh/provider_transport.py) | Trusted egress credential and model binding | [14-agensh-lean](14-agensh-lean.md) | `b0457c0ff9c04049928fc4b65b457c1fee6debfd82c795c3041fe742c5eeb673` |
-| [integrations/agensh/stage.py](../../integrations/agensh/stage.py) | Generate private profiles and worker mounts | [14-agensh-lean](14-agensh-lean.md) | `2dae7930579cbda63da113813030e3f0b1df8e09d6cbe29b7dd1e4a0983afa09` |
-| [integrations/agensh/start.py](../../integrations/agensh/start.py) | Start and time-fence the native team | [14-agensh-lean](14-agensh-lean.md) | `c29cf5f59fb127adf8b588e69b77bd2240df38c249d47b5e2b05bbc38d8949b2` |
+| [integrations/agensh/manifest.py](../../integrations/agensh/manifest.py) | Freeze and revalidate the effective profile, authority, inputs, service and worker images | [14-agensh-lean](14-agensh-lean.md) | `71036e8c4afc6f2c5a520f541d377794d81f096530b3d88e5ef4c82be99bd856` |
+| [integrations/agensh/observe.mjs](../../integrations/agensh/observe.mjs) | Read-only public Git observer and checker queue | [14-agensh-lean](14-agensh-lean.md) | `5c441f487288064feb62179abf69c942075ba8cb6e2e60e462882c10c8a06dbd` |
+| [integrations/agensh/provider_transport.py](../../integrations/agensh/provider_transport.py) | Trusted egress credential and model binding | [14-agensh-lean](14-agensh-lean.md) | `96838c79b6d5ae630e5ac67fcb3c9321a14e3454b5389a99923787adbe23ba9e` |
+| [integrations/agensh/stage.py](../../integrations/agensh/stage.py) | Generate private profiles and worker mounts | [14-agensh-lean](14-agensh-lean.md) | `defa42c5827e24b1234c7c0d5886a7db2086f34f67a8489a2614bde310e70d7d` |
+| [integrations/agensh/start.py](../../integrations/agensh/start.py) | Start and time-fence the native team | [14-agensh-lean](14-agensh-lean.md) | `62789e148a80a398fccbc8050be6fa2556917a6969aa8f4e42628e7843ba8c22` |
 
 ### observation and analysis (12)
 

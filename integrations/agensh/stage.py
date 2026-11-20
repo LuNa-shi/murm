@@ -14,7 +14,10 @@ ROOT = Path(__file__).resolve().parents[2]
 HERE = ROOT / 'integrations' / 'agensh'
 UPSTREAM = ROOT / 'third_party' / 'agensh'
 PIN = '2dae4e14a653da48549fd9aa093f834841475d6c'
-MATRIX = {'putnam_2025_b1': (2, '0.5'), 'flt10_q20_reducible_cofixed': (4, '8')}
+SEYMOUR = 'oai_seymour_second_neighborhood'
+MATRIX = {'putnam_2025_b1': (2, '0.5', 'gpt-6.1-sol', '1.4.0'),
+          'flt10_q20_reducible_cofixed': (4, '8', 'gpt-6.1-sol', '1.4.0'),
+          SEYMOUR: (4, '4', 'gpt-6.2-sol', '1.3.0')}
 
 
 def mount(source, target):
@@ -31,7 +34,7 @@ def main():
     parser.add_argument('--profile-suffix', required=True)
     parser.add_argument('--research-seconds', type=int, help='Remaining wall seconds in the approved pilot allowance')
     args = parser.parse_args()
-    workers, hours = MATRIX[args.task]
+    workers, hours, model, version = MATRIX[args.task]
     if args.research_seconds is not None:
         if args.task != 'putnam_2025_b1' or not 0 < args.research_seconds <= 1800:
             raise ValueError('Only the short pilot may use a reduced window')
@@ -49,7 +52,6 @@ def main():
     shutil.copytree(HERE / 'lean-proof', checkout / 'tasks/lean-proof')
     os.umask(0o077)
     provider = json.loads(args.provider_catalog.read_text())['providers']['gpt_proxy']
-    model = 'gpt-6.1-sol'
     if provider['api'] != 'openai-responses' or model not in {m['id'] for m in provider['models']}:
         raise ValueError('Provider must support the approved Responses model')
     base = urlsplit(provider['baseUrl'])
@@ -59,13 +61,16 @@ def main():
     if any(not isinstance(v, str) or not v or v.startswith(('$', '!')) for v in [provider['apiKey'], *headers.values()]):
         raise ValueError('Supply resolved provider credentials in the private catalog')
     route = run / 'route.json'
-    route.write_text(json.dumps({k: provider.get(k, {}) for k in ('apiKey', 'headers', 'baseUrl')}))
+    route.write_text(json.dumps({**{k: provider.get(k, {}) for k in ('apiKey', 'headers', 'baseUrl')}, 'model': model}))
     # gen_env writes only a local placeholder credential; the actual one stays in route.json.
     env = dict(os.environ, LLM_UPSTREAM=urlunsplit(base._replace(path=base.path[:-3])), LLM_UPSTREAM_TOKEN='local-transport',
                TASKS=args.task, PROFILE_SUFFIX=args.profile_suffix, WORKERS=str(workers), LLM_MODEL=model,
                REASONING_EFFORT='high', WORKER_MEMORY='8g', WORKER_CPUS='4')
+    if args.task == SEYMOUR:
+        # Native Pi uses floor(0.95 * PROMPT_TOKENS) as the model's context window.
+        env.update(REASONING_EFFORT='medium', PROMPT_TOKENS='526316', OUTPUT_TOKENS='128000')
     subprocess.run(['bash', 'tasks/programbench/scripts/gen_env.sh', '--agent-harness', 'pi',
-                    '--harness-version', '1.4.0'], cwd=checkout, env=env, check=True)
+                    '--harness-version', version], cwd=checkout, env=env, check=True)
     profile_path, = checkout.glob('.env.programbench-*')
     profile = profile_path.name.removeprefix('.env.')
     lines = profile_path.read_text().splitlines()
@@ -82,6 +87,17 @@ def main():
     deployment = json.loads(args.deployment.read_text())
     checker = deployment['final_tree_checker']
     volumes = [mount(checker['leanRoot'], '/opt/lean'), mount(HERE / 'lean-check', '/usr/local/bin/lean-check')]
+    if args.task == SEYMOUR:
+        # Agensh's model metadata hardcodes 16k. Use the baseline catalog value
+        # while keeping the upstream ACP loop, prompt composition and router.
+        config = (checkout / 'agent/pi/config.py').read_text()
+        needle = "'maxTokens': 16384"
+        if config.count(needle) != 1:
+            raise ValueError('Unexpected native Pi model metadata template')
+        matched = run / 'pi-config.py'
+        matched.write_text(config.replace(needle, "'maxTokens': 128000"))
+        matched.chmod(0o644)
+        volumes.append(mount(matched, '/opt/omcgitea/pi/config.py'))
     libraries = []
     for i, lib in enumerate(checker['libraryRoots']):
         target = f'/opt/lean-libraries/{i}'
@@ -107,7 +123,7 @@ def main():
                   PROFILE=profile, HOURS=hours, OUT_DIR=str(run / 'out'), COMPOSE_EXTRA_FILES=str(overlay))
     (run / 'launch.json').write_text(json.dumps(launch, indent=2))
     (run / 'identity.json').write_text(json.dumps(dict(upstream=PIN, image=image, workers=workers, hours=hours,
-                                                        harness='pi', version='1.4.0', provider='gpt_proxy', model=model)))
+                                                        harness='pi', version=version, provider='gpt_proxy', model=model)))
     (run / 'input-manifest.json').write_text(json.dumps(snapshot(run), sort_keys=True, indent=2))
     print(f'Prepared {profile}: {workers} Pi workers, {hours} research hours')
 

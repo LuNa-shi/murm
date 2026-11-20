@@ -5,7 +5,7 @@ import { dirname, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { loadBenchmarkConfig } from '../../src/benchmark/putnam-runner.js';
 import { readBenchmarkContext } from '../../src/benchmark/benchmark-context.js';
-import { createLockedFinalTreeVerifier } from '../../src/judge/final-tree-deployment.js';
+import { createLockedFinalTreeVerifier as localVerifier } from '../../src/judge/final-tree-deployment.js';
 
 const exec = promisify(execFile);
 const output = process.env.AGENSH_TASK_OUT && resolve(process.env.AGENSH_TASK_OUT);
@@ -20,6 +20,18 @@ export async function fixture() {
   const problem = config.problems.find(item => item.id === process.env.AGENSH_TASK);
   if (!problem) throw new Error('Requested problem missing from pinned deployment');
   return { config, problem };
+}
+
+export async function verifyDeployment(config, problem) {
+  if (problem.id !== 'oai_seymour_second_neighborhood') {
+    return localVerifier({ configuration: config.final_tree_checker, problem });
+  }
+  const root = resolve(config.baseline_verifier_root);
+  const commit = (await exec('git', ['-C', root, 'rev-parse', 'HEAD'])).stdout.trim();
+  if (commit !== 'ca8577734b89660cdfd1a4ec090159e05789c0d3') throw new Error('Wrong Seymour baseline checkout');
+  await exec('git', ['-C', root, 'diff', '--quiet', 'HEAD', '--', 'src/judge']);
+  const { createLockedFinalTreeVerifier } = await import(pathToFileURL(join(root, 'src/judge/final-tree-deployment.js')));
+  return createLockedFinalTreeVerifier({ configuration: config.final_tree_checker, problem });
 }
 
 async function git(...args) {
@@ -80,7 +92,7 @@ async function evaluate() {
   if (![commit, tree].every(id => /^[0-9a-f]{40}$/.test(id)) ||
       (await git('rev-parse', commit + '^{tree}')).toString().trim() !== tree) throw new Error('Export identity mismatch');
   const files = await readTree(git, tree);
-  const { adapter, evidence } = await createLockedFinalTreeVerifier({ configuration: config.final_tree_checker, problem });
+  const { adapter, evidence } = await verifyDeployment(config, problem);
   const result = await adapter.check({ files, tree });
   await save('acceptance.json', { commit, tree, task: problem.id, target_sha256: problem.source_hash,
     checker_lock: evidence.artifact_lock_sha256, result });

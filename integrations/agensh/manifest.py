@@ -23,6 +23,8 @@ def snapshot(run):
     files = {'launch': run / 'launch.json', 'overlay': run / 'math-compose.json', 'route': run / 'route.json',
              'profile': checkout / ('.env.' + launch['PROFILE']), 'deployment': launch['AGENSH_DEPLOYMENT'],
              'lock': dep['final_tree_checker']['artifactLock'], 'target': source / problem['problem_file']}
+    if (run / 'pi-config.py').exists():
+        files['pi-config'] = run / 'pi-config.py'
     if problem.get('context_manifest'):
         files['context_manifest'] = Path(dep['benchmark_context_root']) / problem['context_manifest']
     for p in (checkout / 'tasks/lean-proof').rglob('*'):

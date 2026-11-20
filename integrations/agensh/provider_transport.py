@@ -12,6 +12,7 @@ class ProviderEndpoint(urllib.request.BaseHandler):
     handler_order = 100
 
     def __init__(self, route, deadline_file):
+        self.model = route.get('model', 'gpt-6.1-sol')
         self.endpoint = route['baseUrl'].rstrip('/') + '/responses'
         self.headers = {**route['headers'], 'Authorization': 'Bearer ' + route['apiKey']}
         self.deadline_file = deadline_file
@@ -25,7 +26,7 @@ class ProviderEndpoint(urllib.request.BaseHandler):
             raise urllib.error.URLError('Research window has not opened') from None
         if time.time() >= deadline:
             raise urllib.error.URLError('Research window ended')
-        if json.loads(request.data)['model'] != 'gpt-6.1-sol':
+        if json.loads(request.data)['model'] != self.model:
             raise urllib.error.URLError('Model differs from the approved model')
         for name, value in self.headers.items():
             # Python 3.13 merges normal headers after unredirected headers.
