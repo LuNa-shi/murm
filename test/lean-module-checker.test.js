@@ -178,6 +178,21 @@ test('independent module verification rejects old valid output for a different f
   assert.equal(result.diagnostic_code, 'module_verification_failed');
 });
 
+test('independent verifier rejects prefixed stdout instead of relaxing its JSON receipt', real, async () => {
+  const verifier = fixture({ moduleCacheBytes: 0 });
+  const execute = verifier.moduleChecker.execute;
+  verifier.moduleChecker.execute = async (args, options) => {
+    const result = await execute(args, options);
+    return args.includes('/driver/Verify.lean')
+      ? { ...result, output: Buffer.concat([Buffer.from('unexpected compiler warning\n'), result.output]) }
+      : result;
+  };
+  const result = await check(verifier, { 'src/Target.lean': 'theorem target : True := trivial\n' });
+  assert.equal(result.verdict, 'ERROR');
+  assert.equal(result.diagnostic_code, 'module_verification_failed');
+  assert.equal(result.cache.stored_bytes, 0);
+});
+
 test('partial proofs and new axioms stay diagnostic with warnings while verification skips candidate initializers', real, async () => {
   const verifier = fixture();
   const execute = verifier.moduleChecker.execute;

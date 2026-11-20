@@ -48,11 +48,11 @@
     },
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
-      "sha256": "89144ce37a509a80af649408a42d4b8f0397a5a9906f9a0918a99a07baf5c905"
+      "sha256": "01b6adab2f010adf3e1261bf0b74d3ad1de096f3360de7202275bc0eb5a1b4b2"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "495ff79b0184de6cbfd100a32d8b1d24c4a8b484c35e894738cae2ec7fd0d3f9"
+      "sha256": "71e874f459bd62e0bad7586171229daa351a2d5f7b55f50aa0ad42dba1a597e0"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -119,7 +119,7 @@
     {
       "path": "src/benchmark/putnam-runner.js",
       "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 612,
+      "line": 614,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
     }
   ],
@@ -131,7 +131,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 434,
+      "line": 451,
       "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
     },
     {

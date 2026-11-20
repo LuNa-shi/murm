@@ -151,7 +151,7 @@ function optionsFromArgs(argv) {
     observabilityHost: '127.0.0.1',
     observabilityAdvertiseHost: null,
     observabilityMetadataPath: process.env.SWARMENV_OBSERVABILITY_METADATA ?? null,
-    model: process.env.PI_MODEL ?? 'gpt-6.1-sol',
+    model: process.env.PI_MODEL ?? 'gpt-6.2-sol',
     provider: process.env.PI_PROVIDER ?? 'gpt_proxy',
     sandbox: {
       enabled: process.env.SWARMENV_SANDBOX_ENABLED === 'true',

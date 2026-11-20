@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createFinalTreeArtifactLock, createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS } from '../src/judge/final-tree-deployment.js';
+import { createFinalTreeArtifactLock, createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS, OPENAI_MATH_SOURCE_PINS } from '../src/judge/final-tree-deployment.js';
 import { stableStringify } from '../src/protocol/envelope.js';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -16,6 +16,15 @@ const configuration = {
 
 test('checker lock rejects unknown benchmark profiles before tool invocation', async () => {
   await assert.rejects(createFinalTreeArtifactLock({ configuration: { ...configuration, benchmarkProfile: 'arbitrary' } }), /benchmark profile/);
+});
+
+test('OpenAI Math profile selects its Lean 4.34.1 source pins and still requires a trusted lock', async () => {
+  assert.equal(OPENAI_MATH_SOURCE_PINS.lean, '4.34.1');
+  assert.equal(OPENAI_MATH_SOURCE_PINS.mathlib, 'd13f23b723b8a846827a245b89c10fc7d3f11612');
+  await assert.rejects(createLockedFinalTreeVerifier({
+    configuration: { ...configuration, benchmarkProfile: 'openai-math-v1' },
+    problem: { problem_file: 'lean/ComparatorChallenges/PlaneColoring.lean', source_hash: 'a'.repeat(64), declaration_name: 'OAI.Problem160.properColoring_seven' },
+  }), /artifact lock is required/);
 });
 
 test('root-only deployment binds the target and declaration to its foundation manifest', async t => {

@@ -120,7 +120,7 @@ test('OpenSandbox Agent adapter forwards only configured service environment and
       PI_CODING_AGENT_DIR: '/home/host/.pi/agent',
       OPENAI_API_KEY: 'must-not-be-inherited',
     },
-    agentEnvironment: { SWARMENV_CONTEXT_SERVICE_URL: 'http://context:8787' },
+    agentEnvironment: { SWARMENV_CONTEXT_SERVICE_URL: 'http://context:8787', SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS: '2430000' },
     secretEnv: { SWARMENV_TASK_SERVICE_TOKEN: 'task-secret', SWARMENV_BRIDGE_TOKEN: 'bridge-secret', OPENAI_API_KEY: 'explicit-secret' },
   });
   await adapter.start({ executionId: 'execution-env', bot: { bot_id: 'execution-env' }, sessionId: 'session-env' });
@@ -129,6 +129,7 @@ test('OpenSandbox Agent adapter forwards only configured service environment and
   assert.equal(manager.started.env.SWARMENV_OPENSANDBOX_URL, undefined);
   assert.equal(manager.started.env.PI_CODING_AGENT_DIR, undefined);
   assert.equal(manager.started.env.SWARMENV_BRIDGE_URL, 'http://host-gateway:40123');
+  assert.equal(manager.started.env.SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS, '2430000');
   assert.equal(manager.started.env.OPENAI_API_KEY, undefined);
   assert.equal(manager.started.secretEnvironment.SWARMENV_TASK_SERVICE_TOKEN, undefined);
   assert.equal(manager.started.secretEnvironment.SWARMENV_BRIDGE_TOKEN, 'bridge-secret');

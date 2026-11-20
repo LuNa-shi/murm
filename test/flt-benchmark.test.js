@@ -78,6 +78,51 @@ test('a new benchmark loads one configured target without adding a runner branch
   assert.equal(loaded.instructions_path, 'benchmark/README.md');
 });
 
+test('a nested Lean benchmark project uses its configured subdirectory', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-openai-math-fixture-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await mkdir(join(root, 'lean/ComparatorChallenges'), { recursive: true });
+  await writeFile(join(root, 'lean/lean-toolchain'), 'leanprover/lean4:v4.34.1\n');
+  const source = 'namespace OAI\nnamespace Problem160\ntheorem properColoring_seven : True := by sorry\nend Problem160\nend OAI\n';
+  await writeFile(join(root, 'lean/ComparatorChallenges/PlaneColoring.lean'), source);
+  const git = (...args) => execFileSync('git', ['-C', root, ...args], { encoding: 'utf8' }).trim();
+  git('init', '-q');
+  git('add', '.');
+  git('-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.test', 'commit', '-qm', 'Pin nested Lean fixture');
+  const config = { benchmark: 'openai_math_v1', fixture_commit: git('rev-parse', 'HEAD'),
+    lean_project_subdir: 'lean', problems: [{ id: 'plane_coloring', problem_file: 'lean/ComparatorChallenges/PlaneColoring.lean',
+      declaration_name: 'OAI.Problem160.properColoring_seven' }] };
+  const path = join(root, 'config.json');
+  await writeFile(path, JSON.stringify(config));
+  const loaded = await loadBenchmarkConfig(path, { putnamBenchRoot: root, verifyPinnedCheckout: true });
+  assert.equal(loaded.lean_project_root, join(root, 'lean'));
+  assert.equal(loaded.problems[0].source, source);
+  assert.equal(loaded.problems[0].source_hash, createHash('sha256').update(source).digest('hex'));
+});
+
+test('a Lean project subdirectory cannot escape the benchmark root', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-openai-math-path-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'Target.lean'), 'theorem Example.target : True := by sorry\n');
+  const config = { benchmark: 'openai_math_v1', fixture_commit: 'local', lean_project_subdir: '../outside',
+    problems: [{ id: 'example', problem_file: 'Target.lean', declaration_name: 'Example.target' }] };
+  const path = join(root, 'config.json');
+  await writeFile(path, JSON.stringify(config));
+  await assert.rejects(loadBenchmarkConfig(path, { putnamBenchRoot: root }), /invalid Lean project subdirectory/);
+});
+
+test('the embedded OpenAI Math fixture loads from this repository checkout', async () => {
+  const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
+  const config = await loadBenchmarkConfig(join(repositoryRoot, 'config/openai-math-12.json'), {
+    putnamBenchRoot: repositoryRoot,
+    verifyPinnedCheckout: true,
+  });
+  assert.equal(config.problems.length, 12);
+  assert.equal(config.lean_project_root, join(repositoryRoot, 'benchmarks/openai-math-12/lean'));
+  assert.equal(config.problems[0].source_path, join(repositoryRoot, config.problems[0].problem_file));
+  assert.equal(config.smoke_problem.problem_file, 'benchmarks/openai-math-12/lean/ComparatorChallenges/PlaneColoring.lean');
+});
+
 test('formal readiness requires a complete target receipt bound to its context and checker', async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarm-validation-'));
   t.after(() => rm(root, { recursive: true, force: true }));
