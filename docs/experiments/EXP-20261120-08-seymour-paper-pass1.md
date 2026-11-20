@@ -18,4 +18,6 @@ The owner requested one independent solver attempt under the same task backgroun
 
 ## Results
 
-Registered before model calls.
+**Running.** The study was registered at 0ef00a8 before model calls. Group research start was 10:05:03.881 UTC and the deadline is 14:05:03.881 UTC on November 20, 2026. Both initial Workspaces had identical content hash efac96d5c35b2b050b21fab6f04cf3de1e0a7f8defd9758a3ff40270c58b85af and exactly three files. The single Bot activated Execution c795c8a7 on Core 1. RPC recorded automatic compaction enabled at 10:05:08.027 and the tool result at 10:05:20.571 contained the paper text. A read-only observer samples every ten minutes and records the final attempt report when it becomes available.
+
+Offline validation passed all four Pass@K tests, the paper materialization test, the same-identity solver compaction regression and all three built-image contract checks. The formal runner uses the same checker lock that accepted the four-Core proof.
