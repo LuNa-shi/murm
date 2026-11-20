@@ -12,9 +12,10 @@ from manifest import snapshot
 run = Path(sys.argv[1]).resolve(strict=True)
 launch = json.loads((run / 'launch.json').read_text())
 identity = json.loads((run / 'identity.json').read_text())
-if (launch['HOURS'], identity['workers'], launch['TASK']) not in {
-    ('0.5', 2, 'putnam_2025_b1'), ('8', 4, 'flt10_q20_reducible_cofixed')
-}:
+hours = float(launch['HOURS'])
+allowed_pilot = launch['TASK'] == 'putnam_2025_b1' and identity['workers'] == 2 and 0 < hours <= 0.5
+allowed_long = launch['TASK'] == 'flt10_q20_reducible_cofixed' and identity['workers'] == 4 and hours == 8
+if not (allowed_pilot or allowed_long):
     raise SystemExit('Run matrix differs from Issue #157')
 profile = launch['PROFILE']
 checkout = run / 'upstream'

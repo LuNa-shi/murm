@@ -249,9 +249,9 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [integrations/agensh/lean-proof/prompts/work_cycle.txt](../../integrations/agensh/lean-proof/prompts/work_cycle.txt) | Math work_cycle prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `a08c5b2585ba53ca2c9879878fe094e11243df211c4bfa85c70dd15fdb266ca5` |
 | [integrations/agensh/manifest.py](../../integrations/agensh/manifest.py) | Freeze and revalidate the effective profile, authority, inputs, service and worker images | [14-agensh-lean](14-agensh-lean.md) | `e69d94b043a9ae2831c971290b967a350526ec3b3b7b1c5924158372f6c94ae0` |
 | [integrations/agensh/observe.mjs](../../integrations/agensh/observe.mjs) | Read-only public Git observer and checker queue | [14-agensh-lean](14-agensh-lean.md) | `cb3f9c95dc245860d6a673ba8abff598cadb25024fdb16ea9ee855b3434c52ee` |
-| [integrations/agensh/provider_transport.py](../../integrations/agensh/provider_transport.py) | Trusted egress credential and model binding | [14-agensh-lean](14-agensh-lean.md) | `6bcc432e6e7d1656887b1655a789a4763978d1829ccf3b705c1cd23a8a4533b1` |
-| [integrations/agensh/stage.py](../../integrations/agensh/stage.py) | Generate private profiles and worker mounts | [14-agensh-lean](14-agensh-lean.md) | `b835c48aa4a5e13aab6288dafbcbc6b74a745dd9e3d5d1dd6d514e2ffacc85a0` |
-| [integrations/agensh/start.py](../../integrations/agensh/start.py) | Start and time-fence the native team | [14-agensh-lean](14-agensh-lean.md) | `4b74ca6ddf0ff14b033e21feaf73303a26bd65e6f8553180c08e6b4114ff56c9` |
+| [integrations/agensh/provider_transport.py](../../integrations/agensh/provider_transport.py) | Trusted egress credential and model binding | [14-agensh-lean](14-agensh-lean.md) | `b0457c0ff9c04049928fc4b65b457c1fee6debfd82c795c3041fe742c5eeb673` |
+| [integrations/agensh/stage.py](../../integrations/agensh/stage.py) | Generate private profiles and worker mounts | [14-agensh-lean](14-agensh-lean.md) | `2dae7930579cbda63da113813030e3f0b1df8e09d6cbe29b7dd1e4a0983afa09` |
+| [integrations/agensh/start.py](../../integrations/agensh/start.py) | Start and time-fence the native team | [14-agensh-lean](14-agensh-lean.md) | `c29cf5f59fb127adf8b588e69b77bd2240df38c249d47b5e2b05bbc38d8949b2` |
 
 ### observation and analysis (12)
 

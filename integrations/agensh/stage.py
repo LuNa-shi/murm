@@ -29,8 +29,13 @@ def main():
     parser.add_argument('--task', choices=MATRIX, required=True)
     parser.add_argument('--worker-image', required=True)
     parser.add_argument('--profile-suffix', required=True)
+    parser.add_argument('--research-seconds', type=int, help='Remaining wall seconds in the approved pilot allowance')
     args = parser.parse_args()
     workers, hours = MATRIX[args.task]
+    if args.research_seconds is not None:
+        if args.task != 'putnam_2025_b1' or not 0 < args.research_seconds <= 1800:
+            raise ValueError('Only the short pilot may use a reduced window')
+        hours = str(args.research_seconds / 3600)
     run = args.run_dir.resolve()
     if not run.is_relative_to(ROOT / 'experiments'):
         raise ValueError('Keep private state in the ignored experiments directory')
