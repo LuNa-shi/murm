@@ -23,4 +23,8 @@ The new deployment lock is `ade992f23fa8a66ae888b746f77cbe5cf8959b01a34c5ad3e584
 
 ## Results
 
-Registered before research. Results pending.
+The registration commit ec20e65 changed experiment documentation only. The active service used that checkout. The authoritative research start was 08:56:18.416 UTC on November 20, 2026, with deadline 12:56:18.416 UTC. Initial public revision 0.1 (Git b70a806509c3bb3620d584719e209baee0180dfd) contains the unchanged 913-byte goal, 387,437-byte PDF and 39,808-byte text. All three hashes match the selected inputs.
+
+All four initial Bots received HTTP 200 model responses and took distinct responsibilities. Core 2, 3 and 4 tool returns at 08:56:39.295, 08:56:41.450 and 08:56:47.403 UTC match lines of the supplied manuscript. Initial running Tasks included the strongly connected reduction (830f0aca), subset deficit from arc-minimality (1f8858d2), selection of a minimal counterexample (8f9dd264), and transitive-block amplification (4021b60c). These are observed work assignments. The paper-route obligations remain unassessed at this update.
+
+The offline final checker rejected the original hole with the two paper files present. In the same condition it accepted the full private reference proof in 56.775 seconds (treecheck:e326fc93-d39a-4eb8-bb74-7126fd1eb3db). The actual worker passed all three built-image contract tests and the disk quota probe. A separate read-only recorder now retains time-cut revision, Judge and Material identifiers. Its initial export was recovered from timestamped records after correcting the Material producer column name. The fixed start cut contains just public revision 0.1 and no Judge checks.
