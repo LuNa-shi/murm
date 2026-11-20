@@ -422,30 +422,37 @@ export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyP
   return { ...config, putnam_bench_root: root, lean_project_root: projectRoot, problems };
 }
 
+function beginOwnedAgentTurn(core, session, details, at = Date.now()) {
+  // The tracker still rejects concurrent turns. Ownership is installed only
+  // after admission succeeds, so a rejected begin cannot replace its owner.
+  core.parallelism.beginAgentTurn(core.index, details, at);
+  const owner = { session, executionId: details.execution_id ?? null };
+  core.agentTurnOwner = owner;
+  core.agentTurnSession = session;
+  return owner;
+}
+
+function endOwnedAgentTurn(core, owner, reason = 'agent_turn_completed') {
+  if (!owner || core.agentTurnOwner !== owner) return false;
+  core.parallelism.endAgentTurn(core.index, Date.now(), reason);
+  core.agentTurnOwner = null;
+  core.agentTurnSession = null;
+  return true;
+}
+
 export async function runTurn(core, prompt, timeoutMs) {
   if (core.turnInFlight) return;
-  core.turnInFlight = true;
   const session = core.session;
   const boundExecutionId = core.executionId;
   const countsAsAgentTurn = Boolean(core.taskId && boundExecutionId);
-  if (countsAsAgentTurn) {
-    core.parallelism.beginAgentTurn(core.index, {
-      task_id: core.taskId,
-      execution_id: core.executionId,
-      reason: 'follow_up_turn',
-    }, core.turnStartedAt || Date.now());
-    core.agentTurnSession = session;
-  }
-  if (!session) {
-    if (countsAsAgentTurn && core.agentTurnSession === session) {
-      core.parallelism.endAgentTurn(core.index, Date.now(), 'missing_session');
-      core.agentTurnSession = null;
-    }
-    core.turnInFlight = false;
-    return;
-  }
-  const sequence = session.rpcRecords.length;
+  let turnOwner;
+  const sequence = session?.rpcRecords.length ?? 0;
   try {
+    if (countsAsAgentTurn) turnOwner = beginOwnedAgentTurn(core, session, {
+      task_id: core.taskId, execution_id: core.executionId, reason: 'follow_up_turn',
+    }, core.turnStartedAt || Date.now());
+    core.turnInFlight = true;
+    if (!session) return;
     await session.waitForReady({ timeoutMs: Math.min(timeoutMs, 30_000) });
     if (core.stopping || core.session !== session || core.executionId !== boundExecutionId) return;
     if (countsAsAgentTurn) {
@@ -467,7 +474,7 @@ export async function runTurn(core, prompt, timeoutMs) {
   } catch (error) {
     core.turns += 1;
     if (!core.stopping) {
-      const expectedHandoff = session.expectedStop || core.session !== session;
+      const expectedHandoff = session?.expectedStop || core.session !== session;
       if (!expectedHandoff) {
         core.errors.push({
           code: error.code ?? error.name,
@@ -484,31 +491,16 @@ export async function runTurn(core, prompt, timeoutMs) {
     core.turnDurationsMs.push(Date.now() - core.turnStartedAt);
     core.parallelism.recordTurnTime(core.turnDurationsMs.at(-1));
   } finally {
-    collectToolEvents(core, session.rpcRecords.slice(sequence));
-    if (countsAsAgentTurn && core.agentTurnSession === session) {
-      core.parallelism.endAgentTurn(core.index, Date.now());
-      core.agentTurnSession = null;
-    }
-    // A discovery turn can synchronously take a Task and hand off to a new
-    // bound session. Do not let the discovery transport's finally block clear
-    // the bound session's in-flight flag or start an overlapping follow-up.
-    const handedOff = core.session !== session && Boolean(
-      core.taskId && core.executionId && core.runtime.hasActiveExecution(core.executionId),
-    );
-    if (!handedOff) {
-      // A retired take may enter onTake before Runtime rejects the permanent
-      // Core binding (for example, two selectors race for a resumable wait).
-      // Clear that provisional local ownership or the selection transport
-      // would keep this Core permanently marked turn-in-flight.
-      if (core.session !== session && !core.runtime.hasActiveExecution(core.executionId ?? '')) {
-        core.taskId = null;
-        core.executionId = null;
-        core.take = null;
-      }
+    collectToolEvents(core, session?.rpcRecords.slice(sequence) ?? []);
+    const successorOwnsTurn = core.agentTurnOwner && core.agentTurnOwner !== turnOwner;
+    endOwnedAgentTurn(core, turnOwner);
+    // A delayed finalizer cannot change another Session's reservation or
+    // a successor turn's flags, including same-Session continuations.
+    if (!successorOwnsTurn && core.session === session) {
       core.turnInFlight = false;
       core.nextTurnAt = core.taskId ? Date.now() + core.turnIntervalMs : Date.now();
     }
-    if (!core.taskId) core.dispatchReserved = false;
+    if (!core.taskId && !successorOwnsTurn && core.session === session) core.dispatchReserved = false;
   }
 }
 
@@ -700,20 +692,18 @@ export async function takeTaskWithAgent(core, candidates) {
     return bot && !bot.execution_id && ['CLOSING', 'CLOSED'].includes(bot.state) && ['no-work', 'selection-budget', 'bot-lifetime-budget'].includes(bot.exit_reason);
   };
   const sequence = session.rpcRecords?.length ?? 0;
-  core.discoveryTurn = { session, afterSequence: sequence };
-  core.takeResult = null;
-  core.takeActive = true;
-  core.dispatchReserved = true;
-  core.turnInFlight = true;
   core.turnStartedAt = Date.now();
-  core.parallelism.beginAgentTurn(core.index, {
-    task_id: null,
-    execution_id: null,
-    reason: 'task_discovery_and_take',
-  }, core.turnStartedAt);
-  core.agentTurnSession = session;
-  core.takeTurnCount = (core.takeTurnCount ?? 0) + 1;
+  let turnOwner;
   try {
+    turnOwner = beginOwnedAgentTurn(core, session, {
+      task_id: null, execution_id: null, reason: 'task_discovery_and_take',
+    }, core.turnStartedAt);
+    core.discoveryTurn = { session, afterSequence: sequence };
+    core.takeResult = null;
+    core.takeActive = true;
+    core.dispatchReserved = true;
+    core.turnInFlight = true;
+    core.takeTurnCount = (core.takeTurnCount ?? 0) + 1;
     const workspace = await core.runtime.missionWorkspace.get({ workspaceId: core.runtime.missionWorkspaceId });
     const bot = core.runtime.taskService.getBot(discoveryBotId);
     if (!discoveryOpen(core) || core.session !== session || core.botId !== discoveryBotId || session.closed || bot?.state !== 'UNBOUND') return { take_deferred: true };
@@ -755,11 +745,12 @@ export async function takeTaskWithAgent(core, candidates) {
     return { take_failed: true, error: { code: error.code ?? 'RPC_ERROR', message: error.message } };
   } finally {
     collectToolEvents(core, session.rpcRecords?.slice(sequence) ?? []);
-    core.takeActive = false;
-    if (core.agentTurnSession === session && !core.runtime.hasActiveExecution(core.executionId ?? '')) {
-      core.parallelism.endAgentTurn(core.index, Date.now(), 'task_discovery_settled');
-      core.agentTurnSession = null;
-    }
+    const ownsBookkeeping = Boolean(turnOwner) && core.session === session &&
+      (!core.agentTurnOwner || core.agentTurnOwner === turnOwner);
+    // Session close can precede preparation rollback. The settled transport
+    // owns no model turn even if Runtime still has a provisional Execution.
+    endOwnedAgentTurn(core, turnOwner, 'task_discovery_settled');
+    if (ownsBookkeeping) core.takeActive = false;
     core.turns += 1;
     const duration = Date.now() - core.turnStartedAt;
     core.turnDurationsMs.push(duration);
@@ -769,12 +760,12 @@ export async function takeTaskWithAgent(core, candidates) {
     // empty selections do not reserve the Core.
     const selectedTaskId = core.takeResult?.task?.task_id ?? null;
     const handoffPending = !handedOff && selectedTaskId !== null;
-    if (!handedOff && !handoffPending) {
+    if (ownsBookkeeping && !handedOff && !handoffPending) {
       core.turnInFlight = false;
       core.dispatchReserved = false;
       core.nextTurnAt = Date.now();
     }
-    if (handoffPending) {
+    if (ownsBookkeeping && handoffPending) {
       core.turnInFlight = true;
       core.dispatchReserved = true;
       core.nextTurnAt = Date.now();
@@ -808,6 +799,77 @@ export async function releaseTerminalExecution(core) {
     reason: `terminal:${execution.state.toLowerCase()}`,
   });
   await core.bridge.releaseTake({ result: { execution } });
+}
+
+export function recordCoreExecutionRelease(core, taskService, { taskId, executionId }) {
+  const releasedAt = Date.now();
+  const hasTaskLineage = typeof taskId === 'string' && taskId.length > 0;
+  const hasExecutionLineage = typeof executionId === 'string' && executionId.length > 0;
+  if (!hasTaskLineage || !hasExecutionLineage) {
+    // A duplicate release can race bound-turn cleanup with the
+    // periodic terminal sweep. It releases physical capacity, but it
+    // does not identify an owned Execution and must not masquerade as
+    // an Execution lifecycle boundary.
+    core.observe({
+      source: 'runtime', kind: 'core_capacity_released', visibility: 'operator',
+      taskId: null, executionId: null, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+      payload: { state: 'IDLE', reason: 'unbound_or_duplicate_release' },
+    });
+    core.stateRef?.requestIdentityWake?.();
+    return;
+  }
+  const releaseLatency = core.latencyByExecution.get(executionId);
+  if (releaseLatency) {
+    releaseLatency.core_released_at = new Date(releasedAt).toISOString();
+    if (releaseLatency.wait_requested_at) {
+      releaseLatency.wait_to_core_release_ms = Math.max(0, releasedAt - Date.parse(releaseLatency.wait_requested_at));
+    }
+  }
+  const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
+  const releasedTurnOwner = core.agentTurnOwner;
+  if (core.taskId === taskId && core.executionId === executionId &&
+      releasedTurnOwner?.executionId === executionId && releasedTurnOwner.session === core.session) {
+    endOwnedAgentTurn(core, releasedTurnOwner, 'execution_released');
+  }
+  const releasedState = releasedExecution?.state ?? 'RELEASED';
+  const coreProjection = 'IDLE';
+  // A take record is created before Runtime binds its Workspace. If a
+  // very short bound turn fails before the handoff callback records the
+  // starting revision, retain the attempted ownership with the durable
+  // revision that Runtime prepared instead of emitting a null lineage.
+  const latestTake = core.takeHistory.at(-1);
+  if (latestTake?.task_id === taskId && latestTake.execution_id === executionId &&
+    latestTake.workspace_revision_start === null && Number.isInteger(releasedExecution?.workspace_revision)) {
+    latestTake.workspace_revision_start = releasedExecution.workspace_revision;
+  }
+  core.observe({
+    source: 'runtime', kind: 'execution_released', visibility: 'operator',
+    taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+    payload: { state: releasedState },
+  });
+  if (core.taskId === taskId && core.executionId === executionId) {
+    core.observe({
+      source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
+      taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
+      payload: { state: coreProjection, reason: 'execution_released' },
+    });
+    core.parallelism.transition(core.index, coreProjection, {
+      task_id: taskId, execution_id: executionId,
+      reason: releasedExecution?.state?.toLowerCase() ?? 'take_released',
+    });
+    core.waitingExecutionId = null;
+    core.taskId = null;
+    core.executionId = null;
+    core.take = null;
+    // Production closes this Bot before the Core starts its successor.
+    // Deterministic adapters use `bound` only for their scripted path.
+    if (core.session && 'bound' in core.session) core.session.bound = false;
+    // Runtime has already detached the process before invoking this
+    // callback. The transport turn still owns the dispatch reservation
+    // until its promise settles, so another identity loop cannot start a
+    // second worker against this Core during handoff.
+  }
+  core.stateRef?.requestIdentityWake?.();
 }
 
 export function sanitizedCheck(result, material) {
@@ -1970,6 +2032,7 @@ async function createProjectState(problem, config, options) {
         sessionNumber: 0,
         startConfig: { problem, logRoot, options },
         turnInFlight: false,
+        agentTurnOwner: null,
         agentTurnSession: null,
         turnPromise: null,
         initialTurnPromise: null,
@@ -2058,6 +2121,8 @@ async function createProjectState(problem, config, options) {
           core.take = take;
           const workerSession = core.session;
           if (!workerSession) throw new Error('Agent took a Task before its session was registered');
+          const initialTurnOwner = core.agentTurnOwner;
+          if (initialTurnOwner?.session === workerSession) initialTurnOwner.executionId = take.execution.execution_id;
           const boundAfterSequence = core.discoveryTurn?.session === workerSession
             ? core.discoveryTurn.afterSequence : (workerSession.rpcRecords?.length ?? 0);
           // Deterministic compatibility adapters expose a `bound` marker to
@@ -2119,6 +2184,7 @@ async function createProjectState(problem, config, options) {
             boundTurnPromise = (async () => {
               try {
                 if (typeof boundSession.waitForSettled === 'function') await boundSession.waitForSettled({ timeoutMs: Math.max(core.startConfig.options.turnTimeoutMs ?? 30_000, 180_000), afterSequence: boundAfterSequence });
+                endOwnedAgentTurn(core, initialTurnOwner, 'initial_bound_turn_settled');
                 // A settled Agent turn does not necessarily release its
                 // Execution: source-level checker feedback, incremental edits,
                 // and ordinary progress may leave the Task RUNNING. Continue
@@ -2139,11 +2205,8 @@ async function createProjectState(problem, config, options) {
                 if (!expectedHandoff) core.errors.push({ code: error.code ?? error.name, class: safeDiagnostic(error.message) ?? 'agent_turn_error' });
               } finally {
                 collectToolEvents(core, boundSession.rpcRecords ?? []);
-                if (core.agentTurnSession === boundSession) {
-                  core.parallelism.endAgentTurn(core.index, Date.now());
-                  core.agentTurnSession = null;
-                }
-                if (core.session === boundSession || (!core.executionId && !core.runtime.hasActiveExecution(boundExecutionId))) {
+                endOwnedAgentTurn(core, initialTurnOwner);
+                if (core.session === boundSession && (!core.agentTurnOwner || core.agentTurnOwner === initialTurnOwner)) {
                   core.turns += 1;
                   core.turnInFlight = false;
                   core.nextTurnAt = Date.now();
@@ -2220,75 +2283,7 @@ async function createProjectState(problem, config, options) {
             current_execution_id: payload.execution_id ?? core.executionId,
           };
         },
-        onRelease: async ({ taskId, executionId }) => {
-          const releasedAt = Date.now();
-          const hasTaskLineage = typeof taskId === 'string' && taskId.length > 0;
-          const hasExecutionLineage = typeof executionId === 'string' && executionId.length > 0;
-          if (!hasTaskLineage || !hasExecutionLineage) {
-            // A duplicate release can race bound-turn cleanup with the
-            // periodic terminal sweep. It releases physical capacity, but it
-            // does not identify an owned Execution and must not masquerade as
-            // an Execution lifecycle boundary.
-            core.observe({
-              source: 'runtime', kind: 'core_capacity_released', visibility: 'operator',
-              taskId: null, executionId: null, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
-              payload: { state: 'IDLE', reason: 'unbound_or_duplicate_release' },
-            });
-            core.stateRef?.requestIdentityWake?.();
-            return;
-          }
-          const releaseLatency = core.latencyByExecution.get(executionId);
-          if (releaseLatency) {
-            releaseLatency.core_released_at = new Date(releasedAt).toISOString();
-            if (releaseLatency.wait_requested_at) {
-              releaseLatency.wait_to_core_release_ms = Math.max(0, releasedAt - Date.parse(releaseLatency.wait_requested_at));
-            }
-          }
-          const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
-          const releasedState = releasedExecution?.state ?? 'RELEASED';
-          const coreProjection = 'IDLE';
-          // A take record is created before Runtime binds its Workspace. If a
-          // very short bound turn fails before the handoff callback records the
-          // starting revision, retain the attempted ownership with the durable
-          // revision that Runtime prepared instead of emitting a null lineage.
-          const latestTake = core.takeHistory.at(-1);
-          if (latestTake?.task_id === taskId && latestTake.execution_id === executionId &&
-            latestTake.workspace_revision_start === null && Number.isInteger(releasedExecution?.workspace_revision)) {
-            latestTake.workspace_revision_start = releasedExecution.workspace_revision;
-          }
-          core.observe({
-            source: 'runtime', kind: 'execution_released', visibility: 'operator',
-            taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
-            payload: { state: releasedState },
-          });
-          core.observe({
-            source: 'runtime', kind: 'core_state_changed', visibility: 'operator',
-            taskId, executionId, sessionId: core.session?.sessionId ?? null, coreId: `core-${core.index}`,
-            payload: {
-              state: coreProjection,
-              reason: 'execution_released',
-            },
-          });
-          core.parallelism.transition(core.index, coreProjection, {
-            task_id: taskId,
-            execution_id: executionId,
-            reason: releasedExecution?.state?.toLowerCase() ?? 'take_released',
-          });
-          if (core.taskId === taskId && core.executionId === executionId) {
-            core.waitingExecutionId = null;
-            core.taskId = null;
-            core.executionId = null;
-            core.take = null;
-            // Production closes this Bot before the Core starts its successor.
-            // Deterministic adapters use `bound` only for their scripted path.
-            if (core.session && 'bound' in core.session) core.session.bound = false;
-            // Runtime has already detached the process before invoking this
-            // callback. The transport turn still owns the dispatch reservation
-            // until its promise settles, so another identity loop cannot start a
-            // second worker against this Core during handoff.
-          }
-          core.stateRef?.requestIdentityWake?.();
-        },
+        onRelease: released => recordCoreExecutionRelease(core, taskService, released),
         onWorkspaceWrite: async ({ taskId, executionId, result }) => {
           core.observe({
             source: 'workspace', kind: 'workspace_revision_saved', visibility: 'operator',
