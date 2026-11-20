@@ -11,9 +11,7 @@ const configPath = join(repositoryRoot, 'config/openai-math-12.json');
 const artifactLockPath = resolve(process.env.OPENAI_MATH_ARTIFACT_LOCK ?? '/tmp/openai-math-coloring-run/artifact-lock.json');
 const experimentDir = resolve(process.env.OPENAI_MATH_EXPERIMENT_DIR ?? join(repositoryRoot, 'experiments', `openai-math-coloring-4core-${Date.now()}`));
 const reportDir = join(experimentDir, 'reports');
-// Initialization includes independent service and checker deployment. Keep the
-// default long enough that the four Core lanes receive a real work window after
-// that setup rather than being closed at the first deadline boundary.
+// The four Core lanes receive this research window after project preflight.
 const timeboxMs = Number(process.env.OPENAI_MATH_TIMEBOX_MS ?? 600_000);
 const botMaxMs = Number(process.env.OPENAI_MATH_BOT_MAX_MS ?? timeboxMs);
 const provider = process.env.PI_PROVIDER ?? 'gpt_proxy';
