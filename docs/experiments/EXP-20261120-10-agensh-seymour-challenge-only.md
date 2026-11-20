@@ -17,7 +17,9 @@ EXP-09 underwent an in-run local permission repair after about 27 minutes. This 
 
 ## Results
 
-Registered before the formal model window. The actual prepare hook emitted one challenge file, an empty context list and an empty manuscript instruction. Initial formal evidence and time-aligned results follow the run.
+Registered before the formal model window. The actual prepare hook emitted one challenge file, an empty context list and an empty manuscript instruction. Four actual worker containers matched their read-only mount plans and were attached only to the private network. Native seed b1f43d102d700ae1ca5b9a093cf51c2f58d312d4 had exactly one 913-byte benchmark file in addition to native repository metadata. With UID/GID 10000:10000 each live worker elaborated the positive Mathlib probe and rejected the wrong module import. All four actual Pi sessions received the challenge instruction and zero manuscript instructions. Initial goal verification failed on the original hole (treecheck:bb1aaa9a-c4db-49c4-bc0b-ecdbdd45666d); in private preflight the complete positive control passed the same lock (treecheck:90ba74ae-fcc8-49d9-aa7e-00c47c9ec718).
+
+**Running.** Launch was 12:27:14.893 UTC on 2026-11-20. The first native wake was 12:28:07.857 UTC; the deadline is 16:27:14.893 UTC. All four workers had successful responses by 12:30:53 UTC (50 HTTP 200 in total). [Live ten-minute observations](https://github.com/LuNa-shi/SwarmEnv/issues/157#issuecomment-7039469409)
 
 ## Analysis
 
