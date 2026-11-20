@@ -23,7 +23,7 @@ test('Bridge exposes one authenticated reusable-identity profile endpoint', asyn
     assert.equal(body.profile.role, AGENT_ROLES.BOUND);
     assert.equal(typeof body.profile.profile_hash, 'string');
     assert.ok(body.profile.capabilities.some((capability) => capability.operation === 'task_take'));
-    assert.ok(body.profile.capabilities.some((capability) => capability.service_id === 'workspace'));
+    assert.ok(body.profile.capabilities.every((capability) => capability.service_id !== 'workspace'));
   } finally {
     await bridge.stop();
   }

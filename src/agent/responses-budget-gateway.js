@@ -309,14 +309,6 @@ export class ResponsesBudgetGateway {
     }
     this.pin = createHash('sha256').update(JSON.stringify([this.policy, this.limits])).digest('hex');
     db.exec(RESPONSES_BUDGET_SCHEMA_SQL);
-    // Existing audit databases predate these nullable, host-only diagnostics.
-    for (const table of ['responses_budget_attempts', 'responses_timed_attempts']) {
-      const columns = new Set(db.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name));
-      for (const [name, type] of Object.entries({ upstream_status: 'INTEGER', upstream_content_type_valid: 'INTEGER',
-        upstream_body_present: 'INTEGER', upstream_rejection_kind: 'TEXT', upstream_retry_after_seconds: 'INTEGER' })) {
-        if (!columns.has(name)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
-      }
-    }
   }
 
   async start({ host = '127.0.0.1', port = 0 } = {}) {

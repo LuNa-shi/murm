@@ -38,7 +38,7 @@ startup receipt. It invokes Pi and CLI help/version commands without contacting
 a model. Confirm the built-image test passed. Without the image environment
 variable it is skipped. The disk probe runs a disposable offline worker and
 exercises byte and inode limits and write restrictions for child processes.
-Successful probes allow you to use this image for launch. The CLI's OpenSandbox
+Run both probes before launching the benchmark. Their duration belongs to deployment preparation. Successful probes allow you to use this image for launch. The CLI's OpenSandbox
 preflight is a separate lifecycle API listing request. It verifies provider
 reachability and access. The live Bot startup then validates the deployed
 worker and verifies per-Bot isolation before discovery.
@@ -106,6 +106,27 @@ staging inputs and launcher logs when they are no longer needed.
 [experiment workflow](../workflows/experiment.md) for reporting and the
 [built-in services](../../services/builtin/README.md) and
 [Mathlib Search](../../services/mathlib-search/README.md) for service deployment.
+
+### Continue a finished run from a selected historical time
+
+Add these arguments to the normal configured four-Core launch command:
+
+~~~sh
+--resume-from experiments/source-run \
+--at 2026-11-19T12:30:00Z \
+--problem "$approved_problem" \
+--experiment-dir experiments/continued-run \
+--report-dir reports/continued-run
+~~~
+
+Choose `--at` after the source run finishes. No manual snapshot operation is needed
+during that run. Preserve its three service databases and public Workspace objects;
+the importer reads them without modifying the source. Use an explicit timezone,
+the original compatible problem/checker deployment and new output paths outside the source.
+The run and report paths are checked before the CLI creates its audit directory. The
+existing model/time budget arguments govern the new run. Private Bot sessions are
+not restored. `resume.json` records which historical evidence was used and the
+fresh-run handoff; see [the implementation and old-data limits](../architecture/13-historical-resume.md).
 
 ### Long-run supervision
 

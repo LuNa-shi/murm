@@ -74,9 +74,8 @@ to Task authority by this standalone script, so its readiness and data routes
 remain unavailable even with a valid fixture manifest.
 
 With `SWARMENV_SERVICE_ISOLATED=true`, each stateful host opens only its own
-database and Catalog opens none. Task can use the configured Context HTTP
-proxy. The historical HTTP domain proxy does not implement Context's required
-`materialScope` and lifecycle writer seam; isolated Context therefore reports
+database and Catalog opens none. Standalone Task and Context have no cross-domain writer. Context needs
+Task's Mission authority and lifecycle transaction, so isolated Context reports
 not ready and rejects data operations with `SERVICE_NOT_READY`. Judge likewise
 requires a local Task lifecycle authority and trusted Workspace input. These
 checks deliberately prevent an HTTP caller from bypassing finish/stop fencing.

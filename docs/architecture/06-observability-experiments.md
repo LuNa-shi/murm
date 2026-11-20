@@ -180,6 +180,8 @@ Sources: [Workspace provider](../../src/observability/workspace-provider.js), [r
 
 ## 6. Benchmark outcome metrics and their limits
 
+During CLI preparation, `metadata/experiment.json` records `setup_started_at` with status `preparing` and a null `started_at`. First project admission sets the live manifest to `running` and records setup duration. The Observation Store exposes registration as `created_at` and assigns `started_at` on the transition to RUNNING. A project that never starts has no start event or research duration, including on sanitized report import. Aggregate project rows carry each project's own preparation and admission times. With Pass@K the group also reports the shared window and settlement separately.
+
 The runner finalizes its report from Task/Execution/Material/check data, Core accounting, cleanup evidence and protocol checks. Important meanings are:
 
 The Workspace audit reads every taken Execution from Task Service after cleanup.
@@ -202,7 +204,7 @@ and does not rewrite reports produced by older revisions.
 | `solved` | The Mission submission coordinator has a persisted accepted submission for the fixed public main and input manifest. This scientific outcome is independent of protocol validity or ordinary source diagnostics; pending cleanup still invalidates the run evidence. See [04](04-services.md). |
 | `protocol_valid` | Report/protocol checks passed, including allowed tool surface, placeholder flags and relevant run boundaries. It does not certify research progress. |
 | `made_progress` | Broad activity heuristic: Workspace output, nonfailure Material or any recorded non-project check (including failed or infrastructure/request outcomes) can suffice. Whole-project Lean diagnostics are excluded from this flag and from progress work units. Proposals alone do not set it; this is not a measured collaboration benefit. |
-| `progress_evidence.proposed_task_count` and `parallelism.proposal_evidence.observed_task_count` | Count all observed Mission proposals, including the first; no root/child split or inferred semantic independence. Totals come from Task Service aggregates independently of the Task detail page. The detail/narrative projection remains bounded to 100 Tasks and `project.task_page` records its total, returned size and completeness. |
+| `progress_evidence.proposed_task_count` and `parallelism.proposal_evidence.observed_task_count` | Count all observed Mission proposals, including the first; no root/child split or inferred semantic independence. Totals come from Task Service aggregates independently of the Task detail page. Current reports expose that detail list as `project.tasks`; report readers also accept the historical `project.task_tree` key. The detail/narrative projection remains bounded to 100 Tasks and `project.task_page` records its total, returned size and completeness. |
 | Core occupancy/parallelism | Overlap/interval accounting from recorded states/turns. Production `task_discovery_and_take` also starts an Agent-turn interval, so busy-time metrics can include discovery. |
 | Scheduler metrics | Compatibility reporting from the production identity-loop path; they do not imply a `Scheduler` instance is driving that benchmark. |
 | `audit.prompt_hashes` | Hashes the Core prompt value initialized from the generic prompt; it is not a digest of every fully composed/delivered per-turn prompt. |
@@ -210,6 +212,8 @@ and does not rewrite reports produced by older revisions.
 | Material/read/consume counts | Publication, retrieval and explicit consumption are different facts; useful integration needs additional semantic evidence. |
 
 `CoreParallelismTracker` records states/intervals, Agent turns, work units, wait and Judge time. The runner ends each admitted turn by its captured Session/Execution owner token at transport settle, close or matching Execution release; a still-active preparation is not evidence that a closed transport remains an active model turn. Delayed prior finalizers cannot end a successor interval. The tracker continues to reject true overlap on a Core. The report transforms them into overlap and utilization quantities; a populated lane or many tool calls is not proof of productive concurrency. New reports omit root/child take counts and decomposition claims. `take_count` covers every accepted recorded take; proposal counts alone do not establish independent work. Historical imports may still contain old names. The Task-created observation identifies the actual created Task, while any proposing E is recorded separately. The initial-input audit uses the Mission public Workspace metadata rather than treating the first Task as the benchmark input owner.
+
+Current parallelism output uses `readiness_poll_ms` for the accumulated duration of bounded eligible-work scans. Core intervals use IDLE, ASSIGNED, RUNNING and STOPPING. Task dependencies remain visible in execution narratives; no resumable-wait interval or resume counters are emitted. Latency summaries report ready-to-take and take-to-first-turn samples, while each take retains its actual Core release timestamp.
 
 Sources: [runner report construction](../../src/benchmark/putnam-runner.js), [parallelism tracker](../../src/benchmark/parallelism.js), [parallelism tests](../../test/parallelism.test.js).
 

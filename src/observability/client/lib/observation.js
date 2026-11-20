@@ -57,7 +57,7 @@ function eventIdentity(event) {
   const payload = event.payload || {};
   const taskPayload = readNested(payload, ['task']);
   const executionPayload = readNested(payload, ['execution']);
-  const taskId = event.task_id || taskPayload?.task_id || executionPayload?.task_id || readNested(payload, ['target_task_id', 'parent_task_id']);
+  const taskId = event.task_id || taskPayload?.task_id || executionPayload?.task_id || readNested(payload, ['target_task_id']);
   const executionId = event.execution_id || executionPayload?.execution_id;
   return { taskPayload, executionPayload, taskId, executionId };
 }
@@ -70,7 +70,7 @@ export function buildModel(events = [], timeline = { lanes: [] }, toolCounts = {
 
   const ensureTask = (id, patch = {}) => {
     if (!id) return null;
-    const task = tasks.get(id) || { task_id: id, state: 'UNKNOWN', children: new Set(), executions: new Set(), material_ids: new Set(), event_count: 0, running_ms: 0, errors: 0, fields: {} };
+    const task = tasks.get(id) || { task_id: id, state: 'UNKNOWN', executions: new Set(), material_ids: new Set(), event_count: 0, running_ms: 0, errors: 0, fields: {} };
     mergeDefined(task, patch);
     mergeDefined(task.fields, patch);
     tasks.set(id, task);
@@ -124,10 +124,6 @@ export function buildModel(events = [], timeline = { lanes: [] }, toolCounts = {
       const nextState = taskPayload?.state || payload.task_state || (['OPEN', 'READY', 'RUNNING', 'WAITING', 'SUCCEEDED', 'SATISFIED', 'FAILED'].includes(payload.state) ? payload.state : null);
       if (nextState) task.state = nextState;
       if (waitCondition || payload.block_reason) task.block_reason = conditionLabel(payload.block_reason || waitCondition);
-      if (taskPayload?.parent_id) {
-        task.parent_id = taskPayload.parent_id;
-        ensureTask(task.parent_id).children.add(task.task_id);
-      }
       if (taskPayload?.goal) task.goal = taskPayload.goal;
       if (/error|failed|timeout/i.test(event.kind || '')) task.errors += 1;
     }
@@ -144,9 +140,9 @@ export function buildModel(events = [], timeline = { lanes: [] }, toolCounts = {
     }
     for (const material of materialCandidates(payload)) {
       const saved = ensureMaterial(material);
-      if (saved.source_task) ensureTask(saved.source_task).material_ids.add(saved.material_id);
-      if (saved.source_execution) {
-        const sourceExecution = ensureExecution(saved.source_execution);
+      if (saved.producer_task_id) ensureTask(saved.producer_task_id).material_ids.add(saved.material_id);
+      if (saved.producer_execution_id) {
+        const sourceExecution = ensureExecution(saved.producer_execution_id);
         if (!sourceExecution.material_ids.includes(saved.material_id)) sourceExecution.material_ids.push(saved.material_id);
       }
       linkMaterial(saved.material_id, event);
@@ -165,7 +161,6 @@ export function buildModel(events = [], timeline = { lanes: [] }, toolCounts = {
     if (taskId && executionId) taskLinks.set(`${taskId}:${executionId}`, { task_id: taskId, execution_id: executionId });
   }
 
-  for (const task of tasks.values()) if (task.parent_id) ensureTask(task.parent_id).children.add(task.task_id);
   for (const segment of timelineSegments(timeline)) {
     const execution = ensureExecution(segment.execution_id, { task_id: segment.task_id, core_id: segment.core_id, state: segment.state });
     const duration = segment.ended_at ? new Date(segment.ended_at).getTime() - new Date(segment.started_at).getTime() : 0;
@@ -200,7 +195,7 @@ export function buildModel(events = [], timeline = { lanes: [] }, toolCounts = {
     services.set(name, item);
   }
   return {
-    tasks: [...tasks.values()].map((task) => ({ ...task, children: [...task.children], executions: [...task.executions], material_ids: [...task.material_ids] })),
+    tasks: [...tasks.values()].map((task) => ({ ...task, executions: [...task.executions], material_ids: [...task.material_ids] })),
     executions: [...executions.values()].filter((execution) => durableIds.has(execution.execution_id)).map((execution) => ({ ...execution, material_ids: [...new Set(execution.material_ids)] })),
     materials: [...materials.values()].map((material) => ({ ...material, links: [...material.links], consumers: [...material.consumers] })),
     taskLinks: [...taskLinks.values()],
@@ -352,5 +347,5 @@ export function queueDepthSeries(events, model) {
 }
 
 export function modelTaskLabel(task) {
-  return task?.goal || task?.title || task?.description || task?.task_type || shortId(task?.task_id, 18) || 'Untitled Task';
+  return task?.goal || task?.title || task?.description || shortId(task?.task_id, 18) || 'Untitled Task';
 }

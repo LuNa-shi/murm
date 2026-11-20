@@ -32,6 +32,15 @@ async function startPeer(database) {
   return { ...endpoint, token, async stop() { const exited = once(child, 'exit'); child.kill(); await exited; } };
 }
 
+test('independent Context preserves a pending Judge gate on reconciliation', t => {
+  const tasks = new TaskService(':memory:');
+  t.after(() => tasks.close());
+  const context = new RemoteContextService({ taskService: tasks, url: 'http://127.0.0.1', token: 'test' });
+  const pending = context.gate.acquire({ service: 'judge' });
+  assert.throws(() => context.reconcile(), { code: 'SERVICE_NOT_READY' });
+  assert.equal(context.gate.pending().gate_id, pending.gate_id);
+});
+
 for (const loseResponse of [false, true]) test(`independent Context preserves receipts and scope (lost response: ${loseResponse})`, { timeout: 15_000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'remote-context-'));
   const tasks = new TaskService(join(root, 'task.sqlite'));
@@ -72,7 +81,7 @@ for (const loseResponse of [false, true]) test(`independent Context preserves re
       revision: '0.1', git_commit: 'controlled-commit', content_hash: 'controlled-content',
       material_inputs: [{ material_id: 'material:historical', content_hash: 'x'.repeat(1_100_000) }] } }, env('initial-workspace'));
   tasks.dispatch('start_execution', {}, env('start'));
-  const input = { content: 'A verified public observation', evidence_state: 'observed' };
+  const input = { content: 'A verified public observation' };
   if (loseResponse) {
     assert.throws(() => context.dispatch('context_publish_material', input, env('publish')), { code: 'SERVICE_UNAVAILABLE' });
     assert.throws(() => tasks.dispatch('task_finish', { outcome: 'incomplete' }, env('premature-finish')), { code: 'SERVICE_NOT_READY' });
@@ -84,7 +93,7 @@ for (const loseResponse of [false, true]) test(`independent Context preserves re
 
   try {
     await bridge.bindTake(taken);
-    const result = await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'material', 'get', material.material.material_id, '--json'],
+    const result = await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'material', 'view', material.material.material_id, '--json'],
       { env: { ...process.env, ...credentials }, timeout: 5000 });
     assert.equal(JSON.parse(result.stdout).material.content, input.content);
     const denied = await fetch(`${credentials.SWARMENV_BRIDGE_URL}/call`, { method: 'POST',

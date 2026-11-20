@@ -31,7 +31,7 @@ function experimentRootFromReport(report, reportPath, experimentDir = null) {
 }
 
 function coreSummary(report, core) {
-  const task = report.project?.task_tree?.find((candidate) => candidate.task_id === core.task_id);
+  const task = (report.project?.tasks ?? report.project?.task_tree)?.find((candidate) => candidate.task_id === core.task_id);
   return {
     task_id: core.task_id,
     execution_id: core.execution_id,
@@ -40,7 +40,6 @@ function coreSummary(report, core) {
     workspace_ref: core.workspace_ref,
     workspace_revision: core.takes?.at(-1)?.workspace_revision_end ?? null,
     workspace_writes: core.workspace_writes?.length ?? 0,
-    task_type: task?.task_type ?? null,
   };
 }
 
@@ -101,9 +100,6 @@ export async function importBenchmarkReport({ observationStore, reportPath, expe
   const report = await readJson(resolvedReportPath);
   const experimentRoot = experimentRootFromReport(report, resolvedReportPath, experimentDir);
   const experimentId = report.project?.run_id ?? basename(experimentRoot);
-  const rootTaskId = report.protocol?.task_model === 'flat' || report.protocol?.mission_id
-    ? null
-    : report.project?.task_tree?.find((task) => task.parent_id === null)?.task_id ?? null;
   const existing = observationStore.getExperiment(experimentId);
   if (existing && observationStore.countEvents(experimentId) > 0) return { experiment: existing, report, imported_events: 0, report_path: resolvedReportPath };
   const metadata = {
@@ -113,16 +109,19 @@ export async function importBenchmarkReport({ observationStore, reportPath, expe
     problem_id: report.project?.problem_id ?? null,
     repository_commit: report.protocol?.repository_commit ?? null,
     core_count: report.parallelism?.core_count ?? report.protocol?.core_count ?? null,
+    setup_started_at: report.run?.setup_started_at ?? null,
+    setup_elapsed_ms: report.run?.setup_elapsed_ms ?? null,
     elapsed_ms: report.run?.elapsed_ms ?? null,
     solved: report.run?.solved ?? false,
     protocol_valid: report.run?.protocol_valid ?? null,
     made_progress: report.run?.made_progress ?? null,
     parallelism: report.parallelism ?? null,
   };
-  observationStore.registerExperiment({ experimentId, rootTaskId, status: 'RUNNING', startedAt: report.run?.started_at, metadata });
+  const started = Boolean(report.run?.started_at);
+  observationStore.registerExperiment({ experimentId, status: started ? 'RUNNING' : 'CREATED', startedAt: report.run?.started_at, metadata });
   const base = { experimentId, sequence: 1 };
-  appendStatic(observationStore, base, {
-    source: 'runtime', kind: 'experiment_started', taskId: rootTaskId,
+  if (started) appendStatic(observationStore, base, {
+    source: 'runtime', kind: 'experiment_started',
     occurredAt: report.run?.started_at, visibility: 'operator', payload: { source: 'benchmark_report', problem_id: report.project?.problem_id },
   });
   const intervals = report.parallelism?.core_state_intervals ?? [];
@@ -186,11 +185,11 @@ export async function importBenchmarkReport({ observationStore, reportPath, expe
   const rawCount = includeRawLogs ? await importRawLogs(observationStore, experimentId, experimentRoot, report) : 0;
   base.sequence = observationStore.countEvents(experimentId) + 1;
   appendStatic(observationStore, base, {
-    source: 'runtime', kind: 'experiment_finished', taskId: rootTaskId,
+    source: 'runtime', kind: 'experiment_finished',
     occurredAt: report.run?.ended_at, visibility: 'operator',
     payload: { solved: report.run?.solved ?? false, protocol_valid: report.run?.protocol_valid ?? null, made_progress: report.run?.made_progress ?? null },
   });
-  const status = report.run?.solved ? 'SUCCEEDED' : 'FINISHED';
+  const status = started ? (report.run?.solved ? 'SUCCEEDED' : 'FINISHED') : (report.run?.stop_reason === 'operator_stop' ? 'CANCELLED' : 'FAILED');
   const experiment = observationStore.finishExperiment(experimentId, { status, endedAt: report.run?.ended_at });
   return { experiment, report, imported_events: base.sequence - 1, raw_event_count: rawCount, report_path: resolvedReportPath, experiment_root: experimentRoot };
 }

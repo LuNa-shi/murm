@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
+import { BOT_PROTOCOL_VERSION, BOT_RESOURCES } from '../src/agent/bot-contract.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 const run = promisify(execFile);
 
@@ -51,35 +52,39 @@ test('failed input construction leaves no partial directory and a different retr
   await assert.rejects(readFile(join(target, 'replacement.txt')), { code: 'ENOENT' });
 });
 
-test('OpenSandbox manifest transfer executes exact byte copies including allowed env-prefix names', async t => {
+test('OpenSandbox Bot preparation transfers exact manifest bytes including allowed env-prefix names', async t => {
   const { root, manager, options, snapshot } = await fixture(t);
   const workspace = await manager.createWorkspace(options);
   const guest = join(root, 'controlled-guest');
   await mkdir(guest);
-  let copies = 0;
-  let verifications = 0;
+  let preparations = 0;
   const provider = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'controlled:input', waitForExecdReady: false,
     fetchImpl: async (url, request) => {
-      if (request.method === 'DELETE') return new Response('{}');
+      if (request.method === 'DELETE') return new Response(null, { status: 404 });
       if (url.endsWith('/sandboxes')) return new Response('{"id":"sandbox:input"}');
       if (url.includes('/endpoints/')) return new Response('{"url":"http://execd.test"}');
-      if (url.endsWith('/command')) {
-        const { argv } = JSON.parse(request.body);
-        assert.ok(Buffer.byteLength(argv[2]) < 128 * 1024);
-        if (argv[2].includes('sha256sum')) verifications += 1;
-        copies += 1;
-        await run(argv[0], argv.slice(1).map(value => value.replaceAll('/workspace', guest)));
-        return new Response('event: execution_complete\ndata: {"exit_code":0}\n\n');
+      if (url.endsWith('/health') || url.endsWith('/stop')) return new Response('{}');
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } }));
+      if (url.endsWith('/project/prepare')) {
+        const input = JSON.parse(request.body);
+        assert.deepEqual(input.manifest, snapshot.manifest);
+        for (const [path, content] of Object.entries(input.files)) {
+          assert.deepEqual(Buffer.from(content, 'base64'), Buffer.from(snapshot.files[path]));
+          await writeFile(join(guest, path), Buffer.from(content, 'base64'));
+        }
+        preparations += 1;
+        return new Response(JSON.stringify({ result: { state: 'PREPARED', execution_id: input.execution_id, binding_version: input.binding_version } }));
       }
       throw new Error('unexpected controlled provider request');
     },
   });
-  await provider.ensureExecution({ executionId: 'execution-input' });
+  await provider.ensureExecution({ executionId: 'execution-input', botId: 'execution-input' });
   t.after(() => provider.stopExecution('execution-input'));
+  await provider.startAgent({ executionId: 'execution-input', command: 'controlled' });
+  provider.bindBotExecution({ botId: 'execution-input', executionId: 'execution-input', bindingVersion: 1 });
   const copied = await provider.syncWorkspace({ executionId: 'execution-input', workspaceRef: workspace.workspace_ref, manifest: snapshot.manifest });
   assert.equal(copied.file_count, Object.keys(snapshot.files).length);
-  assert.ok(copies > copied.file_count);
-  assert.equal(verifications, copied.file_count);
+  assert.equal(preparations, 1);
   assert.deepEqual((await readdir(guest)).sort(), Object.keys(snapshot.files).sort());
   for (const [path, expected] of Object.entries(snapshot.files)) assert.deepEqual(await readFile(join(guest, path)), Buffer.from(expected));
 });

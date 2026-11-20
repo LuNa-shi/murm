@@ -5,6 +5,7 @@ import { constants, openSync, closeSync, fstatSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { readManualMissionReview, recordManualMissionReview } from '../src/runtime/manual-mission-review.js';
+import { installServiceHistory } from '../src/replay/service-history.js';
 
 async function withPrivateDatabase(file, { readOnly }, review) {
   const path = resolve(file);
@@ -27,6 +28,9 @@ async function withPrivateDatabase(file, { readOnly }, review) {
       const actual = await lstat(path);
       if (actual.dev !== info.dev || actual.ino !== info.ino) throw new Error('Review database changed during open');
       database.exec('PRAGMA busy_timeout = 2500');
+      // A different process owns this connection. Install transaction tracking
+      // here too, so its decision becomes visible at its committed boundary.
+      if (!readOnly) installServiceHistory(database, { domain: 'task' });
       return review(database);
     } finally {
       database.close();

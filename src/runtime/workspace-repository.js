@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { execFile as nodeExecFile, execFileSync, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { dirname, join } from 'node:path';
@@ -10,6 +10,7 @@ const execFile = promisify(nodeExecFile);
 const writers = new Map();
 const META = '.swarm-workspace.json';
 const JOURNAL = '.swarm-journal.json';
+export const WORKSPACE_HISTORY_DIR = '.swarm-history';
 const ZERO = '0'.repeat(40);
 const GIT_IDENTITY = ['-c', 'user.name=SwarmEnv Runtime', '-c', 'user.email=runtime@swarmenv.invalid'];
 
@@ -25,6 +26,33 @@ export function writeWorkspaceJson(path, value) {
   try { writeFileSync(fd, JSON.stringify(value)); fsyncSync(fd); } finally { closeSync(fd); }
   renameSync(temp, path);
   syncDirectory(dirname(path));
+}
+
+const historyFile = sequence => `${String(sequence).padStart(12, '0')}.json`;
+
+/** Read-only committed event history; missing entries are never silently skipped. */
+export function readWorkspaceHistory(root) {
+  const path = join(root, WORKSPACE_HISTORY_DIR);
+  if (!existsSync(path)) return [];
+  const files = readdirSync(path).filter(name => /^\d{12}\.json$/.test(name)).sort();
+  let previous = null;
+  const events = files.map((name, index) => {
+    const event = JSON.parse(readFileSync(join(path, name), 'utf8'));
+    if (name !== historyFile(index + 1) || event.version !== 1 || event.sequence !== index + 1 ||
+        typeof event.event_id !== 'string' || !Number.isFinite(Date.parse(event.committed_at)) ||
+        event.previous_event_id !== (previous?.event_id ?? null) ||
+        (previous && event.committed_at < previous.committed_at)) {
+      throw new SwarmEnvError('REPLAY_HISTORY_INCOMPLETE', 'Workspace history has a missing or invalid event', { file: name });
+    }
+    previous = event;
+    return event;
+  });
+  const headPath = join(path, 'head.json');
+  const head = existsSync(headPath) ? JSON.parse(readFileSync(headPath, 'utf8')) : null;
+  if (!events.length || head?.sequence !== events.length || head.event_id !== previous.event_id || head.committed_at !== previous.committed_at) {
+    throw new SwarmEnvError('REPLAY_HISTORY_INCOMPLETE', 'Workspace history head does not cover its committed events');
+  }
+  return events;
 }
 
 function gitEnvironment(extra = {}) {
@@ -64,7 +92,7 @@ async function acquireWriter(root, lockName = '.swarm-writer.lock') {
 
 /** Git objects, single-writer exclusion and ref/index crash recovery for one Workspace. */
 export class WorkspaceRepository {
-  constructor({ fault = null } = {}) { this.fault = fault; }
+  constructor({ fault = null, clock = Date.now } = {}) { this.fault = fault; this.clock = clock; }
 
   async locked(root, operation, { signal = null } = {}) {
     signal?.throwIfAborted();
@@ -236,7 +264,7 @@ export class WorkspaceRepository {
 
   commit(root, { kind, oldMain, newMain, record, revision, receipt = null }) {
     this.assertMain(root, oldMain);
-    const intent = { version: 1, kind, old_main: oldMain, new_main: newMain, record, revision, receipt };
+    const intent = { version: 2, event_id: randomUUID(), kind, old_main: oldMain, new_main: newMain, record, revision, receipt };
     writeWorkspaceJson(join(root, JOURNAL), intent);
     this.fault?.('after_intent');
     if (newMain !== oldMain) gitSync(root, ['update-ref', 'refs/heads/main', newMain, oldMain ?? ZERO]);
@@ -256,17 +284,19 @@ export class WorkspaceRepository {
     const path = join(root, JOURNAL);
     if (!existsSync(path)) return;
     const intent = JSON.parse(readFileSync(path, 'utf8'));
-    if (intent.version !== 1 || !intent.record || !intent.revision) throw new SwarmEnvError('WORKSPACE_RECONCILIATION_REQUIRED', 'Workspace intent is invalid');
+    if (![1, 2].includes(intent.version) || !intent.record || (!intent.revision && !['freeze', 'unfreeze', 'receipt'].includes(intent.kind))) throw new SwarmEnvError('WORKSPACE_RECONCILIATION_REQUIRED', 'Workspace intent is invalid');
     let observed = null;
     try { observed = gitSync(root, ['rev-parse', '--verify', 'refs/heads/main']); } catch { /* Initial creation may not have a ref yet. */ }
     if (observed !== intent.old_main && observed !== intent.new_main) throw new SwarmEnvError('WORKSPACE_RECONCILIATION_REQUIRED', 'Workspace main matches neither committed intent value');
     if (intent.kind === 'merge' && observed === intent.old_main && intent.new_main !== intent.old_main) {
-      if (intent.receipt) this.writeReceipt(root, { ...intent.receipt, error: { code: 'WORKSPACE_REQUEST_ABORTED', message: 'Merge stopped before main update; use a new attempt ID' }, result: null });
+      // Abort the unpublished merge first. The terminal receipt is a separate
+      // durable event; it must not replace an intent that recovery still owns.
       unlinkSync(path);
       syncDirectory(root);
+      if (intent.receipt) this.writeReceipt(root, { ...intent.receipt, error: { code: 'WORKSPACE_REQUEST_ABORTED', message: 'Merge stopped before main update; use a new attempt ID' }, result: null });
       return;
     }
-    this.#retain(root, intent.revision);
+    if (intent.revision) this.#retain(root, intent.revision);
     if (observed !== intent.new_main && intent.new_main) gitSync(root, ['update-ref', 'refs/heads/main', intent.new_main, observed ?? ZERO]);
     this.#finish(root, intent, false);
   }
@@ -276,7 +306,23 @@ export class WorkspaceRepository {
     return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : null;
   }
 
-  writeReceipt(root, receipt) { writeWorkspaceJson(join(root, '.swarm-requests', `${receipt.key}.json`), receipt); }
+  writeReceipt(root, receipt) {
+    const record = JSON.parse(readFileSync(join(root, META), 'utf8'));
+    this.#commitRecord(root, 'receipt', record, receipt);
+  }
+
+  writeRecord(root, record, { kind }) {
+    if (!['freeze', 'unfreeze'].includes(kind)) throw new TypeError('Unsupported Workspace metadata event');
+    this.#commitRecord(root, kind, record);
+  }
+
+  #commitRecord(root, kind, record, receipt = null) {
+    this.assertMain(root, record.main_commit);
+    const intent = { version: 2, event_id: randomUUID(), kind, old_main: record.main_commit,
+      new_main: record.main_commit, record, revision: null, receipt };
+    writeWorkspaceJson(join(root, JOURNAL), intent);
+    this.#finish(root, intent, false);
+  }
 
   #retain(root, revision) {
     const ref = `refs/swarm/revisions/${revision.revision}`;
@@ -287,12 +333,40 @@ export class WorkspaceRepository {
   }
 
   #finish(root, intent, injectFault = true) {
-    writeWorkspaceJson(join(root, '.swarm-revisions', `${intent.revision.revision}.json`), intent.revision);
+    if (intent.revision) writeWorkspaceJson(join(root, '.swarm-revisions', `${intent.revision.revision}.json`), intent.revision);
     writeWorkspaceJson(join(root, META), intent.record);
     if (injectFault) this.fault?.('after_index');
-    if (intent.receipt) this.writeReceipt(root, intent.receipt);
+    if (intent.receipt) writeWorkspaceJson(join(root, '.swarm-requests', `${intent.receipt.key}.json`), intent.receipt);
     if (injectFault) this.fault?.('after_receipt');
+    this.#recordHistory(root, intent, injectFault);
     unlinkSync(join(root, JOURNAL));
     syncDirectory(root);
+  }
+
+  #recordHistory(root, intent, injectFault) {
+    const directory = join(root, WORKSPACE_HISTORY_DIR);
+    const headPath = join(directory, 'head.json');
+    let head = existsSync(headPath) ? JSON.parse(readFileSync(headPath, 'utf8')) : null;
+    // If a process stopped after publishing an event but before its head, keep
+    // that event. Event files are immutable and are never overwritten on retry.
+    while (existsSync(join(directory, historyFile((head?.sequence ?? 0) + 1)))) {
+      const next = JSON.parse(readFileSync(join(directory, historyFile((head?.sequence ?? 0) + 1)), 'utf8'));
+      if (next.sequence !== (head?.sequence ?? 0) + 1 || next.previous_event_id !== (head?.event_id ?? null)) {
+        throw new SwarmEnvError('REPLAY_HISTORY_INCOMPLETE', 'Workspace history head is inconsistent');
+      }
+      head = next;
+    }
+    const eventId = intent.event_id ?? `recovered:${createHash('sha256').update(JSON.stringify(intent)).digest('hex')}`;
+    if (head?.event_id === eventId) {
+      writeWorkspaceJson(headPath, { sequence: head.sequence, event_id: head.event_id, committed_at: head.committed_at });
+      return;
+    }
+    const committedAt = new Date(Math.max(Number(new Date(this.clock())), head ? Date.parse(head.committed_at) : -Infinity)).toISOString();
+    const event = { version: 1, sequence: (head?.sequence ?? 0) + 1, event_id: eventId,
+      previous_event_id: head?.event_id ?? null, committed_at: committedAt,
+      kind: intent.kind, record: intent.record, revision: intent.revision ?? null, receipt: intent.receipt ?? null };
+    writeWorkspaceJson(join(directory, historyFile(event.sequence)), event);
+    if (injectFault) this.fault?.('after_history_event');
+    writeWorkspaceJson(headPath, { sequence: event.sequence, event_id: event.event_id, committed_at: event.committed_at });
   }
 }

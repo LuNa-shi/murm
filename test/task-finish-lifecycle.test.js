@@ -7,14 +7,14 @@ import { ContextService } from '../src/context/context-service.js';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope, operationPayload } from '../src/protocol/envelope.js';
 
-function fixture(t, database) {
+function fixture(t, database, taskContract = {}) {
   const service = new TaskService(database);
   t.after(() => service.close());
   const actor = 'bot:finish';
   const mission = service.createMission({ mission_id: 'mission:finish', goal: 'Complete independent local responsibilities' }, makeEnvelope({ actorRef: 'operator:test' })).mission;
   const create = (taskId, extra = {}) => service.createTask({ mission_id: mission.mission_id, task_id: taskId, summary: `Investigate the independent responsibility ${taskId}`, goal: `Resolve ${taskId}`, expected_output: 'A reusable result', acceptance_conditions: ['The result addresses this local question'], ...extra }, makeEnvelope({ actorRef: actor })).task;
-  const task = create('task:first');
-  const execution = service.takeTask(task.task_id, { owner_ref: actor, core_id: 'core-1', take_key: 'first', workspace_mode: 'clean' }).execution;
+  const task = create('task:first', taskContract);
+  const execution = service.takeTask(task.task_id, { owner_ref: actor, core_id: 'core-1', take_key: 'first' }).execution;
   const envelope = (operationId) => {
     const current = service.getExecution(execution.execution_id);
     return makeEnvelope({ operationId, actorRef: actor, taskId: task.task_id, executionId: current.execution_id, specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version });
@@ -79,7 +79,7 @@ test('cancelled finish preserves replacement intent while closing and rejects a 
   assert.equal(service.getExecution(next.execution_id).state, 'CREATED');
   assert.equal(service.getExecutionFinish(next.execution_id), null);
   service.finalizeExecutionFinish(execution.execution_id, { fencingVersion: execution.fencing_version });
-  assert.equal(service.getTask(task.task_id).state, 'CANCELLED');
+  assert.equal(service.getTask(task.task_id).state, 'CANCELED');
   assert.ok(service.listMissionTasks({ mission_id: task.mission_id }).some((item) => item.task_id === task.task_id));
   assert.equal(service.taskStatus({ mission_id: task.mission_id }).counts.terminal, 1);
   assert.equal(service.getExecution(execution.execution_id).state, 'CANCELLED');
@@ -107,10 +107,10 @@ test('a closing Execution cannot publish new Materials even with refreshed versi
   const { service, envelope } = fixture(t);
   const context = new ContextService(':memory:', { taskService: service });
   t.after(() => context.close());
-  const payload = { kind: 'fact', scope: 'mission', content: 'A public conclusion' };
-  const before = context.dispatch('material_publish', payload, envelope('publish:before'));
+  const payload = { content: 'A public conclusion' };
+  const before = context.dispatch('context_publish_material', payload, envelope('publish:before'));
   service.dispatch('task_finish', { outcome: 'incomplete' }, envelope('finish:publish'));
-  assert.throws(() => context.dispatch('material_publish', payload, envelope('publish:after')), (error) => error.code === 'NOT_ALLOWED');
+  assert.throws(() => context.dispatch('context_publish_material', payload, envelope('publish:after')), (error) => error.code === 'NOT_ALLOWED');
   assert.equal(context.getMaterial(before.material.material_id).content, 'A public conclusion');
 });
 
@@ -146,51 +146,39 @@ test('Task detail exposes durable finish records after the Bot is gone', (t) => 
   const { service, task, execution, envelope } = fixture(t);
   service.dispatch('task_finish', { outcome: 'incomplete', reason: 'No result was saved' }, envelope('finish:detail'));
   service.finalizeExecutionFinish(execution.execution_id, { fencingVersion: execution.fencing_version });
-  const detail = service.viewModernTask(task.task_id);
+  const detail = service.viewTaskRecord(task.task_id);
   assert.equal(detail.finishes[0].request_id, 'finish:detail');
   assert.equal(detail.finishes[0].outcome, 'incomplete');
   assert.equal(detail.finishes[0].reason, 'No result was saved');
   assert.ok(detail.finishes[0].closed_at);
 });
 
-test('an existing Execution store migrates to closing without losing take identity or foreign keys', (t) => {
+
+test('Task completion uses link purpose while handoff keeps producer provenance', t => {
   const { service, task, execution, envelope } = fixture(t);
-  // Construct the previous on-disk constraint around existing durable rows.
-  const priorSchema = service.db.prepare("SELECT sql FROM sqlite_master WHERE name = 'executions'").get().sql
-    .replace('CREATE TABLE executions', 'CREATE TABLE executions_previous').replace("'CLOSING', ", '');
-  service.db.exec(`PRAGMA foreign_keys = OFF; ${priorSchema};
-    INSERT INTO executions_previous SELECT * FROM executions;
-    DROP TABLE executions;
-    ALTER TABLE executions_previous RENAME TO executions;
-    PRAGMA foreign_keys = ON;`);
-  const migrated = new TaskService(service.db);
-  assert.equal(migrated.getActiveExecutionForCore('core-1').execution_id, execution.execution_id);
-  const accepted = migrated.dispatch('task_finish', { outcome: 'incomplete' }, envelope('finish:migrated'));
-  assert.equal(accepted.execution.state, 'CLOSING');
-  migrated.finalizeExecutionFinish(execution.execution_id, { fencingVersion: execution.fencing_version });
-  assert.equal(migrated.getTask(task.task_id).state, 'OPEN');
-  assert.deepEqual(service.db.prepare('PRAGMA foreign_key_check').all(), []);
-  assert.equal(service.db.prepare('PRAGMA foreign_keys').get().foreign_keys, 1);
+  const context = new ContextService(':memory:', { taskService: service });
+  service.contextService = context;
+  t.after(() => context.close());
+  const material = context.dispatch('context_publish_material', { content: 'Public handoff result' }, envelope('handoff:publish')).material;
+  const result = service.dispatch('task_finish', { outcome: 'incomplete', handoff_material_id: material.material_id }, envelope('handoff:finish'));
+  assert.equal(result.execution.state, 'CLOSING');
+  const link = service.db.prepare("SELECT * FROM task_material_links WHERE task_id = ? AND material_id = ? AND role = 'handoff'").get(task.task_id, material.material_id);
+  assert.equal(link.producer_execution_id, execution.execution_id);
+  assert.equal(Object.hasOwn(context.getMaterial(material.material_id), 'role'), false);
 });
 
 
-test('exact pre-migration finish receipts remain replayable', (t) => {
-  const { service, envelope } = fixture(t);
-  const request = envelope('finish:legacy-receipt');
-  const payload = { outcome: 'incomplete' };
-  const accepted = service.dispatch('task_finish', payload, request);
-  // Prior releases fingerprinted the original versions in the envelope.
-  service.db.prepare('UPDATE operations SET fingerprint = ? WHERE operation_id = ?')
-    .run(operationPayload('finish_task', payload, request), request.operation_id);
-  assert.deepEqual(service.dispatch('task_finish', payload, request), accepted);
-});
-
-test('dynamic waits cannot form a cycle through retained pre-migration dependencies', (t) => {
-  const { service, task, execution, envelope, create } = fixture(t);
-  const prerequisite = create('task:old-dependency');
-  service.db.prepare(`INSERT INTO task_structure_dependencies
-    (dependency_id, task_id, dependency_kind, prerequisite_task_id, created_by_actor_ref, created_at)
-    VALUES ('prior-wait', ?, 'TASK', ?, 'bot:prior', '2026-01-01T00:00:00Z')`).run(prerequisite.task_id, task.task_id);
-  assert.throws(() => service.dispatch('task_finish', { outcome: 'blocked', wait_for: prerequisite.task_id, reason: 'Would cycle through prior wait' }, envelope('finish:mixed-cycle')), (error) => error.code === 'INVALID_CONTRACT');
-  assert.equal(service.getExecution(execution.execution_id).state, 'CREATED');
+test('Material completion counts distinct links with the required Task purpose', t => {
+  const { service, task, envelope } = fixture(t, undefined, { completion_contract: { required_materials: [{ role: 'experience', min_count: 1 }] } });
+  const context = new ContextService(':memory:', { taskService: service });
+  service.contextService = context;
+  t.after(() => context.close());
+  const material = context.dispatch('context_publish_material', { content: 'A reusable result' }, envelope('required:publish')).material;
+  service.dispatch('task_link_material', { material_id: material.material_id, role: 'handoff' }, envelope('required:handoff'));
+  assert.throws(() => service.dispatch('task_finish', { outcome: 'done' }, envelope('required:missing')), error =>
+    error.code === 'INVALID_CONTRACT' && error.details.missing.includes('materials:experience'));
+  service.dispatch('task_link_material', { material_id: material.material_id, role: 'experience' }, envelope('required:experience'));
+  const result = service.dispatch('task_finish', { outcome: 'done' }, envelope('required:done'));
+  assert.equal(result.execution.state, 'CLOSING');
+  assert.equal(service.getTask(task.task_id).state, 'RUNNING');
 });

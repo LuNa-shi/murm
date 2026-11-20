@@ -22,7 +22,7 @@ export function createJudgeServicePeer({ database, token, coordinator, checker, 
     authority[method] = (...args) => requests.getStore().authority[method](...args);
   }
   // Presence is required by local admission guards; all real remote writes
-  // use lifecycleWrite below rather than this synchronous compatibility seam.
+  // use lifecycleWrite below rather than this synchronous local seam.
   authority.withServiceLifecycleWrite = () => { throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Remote Judge requires a coordinator launch gate'); };
   const stage = input => callCoordinatorPeer({ ...coordinator, actorRef: 'service:judge', operation: 'judge_lifecycle', input });
   const judge = new JudgeService(database, { checker, fixtureManifest, taskService: authority, missionBudget, maxInfrastructureRetries,

@@ -127,25 +127,6 @@ test('exact correction view uses one snapshot while another connection commits a
   assert.equal(after.active_successors[0].replacement_material_id, 'b');
 });
 
-test('migration retains historical forks and revoking one cannot restore still-replaced content', t => {
-  const { tasks, context, one, publish, revoke, replace } = fixture(t);
-  for (const id of ['a', 'b', 'c']) publish(id);
-  const identity = one('legacy');
-  for (const [version, successor] of [[1, 'b'], [2, 'c']]) tasks.db.prepare(`INSERT INTO material_relations
-    (relation_id, material_id, replacement_material_id, relation_kind, active, reason, actor_ref, source_task, source_execution, version, created_at)
-    VALUES (?, 'a', ?, 'supersede', 1, 'Historical replacement', ?, ?, ?, ?, ?)`).run(`legacy-${version}`, successor,
-      identity.actor_ref, identity.task_id, identity.execution_id, version, new Date().toISOString());
-  new ContextService(tasks.db, { taskService: tasks });
-  assert.equal(context.getMaterial('a').relation_version, 2);
-  assert.throws(() => replace('a', 'b', 2, 'no-arbitrary-winner'), { code: 'CONFLICT' });
-  const result = revoke('a', 'b', 2, 'repair-one-fork');
-  assert.equal(result.relation_version, 3);
-  const view = context.dispatch('context_get_material', { material_id: 'a' }, one('view'));
-  assert.equal(view.relations.length, 2);
-  assert.deepEqual(view.active_successors.map(r => r.replacement_material_id), ['c']);
-  assert.equal(context.dispatch('read_materials', {}, one('list')).materials.some(m => m.material_id === 'a'), false);
-});
-
 test('fresh reuse of an already-published combined replacement cannot bypass the current successor', t => {
   const { context, one, publish, replace, revoke } = fixture(t);
   publish('old');
@@ -173,7 +154,7 @@ test('only explicitly granted live unbound coordinator can revoke and cannot pub
   assert.throws(() => context.dispatch('material_unsupersede', payload, env('ordinary', 'ordinary-revoke')), { code: 'NOT_ALLOWED' });
   const reversed = context.dispatch('material_unsupersede', payload, env('coordinator', 'granted-revoke'));
   assert.equal(reversed.relation_version, 2);
-  assert.equal(context.dispatch('context_get_material', { material_id: 'a' }, one('view')).correction_events.find(e => e.action === 'revoked').source_execution, null);
+  assert.equal(context.dispatch('context_get_material', { material_id: 'a' }, one('view')).correction_events.find(e => e.action === 'revoked').producer_execution_id, null);
   for (const [operation, input] of [
     ['context_publish_material', { content: 'Cannot create research outside an E' }],
     ['material_dispute', { material_id: 'a', claim: 'The main claim', reason: 'Needs evidence' }],
@@ -191,17 +172,17 @@ test('quarantined foreign correction rows cannot block, form cycles or be revoke
   const foreignTask = tasks.createTask({ mission_id: 'foreign', summary: 'Foreign responsibility', expected_output: 'An account', acceptance_conditions: ['Documented'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
   const foreign = tasks.takeTask(foreignTask.task_id, { owner_ref: 'foreign-worker', core_id: 'foreign-core', take_key: 'foreign' }).execution;
   const insert = (id, from, to) => tasks.db.prepare(`INSERT INTO material_relations
-    (relation_id, material_id, replacement_material_id, relation_kind, active, reason, actor_ref, source_task, source_execution, version, created_at)
+    (relation_id, material_id, replacement_material_id, relation_kind, active, reason, actor_ref, producer_task_id, producer_execution_id, version, created_at)
     VALUES (?, ?, ?, 'supersede', 1, 'Quarantined old origin', 'foreign-worker', ?, ?, 50, ?)`).run(id, from, to, foreignTask.task_id, foreign.execution_id, new Date().toISOString());
   insert('foreign-forward', 'a', 'c'); insert('foreign-backward', 'b', 'a');
   tasks.db.prepare(`WITH RECURSIVE offsets(n) AS (VALUES(1) UNION ALL SELECT n + 1 FROM offsets WHERE n < 101)
     INSERT INTO material_relations (relation_id, material_id, replacement_material_id, relation_kind, active,
-      reason, actor_ref, source_task, source_execution, version, created_at)
+      reason, actor_ref, producer_task_id, producer_execution_id, version, created_at)
     SELECT 'foreign-extra-' || n, 'a', 'c', 'supersede', 1, 'Foreign correction',
       'foreign-worker', ?, ?, 100 + n, ? FROM offsets`).run(foreignTask.task_id, foreign.execution_id, new Date().toISOString());
   tasks.db.prepare(`WITH RECURSIVE offsets(n) AS (VALUES(1) UNION ALL SELECT n + 1 FROM offsets WHERE n < 101)
     INSERT INTO material_relations (relation_id, material_id, relation_kind, active,
-      reason, actor_ref, source_task, source_execution, version, created_at)
+      reason, actor_ref, producer_task_id, producer_execution_id, version, created_at)
     SELECT 'foreign-dispute-' || n, 'b', 'dispute', 1, 'Foreign dispute',
       'foreign-worker', ?, ?, n, ? FROM offsets`).run(foreignTask.task_id, foreign.execution_id, new Date().toISOString());
   assert.throws(() => revoke('a', 'c', 0, 'must-not-touch-foreign'), { code: 'CONFLICT' });

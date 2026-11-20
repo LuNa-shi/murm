@@ -32,6 +32,8 @@ A formal registration is for experimental traceability, **not a request for per-
 
 ### 3. Execute and analyze
 
+Measure the configured research window from the project report’s `run.started_at` or the matching `experiment_started` event. Record `setup_elapsed_ms` separately. For Pass@K use the common group start. Track settlement after the deadline separately when comparing experiments. Historical runs retain the timing convention of their tested commit.
+
 Raw Agent transcripts, Workspace, checker/candidate source, credentials and private state remain in ignored local `experiments/`. Preserve Task/Execution/Session/Core/Material/Judge/Workspace identities and source revisions; mark unavailable inputs or tools as BLOCKED rather than silently substituting.
 
 Use [experiment-analysis](../../.codex/skills/experiment-analysis/SKILL.md) and the [report template](../experiments/TEMPLATE.md): **Results** describe facts, **Analysis** evaluates evidence and competing explanations, and **Next steps** distinguish delegated fixes from pending human decisions. Unknown evidence is not zero, protocol validity is not Mission success, and busy Cores or large Material counts do not prove meaningful collaboration.

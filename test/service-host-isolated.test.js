@@ -161,7 +161,7 @@ test('isolated hosts remain discoverable while Context fails closed without Miss
 
 
     const inputPath = join(root, 'material.json');
-    await writeFile(inputPath, JSON.stringify({ kind: 'fact', scope: 'mission', role: 'experience', content: { marker: 'persisted-material' }, evidence_state: 'observed' }));
+    await writeFile(inputPath, JSON.stringify({ content: { marker: 'persisted-material' } }));
     const published = await runCli(['material', 'publish', '--input', inputPath, '--actor-ref', 'operator:isolated-probe', '--json'], cliEnv);
     assert.notEqual(published.code, 0);
     assert.match(published.stderr, /SERVICE_NOT_READY|authenticated Mission authority/);
@@ -172,7 +172,7 @@ test('isolated hosts remain discoverable while Context fails closed without Miss
     await stopServiceProcess(context.child);
     const restarted = await startService('context', ports.context, root, { task: urls.task });
     services.push(restarted);
-    const read = await runCli(['material', 'get', '--material-id', 'arbitrary-public-id', '--actor-ref', 'operator:isolated-probe', '--json'], cliEnv);
+    const read = await runCli(['material', 'view', '--material-id', 'arbitrary-public-id', '--actor-ref', 'operator:isolated-probe', '--json'], cliEnv);
     assert.notEqual(read.code, 0);
     assert.match(read.stderr, /SERVICE_NOT_READY|authenticated Mission authority/);
   } finally {

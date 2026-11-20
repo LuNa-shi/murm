@@ -10,19 +10,17 @@ function operationTimeoutMs(operation, explicit) {
     ? process.env.SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS : undefined;
   return parseScalar(explicit) ?? (configured === undefined ? DEFAULT_REQUEST_TIMEOUT_MS : Number(configured));
 }
-const ALIASES = Object.freeze({
+const COMMAND_OPERATIONS = Object.freeze({
   solution: { submit: 'mission_submit', status: 'mission_submission_get' },
   'mathlib-search': { search: 'mathlib_search' },
   bot: { exit: 'bot_exit' },
-  // complete/block/close remain transport aliases for old clients; finish is
-  // the single public Task lifecycle command.
-  task: { list: 'task_list', discover: 'task_list', view: 'task_view', create: 'task_create', propose: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', revise: 'task_revise', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
-  material: { list: 'read_materials', read: 'context_get_material', get: 'context_get_material', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials', dispute: 'material_dispute', supersede: 'material_supersede', unsupersede: 'material_unsupersede' },
-  workspace: { view: 'workspace_public_view', history: 'workspace_public_history', status: 'workspace_status', diff: 'workspace_current_diff', apply: 'workspace_public_apply', files: 'workspace_public_files', list: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
-  mission: { view: 'mission_get', submit: 'mission_submit', status: 'mission_submission_get', finish: 'mission_submission_finish' },
-  judge: { check: 'workspace_check', submit: 'workspace_check', result: 'get_check_result', get: 'get_check_result' },
+  task: { list: 'task_list', view: 'task_view', propose: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', revise: 'task_revise', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
+  material: { list: 'read_materials', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials', dispute: 'material_dispute', supersede: 'material_supersede', unsupersede: 'material_unsupersede' },
+  workspace: { view: 'workspace_public_view', history: 'workspace_public_history', status: 'workspace_status', diff: 'workspace_current_diff', apply: 'workspace_public_apply', files: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
+  mission: { view: 'mission_get', submit: 'mission_submit', 'submission view': 'mission_submission_get' },
+  judge: { check: 'workspace_check', result: 'get_check_result' },
 });
-const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'operation-id', 'request-id', 'timeout-ms']);
+const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'request-id', 'timeout-ms']);
 const TASK_PROPOSAL_HELP = `Propose an independently useful responsibility with --input <file> or --stdin. Required: summary (short title, 1-240 trimmed characters), gap (specific Mission problem/use, 1-4000), expected_output (deliverable, 1-4000), acceptance_conditions (nonempty array/object), priority (high, medium or low). Mission, creator and time come from the service.
 High: evidence supports earlier investment; medium: a clear use without stronger urgency; low: a more distant or less urgent option. Priority is advice, not a take restriction. Multiple proposals are allowed during selection; ACTIVE Bots can also propose. Take existing work directly when it fits. Optional --base-revision pins a public input revision. Other optional inputs and dependencies are described by service metadata; a dependency means work must wait, not just that results are related.
 Example:
@@ -33,11 +31,10 @@ const COMMAND_HELP = Object.freeze({
   task: {
     list: `Search Task summaries using --query, --limit (1-100) and --cursor. Omit the state filter to include all states, use --state for one state, or pass a quoted JSON array to --states.
   swarm task list --state ready
-  swarm task list --states '["ready","running","blocked","done","cancelled"]'
+  swarm task list --states '["ready","running","blocked","done","canceled"]'
 Candidate summaries include gap and priority; inspect their relevance and choose freely. Follow next_cursor even after an empty page, then view Task details before proposing or taking. Creation order is stable within a scan; state and readiness are live at each page.`,
     view: 'Required: <task-id> (or --task-id). Read a Task contract, gap, priority, versions, dependencies, Materials and Executions. Use --contract-history-after-version and --contract-history-limit (1-100) to continue contract_history_page.next_after_version.',
     propose: TASK_PROPOSAL_HELP,
-    create: TASK_PROPOSAL_HELP,
     take: 'Take an eligible Task by its positional ID. Example: swarm task take T1 --request-id take-t1 (replace T1 with the returned task_id). The result includes the Execution and pinned inputs. If the response is unknown, reuse the same request ID with the same Task.',
     link: `Link a published Material to a Task. Provide --task-id, --material-id and --role (input, response, handoff, or experience).
 Plan to create the link during an active Execution, before soft closeout.
@@ -55,8 +52,6 @@ Use a quoted JSON array of actual Material IDs. Omit this optional list when you
   },
   material: {
     list: 'Read bounded Material summaries using --query, --task-id, --limit and --cursor; follow next_cursor even after an empty page.',
-    read: 'Read Materials. Use --input or --stdin for the read filter.',
-    get: 'Read one Material. Required: <material-id> (or --material-id).',
     view: 'Read one immutable Material including provenance and corrections. Required: <material-id>.',
     search: 'Search Materials. Input: --query and explicit scope filters.',
     publish: 'Publish immutable Material with --content and optional --title and --summary. The result includes material.material_id. The service records the producing Task and Execution. Use swarm task link to associate it with a Task for an explicit finish reference.',
@@ -74,7 +69,6 @@ Replace M1 with an actual Material ID. After an unknown response, reuse the same
     status: 'Inspect current E initial input, saved revision, dirty paths and conflicts.',
     diff: 'With --from R --to R, compare public revisions before take; paginate with --limit and --cursor. With no revision arguments, compare the current E project against its last save.',
     files: WORKSPACE_FILES_HELP,
-    list: WORKSPACE_FILES_HELP,
     read: 'Read one public file by its positional path. Use --at R (main is allowed) and optional --max-bytes. Example: swarm workspace read notes.txt --at 0.1 (choose a path from workspace files).',
     search: 'Search public paths and UTF-8 text at --at R; paginate with --max-results and --cursor.',
     apply: 'Apply a fixed public revision into the current E using --from revision or main. Save dirty work first; reuse --request-id after an unknown response.',
@@ -84,8 +78,7 @@ Replace M1 with an actual Material ID. After an unknown response, reuse the same
   mission: {
     view: 'Read the current Mission goal and acceptance conditions through the trusted Bot binding.',
     submit: 'Submit current main plus an explicit Material selection using --materials M1,M2 (or --materials [] for files only). Requires a Mission coordination grant. The service fixes the checker, configuration and main. Use a stable --request-id, then use swarm mission submission view with that ID to follow the accepted submission or recover a lost response.',
-    status: 'Read Mission submission state and immutable snapshots.',
-    finish: 'Record the result of a durable Mission submission.',
+    'submission view': 'Read Mission submission state and immutable snapshots.',
   },
   judge: {
     check: `Check a saved public Workspace revision with --revision R. When the project checker is configured, Lake builds the revision's Lean modules, including local imports. Find the locked target path with swarm mission view. Keep Lean sources under the target's source directory, and import siblings by module name relative to that directory. Example: if the target is lean4/src/Main.lean, save lean4/src/Proof/Geometry.lean and write import Proof.Geometry. Judge uses its trusted project configuration.
@@ -98,9 +91,9 @@ Use a stable --request-id. After a lost response, use swarm judge result --reque
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|revise|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --operation-id <id>        Reuse a request identity after a lost response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|revise|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
-  if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${operationTimeoutMs(ALIASES[scope]?.[commandName] ?? commandName)})\n  --help                     Show this command help`;
+  if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${operationTimeoutMs(COMMAND_OPERATIONS[scope]?.[commandName] ?? commandName)})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Task and Material IDs and file paths use the documented positional arguments.\nBot identity always comes from the protected Bridge binding.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
 }
 
@@ -116,6 +109,7 @@ function parseArgs(argv) {
     const rawKey = token.slice(2, separator < 0 ? undefined : separator);
     const inline = separator < 0 ? undefined : token.slice(separator + 1);
     const key = rawKey.replaceAll('_', '-');
+    if (key === 'operation-id') throw new Error('Use --request-id for request identity');
     if (inline !== undefined) options[key] = inline;
     else if (booleanFlags.has(key)) options[key] = true;
     else if (argv[index + 1] && !argv[index + 1].startsWith('--')) options[key] = argv[++index];
@@ -186,7 +180,7 @@ function flagInput(options) {
 
 function envelope(options, service) {
   return {
-    operation_id: String(options['request-id'] ?? options['operation-id'] ?? `cli:${service}:${randomUUID()}`),
+    operation_id: String(options['request-id'] ?? `cli:${service}:${randomUUID()}`),
     actor_ref: String(options['actor-ref'] ?? `cli:${process.env.USER ?? 'local'}`),
     task_id: options['task-id'] ?? null,
     execution_id: options['execution-id'] ?? null,
@@ -258,7 +252,7 @@ async function listServices() {
 async function bridgeCall(operation, payload, options = {}, serviceId = undefined) {
   const token = process.env.SWARMENV_BRIDGE_TOKEN;
   if (!token) throw new Error('SWARMENV_BRIDGE_TOKEN is required for Bot operations');
-  const requestId = options['request-id'] ?? options['operation-id'] ?? `cli:${operation === 'task_take' ? 'take' : operation}:${randomUUID()}`;
+  const requestId = options['request-id'] ?? `cli:${operation === 'task_take' ? 'take' : operation}:${randomUUID()}`;
   try { return await request(`${process.env.SWARMENV_BRIDGE_URL.replace(/\/$/, '')}/call`, {
     method: 'POST', token, timeoutMs: operationTimeoutMs(operation, options['timeout-ms']),
     body: { operation, service_id: serviceId, operation_id: requestId, payload },
@@ -274,10 +268,10 @@ async function bridgeCall(operation, payload, options = {}, serviceId = undefine
 function commandInput(service, command, options, args, input) {
   const fields = {
     task: { view: 'task_id', take: 'task_id', revise: 'task_id', cancel: 'task_id', 'dependency-replace': 'task_id' },
-    material: { view: 'material_id', read: 'material_id', get: 'material_id', search: 'query', dispute: 'material_id', supersede: 'material_id', unsupersede: 'material_id' },
-    workspace: { files: 'path', list: 'path', read: 'path', search: 'query' },
-    judge: { result: 'check_result_id', get: 'check_result_id' },
-    mission: { status: 'submission_id' },
+    material: { view: 'material_id', search: 'query', dispute: 'material_id', supersede: 'material_id', unsupersede: 'material_id' },
+    workspace: { files: 'path', read: 'path', search: 'query' },
+    judge: { result: 'check_result_id' },
+    mission: { 'submission view': 'submission_id' },
   };
   const field = fields[service]?.[command];
   if (args.length > (field ? 1 : 0)) throw new Error('unexpected positional arguments');
@@ -291,7 +285,7 @@ function commandInput(service, command, options, args, input) {
     input[to] = input[from]; delete input[from];
   };
   if (service === 'workspace' || service === 'judge') rename('at', 'revision');
-  if (service === 'workspace' && command === 'history') { rename('task', 'source_task'); rename('execution', 'source_execution'); }
+  if (service === 'workspace' && command === 'history') { rename('task', 'producer_task_id'); rename('execution', 'producer_execution_id'); }
   if (service === 'material' && ['supersede', 'unsupersede'].includes(command)) rename('with', 'replacement_material_id');
   if (service === 'workspace' && command === 'save' && typeof input.material_ids === 'string') input.material_ids = input.material_ids.split(',').filter(Boolean);
   if (service === 'mission' && command === 'submit') {
@@ -300,7 +294,6 @@ function commandInput(service, command, options, args, input) {
     if (!Array.isArray(input.material_ids)) throw new Error('mission submit requires an explicit --materials selection, including [] for files only');
   }
   if (service === 'task' && ['finish', 'cancel'].includes(command)) rename('replacement', 'replacement_task_id');
-  if (options['request-id'] !== undefined && options['operation-id'] !== undefined && options['request-id'] !== options['operation-id']) throw new Error('request-id and operation-id must match');
   if (process.env.SWARMENV_BRIDGE_URL) {
     const forbidden = ['actor_ref', 'owner_ref', 'bot_id', 'bot', 'core_id', 'execution_id', 'execution', 'task_owner', 'fencing_version', 'spec_version', 'state_version'];
     if (options['actor-ref'] !== undefined || forbidden.some(key => input[key] !== undefined)) throw new Error('Bot identity comes from the protected Bridge; identity overrides are not allowed');
@@ -309,7 +302,10 @@ function commandInput(service, command, options, args, input) {
 }
 
 async function invoke(service, commandName, options, args = []) {
-  let operation = ALIASES[service]?.[commandName] ?? commandName;
+  if (Object.hasOwn(COMMAND_OPERATIONS, service) && !Object.hasOwn(COMMAND_OPERATIONS[service], commandName)) {
+    throw new Error(`unknown ${service} command: ${commandName}`);
+  }
+  let operation = COMMAND_OPERATIONS[service]?.[commandName] ?? commandName;
   const input = commandInput(service, commandName, options, args, { ...(await inputFrom(options)), ...flagInput(options) });
   if (service === 'solution' && commandName === 'submit') {
     if (Object.keys(input).length) throw new Error('solution submit accepts no input fields');
@@ -320,7 +316,7 @@ async function invoke(service, commandName, options, args = []) {
     operation = 'workspace_public_diff';
   }
   if (process.env.SWARMENV_BRIDGE_URL) {
-    if (!ALIASES[service]) {
+    if (!COMMAND_OPERATIONS[service]) {
       const metadata = await manifest(service);
       if (!metadata.capabilities?.some(item => item.operation === operation || item.name === operation)) throw new Error(`service ${service} does not advertise capability ${operation}`);
       return bridgeCall(operation, input, options, transportService(service));
@@ -349,7 +345,7 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
       return 0;
     }
   }
-  if (positionals[0] === 'context') throw new Error('swarm context is retired. Use swarm material for Material operations.');
+  if (positionals[0] === 'context') throw new Error('unknown command group: context');
   if (options.help) {
     if (positionals[0] === 'mission' && positionals[1] === 'submission') {
       stdout.write('Usage: swarm mission submission view [id] [--json]\nWithout an ID, read current Mission state and its submissions. With an ID, read that submission and its fixed inputs.\n');
@@ -363,13 +359,9 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
   const [service, rawCommand, serviceId] = positionals;
   let commandName = rawCommand;
   let args = positionals.slice(2);
-  if (service === 'task' && commandName === 'dependency') {
-    if (args[0] !== 'replace') throw new Error('task dependency requires replace <task-id>');
-    commandName = 'dependency-replace'; args = args.slice(1);
-  }
   if (service === 'mission' && commandName === 'submission') {
     if (args[0] !== 'view') throw new Error('mission submission requires view [id]');
-    commandName = 'status'; args = args.slice(1);
+    commandName = 'submission view'; args = args.slice(1);
   }
   if (service === 'service') {
     if (positionals.length > (commandName === 'view' ? 3 : 2)) throw new Error('unexpected service arguments');

@@ -42,7 +42,6 @@ export class ExecutionWorkspace {
       this.db.exec('BEGIN IMMEDIATE');
       try {
         this.db.exec(EXECUTION_WORKSPACE_SCHEMA_SQL);
-        if (!this.db.prepare('PRAGMA table_info(execution_workspace_state)').all().some(column => column.name === 'pending_apply')) this.db.exec('ALTER TABLE execution_workspace_state ADD COLUMN pending_apply INTEGER NOT NULL DEFAULT 0');
         this.db.exec('COMMIT');
       } catch (error) { this.db.exec('ROLLBACK'); throw error; }
     } finally { this.db.exec(`PRAGMA busy_timeout = ${busyTimeout}`); }

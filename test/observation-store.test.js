@@ -9,7 +9,7 @@ test('ObservationStore persists experiment facts and returns cursor pages in eve
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-'));
   const databasePath = join(root, 'observations.sqlite');
   const first = new ObservationStore(databasePath);
-  first.registerExperiment({ experimentId: 'run-1', rootTaskId: 'task-root', metadata: { problem: 'demo' } });
+  first.registerExperiment({ experimentId: 'run-1', metadata: { problem: 'demo' } });
   const firstEvent = first.append({
     experimentId: 'run-1', source: 'runtime', kind: 'experiment_started', payload: { mode: 'fixture' },
   });

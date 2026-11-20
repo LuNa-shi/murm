@@ -35,7 +35,7 @@ test('Bot proposals require a gap and explicit priority and retain each version 
   assert.notEqual(second.spec_hash, first.spec_hash);
   assert.equal(second.priority_level, 'low');
   assert.throws(() => revise(first, { priority: 'medium' }), { code: 'STALE_VERSION' });
-  const viewed = service.dispatch('view_task', { task_id: first.task_id }, envelope('editor'));
+  const viewed = service.dispatch('task_view', { task_id: first.task_id }, envelope('editor'));
   assert.deepEqual(viewed.contract_history.map(row => row.contract.priority_level), ['high', 'low']);
   assert.equal(viewed.contract_history[1].reason, 'New evidence narrows the responsibility');
 });
@@ -58,7 +58,7 @@ test('contract text bounds apply to normalized values in creation and revisions'
   assert.equal(updated.gap, 'Resolve the remaining premise');
   assert.equal(updated.expected_output, 'Explicit evidence');
   assert.throws(() => revise(updated, { summary: ' \t ' }), { code: 'INVALID_CONTRACT' });
-  const history = service.viewModernTask(original.task_id).contract_history;
+  const history = service.viewTaskRecord(original.task_id).contract_history;
   assert.equal(history[0].contract.summary, original.summary);
   assert.equal(history[1].contract.summary, updated.summary);
 });
@@ -85,7 +85,7 @@ test('revision and cancellation race against take through fixed versions and pre
   })), { code: 'STALE_VERSION' });
   const cancelled = service.dispatch('task_cancel', { task_id: updated.task_id, expected_spec_version: updated.spec_version,
     expected_state_version: updated.state_version, reason: 'The alternative now covers this responsibility' }, envelope('editor'));
-  assert.equal(cancelled.task.state, 'CANCELLED');
+  assert.equal(cancelled.task.state, 'CANCELED');
   assert.throws(() => revise(cancelled.task, { priority: 'medium' }), { code: 'NOT_ALLOWED' });
 });
 
@@ -104,25 +104,12 @@ test('revisions preserve dependencies, reject cycles and retain paged immutable 
   const reprioritized = revise(blocked, { priority: 'low' }).task;
   assert.equal(reprioritized.state, 'BLOCKED');
   assert.equal(reprioritized.blockers[0].invalid_prerequisite, true);
-  const page = service.dispatch('view_task', { task_id: first.task_id, contract_history_limit: 1 }, envelope('editor'));
+  const page = service.dispatch('task_view', { task_id: first.task_id, contract_history_limit: 1 }, envelope('editor'));
   assert.equal(page.contract_history.length, 1);
   assert.equal(page.contract_history_page.next_after_version, 1);
-  const next = service.dispatch('view_task', { task_id: first.task_id, contract_history_after_version: 1 }, envelope('editor'));
+  const next = service.dispatch('task_view', { task_id: first.task_id, contract_history_after_version: 1 }, envelope('editor'));
   assert.equal(next.contract_history[0].spec_version, 2);
   assert.equal(next.contract_history_page.complete, true);
-});
-
-test('legacy priorities and missing gap remain explicit until a complete revision is supplied', t => {
-  const { service, revise } = fixture(t);
-  const old = service.createTask({ mission_id: 'mission', summary: 'Legacy task', expected_output: 'Evidence', acceptance_conditions: ['Evidence'], priority: 9 }).task;
-  assert.equal(old.gap, null);
-  assert.equal(old.priority, 9);
-  assert.equal(old.priority_level, null);
-  assert.equal(old.contract_format, 'legacy');
-  assert.throws(() => revise(old, { summary: 'New title' }), { code: 'INVALID_CONTRACT' });
-  const modern = revise(old, { gap: 'A concrete missing implication blocks the objective', priority: 'high' }).task;
-  assert.equal(modern.contract_format, 'mission-gap-v1');
-  assert.equal(service.viewModernTask(old.task_id).contract_history[0].contract.gap, null);
 });
 
 test('UNBOUND authors can publish several responsibilities and ACTIVE authors can propose but cannot revise', t => {
@@ -157,7 +144,7 @@ test('contract updates replay exactly, detect conflicting payloads and cannot cr
   assert.throws(() => service.dispatch('task_revise', { ...payload, reason: 'Different input' }, request), { code: 'CONFLICT' });
   service.createMission({ mission_id: 'other', goal: 'A separate objective' });
   const foreign = service.createTask({ mission_id: 'other', summary: 'Foreign obligation', expected_output: 'Note', acceptance_conditions: ['Evidence'] }).task;
-  assert.throws(() => service.dispatch('view_task', { task_id: foreign.task_id }, envelope('editor')), { code: 'NOT_ALLOWED' });
+  assert.throws(() => service.dispatch('task_view', { task_id: foreign.task_id }, envelope('editor')), { code: 'NOT_ALLOWED' });
   assert.throws(() => service.dispatch('task_revise', { ...payload, task_id: foreign.task_id,
     expected_spec_version: foreign.spec_version, expected_state_version: foreign.state_version }, envelope('editor')), { code: 'NOT_ALLOWED' });
   assert.throws(() => service.dispatch('task_revise', { ...payload, expected_spec_version: result.task.spec_version,
@@ -198,7 +185,7 @@ test('independent connections resolve competing contract revisions and retain hi
   assert.throws(() => service.dispatch('task_revise', { ...input, changes: { priority: 'low' } }, envelope('author')), { code: 'STALE_VERSION' });
   const reopened = new TaskService(path);
   try {
-    const view = reopened.viewModernTask(original.task_id);
+    const view = reopened.viewTaskRecord(original.task_id);
     assert.equal(view.task.spec_version, winner.task.spec_version);
     assert.deepEqual(view.contract_history.map(row => row.contract.priority_level), ['high', 'medium']);
   } finally { reopened.close(); }

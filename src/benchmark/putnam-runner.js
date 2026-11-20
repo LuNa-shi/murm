@@ -1,7 +1,7 @@
 import { startIndependentServices } from '../sdk/independent-services.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { cpus, freemem, totalmem } from 'node:os';
 import { join, resolve, relative, sep } from 'node:path';
@@ -20,8 +20,6 @@ import { createMissionCoordination } from '../runtime/mission-coordination.js';
 import { createLockedFinalTreeVerifier } from '../judge/final-tree-deployment.js';
 import { requirePrivateAudit } from '../observability/private-audit-retention.js';
 import { ServicesBridge } from '../agent/services-bridge.js';
-import { ServicesRouter } from '../sdk/service-router.js';
-import { ServicesSDK } from '../sdk/services-sdk.js';
 import { TaskService, fixedExecutionInputHash } from '../task/task-service.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 import { verifyBenchmarkFixtureCheckout, readBenchmarkFixture, verifyBenchmarkRunFixture, assertTimedServiceComposition } from './benchmark-fixture.js';
@@ -35,12 +33,12 @@ import { createBuiltinServiceRegistry, registerUserService } from '../sdk/builti
 import { createHttpJsonAdapter, createInProcessAdapter } from '../sdk/service-adapter.js';
 import { loadServiceBundle } from '../sdk/service-bundle.js';
 import { createMathlibSearchManifest, createMathlibSearchService } from '../services/mathlib-search-service.js';
-import { runtimeCapabilityList } from '../runtime/runtime-capabilities.js';
 import { IdentityTaskLoop } from '../runtime/identity-task-loop.js';
 import { OpenSandboxManager } from '../runtime/opensandbox-manager.js';
 import { TaskController } from '../runtime/task-controller.js';
 import { CoreParallelismTracker } from './parallelism.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { assertResumeOutputPaths, prepareExperimentResume } from '../replay/resume-experiment.js';
 
 const execFileAsync = (command, args) => new Promise((resolvePromise, reject) => {
   execFile(command, args, { encoding: 'utf8' }, (error, stdout) => {
@@ -51,6 +49,24 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const SAFE_LEAN_PROJECT_SUBDIR = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
+
+async function validateResumeOutputPaths(options, problem, { freshProject = false } = {}) {
+  if (!options.resumeFrom) return;
+  const experimentDir = resolve(options.experimentDir ?? options.reportDir);
+  const reportDir = resolve(options.reportDir ?? join(experimentDir, 'reports'));
+  const artifactKey = options.agentMode === 'solver' ? `${problem.id}-attempt-${options.attemptIndex}` : problem.id;
+  const privateDirectories = ['state', 'logs', 'workspaces'].map(name => join(experimentDir, name, 'projects', artifactKey));
+  const paths = [experimentDir, reportDir, join(reportDir, artifactKey, 'report.json'),
+    join(resolve(options.reportDir ?? options.experimentDir), artifactKey, 'report.json'),
+    join(reportDir, 'aggregate-report.json'), ...privateDirectories];
+  const observationPath = options.observationStore?.databasePath ?? options.observationStore?.db?.location();
+  if (observationPath) paths.push(observationPath);
+  await assertResumeOutputPaths(options.resumeFrom, paths);
+  if (freshProject) for (const path of privateDirectories) {
+    const exists = await lstat(path).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
+    if (exists) throw new SwarmEnvError('REPLAY_DESTINATION_CONFLICT', 'Resume requires fresh project state, logs and working directories', { path });
+  }
+}
 
 class SerialTaskCreateAdmission {
   constructor() {
@@ -65,6 +81,8 @@ class SerialTaskCreateAdmission {
   }
 }
 function assertCurrentParallelConfiguration(options) {
+  if (Boolean(options.resumeFrom) !== Boolean(options.resumeAt)) throw new TypeError('Historical resume requires both resumeFrom and resumeAt');
+  if (options.resumeFrom && options.agentMode === 'solver') throw new TypeError('Historical resume requires four fresh Core loops');
   if (options.agentMode !== undefined && !['swarm', 'solver'].includes(options.agentMode)) throw new TypeError('Unknown agent mode');
   if (options.agentMode === 'solver') {
     if (options.cores !== 1 || !Number.isSafeInteger(options.attemptIndex) || options.attemptIndex < 1) throw new TypeError('Solver attempts require one Core and an explicit attemptIndex');
@@ -79,7 +97,7 @@ function assertCurrentParallelConfiguration(options) {
 }
 
 function projectTasks(state, {
-  states = ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'],
+  states = ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CANCELED'],
   limit = 100,
   availableOnly = false,
 } = {}) {
@@ -95,14 +113,14 @@ function projectEligibleTasks(state, { limit = 100 } = {}) {
   return state.taskService.listEligibleTasks({ missionId: state.missionId, limit });
 }
 
-// Flat model: one Execution may run for the whole run; the reminder lead is
+// One Execution may run for the whole run; the reminder lead is
 // five minutes (or a tenth of a short run) before the run deadline.
-function flatExecutionTimeoutMs(options) {
+function executionTimeoutMs(options) {
   return options.timeboxMs ?? 60 * 60_000;
 }
 
-function flatHandoffReminderMs(options) {
-  const timeoutMs = options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options);
+function handoffReminderMs(options) {
+  const timeoutMs = options.executionTimeoutMs ?? options.botMaxMs ?? executionTimeoutMs(options);
   return Math.max(1, timeoutMs - Math.min(5 * 60_000, Math.floor(timeoutMs / 10)));
 }
 
@@ -124,32 +142,13 @@ function sha256(value) {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function waitDependencyIds(condition) {
-  if (!condition || typeof condition !== 'object') return [];
-  if (condition.type === 'child_task_terminal') {
-    return [condition.child_task_id ?? condition.task_id].filter(Boolean);
-  }
-  if (condition.type === 'children_all_terminal') {
-    return Array.isArray(condition.child_task_ids) ? [...condition.child_task_ids] : [];
-  }
-  if (condition.type === 'parent_review') {
-    return condition.parent_task_id ? [condition.parent_task_id] : [];
-  }
-  if (condition.type === 'check_result_arrived') {
-    return [condition.check_request_key ?? condition.request_key ?? condition.workspace_source_id].filter(Boolean);
-  }
-  return [];
-}
-
-function lifecycleEvents() { return []; }
-
 function taskLifecycleEvents(taskService) {
   const rows = taskService.db.prepare('SELECT operation_id, operation, result_json, created_at FROM operations ORDER BY created_at, operation_id').all();
   return rows.map((row) => {
     let result = null;
     try { result = JSON.parse(row.result_json); } catch { /* IDs remain null for an unreadable result. */ }
-    const execution = result?.execution ?? result?.authority_execution ?? result?.parent_execution ?? null;
-    const task = result?.task ?? result?.rework_task ?? result?.child ?? result?.subtask ?? result?.parent ?? null;
+    const execution = result?.execution ?? null;
+    const task = result?.task ?? null;
     return {
       operation_id: row.operation_id,
       operation: row.operation,
@@ -172,8 +171,8 @@ function safeObservationEvent(event) {
   };
 }
 
-function executionNarratives(state, taskTree, materials) {
-  return taskTree.flatMap((task) => {
+function executionNarratives(state, tasks, materials) {
+  return tasks.flatMap((task) => {
     const materialLinks = taskMaterialLinks(state, task);
     return state.taskService.listExecutions(task.task_id).map((execution) => {
       const events = state.observationStore.listEvents({
@@ -182,12 +181,9 @@ function executionNarratives(state, taskTree, materials) {
         limit: 1_000,
       }).events.map(safeObservationEvent);
       const outputs = materials
-        .filter((material) => material.source_execution === execution.execution_id)
+        .filter((material) => material.producer_execution_id === execution.execution_id)
         .map((material) => ({
           material_id: material.material_id,
-          kind: material.kind,
-          scope: material.scope,
-          evidence_state: material.evidence_state,
           content_hash: material.content_hash,
           version: material.version,
         }));
@@ -200,7 +196,6 @@ function executionNarratives(state, taskTree, materials) {
       return {
         execution_id: execution.execution_id,
         task_id: execution.task_id,
-        task_type: task.task_type,
         goal: task.goal,
         expected_output: task.expected_output,
         acceptance_conditions: task.acceptance_conditions ?? null,
@@ -214,8 +209,6 @@ function executionNarratives(state, taskTree, materials) {
         workspace_source_id: execution.workspace_source_id,
         terminal_reason: safeLifecycleReason(execution.terminal_reason),
         block_reason: task.state === 'BLOCKED' ? safeLifecycleReason(task.block_reason) : null,
-        wait_condition_type: execution.wait_condition?.type ?? null,
-        wait_dependency_ids: waitDependencyIds(execution.wait_condition),
         dependencies,
         material_links: materialLinks.map((link) => ({
           link_id: link.link_id,
@@ -249,7 +242,7 @@ function inputSnapshotHash(task, inputMaterialRefs) {
 
 export function missionTaskEvidence(state) {
   return state.taskService.taskStatus({ mission_id: state.missionId, limit: 100,
-    states: ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CLOSED', 'CANCELED', 'WAITING', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED'] });
+    states: ['OPEN', 'BLOCKED', 'RUNNING', 'DONE', 'CANCELED'] });
 }
 
 export function observedEligibleWorkCount(state, readyTasks) {
@@ -268,10 +261,6 @@ function observeReadyTasks(state, tasks, at = Date.now()) {
     const taskId = task?.task_id;
     if (!taskId) continue;
     if (!state.readyObservedAt.has(taskId)) state.readyObservedAt.set(taskId, at);
-    const execution = task.latest_execution;
-    if (task.state === 'WAITING' && execution?.execution_id && !state.waitEligibilityAt.has(execution.execution_id)) {
-      state.waitEligibilityAt.set(execution.execution_id, at);
-    }
   }
 }
 
@@ -304,10 +293,6 @@ function safeLifecycleReason(value) {
 function required(value, name) {
   if (typeof value !== 'string' || value.length === 0) throw new TypeError(`${name} is required`);
   return value;
-}
-
-function sdk(router, context) {
-  return new ServicesSDK(router, context);
 }
 
 function fixtureManifest(problem, sourceHash, leanProjectRoot, config) {
@@ -526,8 +511,8 @@ async function startAgentSession(core) {
   const { bot, session } = await core.runtime.startBot({
     missionId: core.stateRef.mission.mission_id,
     coreId: `core-${core.index}`,
-    selectionTimeoutMs: core.startConfig.options.selectionTimeoutMs ?? Math.min(300_000, core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options)),
-    maxLifetimeMs: core.startConfig.options.botMaxMs ?? flatExecutionTimeoutMs(core.startConfig.options),
+    selectionTimeoutMs: core.startConfig.options.selectionTimeoutMs ?? Math.min(300_000, core.startConfig.options.botMaxMs ?? executionTimeoutMs(core.startConfig.options)),
+    maxLifetimeMs: core.startConfig.options.botMaxMs ?? executionTimeoutMs(core.startConfig.options),
     readyTimeoutMs: core.startConfig.options.readyTimeoutMs ?? core.startConfig.options.turnTimeoutMs ?? 30_000,
     startSession: async ({ bot: startingBot, signal, assertStartupAllowed, onSandboxCreateDispatch, onSandboxCreateRejected, onSandboxCreated }) => {
       core.actorRef = startingBot.bot_id;
@@ -716,7 +701,8 @@ export async function takeTaskWithAgent(core, candidates) {
         supervisor_max_take_attempts: core.startConfig.options.maxStartupAttempts ?? 3,
         compaction_max: core.runtime.maxCompactions, context_closeout_fraction: core.runtime.handoffWindowRatio },
       services: botServiceDirectory(core.bridge.getCapabilityProfile()),
-      project: { project_id: core.stateRef.problem.id, problem_file: core.stateRef.problem.problem_file, source_hash: core.stateRef.problem.source_hash, input_policy: 'locked unsolved formalization only; no external answers or solution-derived candidates' },
+      project: { project_id: core.stateRef.problem.id, problem_file: core.stateRef.problem.problem_file, source_hash: core.stateRef.problem.source_hash,
+        input_policy: core.stateRef.resume ? 'original locked formalization and public research state reconstructed at the selected historical time' : 'locked unsolved formalization only; no external answers or solution-derived candidates' },
       eligibleTasks: selectionView(candidates), firstTurn: core.botDiscoveryTurns === 0,
     });
     core.runtime.recordBotWorkspacePreview({ botId: discoveryBotId, session, workspace });
@@ -781,7 +767,7 @@ export async function releaseTerminalExecution(core) {
   const executionId = core.executionId;
   if (!executionId) return;
   let execution = core.runtime.taskService.getExecution(executionId);
-  if (!execution || !['CLOSING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(execution.state)) return;
+  if (!execution || !['CLOSING', 'SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF'].includes(execution.state)) return;
   const activeWorkspace = core.runtime.activeProcesses?.get?.(executionId)?.workspace;
   const latestTake = core.latencyByExecution?.get?.(executionId);
   if (latestTake && activeWorkspace?.git_commit) latestTake.workspace_git_commit_end = activeWorkspace.git_commit;
@@ -821,9 +807,6 @@ export function recordCoreExecutionRelease(core, taskService, { taskId, executio
   const releaseLatency = core.latencyByExecution.get(executionId);
   if (releaseLatency) {
     releaseLatency.core_released_at = new Date(releasedAt).toISOString();
-    if (releaseLatency.wait_requested_at) {
-      releaseLatency.wait_to_core_release_ms = Math.max(0, releasedAt - Date.parse(releaseLatency.wait_requested_at));
-    }
   }
   const releasedExecution = executionId ? taskService.getExecution(executionId) : null;
   const releasedTurnOwner = core.agentTurnOwner;
@@ -857,7 +840,6 @@ export function recordCoreExecutionRelease(core, taskService, { taskId, executio
       task_id: taskId, execution_id: executionId,
       reason: releasedExecution?.state?.toLowerCase() ?? 'take_released',
     });
-    core.waitingExecutionId = null;
     core.taskId = null;
     core.executionId = null;
     core.take = null;
@@ -922,7 +904,6 @@ function sanitizedVersionManifest(manifest) {
   return {
     pi_package: manifest.pi_package ?? null,
     pi_version: manifest.pi_version ?? null,
-    nurouter_version: manifest.nurouter_version ?? null,
     node_version: manifest.node_version ?? null,
   };
 }
@@ -1182,7 +1163,7 @@ function recordReadinessSnapshot(state, at = Date.now()) {
       const blockers = task.blockers ?? [];
       const readiness = blockers.length > 0 ? 'BLOCKED'
         : task.state === 'RUNNING' ? 'RUNNING'
-          : task.state === 'DONE' || task.state === 'CLOSED' || task.state === 'CANCELED' ? task.state
+          : task.state === 'DONE' || task.state === 'CANCELED' ? task.state
             : 'READY';
       return { task_id: task.task_id, readiness, missing: blockers.map((blocker) => blocker.related_task_id ?? blocker.dependency_id ?? blocker.dependency_kind) };
     }),
@@ -1195,17 +1176,22 @@ export function projectReport(state, startedAt, deadline) {
     for (const session of core.sessionHistory) collectToolEvents(core, session.rpcRecords);
   }
   const materials = state.contextService.readMaterials({});
-  const materialConsumptions = state.contextService.listMaterialConsumptions({});
+  const missionConsumptions = state.contextService.listMaterialConsumptions({});
+  const inheritedExecutionIds = new Set(state.initialExecutionIds ?? []);
+  const materialConsumptions = missionConsumptions.filter(row => !inheritedExecutionIds.has(row.reader_execution));
   const taskEvidence = missionTaskEvidence(state);
-  const taskTree = taskEvidence.tasks;
+  const tasks = taskEvidence.tasks;
   const takeHistory = state.cores.flatMap((core) => core.takeHistory);
   const allowedTaskIds = new Set(takeHistory.map((take) => take.task_id));
   const allowedExecutionIds = new Set(takeHistory.map((take) => take.execution_id));
+  const inheritedMaterialIds = new Set(state.initialMaterialIds ?? []);
   const materialBoundaryViolation = materials.some((material) =>
-    !allowedTaskIds.has(material.source_task) || !allowedExecutionIds.has(material.source_execution));
+    !inheritedMaterialIds.has(material.material_id) &&
+    (!allowedTaskIds.has(material.producer_task_id) || !allowedExecutionIds.has(material.producer_execution_id)));
   const inputMaterialViolation = state.publicWorkspace.mission_id !== state.missionId || state.publicWorkspace.metadata.input_snapshot_hash !== state.inputMaterialHash;
   const allowedInputMaterialIds = new Set(materials
-    .filter((material) => allowedTaskIds.has(material.source_task) && allowedExecutionIds.has(material.source_execution))
+    .filter((material) => inheritedMaterialIds.has(material.material_id) ||
+      (allowedTaskIds.has(material.producer_task_id) && allowedExecutionIds.has(material.producer_execution_id)))
     .map((material) => material.material_id));
   const workspaceViolation = takeHistory.some((take) => {
     const execution = state.taskService.getExecution(take.execution_id);
@@ -1277,25 +1263,21 @@ export function projectReport(state, startedAt, deadline) {
     const execution = state.taskService.getExecution(take.execution_id);
     if (!execution?.workspace_source_id) return false;
     const material = state.contextService.getMaterial(execution.workspace_source_id);
-    return !material || material.source_task !== take.task_id || material.source_execution !== take.execution_id;
+    return !material || material.producer_task_id !== take.task_id || material.producer_execution_id !== take.execution_id;
   });
   const cleanupPending = (state.cleanupErrors?.length ?? 0) > 0;
   const invalid = cleanupPending || toolViolation || toolProtocolErrorCount > 0 || materialBoundaryViolation || inputMaterialViolation || workspaceViolation || workspaceBoundaryViolation ||
     workspaceSourceBoundaryViolation || cores.some((core) => core.cheating_flags.length > 0);
-  const proposedTaskCount = taskEvidence.counts.total;
-  const lifecycle = lifecycleEvents(state.taskService);
+  const taskCount = taskEvidence.counts.total;
+  const dynamicTaskCount = taskCount - state.initialTaskIds.length;
+  const proposedTaskCount = state.resume ? dynamicTaskCount : taskCount;
   const taskLifecycle = taskLifecycleEvents(state.taskService);
   const notifications = state.taskService.listNotifications?.({ missionId: state.missionId }) ?? [];
-  const narratives = executionNarratives(state, taskTree, materials);
-  const invalidWaitAttemptCount = 0;
-  const executionTakeCounts = new Map();
-  for (const take of takeHistory) executionTakeCounts.set(take.execution_id, (executionTakeCounts.get(take.execution_id) ?? 0) + 1);
-  const resumedExecutionCount = [...executionTakeCounts.values()].filter((count) => count > 1).length;
+  const narratives = executionNarratives(state, tasks, materials);
   const workspaceWriteCount = cores.reduce((count, core) => count + core.workspace_writes.length, 0);
-  const meaningfulMaterialCount = materials.filter((material) => !['failure', 'blocker'].includes(material.kind)).length;
+  const publishedMaterialCount = materials.filter(material => !inheritedMaterialIds.has(material.material_id)).length;
   const checkCount = cores.reduce((count, core) => count + core.checks.length, 0);
-  const legacyCheckObserved = cores.some(core => core.checks.some(check => check.workspace_input?.check_mode !== 'lean-project'));
-  const madeProgress = workspaceWriteCount > 0 || meaningfulMaterialCount > 0 || legacyCheckObserved;
+  const madeProgress = workspaceWriteCount > 0 || publishedMaterialCount > 0;
   const parallelism = state.parallelism.snapshot({ endedAt });
   const checkerPreflights = state.judgeService.listCheckerPreflights().map((row) => ({
     preflight_key: row.preflight_key,
@@ -1328,13 +1310,12 @@ export function projectReport(state, startedAt, deadline) {
       repository_commit: state.repositoryCommit,
       repository_worktree_dirty: state.repositoryWorktreeDirty,
       normal_flow: state.normalFlow,
-      task_model: 'flat',
       provider: state.provider ?? null,
       model: state.model ?? null,
       timebox_ms: state.timeboxMs ?? null,
       mission_id: state.missionId,
       workspace_id: state.workspaceId,
-      workspace_main_revision: '0.1',
+      workspace_main_revision: state.publicWorkspace.main_revision,
       candidate_model: 'workspace_file_ref',
       initial_task_count: state.initialTaskIds.length,
       proposed_task_count: proposedTaskCount,
@@ -1342,7 +1323,8 @@ export function projectReport(state, startedAt, deadline) {
       selection_timeout_ms: state.selectionTimeoutMs,
       execution_timeout_ms: state.executionTimeoutMs,
       handoff_reminder_ms: state.handoffReminderMs,
-      input_policy: 'pinned formalization only; no candidate or solution input',
+      input_policy: state.resume ? 'original pinned formalization and public research state reconstructed at the requested historical time' : 'pinned formalization only; no candidate or solution input',
+      ...(state.resume ? { historical_resume: state.resume } : {}),
       tool_policy: 'Pi read/write/edit/bash; services through authenticated swarm CLI; ambient extensions, skills, prompt templates and project context discovery disabled',
       registered_services: state.capabilityRegistry.listServices().map((service) => ({
         service_id: service.service_id,
@@ -1368,9 +1350,9 @@ export function projectReport(state, startedAt, deadline) {
       workspace_id: state.workspaceId,
       database_path: state.databasePath,
       input_workspace_hash: state.inputMaterialHash,
-      task_count: proposedTaskCount,
+      task_count: taskCount,
       task_page: taskEvidence.page,
-      task_tree: taskTree.map((task) => ({
+      tasks: tasks.map((task) => ({
         expected_output: task.expected_output ?? null,
         acceptance_conditions: task.acceptance_conditions ?? null,
         timebox_ms: task.timebox_ms ?? null,
@@ -1387,7 +1369,6 @@ export function projectReport(state, startedAt, deadline) {
         mission_id: task.mission_id ?? state.missionId ?? null,
         summary: task.summary ?? null,
         relations: task.relations ?? null,
-        task_type: task.task_type,
         priority: task.priority,
         responsibility_key: task.responsibility_key ?? null,
         state: task.state,
@@ -1403,13 +1384,14 @@ export function projectReport(state, startedAt, deadline) {
       ...parallelism,
       proposal_evidence: {
         definition: 'All admitted Mission Tasks, including the first proposal. Creation alone does not establish independent progress or successful execution.',
-        observed_task_count: proposedTaskCount,
-        scheduler_status_count: state.schedulerStatusCount,
+        observed_task_count: taskCount,
         ready_work_ms: parallelism.ready_work_ms,
         ready_unassigned_ms: parallelism.ready_unassigned_ms,
       },
     },
     run: {
+      setup_started_at: new Date(state.setupStartedAt ?? startedAt).toISOString(),
+      setup_elapsed_ms: startedAt - (state.setupStartedAt ?? startedAt),
       started_at: new Date(startedAt).toISOString(),
       ended_at: new Date(endedAt).toISOString(),
       elapsed_ms: endedAt - startedAt,
@@ -1420,7 +1402,7 @@ export function projectReport(state, startedAt, deadline) {
       progress_evidence: {
         proposed_task_count: proposedTaskCount,
         workspace_write_count: workspaceWriteCount,
-        meaningful_material_count: meaningfulMaterialCount,
+        meaningful_material_count: publishedMaterialCount,
         candidate_check_count: checkCount,
       },
       solved: state.missionSubmissionStore.isAccepted(state.missionId),
@@ -1430,6 +1412,8 @@ export function projectReport(state, startedAt, deadline) {
       solved_at_ms: state.solvedAt === null ? null : state.solvedAt - startedAt,
       sandbox: state.sandboxManager?.snapshot() ?? null,
       material_count: materials.length,
+      ...(state.resume ? { inherited_material_count: inheritedMaterialIds.size, new_material_count: publishedMaterialCount,
+        inherited_material_consumption_count: missionConsumptions.length - materialConsumptions.length } : {}),
       material_consumption_count: materialConsumptions.length,
       material_consumptions: materialConsumptions.map((row) => ({
         operation_id: row.operation_id,
@@ -1459,7 +1443,7 @@ export function projectReport(state, startedAt, deadline) {
         created_at: notification.created_at,
       })),
       notification_count: notifications.length,
-      project_material_count: materials.filter((material) => allowedTaskIds.has(material.source_task)).length,
+      project_material_count: materials.filter((material) => !inheritedMaterialIds.has(material.material_id) && allowedTaskIds.has(material.producer_task_id)).length,
       mission_final_check_budget: state.missionSubmissionStore?.getFinalCheckBudget(state.missionId) ?? null,
       judge_check_budget: state.judgeService?.getMissionCheckBudget(state.missionId) ?? null,
       check_count: cores.reduce((count, core) => count + core.checks.length, 0),
@@ -1480,52 +1464,26 @@ export function projectReport(state, startedAt, deadline) {
       candidate_check_count: cores.reduce((count, core) => count + core.checks.length, 0),
       tool_error_count: toolErrorCount,
       tool_protocol_error_count: toolProtocolErrorCount,
-      invalid_wait_attempt_count: invalidWaitAttemptCount,
-      scheduler_status_count: state.schedulerStatusCount,
       identity_loops: state.identityLoops?.map((loop) => loop.snapshot()) ?? [],
       identity_loop_events: state.identityLoopEvents ?? [],
       identity_loop_errors: state.identityLoopErrors ?? [],
-      // Kept as a compatibility projection for existing report consumers;
-      // production decisions are owned by Controller and IdentityTaskLoop above.
-      scheduler: state.scheduler?.snapshot() ?? null,
-      scheduler_events: state.schedulerEvents,
       controller: state.controller?.snapshot() ?? null,
       controller_events: state.controllerEvents,
       latency_samples: cores.flatMap((core) => core.latency_samples ?? []),
       latency_summary: {
-        ready_to_session_start_ms: state.schedulerEvents
-          .filter((event) => event.kind === 'scheduler_dispatch_started' && Number.isFinite(event.ready_to_dispatch_ms))
-          .map((event) => event.ready_to_dispatch_ms),
         ready_to_take_ms: cores.flatMap((core) => core.latency_samples ?? [])
           .map((sample) => sample.ready_to_take_ms).filter(Number.isFinite),
         take_to_first_turn_ms: cores.flatMap((core) => core.latency_samples ?? [])
           .map((sample) => sample.take_to_first_turn_ms).filter(Number.isFinite),
-        wait_to_core_release_ms: cores.flatMap((core) => core.latency_samples ?? [])
-          .map((sample) => sample.wait_to_core_release_ms).filter(Number.isFinite),
-        condition_to_resumed_turn_ms: cores.flatMap((core) => core.latency_samples ?? [])
-          .map((sample) => sample.condition_to_resumed_turn_ms).filter(Number.isFinite),
       },
-      // Count every Task admitted after Mission initialization.  The previous
-      // projection counted only controller-generated `flat:proof-feedback:*`
-      // Tasks and therefore hid Agent-created responsibilities from the
-      // benchmark report and budget accounting.
-      dynamic_task_count: proposedTaskCount - state.initialTaskIds.length,
+      // Count every Task admitted after Mission initialization.
+      dynamic_task_count: dynamicTaskCount,
       dynamic_task_events: state.dynamicTaskEvents,
-      // Source-level Judge feedback is diagnostic. There is no controller
-      // route gate or required Response handoff between candidate attempts.
-      route_gates: [],
-      lifecycle_events: lifecycle,
       task_lifecycle_events: taskLifecycle,
-      admission_events: [],
       tool_error_classes: [...new Set(cores.flatMap((core) => core.tool_errors.map((error) => error.code)))],
       taken_core_count: new Set(state.cores.filter((core) => core.takeHistory.length > 0).map((core) => core.index)).size,
       take_count: takeHistory.length,
-      resumed_execution_count: resumedExecutionCount,
-      wait_count: 0,
-      wake_count: 0,
-      accept_count: 0,
-      rework_count: 0,
-      resume_count: 0,
+      ...(state.resume ? { resume_count: 1 } : {}),
       checker_preflights: checkerPreflights,
       checker_infrastructure_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'infrastructure_failure').length, 0),
       checker_source_failure_count: cores.reduce((count, core) => count + core.checks.filter((check) => check.result_class === 'source_failure').length, 0),
@@ -1557,6 +1515,13 @@ export function projectReport(state, startedAt, deadline) {
   return report;
 }
 
+function finishPreflightObservation(store, runId, stopped) {
+  if (store?.getExperiment(runId)?.status !== 'CREATED') return;
+  store.append({ experimentId: runId, source: 'runtime', kind: 'experiment_finished',
+    payload: { solved: false, protocol_valid: false, stop_reason: stopped ? 'operator_stop' : 'preflight_failed' } });
+  store.finishExperiment(runId, { status: stopped ? 'CANCELLED' : 'FAILED' });
+}
+
 async function createProjectState(problem, config, options) {
   const assertInitializing = () => { if (options.signal?.aborted) throw operatorStop(); };
   assertInitializing();
@@ -1584,13 +1549,15 @@ async function createProjectState(problem, config, options) {
   const coreCount = solver ? 1 : 4;
   const artifactKey = solver ? `${problem.id}-attempt-${options.attemptIndex}` : problem.id;
   const contract = agentContract(solver ? 'solver' : 'swarm');
-  const startedAt = options.startedAt ?? Date.now();
+  const setupStartedAt = options.setupStartedAt;
   const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
   const reportRoot = resolve(options.reportDir ?? join(experimentRoot, 'reports'));
   const projectDir = join(experimentRoot, 'state', 'projects', artifactKey);
   const reportProjectDir = join(reportRoot, artifactKey);
   const workspaceRoot = join(experimentRoot, 'workspaces', 'projects', artifactKey);
   const missionWorkspaceRoot = join(projectDir, 'mission-workspace');
+  const resume = options.resumeFrom ? await prepareExperimentResume({ sourceExperimentDir: options.resumeFrom,
+    destinationProjectDir: projectDir, problem, config, at: options.resumeAt }) : null;
   const missionWorkspace = new MissionWorkspace({ rootDir: missionWorkspaceRoot });
   let missionSubmissionStore = null;
   let modelAccess = null;
@@ -1610,8 +1577,8 @@ async function createProjectState(problem, config, options) {
   if ((options.timeboxMs ?? 60 * 60_000) > 0) {
     try {
       modelCatalogResource = await assertBenchmarkModelPair({
-        provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
-        model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL,
+        provider: options.provider ?? process.env.PI_PROVIDER,
+        model: options.model ?? process.env.PI_MODEL,
         command: options.command ?? 'pi',
       });
     } catch (error) {
@@ -1704,7 +1671,8 @@ async function createProjectState(problem, config, options) {
   catch (error) {
     const cleanup = { cores, cleanupErrors: [], missionSubmissionStore, modelAccess, judgeService, operatorStopped: options.signal?.aborted === true };
     await stopBenchmarkRuntime(cleanup, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
-    await closeProjectStores(cleanup, closeStores, options);
+    try { finishPreflightObservation(sandboxObservationStore, runId, cleanup.operatorStopped); }
+    finally { await closeProjectStores(cleanup, closeStores, options); }
     if (cleanup.operatorStopped) {
       const stopped = operatorStop();
       stopped.cleanupErrors = cleanup.cleanupErrors;
@@ -1722,7 +1690,6 @@ async function createProjectState(problem, config, options) {
     );
     const taskLogger = serviceLogger('task-service');
     const contextLogger = serviceLogger('context-service');
-    const routerLogger = serviceLogger('service-router');
     const judgeLogger = serviceLogger('judge-service');
     const checkerLogger = fanoutLogger(
       new DurableEventLog(join(logRoot, 'judge', 'lean-checker.ndjson'), { raw: true, scope: 'judge:lean-checker' }),
@@ -1772,7 +1739,6 @@ async function createProjectState(problem, config, options) {
       }),
     });
     }
-    taskService.setCheckerHealthReader((preflightKey) => judgeService.getCheckerPreflight(preflightKey));
     taskService.setCheckResultReader((checkResultId) => judgeService.getCheckResult(checkResultId));
     judgeService.setDependencyEventSink((event) => taskService.notifyDependencyEvent(event));
     const mathlibSearchUrl = options.mathlibSearchUrl ?? process.env.SWARMENV_MATHLIB_SEARCH_URL ?? null;
@@ -1789,13 +1755,11 @@ async function createProjectState(problem, config, options) {
         })
         .filter(([, endpoint]) => endpoint !== undefined),
     );
-    // Flat Mission Tasks finish through the single registered Task capability.
-    const runtimeCapabilities = runtimeCapabilityList()
-      .filter((capability) => sandboxManager || !['sandbox_exec', 'sandbox_job'].includes(capability.operation));
+    // Tasks finish through the single registered Task capability.
     const allowedAgentToolNames = [...BOT_TOOL_NAMES];
     const taskCreateMutex = new SerialTaskCreateAdmission();
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
-    const mission = taskService.createMission({
+    const mission = resume ? taskService.getMission(resume.missionId) : taskService.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
       goal: `${solver ? `Solve ${problem.id} independently.` : `Solve ${problem.id} through independent, shared Task work.`}${config.instructions_path ? ` Read ${config.instructions_path} for the benchmark task and input contract.` : ''}`,
       ...(workspaceMergeChecker ? { merge_required_check: workspaceMergeChecker.identity } : {}),
@@ -1807,8 +1771,14 @@ async function createProjectState(problem, config, options) {
         required_check: finalTreeChecker?.identity ?? null,
       },
     }, makeEnvelope({ actorRef: 'owner:benchmark', operationId: `benchmark:mission:create:${runId}` })).mission;
-    const workspaceId = `workspace-${problem.id}-${runId}`;
-    const publicWorkspace = await missionWorkspace.create({
+    if (resume && stableStringify(mission.acceptance_conditions.required_check ?? null) !== stableStringify(finalTreeChecker?.identity ?? null)) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Historical resume requires the original final checker identity');
+    }
+    if (resume && stableStringify(mission.merge_required_check ?? null) !== stableStringify(workspaceMergeChecker?.identity ?? null)) {
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Historical resume requires the original Workspace merge checker identity');
+    }
+    const workspaceId = resume?.workspaceId ?? `workspace-${problem.id}-${runId}`;
+    const publicWorkspace = resume ? await missionWorkspace.get({ workspaceId }) : await missionWorkspace.create({
       missionId: mission.mission_id,
       workspaceId,
       initialFiles: { ...await readBenchmarkContext(problem, config), [problem.problem_file]: problem.source },
@@ -1816,18 +1786,18 @@ async function createProjectState(problem, config, options) {
     });
     missionSubmissionStore = createMissionCoordination({ taskService, contextService, workspace: missionWorkspace,
       workspaceId, missionId: mission.mission_id, checker: finalTreeChecker,
-      deadline: startedAt + (options.timeboxMs ?? 60 * 60_000),
+      deadline: () => projectState?.runDeadlineAt ?? 0,
       isStopping: () => projectState?.stopping === true,
       maxInfrastructureRetries: options.maxInfrastructureRetries ?? 0,
       maxFinalChecks: options.maxFinalChecks ?? config.mission_final_check_budget?.maxChecks,
       maxConcurrentFinalChecks: options.maxConcurrentFinalChecks ?? config.mission_final_check_budget?.maxConcurrent,
       onAccepted: submission => {
         acceptedMission = submission;
-        if (projectState) beginMissionCloseout(projectState, submission);
+        if (projectState?.runDeadlineAt != null) beginMissionCloseout(projectState, submission);
       },
     });
     taskService.setMissionStopReader(id => id === mission.mission_id &&
-      (projectState?.stopping === true || options.signal?.aborted === true || Date.now() >= startedAt + (options.timeboxMs ?? 60 * 60_000) || missionSubmissionStore.isAccepted(id)));
+      (projectState?.stopping === true || options.signal?.aborted === true || (projectState?.runDeadlineAt != null && Date.now() >= projectState.runDeadlineAt) || missionSubmissionStore.isAccepted(id)));
     await missionSubmissionStore.reconcile({ missionId: mission.mission_id });
     const capabilityRegistry = options.serviceRegistry ?? createBuiltinServiceRegistry({
       taskService,
@@ -1898,23 +1868,17 @@ async function createProjectState(problem, config, options) {
         // absent and Task admission will return a structured, actionable error.
       }
     }
-    // Owner/controller SDK calls are synchronous local transactions. Keep that
-    // control-plane registry local even when Agent-facing providers are remote;
-    // ServicesBridge uses capabilityRegistry for the named HTTP calls.
-
-    const routerRegistry = createBuiltinServiceRegistry({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore });
-    const router = new ServicesRouter({ taskService, contextService, judgeService, missionWorkspace, missionSubmissionStore, registry: routerRegistry, logger: routerLogger });
-    const owner = sdk(router, { actorRef: 'owner:benchmark' });
-    // Swarm starts empty; Pass@K seeds one complete responsibility through Task Service.
+    const initialTasks = resume ? resume.initialTaskIds.map(id => taskService.getTask(id)) : [];
+    if (resume) for (const task of initialTasks) taskService.reconcileTask(task.task_id,
+      makeEnvelope({ actorRef: 'runtime:historical-resume', taskId: task.task_id }));
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: {
       problem_id: problem.id,
-      task_model: 'flat',
       mission_id: mission?.mission_id ?? null,
-      initial_task_count: 0,
+      initial_task_count: initialTasks.length,
       workspace_id: publicWorkspace.workspace_id,
     } });
-    observationStore.append({ experimentId: runId, source: 'runtime', kind: 'mission_started_zero_tasks', payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id } });
-    const initialTasks = [];
+    observationStore.append({ experimentId: runId, source: 'runtime', kind: resume ? 'mission_resumed_from_history' : 'mission_started_zero_tasks',
+      payload: { mission_id: mission.mission_id, workspace_id: publicWorkspace.workspace_id, ...(resume ? { resume: resume.provenance } : {}) } });
     if (solver) initialTasks.push(taskService.createTask({
       mission_id: mission.mission_id, summary: `Independently solve the complete original theorem ${problem.id}`,
       goal: mission.goal, expected_output: 'Complete Lean proof accepted by the fixed final verifier',
@@ -1923,42 +1887,23 @@ async function createProjectState(problem, config, options) {
       timebox_ms: options.timeboxMs ?? 3_600_000,
     }, makeEnvelope({ actorRef: 'owner:passk', operationId: `solver-task:${runId}` })).task);
 
-    observationStore.registerExperiment({ experimentId: runId, status: 'RUNNING', metadata: { initial_task_count: initialTasks.length, proposed_task_count: 0, workspace_id: publicWorkspace.workspace_id } });
-    observationStore.append({
-      experimentId: runId,
-      source: 'runtime',
-      kind: 'experiment_started',
-      taskId: null,
-      payload: {
-        problem_id: problem.id,
-        core_count: coreCount,
-        initial_bot_stagger_ms: options.initialBotStaggerMs ?? 0,
-        timebox_ms: options.timeboxMs ?? 60 * 60_000,
-        task_model: 'flat',
-        mission_id: mission?.mission_id ?? null,
-        workspace_id: publicWorkspace.workspace_id,
-        initial_task_count: initialTasks.length,
-        proposed_task_count: 0,
-        normal_flow: normalFlow,
-      },
-    });
     // Deterministic queue scenarios may seed durable Tasks before reusable Core
     // sessions start. The hook uses the same Task Service boundary as Agent
     // operations; it does not replace queue take, Runtime, or dispatch logic.
-    await options.prepareProject?.({ owner, root: null, mission, publicWorkspace, initialTasks, taskService, contextService, router, fixture, problem });
+    await options.prepareProject?.({ mission, publicWorkspace, initialTasks, taskService, contextService, fixture, problem });
     assertInitializing();
     if (modelConfiguration !== null) {
       modelDatabase = new DatabaseSync(join(projectDir, 'model-budget.sqlite'));
       modelAccess = new BotModelAccess({ db: modelDatabase, taskService, missionId: mission.mission_id,
-        provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
-        model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL,
+        provider: options.provider ?? process.env.PI_PROVIDER,
+        model: options.model ?? process.env.PI_MODEL,
         upstream: options.modelUpstream, configuration: modelConfiguration, timeBounded: timeBoundedModel,
-        deadline: () => projectState?.runDeadlineAt ?? startedAt + (options.timeboxMs ?? 60 * 60_000),
+        deadline: () => projectState?.runDeadlineAt ?? 0,
         closeoutDeadline: () => projectState?.missionCloseoutDeadline ?? Infinity,
         isStopping: () => projectState?.stopping === true });
       await modelAccess.start();
     }
-    const parallelism = new CoreParallelismTracker({ coreCount, startedAt });
+    const parallelism = new CoreParallelismTracker({ coreCount, startedAt: setupStartedAt });
       for (let index = 1; index <= coreCount; index += 1) {
       const coreDir = join(workspaceRoot, `core-${index}`);
       await mkdir(coreDir, { recursive: true });
@@ -1972,16 +1917,14 @@ async function createProjectState(problem, config, options) {
           diskIsolation,
           modelCatalogResource,
           command: options.command ?? 'pi',
-          provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER,
-          model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL,
-          account: options.account ?? process.env.NUROUTER_PI_ACCOUNT,
-          group: options.group ?? process.env.NUROUTER_PI_GROUP,
+          provider: options.provider ?? process.env.PI_PROVIDER,
+          model: options.model ?? process.env.PI_MODEL,
           env: childEnv,
           agentEnvironment: sandboxConfig.agentEnvironment ?? {},
           secretEnv: sandboxConfig.secretEnvironment ?? {},
           systemPrompt: contract.systemPrompt,
         });
-      // All reusable slots must be able to resume an Execution created by any
+      // All Core slots must be able to start an Execution created by any
       // other slot. The physical Workspace is execution-owned and unique, but
       // its Runtime root is project-wide rather than core-private.
       const workspaceManager = new WorkspaceManager({ rootDir: workspaceRoot });
@@ -1996,17 +1939,15 @@ async function createProjectState(problem, config, options) {
         workspaceProjectCheck: Boolean(projectChecker),
         workspaceMergeChecker,
         coordinationPermissions: options.coordinationPermissions ?? config.mission_coordination_permissions ?? [],
-        runtimeCapabilities,
         sandboxManager,
-        capabilityRegistry,
         maxWorkers: 1,
         coreIds: [`core-${index}`],
         actorRef: `runtime:core-${index}`,
         watchdogTimeoutMs: options.watchdogTimeoutMs,
         // Execution, Task, Bot and Mission limits intersect. Bot lifetime starts
         // before discovery and cannot reset when take becomes active.
-        executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
-        handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
+        executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? executionTimeoutMs(options),
+        handoffReminderMs: options.handoffReminderMs ?? handoffReminderMs(options),
         logger: new DurableEventLog(join(logRoot, 'runtime', `core-${index}.ndjson`), { scope: `runtime:core-${index}` }),
       });
       const core = {
@@ -2027,7 +1968,6 @@ async function createProjectState(problem, config, options) {
         bridge: null,
         session: null,
         releasedSession: null,
-        waitingExecutionId: null,
         sessionHistory: [],
         sessionNumber: 0,
         startConfig: { problem, logRoot, options },
@@ -2079,8 +2019,6 @@ async function createProjectState(problem, config, options) {
         taskService,
         contextService,
         runtime,
-        router,
-        runtimeCapabilities,
         registry: capabilityRegistry,
         actorRef: `agent:core-${index}`,
         // The bridge, not the model payload, owns the lane identity.
@@ -2109,8 +2047,6 @@ async function createProjectState(problem, config, options) {
           // second take or manufacture a separate selection handoff.
           core.dispatchReserved = false;
           const takenAt = Date.now();
-          const priorWaitingExecutionId = core.waitingExecutionId;
-          core.waitingExecutionId = null;
           core.parallelism.transition(core.index, 'ASSIGNED', {
             task_id: take.task.task_id,
             execution_id: take.execution.execution_id,
@@ -2142,18 +2078,12 @@ async function createProjectState(problem, config, options) {
             ready_to_take_ms: core.stateRef?.readyObservedAt.has(take.task.task_id)
               ? Math.max(0, takenAt - core.stateRef.readyObservedAt.get(take.task.task_id))
               : null,
-            resumed_from_wait: priorWaitingExecutionId === take.execution.execution_id || take.execution.attempt_no > 1,
           };
           core.latencySamples.push(takeRecord);
           core.latencyByExecution.set(take.execution.execution_id, takeRecord);
           core.takeHistory.push(takeRecord);
           const bound = await runtime.bindAgentExecution(take.execution.execution_id, workerSession, {
             workspaceRef: join(workspaceRoot, take.execution.execution_id),
-            // The current Agent turn is already the first bound turn.  Sending
-            // another initial prompt from inside task_take would race the
-            // in-flight RPC and violate the single-turn ordering contract.
-            sendInitialPrompt: false,
-            agentPrompt: contract.systemPrompt,
           });
           // Publish a usable receipt only after Runtime binding succeeds.
           take.execution = bound.execution;
@@ -2171,12 +2101,7 @@ async function createProjectState(problem, config, options) {
             const firstTurnAt = Date.now();
             latency.first_turn_started_at = new Date(firstTurnAt).toISOString();
             latency.take_to_first_turn_ms = Math.max(0, firstTurnAt - Date.parse(latency.taken_at));
-            const eligibilityAt = core.stateRef?.waitEligibilityAt.get(boundExecutionId);
-            if (eligibilityAt !== undefined) {
-              latency.condition_satisfied_observed_at = new Date(eligibilityAt).toISOString();
-              latency.resume_eligible_at = new Date(eligibilityAt).toISOString();
-              latency.condition_to_resumed_turn_ms = Math.max(0, firstTurnAt - eligibilityAt);
-            }
+
           }
           if (!solver && boundSession && core.runtime.hasActiveExecution(take.execution.execution_id)) {
             core.turnInFlight = true;
@@ -2217,7 +2142,7 @@ async function createProjectState(problem, config, options) {
                 // sweep to break a handoff wait.
                 if (core.executionId === boundExecutionId) {
                   const settled = taskService.getExecution(boundExecutionId);
-                  if (settled && ['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF', 'SUPERSEDED'].includes(settled.state)) {
+                  if (settled && ['SUCCEEDED', 'FAILED', 'EXPIRED', 'CANCELLED', 'FENCED', 'HANDED_OFF'].includes(settled.state)) {
                     await releaseTerminalExecution(core);
                   }
                 }
@@ -2258,63 +2183,9 @@ async function createProjectState(problem, config, options) {
         },
         onTakeAccepted: async () => {
         },
-        onSchedulerStatus: async (payload) => {
-          if (core.stateRef) core.stateRef.schedulerStatusCount += 1;
-          const cores = core.stateRef?.cores ?? [core];
-          const readyTasks = projectTasks(core.stateRef, {
-            states: ['OPEN', 'RUNNING'],
-            limit: payload.limit ?? 100,
-            availableOnly: true,
-          });
-          const activeCoreCount = cores.filter((candidate) => candidate.taskId || candidate.dispatchReserved || candidate.turnInFlight).length;
-          const waitingOwners = new Set(taskService.listActiveExecutions()
-            .filter((execution) => execution.state === 'WAITING')
-            .map((execution) => execution.owner_ref));
-          return {
-            core_count: cores.length,
-            active_core_count: activeCoreCount,
-            idle_core_count: Math.max(0, cores.length - activeCoreCount),
-            waiting_core_count: waitingOwners.size,
-            waiting_execution_count: taskService.listActiveExecutions().filter((execution) => execution.state === 'WAITING').length,
-            ready_task_count: readyTasks.length,
-            ready_task_ids: readyTasks.map((task) => task.task_id),
-            ready_tasks: readyTasks,
-            current_task_id: payload.task_id ?? core.taskId,
-            current_execution_id: payload.execution_id ?? core.executionId,
-          };
-        },
         onRelease: released => recordCoreExecutionRelease(core, taskService, released),
-        onWorkspaceWrite: async ({ taskId, executionId, result }) => {
-          core.observe({
-            source: 'workspace', kind: 'workspace_revision_saved', visibility: 'operator',
-            taskId, executionId, coreId: `core-${core.index}`,
-            payload: {
-              workspace_ref: result.workspace?.workspace_ref ?? taskService.getExecution(executionId)?.workspace_ref ?? null,
-              workspace_revision: result.workspace?.workspace_revision ?? null,
-              workspace_content_hash: result.workspace?.content_hash ?? null,
-              path: result.file?.path ?? null,
-              file_content_hash: result.file?.content_hash ?? null,
-              changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
-            },
-          });
-          core.workspaceWrites.push({
-            task_id: taskId,
-            execution_id: executionId,
-            path: result.file?.path ?? null,
-            file_content_hash: result.file?.content_hash ?? null,
-            workspace_revision: result.workspace?.workspace_revision ?? null,
-            workspace_content_hash: result.workspace?.content_hash ?? null,
-            changed_files: result.diff?.changed_files?.map((file) => ({ path: file.path, status: file.status })) ?? [],
-          });
-          core.parallelism.recordWorkUnit({
-            task_id: taskId,
-            execution_id: executionId,
-            core: core.index,
-            progress_kind: 'workspace_revision',
-          });
-        },
         onWorkUnit: async ({ operation, taskId, executionId, payload, result }) => {
-          const materialPublishOperation = operation === 'publish_material' || operation === 'context_publish_material';
+          const materialPublishOperation = operation === 'context_publish_material';
           if (materialPublishOperation || ['task_link_material', 'workspace_check', 'workspace_save', 'workspace_merge'].includes(operation)) {
             core.stateRef?.requestIdentityWake?.();
           }
@@ -2338,7 +2209,7 @@ async function createProjectState(problem, config, options) {
               reader_task_id: taskId,
               reader_execution_id: executionId,
               material_ids: materialsRead.map((material) => material.material_id).filter(Boolean).slice(0, 100),
-              source_task_ids: [...new Set(materialsRead.map((material) => material.producer_task_id ?? material.source_task).filter(Boolean))].slice(0, 100),
+              source_task_ids: [...new Set(materialsRead.map((material) => material.producer_task_id).filter(Boolean))].slice(0, 100),
             };
             core.materialReads.push(materialRead);
             // Reading is intentionally separate from durable consumption. Only
@@ -2433,14 +2304,9 @@ async function createProjectState(problem, config, options) {
               taskId, executionId, coreId: `core-${core.index}`,
               payload: {
                 material_id: published.material_id ?? null,
-                kind: published.kind ?? payload?.kind ?? null,
-                scope: published.scope ?? payload?.scope ?? null,
-                source_task: published.producer_task_id ?? published.source_task ?? taskId,
-                source_execution: published.producer_execution_id ?? published.source_execution ?? executionId,
-                consumed_material_ids: Array.isArray(published.provenance?.consumed_material_ids)
-                  ? published.provenance.consumed_material_ids.filter((id) => typeof id === 'string').slice(0, 100)
-                  : [],
-                publish_reason: payload?.scope === 'judge_feedback' ? 'judge_feedback' : null,
+                producer_task_id: published.producer_task_id ?? taskId,
+                producer_execution_id: published.producer_execution_id ?? executionId,
+                used_material_ids: (published.provenance?.used_materials ?? []).map(use => use.material_id),
               },
             });
             core.parallelism.recordWorkUnit({
@@ -2561,14 +2427,15 @@ async function createProjectState(problem, config, options) {
       runId,
       problem,
       config,
-      provider: options.provider ?? process.env.PI_PROVIDER ?? process.env.NUROUTER_PI_PROVIDER ?? null,
-      model: options.model ?? process.env.PI_MODEL ?? process.env.NUROUTER_PI_MODEL ?? null,
+      provider: options.provider ?? process.env.PI_PROVIDER ?? null,
+      model: options.model ?? process.env.PI_MODEL ?? null,
       agentMode: solver ? 'solver' : 'swarm',
       attemptIndex: options.attemptIndex ?? null,
       timeboxMs: options.timeboxMs ?? 60 * 60_000,
       initialBotStaggerMs: options.initialBotStaggerMs ?? 0,
       signal: options.signal,
-      runDeadlineAt: startedAt + (options.timeboxMs ?? 60 * 60_000),
+      runDeadlineAt: null,
+      setupStartedAt,
       missionCloseoutMs: options.missionCloseoutMs ?? 30_000,
       fixtureManifest: fixture,
       finalTreeEvidence: finalTreeDeployment?.evidence ?? null,
@@ -2576,6 +2443,9 @@ async function createProjectState(problem, config, options) {
       databasePath,
       projectDir,
       initialTaskIds: initialTasks.map((task) => task.task_id),
+      initialExecutionIds: resume?.initialExecutionIds ?? [],
+      initialMaterialIds: resume?.initialMaterialIds ?? [],
+      resume: resume?.provenance ?? null,
       reportProjectDir,
       experimentDir: experimentRoot,
       logRoot,
@@ -2585,7 +2455,6 @@ async function createProjectState(problem, config, options) {
       closeStores,
       taskService,
       contextService,
-      router,
       capabilityRegistry,
       mission,
       publicWorkspace,
@@ -2605,8 +2474,6 @@ async function createProjectState(problem, config, options) {
       watchdogErrorCount: 0,
       executionTimeoutSweepCount: 0,
       executionTimeoutErrorCount: 0,
-      schedulerStatusCount: 0,
-      schedulerEvents: [],
       identityLoopEvents: [],
       identityLoops: [],
       identityLoopRuns: [],
@@ -2617,7 +2484,6 @@ async function createProjectState(problem, config, options) {
       controllerEvents: [],
       controller: null,
       readyObservedAt: new Map(),
-      waitEligibilityAt: new Map(),
       resourcesAtStart: resourceSnapshot(),
       repositoryCommit: options.repositoryCommit ?? null,
       repositoryWorktreeDirty: options.repositoryWorktreeDirty ?? null,
@@ -2630,17 +2496,17 @@ async function createProjectState(problem, config, options) {
       modelAccess,
       taskCreateMutex,
       dynamicTaskEvents: [],
-      botMaxMs: options.botMaxMs ?? flatExecutionTimeoutMs(options),
-      selectionTimeoutMs: options.selectionTimeoutMs ?? Math.min(300_000, options.botMaxMs ?? flatExecutionTimeoutMs(options)),
-      executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? flatExecutionTimeoutMs(options),
-      handoffReminderMs: options.handoffReminderMs ?? flatHandoffReminderMs(options),
+      botMaxMs: options.botMaxMs ?? executionTimeoutMs(options),
+      selectionTimeoutMs: options.selectionTimeoutMs ?? Math.min(300_000, options.botMaxMs ?? executionTimeoutMs(options)),
+      executionTimeoutMs: options.executionTimeoutMs ?? options.botMaxMs ?? executionTimeoutMs(options),
+      handoffReminderMs: options.handoffReminderMs ?? handoffReminderMs(options),
       normalFlow,
       readinessSamples: [],
     };
     projectState = state;
     const prior = await missionSubmissionStore.get({ missionId: mission.mission_id });
     acceptedMission ??= prior?.submissions.find(row => row.state === 'accepted') ?? null;
-    if (acceptedMission) beginMissionCloseout(state, acceptedMission);
+    state.acceptedAtStartup = acceptedMission;
     return state;
   }
 }
@@ -2663,7 +2529,10 @@ async function runProject(problem, config, options) {
   if (!Number.isFinite(options.cleanupGraceMs ?? 30_000) || (options.cleanupGraceMs ?? 30_000) <= 0) throw new TypeError('cleanupGraceMs must be finite and positive');
   const state = await createProjectState(problem, config, options);
   try { return await executeBenchmarkProject(state, problem, config, options); }
-  finally {
+  catch (error) {
+    finishPreflightObservation(state.observationStore, state.runId, options.signal?.aborted === true);
+    throw error;
+  } finally {
     if (!state.cleanupPromise) await stopBenchmarkRuntime(state, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
     if (state.unhandledRejectionHandler) process.off('unhandledRejection', state.unhandledRejectionHandler);
     // Also owns exceptions during orchestration, report generation and write.
@@ -2673,8 +2542,15 @@ async function runProject(problem, config, options) {
 }
 
 export async function runBenchmarkProject(problem, config, options = {}) {
+  await validateResumeOutputPaths(options, problem, { freshProject: true });
+  const setupStartedAt = Date.now();
+  let startedAt = null;
+  const notify = options.onRunStarted;
+  options = { ...options, setupStartedAt, onRunStarted: start => { startedAt = start; notify?.(start); } };
   try { return await runProject(problem, config, options); }
   catch (error) {
+    error.runTiming = { setup_started_at: new Date(setupStartedAt).toISOString(), setup_elapsed_ms: (startedAt ?? Date.now()) - setupStartedAt,
+      started_at: startedAt === null ? null : new Date(startedAt).toISOString() };
     if (error.code !== 'BENCHMARK_OPERATOR_STOPPED') throw error;
     return writeUnavailableProjectReport(problem, options, error, { operatorStopped: true });
   }
@@ -2758,16 +2634,28 @@ async function executeBenchmarkProject(state, problem, config, options) {
       state.observationStore.append({ experimentId: state.runId, source: 'task-controller', kind: sanitized.kind, taskId: sanitized.task_id, coreId: sanitized.core_id, visibility: 'operator', payload: sanitized });
     },
   });
-  state.controller.start();
   let resolveIdentityWake;
   let identityWake = new Promise((resolve) => { resolveIdentityWake = resolve; });
   state.identityWakeRequested = false;
-  const startedAt = Date.now();
+  if (state.signal?.aborted) throw operatorStop();
+  const startedAt = options.waitForRunStart ? await options.waitForRunStart() : Date.now();
+  if (state.signal?.aborted) throw operatorStop();
+  const durationMs = state.timeboxMs;
+  const deadline = startedAt + durationMs;
+  state.runDeadlineAt = deadline;
+  if (state.acceptedAtStartup) beginMissionCloseout(state, state.acceptedAtStartup);
+  for (const core of state.cores) core.runtime.setRunDeadline(deadline);
+  options.onRunStarted?.(startedAt);
+  state.observationStore.registerExperiment({ experimentId: state.runId, status: 'RUNNING', startedAt: new Date(startedAt).toISOString() });
+  state.observationStore.append({
+    experimentId: state.runId, source: 'runtime', kind: 'experiment_started', occurredAt: new Date(startedAt).toISOString(),
+    payload: { problem_id: problem.id, core_count: state.cores.length, initial_bot_stagger_ms: state.initialBotStaggerMs,
+      timebox_ms: durationMs, mission_id: state.missionId, workspace_id: state.workspaceId,
+      initial_task_count: state.initialTaskIds.length, proposed_task_count: 0, normal_flow: state.normalFlow },
+  });
+  state.controller.start();
   state.parallelism.start(startedAt);
   recordReadinessSnapshot(state, startedAt);
-  const durationMs = options.timeboxMs ?? 60 * 60_000;
-  const deadline = state.runDeadlineAt;
-  for (const core of state.cores) core.runtime?.setRunDeadline?.(deadline);
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
   // IdentityTaskLoop waits for the whole Runtime Execution to release after a
   // successful take. Keep that ownership deadline at least as long as the
@@ -2880,20 +2768,6 @@ async function executeBenchmarkProject(state, problem, config, options) {
     // and also repair missed or cross-process publication notifications.
     state.requestIdentityWake(event?.kind ?? 'task_event');
   });
-  // Compatibility metrics keep the old report field readable while the
-  // production composition has no Scheduler instance or Scheduler decision
-  // maker. Every value is derived from IdentityTaskLoop lifecycle counters.
-  state.scheduler = { snapshot: () => ({
-    ready_count: projectEligibleTasks(state, { limit: 100 }).length,
-    dispatch_count: state.identityLoops.reduce((count, loop) => count + loop.snapshot().take_count, 0),
-    startup_attempt_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartAttempts ?? 0), 0),
-    startup_failure_count: state.cores.reduce((count, candidate) => count + (candidate.sessionStartFailures ?? 0), 0),
-    bounded_startup_exhausted_count: state.identityLoops.filter((loop) => loop.snapshot().take_exhausted).length,
-    duplicate_suppression_count: 0,
-    dispatch_latencies_ms: [],
-    in_flight_core_ids: state.identityLoops.filter((loop) => loop.snapshot().state !== 'IDLE').map((loop) => loop.coreId),
-    stopped: state.identityLoops.every((loop) => loop.snapshot().stopped),
-  }) };
   let operatorStoppedAt;
   const acceptedAndClosed = () => state.missionSubmissionStore.isAccepted(state.missionId) &&
     !state.cores.some(core => core.executionId && state.taskService.getExecution(core.executionId)?.state === 'RUNNING');
@@ -3039,12 +2913,12 @@ async function executeBenchmarkProject(state, problem, config, options) {
         }
         const readyStartedAt = Date.now();
         const readyTasks = projectTasks(state, {
-          states: ['OPEN', 'RUNNING', 'WAITING'],
+          states: ['OPEN', 'RUNNING'],
           limit: 100,
           availableOnly: true,
         });
         observeReadyTasks(state, readyTasks);
-        state.parallelism.recordSchedulerPoll(Date.now() - readyStartedAt);
+        state.parallelism.recordReadinessPoll(Date.now() - readyStartedAt);
         state.parallelism.recordReadyWork({
           readyCount: readyTasks.length,
           idleCoreCount: state.cores.filter(isPhysicallyAvailableCore).length,
@@ -3120,6 +2994,7 @@ async function executeBenchmarkProject(state, problem, config, options) {
 }
 
 export async function writeUnavailableProjectReport(problem, options, error, { operatorStopped = false } = {}) {
+  await validateResumeOutputPaths(options, problem);
   const parallelism = new CoreParallelismTracker({ coreCount: options.agentMode === 'solver' ? 1 : 4, startedAt: 0 }).snapshot({ endedAt: 0 });
   const report = {
     schema_version: 1,
@@ -3128,7 +3003,6 @@ export async function writeUnavailableProjectReport(problem, options, error, { o
       core_count: options.agentMode === 'solver' ? 1 : 4,
       initial_bot_stagger_ms: options.initialBotStaggerMs ?? 0,
       project_parallelism: options.projectParallelism ?? 1,
-      task_model: 'flat',
       input_policy: 'pinned formalization only; no candidate or solution input',
       tool_policy: 'Pi read/write/edit/bash; services through authenticated swarm CLI; ambient extensions, skills, prompt templates and project context discovery disabled',
       cheating_policy: 'A recorded forbidden candidate placeholder or tool event outside read/write/edit/bash invalidates the project; ordinary project diagnostics do not establish a policy violation',
@@ -3142,6 +3016,9 @@ export async function writeUnavailableProjectReport(problem, options, error, { o
       solved: false,
       ended_early: operatorStopped,
       ...(operatorStopped ? { stop_reason: 'operator_stop', cleanup_errors: error.cleanupErrors ?? [] } : {}),
+      started_at: null,
+      ended_at: new Date().toISOString(),
+      ...error.runTiming,
       elapsed_ms: null,
       deadline_reached: false,
       cleanup_elapsed_ms: null,
@@ -3159,6 +3036,7 @@ export async function writeUnavailableProjectReport(problem, options, error, { o
 
 export async function runBenchmarkBatch(problems, config, options = {}) {
   assertCurrentParallelConfiguration(options);
+  if (options.resumeFrom) throw new TypeError('Historical resume requires one selected problem');
   const concurrency = Math.max(1, Math.min(options.projectParallelism ?? 1, problems.length));
   const reports = [];
   let next = 0;
