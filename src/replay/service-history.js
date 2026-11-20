@@ -83,14 +83,15 @@ function statementInfo(sql) {
   const withoutComments = String(sql).replace(SQL_QUOTES_AND_COMMENTS, part => /^(?:--|\/\*)/.test(part) ? ' ' : part)
     .trim().replace(/^(?:;\s*)+/, '').replace(/;\s*$/, '').trim();
   const bare = withoutComments.replace(SQL_QUOTES_AND_COMMENTS, ' ');
-  const savepoint = withoutComments.match(/^(SAVEPOINT|RELEASE(?:\s+SAVEPOINT)?)\s+([\s\S]+)$/i);
+  const savepoint = withoutComments.match(/^(SAVEPOINT|RELEASE(?:\s+SAVEPOINT)?|ROLLBACK(?:\s+TRANSACTION)?\s+TO(?:\s+SAVEPOINT)?)\s+([\s\S]+)$/i);
   let name = savepoint?.[2];
   if (name && /^['"`\[]/.test(name)) {
     const delimiter = name[0]; name = name.slice(1, -1).replaceAll(delimiter + delimiter, delimiter);
   }
   return {
     savepoint: savepoint?.[1].toUpperCase() === 'SAVEPOINT' ? name.toLowerCase() : null,
-    release: savepoint && savepoint[1].toUpperCase() !== 'SAVEPOINT' ? name.toLowerCase() : null,
+    release: /^RELEASE/i.test(savepoint?.[1] ?? '') ? name.toLowerCase() : null,
+    rollbackTo: /^ROLLBACK/i.test(savepoint?.[1] ?? '') ? name.toLowerCase() : null,
     commit: /^(?:COMMIT|END)(?:\s+TRANSACTION)?$/i.test(withoutComments),
     write: /^(?:INSERT|UPDATE|DELETE|REPLACE|CREATE|ALTER|DROP|REINDEX|VACUUM|ANALYZE)\b/i.test(bare) ||
       (/^WITH\b/i.test(bare) && /\b(?:INSERT|UPDATE|DELETE|REPLACE)\b/i.test(bare)),
@@ -103,7 +104,8 @@ function statementInfo(sql) {
  * SQLite's statement-stable clock. No model/tool calls are replayed here. */
 function instrumentTransactions(db) {
   if (installed.has(db)) return installed.get(db);
-  const state = { rawExec: db.exec.bind(db), rawPrepare: db.prepare.bind(db), enabled: true, savepointRoot: null };
+  const state = { rawExec: db.exec.bind(db), rawPrepare: db.prepare.bind(db), enabled: true,
+    savepoints: [], savepointTransaction: false };
   const beginWrite = () => {
     if (!state.enabled || !db.isTransaction) return;
     const current = state.rawPrepare('SELECT transaction_id FROM replay_control WHERE singleton = 1').get();
@@ -117,15 +119,43 @@ function instrumentTransactions(db) {
     if (current.transaction_id === null) return;
     state.rawPrepare(`UPDATE replay_transactions SET committed_at = ${SQL_NOW} WHERE transaction_id = ?`).run(current.transaction_id);
     state.rawPrepare('UPDATE replay_control SET transaction_id = NULL WHERE singleton = 1').run();
+    return current.transaction_id;
   };
   const execute = (info, call) => {
     const wasTransaction = db.isTransaction;
-    if (info.commit || (info.release && info.release === state.savepointRoot)) finishWrite();
-    else if (info.write) beginWrite();
-    const result = call();
-    if (info.savepoint && !wasTransaction) state.savepointRoot = info.savepoint;
-    if (!db.isTransaction) state.savepointRoot = null;
-    return result;
+    // SQLite resolves repeated names to the innermost matching savepoint.
+    // RELEASE commits only when it removes the savepoint that began the transaction.
+    const releaseIndex = info.release === null ? -1 : state.savepoints.lastIndexOf(info.release);
+    const commitsTransaction = info.commit || (releaseIndex === 0 && state.savepointTransaction);
+    const finishingTransactionId = commitsTransaction ? finishWrite() : undefined;
+    if (!commitsTransaction && info.write) beginWrite();
+    try {
+      const result = call();
+      if (info.savepoint !== null) {
+        if (!wasTransaction) state.savepointTransaction = true;
+        state.savepoints.push(info.savepoint);
+      }
+      if (releaseIndex >= 0) state.savepoints.splice(releaseIndex);
+      if (info.rollbackTo !== null) {
+        const index = state.savepoints.lastIndexOf(info.rollbackTo);
+        state.savepoints.splice(index + 1);
+      }
+      return result;
+    } catch (error) {
+      // A failed COMMIT can leave the transaction open, for example when a
+      // deferred foreign key is unsatisfied. Preserve its original marker
+      // until a successful retry commits every surviving write together.
+      if (finishingTransactionId !== undefined && db.isTransaction) {
+        state.rawPrepare('UPDATE replay_transactions SET committed_at = NULL WHERE transaction_id = ?').run(finishingTransactionId);
+        state.rawPrepare('UPDATE replay_control SET transaction_id = ? WHERE singleton = 1').run(finishingTransactionId);
+      }
+      throw error;
+    } finally {
+      if (!db.isTransaction) {
+        state.savepoints.length = 0;
+        state.savepointTransaction = false;
+      }
+    }
   };
   db.prepare = function(sql) {
     const statement = state.rawPrepare(sql);

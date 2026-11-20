@@ -59,8 +59,8 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), bind
     await rm(root, { recursive: true, force: true });
   });
   const envelope = () => makeEnvelope({ actorRef: 'operator:cleanup' });
-  service.dispatch('mission.create', { mission_id: 'mission:cleanup', goal: 'Verify safe Core reuse' }, envelope());
-  const task = service.dispatch('task.create', { mission_id: 'mission:cleanup', summary: 'Inspect one local result', goal: 'Inspect one local result', expected_output: 'Inspection note', acceptance_conditions: ['Note records the inspection'] }, envelope()).task;
+  service.dispatch('mission_create', { mission_id: 'mission:cleanup', goal: 'Verify safe Core reuse' }, envelope());
+  const task = service.dispatch('task_create', { mission_id: 'mission:cleanup', summary: 'Inspect one local result', goal: 'Inspect one local result', expected_output: 'Inspection note', acceptance_conditions: ['Note records the inspection'] }, envelope()).task;
   // The model process is the external boundary. Task Service, Runtime,
   // Workspace and the OpenSandbox protocol adapter are real collaborators.
   const session = new EventEmitter();
@@ -75,7 +75,7 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), bind
   if (!start) return { service, runtime, sandboxManager, session, startSession };
   const { bot } = await runtime.startBot({ missionId: 'mission:cleanup', coreId: 'core-1', startSession });
   const take = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:cleanup' });
-  if (bind) await runtime.bindAgentExecution(take.execution.execution_id, session, { coreId: 'core-1', sendInitialPrompt: false });
+  if (bind) await runtime.bindAgentExecution(take.execution.execution_id, session, { coreId: 'core-1' });
   return { service, runtime, sandboxManager, session, executionId: take.execution.execution_id };
 }
 
@@ -235,18 +235,6 @@ test('unexpected process exit retains cleanup ownership when provider deletion f
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
-test('failed initial prompt retains its startup binding if rollback cannot delete the sandbox', async (t) => {
-  let fail = true;
-  const { runtime, session, executionId } = await fixture(t, { bind: false, removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
-  session.prompt = async () => { throw new Error('provider prompt failed'); };
-  try {
-    await assert.rejects(runtime.bindAgentExecution(executionId, session, { coreId: 'core-1' }));
-    assert.equal(runtime.hasActiveExecution(executionId), true);
-    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
-  } finally { fail = false; }
-  await runtime.stopExecution(executionId, 'FAILED');
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
 
 test('cleanup reconciles a durable fence whose Workspace update has not happened', async (t) => {
   const { runtime, service, executionId } = await fixture(t);

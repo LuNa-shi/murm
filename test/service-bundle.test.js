@@ -6,8 +6,8 @@ import {
   ERROR_CODES,
   ServiceRegistry,
   SwarmEnvError,
-  buildCapabilityProfile,
-  composeAgentPrompt,
+  createBuiltinServiceRegistry,
+  makeEnvelope,
   loadServiceBundle,
   resolveBundleDocument,
 } from '../src/index.js';
@@ -75,10 +75,16 @@ test('service bundle loads required docs and binds them to the manifest', async 
     assert.equal(help.document_sha256, bundle.documents[0].sha256);
     const profile = registry.getCapabilityProfile('bound');
     assert.equal(profile.services[0].documentation.length, 2);
-    const prompt = composeAgentPrompt({ role: 'bound', profile: buildCapabilityProfile({ role: 'bound', registry }) });
-    assert.match(prompt, /Authorized Service Documentation/);
-    assert.match(prompt, /Search the locked index/);
-    assert.match(prompt, /Responses are normalized and bounded/);
+    assert.match(help.text, /Search the locked index/);
+    const catalog = createBuiltinServiceRegistry();
+    catalog.registerBundle({ bundle, adapter: { invoke: async () => ({ results: [] }) } });
+    const metadata = await catalog.invoke({ serviceId: 'catalog', capability: 'get_service_metadata', input: { service: 'locked-research' }, envelope: makeEnvelope({ actorRef: 'agent:bound', operationId: 'service-docs' }), role: 'bound' });
+    assert.equal(metadata.documents.length, 2);
+    assert.match(metadata.documents[0].text, /Search the locked index/);
+    assert.equal(metadata.documents[0].sha256, bundle.documents[0].sha256);
+    const hidden = await catalog.invoke({ serviceId: 'catalog', capability: 'get_service_metadata', input: { service: 'locked-research' }, envelope: makeEnvelope({ actorRef: 'agent:recovery', operationId: 'service-docs-hidden' }), role: 'recovery' });
+    assert.deepEqual(hidden.capabilities, []);
+    assert.deepEqual(hidden.documents, []);
     assert.throws(() => registry.resolveHelpRef('/etc/passwd'), (error) => error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID);
     assert.throws(() => registry.resolveHelpRef('service://locked-research/../secret'), (error) => error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID);
   } finally {

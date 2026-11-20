@@ -14,7 +14,6 @@ PRAGMA journal_mode = WAL;
 
 CREATE TABLE IF NOT EXISTS experiments (
   experiment_id TEXT PRIMARY KEY,
-  root_task_id TEXT,
   status TEXT NOT NULL CHECK (status IN ('CREATED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED', 'FINISHED')),
   started_at TEXT NOT NULL,
   ended_at TEXT,
@@ -130,9 +129,8 @@ function rowToExperiment(row) {
   if (!row) return null;
   return {
     experiment_id: row.experiment_id,
-    root_task_id: row.root_task_id,
     status: row.status,
-    started_at: row.started_at,
+    started_at: row.status === 'CREATED' ? null : row.started_at || null,
     ended_at: row.ended_at,
     metadata: parse(row.metadata_json),
     created_at: row.created_at,
@@ -157,27 +155,21 @@ export class ObservationStore {
     this.db.close();
   }
 
-  registerExperiment({ experimentId, rootTaskId = null, status = 'CREATED', startedAt = now(), metadata = {} }) {
+  registerExperiment({ experimentId, status = 'CREATED', startedAt = now(), metadata = {} }) {
     requireString(experimentId, 'experiment_id');
-    if (rootTaskId !== null) requireString(rootTaskId, 'root_task_id');
     const createdAt = now();
     const existing = this.getExperiment(experimentId);
     if (existing) {
-      if (existing.root_task_id !== null && existing.root_task_id !== rootTaskId && rootTaskId !== null) {
-        throw new Error(`experiment already has another root_task_id: ${experimentId}`);
-      }
-      if (existing.root_task_id === null && rootTaskId !== null) {
-        this.db.prepare('UPDATE experiments SET root_task_id = ?, updated_at = ? WHERE experiment_id = ?').run(rootTaskId, now(), experimentId);
-      }
       if (existing.status !== status) {
-        this.db.prepare('UPDATE experiments SET status = ?, updated_at = ? WHERE experiment_id = ?').run(status, now(), experimentId);
+        this.db.prepare(`UPDATE experiments SET started_at = CASE WHEN status = 'CREATED' AND ? = 'RUNNING' THEN ? ELSE started_at END,
+          status = ?, updated_at = ? WHERE experiment_id = ?`).run(status, startedAt, status, now(), experimentId);
       }
       return this.getExperiment(experimentId);
     }
     this.db.prepare(`INSERT INTO experiments (
-      experiment_id, root_task_id, status, started_at, metadata_json, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(
-      experimentId, rootTaskId, status, startedAt, json(metadata), createdAt, createdAt,
+      experiment_id, status, started_at, metadata_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?)`).run(
+      experimentId, status, status === 'CREATED' ? '' : startedAt, json(metadata), createdAt, createdAt,
     );
     return this.getExperiment(experimentId);
   }

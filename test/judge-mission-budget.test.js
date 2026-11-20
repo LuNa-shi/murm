@@ -135,27 +135,3 @@ test('Judge queue allowance keeps defaults and rejects unsafe timer values', () 
     assert.throws(() => normalizeJudgeMissionBudget({ queueWaitMs }), TypeError);
   }
 });
-
-test('Judge preserves historical finite policy while migrating old stores', async t => {
-  const dir = await mkdtemp(join(tmpdir(), 'judge-policy-migration-'));
-  const path = join(dir, 'judge.sqlite');
-  const legacy = new DatabaseSync(path);
-  legacy.exec(`CREATE TABLE judge_mission_check_policies (
-    mission_id TEXT PRIMARY KEY, max_requests INTEGER NOT NULL CHECK(max_requests > 0),
-    max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_requests), process_timeout_ms INTEGER);
-    INSERT INTO judge_mission_check_policies VALUES ('historical', 20, 2, 120000);
-    CREATE TABLE judge_mission_check_admissions (mission_id TEXT NOT NULL, check_result_id TEXT NOT NULL,
-      admitted_at TEXT NOT NULL, is_retry INTEGER NOT NULL DEFAULT 0, preflight_starts INTEGER NOT NULL DEFAULT 0,
-      source_starts INTEGER NOT NULL DEFAULT 0, settled_at TEXT, PRIMARY KEY(mission_id, check_result_id));
-    INSERT INTO judge_mission_check_admissions (mission_id, check_result_id, admitted_at) VALUES ('historical', 'old-active', '2026-11-16T00:00:00Z');`);
-  legacy.close();
-  const judge = new JudgeService(path);
-  t.after(async () => { judge.close(); await rm(dir, { recursive: true }); });
-  const historical = judge.getMissionCheckBudget('historical');
-  assert.equal(historical.max_requests, 20);
-  assert.equal(historical.active_requests, 1);
-  assert.equal(historical.queued_requests, 0);
-  assert.equal(judge.getMissionCheckBudget('new').max_requests, null);
-  assert.equal(judge.getMissionCheckBudget('new').max_concurrent, 4);
-  assert.throws(() => new JudgeService(':memory:', { missionBudget: { maxRequests: 20 } }), /no longer support/);
-});

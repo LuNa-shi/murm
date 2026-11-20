@@ -291,29 +291,3 @@ for (const scenario of [
       state: 'unknown', reason: 'upstream_http_error', settled: 0, cost: 530 });
   });
 }
-
-test('gateway reopens existing attempt tables with historical diagnostics explicitly unknown', async t => {
-  const { db, gateway, call, options } = await fixture(t);
-  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
-  await (await call(token, 'historical')).text();
-  await gateway.stop();
-  const columns = ['upstream_status', 'upstream_content_type_valid', 'upstream_body_present',
-    'upstream_rejection_kind', 'upstream_retry_after_seconds'];
-  for (const table of ['responses_budget_attempts', 'responses_timed_attempts']) {
-    for (const column of columns) db.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
-  }
-  const reopened = new ResponsesBudgetGateway(options);
-  const { baseUrl } = await reopened.start();
-  t.after(() => reopened.stop());
-  assert.deepEqual({ ...db.prepare(`SELECT ${columns.join(',')} FROM responses_budget_attempts`).get() },
-    Object.fromEntries(columns.map(name => [name, null])));
-  const nextToken = reopened.issueToken({ missionId: 'm', botId: 'c' });
-  const response = await fetch(`${baseUrl}/responses`, { method: 'POST',
-    headers: { authorization: `Bearer ${nextToken}`, 'content-type': 'application/json', 'x-swarmenv-request-id': 'new' },
-    body: JSON.stringify({ model, input: 'prove' }) });
-  assert.equal(response.status, 200);
-  await response.text();
-  assert.deepEqual({ ...db.prepare(`SELECT upstream_status, upstream_rejection_kind, state
-    FROM responses_budget_attempts WHERE request_id = 'new'`).get() },
-  { upstream_status: 200, upstream_rejection_kind: null, state: 'completed' });
-});

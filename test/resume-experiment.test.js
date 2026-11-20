@@ -11,6 +11,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { TaskService } from '../src/task/task-service.js';
 import { ContextService } from '../src/context/context-service.js';
 import { JudgeService } from '../src/judge/judge-service.js';
+import { EXECUTION_WORKSPACE_SCHEMA_SQL } from '../src/runtime/execution-workspace.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
 import { ServiceCommitGate } from '../src/sdk/service-commit-gate.js';
@@ -60,16 +61,23 @@ async function finishedExperiment(t, { accepted = false, brokenMaterialReference
   createTask('task:dependent', { depends_on: ['task:active'] });
   tasks.reconcileTask('task:dependent');
   createTask('task:done');
+  tasks.registerBot({ botId: 'historical:finished', missionId, coreId: 'core-2', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+  tasks.recordBotSandbox('historical:finished', { provider: 'controlled', sandboxId: 'done-sandbox' });
+  tasks.markBotReady('historical:finished');
   const done = tasks.takeTask('task:done', { owner_ref: 'historical:finished', core_id: 'core-2', take_key: 'take:done' }).execution;
+  tasks.dispatch('start_execution', {}, envelope(tasks, done.execution_id, 'start:done'));
   tasks.dispatch('task_finish', { outcome: 'done' }, envelope(tasks, done.execution_id, 'finish:done'));
   tasks.finalizeExecutionFinish(done.execution_id, { fencingVersion: done.fencing_version });
+  tasks.finalizeBotClose('historical:finished');
   tasks.registerBot({ botId: 'bot:historical', missionId, coreId: 'core-1', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
   tasks.recordBotSandbox('bot:historical', { provider: 'controlled', sandboxId: 'original-sandbox-must-not-be-touched' });
   tasks.markBotReady('bot:historical');
   const taken = tasks.takeTask('task:active', { owner_ref: 'bot:historical', core_id: 'core-1', take_key: 'take:historical' }).execution;
   tasks.dispatch('start_execution', {}, envelope(tasks, taken.execution_id, 'start:historical'));
-  const material = context.dispatch('material_publish', { kind: 'fact', scope: 'mission', content: 'The first reusable local fact' },
+  const material = context.dispatch('context_publish_material', { content: 'The first reusable local fact' },
     envelope(tasks, taken.execution_id, 'material:before')).material;
+  context.dispatch('consume_materials', { material_ids: [material.material_id], action: 'task', impact: 'Use the local fact in the active task' },
+    envelope(tasks, taken.execution_id, 'consumption:before'));
   const saved = await workspace.save({ workspaceId: initial.workspace_id, baseRevision: initial.main_revision,
     files: { 'input.lean': problem.source, 'lemma.lean': 'example : 1 = 1 := by rfl' } });
   const checkTime = new Date().toISOString();
@@ -111,11 +119,19 @@ async function finishedExperiment(t, { accepted = false, brokenMaterialReference
   await delay(10);
 
   gate.settle(admission, { terminal: true });
+  tasks.db.exec(EXECUTION_WORKSPACE_SCHEMA_SQL);
+  const futureAt = new Date().toISOString();
+  tasks.db.prepare(`INSERT INTO execution_workspace_requests
+    (execution_id, request_id, fingerprint, phase, result_json, created_at, updated_at)
+    VALUES (?, 'future-save', 'future', 'done', '{"revision":"0.3"}', ?, ?)`).run(taken.execution_id, futureAt, futureAt);
+  tasks.db.prepare(`INSERT INTO execution_workspace_state
+    (execution_id, workspace_id, initial_revision, last_saved_revision, manifest_json, parents_json, updated_at)
+    VALUES (?, ?, '0.1', '0.3', '{}', '["0.3"]', ?)`).run(taken.execution_id, initial.workspace_id, futureAt);
   observations.append({ experimentId: 'original-observations', source: 'test', kind: 'future_fact', payload: { future: true } });
   tasks.db.prepare("UPDATE mission_submissions SET state = 'rejected', document = ? WHERE submission_id = 'submission:historical'")
     .run(JSON.stringify({ ...pendingSubmission, state: 'rejected', finished_at: new Date().toISOString(), release_pending: false }));
   await workspace.unfreeze({ workspaceId: initial.workspace_id, submissionId: 'submission:historical' });
-  const futureMaterial = context.dispatch('material_publish', { kind: 'fact', scope: 'mission', content: 'This fact only exists in the future' },
+  const futureMaterial = context.dispatch('context_publish_material', { content: 'This fact only exists in the future' },
     envelope(tasks, taken.execution_id, 'material:after')).material;
   const merged = await workspace.merge({ workspaceId: initial.workspace_id, fromRevision: saved.revision, expectedMainRevision: initial.main_revision });
   judge.db.prepare("UPDATE check_results SET status = 'RECEIVED', verdict = 'PASS', checker_process_status = 'completed', result_class = 'PASS', updated_at = ? WHERE check_result_id = ?")
@@ -163,7 +179,7 @@ test('an ended experiment can be reconstructed at multiple retrospectively chose
     assert.equal(context.getMaterial(f.futureMaterialId), null);
     assert.equal(judge.getCheckResult('check:historical').verdict, 'ERROR');
     assert.equal(judge.getCheckResult('check:historical').diagnostic_code, 'historical_resume_interrupted');
-    for (const table of ['service_commit_gate', 'service_commit_events', 'observation_events', 'experiments',
+    for (const table of ['execution_workspace_requests', 'execution_workspace_state', 'service_commit_gate', 'service_commit_events', 'observation_events', 'experiments',
       'mission_final_check_admissions', 'mission_final_check_policies']) {
       assert.equal(tasks.db.prepare(`SELECT COUNT(*) AS n FROM ${table}`).get().n, 0, `${table} belongs to the old runtime`);
     }
@@ -186,6 +202,17 @@ test('an ended experiment can be reconstructed at multiple retrospectively chose
     const read = context.dispatch('context_get_material', { material_id: f.materialId }, envelope(tasks, next.execution_id, 'new:read'));
     assert.equal(read.material.content, 'The first reusable local fact');
     assert.equal(tasks.getTask('task:active').state, 'RUNNING');
+    for (let index = 2; index <= 4; index += 1) {
+      const botId = `bot:new-${index}`;
+      const proposed = tasks.createTask({ summary: `Verify independent claim ${index}`, gap: `Claim ${index} needs an argument`,
+        priority: 'medium', expected_output: 'A checked argument', acceptance_conditions: ['Discharge the claim'] },
+        makeEnvelope({ actorRef: botId })).task;
+      const execution = tasks.takeTask(proposed.task_id, { owner_ref: botId, core_id: `core-${index}`, take_key: `resumed-take-${index}` }).execution;
+      tasks.dispatch('start_execution', {}, envelope(tasks, execution.execution_id, `resumed-start-${index}`));
+      const inherited = context.dispatch('context_get_material', { material_id: f.materialId }, envelope(tasks, execution.execution_id, `resumed-read-${index}`));
+      assert.equal(inherited.material.content, 'The first reusable local fact');
+    }
+    assert.deepEqual(tasks.listActiveExecutions().map(execution => execution.core_id).sort(), ['core-1', 'core-2', 'core-3', 'core-4']);
     const workspace = new MissionWorkspace({ rootDir: join(destination, 'mission-workspace') });
     assert.equal((await workspace.get({ workspaceId: f.workspaceId })).frozen_submission_id, null);
     assert.equal((await workspace.read({ workspaceId: f.workspaceId, revision: f.savedRevision, path: 'lemma.lean' })).content,
@@ -282,11 +309,25 @@ test('the ordinary runner opens reconstructed services and composes four fresh c
   assert.equal(report.protocol.initial_task_count, 3);
   assert.equal(report.run.resume_count, 1);
   assert.equal(report.run.dynamic_task_count, 0);
+  assert.equal(report.run.progress_evidence.proposed_task_count, 0);
   assert.equal(report.run.new_material_count, 0);
+  assert.equal(report.run.material_consumption_count, 0);
+  assert.equal(report.run.inherited_material_consumption_count, 1);
   assert.equal(report.run.made_progress, false, 'inherited Materials are not new progress');
   assert.equal(report.audit.invalid, false);
   assert.equal(requests.some(request => request.method !== 'GET' || request.url.includes('original-sandbox')), false);
   for (const [name, before] of Object.entries(f.sourceHashes)) assert.equal(digest(await readFile(join(f.projectDir, name))), before);
+});
+
+test('a terminal failed run with an admitted Mission can resume from its earlier public state', async t => {
+  const f = await finishedExperiment(t);
+  const path = join(f.source, 'metadata', 'experiment.json');
+  const metadata = JSON.parse(await readFile(path, 'utf8'));
+  await writeFile(path, JSON.stringify({ ...metadata, status: 'failed' }));
+  const result = await prepareExperimentResume({ sourceExperimentDir: f.source, destinationProjectDir: join(f.root, 'recovered'),
+    problem: f.problem, config: f.config, at: f.earlyTime });
+  assert.equal(result.missionId, f.missionId);
+  assert.deepEqual(result.initialMaterialIds, [f.materialId]);
 });
 
 test('resume validates the historical interval, source completion, environment and physical destination', async t => {
@@ -301,4 +342,20 @@ test('resume validates the historical interval, source completion, environment a
   const metadata = JSON.parse(await readFile(path, 'utf8'));
   await writeFile(path, JSON.stringify({ ...metadata, status: 'running' }));
   await assert.rejects(prepareExperimentResume(request), { code: 'REPLAY_SOURCE_NOT_FINISHED' });
+});
+
+
+test('resume rejects a report directory pointing into its source before preflight failure or report writes', async t => {
+  const f = await finishedExperiment(t);
+  const originalReports = join(f.source, 'reports');
+  const oldReport = join(originalReports, f.problem.id, 'report.json');
+  await mkdir(join(originalReports, f.problem.id), { recursive: true });
+  await writeFile(oldReport, 'original report');
+  const alias = join(f.root, 'alias-reports');
+  await symlink(originalReports, alias);
+  const destination = join(f.root, 'new-experiment');
+  await assert.rejects(runBenchmarkProject(f.problem, f.config, { experimentDir: destination, reportDir: alias,
+    resumeFrom: f.source, resumeAt: f.earlyTime, timeboxMs: 0 }), { code: 'REPLAY_DESTINATION_CONFLICT' });
+  assert.equal(await readFile(oldReport, 'utf8'), 'original report');
+  await assert.rejects(access(destination), { code: 'ENOENT' });
 });

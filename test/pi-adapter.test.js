@@ -4,7 +4,7 @@ import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
-import { AgentCoreSession, resolveAgentCoreRoute, ERROR_CODES, SwarmEnvError } from '../src/index.js';
+import { AgentCoreSession, validatePiProvider, ERROR_CODES, SwarmEnvError } from '../src/index.js';
 
 function fakeChild() {
   const child = new EventEmitter();
@@ -15,19 +15,17 @@ function fakeChild() {
   return child;
 }
 
-test('provider routing preserves Pi and NuRouter placement and rejects invalid selectors', () => {
+test('Pi provider validation accepts configured providers and rejects unsupported routes', () => {
   for (const provider of ['openai', 'openai-codex', 'gpt_proxy', 'kimi_proxy']) {
-    assert.equal(resolveAgentCoreRoute({ provider }), 'pi');
-    assert.throws(() => resolveAgentCoreRoute({ provider, account: 'one', group: 'two' }), error => error.code === ERROR_CODES.INVALID_CONTRACT);
+    assert.doesNotThrow(() => validatePiProvider(provider));
   }
-  assert.equal(resolveAgentCoreRoute({ provider: 'kimi', account: 'one', group: 'two' }), 'nurouter');
-  for (const provider of ['anthropic', '__proto__', undefined]) {
-    assert.throws(() => resolveAgentCoreRoute({ provider }), error => error.code === ERROR_CODES.INVALID_CONTRACT);
+  for (const provider of ['kimi', 'anthropic', '__proto__', undefined]) {
+    assert.throws(() => validatePiProvider(provider), error => error.code === ERROR_CODES.INVALID_CONTRACT);
   }
 });
 
 test('Session reads and releases a real child transport', async t => {
-  const child = spawn(process.execPath, [resolve('test/fixtures/fake-nurouter')], { stdio: ['pipe', 'pipe', 'pipe'] });
+  const child = spawn(process.execPath, [resolve('test/fixtures/fake-pi')], { stdio: ['pipe', 'pipe', 'pipe'] });
   const session = new AgentCoreSession(child, { executionId: 'execution-real-child' });
   t.after(() => session.stop());
   await session.waitForReady();

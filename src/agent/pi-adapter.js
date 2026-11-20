@@ -2,17 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { EventEmitter, once } from 'node:events';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
-const PROVIDER_ARG_PLACEMENT = Object.freeze({ openai: 'pi', 'openai-codex': 'pi', gpt_proxy: 'pi', kimi: 'nurouter', kimi_proxy: 'pi' });
+const PI_PROVIDERS = new Set(['openai', 'openai-codex', 'gpt_proxy', 'kimi_proxy']);
 
-export function resolveAgentCoreRoute({ provider, account, group } = {}) {
-  if (!Object.hasOwn(PROVIDER_ARG_PLACEMENT, provider)) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported NuRouter/Pi provider: ${provider}`);
+export function validatePiProvider(provider) {
+  if (!PI_PROVIDERS.has(provider)) {
+    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Pi provider: ${provider}`);
   }
-  const placement = PROVIDER_ARG_PLACEMENT[provider];
-  if ((provider === 'openai' || provider === 'openai-codex' || provider === 'gpt_proxy' || provider === 'kimi_proxy') && account && group) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'OpenAI NuRouter routing cannot set both account and group');
-  }
-  return placement;
 }
 
 export class AgentCoreSession extends EventEmitter {

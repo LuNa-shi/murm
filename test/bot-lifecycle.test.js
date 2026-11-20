@@ -78,15 +78,6 @@ test('unbound exit is durable, creates no Execution, and releases the Core only 
   assert.equal(start('bot:after-event').state, 'STARTING');
 });
 
-test('interrupted Bot deadline migration repairs an existing nullable column', t => {
-  const { service, start } = fixture(t);
-  const bot = start('bot:migration');
-  service.db.exec('ALTER TABLE bots DROP COLUMN hard_deadline; ALTER TABLE bots ADD COLUMN hard_deadline TEXT');
-  assert.equal(service.getBot(bot.bot_id).hard_deadline, null);
-  const reopened = new TaskService(service.db);
-  assert.equal(reopened.getBot(bot.bot_id).hard_deadline, bot.selection_deadline);
-});
-
 test('expired durable deadline denies a fresh Bot write even before a timer changes state', t => {
   const { service, start } = fixture(t);
   const bot = start('bot:expired');

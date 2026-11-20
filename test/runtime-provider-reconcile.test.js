@@ -1,4 +1,4 @@
-import { openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
+import { openSandboxBotKey, openSandboxMissionKey } from '../src/runtime/opensandbox-metadata.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -9,39 +9,9 @@ import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js'
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { Runtime } from '../src/runtime/runtime.js';
 
-test('Runtime reconciles provider sandboxes from durable active Executions', async () => {
-  const calls = [];
-  const events = [];
-  const taskService = {
-    listActiveExecutions: () => [{ execution_id: 'execution-a' }, { execution_id: 'execution-b' }],
-    subscribeExecutionState: () => () => {},
-    subscribeNotifications: () => () => {},
-  };
-  const runtime = new Runtime({
-    taskService,
-    workspaceManager: {},
-    agentAdapter: {},
-    sandboxManager: {
-      reconcileExecutions: async (input) => {
-        calls.push(input);
-        return { provider: 'opensandbox', adopted: [{ execution_id: 'execution-a', sandbox_id: 'sandbox-a' }] };
-      },
-    },
-    logger: { append: (event) => events.push(event) },
-  });
-  try {
-    const result = await runtime.reconcileProviderExecutions();
-    assert.deepEqual(calls, [{ executionIds: ['execution-a', 'execution-b'] }]);
-    assert.deepEqual(result.adopted, [{ execution_id: 'execution-a', sandbox_id: 'sandbox-a' }]);
-    assert.deepEqual(events, [{
-      event: 'runtime.provider_reconciled',
-      provider: 'opensandbox',
-      requested_execution_count: 2,
-      adopted_execution_count: 1,
-    }]);
-  } finally {
-    await runtime.shutdown();
-  }
+test('provider reconciliation requires Mission-scoped Bot authority', async () => {
+  const runtime = new Runtime({ taskService: {}, workspaceManager: {} });
+  await assert.rejects(runtime.reconcileProviderExecutions(), /mission_id is required/);
 });
 
 test('restart persists a discovered Bot resource before delete and only frees a confirmed Core', async t => {
@@ -74,9 +44,9 @@ test('restart persists a discovered Bot resource before delete and only frees a 
       const page = Number(searchParams.get('page') ?? 1);
       calls.push(page);
       const items = page === 1 ? [
-        { id: 'foreign', metadata: { mission_id: 'foreign', bot_id: 'foreign' } },
-        { id: 'known', metadata: { mission_id: 'M', bot_id: 'taken', resource_key: 'taken' } },
-      ] : [{ id: 'discovered', metadata: { mission_id: 'M', bot_id: 'unknown', resource_key: 'unknown' } }];
+        { id: 'foreign', metadata: { mission_key: openSandboxMissionKey('foreign'), bot_key: openSandboxBotKey('foreign') } },
+        { id: 'known', metadata: { mission_key: openSandboxMissionKey('M'), bot_key: openSandboxBotKey('taken'), resource_key: openSandboxBotKey('taken') } },
+      ] : [{ id: 'discovered', metadata: { mission_key: openSandboxMissionKey('M'), bot_key: openSandboxBotKey('unknown'), resource_key: openSandboxBotKey('unknown') } }];
       return reply(200, { items: items.filter(item => !deleted.has(item.id)), pagination: { page, hasNextPage: page === 1 } });
     }
     assert.notEqual(sandboxId, 'foreign');

@@ -16,7 +16,7 @@ const EXPOSED_OPERATIONS = Object.freeze({
   task: new Set([
     'bot_exit',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
-    'task_status', 'task_take', 'task_feedback', 'execution_progress', 'task_revise', 'task_cancel', 'task_dependency_replace',
+    'task_status', 'task_take', 'task_feedback', 'task_revise', 'task_cancel', 'task_dependency_replace',
     'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'workspace_public_apply',
     'workspace_status', 'workspace_current_diff', 'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
   ]),
@@ -52,7 +52,7 @@ function strictInputSchema(parameters) {
 
 function audienceFor(tool) {
   if (['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'mission_submission_get'].includes(tool.operation)) return ALL_ROLES;
-  if (['list_tasks', 'task_list', 'task_view'].includes(tool.operation)) return ALL_ROLES;
+  if (['task_list', 'task_view'].includes(tool.operation)) return ALL_ROLES;
   if (SHARED_READ_OPERATIONS.has(tool.operation)) return ALL_ROLES;
   if (tool.service === 'catalog' && tool.scope === 'public-read' && tool.side_effect === false) return ALL_ROLES;
   return ['bound', 'recovery'];
@@ -127,7 +127,7 @@ function manifestForService(serviceId, tools, { endpoint = { transport: 'in-proc
 export const MISSION_WORKSPACE_READS = Object.freeze({
   workspace_public_view: (workspace, input, signal) => workspace.get({ signal, workspaceId: input.workspace_id }),
   workspace_public_history: (workspace, input, signal) => workspace.history({ signal, workspaceId: input.workspace_id, all: input.all,
-    sourceTask: input.source_task, sourceExecution: input.source_execution, materialId: input.material_id, path: input.path, limit: input.limit, cursor: input.cursor }),
+    sourceTask: input.producer_task_id, sourceExecution: input.producer_execution_id, materialId: input.material_id, path: input.path, limit: input.limit, cursor: input.cursor }),
   workspace_public_diff: (workspace, input, signal) => workspace.diff({ signal, workspaceId: input.workspace_id, from: input.from, to: input.to,
     prefix: input.path, limit: input.limit, cursor: input.cursor }),
   workspace_public_files: (workspace, input, signal) => workspace.files({ signal, workspaceId: input.workspace_id, revision: input.revision,
@@ -155,7 +155,8 @@ function serviceDispatch(serviceId, services, registry) {
       }
       if (capability.operation === 'get_service_metadata') {
         const metadata = registry.getServiceMetadata(input?.service ?? null);
-        return { ...metadata, capabilities: metadata.capabilities.filter(allowed) };
+        const capabilities = metadata.capabilities.filter(allowed);
+        return { ...metadata, capabilities, documents: capabilities.length > 0 ? registry.getServiceDocumentation(metadata.service_id, { role }).documents : [] };
       }
       if (capability.operation === 'list_tools') {
         return { tools: registry.listTools(input?.service ?? null).filter(allowed) };

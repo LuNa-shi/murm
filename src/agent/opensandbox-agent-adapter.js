@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { AgentCoreSession, resolveAgentCoreRoute } from './pi-adapter.js';
+import { AgentCoreSession, validatePiProvider } from './pi-adapter.js';
 import { agentContract, BOT_SYSTEM_PROMPT, BOT_SYSTEM_RESOURCE, BOT_SYSTEM_HASH, BOT_SKILLS, BOT_TOOL_NAMES, BOT_PROTOCOL_VERSION } from './bot-contract.js';
 import { createVersionManifest } from './version-manifest.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
@@ -17,7 +17,7 @@ function required(value, name) {
 // provider lifecycle URL, host paths, or arbitrary host credentials.  Secret
 // values are supplied separately through `secretEnv` so callers can audit the
 // exact allow-list at the deployment boundary.
-const PUBLIC_AGENT_ENV = /^(?:NUROUTER_PI_(?:PROVIDER|MODEL|ACCOUNT|GROUP)|PI_(?:PROVIDER|MODEL|[A-Z0-9_]+_BASE_URL)|SWARMENV_(?:AGENT_ROLE|BRIDGE_URL|PI_VERSION|NUROUTER_VERSION|SERVICE_ENDPOINTS|[A-Z0-9_]+_SERVICE_URL))$/;
+const PUBLIC_AGENT_ENV = /^(?:PI_(?:PROVIDER|MODEL|[A-Z0-9_]+_BASE_URL)|SWARMENV_(?:AGENT_ROLE|BRIDGE_URL|PI_VERSION|SERVICE_ENDPOINTS|[A-Z0-9_]+_SERVICE_URL))$/;
 
 function publicAgentEnvironment(value, explicit = {}) {
   const source = { ...(value ?? {}), ...(explicit ?? {}) };
@@ -28,7 +28,6 @@ function secretAgentEnvironment(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
   return Object.fromEntries(Object.entries(value).filter(([key, item]) => (
     /^(?:SWARMENV_(?:BRIDGE_TOKEN|[A-Z0-9_]+_SERVICE_TOKEN)|OPENAI_API_KEY|OPENAI_ORG_ID|ANTHROPIC_API_KEY|GOOGLE_API_KEY|MOONSHOT_API_KEY|OPENROUTER_API_KEY)$/.test(key)
-    || key.startsWith('NUROUTER_')
     || key.startsWith('PI_') && /(?:API_KEY|TOKEN)$/i.test(key)
   ) && typeof item === 'string'));
 }
@@ -184,27 +183,26 @@ class RemoteAgentChild extends EventEmitter {
 }
 
 /**
- * Agent adapter that starts Pi/NuRouter through an OpenSandbox worker. The
+ * Agent adapter that starts Pi through an OpenSandbox worker. The
  * worker is part of the pinned sandbox image; the host only carries JSON-RPC
  * messages over the provider endpoint and never spawns the Agent command.
  */
 export class OpenSandboxAgentAdapter {
-  constructor({ agentMode = 'swarm', sandboxManager, modelAccess = null, networkIsolation = null, diskIsolation = null, modelCatalogResource = null, command = 'nurouter', provider, model, account, group, env = {}, agentEnvironment = {}, secretEnv = {}, systemPrompt = null, extensionPath = null, sessionDir = '/workspace/runtime/pi-session', manifestVersions = {} } = {}) {
+  constructor({ agentMode = 'swarm', sandboxManager, modelAccess = null, networkIsolation = null, diskIsolation = null, modelCatalogResource = null, command = 'pi', provider, model, env = {}, agentEnvironment = {}, secretEnv = {}, systemPrompt = null, sessionDir = '/workspace/runtime/pi-session', manifestVersions = {} } = {}) {
     if (!sandboxManager) throw new TypeError('OpenSandboxAgentAdapter requires sandboxManager');
     const contract = agentContract(agentMode);
     this.contract = contract;
     this.agentMode = agentMode;
     if (systemPrompt && systemPrompt !== contract.systemPrompt) throw new TypeError('registered Bots require the versioned Bot system contract');
-    if (extensionPath) throw new TypeError('registered Bots use four native Pi tools and the swarm CLI; Service tool extensions are retired');
     systemPrompt = contract.systemPrompt;
     this.sandboxManager = sandboxManager;
     this.modelAccess = modelAccess;
     this.networkIsolation = networkIsolation;
     this.diskIsolation = diskIsolation;
     this.modelCatalogResource = modelCatalogResource;
-    if (modelAccess && command !== 'pi' && !command.endsWith('/pi')) throw new TypeError('Budgeted model access requires direct Pi');
+    if (typeof command !== 'string' || (command !== 'pi' && !command.endsWith('/pi'))) throw new TypeError('Agent startup requires direct Pi');
     this.command = command;
-    this.config = { provider, model, account, group, env, agentEnvironment, secretEnv, systemPrompt, extensionPath, sessionDir };
+    this.config = { provider, model, env, agentEnvironment, secretEnv, systemPrompt, sessionDir };
     this.manifestVersions = manifestVersions;
   }
 
@@ -213,18 +211,14 @@ export class OpenSandboxAgentAdapter {
     required(sessionId, 'session_id');
     required(this.config.provider, 'provider');
     required(this.config.model, 'model');
-    const placement = resolveAgentCoreRoute(this.config);
-    const directPi = this.command === 'pi' || this.command.endsWith('/pi');
-    const args = directPi ? [] : ['pi', ...(placement === 'nurouter' ? ['--provider', this.config.provider, '--model', this.config.model] : [])];
-    if (!directPi && this.config.account) args.push('--account', this.config.account);
-    if (!directPi && this.config.group) args.push('--group', this.config.group);
-    if (!directPi) args.push('--');
+    validatePiProvider(this.config.provider);
+    const args = [];
     args.push('--mode', 'rpc', '--session-dir', sessionDir, '--session-id', sessionId,
       '--tools', BOT_TOOL_NAMES.join(','), '--no-extensions',
       '--no-skills', '--no-prompt-templates', '--no-context-files',
       ...this.contract.skills.flatMap(skill => ['--skill', skill.path]),
       '--append-system-prompt', this.contract.systemResource.path,
-      ...(placement === 'pi' ? ['--provider', this.config.provider, '--model', this.config.model] : []));
+      '--provider', this.config.provider, '--model', this.config.model);
     return args;
   }
 
@@ -307,7 +301,7 @@ export class OpenSandboxAgentAdapter {
       // All upstream and alternate router credentials stay on the host. The
       // Bridge credential is independently scoped to this Bot by Runtime.
       for (const key of Object.keys(workerSecretEnvironment)) if (key !== 'SWARMENV_BRIDGE_TOKEN') delete workerSecretEnvironment[key];
-      for (const key of Object.keys(workerEnvironment)) if (/^(?:NUROUTER_|PI_.*_BASE_URL)/.test(key)) delete workerEnvironment[key];
+      for (const key of Object.keys(workerEnvironment)) if (/^PI_.*_BASE_URL/.test(key)) delete workerEnvironment[key];
       const credentials = this.modelAccess.credentialsForBot(bot);
       Object.assign(workerEnvironment, credentials.environment);
       Object.assign(workerSecretEnvironment, credentials.secretEnvironment);
@@ -318,14 +312,12 @@ export class OpenSandboxAgentAdapter {
     const projectQuota = this.diskIsolation ? await this.diskIsolation.isolate({ sandboxId: sandbox?.sandbox_id, bot }) : null;
     if (this.stopping || signal?.aborted) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent startup was stopped');
     let guestVersions = null;
-    const directPi = this.command === 'pi' || this.command.endsWith('/pi');
     const explicitVersions = {
       piVersion: this.manifestVersions.piVersion ?? this.config.env.SWARMENV_PI_VERSION,
-      nurouterVersion: directPi ? null : (this.manifestVersions.nurouterVersion ?? this.config.env.SWARMENV_NUROUTER_VERSION),
       nodeVersion: this.manifestVersions.nodeVersion ?? null,
     };
     if (typeof this.sandboxManager.agentVersions === 'function' && Object.values(explicitVersions).some((value) => !value)) {
-      guestVersions = await this.sandboxManager.agentVersions({ executionId, includeNurouter: !directPi });
+      guestVersions = await this.sandboxManager.agentVersions({ executionId });
     }
     assertStartupAllowed?.();
     await this.sandboxManager.startAgent({
@@ -348,7 +340,6 @@ export class OpenSandboxAgentAdapter {
       ...this.manifestVersions,
       launchArgs,
       piVersion: explicitVersions.piVersion ?? guestVersions?.piVersion,
-      nurouterVersion: explicitVersions.nurouterVersion === null ? null : (explicitVersions.nurouterVersion ?? guestVersions?.nurouterVersion),
       nodeVersion: explicitVersions.nodeVersion ?? guestVersions?.nodeVersion,
     }), bot_contract: { protocol_version: this.contract.protocolVersion, system_prompt_sha256: this.contract.systemHash, system_resource: this.contract.systemResource, skills: this.contract.skills, tools: BOT_TOOL_NAMES } };
     const observedExecutionId = bot ? null : (observationContext.executionId ?? executionId);

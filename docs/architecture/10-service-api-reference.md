@@ -30,75 +30,61 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `c9f93455ebb8a1daefc21ced84f98f95f4d4df1d72cf70e120c00607ed283b8c` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `92db5cc14ac74c89e080b766f2cfe415898fe7d1cf0713c45a99344f5bda9743` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `3eb4dbc87d69a3341886b9f9cab68daca531ae7ea0386b50c072473aebc4a98a` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `2c52545ba9179f809fb99070f7107704425fe944587da9fb61e14162195dd168` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `5e9a40a7624518d0b9ca1e81ff65a75f99d798e08476b4320fbe8148e594031d` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `496a3d1a99d7413f0c119fac9574d525700a5c0005eda2446c4376344253310e` |
-| [src/sdk/services-sdk.js](../../src/sdk/services-sdk.js) | `778e951a2f200b788658de6f7cb8e5e06696035745fa35406d9960457c8c5089` |
-| [src/sdk/service-router.js](../../src/sdk/service-router.js) | `c26e5b1047fb77a779564462962131fbe7af4437edacbedf1e1096f19183bf22` |
-| [src/runtime/runtime-capabilities.js](../../src/runtime/runtime-capabilities.js) | `e53aef2c60ef61eccbefdb05135958803f1c100b7505de5abe75103f7e2e8d05` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `34a6544175d7dc1bdcdae26d2824a3fcbce4d09939183f17ad64820dceb8e559` |
+| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `495ff79b0184de6cbfd100a32d8b1d24c4a8b484c35e894738cae2ec7fd0d3f9` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 
-### Exact tool exposure for the built-in benchmark
+### Exact built-in command operation surface
 
-The two profile columns describe the compatibility extension surface after Sandbox filtering. Registered Bots receive the four native Pi tools (`read`, `write`, `edit`, `bash`), and call typed `swarm` commands through Bash; the `swarmenv_` names below are not a second set of tools loaded into those Bots. Optional registered Services add capabilities. Both built-in `bound` and `recovery` roles currently have the same named surface. Presence in this table does not bypass the Bridge's Task/Execution binding, modern-retired-operation or Workspace-contract checks. `swarmenv_` is the Pi extension prefix.
+Bots use native Bash to invoke typed swarm commands. Registry declarations below describe authorized domain operations; no additional Pi tool registration is installed. Optional Services extend the Registry.
 
-| Capability identity | flat; Sandbox off | flat; Sandbox on |
+| Capability identity | Service | Operation |
 |---|---|---|
-| `catalog.catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` | `swarmenv_catalog_get_service_metadata` |
-| `catalog.catalog_list_services` | `swarmenv_catalog_list_services` | `swarmenv_catalog_list_services` |
-| `catalog.catalog_list_tools` | `swarmenv_catalog_list_tools` | `swarmenv_catalog_list_tools` |
-| `context.context_consume` | `swarmenv_context_consume` | `swarmenv_context_consume` |
-| `context.context_get_material` | `swarmenv_context_get_material` | `swarmenv_context_get_material` |
-| `context.context_publish_material` | `swarmenv_context_publish_material` | `swarmenv_context_publish_material` |
-| `context.context_read` | `swarmenv_context_read` | `swarmenv_context_read` |
-| `context.context_search_materials` | `swarmenv_context_search_materials` | `swarmenv_context_search_materials` |
-| `context.material_dispute` | `swarmenv_material_dispute` | `swarmenv_material_dispute` |
-| `context.material_supersede` | `swarmenv_material_supersede` | `swarmenv_material_supersede` |
-| `context.material_unsupersede` | `swarmenv_material_unsupersede` | `swarmenv_material_unsupersede` |
-| `judge.judge_get_check_result` | `swarmenv_judge_get_check_result` | `swarmenv_judge_get_check_result` |
-| `judge.judge_workspace_check` | `swarmenv_judge_workspace_check` | `swarmenv_judge_workspace_check` |
-| `runtime.execution_get` | `swarmenv_execution_get` | `swarmenv_execution_get` |
-| `runtime.sandbox_exec` | Absent | `swarmenv_sandbox_exec` |
-| `runtime.sandbox_job` | Absent | `swarmenv_sandbox_job` |
-| `runtime.workspace_diff` | `swarmenv_workspace_diff` | `swarmenv_workspace_diff` |
-| `runtime.workspace_get` | `swarmenv_workspace_get` | `swarmenv_workspace_get` |
-| `runtime.workspace_list_files` | `swarmenv_workspace_list_files` | `swarmenv_workspace_list_files` |
-| `runtime.workspace_read_file` | `swarmenv_workspace_read_file` | `swarmenv_workspace_read_file` |
-| `runtime.workspace_write_file` | `swarmenv_workspace_write_file` | `swarmenv_workspace_write_file` |
-| `task.bot_exit` | `swarmenv_bot_exit` | `swarmenv_bot_exit` |
-| `task.execution_progress` | `swarmenv_execution_progress` | `swarmenv_execution_progress` |
-| `task.mission_get` | `swarmenv_mission_get` | `swarmenv_mission_get` |
-| `task.mission_submission_get` | `swarmenv_mission_submission_get` | `swarmenv_mission_submission_get` |
-| `task.mission_submit` | `swarmenv_mission_submit` | `swarmenv_mission_submit` |
-| `task.task_cancel` | `swarmenv_task_cancel` | `swarmenv_task_cancel` |
-| `task.task_create` | `swarmenv_task_create` | `swarmenv_task_create` |
-| `task.task_dependency_replace` | `swarmenv_task_dependency_replace` | `swarmenv_task_dependency_replace` |
-| `task.task_feedback` | `swarmenv_task_feedback` | `swarmenv_task_feedback` |
-| `task.task_finish` | `swarmenv_task_finish` | `swarmenv_task_finish` |
-| `task.task_link_material` | `swarmenv_task_link_material` | `swarmenv_task_link_material` |
-| `task.task_list` | `swarmenv_task_list` | `swarmenv_task_list` |
-| `task.task_revise` | `swarmenv_task_revise` | `swarmenv_task_revise` |
-| `task.task_status` | `swarmenv_task_status` | `swarmenv_task_status` |
-| `task.task_take` | `swarmenv_task_take` | `swarmenv_task_take` |
-| `task.task_view` | `swarmenv_task_view` | `swarmenv_task_view` |
-| `task.workspace_current_diff` | `swarmenv_workspace_current_diff` | `swarmenv_workspace_current_diff` |
-| `task.workspace_merge` | `swarmenv_workspace_merge` | `swarmenv_workspace_merge` |
-| `task.workspace_public_apply` | `swarmenv_workspace_public_apply` | `swarmenv_workspace_public_apply` |
-| `task.workspace_public_diff` | `swarmenv_workspace_public_diff` | `swarmenv_workspace_public_diff` |
-| `task.workspace_public_files` | `swarmenv_workspace_public_files` | `swarmenv_workspace_public_files` |
-| `task.workspace_public_history` | `swarmenv_workspace_public_history` | `swarmenv_workspace_public_history` |
-| `task.workspace_public_read` | `swarmenv_workspace_public_read` | `swarmenv_workspace_public_read` |
-| `task.workspace_public_search` | `swarmenv_workspace_public_search` | `swarmenv_workspace_public_search` |
-| `task.workspace_public_view` | `swarmenv_workspace_public_view` | `swarmenv_workspace_public_view` |
-| `task.workspace_save` | `swarmenv_workspace_save` | `swarmenv_workspace_save` |
-| `task.workspace_status` | `swarmenv_workspace_status` | `swarmenv_workspace_status` |
-
-The flat Mission Task profile is the only Agent-facing Task model. Retired structural and lease operations may remain in internal catalog definitions for storage/analysis compatibility, but are filtered from the built-in Registry and cannot be called by a bound Agent. Registered Bots use explicit save/publish and `task_finish`; the old `execution_progress` compound path is rejected.
+| `catalog.catalog_get_service_metadata` | `catalog` | `get_service_metadata` |
+| `catalog.catalog_list_services` | `catalog` | `list_services` |
+| `catalog.catalog_list_tools` | `catalog` | `list_tools` |
+| `context.consume_materials` | `context` | `consume_materials` |
+| `context.context_get_material` | `context` | `context_get_material` |
+| `context.context_publish_material` | `context` | `context_publish_material` |
+| `context.context_search_materials` | `context` | `context_search_materials` |
+| `context.material_dispute` | `context` | `material_dispute` |
+| `context.material_supersede` | `context` | `material_supersede` |
+| `context.material_unsupersede` | `context` | `material_unsupersede` |
+| `context.read_materials` | `context` | `read_materials` |
+| `judge.judge_get_check_result` | `judge` | `get_check_result` |
+| `judge.judge_workspace_check` | `judge` | `workspace_check` |
+| `task.bot_exit` | `task` | `bot_exit` |
+| `task.mission_get` | `task` | `mission_get` |
+| `task.mission_submission_get` | `task` | `mission_submission_get` |
+| `task.mission_submit` | `task` | `mission_submit` |
+| `task.task_cancel` | `task` | `task_cancel` |
+| `task.task_create` | `task` | `task_create` |
+| `task.task_dependency_replace` | `task` | `task_dependency_replace` |
+| `task.task_feedback` | `task` | `task_feedback` |
+| `task.task_finish` | `task` | `task_finish` |
+| `task.task_link_material` | `task` | `task_link_material` |
+| `task.task_list` | `task` | `task_list` |
+| `task.task_revise` | `task` | `task_revise` |
+| `task.task_status` | `task` | `task_status` |
+| `task.task_take` | `task` | `task_take` |
+| `task.task_view` | `task` | `task_view` |
+| `task.workspace_current_diff` | `task` | `workspace_current_diff` |
+| `task.workspace_merge` | `task` | `workspace_merge` |
+| `task.workspace_public_apply` | `task` | `workspace_public_apply` |
+| `task.workspace_public_diff` | `task` | `workspace_public_diff` |
+| `task.workspace_public_files` | `task` | `workspace_public_files` |
+| `task.workspace_public_history` | `task` | `workspace_public_history` |
+| `task.workspace_public_read` | `task` | `workspace_public_read` |
+| `task.workspace_public_search` | `task` | `workspace_public_search` |
+| `task.workspace_public_view` | `task` | `workspace_public_view` |
+| `task.workspace_save` | `task` | `workspace_save` |
+| `task.workspace_status` | `task` | `workspace_status` |
 
 ### Service Catalog: 3 registered capabilities
 
@@ -270,7 +256,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 27 registered capabilities
+### Task Service: 26 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -293,7 +279,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "9b11fe22659c7c78ec7f7e8e1f23170da5a695feb548fd8a2c1c1ba90ca22a52"
+  "manifest_hash": "8a15810bfe35a42b7b8868ab6c336acf82bcc1b249081217a2ba8142bda30b0c"
 }
 ```
 
@@ -545,86 +531,6 @@ Record this Execution's durable decision and action for delivered feedback; anot
 }
 ```
 
-#### task.execution_progress
-
-Save a bounded Progress Material and either continue the current Execution or hand it off.
-
-```json
-{
-  "name": "execution_progress",
-  "operation": "execution_progress",
-  "description": "Save a bounded Progress Material and either continue the current Execution or hand it off.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "kind",
-      "progress"
-    ],
-    "properties": {
-      "kind": {
-        "type": "string",
-        "enum": [
-          "checkpoint",
-          "handoff"
-        ]
-      },
-      "progress": {
-        "type": "object",
-        "required": [
-          "completed_work",
-          "findings",
-          "open_questions",
-          "next_step"
-        ]
-      },
-      "checkpoint": {
-        "type": "object"
-      },
-      "files": {
-        "type": "object"
-      },
-      "reason": {
-        "type": "string"
-      },
-      "summary": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "execution-write",
-  "help": {
-    "when": "Save a bounded Progress Material and either continue the current Execution or hand it off.",
-    "ref": "service://task/execution_progress",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Save a bounded Progress Material and either continue the current Execution or hand it off.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/execution_progress",
-  "errors": []
-}
-```
-
 #### task.task_list
 
 Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.
@@ -853,9 +759,6 @@ Propose one independently useful responsibility with a short summary, Mission ga
         "type": "string"
       },
       "goal": {
-        "type": "string"
-      },
-      "task_type": {
         "type": "string"
       },
       "required_capabilities": {
@@ -1171,14 +1074,8 @@ Persist a finish intent (done, incomplete, blocked, or cancelled). Cleanup close
       "blocker": {
         "type": "object"
       },
-      "dependency": {
-        "type": "object"
-      },
       "wait_for": {
-        "type": [
-          "string",
-          "object"
-        ]
+        "type": "string"
       },
       "replacement_task_id": {
         "type": "string"
@@ -1441,10 +1338,10 @@ Read main history by default or all saved revisions, with provenance and bounded
       "all": {
         "type": "boolean"
       },
-      "source_task": {
+      "producer_task_id": {
         "type": "string"
       },
-      "source_execution": {
+      "producer_execution_id": {
         "type": "string"
       },
       "material_id": {
@@ -2210,17 +2107,17 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "453e81ad42ab6062e37da4bbe99db8d3b4ad29e60053a85b1c60880581e4a8f4"
+  "manifest_hash": "5185c188b03c5327bca01a9653f18a4ed364b88326243ddbdd1024b460e17a23"
 }
 ```
 
-#### context.context_read
+#### context.read_materials
 
 List one page of shared Material summaries. Use an exact Material ID to read its complete content.
 
 ```json
 {
-  "name": "context_read",
+  "name": "read_materials",
   "operation": "read_materials",
   "description": "List one page of shared Material summaries. Use an exact Material ID to read its complete content.",
   "input_schema": {
@@ -2235,10 +2132,10 @@ List one page of shared Material summaries. Use an exact Material ID to read its
       "task_id": {
         "type": "string"
       },
-      "source_task": {
+      "producer_task_id": {
         "type": "string"
       },
-      "source_execution": {
+      "producer_execution_id": {
         "type": "string"
       },
       "include_history": {
@@ -2288,13 +2185,13 @@ List one page of shared Material summaries. Use an exact Material ID to read its
 }
 ```
 
-#### context.context_consume
+#### context.consume_materials
 
 Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.
 
 ```json
 {
-  "name": "context_consume",
+  "name": "consume_materials",
   "operation": "consume_materials",
   "description": "Record which bounded shared Material IDs this Execution used for a route, Task, Workspace source, or integration action.",
   "input_schema": {
@@ -2587,10 +2484,10 @@ Search immutable Material summaries by keyword, Task, producer, or Mission. Foll
       "task_id": {
         "type": "string"
       },
-      "source_task": {
+      "producer_task_id": {
         "type": "string"
       },
-      "source_execution": {
+      "producer_execution_id": {
         "type": "string"
       },
       "include_history": {
@@ -2991,460 +2888,6 @@ Read a Judge CheckResult, checker process status, result class, retryability, an
 }
 ```
 
-### Runtime-owned capabilities
-
-These declarations are merged into a Session profile after deployment filtering. They are not registered HTTP providers. Most Runtime output schemas are empty strict-object placeholders; they do not enumerate the actual return fields described in the narrative chapters.
-
-#### runtime.execution_get
-
-```json
-{
-  "id": "runtime.execution_get",
-  "name": "execution_get",
-  "operation": "get_execution",
-  "service_id": "runtime",
-  "service_title": "SwarmEnv Runtime",
-  "service_purpose": "Task-scoped Execution projection",
-  "description": "Read the current Execution identity and Workspace revision.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Read the current Execution before acting on its Task.",
-    "ref": "runtime://execution_get"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "execution_id": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "required": [
-      "execution_id"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.workspace_get
-
-```json
-{
-  "id": "runtime.workspace_get",
-  "name": "workspace_get",
-  "operation": "get_workspace",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "Read the current task-scoped Workspace and its revision contract.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Read the Workspace contract before opening or changing files.",
-    "ref": "workspace://get"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.workspace_list_files
-
-```json
-{
-  "id": "runtime.workspace_list_files",
-  "name": "workspace_list_files",
-  "operation": "list_workspace_files",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "List files inside the current task-scoped Workspace.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "List files before reading or writing a declared path.",
-    "ref": "workspace://list-files"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.workspace_read_file
-
-```json
-{
-  "id": "runtime.workspace_read_file",
-  "name": "workspace_read_file",
-  "operation": "read_workspace_file",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "Read a text file from the current task-scoped Workspace.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Read only a path allowed by the Workspace contract.",
-    "ref": "workspace://read-file"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string",
-        "minLength": 1
-      },
-      "max_bytes": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 10000000
-      }
-    },
-    "required": [
-      "path"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.workspace_write_file
-
-```json
-{
-  "id": "runtime.workspace_write_file",
-  "name": "workspace_write_file",
-  "operation": "write_workspace_file",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "Write one declared output file in the current task-scoped Workspace and save a revision.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Write only declared outputs with the current Workspace revision.",
-    "ref": "workspace://write-file"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string",
-        "minLength": 1
-      },
-      "content": {
-        "type": "string"
-      },
-      "expected_revision": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
-    "required": [
-      "path",
-      "content"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.sandbox_exec
-
-```json
-{
-  "id": "runtime.sandbox_exec",
-  "name": "sandbox_exec",
-  "operation": "sandbox_exec",
-  "service_id": "runtime",
-  "service_title": "Task Sandbox",
-  "service_purpose": "Bounded command execution inside the Execution Sandbox",
-  "description": "Run a bounded shell command inside the current Execution Sandbox at /workspace. With an external provider, /workspace is provider-owned and must not be assumed to be the host Runtime Workspace until the provider worker integration is enabled; shell edits become durable only after the configured continuity path saves them.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Use for compilation, tests, rg, or other code execution inside the bound Workspace.",
-    "ref": "sandbox://exec"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "command": {
-        "oneOf": [
-          {
-            "type": "string",
-            "minLength": 1
-          },
-          {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "type": "string"
-            }
-          }
-        ]
-      },
-      "cwd": {
-        "type": "string",
-        "description": "Container path under /workspace."
-      },
-      "timeout_ms": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 3600000
-      },
-      "env": {
-        "type": "object",
-        "additionalProperties": {
-          "type": "string"
-        }
-      },
-      "background": {
-        "type": "boolean"
-      }
-    },
-    "required": [
-      "command"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {
-      "execution_id": {
-        "type": "string"
-      },
-      "job_id": {
-        "type": "string"
-      },
-      "binding_version": {
-        "type": "integer"
-      },
-      "exit_code": {
-        "type": [
-          "integer",
-          "null"
-        ]
-      },
-      "timed_out": {
-        "type": "boolean"
-      },
-      "truncated": {
-        "type": "boolean"
-      },
-      "stdout": {
-        "type": "string"
-      },
-      "stderr": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.sandbox_job
-
-```json
-{
-  "id": "runtime.sandbox_job",
-  "name": "sandbox_job",
-  "operation": "sandbox_job",
-  "service_id": "runtime",
-  "service_title": "Task Sandbox",
-  "service_purpose": "Bounded command execution inside the Execution Sandbox",
-  "description": "Read or cancel a background Sandbox job created by this Execution.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Inspect or stop a background command before handing off the Execution.",
-    "ref": "sandbox://job"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "job_id": {
-        "type": "string",
-        "minLength": 1
-      },
-      "action": {
-        "type": "string",
-        "enum": [
-          "status",
-          "cancel"
-        ]
-      }
-    },
-    "required": [
-      "job_id"
-    ],
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
-#### runtime.workspace_diff
-
-```json
-{
-  "id": "runtime.workspace_diff",
-  "name": "workspace_diff",
-  "operation": "workspace_diff",
-  "service_id": "runtime",
-  "service_title": "Task Workspace",
-  "service_purpose": "Task-scoped Workspace materialization and revision contract",
-  "description": "Compare two revisions in the current task-scoped Workspace.",
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "read",
-  "idempotent": true,
-  "runtime_owned": true,
-  "context": [
-    "task",
-    "execution",
-    "fencing"
-  ],
-  "help": {
-    "when": "Inspect the auditable file changes between revisions.",
-    "ref": "workspace://diff"
-  },
-  "input_schema": {
-    "type": "object",
-    "properties": {
-      "from_revision": {
-        "type": "integer",
-        "minimum": 1
-      },
-      "to_revision": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": "object",
-    "properties": {},
-    "additionalProperties": false
-  }
-}
-```
-
 ### Optional Mathlib Search manifest
 
 Exact repository bundle declaration. Loading the bundle additionally binds its documentation hashes into the normalized manifest; deployment endpoint overrides change the manifest hash. The implementation also returns `duration_ms` and, after fallback, `fallback`/`upstream_error_code`; these are not listed in this declaration's closed output schema.
@@ -3516,190 +2959,9 @@ Exact repository bundle declaration. Loading the bundle additionally binds its d
 }
 ```
 
-### Additional catalog entries retained for compatibility/internal callers
+### Internal catalog entries
 
-This section records every extra catalog declaration not represented by the registered built-in operation set above. It is not an authorization list for the current Agent. Internal SDK/domain methods can have additional operations that are never a model tool; see the operation routing section in [Services](04-services.md).
-
-#### Catalog task.workspace_get / get_workspace
-
-```json
-{
-  "name": "workspace_get",
-  "service": "task",
-  "operation": "get_workspace",
-  "version": "1.0",
-  "description": "Read the current Workspace materialization and revision.",
-  "scope": "execution-read",
-  "side_effect": false,
-  "parameters": {
-    "type": "object",
-    "additionalProperties": false
-  },
-  "capability": "workspace"
-}
-```
-
-#### Catalog task.workspace_revisions / list_workspace_revisions
-
-```json
-{
-  "name": "workspace_revisions",
-  "service": "task",
-  "operation": "list_workspace_revisions",
-  "version": "1.0",
-  "description": "List Workspace revisions available to the current Execution.",
-  "scope": "execution-read",
-  "side_effect": false,
-  "parameters": {
-    "type": "object",
-    "additionalProperties": false
-  },
-  "capability": "workspace"
-}
-```
-
-#### Catalog task.workspace_list_files / list_workspace_files
-
-```json
-{
-  "name": "workspace_list_files",
-  "service": "task",
-  "operation": "list_workspace_files",
-  "version": "1.0",
-  "description": "List project files in the current Workspace. Runtime metadata is excluded.",
-  "scope": "execution-read",
-  "side_effect": false,
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "path": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  },
-  "capability": "workspace"
-}
-```
-
-#### Catalog task.workspace_read_file / read_workspace_file
-
-```json
-{
-  "name": "workspace_read_file",
-  "service": "task",
-  "operation": "read_workspace_file",
-  "version": "1.0",
-  "description": "Read a text file from the current Workspace.",
-  "scope": "execution-read",
-  "side_effect": false,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "path"
-    ],
-    "properties": {
-      "path": {
-        "type": "string"
-      },
-      "max_bytes": {
-        "type": "integer",
-        "minimum": 1,
-        "maximum": 10000000
-      }
-    },
-    "additionalProperties": false
-  },
-  "capability": "workspace"
-}
-```
-
-#### Catalog task.workspace_write_file / write_workspace_file
-
-```json
-{
-  "name": "workspace_write_file",
-  "service": "task",
-  "operation": "write_workspace_file",
-  "version": "1.0",
-  "description": "Create or replace one project file in the current Workspace and save an auditable revision.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "path",
-      "content"
-    ],
-    "properties": {
-      "path": {
-        "type": "string"
-      },
-      "content": {
-        "type": "string"
-      },
-      "expected_revision": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
-    "additionalProperties": false
-  },
-  "capability": "workspace"
-}
-```
-
-#### Catalog task.workspace_diff / workspace_diff
-
-```json
-{
-  "name": "workspace_diff",
-  "service": "task",
-  "operation": "workspace_diff",
-  "version": "1.0",
-  "description": "Show file hash changes between two Workspace revisions.",
-  "scope": "execution-read",
-  "side_effect": false,
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "from_revision": {
-        "type": "integer",
-        "minimum": 1
-      },
-      "to_revision": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
-    "additionalProperties": false
-  },
-  "capability": "workspace"
-}
-```
-
-#### Catalog execution.execution_get / get_execution
-
-```json
-{
-  "name": "execution_get",
-  "service": "execution",
-  "operation": "get_execution",
-  "version": "1.0",
-  "description": "Read the current Execution lease, Workspace revision and checkpoint.",
-  "scope": "execution-read",
-  "side_effect": false,
-  "parameters": {
-    "type": "object",
-    "properties": {
-      "execution_id": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  }
-}
-```
+This section records catalog declarations used by trusted service composition but not exposed as Agent operations. It is not an authorization list for the Agent.
 
 #### Catalog workspace.workspace_get / get_workspace
 
@@ -3851,171 +3113,6 @@ This section records every extra catalog declaration not represented by the regi
     "additionalProperties": false
   }
 }
-```
-
-#### Catalog context.context_publish / publish_material
-
-```json
-{
-  "name": "context_publish",
-  "service": "context",
-  "operation": "publish_material",
-  "version": "1.0",
-  "description": "Publish a versioned shared Material for other Executions.",
-  "scope": "execution-write",
-  "side_effect": true,
-  "parameters": {
-    "type": "object",
-    "required": [
-      "kind",
-      "scope",
-      "content"
-    ],
-    "properties": {
-      "kind": {
-        "type": "string",
-        "enum": [
-          "assumption",
-          "fact",
-          "conjecture",
-          "experience",
-          "failure",
-          "artifact",
-          "steer",
-          "check_result"
-        ]
-      },
-      "scope": {
-        "type": "string"
-      },
-      "content": {},
-      "evidence_state": {
-        "type": "string",
-        "enum": [
-          "proposed",
-          "observed",
-          "checked",
-          "accepted",
-          "rejected",
-          "stale"
-        ]
-      }
-    },
-    "additionalProperties": true
-  }
-}
-```
-
-### Complete local SDK dispatch mapping
-
-The SDK constructor requires `dispatch` and `actorRef`. `withContext` creates another SDK with merged context. The methods below are the complete direct read/write wrappers, extracted from the source. This table records local/internal entry points, not the current Agent tool authorization list. Each call constructs an envelope from its context and explicit write options; read calls also have an operation ID. `createMission` and `proposeTask` clear Task/Execution/fence binding; `taskTake` supplies the context actor and configured Core lane. Structural methods select the Task state version from explicit options/context.
-
-| SDK method | Dispatched operation | Wrapper |
-|---|---|---|
-| `getExecution` | `get_execution` | read |
-| `listTasks` | `list_tasks` | read |
-| `createMission` | `create_mission` | write |
-| `getMission` | `get_mission` | read |
-| `createTask` | `create_task` | write |
-| `listMissionTasks` | `list_task` | read |
-| `taskStatus` | `task_status` | read |
-| `viewTask` | `view_task` | read |
-| `linkMaterial` | `task_link_material` | write |
-| `listTaskMaterials` | `list_task_materials` | read |
-| `finishTask` | `task_finish` | write |
-| `listExecutions` | `list_executions` | read |
-| `listServices` | `list_services` | read |
-| `getServiceMetadata` | `get_service_metadata` | read |
-| `listTools` | `list_tools` | read |
-| `readMaterials` | `read_materials` | read |
-| `searchMaterials` | `context_search_materials` | read |
-| `getMaterial` | `context_get_material` | read |
-| `publishCollaborationMaterial` | `context_publish_material` | write |
-| `consumeMaterials` | `consume_materials` | write |
-| `listMaterialConsumptions` | `list_material_consumptions` | read |
-| `getCheckResult` | `get_check_result` | read |
-| `taskTake` | `task_take` | write |
-| `taskFeedback` | `task_feedback` | write |
-| `executionProgress` | `execution_progress` | write |
-| `heartbeat` | `heartbeat` | write |
-| `publishMaterial` | `publish_material` | write |
-
-### Complete local router fallback sets
-
-Registry matches are resolved first by capability name or operation and must be unique. Only when no Registry match exists does the local router use these exact fallback sets. The historical Task source-binding entry records a Workspace source without performing a check; registered Bots invoke Judge directly through the Registry. The fallback Judge set contains result retrieval. Unlisted operations fail with no service route.
-
-#### TASK fallback operations
-
-```json
-[
-  "get_execution",
-  "list_tasks",
-  "list_executions",
-  "create_mission",
-  "get_mission",
-  "create_task",
-  "list_task",
-  "view_task",
-  "task_list",
-  "task_view",
-  "task_create",
-  "task_status",
-  "task_take",
-  "task_feedback",
-  "execution_progress",
-  "task_cancel",
-  "task_dependency_replace",
-  "link_material",
-  "task_link_material",
-  "list_task_materials",
-  "task_materials",
-  "finish_task",
-  "task_finish"
-]
-```
-
-#### CONTEXT fallback operations
-
-```json
-[
-  "publish_material",
-  "context.publish_material",
-  "context_publish_material",
-  "read_materials",
-  "context.read_materials",
-  "context_read_materials",
-  "search_materials",
-  "context.search_materials",
-  "context_search_materials",
-  "get_material",
-  "context.get_material",
-  "context_get_material",
-  "consume_materials",
-  "list_material_consumptions",
-  "material.publish",
-  "material_publish",
-  "material.read",
-  "material_read",
-  "material.search",
-  "material_search",
-  "material.get",
-  "material_get",
-  "material_dispute",
-  "material.dispute",
-  "material_supersede",
-  "material.supersede",
-  "material_unsupersede",
-  "material.unsupersede"
-]
-```
-
-#### JUDGE fallback operations
-
-```json
-[
-  "workspace_check",
-  "get_check_result"
-]
 ```
 
 ### Exact shared error-code vocabulary

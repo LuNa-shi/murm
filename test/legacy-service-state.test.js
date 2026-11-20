@@ -12,6 +12,7 @@ import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { dropReplayHistory } from '../src/replay/service-history.js';
 import { projectLegacyServiceState } from '../src/replay/legacy-service-state.js';
+import { upgradeResumedServiceDatabase } from '../src/replay/resume-schema.js';
 import { normalizeResumedServices } from '../src/replay/resume-experiment.js';
 
 const START = new Date('2026-11-19T08:00:00.000Z');
@@ -96,7 +97,7 @@ test('finished legacy experiment restores earlier Task content, deleted dependen
   const restored = copy(t, tasks.db);
   const summary = projectLegacyServiceState(restored, { domain: 'task', at: selected });
   assert.equal(summary.mode, 'legacy');
-  assert.equal(restored.prepare("SELECT summary FROM modern_task_records WHERE task_id = 'dependent'").get().summary, before.summary);
+  assert.equal(restored.prepare("SELECT summary FROM task_records WHERE task_id = 'dependent'").get().summary, before.summary);
   assert.deepEqual({ ...restored.prepare("SELECT relation_id, related_task_id FROM task_relations WHERE task_id = 'dependent'").get() },
     { relation_id: oldRelation, related_task_id: 'first' });
   assert.equal(restored.prepare("SELECT state FROM tasks WHERE task_id = 'dependent'").get().state, 'BLOCKED');
@@ -143,7 +144,7 @@ test('same-timestamp legacy receipts use their durable insertion order', t => {
   next(); revise('lemma', { summary: 'Future revision' });
   const restored = copy(t, tasks.db);
   projectLegacyServiceState(restored, { domain: 'task', at: selected });
-  assert.equal(restored.prepare("SELECT summary FROM modern_task_records WHERE task_id = 'lemma'").get().summary, 'Second revision');
+  assert.equal(restored.prepare("SELECT summary FROM task_records WHERE task_id = 'lemma'").get().summary, 'Second revision');
   assert.equal(restored.prepare("SELECT spec_version FROM tasks WHERE task_id = 'lemma'").get().spec_version, 3);
 });
 
@@ -372,7 +373,7 @@ test('missing indispensable historical evidence is precise and rolls back the de
   next(); supersede(); const selected = at();
   next(); revoke();
   const restored = copy(t, context.db);
-  restored.exec("DELETE FROM material_relation_events WHERE action = 'revoked'; DELETE FROM operations WHERE operation = 'unsupersede_material'");
+  restored.exec("DELETE FROM material_relation_events WHERE action = 'revoked'; DELETE FROM operations WHERE operation = 'material_unsupersede'");
   const before = restored.prepare('SELECT * FROM material_relations').all();
   assert.throws(() => projectLegacyServiceState(restored, { domain: 'context', at: selected }), error => {
     assert.equal(error.code, 'REPLAY_HISTORY_MISSING');
@@ -406,7 +407,7 @@ test('legacy Task import reports a missing past value rather than copying its fu
     assert.equal(error.details.table, 'tasks');
     return true;
   });
-  assert.equal(restored.prepare("SELECT summary FROM modern_task_records WHERE task_id = 'lemma'").get().summary, 'Only the future value remains');
+  assert.equal(restored.prepare("SELECT summary FROM task_records WHERE task_id = 'lemma'").get().summary, 'Only the future value remains');
 });
 
 const fixtureManifest = { fixture_id: 'legacy-replay', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
@@ -445,4 +446,245 @@ test('a Judge result completed after T cannot leak its verdict or evidence into 
   const later = copy(t, judge.db);
   projectLegacyServiceState(later, { domain: 'judge', at: completedAt });
   assert.equal(later.prepare('SELECT verdict FROM check_results WHERE check_result_id = ?').get(checked.check_result_id).verdict, 'PASS');
+});
+
+
+test('archived Task storage accepts fresh current Tasks and Executions after reconstruction and conversion', t => {
+  const { tasks, create, at } = fixture(t);
+  create('inherited', { responsibility_key: 'inherited-key' });
+  const restored = copy(t, tasks.db);
+  restored.exec(`ALTER TABLE task_records RENAME TO modern_task_records;
+    ALTER TABLE tasks ADD COLUMN root_id TEXT NOT NULL DEFAULT 'inherited';
+    ALTER TABLE tasks ADD COLUMN parallel_quota INTEGER NOT NULL DEFAULT 1;
+    ALTER TABLE executions ADD COLUMN workspace_selection_json TEXT NOT NULL DEFAULT '{}';
+    ALTER TABLE executions ADD COLUMN steer_material_refs_json TEXT NOT NULL DEFAULT '[]';`);
+  // The archived schema required these fields without a default. Rebuild it
+  // before conversion so a new current-service write would fail on that schema.
+  for (const table of ['tasks', 'executions']) {
+    const sql = restored.prepare("SELECT sql FROM sqlite_master WHERE name = ?").get(table).sql;
+    const fields = restored.prepare(`PRAGMA table_info(${table})`).all().map(column => column.name).join(', ');
+    restored.exec('PRAGMA foreign_keys = OFF');
+    restored.exec(sql.replace(`CREATE TABLE ${table}`, `CREATE TABLE ${table}_archive`).replaceAll(" DEFAULT 'inherited'", '').replaceAll(" DEFAULT 1", '').replaceAll(" DEFAULT '{}'", '').replaceAll(" DEFAULT '[]'", ''));
+    restored.exec(`INSERT INTO ${table}_archive (${fields}) SELECT ${fields} FROM ${table}; DROP TABLE ${table}; ALTER TABLE ${table}_archive RENAME TO ${table}`);
+    restored.exec('PRAGMA foreign_keys = ON');
+  }
+  projectLegacyServiceState(restored, { domain: 'task', at: at() });
+  const conversion = upgradeResumedServiceDatabase(restored, { domain: 'task' });
+  assert.equal(conversion.converted, true);
+  assert.equal(upgradeResumedServiceDatabase(restored, { domain: 'task' }).converted, false);
+  const resumed = new TaskService(restored);
+  try {
+    assert.equal(resumed.getTask('inherited').summary, 'Prove inherited');
+    const proposed = resumed.createTask({ task_id: 'fresh', mission_id: 'mission', summary: 'A fresh contribution',
+      gap: 'The final case remains', expected_output: 'Verified final case', priority: 'high',
+      acceptance_conditions: ['The final case is proved'] }, makeEnvelope({ actorRef: 'operator' })).task;
+    const execution = resumed.takeTask(proposed.task_id, { owner_ref: 'fresh-worker', take_key: 'fresh-take' }).execution;
+    assert.equal(execution.state, 'CREATED');
+    assert.equal(resumed.getTask('inherited').spec_hash, tasks.getTask('inherited').spec_hash);
+  } finally { dropReplayHistory(restored); }
+});
+
+test('archived Context producer fields and mandatory columns convert to readable and writable current Materials', t => {
+  const { tasks, context, publish, envelope, at } = contextFixture(t);
+  publish('inherited');
+  const restored = copy(t, context.db);
+  for (const table of ['materials', 'material_relations', 'material_relation_events']) {
+    restored.exec(`ALTER TABLE ${table} RENAME COLUMN producer_task_id TO source_task;
+      ALTER TABLE ${table} RENAME COLUMN producer_execution_id TO source_execution`);
+  }
+  restored.exec("ALTER TABLE materials ADD COLUMN kind TEXT NOT NULL DEFAULT 'fact'; ALTER TABLE materials ADD COLUMN content_ref TEXT NOT NULL DEFAULT 'inherited'");
+  const sql = restored.prepare("SELECT sql FROM sqlite_master WHERE name = 'materials'").get().sql;
+  const fields = restored.prepare('PRAGMA table_info(materials)').all().map(column => column.name).join(', ');
+  restored.exec('PRAGMA foreign_keys = OFF');
+  restored.exec(sql.replace('CREATE TABLE materials', 'CREATE TABLE materials_archive').replaceAll(" DEFAULT 'fact'", '').replaceAll(" DEFAULT 'inherited'", ''));
+  restored.exec(`INSERT INTO materials_archive (${fields}) SELECT ${fields} FROM materials; DROP TABLE materials; ALTER TABLE materials_archive RENAME TO materials`);
+  restored.exec('PRAGMA foreign_keys = ON');
+  projectLegacyServiceState(restored, { domain: 'context', at: at() });
+  assert.equal(upgradeResumedServiceDatabase(restored, { domain: 'context' }).converted, true);
+  const resumed = new ContextService(restored, { taskService: tasks });
+  try {
+    const historical = resumed.getMaterial('inherited');
+    assert.equal(historical.content, 'Mathematical evidence inherited');
+    assert.equal(historical.producer_task_id, 'producer');
+    assert.equal(historical.provenance.historical_metadata.kind, 'fact');
+    assert.equal(historical.provenance.historical_metadata.content_ref, 'inherited');
+    const material = resumed.dispatch('context_publish_material', { material_id: 'fresh', content: 'A fresh checked argument' }, envelope('publish-fresh')).material;
+    assert.equal(material.producer_task_id, 'producer');
+    assert.equal(material.content, 'A fresh checked argument');
+  } finally { dropReplayHistory(restored); }
+});
+
+test('conversion reports completion requirements the current services cannot enforce and rolls back the import', t => {
+  const { tasks, create } = fixture(t);
+  create('inherited');
+  const restored = copy(t, tasks.db);
+  restored.exec('ALTER TABLE task_records RENAME TO modern_task_records');
+  restored.prepare('UPDATE tasks SET completion_contract_json = ? WHERE task_id = ?')
+    .run(JSON.stringify({ required_materials: [{ kind: 'fact', min_count: 1 }] }), 'inherited');
+  assert.throws(() => upgradeResumedServiceDatabase(restored, { domain: 'task' }), error => {
+    assert.equal(error.code, 'REPLAY_SCHEMA_INCOMPATIBLE');
+    assert.equal(error.details.entity_id, 'inherited');
+    assert.match(error.details.reason, /required_materials/);
+    return true;
+  });
+  assert.equal(restored.prepare('SELECT summary FROM modern_task_records WHERE task_id = ?').get('inherited').summary, 'Prove inherited');
+});
+
+for (const operation of ['publish_material', 'context_publish_material']) test(`legacy ${operation} visibility begins with its earliest completed publication receipt`, t => {
+  const { context, publish, envelope, at, next } = contextFixture(t);
+  publish('existing');
+  next();
+  publish('uncommitted', { attachments: [{ name: 'proof.txt', content_base64: Buffer.from('future proof').toString('base64') }] });
+  const selected = at();
+  next();
+  context.db.prepare('UPDATE operations SET operation = ?, created_at = ? WHERE operation_id = ?')
+    .run(operation, at(), 'publish-uncommitted');
+  // A later publication of the same immutable ID returns its earlier record.
+  // Its receipt cannot move an already public Material into the future.
+  context.dispatch('context_publish_material', { material_id: 'existing', content: 'Mathematical evidence existing' }, envelope('republish-existing'));
+  const restored = copy(t, context.db);
+  projectLegacyServiceState(restored, { domain: 'context', at: selected });
+  const resumed = new ContextService(restored);
+  try {
+    assert.equal(resumed.getMaterial('existing').content, 'Mathematical evidence existing');
+    assert.equal(resumed.getMaterial('uncommitted'), null);
+    assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM material_attachments').get().n, 0);
+  } finally { dropReplayHistory(restored); }
+});
+
+test('legacy correction creation and consumption wait for their operation receipts before becoming public', t => {
+  const { context, publish, supersede, envelope, at, next } = contextFixture(t);
+  publish('old'); publish('new');
+  next();
+  supersede();
+  context.dispatch('consume_materials', { material_ids: ['old'], action: 'task', impact: 'The lemma changes the next proof step' }, envelope('consume-old'));
+  const selected = at();
+  next();
+  context.db.prepare("UPDATE operations SET created_at = ? WHERE operation_id IN ('supersede', 'consume-old')").run(at());
+  const restored = copy(t, context.db);
+  projectLegacyServiceState(restored, { domain: 'context', at: selected });
+  const resumed = new ContextService(restored);
+  try {
+    assert.deepEqual(resumed.listMaterialRelations({ material_id: 'old', include_inactive: true }), []);
+    assert.deepEqual(resumed.listMaterialConsumptions({ material_id: 'old' }), []);
+    assert.equal(resumed.getMaterial('old').relation_version, 0);
+  } finally { dropReplayHistory(restored); }
+});
+
+test('legacy revocation cannot take effect before its operation receipt even if its event timestamp is earlier', t => {
+  const { context, publish, supersede, revoke, at, next } = contextFixture(t);
+  publish('old'); publish('new'); supersede();
+  next(); revoke();
+  const selected = at();
+  next();
+  context.db.prepare("UPDATE operations SET created_at = ? WHERE operation_id = 'revoke'").run(at());
+  const restored = copy(t, context.db);
+  projectLegacyServiceState(restored, { domain: 'context', at: selected });
+  const resumed = new ContextService(restored);
+  try {
+    assert.equal(resumed.listMaterialRelations({ material_id: 'old' })[0].active, true);
+    assert.equal(resumed.getMaterial('old').relation_version, 1);
+    assert.equal(restored.prepare("SELECT COUNT(*) AS n FROM material_relation_events WHERE action = 'revoked'").get().n, 0);
+  } finally { dropReplayHistory(restored); }
+});
+
+test('legacy Task revision becomes visible at its receipt even when final row timestamps precede the cutoff', t => {
+  const { tasks, create, revise, at, next } = fixture(t);
+  create('lemma');
+  next(); revise('lemma', { summary: 'Uncommitted later obligation' });
+  const selected = at();
+  next();
+  tasks.db.prepare("UPDATE operations SET created_at = ? WHERE operation = 'task_revise'").run(at());
+  const restored = copy(t, tasks.db);
+  projectLegacyServiceState(restored, { domain: 'task', at: selected });
+  const resumed = new TaskService(restored);
+  try {
+    assert.equal(resumed.getTask('lemma').summary, 'Prove lemma');
+    assert.equal(resumed.getTask('lemma').spec_version, 1);
+    assert.equal(restored.prepare("SELECT COUNT(*) AS n FROM task_contract_revisions WHERE spec_version > 1").get().n, 0);
+  } finally { dropReplayHistory(restored); }
+});
+
+test('future initial Task creation is excluded while a later deduplicated proposal keeps its pre-existing Task', t => {
+  const { tasks, create, at, next } = fixture(t);
+  create('existing', { responsibility_key: 'existing-key' });
+  // The final row suffices for this unchanged Task if its original receipt
+  // was not retained. A later deduplicated request does not establish its birth.
+  tasks.db.prepare("DELETE FROM operations WHERE operation IN ('create_task', 'task_create')").run();
+  next(); create('uncommitted');
+  const selected = at();
+  next();
+  tasks.db.prepare("UPDATE operations SET created_at = ? WHERE operation IN ('create_task', 'task_create')").run(at());
+  const duplicate = tasks.createTask({ task_id: 'coalesced-proposal', mission_id: 'mission',
+    summary: 'Prove existing', gap: 'The theorem needs existing', expected_output: 'A verified lemma',
+    priority: 'medium', acceptance_conditions: ['The lemma supports the theorem'], responsibility_key: 'existing-key' },
+  makeEnvelope({ actorRef: 'author' }));
+  assert.equal(duplicate.created, false);
+  const restored = copy(t, tasks.db);
+  projectLegacyServiceState(restored, { domain: 'task', at: selected });
+  const resumed = new TaskService(restored);
+  try {
+    assert.equal(resumed.getTask('existing').summary, 'Prove existing');
+    assert.equal(resumed.getTask('uncommitted'), null);
+  } finally { dropReplayHistory(restored); }
+});
+
+
+test('future Task cancellation receipt excludes its earlier-timestamped public cancellation record', t => {
+  const { tasks, create, at, next } = fixture(t);
+  const task = create('lemma');
+  next();
+  tasks.dispatch('task_cancel', { task_id: task.task_id, expected_spec_version: task.spec_version,
+    expected_state_version: task.state_version, reason: 'A future diagnosis invalidates this approach' }, makeEnvelope({ actorRef: 'author' }));
+  const selected = at();
+  next();
+  tasks.db.prepare("UPDATE operations SET created_at = ? WHERE operation = 'task_cancel'").run(at());
+  const restored = copy(t, tasks.db);
+  projectLegacyServiceState(restored, { domain: 'task', at: selected });
+  const resumed = new TaskService(restored);
+  try {
+    assert.equal(resumed.getTask('lemma').state, 'OPEN');
+    assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM task_cancellations').get().n, 0);
+  } finally { dropReplayHistory(restored); }
+});
+
+test('earlier consumption and correction receipts prove Material existence when publication receipts were lost before later repeats', t => {
+  const { context, publish, supersede, envelope, at, next } = contextFixture(t);
+  for (const id of ['old', 'new', 'consumed']) publish(id);
+  next();
+  supersede();
+  context.dispatch('consume_materials', { material_ids: ['consumed'], action: 'task', impact: 'The inherited lemma resolves this case' }, envelope('consume-existing'));
+  const selected = at();
+  context.db.prepare("DELETE FROM operations WHERE operation = 'context_publish_material'").run();
+  next();
+  for (const id of ['old', 'new', 'consumed']) context.dispatch('context_publish_material', {
+    material_id: id, content: `Mathematical evidence ${id}`,
+  }, envelope(`repeat-${id}`));
+  const restored = copy(t, context.db);
+  projectLegacyServiceState(restored, { domain: 'context', at: selected });
+  const resumed = new ContextService(restored);
+  try {
+    for (const id of ['old', 'new', 'consumed']) assert.equal(resumed.getMaterial(id).content, `Mathematical evidence ${id}`);
+    assert.equal(resumed.listMaterialRelations({ material_id: 'old' })[0].active, true);
+    assert.equal(resumed.listMaterialConsumptions({ material_id: 'consumed' }).length, 1);
+  } finally { dropReplayHistory(restored); }
+});
+
+test('a receipt-less earlier consumption reports ambiguous Material history before it can be silently discarded', t => {
+  const { context, publish, envelope, at, next } = contextFixture(t);
+  publish('existing');
+  next();
+  context.dispatch('consume_materials', { material_ids: ['existing'], action: 'task', impact: 'The public lemma supports this case' }, envelope('consume-existing'));
+  const selected = at();
+  context.db.exec('DELETE FROM operations');
+  next();
+  context.dispatch('context_publish_material', { material_id: 'existing', content: 'Mathematical evidence existing' }, envelope('repeat-existing'));
+  const restored = copy(t, context.db);
+  assert.throws(() => projectLegacyServiceState(restored, { domain: 'context', at: selected }), error => {
+    assert.equal(error.code, 'REPLAY_HISTORY_MISSING');
+    assert.equal(error.details.table, 'material_consumptions');
+    assert.equal(error.details.entity_id, 'consume-existing/existing');
+    return true;
+  });
+  assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM material_consumptions').get().n, 1);
 });

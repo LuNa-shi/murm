@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../protocol/envelope.js';
+import { resumedTaskRegistrationHash } from './resume-schema.js';
 
-const CONTEXT_OPERATIONS = new Set(['publish_material', 'consume_materials', 'dispute_material', 'supersede_material', 'unsupersede_material']);
+const CONTEXT_OPERATIONS = new Set(['publish_material', 'consume_materials', 'dispute_material', 'supersede_material', 'unsupersede_material',
+  'context_publish_material', 'material_dispute', 'material_supersede', 'material_unsupersede']);
 const TERMINAL_TASKS = new Set(['DONE', 'CLOSED', 'CANCELED', 'SATISFIED', 'FAILED', 'CANCELLED', 'REJECTED']);
 const COMPLETED_TASKS = new Set(['DONE', 'SATISFIED']);
 const quote = value => `"${value.replaceAll('"', '""')}"`;
@@ -178,27 +180,32 @@ function restoreNotifications(db, cutoff, warnings) {
 }
 
 function restoreTasks(db, cutoff, history, warnings) {
-  if (!has(db, 'tasks') || !has(db, 'modern_task_records')) throw missing('task', 'tasks', null, 'unsupported Task schema');
+  const recordsTable = has(db, 'task_records') ? 'task_records' : 'modern_task_records';
+  if (!has(db, 'tasks') || !has(db, recordsTable)) throw missing('task', 'tasks', null, 'unsupported Task schema');
+  const operationTimes = new Map(history.map(receipt => [receipt.operation_id, receipt.at]));
   const snapshots = latestEntities(history, 'task', 'task_id', cutoff);
   const executionSnapshots = latestEntities(history, 'execution', 'execution_id', cutoff);
-  const modern = new Map(rows(db, 'modern_task_records').map(row => [row.task_id, row]));
+  const modern = new Map(rows(db, recordsTable).map(row => [row.task_id, row]));
   const originalTasks = rows(db, 'tasks');
   const originalExecutions = rows(db, 'executions');
   const retainedTasks = new Map();
   const existingRelations = rows(db, 'task_relations');
-  const futureCreatedTasks = new Set(history.filter(row => row.at > cutoff && row.operation === 'create_task')
-    .map(row => row.result?.task?.task_id).filter(Boolean));
+  const futureMutations = history.filter(receipt => receipt.at > cutoff && receipt.result?.task &&
+    receipt.result.changed !== false && receipt.result.created !== false && receipt.result.deduplicated !== true);
+  const futureChangedTasks = new Set(futureMutations.map(receipt => receipt.result.task.task_id));
+  const futureCreatedTasks = new Set(futureMutations.filter(receipt => ['create_task', 'task_create'].includes(receipt.operation))
+    .map(receipt => receipt.result.task.task_id));
 
   for (const row of originalTasks) {
     if (time(row.created_at) > cutoff) continue;
     const record = modern.get(row.task_id);
-    if (!record) throw missing('task', 'modern_task_records', row.task_id, 'Mission binding is absent');
+    if (!record) throw missing('task', recordsTable, row.task_id, 'Mission binding is absent');
     let snapshot = snapshots.get(row.task_id);
     if (!snapshot && futureCreatedTasks.has(row.task_id)) continue;
-    if (!snapshot && (time(row.updated_at) > cutoff || time(record.updated_at) > cutoff)) {
+    if (!snapshot && (futureChangedTasks.has(row.task_id) || time(row.updated_at) > cutoff || time(record.updated_at) > cutoff)) {
       throw missing('task', 'tasks', row.task_id, 'Task was changed after the requested time and no earlier operation result survives');
     }
-    const canUseFinalRow = time(row.updated_at) <= cutoff && time(record.updated_at) <= cutoff;
+    const canUseFinalRow = !futureChangedTasks.has(row.task_id) && time(row.updated_at) <= cutoff && time(record.updated_at) <= cutoff;
     const historical = canUseFinalRow
       ? { ...(snapshot?.value ?? {}), ...row, mission_id: record.mission_id, summary: record.summary, gap: record.gap, timebox_ms: record.timebox_ms }
       : snapshot.value;
@@ -219,11 +226,13 @@ function restoreTasks(db, cutoff, history, warnings) {
       : existingRelations.filter(edge => edge.task_id === row.task_id && time(edge.created_at) <= cutoff);
     retainedTasks.set(row.task_id, { task, edges, snapshotAt: canUseFinalRow ? time(row.updated_at) : snapshot.at });
     upsert(db, 'tasks', task);
-    upsert(db, 'modern_task_records', { ...record, summary: historical.summary, gap: historical.gap ?? null,
+    upsert(db, recordsTable, { ...record, summary: historical.summary, gap: historical.gap ?? null,
       timebox_ms: historical.timebox_ms ?? record.timebox_ms,
-      // This is a derived duplicate-admission key, not research content. NULL
-      // selects the service's existing content-comparison compatibility path.
-      registration_hash: time(record.updated_at) <= cutoff ? record.registration_hash : null,
+      // Derive the current admission key from the restored contract. Archived
+      // services retain their original content-comparison fallback until conversion.
+      registration_hash: recordsTable === 'task_records'
+        ? resumedTaskRegistrationHash(task, { ...record, gap: historical.gap ?? record.gap, summary: historical.summary }, edges.map(edge => edge.related_task_id))
+        : time(record.updated_at) <= cutoff ? record.registration_hash : null,
       updated_at: historical.updated_at });
   }
 
@@ -260,7 +269,8 @@ function restoreTasks(db, cutoff, history, warnings) {
     }
   }
   prune(db, 'executions', row => keepExecutions.has(row.execution_id));
-  prune(db, 'execution_finish_intents', row => keepExecutions.has(row.execution_id) && time(row.accepted_at) <= cutoff);
+  prune(db, 'execution_finish_intents', row => keepExecutions.has(row.execution_id) &&
+    Math.max(time(row.accepted_at), operationTimes.get(row.request_id) ?? -Infinity) <= cutoff);
   clearFuture(db, 'execution_finish_intents', 'closed_at', { closed_at: null }, cutoff);
   const finishes = rows(db, 'execution_finish_intents').filter(row => row.closed_at && time(row.closed_at) <= cutoff)
     .sort((a, b) => time(a.closed_at) - time(b.closed_at) || a.__replay_rowid - b.__replay_rowid);
@@ -274,9 +284,9 @@ function restoreTasks(db, cutoff, history, warnings) {
     const closedVersion = (requested?.state_version ?? target.task.state_version) + 1;
     if (target.snapshotAt > time(finish.closed_at) ||
         (target.snapshotAt === time(finish.closed_at) && target.task.state_version >= closedVersion)) continue;
-    const state = finish.outcome === 'done' ? 'DONE' : finish.outcome === 'cancelled' ? 'CANCELLED' : 'OPEN';
+    const state = finish.outcome === 'done' ? 'DONE' : finish.outcome === 'cancelled' ? (recordsTable === 'task_records' ? 'CANCELED' : 'CANCELLED') : 'OPEN';
     Object.assign(target.task, { state, block_reason: null, state_version: closedVersion, updated_at: finish.closed_at,
-      cancelled_at: state === 'CANCELLED' ? finish.closed_at : null, eligible_at: state === 'OPEN' ? finish.closed_at : null });
+      cancelled_at: ['CANCELED', 'CANCELLED'].includes(state) ? finish.closed_at : null, eligible_at: state === 'OPEN' ? finish.closed_at : null });
     target.snapshotAt = time(finish.closed_at);
     upsert(db, 'tasks', target.task);
   }
@@ -284,7 +294,9 @@ function restoreTasks(db, cutoff, history, warnings) {
   const keepTask = row => retainedTasks.has(row.task_id);
   for (const table of ['task_contract_revisions', 'task_creation_provenance', 'task_dependency_replacements', 'task_cancellations',
     'task_material_links', 'task_structure_events', 'task_structure_dependencies', 'task_structure_groups', 'task_creation_keys']) {
-    prune(db, table, row => time(row.created_at) <= cutoff && (row.task_id === undefined || keepTask(row)));
+    prune(db, table, row => Math.max(time(row.created_at), operationTimes.get(row.operation_id) ?? -Infinity) <= cutoff &&
+      (row.task_id === undefined || keepTask(row)) &&
+      (table !== 'task_contract_revisions' || row.spec_version <= retainedTasks.get(row.task_id).task.spec_version));
   }
   clearFuture(db, 'task_material_links', 'accepted_at', { accepted_at: null, accepted_by_task_id: null, accepted_by_execution_id: null }, cutoff);
   for (const table of ['task_structure_dependencies', 'task_structure_groups', 'task_structure_members']) clearFuture(db, table, 'retired_at', { retired_at: null }, cutoff);
@@ -313,7 +325,7 @@ function restoreTasks(db, cutoff, history, warnings) {
     upsert(db, 'tasks', task);
   }
 
-  prune(db, 'modern_task_records', keepTask);
+  prune(db, recordsTable, keepTask);
   prune(db, 'tasks', keepTask);
   trimTimestamp(db, 'missions', cutoff);
   prune(db, 'bots', row => time(row.started_at) <= cutoff && Boolean(db.prepare('SELECT 1 FROM missions WHERE mission_id = ?').get(row.mission_id)));
@@ -344,7 +356,33 @@ function pruneOrphanReferences(db) {
 
 function restoreContext(db, cutoff, history) {
   if (!has(db, 'materials')) throw missing('context', 'materials', null, 'Material table is absent');
-  const materials = rows(db, 'materials').filter(row => time(row.created_at) <= cutoff);
+  const operationTimes = new Map(history.map(receipt => [receipt.operation_id, receipt.at]));
+  const existenceTimes = new Map();
+  for (const receipt of history) {
+    const result = receipt.result ?? {};
+    const ids = [result.material?.material_id, result.replacement?.material_id,
+      result.relation?.material_id, result.relation?.replacement_material_id,
+      ...(Array.isArray(result.material_ids) ? result.material_ids : []),
+      ...(Array.isArray(result.consumptions) ? result.consumptions.map(row => row.material_id) : []),
+    ];
+    if (['publish_material', 'context_publish_material'].includes(receipt.operation)) ids.push(receipt.command?.payload?.supersedes);
+    for (const id of ids.filter(Boolean)) {
+      if (!Number.isFinite(receipt.at)) throw missing('context', 'operations', receipt.operation_id, 'public Material operation time is absent');
+      existenceTimes.set(id, Math.min(existenceTimes.get(id) ?? Infinity, receipt.at));
+    }
+  }
+  const effectiveTime = (row, table, entityId) => {
+    const occurred = time(row.created_at);
+    const committed = operationTimes.get(row.operation_id) ?? occurred;
+    if (!Number.isFinite(occurred) || !Number.isFinite(committed)) {
+      throw missing('context', table, entityId, 'event or operation receipt time is absent');
+    }
+    return Math.max(occurred, committed);
+  };
+  // Consumption and correction receipts also prove prior public existence.
+  // A later repeat publication cannot move that evidence into the future.
+  const materials = rows(db, 'materials').filter(row =>
+    Math.max(time(row.created_at), existenceTimes.get(row.material_id) ?? -Infinity) <= cutoff);
   const materialIds = new Set(materials.map(row => row.material_id));
   const allEvents = rows(db, 'material_relation_events');
   const relations = rows(db, 'material_relations');
@@ -352,7 +390,7 @@ function restoreContext(db, cutoff, history) {
   for (const receipt of history) {
     const relation = receipt.result?.relation;
     if (!relation?.relation_id) continue;
-    const action = receipt.operation === 'unsupersede_material' ? 'revoked' : 'created';
+    const action = ['unsupersede_material', 'material_unsupersede'].includes(receipt.operation) ? 'revoked' : 'created';
     const key = `${receipt.operation_id}:${relation.relation_id}:${action}`;
     if (!events.has(key)) {
       const envelope = receipt.command?.envelope;
@@ -360,45 +398,84 @@ function restoreContext(db, cutoff, history) {
         'correction event is absent and its operation command cannot reconstruct the actor and time');
       events.set(key, { event_id: `replay:${receipt.operation_id}:${action}`, relation_id: relation.relation_id,
         material_id: relation.material_id, action, operation_id: receipt.operation_id, actor_ref: envelope.actor_ref,
-        source_task: envelope.task_id, source_execution: envelope.execution_id,
+        ...(columns(db, 'material_relation_events').has('producer_task_id')
+          ? { producer_task_id: envelope.task_id, producer_execution_id: envelope.execution_id }
+          : { source_task: envelope.task_id, source_execution: envelope.execution_id }),
         reason: receipt.command.payload?.reason ?? relation.reason ?? 'Recovered from operation receipt',
         relation_version: action === 'revoked' ? receipt.result.relation_version ?? receipt.result.material?.relation_version : relation.version,
         created_at: receipt.created_at });
     }
   }
-  const corrections = [...events.values()];
-  const retainedRelations = relations.filter(row => time(row.created_at) <= cutoff && materialIds.has(row.material_id) &&
+  const corrections = [...events.values()].map(event => ({ ...event,
+    effective_at: effectiveTime(event, 'material_relation_events', event.event_id) }));
+  const creations = new Map();
+  const revocations = new Map();
+  for (const event of corrections) {
+    if (event.action === 'created') {
+      creations.set(event.relation_id, Math.min(creations.get(event.relation_id) ?? Infinity, event.effective_at));
+    } else {
+      const prior = revocations.get(event.relation_id) ?? [];
+      prior.push(event);
+      revocations.set(event.relation_id, prior);
+    }
+  }
+  for (const relation of relations) {
+    if (time(relation.created_at) > cutoff || creations.has(relation.relation_id)) continue;
+    for (const id of [relation.material_id, relation.replacement_material_id].filter(Boolean)) {
+      if (!materialIds.has(id)) throw missing('context', 'material_relations', relation.relation_id,
+        `Material ${id} has no proven initial publication before this relationship; its creation receipt is missing`);
+    }
+  }
+  for (const consumption of rows(db, 'material_consumptions')) {
+    if (time(consumption.created_at) <= cutoff && !operationTimes.has(consumption.operation_id) && !materialIds.has(consumption.material_id)) {
+      throw missing('context', 'material_consumptions', `${consumption.operation_id}/${consumption.material_id}`,
+        'An earlier-timestamped consumption references a Material whose initial publication and consumption receipts are missing');
+    }
+  }
+  const retainedRelations = relations.filter(row =>
+    Math.max(time(row.created_at), creations.get(row.relation_id) ?? -Infinity) <= cutoff && materialIds.has(row.material_id) &&
     (!row.replacement_material_id || materialIds.has(row.replacement_material_id)));
+  const supersedeVersions = new Map();
   for (const relation of retainedRelations) {
-    const revocations = corrections.filter(event => event.relation_id === relation.relation_id && event.action === 'revoked');
-    if (!relation.active && !revocations.length) throw missing('context', 'material_relations', relation.relation_id,
+    const revoked = revocations.get(relation.relation_id) ?? [];
+    if (!relation.active && !revoked.length) throw missing('context', 'material_relations', relation.relation_id,
       'inactive relation has no revocation event or operation receipt identifying when it was revoked');
-    const active = !revocations.some(event => time(event.created_at) <= cutoff);
+    const active = !revoked.some(event => event.effective_at <= cutoff);
     db.prepare('UPDATE material_relations SET active = ? WHERE relation_id = ?').run(Number(active), relation.relation_id);
+    if (relation.relation_kind === 'supersede') supersedeVersions.set(relation.material_id,
+      Math.max(supersedeVersions.get(relation.material_id) ?? 0, relation.version));
   }
   const retainedRelationIds = new Set(retainedRelations.map(row => row.relation_id));
-  prune(db, 'material_relation_events', row => retainedRelationIds.has(row.relation_id) && time(row.created_at) <= cutoff);
-  for (const event of corrections) if (has(db, 'material_relation_events') && retainedRelationIds.has(event.relation_id) && time(event.created_at) <= cutoff) {
-    upsert(db, 'material_relation_events', event);
+  const supersedes = new Set(retainedRelations.filter(row => row.relation_kind === 'supersede').map(row => row.relation_id));
+  prune(db, 'material_relation_events', row => retainedRelationIds.has(row.relation_id) &&
+    effectiveTime(row, 'material_relation_events', row.event_id) <= cutoff);
+  for (const event of corrections) {
+    if (!retainedRelationIds.has(event.relation_id) || event.effective_at > cutoff) continue;
+    if (has(db, 'material_relation_events')) upsert(db, 'material_relation_events', event);
+    if (supersedes.has(event.relation_id)) supersedeVersions.set(event.material_id,
+      Math.max(supersedeVersions.get(event.material_id) ?? 0, event.relation_version));
   }
   prune(db, 'material_relations', row => retainedRelationIds.has(row.relation_id));
   prune(db, 'material_attachments', row => materialIds.has(row.material_id));
-  prune(db, 'material_consumptions', row => materialIds.has(row.material_id) && time(row.created_at) <= cutoff);
+  prune(db, 'material_consumptions', row => materialIds.has(row.material_id) &&
+    effectiveTime(row, 'material_consumptions', `${row.operation_id}/${row.material_id}`) <= cutoff);
   prune(db, 'materials', row => materialIds.has(row.material_id));
   if (has(db, 'material_relation_heads')) {
     db.exec('DELETE FROM material_relation_heads');
-    const supersedes = new Set(retainedRelations.filter(row => row.relation_kind === 'supersede').map(row => row.relation_id));
-    for (const material of materials) {
-      const versions = corrections.filter(event => event.material_id === material.material_id && supersedes.has(event.relation_id) && time(event.created_at) <= cutoff)
-        .map(event => event.relation_version);
-      versions.push(...retainedRelations.filter(row => row.material_id === material.material_id && row.relation_kind === 'supersede').map(row => row.version));
-      upsert(db, 'material_relation_heads', { material_id: material.material_id, version: Math.max(0, ...versions) });
-    }
+    for (const material of materials) upsert(db, 'material_relation_heads', {
+      material_id: material.material_id, version: supersedeVersions.get(material.material_id) ?? 0,
+    });
+  }
+  const attachmentsByMaterial = new Map();
+  for (const attachment of rows(db, 'material_attachments')) {
+    const prior = attachmentsByMaterial.get(attachment.material_id) ?? [];
+    prior.push(attachment);
+    attachmentsByMaterial.set(attachment.material_id, prior);
   }
   for (const material of materials) {
     let content;
     try { content = JSON.parse(material.content_json); } catch { throw missing('context', 'materials', material.material_id, 'malformed immutable content_json'); }
-    const attachments = rows(db, 'material_attachments').filter(row => row.material_id === material.material_id).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+    const attachments = (attachmentsByMaterial.get(material.material_id) ?? []).sort((a, b) => a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
     for (const attachment of attachments) if (createHash('sha256').update(attachment.bytes).digest('hex') !== attachment.content_hash) {
       throw missing('context', 'material_attachments', `${material.material_id}/${attachment.name}`, 'attachment bytes do not match the stored hash');
     }

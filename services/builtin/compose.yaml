@@ -18,8 +18,6 @@ services:
       SWARMENV_SERVICE_PRINCIPALS: ${SWARMENV_TASK_SERVICE_PRINCIPALS:-[]}
       SWARMENV_SERVICE_PUBLIC_URL: http://task:8787
       SWARMENV_SERVICE_DATABASE: /var/lib/swarmenv/task.sqlite
-      SWARMENV_CONTEXT_SERVICE_URL: http://context:8787
-      SWARMENV_CONTEXT_SERVICE_TOKEN: ${SWARMENV_CONTEXT_SERVICE_TOKEN:-}
     ports:
       - "${SWARMENV_TASK_PORT:-8781}:8787"
     volumes:
@@ -33,8 +31,6 @@ services:
       SWARMENV_SERVICE_PRINCIPALS: ${SWARMENV_CONTEXT_SERVICE_PRINCIPALS:-[]}
       SWARMENV_SERVICE_PUBLIC_URL: http://context:8787
       SWARMENV_SERVICE_DATABASE: /var/lib/swarmenv/context.sqlite
-      SWARMENV_TASK_SERVICE_URL: http://task:8787
-      SWARMENV_TASK_SERVICE_TOKEN: ${SWARMENV_TASK_SERVICE_TOKEN:-}
     ports:
       - "${SWARMENV_CONTEXT_PORT:-8782}:8787"
     volumes:
@@ -48,8 +44,6 @@ services:
       SWARMENV_SERVICE_PRINCIPALS: ${SWARMENV_JUDGE_SERVICE_PRINCIPALS:-[]}
       SWARMENV_SERVICE_PUBLIC_URL: http://judge:8787
       SWARMENV_SERVICE_DATABASE: /var/lib/swarmenv/judge.sqlite
-      SWARMENV_TASK_SERVICE_URL: http://task:8787
-      SWARMENV_TASK_SERVICE_TOKEN: ${SWARMENV_TASK_SERVICE_TOKEN:-}
       # Configure a mounted, pinned checker project before enabling candidate
       # checks; the service remains healthy and reports unavailable until the
       # fixture binding is provided.

@@ -2,8 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ServiceCommitGate } from './service-commit-gate.js';
 import { captureServiceAuthority } from './service-authority-snapshot.js';
 import { createCoordinatorPeerHost } from './coordinator-peer-host.js';
-import { callCoordinatorPeer } from './coordinator-peer-client.js';
-import { createHttpDomainProxy } from './http-domain-proxy.js';
+import { callCoordinatorPeer, createDomainCommandClient } from './coordinator-peer-client.js';
 import { JUDGE_READ_METHODS } from './judge-service-peer.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
@@ -19,19 +18,19 @@ export class RemoteJudgeService {
     this.activeChecks = new Set();
     this.server = createCoordinatorPeerHost({ serviceId: 'task', operation: 'judge_lifecycle',
       actorRef: 'service:judge', token, host: coordinatorHost, publicUrl: coordinatorPublicUrl, handler: input => this.#lifecycle(input) });
-    for (const method of JUDGE_READ_METHODS) this[method] = (...args) => this.peer.dispatch('domain_command', { method, args }).result;
+    for (const method of JUDGE_READ_METHODS) this[method] = (...args) => this.command({ method, args }).result;
   }
   async startCoordinator(options) { return this.server.start(options); }
   connect(url) {
     this.url = url;
-    this.peer = createHttpDomainProxy({ serviceId: 'judge', url, token: this.token, actorRef: 'service:coordinator' });
-    this.generation = this.peer.dispatch('domain_command', { method: 'identity' }).generation;
+    this.command = createDomainCommandClient({ url, token: this.token });
+    this.generation = this.command({ method: 'identity' }).generation;
     this.reconcile();
   }
   reconcile() {
     const pending = this.gate.pending();
     if (!pending || pending.command.service !== 'judge') return;
-    const status = this.peer.dispatch('domain_command', { method: 'phase_receipt', gate_id: pending.gate_id, digest: pending.digest });
+    const status = this.command({ method: 'phase_receipt', gate_id: pending.gate_id, digest: pending.digest });
     const receipt = status.receipt ?? (status.generation !== pending.command.generation ? {
       terminal: true, gate_id: pending.gate_id, digest: pending.digest, outcome: 'interrupted',
     } : null);
@@ -62,7 +61,7 @@ export class RemoteJudgeService {
     // The coordinator stays synchronous through this short remote commit /
     // actual spawn. The peer is awaiting our async response and can serve
     // this callback; it never synchronously calls back into Task.
-    const receipt = this.peer.dispatch('domain_command', { method: 'execute_phase', admission });
+    const receipt = this.command({ method: 'execute_phase', admission });
     if (receipt?.gate_id !== admission.gate_id || receipt?.digest !== admission.digest) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Judge phase receipt does not match its command');
     }
@@ -71,7 +70,7 @@ export class RemoteJudgeService {
   }
   setDependencyEventSink(listener) { this.dependencyEventSink = listener; }
   dispatch(operation, input, envelope) {
-    if (operation === 'get_check_result') return Promise.resolve(this.peer.dispatch('domain_command', {
+    if (operation === 'get_check_result') return Promise.resolve(this.command({
       method: 'dispatch', args: [operation, input, envelope], call_id: randomUUID(), authority: captureServiceAuthority(this.taskService, envelope, { provenance: false, workspace: true }),
     }).result);
     if (operation !== 'workspace_check') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unsupported remote Judge operation');

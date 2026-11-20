@@ -86,6 +86,81 @@ test('rolled back writes and savepoint rollbacks leave no committed state or rep
   restored.close();
 });
 
+for (const [name, nestedStatements] of [
+  ['releasing a shadowed savepoint', [
+    'SAVEPOINT outer_save',
+    "UPDATE results SET status = 'nested' WHERE id = 'a'",
+    'RELEASE outer_save',
+  ]],
+  ['rolling back to a shadowed savepoint and releasing it', [
+    'SAVEPOINT outer_save',
+    'SAVEPOINT discarded',
+    "UPDATE results SET status = 'discarded' WHERE id = 'a'",
+    'ROLLBACK TRANSACTION TO SAVEPOINT outer_save',
+    'RELEASE SAVEPOINT outer_save',
+  ]],
+  ['rolling back past a shadowed name before releasing the outer savepoint', [
+    'SAVEPOINT middle_save',
+    'SAVEPOINT outer_save',
+    'SAVEPOINT discarded',
+    "UPDATE results SET status = 'discarded' WHERE id = 'a'",
+    'ROLLBACK TO middle_save',
+    'RELEASE middle_save',
+  ]],
+]) {
+  test(`${name} retains the outer transaction's historical boundary`, async t => {
+    const { root, source, db } = await fixture(t);
+    db.exec("INSERT INTO results VALUES ('a', 'old', NULL, 1)");
+    db.exec('SAVEPOINT outer_save');
+    db.exec("UPDATE results SET status = 'intermediate' WHERE id = 'a'");
+    for (const statement of nestedStatements) db.exec(statement);
+    assert.equal(db.isTransaction, true);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM replay_transactions WHERE committed_at IS NOT NULL').get().n, 0);
+    const during = new Date().toISOString();
+    await delay(5);
+    db.exec("UPDATE results SET status = 'final' WHERE id = 'a'");
+    db.exec('RELEASE outer_save');
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM replay_transactions').get().n, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM replay_transactions WHERE committed_at IS NULL').get().n, 0);
+    const committed = db.prepare('SELECT committed_at FROM replay_transactions').get().committed_at;
+    db.close();
+    for (const [at, status, file] of [[during, 'old', 'during.sqlite'], [committed, 'final', 'committed.sqlite']]) {
+      const destination = join(root, file);
+      await restoreServiceDatabaseAt({ sourcePath: source, destinationPath: destination, domain: 'task', at });
+      const restored = new DatabaseSync(destination);
+      assert.equal(restored.prepare('SELECT status FROM results').get().status, status);
+      restored.close();
+    }
+  });
+}
+
+test('a failed commit and subsequent repair preserve one historical transaction boundary', async t => {
+  const { root, source, db } = await fixture(t);
+  db.exec(`PRAGMA foreign_keys = ON;
+    CREATE TABLE parents (id INTEGER PRIMARY KEY);
+    CREATE TABLE children (id INTEGER PRIMARY KEY, parent_id INTEGER REFERENCES parents(id) DEFERRABLE INITIALLY DEFERRED);`);
+  installServiceHistory(db, { domain: 'task' });
+  db.exec('BEGIN; INSERT INTO children VALUES (1, 1)');
+  assert.throws(() => db.exec('COMMIT'), /FOREIGN KEY constraint failed/);
+  assert.equal(db.isTransaction, true);
+  assert.equal(db.prepare('SELECT committed_at FROM replay_transactions').get().committed_at, null);
+  const during = new Date().toISOString();
+  await delay(5);
+  db.exec('INSERT INTO parents VALUES (1); COMMIT');
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM replay_transactions').get().n, 1);
+  const committed = db.prepare('SELECT committed_at FROM replay_transactions').get().committed_at;
+  db.close();
+  for (const [at, expectedCount, file] of [[during, 0, 'during.sqlite'], [committed, 1, 'committed.sqlite']]) {
+    const destination = join(root, file);
+    await restoreServiceDatabaseAt({ sourcePath: source, destinationPath: destination, domain: 'task', at });
+    const restored = new DatabaseSync(destination);
+    assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM children').get().n, expectedCount);
+    assert.equal(restored.prepare('SELECT COUNT(*) AS n FROM parents').get().n, expectedCount);
+    assert.deepEqual(restored.prepare('PRAGMA foreign_key_check').all(), []);
+    restored.close();
+  }
+});
+
 test('replacement, primary-key changes and multiple changes in one timestamp restore in stable reverse order', async t => {
   const { root, source, db } = await fixture(t);
   db.exec("INSERT INTO results VALUES ('a', 'old', NULL, 1)");

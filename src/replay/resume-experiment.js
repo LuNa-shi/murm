@@ -3,13 +3,14 @@ import { lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, writeFi
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { SwarmEnvError } from '../errors.js';
+import { TERMINAL_TASK_STATES } from '../task/task-types.js';
 import { MissionWorkspace } from '../runtime/mission-workspace.js';
 import { parseReplayTime, restoreServiceDatabaseAt } from './service-history.js';
+import { upgradeResumedServiceDatabase } from './resume-schema.js';
 import { restoreWorkspaceAt } from './workspace-history.js';
 
 export { parseReplayTime } from './service-history.js';
 
-const TERMINAL_TASKS = new Set(['DONE', 'CLOSED', 'CANCELED', 'CANCELLED', 'SATISFIED', 'FAILED', 'REJECTED']);
 const failure = (code, message, details) => new SwarmEnvError(code, message, details);
 const hasTable = (db, name) => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name));
 const within = (root, path) => {
@@ -24,9 +25,30 @@ async function physicalDestination(path) {
     try { return join(await realpath(current), ...tail.reverse()); }
     catch (error) {
       if (error.code !== 'ENOENT' || dirname(current) === current) throw error;
+      // A dangling link could acquire a target inside the source on first write.
+      const entry = await lstat(current).catch(error => {
+        if (error.code !== 'ENOENT') throw error;
+        return null;
+      });
+      if (entry?.isSymbolicLink()) throw failure('REPLAY_DESTINATION_CONFLICT', 'Resume output has a dangling symlink', { path: current });
       tail.push(basename(current));
       current = dirname(current);
     }
+  }
+}
+
+export async function assertResumeOutputPaths(sourceExperimentDir, outputPaths) {
+  const source = await realpath(resolve(sourceExperimentDir));
+  for (const path of outputPaths) {
+    const output = await physicalDestination(path);
+    if (within(source, output) || within(output, source)) {
+      throw failure('REPLAY_DESTINATION_CONFLICT', 'Resume output must be separate from the source experiment', { path });
+    }
+    const entry = await lstat(output).catch(error => {
+      if (error.code !== 'ENOENT') throw error;
+      return null;
+    });
+    if (entry?.isFile() && entry.nlink > 1) throw failure('REPLAY_DESTINATION_CONFLICT', 'Resume output file has multiple hard links', { path });
   }
 }
 
@@ -37,7 +59,7 @@ async function optionalJson(path) {
 
 async function completedSource(source, at) {
   const metadata = await optionalJson(join(source, 'metadata', 'experiment.json'));
-  if (!metadata || !['completed', 'operator_stopped', 'startup_failed'].includes(metadata.status) || !Number.isFinite(Date.parse(metadata.ended_at))) {
+  if (!metadata || !['completed', 'operator_stopped', 'startup_failed', 'failed'].includes(metadata.status) || !Number.isFinite(Date.parse(metadata.ended_at))) {
     throw failure('REPLAY_SOURCE_NOT_FINISHED', 'Resume requires a finished experiment with its completion metadata');
   }
   const audit = await optionalJson(join(source, '.swarmenv-private-audit-v1.json'));
@@ -88,35 +110,35 @@ export function normalizeResumedServices({ projectDir, missionId, now = new Date
     transaction(task, () => {
       const accepted = task.prepare("SELECT submission_id FROM mission_submissions WHERE mission_id = ? AND state = 'accepted'").get(missionId);
       if (accepted) throw failure('REPLAY_MISSION_COMPLETED', 'The Mission was already accepted at the requested time', { submission_id: accepted.submission_id });
-      const executions = task.prepare(`SELECT e.* FROM executions e JOIN modern_task_records m USING (task_id)
-        WHERE m.mission_id = ? AND e.state IN ('CREATED', 'RUNNING', 'CLOSING', 'WAITING') ORDER BY e.execution_id`).all(missionId);
+      const executions = task.prepare(`SELECT e.* FROM executions e JOIN task_records m USING (task_id)
+        WHERE m.mission_id = ? AND e.state IN ('CREATED', 'RUNNING', 'CLOSING') ORDER BY e.execution_id`).all(missionId);
       const affected = new Set();
       for (const execution of executions) {
         const finish = task.prepare('SELECT * FROM execution_finish_intents WHERE execution_id = ? AND closed_at IS NULL').get(execution.execution_id);
         const current = task.prepare('SELECT state FROM tasks WHERE task_id = ?').get(execution.task_id);
         const terminal = finish?.terminal_state ?? 'FENCED';
         task.prepare(`UPDATE executions SET state = ?, terminal_reason = ?, fencing_version = fencing_version + 1,
-          state_version = state_version + 1, wait_condition_json = NULL, wait_deadline = NULL, resume_token = NULL,
+          state_version = state_version + 1,
           updated_at = ? WHERE execution_id = ?`).run(terminal, finish?.reason ?? 'historical_resume', now, execution.execution_id);
         summary.retired_execution_ids.push(execution.execution_id);
         if (finish) {
           task.prepare('UPDATE execution_finish_intents SET closed_at = ? WHERE execution_id = ?').run(now, execution.execution_id);
           summary.completed_finish_ids.push(execution.execution_id);
         }
-        if (!TERMINAL_TASKS.has(current.state) && ['done', 'cancelled'].includes(finish?.outcome)) {
-          const state = finish.outcome === 'done' ? 'DONE' : 'CANCELLED';
+        if (!TERMINAL_TASK_STATES.includes(current.state) && ['done', 'cancelled'].includes(finish?.outcome)) {
+          const state = finish.outcome === 'done' ? 'DONE' : 'CANCELED';
           task.prepare(`UPDATE tasks SET state = ?, block_reason = NULL, eligible_at = NULL,
-            cancelled_at = CASE WHEN ? = 'CANCELLED' THEN ? ELSE cancelled_at END,
+            cancelled_at = CASE WHEN ? = 'CANCELED' THEN ? ELSE cancelled_at END,
             state_version = state_version + 1, updated_at = ? WHERE task_id = ?`)
             .run(state, state, now, now, execution.task_id);
-        } else if (['RUNNING', 'WAITING'].includes(current.state)) {
+        } else if (current.state === 'RUNNING') {
           task.prepare(`UPDATE tasks SET state = 'OPEN', block_reason = NULL, eligible_at = ?,
             state_version = state_version + 1, updated_at = ? WHERE task_id = ?`).run(now, now, execution.task_id);
         }
         affected.add(execution.task_id);
       }
-      const orphan = task.prepare(`SELECT t.task_id FROM tasks t JOIN modern_task_records m USING (task_id)
-        WHERE m.mission_id = ? AND t.state IN ('RUNNING', 'WAITING') LIMIT 1`).get(missionId);
+      const orphan = task.prepare(`SELECT t.task_id FROM tasks t JOIN task_records m USING (task_id)
+        WHERE m.mission_id = ? AND t.state = 'RUNNING' LIMIT 1`).get(missionId);
       if (orphan) throw failure('REPLAY_INCOMPLETE_HISTORY', 'Historical Task ownership is missing its Execution', { task_id: orphan.task_id });
       summary.affected_task_ids = [...affected];
       summary.retired_bot_ids = task.prepare("SELECT bot_id FROM bots WHERE mission_id = ? AND state <> 'CLOSED' ORDER BY bot_id").all(missionId).map(row => row.bot_id);
@@ -127,15 +149,9 @@ export function normalizeResumedServices({ projectDir, missionId, now = new Date
         summary.interrupted_gate_ids = task.prepare('SELECT gate_id FROM service_commit_gate').all().map(row => row.gate_id);
         task.exec('DELETE FROM service_commit_gate');
       }
-      for (const table of ['service_commit_events', 'observation_events', 'experiments']) {
+      for (const table of ['service_commit_events', 'observation_events', 'experiments', 'execution_workspace_requests', 'execution_workspace_state']) {
         if (hasTable(task, table)) task.exec(`DELETE FROM ${table}`);
       }
-      if (hasTable(task, 'execution_workspace_requests')) {
-        task.prepare(`UPDATE execution_workspace_requests SET phase = 'failed', captured_json = NULL,
-          error_json = ?, updated_at = ? WHERE phase IN ('capturing', 'captured', 'installing', 'installed')`)
-          .run(JSON.stringify({ code: 'WORKSPACE_REQUEST_ABORTED', message: 'Private computation is not continued by historical resume' }), now);
-      }
-      if (hasTable(task, 'execution_workspace_state')) task.exec('UPDATE execution_workspace_state SET pending_apply = 0');
       for (const row of task.prepare("SELECT * FROM mission_submissions WHERE mission_id = ? AND state IN ('preparing', 'pending')").all(missionId)) {
         const document = { ...JSON.parse(row.document), state: 'error', result: { code: 'HISTORICAL_RESUME_INTERRUPTED' },
           release_pending: false, finished_at: now };
@@ -207,8 +223,8 @@ function verifyReferences({ projectDir, workspace, missionId }) {
     }
     for (const row of materials) {
       if (row.mission_id !== missionId) missing(row.material_id, 'mission_id', row.mission_id);
-      if (row.source_task && !taskIds.has(row.source_task)) missing(row.material_id, 'source_task', row.source_task);
-      if (row.source_execution && !executionIds.has(row.source_execution)) missing(row.material_id, 'source_execution', row.source_execution);
+      if (row.producer_task_id && !taskIds.has(row.producer_task_id)) missing(row.material_id, 'producer_task_id', row.producer_task_id);
+      if (row.producer_execution_id && !executionIds.has(row.producer_execution_id)) missing(row.material_id, 'producer_execution_id', row.producer_execution_id);
     }
     for (const row of judge.prepare('SELECT * FROM check_results').all()) {
       if (!taskIds.has(row.target_task_id)) missing(row.check_result_id, 'target_task_id', row.target_task_id);
@@ -224,7 +240,7 @@ export async function prepareExperimentResume({ sourceExperimentDir, destination
   if (!problem?.id || !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(problem.id)) throw new TypeError('Resume requires one safe problem ID');
   const source = await realpath(resolve(sourceExperimentDir));
   const destination = await physicalDestination(destinationProjectDir);
-  if (within(source, destination) || within(destination, source)) throw failure('REPLAY_DESTINATION_CONFLICT', 'Resume output must be separate from the source experiment');
+  await assertResumeOutputPaths(source, [destination]);
   const exists = await lstat(destination).then(() => true, error => { if (error.code === 'ENOENT') return false; throw error; });
   if (exists) throw failure('REPLAY_DESTINATION_CONFLICT', 'Resume project directory must not already exist');
   const metadata = await completedSource(source, selectedAt);
@@ -238,7 +254,12 @@ export async function prepareExperimentResume({ sourceExperimentDir, destination
   try {
     const services = {};
     for (const [domain, name] of [['task', 'project.sqlite'], ['context', 'context.sqlite'], ['judge', 'judge.sqlite']]) {
-      services[domain] = await restoreServiceDatabaseAt({ sourcePath: join(sourceProject, name), destinationPath: join(stage, name), domain, at: selectedAt });
+      const destinationPath = join(stage, name);
+      const history = await restoreServiceDatabaseAt({ sourcePath: join(sourceProject, name), destinationPath, domain, at: selectedAt });
+      const imported = new DatabaseSync(destinationPath);
+      try {
+        services[domain] = { ...history, schema_conversion: upgradeResumedServiceDatabase(imported, { domain }) };
+      } finally { imported.close(); }
     }
     const tasks = new DatabaseSync(join(stage, 'project.sqlite'));
     let mission, initialTaskIds, initialExecutionIds;
@@ -250,8 +271,8 @@ export async function prepareExperimentResume({ sourceExperimentDir, destination
       if (acceptance.project !== problem.id || acceptance.source_hash !== problem.source_hash || acceptance.target_path !== problem.problem_file) {
         throw failure('REPLAY_ENVIRONMENT_MISMATCH', 'Historical Mission does not match the selected problem and original formalization');
       }
-      initialTaskIds = tasks.prepare('SELECT task_id FROM modern_task_records WHERE mission_id = ? ORDER BY task_id').all(mission.mission_id).map(row => row.task_id);
-      initialExecutionIds = tasks.prepare('SELECT e.execution_id FROM executions e JOIN modern_task_records m USING (task_id) WHERE m.mission_id = ? ORDER BY e.execution_id').all(mission.mission_id).map(row => row.execution_id);
+      initialTaskIds = tasks.prepare('SELECT task_id FROM task_records WHERE mission_id = ? ORDER BY task_id').all(mission.mission_id).map(row => row.task_id);
+      initialExecutionIds = tasks.prepare('SELECT e.execution_id FROM executions e JOIN task_records m USING (task_id) WHERE m.mission_id = ? ORDER BY e.execution_id').all(mission.mission_id).map(row => row.execution_id);
     } finally { tasks.close(); }
     const sourceWorkspaceRoot = join(sourceProject, 'mission-workspace');
     const candidates = [];

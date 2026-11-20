@@ -34,7 +34,7 @@ async function createProjectDatabase(path) {
   const db = new DatabaseSync(path);
   db.exec(`
     create table tasks (
-      task_id text primary key, root_id text, parent_id text, owner_ref text, task_type text,
+      task_id text primary key, owner_ref text, task_type text,
       state text, state_version integer, goal text, block_reason text, created_at text, updated_at text
     );
     create table executions (
@@ -45,7 +45,7 @@ async function createProjectDatabase(path) {
     );
     create table materials (
       material_id text primary key, kind text, scope text, evidence_state text,
-      source_task text, source_execution text, version integer, created_at text
+      producer_task_id text, producer_execution_id text, version integer, created_at text
     );
     create table check_results (
       check_result_id text primary key, request_key text, artifact_material_id text,
@@ -57,8 +57,8 @@ async function createProjectDatabase(path) {
       operation_id text primary key, operation text, result_json text, created_at text
     );
   `);
-  db.prepare('insert into tasks values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
-    TASK, TASK, null, 'owner:test', 'proof', 'WAITING', 3, 'Test goal', null, START, END,
+  db.prepare('insert into tasks values (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+    TASK, 'owner:test', 'proof', 'WAITING', 3, 'Test goal', null, START, END,
   );
   db.prepare('insert into executions values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
     EXECUTION, TASK, 'agent:core-1', 'WAITING', 4, 1, 1, 1,
@@ -108,8 +108,8 @@ async function createFixture({ agent = true, service = true, workspace = true, m
       { timestamp: T3, scope: 'task-service', event: 'dispatch.complete', service: 'task', operation: 'workspace_check', ok: true, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'WAITING', artifact_material_id: MATERIAL } } },
     ]);
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'context-service.ndjson'), [
-      { timestamp: T2, scope: 'context-service', event: 'dispatch.start', service: 'context', operation: 'publish_material', envelope: { operation_id: 'op-publish', task_id: TASK, execution_id: EXECUTION } },
-      { timestamp: T2, scope: 'context-service', event: 'dispatch.complete', service: 'context', operation: 'publish_material', ok: true, result: { material: { material_id: MATERIAL, kind: 'artifact', evidence_state: 'proposed', source_task: TASK, source_execution: EXECUTION } } },
+      { timestamp: T2, scope: 'context-service', event: 'dispatch.start', service: 'context', operation: 'context_publish_material', envelope: { operation_id: 'op-publish', task_id: TASK, execution_id: EXECUTION } },
+      { timestamp: T2, scope: 'context-service', event: 'dispatch.complete', service: 'context', operation: 'context_publish_material', ok: true, result: { material: { material_id: MATERIAL, kind: 'artifact', evidence_state: 'proposed', producer_task_id: TASK, producer_execution_id: EXECUTION } } },
       { timestamp: T3, scope: 'context-service', event: 'dispatch.start', service: 'context', operation: 'read_materials', envelope: { operation_id: 'op-read', task_id: TASK, execution_id: EXECUTION } },
       { timestamp: T3, scope: 'context-service', event: 'dispatch.complete', service: 'context', operation: 'read_materials', ok: true, result: [{ material_id: MATERIAL }] },
     ]);
@@ -225,10 +225,10 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
   try {
     const first = await analyzeExperiment(root, { outputPath: firstPath });
     const second = await analyzeExperiment(root, { outputPath: secondPath });
-    // Fixed window ordering/evidence after adding explicit Bridge pairing
-    // metadata. Repeated public-entry analysis must remain deterministic.
+    // Fixed window ordering and evidence with canonical Context operations
+    // and producer identities. Repeated analysis remains deterministic.
     assert.equal(createHash('sha256').update(JSON.stringify(first.executions.map(item => item.windows))).digest('hex'),
-      'fcf81a10f287df5db3f7124c2fba857a209f12793863e77800683a1064ef71ff');
+      '261b6859d65290b63e1c3906c0ab73e1e25f87f3f16d53dd1405086eb196a531');
     assert.equal(first.inventory.evidence.find((entry) => entry.class === 'agent').status, 'present');
     assert.equal(first.inventory.evidence.find((entry) => entry.class === 'workspace').status, 'present');
     assert.equal(first.executions.length, 1);
@@ -238,6 +238,7 @@ test('analyzes a complete fixture into stable per-Execution windows without copy
     assert.ok(first.report.includes('Judge FAIL'));
     assert.ok(first.report.includes('## Error analysis'));
     assert.ok(first.report.includes('## Optimization recommendations'));
+    assert.doesNotMatch(first.report, /parent review|child Task|research Tasks|proof Tasks|waiting Root|open Child/);
     assert.ok(first.report.includes('## Candidate/Judge review'));
     assert.ok(first.report.includes('## Coordination layer'));
     assert.ok(first.report.includes('## Tool layer'));
@@ -303,12 +304,12 @@ test('sanitized mode keeps structural evidence but does not parse raw Agent oper
 test('sanitized analysis joins bounded Material consumer and downstream observations', async () => {
   const root = await createFixture();
   const observation = new ObservationStore(join(root, 'observability.sqlite'));
-  observation.registerExperiment({ experimentId: 'fixture-run', rootTaskId: TASK, status: 'RUNNING' });
+  observation.registerExperiment({ experimentId: 'fixture-run', status: 'RUNNING' });
   observation.append({
     experimentId: 'fixture-run', source: 'context-service', kind: 'material_published',
     taskId: TASK, executionId: EXECUTION, payload: {
-      material_id: MATERIAL, kind: 'artifact', scope: 'proof_relevant',
-      source_task: TASK, source_execution: EXECUTION,
+      material_id: MATERIAL,
+      producer_task_id: TASK, producer_execution_id: EXECUTION,
     },
   });
   observation.append({
@@ -340,12 +341,12 @@ test('sanitized analysis joins bounded Material consumer and downstream observat
 test('sanitized analysis preserves bounded operator IDs beyond the generic summary cap', async () => {
   const root = await createFixture();
   const observation = new ObservationStore(join(root, 'observability.sqlite'));
-  observation.registerExperiment({ experimentId: 'fixture-run', rootTaskId: TASK, status: 'RUNNING' });
+  observation.registerExperiment({ experimentId: 'fixture-run', status: 'RUNNING' });
   observation.append({
     experimentId: 'fixture-run', source: 'context-service', kind: 'material_published',
     taskId: TASK, executionId: EXECUTION, payload: {
-      material_id: MATERIAL, kind: 'artifact', scope: 'proof_relevant',
-      source_task: TASK, source_execution: EXECUTION,
+      material_id: MATERIAL,
+      producer_task_id: TASK, producer_execution_id: EXECUTION,
     },
   });
   const materialIds = [...Array.from({ length: 21 }, (_, index) => `noise-material-${index}`), MATERIAL];
@@ -458,12 +459,12 @@ test('modern analysis reads split stores and recognizes bounded public operation
     } finally { database.close(); }
     const envelope = { task_id: TASK, execution_id: EXECUTION };
     await writeNdjson(join(root, 'logs', 'projects', project, 'services', 'modern.ndjson'), [
-      { timestamp: T2, event: 'dispatch.complete', operation: 'material_publish', envelope, result: { material: {
+      { timestamp: T2, event: 'dispatch.complete', operation: 'context_publish_material', envelope, result: { material: {
         material_id: 'modern-note', producer_task_id: TASK, producer_execution_id: EXECUTION, content: 'private modern material body',
       } } },
       { timestamp: T3, event: 'dispatch.complete', operation: 'read_materials', envelope, result: { materials: [{ material_id: 'modern-note' }], next_cursor: 'opaque' } },
-      { timestamp: T3, event: 'dispatch.complete', operation: 'workspace_save', envelope, result: { workspace_id: 'public-w', revision: '2.1' } },
-      { timestamp: T4, event: 'dispatch.complete', operation: 'finish_task', envelope, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'SUCCEEDED' } } },
+      { timestamp: T3, event: 'dispatch.complete', operation: 'save_workspace_revision', envelope, result: { workspace_id: 'public-w', revision: '2.1' } },
+      { timestamp: T4, event: 'dispatch.complete', operation: 'task_finish', envelope, result: { execution: { execution_id: EXECUTION, task_id: TASK, state: 'SUCCEEDED' } } },
     ]);
     const analysis = await analyzeExperiment(root);
     assert.ok(analysis.facts.some(fact => fact.kind === 'material_record' && fact.sources.some(source => source.includes('context.sqlite'))));
@@ -560,63 +561,6 @@ test('observation toolCallId correlation preserves raw returned evidence beside 
   } finally { await cleanup(root); }
 });
 
-test('Bridge analysis correlates physical calls and keeps ambiguous historical completions unknown', async () => {
-  const root = await createFixture({ service: false });
-  const path = join(root, 'logs', 'projects', 'demo', 'bridge', 'core-1.ndjson');
-  const start = (operation, operationId, callId, executionId = EXECUTION) => ({
-    timestamp: T1, event: 'bridge.start', operation, operation_id: operationId,
-    bridge_call_id: callId, task_id: executionId === EXECUTION ? TASK : 'other-task', execution_id: executionId,
-  });
-  const complete = (operation, operationId, callId, revision, ok = true) => ({
-    timestamp: new Date(Date.parse(START) + revision * 10).toISOString(), event: 'bridge.complete', operation, operation_id: operationId,
-    bridge_call_id: callId, ok, result: { workspace_revision: revision },
-  });
-  try {
-    await writeNdjson(path, [
-      start('workspace_save', 'shared', 'physical-first'),
-      start('workspace_save', 'shared', 'physical-second', 'other-execution'),
-      complete('workspace_save', 'shared', 'physical-second', 201),
-      complete('workspace_save', 'shared', 'physical-first', 202),
-      start('workspace_save', 'unique-first'), start('workspace_save', 'unique-second', undefined, 'other-execution'),
-      complete('workspace_save', 'unique-second', undefined, 203),
-      complete('workspace_save', 'unique-first', undefined, 204),
-      start('workspace_save', 'retry'), start('workspace_save', 'retry'),
-      complete('workspace_save', 'retry', undefined, 205),
-      complete('workspace_save', 'retry', undefined, 206),
-      start('mission_submission_get', 'old-read'),
-      { timestamp: T2, event: 'bridge.response_sent', operation: 'mission_submission_get', operation_id: 'old-read' },
-      start('mission_submission_get', 'new-read', undefined, 'other-execution'),
-      { timestamp: T3, event: 'bridge.complete', operation: 'mission_submission_get', ok: false, error: { code: 'NOT_ALLOWED' } },
-      start('task_finish', 'missing-complete'),
-      start('task_finish', 'later-finish', undefined, 'other-execution'),
-      { timestamp: T3, event: 'bridge.complete', operation: 'task_finish', ok: true, result: { execution: { task_id: TASK, execution_id: EXECUTION, state: 'DONE' } } },
-      start('workspace_apply', 'legacy'),
-      { timestamp: T4, event: 'bridge.complete', operation: 'workspace_apply', ok: true, result: {} },
-    ]);
-    const analysis = await analyzeExperiment(root);
-    const finished = analysis.facts.filter(f => f.kind === 'service_call_finished' && f.summary.service === 'bridge');
-    const byRevision = revision => finished.find(f => f.summary.result?.workspace_revision === revision);
-    assert.equal(byRevision(201).executionId, 'other-execution');
-    assert.equal(byRevision(202).executionId, EXECUTION);
-    assert.equal(byRevision(203).executionId, 'other-execution');
-    assert.equal(byRevision(204).executionId, EXECUTION);
-    for (const revision of [205, 206]) {
-      assert.equal(byRevision(revision).executionId, null);
-      assert.equal(byRevision(revision).taskId, null);
-      assert.equal(byRevision(revision).summary.bridge_pairing, 'unknown');
-      assert.equal(analysis.facts.some(f => f.kind === 'workspace_revision' && f.summary.workspace_revision === revision), false);
-    }
-    const lateError = finished.find(f => f.operation === 'mission_submission_get' && f.summary.ok === false);
-    assert.equal(lateError.executionId, null);
-    assert.equal(lateError.taskId, null);
-    assert.equal(lateError.summary.error.code, 'NOT_ALLOWED');
-    const ambiguousFinish = finished.find(f => f.operation === 'task_finish');
-    assert.equal(ambiguousFinish.executionId, null);
-    assert.equal(analysis.facts.some(f => f.kind === 'execution_terminal' && f.operation === 'task_finish'), false);
-    assert.equal(finished.find(f => f.operation === 'workspace_apply').executionId, EXECUTION);
-  } finally { await cleanup(root); }
-});
-
 test('Bridge analysis isolates Core files and does not consume incomplete or reused identities', async () => {
   const root = await createFixture({ service: false });
   const folder = join(root, 'logs', 'projects', 'demo', 'bridge');
@@ -626,7 +570,7 @@ test('Bridge analysis isolates Core files and does not consume incomplete or reu
     operation_id: operationId, bridge_call_id: callId, ok: true, result: { workspace_revision: revision } });
   try {
     await writeNdjson(join(folder, 'core-1.ndjson'), [
-      start('workspace_save', 'abandoned'),
+      start('save_workspace_revision', 'abandoned'),
       start('workspace_apply', 'delivered'),
       { timestamp: T2, event: 'bridge.response_sent', operation: 'workspace_apply', operation_id: 'delivered' },
       done('workspace_apply', undefined, undefined, 301),
@@ -641,7 +585,7 @@ test('Bridge analysis isolates Core files and does not consume incomplete or reu
       done('context_get_material', 'known-id', 'different-physical', 307),
       start('task_list'), start('task_list'), done('task_list', undefined, undefined, 308),
     ]);
-    await writeNdjson(join(folder, 'core-2.ndjson'), [done('workspace_save', undefined, undefined, 309)]);
+    await writeNdjson(join(folder, 'core-2.ndjson'), [done('save_workspace_revision', undefined, undefined, 309)]);
     const analysis = await analyzeExperiment(root);
     const finished = analysis.facts.filter(f => f.kind === 'service_call_finished' && f.summary.service === 'bridge' && f.summary.phase === 'finished');
     const byRevision = revision => finished.find(f => f.summary.result?.workspace_revision === revision);

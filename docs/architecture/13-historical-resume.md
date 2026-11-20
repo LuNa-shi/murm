@@ -12,8 +12,18 @@ The existing benchmark CLI accepts `--resume-from <experiment-directory>` togeth
 with `--at <ISO timestamp with timezone>`. Supply one existing `--problem`, the
 original compatible problem/checker deployment, and a new `--experiment-dir`.
 The source must have completion metadata and, when managed private audit was used,
-its cleanup completion record. The selected time must be inside that experiment's
+its cleanup completion record. Completed, operator-stopped and failed runs with a
+recorded research start and end can supply a historical Mission. A run that failed
+before admission has no selectable research interval. The selected time must be inside that experiment's
 recorded interval. Pass@K is not a historical continuation mode.
+
+The CLI resolves the output paths before reserving the run. The runner repeats this
+check before preflight and before writing an unavailable-project report. The run,
+reports and named report files must be physically separate from the source. The
+project's state, log and working directories must be fresh. Existing symlinks are
+resolved, dangling output links are rejected and existing output files with
+multiple hard links are rejected. A path conflict raises `REPLAY_DESTINATION_CONFLICT`.
+The observer's writable paths are checked when observation is enabled.
 
 Before opening live services, `prepareExperimentResume` creates a temporary project
 directory beside the new destination. It reconstructs `project.sqlite`,
@@ -30,8 +40,10 @@ Core loops with new Bot/Execution/sandbox identities and credentials. Private Pi
 conversations and unfinished private computation are not loaded. New Bots read the
 public history through the existing service tools.
 
-Offline reconstruction happens before the new run's default start clock. Subsequent
-setup, sandbox startup and Bot reading follow the normal runner's timebox rules.
+Offline reconstruction, checker and provider preflight, service startup and Bridge
+setup run within `setup_elapsed_ms`. Successful admission sets `started_at` and
+starts a full new Mission timebox. Per-Bot provisioning and research consume that
+window. A failure before admission has no research start or elapsed research time.
 The new run has a fresh model-budget database and new checker admission budgets;
 existing proof/check results remain research data. No historical provider resource
 is adopted, stopped or deleted by this import.
@@ -68,7 +80,10 @@ uses SQLite's own parsed statement boundaries. Ordinary autocommit statements us
 SQLite's statement-stable timestamp. Timestamps have millisecond precision. A cutoff
 includes all recorded commits at or before that time, with sequence establishing
 order within a database. A transaction cannot be split by choosing a time between
-its individual row writes.
+its individual row writes. Nested savepoints are tracked in order. A name reused
+by an inner savepoint resolves to that inner scope on release or rollback. If a
+commit fails while SQLite keeps the transaction open, a later repair and successful
+retry retain the original transaction marker.
 
 The offline reader copies the finished source's database, WAL and rollback-journal
 files into temporary storage before opening SQLite. Source files must stay stable
@@ -92,10 +107,17 @@ It does not reject an old experiment solely because `replay_*` is absent.
 - Task operation receipts retain command inputs and results, including original IDs.
   Contract revisions and finish intents supplement them. A finish becomes a completed
   Task fact at `closed_at`, not merely when its request was accepted. Historical
-  dependency facts determine blocked/open status.
+  dependency facts determine blocked/open status. A post-cutoff mutation receipt
+  excludes the corresponding new Task contract even when its row timestamp
+  precedes T.
 - Context retains immutable Material bodies and attachment bytes. Relation events
   and operation receipts restore supersession, dispute and revocation at the selected
-  time. Later Materials, consumptions and corrections are excluded.
+  time. Successful publication, consumption or correction receipts establish when
+  the Material (including a replacement) was known to exist. An earlier recorded
+  use remains sufficient when the original publication receipt is missing and only
+  a later repeat survives. The importer reports an ambiguous receipt-less reference
+  with its table and ID. Corrections and consumption also use their own operation
+  receipts as a lower bound on visibility.
 - Judge result receipts identify when a verdict existed. A check requested before
   the cutoff but completed afterwards cannot bring its later PASS into the restored
   state.
@@ -110,10 +132,35 @@ or reruns model/checker calls to recreate their outcomes. It checks required evi
 and fails with an entity/table-specific history error when it cannot support a
 historical value. Final database values are not substitutes for missing old values.
 
-Legacy reconstruction preserves supported public research facts. Its report identifies
-derived fields and limitations, including fields whose exact old runtime version
-counter cannot be established. Tests of this path use old-format service fixtures;
-they do not certify every archived schema or a particular external experiment directory.
+### Loading current services from reconstructed data
+
+The importer first projects or rewinds each service at T, then examines the schema
+in the staging copy. Current `task_records` and current Material tables can be used
+directly. The supported pre-cleanup format identifies Task records with
+`modern_task_records` and Materials with `source_task` and `source_execution`.
+The converter rebuilds the affected tables using the current schema in one local
+transaction and verifies foreign keys before commit. The archived Judge schema is
+compatible. `services.<domain>.schema_conversion` in `resume.json` records whether
+conversion occurred and any adjustments.
+
+Task IDs, specification hashes and bound checker identities survive conversion.
+The importer recomputes the duplicate-proposal key from the restored contract,
+using the historical summary as the trusted-owner default for a missing gap.
+Task prerequisites become `depends_on` relations. An old proposal-origin relation
+is omitted from the new dependency set. The importer records state mappings,
+including archived Task `CANCELLED` to current `CANCELED` and `SATISFIED` to
+`DONE`. Unfinished ownership then goes through handoff. An unsupported Task state,
+active structural dependency on a Material or CheckResult, or retired completion
+requirement fails with `REPLAY_SCHEMA_INCOMPATIBLE` and the affected entity.
+
+Material content, hashes, attachment bytes and correction history survive. The
+converter maps archived producer fields to `producer_task_id` and
+`producer_execution_id`. Archived classification and evidence fields are stored
+under `provenance.historical_metadata` in the converted database. Current public
+views expose the current Material contract. Where an archived value has no
+recoverable history, the projector returns the table and entity in its error.
+Legacy receipts use their recorded times. They have no independent SQLite commit
+timestamp for the interval between the final receipt and commit.
 
 ## Workspace history and main selection
 
@@ -148,16 +195,23 @@ recorded handoff in the destination:
   eligibility using the restored public facts before new takes.
 - In-flight checks/submissions with no historical terminal result are marked as
   interrupted. Old peer phases, gates, notifications and observer delivery state
-  are not replayed into live provider calls. Checker environment preflight starts fresh.
+  are not replayed into live provider calls. Every private Execution Workspace
+  request and state row is cleared, including previously completed save receipts.
+  Public files and their public receipts come from the restored Workspace. Checker
+  environment preflight starts fresh.
 - An already accepted Mission is rejected as a continuation starting point. Its
   acceptance is not silently removed.
 
 The public reconstruction and this operational handoff are distinct in `resume.json`.
 That private file records the source, requested time, per-service history mode,
 Workspace history selection, inherited counts, warnings and changes made for fresh
-ownership. The report records inherited Materials separately and does not count them
-as newly produced progress. It emits `mission_resumed_from_history` instead of claiming
-an empty Task start.
+ownership. The report includes inherited Tasks under `protocol.initial_task_count`;
+`run.dynamic_task_count` and `run.progress_evidence.proposed_task_count` count new
+proposals. `project.task_count` is the Mission total. Inherited Materials and newly
+published Materials have separate counts. Consumption by a historical Execution
+is counted in `inherited_material_consumption_count`. The current run's consumption
+list and count cover new Executions, including their use of inherited Materials. The start event is
+`mission_resumed_from_history`.
 
 ## Verification seams
 
@@ -167,12 +221,13 @@ control statements and source preservation. Legacy tests exercise real Task/Cont
 Judge APIs before reconstructing their old-format outputs. Workspace tests cover
 save versus main, missing history, crash recovery, excluded future Git objects and
 new writes after restoration. Resume integration tests reconstruct a completed
-fixture, then exercise fresh Bot registration, take/start and Material reads across
-four Cores; a zero-timebox runner probe verifies service composition without model
-calls. Paid research outcomes require a separately authorized run.
+fixture and bind four distinct new Executions on the four Cores. Each Bot can read
+the inherited Material. A zero-timebox runner probe checks independent-service
+composition and new-run accounting without model calls. Paid research outcomes require a separately authorized run.
 
 Sources: [database history](../../src/replay/service-history.js),
 [legacy projector](../../src/replay/legacy-service-state.js),
+[schema conversion](../../src/replay/resume-schema.js),
 [Workspace replay](../../src/replay/workspace-history.js),
 [resume preparation](../../src/replay/resume-experiment.js),
 [runner](../../src/benchmark/putnam-runner.js).

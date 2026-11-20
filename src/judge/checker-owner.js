@@ -38,7 +38,7 @@ export async function cleanupOwnedCheckers(path, { timeoutMs = 30_000 } = {}) {
   const environment = { XDG_RUNTIME_DIR: `/run/user/${process.getuid()}` };
   let settled = 0;
   for (const [unit, row] of pending) {
-    if (!row.dispatch_guard) throw Object.assign(new Error('Unfenced legacy checker dispatch requires operator reconciliation'), { code: 'CHECKER_CLEANUP_PENDING', unit });
+    if (!row.dispatch_guard) throw Object.assign(new Error('Unfenced checker dispatch requires operator reconciliation'), { code: 'CHECKER_CLEANUP_PENDING', unit });
     // Cancel before observing an absent unit: a client that has not acquired its
     // dispatch lock must refuse to submit after this durable marker appears.
     const paths = checkerDispatchPaths(path, unit);

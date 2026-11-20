@@ -9,7 +9,6 @@ import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { TaskService } from '../src/task/task-service.js';
 import { createServiceHost } from '../src/sdk/service-host.js';
 import { builtInServiceManifest, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { createHttpDomainProxy } from '../src/sdk/http-domain-proxy.js';
 import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
 
 const SERVICE_IDS = new Set(['task', 'context', 'judge', 'catalog']);
@@ -40,10 +39,6 @@ if (databasePath) {
   await mkdir(dirname(databasePath), { recursive: true });
   database = new DatabaseSync(databasePath);
 }
-const endpointProxy = (id) => catalogEndpoints[id]
-  ? createHttpDomainProxy({ serviceId: id, url: catalogEndpoints[id].url, token: catalogEndpoints[id].token, actorRef: `service:${serviceId}` })
-  : null;
-
 async function loadJudgeFixtureManifest() {
   const configured = process.env.SWARMENV_JUDGE_FIXTURE_MANIFEST;
   if (!configured) return null;
@@ -56,15 +51,13 @@ let contextService = null;
 let taskService = null;
 let judgeService = null;
 if (isolated) {
-  if (serviceId === 'task') taskService = new TaskService(database, { contextService: endpointProxy('context') });
-  if (serviceId === 'context') contextService = new ContextService(database, { taskService: endpointProxy('task') });
+  if (serviceId === 'task') taskService = new TaskService(database);
+  if (serviceId === 'context') contextService = new ContextService(database);
   if (serviceId === 'judge') judgeService = new JudgeService(database, {
     fixtureManifest: judgeFixtureManifest,
     checker: new LeanChecker({ workRoot: resolve(process.env.SWARMENV_JUDGE_WORK_ROOT ?? `./data/${serviceId}-judge-work`), command: process.env.SWARMENV_LEAN_COMMAND ?? 'lake' }),
   });
 } else {
-  // Compatibility composition for local-first fixtures. Production isolated
-  // deployments set SWARMENV_SERVICE_ISOLATED=true and use HTTP proxies above.
   contextService = new ContextService(database);
   taskService = new TaskService(database, { contextService });
   contextService.taskService = taskService;
@@ -97,7 +90,7 @@ function dispatch(capability, input, envelope, role = null) {
     }
     if (capability.operation === 'list_tools') return { tools: catalogRegistry.listTools(input?.service ?? null).filter(allowed) };
   }
-  if (['task_take', 'take', 'take_task'].includes(capability.operation) &&
+  if (capability.operation === 'task_take' &&
       [input?.owner_ref, input?.ownerRef, input?.actor_ref].some(value => value !== undefined && value !== envelope.actor_ref)) {
     throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot assign another Task owner');
   }
@@ -116,7 +109,6 @@ function dispatch(capability, input, envelope, role = null) {
   if (serviceId === 'task') {
     const bot = taskService.getBot(envelope.actor_ref);
     if (bot) {
-      if (capability.operation === 'execution_progress') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Legacy Execution progress is unavailable to Bots');
       const requestedMission = input.mission_id ?? input.missionId;
       const taskId = input.task_id ?? input.taskId ?? envelope.task_id;
       if ((requestedMission !== undefined && requestedMission !== bot.mission_id) ||

@@ -132,10 +132,10 @@ test('sparse Material queries keep a continuation after scanning an empty bounde
   const reader = actor('reader', 'mission', false);
   context.dispatch('context_publish_material', { material_id: 'initial', content: 'irrelevant' }, producer());
   taskService.db.exec(`WITH RECURSIVE numbers(i) AS (VALUES(1) UNION ALL SELECT i+1 FROM numbers WHERE i < 500)
-    INSERT INTO materials (material_id, kind, role, mission_id, scope, evidence_state, content_ref, content_hash, content_json,
-      version, source_task, source_execution, producer_bot_id, provenance_json, created_at)
-    SELECT 'filler-' || i, kind, role, mission_id, scope, evidence_state, content_ref, content_hash, content_json,
-      version, source_task, source_execution, producer_bot_id, provenance_json, created_at FROM materials, numbers WHERE material_id='initial'`);
+    INSERT INTO materials (material_id, mission_id, content_hash, content_json,
+      version, producer_task_id, producer_execution_id, producer_bot_id, provenance_json, created_at)
+    SELECT 'filler-' || i, mission_id, content_hash, content_json,
+      version, producer_task_id, producer_execution_id, producer_bot_id, provenance_json, created_at FROM materials, numbers WHERE material_id='initial'`);
   context.dispatch('context_publish_material', { material_id: 'match', content: 'Matching keyword' }, producer());
   const input = { query: 'keyword' };
   const first = context.dispatch('context_search_materials', input, reader());

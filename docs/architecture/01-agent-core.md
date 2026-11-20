@@ -23,20 +23,17 @@ An unbound registered Bot still uses role `bound`. There is no separate `idle` r
 
 ### 2.1 Adapter configuration and routing
 
-`OpenSandboxAgentAdapter` is the research-process adapter. Its configuration includes the sandbox manager, command/provider/model routing, worker environment, model access and pinned Bot or solver resources. Runtime registers a Bot first; its `resource_key` identifies the worker before any Task/Execution exists. `AgentCoreSession` supplies RPC/event/stop behavior over the remote child transport, and `resolveAgentCoreRoute` supplies provider placement. These shared helpers remain in `pi-adapter.js`; there is no local-process launch adapter or direct Runtime launch alternative.
+`OpenSandboxAgentAdapter` is the research-process adapter. Its configuration includes the sandbox manager, command/provider/model routing, worker environment, model access and pinned Bot or solver resources. Runtime registers a Bot first; its `resource_key` identifies the worker before any Task/Execution exists. `AgentCoreSession` supplies RPC/event/stop behavior over the remote child transport, and `validatePiProvider` validates the selected native Pi provider. These shared helpers remain in `pi-adapter.js`; there is no local-process launch adapter or direct Runtime launch alternative.
 
-The benchmark defaults to direct `pi`; the shipped image carries the native Pi provider catalog without NuRouter. A programmatic remote-adapter command override requires a matching image. A command equal to `pi`, or ending in `/pi`, is treated as direct Pi. The retained route helper rejects unknown providers and incompatible account/group selectors before worker creation.
+The Agent adapter starts direct `pi`. An explicit absolute path ending in `/pi` is accepted for deployments with a different executable location. Other launcher commands fail before worker creation. Provider and model flags are passed directly to Pi.
 
-| Provider | Provider/model flags are placed on | Additional constraint |
-|---|---|---|
-| `openai` | Pi arguments after the NuRouter separator, or direct Pi | Account and group cannot both be set |
-| `openai-codex` | Pi arguments after the separator, or direct Pi | Account and group cannot both be set |
-| `gpt_proxy` | Pi arguments after the separator, or direct Pi | Account and group cannot both be set; default provider of the benchmark CLI |
-| `kimi_proxy` | Pi arguments after the separator, or direct Pi | Account and group cannot both be set |
-| `kimi` | NuRouter arguments before the separator | The normal route uses NuRouter |
-| Other value | Launch rejected with `INVALID_CONTRACT` | No automatic provider inference |
-
-The direct-Pi command check and provider-placement table are separate mechanisms. Selecting direct Pi with a provider whose flags belong to NuRouter does not move those flags automatically. Use the recorded launch arguments to establish what a run invoked.
+| Provider | Launch behavior |
+|---|---|
+| `openai` | Direct Pi with explicit provider and model |
+| `openai-codex` | Direct Pi with explicit provider and model |
+| `gpt_proxy` | Direct Pi with explicit provider and model, the benchmark CLI default |
+| `kimi_proxy` | Direct Pi with explicit provider and model |
+| Other value | Launch rejected with `INVALID_CONTRACT` |
 
 The registered OpenSandbox argument list, resource attestation and tool exposure are described in §2.4. Startup always uses that adapter; there is no custom local adapter factory or fallback that changes tool permissions. [Sources: benchmark composition](../../src/benchmark/putnam-runner.js), [OpenSandbox adapter](../../src/agent/opensandbox-agent-adapter.js).
 
@@ -44,7 +41,7 @@ The registered OpenSandbox argument list, resource attestation and tool exposure
 
 Registered OpenSandbox startup selects the pinned Bot system resource and four skill resources, or the solver resource in explicit solver mode. It rejects an unrecognized custom system prompt or Service extension; null configuration does not disable attestation. The worker passes the selected immutable file through Pi’s system-role append mechanism. No host-local adapter writes a replacement identity file. The [complete bodies](prompts/01-system-identity.md) are distinct from ordinary user RPC messages.
 
-Before spawning, `createVersionManifest` records exact installed Pi and Node versions (NuRouter is optional for compatibility adapters) and launch arguments. Explicit constructor values win; environment overrides `SWARMENV_PI_VERSION`/`SWARMENV_NUROUTER_VERSION` are next; otherwise the executable's `--version` is queried. The NuRouter field is null on direct-Pi runs and only resolved for compatibility adapters. It rejects non-exact semantic versions. Normal startup does not query npm; the exported latest-version lookup is a separate utility. `package.json` pins Pi package `1.3.0`, while the recorded executable version is the evidence for an actual run. [Source: version-manifest](../../src/agent/version-manifest.js).
+Before spawning, `createVersionManifest` records the exact installed Pi and Node versions and launch arguments. Explicit constructor values win. `SWARMENV_PI_VERSION` can supply the pinned Pi version, otherwise startup queries the guest executable. Both versions require exact semantic versions. The exported latest-version lookup is an explicit utility. `package.json` pins Pi package `1.3.0`, while the recorded executable version provides evidence for an actual run. [Version manifest](../../src/agent/version-manifest.js).
 
 ### 2.3 RPC protocol and process lifetime
 
@@ -70,7 +67,7 @@ The adapter also owns failed startup before a Session can be returned. It tracks
 2. **Start the Session while unbound.** A configured first-Bot stagger sets when each Core may begin its first discovery. Once eligible, a Core can start independently, including while other Cores are in discovery or execution. Runtime first persists the Bot and rotates its Bridge identity/token. The child receives that Bridge URL/token and `SWARMENV_AGENT_ROLE=bound`. Runtime waits for readiness before the runner marks the Session as an `identitySession`. It supplies no `agentPrompt` to `adapter.start`.
 3. **Send one discovery turn.** `IdentityTaskLoop` supplies eligible Tasks to `takeTaskWithAgent`. The runner sends the registered Bot startup message: current Mission, Bot/Core/Session identity, pinned public Workspace preview, budget deadlines, CLI service directory and an explicitly partial eligible Task page. The system text and four built-in skill bodies are fixed resources; the message records their hash and names. Every Core can enter discovery with an empty page. While the Mission is open and selection time remains, the Bot prefers suitable existing work or identifies a gap from the public state and proposes and takes a distinct local Task. Every proposal remains an ordinary Mission Task, including the first. The runner neither promotes it to root nor removes it from ready-work accounting.
 4. **Create the durable take.** The Bridge authenticates its own actor/Core, strips caller-provided owner and prompt claims, and invokes Task Service. A rejected take remains a failed take. The identity supervisor only accepts the actual transport receipt; it cannot turn a selected Task ID into an operator take.
-5. **Bind the existing Session.** The Bridge stores returned IDs; the runner hook prepares Workspace in the existing Bot Sandbox, validates that the original Session is still live, activates Execution durably and registers the process. `sendInitialPrompt:false` avoids a second prompt inside the discovery turn. The tool result returns to that same turn with Runtime's activated Execution and prepared Workspace descriptor. Task Service's durable reservation receipt remains separate from the post-preparation response.
+5. **Bind the existing Session.** The Bridge stores returned IDs; the runner hook prepares Workspace in the existing Bot Sandbox, validates that the original Session is still live, activates Execution durably and registers the process. The tool result returns to that same turn with Runtime's activated Execution and prepared Workspace descriptor. Task Service's durable reservation receipt remains separate from the post-preparation response.
 6. **Continue research on that lane.** After a turn settles, the runner can send another bound continuation if Execution is still `RUNNING`. Reading, checking or publishing a Material does not release the lane by itself.
 7. **Release at a lifecycle boundary.** Accepted Finish or Runtime stop retains ownership while the Session, Sandbox and Workspace are cleaned. The registered Bot closes its sole Session; a later responsibility starts a fresh Bot/Execution from public state.
 
@@ -78,37 +75,13 @@ The runner suppresses discovery when the Core has a Task/Execution or an active 
 
 In this manual, “candidate” refers only to a mathematical result file inside a Workspace revision. It is not a runtime entity, identifier, storage table or CLI operation; all checks use the Workspace source `(workspace_id, revision, path)` contract.
 
-### A composed prompt is not necessarily a sent prompt
+## 4. Native tools and the Service directory
 
-The normal take path can emit `runtime.initial_prompt_composed` while `sendInitialPrompt` is false. It therefore does **not** necessarily send the complete composer output, including full `Authorized Service Documentation`, to that Session. The extension's tool descriptions, schemas and short guidance are a different input surface. An explicitly requested registered bind prompt can send fuller composition. Some also compose a snapshot and then wrap the whole snapshot in a second Mission context. These distinctions are detailed in [08](08-prompts.md); the exported `buildInitialPromptBundle` helper is not proof of production delivery.
+Registered Bot and independent solver Sessions expose exactly Pi's native `read`, `write`, `edit` and `bash` tools. The worker passes their explicit allowlist and disables ambient extensions. The immutable Bot system addendum and four skill resources describe how to use the protected `swarm` CLI through Bash. Solver mode loads its own system addendum and no Swarm skills.
 
-## 4. How a callable tool is built
+The Bridge builds a role-scoped capability profile from the configured Registry, removes internal audiences, and computes a deterministic version/hash. This profile is an authorization and discovery projection. `botServiceDirectory` maps its Services to CLI namespaces; Task supplies Mission, Task, Workspace and Bot namespaces, Context supplies Material, and Catalog supplies Service discovery. The startup message carries Service metadata and documentation references. `swarm service view` retrieves registered metadata and authorized documentation; complete optional provider documents are not automatically appended to each model turn. A Registry change can change later command admission without modifying Pi's native tool list.
 
-### 4.1 Profile construction
-
-`buildCapabilityProfile` prefers a Registry profile, then supported Registry profile/list interfaces, then the static catalog fallback. The fallback is filtered through `CURRENT_AGENT_OPERATIONS`. It appends supplied Runtime capabilities and normalizes ID, semantic/tool names, operation, Service identity/title/purpose, versions, manifest hash, schemas, side-effect/idempotency metadata, help, required context, path, audience and ownership.
-
-Normalization rejects unsupported roles, excludes entries not allowed for the role, filters legacy/internal surfaces, removes writable Execution-service controls and hides internal/runtime/daemon audiences. Capabilities are deduplicated by ID and sorted. Conflicting names prefer the non-Runtime semantic provider and receive deterministic Service-qualified names; remaining tool-name collisions gain an ID-derived hash suffix. Services group those names and retain bundle documentation. The final profile is hash-bound to the normalized description, or reuses a Registry hash where no altered identity is needed. The same input produces the same profile.
-
-The benchmark removes Runtime `task_finish`/`task_finish(outcome=blocked)` aliases and removes Sandbox tools when no Sandbox manager exists. Other callers can supply different lists. Historical catalog entries remain for bounded compatibility/observation uses, but legacy lease, wait and tree/rework surfaces are filtered out of live Agent profiles; the no-Registry fallback also uses an explicit current-operation allowlist. A historical declaration is not an advertised production tool. Registration does not replace current Task/Execution authorization. [Sources: capability-profile](../../src/agent/capability-profile.js), [runtime-capabilities](../../src/runtime/runtime-capabilities.js), [benchmark](../../src/benchmark/putnam-runner.js).
-
-### 4.2 Pi extension registration
-
-The asynchronous extension resolves an explicit test profile, supplied loader, authenticated Bridge `/profile`, or local fallback, in that order. After checking the role, it registers one Pi tool per capability:
-
-| Pi field | Value supplied by SwarmEnv |
-|---|---|
-| Name | `swarmenv_` plus `tool_name` or normalized name |
-| Label | `SwarmEnv ` plus that name |
-| Description | Capability description; fallback names Service/capability |
-| `promptSnippet` | Service title/ID plus description/name |
-| `promptGuidelines` | `help.when`, else usage, else summary; then `Help: <help.ref>` if present |
-| Parameters | Exact input schema; fallback open object |
-| Output schema | Included when declared |
-| Annotations | Derived read-only/destructive/idempotent flags; open-world false |
-| Execution mode | `sequential` |
-
-Exact instruction fields for built-ins and optional Mathlib are in [the generated catalog](prompts/02-task-loop-and-tools.md). Sequential execution serializes tools within a Session, not separate Cores. The extension fetches its profile once at startup. The Bridge can rebuild a profile after Registry revision/binding changes, but this does not automatically add Pi tools to an existing extension. A new Session is needed for refreshed registration unless another explicit integration supplies it. [Source: swarmenv-extension](../../src/agent/swarmenv-extension.mjs).
+Full system addenda, skills, directory fixtures, continuation messages and result guidance are recorded in [Prompts](08-prompts.md). There is no separate SDK prompt composer or named Service-tool extension.
 
 ## 5. Bridge transport and authorization
 
@@ -116,9 +89,7 @@ Exact instruction fields for built-ins and optional Mathlib are in [the generate
 
 The Bridge defaults to `127.0.0.1` on an automatically allocated port with a random bearer token. It gives the child `SWARMENV_BRIDGE_URL` and `SWARMENV_BRIDGE_TOKEN`. Both `/profile` and `/call` require authentication. `GET /health` returns only Bridge health and does not require the token. Missing/wrong token on protected routes returns HTTP 401; unknown route returns 404. The request reader rejects bodies larger than 2 MiB and parses JSON. Call/parsing failures before the response is sent are returned as HTTP 400 with the structured error body.
 
-The extension posts operation, Service ID, capability ID and payload to `/call`. It does not send an arbitrary endpoint or caller-selected actor/Core. The Bridge supplies current Task/Execution IDs, spec/state/fencing versions and its authenticated actor to the invocation envelope. An explicit operation ID is supported by the Bridge API; otherwise it creates a new random ID. The extension does not carry a stable operation ID across a model-issued retry, so an idempotent annotation is not exactly-once delivery. Domain operations have their own deduplication/contract checks.
-
-The extension converts successful results to a text content block using `JSON.stringify(result)`, with the structured result also attached as `details`. Model-visible text is truncated after **64 × 1024 JavaScript string characters**, followed by `[bridge result truncated]`; tool results are not guaranteed to reach the model in full. A non-OK HTTP response or `ok:false` becomes an Error containing structured code, retryability and details. [Sources: Bridge](../../src/agent/services-bridge.js), [extension](../../src/agent/swarmenv-extension.mjs).
+The protected CLI posts operation and payload to `/call` using worker-injected credentials. It creates a stable request ID before dispatch and includes it when a response is uncertain; a retry can replay that same ID. The Bridge supplies its authenticated actor/Core, durable Bot/Task/Execution identity and fencing versions rather than trusting caller ownership fields. Domain operations enforce their own receipt and replay contracts. The CLI prints the structured success or error response as the native Bash result; provider/Pi result rendering remains external to this repository.
 
 ### 5.2 Call validation and dispatch
 
@@ -132,7 +103,6 @@ For every call, the Bridge obtains the current profile, resolves the capability,
 | Provider research call | Binding declared by capability and current envelope |
 | Workspace/Sandbox call | Mission Task must use Workspace according to its contract |
 | Retired operation | Legacy lease/wait/tree/rework operations are absent from the live profile; unavailable or unsupported calls are rejected rather than forwarded through a retired runner path |
-| `execution_progress` | Retained internal compatibility operation; registered Bots use explicit save/publish/finish and cannot invoke it |
 | Semantic `task_finish(outcome=blocked)` | Requires a genuine same-Mission non-cancelled Task prerequisite; it closes the current Bot/E and records the blocker |
 | `task_finish` | Task Service commits a CLOSING finish intent; Runtime confirms process/Sandbox isolation and finalizes Task state before Bridge clears binding; cleanup failure returns the accepted receipt with `cleanup_pending: true` and retains binding |
 | `judge.workspace_check` | Bridge reads the fixed public Workspace revision/path, attaches actual Git commit/tree/hash and invokes Judge; registered requests cannot substitute inline source, a private path or a Material alias. The returned CheckResult is diagnostic feedback; Task completion remains a separate explicit operation. See [04](04-services.md). |
@@ -155,9 +125,7 @@ The Bridge is reusable infrastructure: defining an optional callback does not me
 |---|---|
 | `onTakeAccepted` | Supplied as an empty async callback; no additional admission rule or model message |
 | `onTake` | Stores the take, assigns the Core, binds the existing Session with no initial prompt, starts same-Session continuation after settlement and records Workspace/take latency evidence |
-| `onSchedulerStatus` | Returns current Core/WAITING counts, available project Task summaries and current binding; it does not select or take work |
 | `onRelease` | Records release latency/state, clears the matching Core binding after Runtime cleanup, projects the released Core as IDLE and wakes identity loops. Missing lineage is only a capacity-release observation. |
-| `onWorkspaceWrite` | Records revision/file/hash metadata and a Workspace work unit |
 | `onWorkUnit` | Records reads/consumption, Task creation, publication/link, lifecycle, Workspace mutations and Judge evidence; selected operations wake identity loops. Terminal project receipts are observed under the original Task/E before response fencing and deduplicated by CheckResult ID within the Core. Project checks do not create progress work units. |
 | `onError` | Records bounded tool-error classification. Contract errors are recoverable; `CONFLICT` from `task_take` also records recoverable take-conflict evidence. |
 | `onTaskCreate` | Not supplied; Bridge still performs its own capability admission and Task Service still applies the Task contract |
@@ -172,7 +140,6 @@ The adapter records launch arguments/version manifest as operator events. Raw st
 | Record | Establishes | Does not establish |
 |---|---|---|
 | System-prompt file and launch flag | Exact SwarmEnv addendum supplied to Pi | Pi/provider's complete upstream system message |
-| `runtime.initial_prompt_composed` | Composer result/profile constructed | Result sent, processed, or unchanged by another wrapper |
 | Raw `rpc_request` with `type:prompt` | Exact user message written to Pi stdin, ID and order | Successful processing or useful action |
 | Successful matching RPC response | Command acknowledged | Task/Mission completion |
 | `agent_settled` | Model turn settled | Execution released or candidate passed Judge |
@@ -182,17 +149,17 @@ The benchmark's `core.prompt` hash is a hash of a base SOP field, not the evolvi
 
 ## 7. Validation and known limits
 
-Existing checks include [prompt tests](../../test/agent-prompt.test.js), [Pi adapter](../../test/pi-adapter.test.js), [capability profile](../../test/capability-profile.test.js), [profile/Bridge](../../test/capability-profile-bridge.test.js), [flat Task behavior](../../test/task-oriented-flat.test.js), [Judge boundary](../../test/judge-direct-submit.test.js) and [flat benchmark CLI](../../test/flat-only-cli.test.js). These identify tested seams; execution results belong in the linked GitHub Issue/PR and experiment reports.
+Existing checks include [Pi adapter](../../test/pi-adapter.test.js), [capability profile](../../test/capability-profile.test.js), [profile/Bridge](../../test/capability-profile-bridge.test.js), [Task behavior](../../test/task-contract.test.js), [Judge boundary](../../test/bot-runtime.test.js) and [benchmark CLI](../../test/benchmark-cli.test.js). These identify tested seams; execution results belong in the linked GitHub Issue/PR and experiment reports.
 
-Registered Bots use native Bash and the protected CLI; the old whole-proof Task instructions prohibiting shell were removed. Startup sends the live service directory and skill manifest, while full skill text enters context when read. Compatibility SDK composition can repeat context and extension registrations can lag a later Bridge Registry revision. These are distinct send paths, documented with their actual text in [Prompts](08-prompts.md).
+Registered Bots use native Bash and the protected CLI; the old whole-proof Task instructions prohibiting shell were removed. Startup sends the live service directory and skill manifest, while full skill text enters context when read. Actual send paths and complete repository-owned instructions are documented in [Prompts](08-prompts.md).
 
-Accepted finish handling captures IDs from the durable receipt before observer callbacks. Observer or release-callback failure is logged without converting the accepted finish into a rejected tool call. The registered and fallback paths use the same handler; an asynchronous callback cannot make it release a different current binding.
+Accepted finish handling captures IDs from the durable receipt before observer callbacks. Observer or release-callback failure is logged without converting the accepted finish into a rejected tool call. The handler checks the captured binding before releasing it after an asynchronous callback.
 
 ## Registered Bot identity and Bridge credentials
 
 `startAgentSession` enters `Runtime.startBot` with the Mission and Core, a five-minute default selection budget, and the configured turn timeout for readiness (30 seconds by default). Runtime persists STARTING before calling the adapter. The factory sets the Core actor to the new Bot ID, calls `Bridge.startBotIdentity`, and copies its newly generated bearer token into the live child environment before launching Pi. Rotation rejects a still-occupied previous Bot or a retained Execution binding. Old bearer tokens no longer authenticate to that Bridge.
 
-After provider identity is recorded and Pi readiness/retry/compaction setup succeeds, Runtime marks the Bot UNBOUND. It can inspect shared work and create/take a Task. During STARTING, PREPARING, CLOSING or CLOSED, the Bridge refuses ordinary contributions; finish/exit requests still reach their durable replay validation. This check protects the Bot Bridge. Standalone built-in HTTP hosts require actor-bound principals but lack some coordinated lifecycle seams; unregistered local callers remain compatibility APIs. [Services](04-services.md) records these current limits; independent deployment work is tracked in Issue #130.
+After provider identity is recorded and Pi readiness/retry/compaction setup succeeds, Runtime marks the Bot UNBOUND. It can inspect shared work and create/take a Task. During STARTING, PREPARING, CLOSING or CLOSED, the Bridge refuses ordinary contributions; finish/exit requests still reach their durable replay validation. This check protects the Bot Bridge. Standalone built-in HTTP hosts require actor-bound principals but lack some coordinated lifecycle seams; internal local callers remain outside the registered Bot surface. [Services](04-services.md) records these current limits; independent deployment work is tracked in Issue #130.
 
 `bot_exit` requires an unbound Bot without a pending take. The Task Service rejects early exit while the Mission is open and both selection and hard time remain. For an eligible budget exit, the service stores CLOSING before Runtime stops the Session/Sandbox. The historical `no-work` reason is subject to the same eligibility check as `selection-budget`. The discovery supervisor reads this durable result even when process shutdown interrupts the RPC response. Empty prose or a settled turn without a take/exit remains `DISCOVERY_INCOMPLETE`. A newly registered Bot starts with empty private state; the adapter does not copy the previous Core directory into its Sandbox.
 
@@ -218,9 +185,9 @@ OpenSandbox Agent startup now requires a registered Bot resource identity and re
 
 The installed `swarm` executable enters `runSwarmCli`. When `SWARMENV_BRIDGE_URL` is present, both commands and `service list/view` use the authenticated Bridge; they do not fall back to direct Service URLs. Service discovery invokes the catalog's `list_services`/`get_service_metadata`. A configured domain command is checked against that Service's advertised operations and sent with its Service identity. With no Bridge configured, the operator transport still resolves HTTP Service manifests and sends an explicit envelope. Help remains offline in both modes.
 
-The Material CLI uses `swarm material` and routes to Context Service. The retired `swarm context` command group returns a migration error before accessing any service or command help.
+The Material CLI uses `swarm material` and routes to Context Service.
 
-`task propose` maps to `task_create`; `task view/take <id>`, `material view <id>`, Material/Workspace search queries, Workspace files/read paths and Judge result IDs have positional mappings. `workspace ... --at R` becomes `revision: R`; `workspace diff --from R1 --to R2` routes to the public Mission read, while no revision arguments select current-E diff; `mission submission view <id>` queries the existing submission interface. File/stdin inputs must be JSON objects. Boolean flags do not consume subsequent arguments, and inline values preserve embedded equals signs. `--request-id` and the compatibility `--operation-id` share the request envelope; specifying different values rejects locally. A retry uses the same ID and payload. The CLI rejects Bot identity overrides, while `task_id` remains a target selector, not proof of ownership. Results go to stdout as JSON; diagnostics go to stderr. Request timeout is 30 seconds by default, configurable up to 2147483647 ms. Exit codes remain success 0, transport failure 1, contract failure 2 and checker FAIL 3. Timeout is an unknown response, not a confirmed rollback.
+`task propose` maps to `task_create`; `task view/take <id>`, `material view <id>`, Material/Workspace search queries, Workspace files/read paths and Judge result IDs have positional mappings. `workspace ... --at R` becomes `revision: R`; `workspace diff --from R1 --to R2` routes to the public Mission read, while no revision arguments select current-E diff; `mission submission view <id>` queries the existing submission interface. File/stdin inputs must be JSON objects. Boolean flags do not consume subsequent arguments, and inline values preserve embedded equals signs. The CLI puts `--request-id` in the request envelope. A retry uses the same ID and payload. The CLI rejects Bot identity overrides, while `task_id` remains a target selector, not proof of ownership. Results go to stdout as JSON; diagnostics go to stderr. Request timeout is 30 seconds by default, configurable up to 2147483647 ms. Exit codes remain success 0, transport failure 1, contract failure 2 and checker FAIL 3. Timeout is an unknown response, not a confirmed rollback.
 
 For registered Bots, the Bridge supplies the durable Mission to Mission view, Task proposal/list/status and Material search/list. Explicit foreign Mission IDs reject. Task view/take and exact Material reads check their target's Mission. Public Workspace reads use Runtime's configured Mission Workspace, verify its stored Mission and reject another Workspace ID. The identity/deadline is rechecked after the asynchronous Workspace lookup. These checks cover Bot entry paths. Save/apply/merge additionally enforce the Runtime publication guards described in [Workspace](05-workspace-continuity.md). Independent Context/Judge peers use the separate Task-owned authorization protocol in [Services](04-services.md).
 
