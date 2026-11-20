@@ -487,9 +487,25 @@ export class LeanFinalTreeVerifier {
     }
   }
 
+  /** Verify that the pinned exporter can read an olean produced by this toolchain. */
+  async verifyExportCompatibility() {
+    const directory = await mkdtemp(join(tmpdir(), 'swarmenv-export-preflight-'));
+    const path = 'Compatibility.lean';
+    const name = 'swarmenv_export_preflight';
+    const deadline = Date.now() + Math.min(this.timeoutMs, 30_000);
+    try {
+      await writeFile(join(directory, path), `theorem ${name} : True := True.intro\n`);
+      const result = await this.#export(directory, { deadline, path, declarations: [name], strict: true, maxOutput: 4 * 1024 * 1024 });
+      if (result.code !== 0 || !result.stdoutBytes) throw new Error('Lean/exporter compatibility preflight failed to export the compiled declaration');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  }
+
   // Native oleans, including ones created by arbitrary metaprograms, exist only
   // inside this untrusted namespace. The pipe carries untrusted JSONL.
-  async #export(input, { signal, deadline, stdoutPath, localModules = [] }) {
+  async #export(input, { signal, deadline, stdoutPath, localModules = [], path = this.targetPath,
+    declarations = [this.declarationName, ...axioms, ...primitives], strict = false, maxOutput = exportLimit }) {
     const args = sandboxArgs(this.leanRoot);
     const trustedLibraries = libraries(this.libraryRoots, 'library', args);
     args.push('--ro-bind', '/usr/bin/dash', '/bin/sh', '--ro-bind', '/usr/bin/mkdir', '/bin/mkdir',
@@ -508,11 +524,11 @@ export class LeanFinalTreeVerifier {
       '  compile "$output" "$source"\n' +
       'done\nshift\n' +
       'compile /output/SwarmEnvCandidate.olean "$1"\n' +
-      'shift\nexec /bin/lean4export --ignore-missing SwarmEnvCandidate -- "$@"',
+      `shift\nexec /bin/lean4export ${strict ? '' : '--ignore-missing '}SwarmEnvCandidate -- "$@"`,
       'swarmenv-export', ...localModules.flatMap(module => [
         `/output/${module.name.replaceAll('.', '/')}.olean`, `/input/${module.path}`,
-      ]), '--', `/input/${this.targetPath}`, this.declarationName, ...axioms, ...primitives);
-    return execute(this.bubblewrap, args, { signal, deadline, maxOutput: exportLimit, stdoutPath, resourceLimits: this.resourceLimits, resources: this.resources });
+      ]), '--', `/input/${path}`, ...declarations);
+    return execute(this.bubblewrap, args, { signal, deadline, maxOutput, stdoutPath, resourceLimits: this.resourceLimits, resources: this.resources });
   }
 
   async check({ files, tree, signal, deadline = Date.now() + this.timeoutMs }) {

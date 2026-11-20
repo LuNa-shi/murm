@@ -27,6 +27,22 @@ test('benchmark CLI refuses an existing experiment directory before loading laun
   assert.equal(await readFile(sentinel, 'utf8'), 'previous attempt');
 });
 
+test('CLI records fixture preflight failure before admission', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-cli-preflight-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const experiment = join(root, 'experiment');
+  const run = spawnSync(process.execPath, [runner, '--experiment-root', root, '--experiment-dir', experiment,
+    '--problems', join(root, 'missing.json'), '--putnambench-root', root], { encoding: 'utf8',
+    env: { PATH: process.env.PATH, PI_PROVIDER: 'gpt_proxy', PI_MODEL: 'fixture',
+      PI_GPT_PROXY_BASE_URL: 'http://127.0.0.1:1/v1', PI_GPT_PROXY_API_KEY: 'local-only' } });
+  assert.equal(run.status, 1, run.stderr);
+  const metadata = JSON.parse(await readFile(join(experiment, 'metadata', 'experiment.json')));
+  assert.equal(metadata.status, 'startup_failed');
+  assert.equal(metadata.error_code, 'ENOENT');
+  assert.equal(metadata.started_at, null);
+  assert.ok(Number.isFinite(metadata.setup_elapsed_ms));
+});
+
 for (const [late, observerEnabled] of [[false, true], [true, true], [true, false]]) test(`benchmark CLI handles SIGTERM ${late ? 'during aggregate output' : 'during failed observer startup'} with observer ${observerEnabled ? 'enabled' : 'disabled by default'}`, async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarm-cli-stop-'));
   t.after(() => rm(root, { recursive: true, force: true }));
@@ -84,7 +100,7 @@ syncBuiltinESMExports();`);
   child.stderr.on('data', chunk => { stderr += chunk; });
   const [code, signal] = await once(child, 'close');
   assert.equal(signal, null, stderr);
-  assert.equal(code, late ? 0 : 143, stderr);
+  assert.equal(code, late ? 1 : 143, stderr);
   assert.equal(healthChecks, observerEnabled ? 1 : 0);
   const aggregate = JSON.parse(await readFile(join(reports, 'aggregate-report.json')));
   const metadata = JSON.parse(await readFile(join(experiment, 'metadata', 'experiment.json')));
@@ -96,11 +112,16 @@ syncBuiltinESMExports();`);
   assert.equal(aggregate.protocol.initial_bot_stagger_ms, late ? 1200 : 60000);
   assert.equal(metadata.protocol.initial_bot_stagger_ms, late ? 1200 : 60000);
   assert.equal(metadata.valid_for_analysis, false);
+  assert.equal(metadata.started_at, null);
+  assert.ok(Date.parse(metadata.setup_started_at) <= Date.parse(metadata.ended_at));
+  assert.ok(metadata.setup_elapsed_ms >= 0);
+  assert.ok(aggregate.projects.every(project => project.started_at === null));
   if (late) {
     assert.doesNotMatch(stderr, /stop_requested/);
     assert.equal(aggregate.projects.length, 12);
     assert.ok(aggregate.projects.every(project => project.stop_reason === null && project.invalid_reasons.includes('project_runner_error')));
-    assert.equal(metadata.status, 'completed');
+    assert.equal(metadata.status, 'startup_failed');
+    assert.equal(metadata.stop_reason, 'preflight_failed');
     assert.equal(metadata.stop_signal, undefined);
   } else {
     assert.match(stderr, /stop_requested/);

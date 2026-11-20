@@ -1292,6 +1292,8 @@ export function projectReport(state, startedAt, deadline) {
       },
     },
     run: {
+      setup_started_at: new Date(state.setupStartedAt ?? startedAt).toISOString(),
+      setup_elapsed_ms: startedAt - (state.setupStartedAt ?? startedAt),
       started_at: new Date(startedAt).toISOString(),
       ended_at: new Date(endedAt).toISOString(),
       elapsed_ms: endedAt - startedAt,
@@ -1412,6 +1414,13 @@ export function projectReport(state, startedAt, deadline) {
   return report;
 }
 
+function finishPreflightObservation(store, runId, stopped) {
+  if (store?.getExperiment(runId)?.status !== 'CREATED') return;
+  store.append({ experimentId: runId, source: 'runtime', kind: 'experiment_finished',
+    payload: { solved: false, protocol_valid: false, stop_reason: stopped ? 'operator_stop' : 'preflight_failed' } });
+  store.finishExperiment(runId, { status: stopped ? 'CANCELLED' : 'FAILED' });
+}
+
 async function createProjectState(problem, config, options) {
   const assertInitializing = () => { if (options.signal?.aborted) throw operatorStop(); };
   assertInitializing();
@@ -1439,7 +1448,7 @@ async function createProjectState(problem, config, options) {
   const coreCount = solver ? 1 : 4;
   const artifactKey = solver ? `${problem.id}-attempt-${options.attemptIndex}` : problem.id;
   const contract = agentContract(solver ? 'solver' : 'swarm');
-  const startedAt = options.startedAt ?? Date.now();
+  const setupStartedAt = options.setupStartedAt;
   const experimentRoot = resolve(options.experimentDir ?? options.reportDir);
   const reportRoot = resolve(options.reportDir ?? join(experimentRoot, 'reports'));
   const projectDir = join(experimentRoot, 'state', 'projects', artifactKey);
@@ -1559,7 +1568,8 @@ async function createProjectState(problem, config, options) {
   catch (error) {
     const cleanup = { cores, cleanupErrors: [], missionSubmissionStore, modelAccess, judgeService, operatorStopped: options.signal?.aborted === true };
     await stopBenchmarkRuntime(cleanup, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
-    await closeProjectStores(cleanup, closeStores, options);
+    try { finishPreflightObservation(sandboxObservationStore, runId, cleanup.operatorStopped); }
+    finally { await closeProjectStores(cleanup, closeStores, options); }
     if (cleanup.operatorStopped) {
       const stopped = operatorStop();
       stopped.cleanupErrors = cleanup.cleanupErrors;
@@ -1667,18 +1677,18 @@ async function createProjectState(problem, config, options) {
     });
     missionSubmissionStore = createMissionCoordination({ taskService, contextService, workspace: missionWorkspace,
       workspaceId, missionId: mission.mission_id, checker: finalTreeChecker,
-      deadline: startedAt + (options.timeboxMs ?? 60 * 60_000),
+      deadline: () => projectState?.runDeadlineAt ?? 0,
       isStopping: () => projectState?.stopping === true,
       maxInfrastructureRetries: options.maxInfrastructureRetries ?? 0,
       maxFinalChecks: options.maxFinalChecks ?? config.mission_final_check_budget?.maxChecks,
       maxConcurrentFinalChecks: options.maxConcurrentFinalChecks ?? config.mission_final_check_budget?.maxConcurrent,
       onAccepted: submission => {
         acceptedMission = submission;
-        if (projectState) beginMissionCloseout(projectState, submission);
+        if (projectState?.runDeadlineAt != null) beginMissionCloseout(projectState, submission);
       },
     });
     taskService.setMissionStopReader(id => id === mission.mission_id &&
-      (projectState?.stopping === true || options.signal?.aborted === true || Date.now() >= startedAt + (options.timeboxMs ?? 60 * 60_000) || missionSubmissionStore.isAccepted(id)));
+      (projectState?.stopping === true || options.signal?.aborted === true || (projectState?.runDeadlineAt != null && Date.now() >= projectState.runDeadlineAt) || missionSubmissionStore.isAccepted(id)));
     await missionSubmissionStore.reconcile({ missionId: mission.mission_id });
     const capabilityRegistry = options.serviceRegistry ?? createBuiltinServiceRegistry({
       taskService,
@@ -1766,24 +1776,6 @@ async function createProjectState(problem, config, options) {
       timebox_ms: options.timeboxMs ?? 3_600_000,
     }, makeEnvelope({ actorRef: 'owner:passk', operationId: `solver-task:${runId}` })).task);
 
-    observationStore.registerExperiment({ experimentId: runId, status: 'RUNNING', metadata: { initial_task_count: initialTasks.length, proposed_task_count: 0, workspace_id: publicWorkspace.workspace_id } });
-    observationStore.append({
-      experimentId: runId,
-      source: 'runtime',
-      kind: 'experiment_started',
-      taskId: null,
-      payload: {
-        problem_id: problem.id,
-        core_count: coreCount,
-        initial_bot_stagger_ms: options.initialBotStaggerMs ?? 0,
-        timebox_ms: options.timeboxMs ?? 60 * 60_000,
-          mission_id: mission?.mission_id ?? null,
-        workspace_id: publicWorkspace.workspace_id,
-        initial_task_count: initialTasks.length,
-        proposed_task_count: 0,
-        normal_flow: normalFlow,
-      },
-    });
     // Deterministic queue scenarios may seed durable Tasks before reusable Core
     // sessions start. The hook uses the same Task Service boundary as Agent
     // operations; it does not replace queue take, Runtime, or dispatch logic.
@@ -1795,12 +1787,12 @@ async function createProjectState(problem, config, options) {
         provider: options.provider ?? process.env.PI_PROVIDER,
         model: options.model ?? process.env.PI_MODEL,
         upstream: options.modelUpstream, configuration: modelConfiguration, timeBounded: timeBoundedModel,
-        deadline: () => projectState?.runDeadlineAt ?? startedAt + (options.timeboxMs ?? 60 * 60_000),
+        deadline: () => projectState?.runDeadlineAt ?? 0,
         closeoutDeadline: () => projectState?.missionCloseoutDeadline ?? Infinity,
         isStopping: () => projectState?.stopping === true });
       await modelAccess.start();
     }
-    const parallelism = new CoreParallelismTracker({ coreCount, startedAt });
+    const parallelism = new CoreParallelismTracker({ coreCount, startedAt: setupStartedAt });
       for (let index = 1; index <= coreCount; index += 1) {
       const coreDir = join(workspaceRoot, `core-${index}`);
       await mkdir(coreDir, { recursive: true });
@@ -2394,7 +2386,8 @@ async function createProjectState(problem, config, options) {
       timeboxMs: options.timeboxMs ?? 60 * 60_000,
       initialBotStaggerMs: options.initialBotStaggerMs ?? 0,
       signal: options.signal,
-      runDeadlineAt: startedAt + (options.timeboxMs ?? 60 * 60_000),
+      runDeadlineAt: null,
+      setupStartedAt,
       missionCloseoutMs: options.missionCloseoutMs ?? 30_000,
       fixtureManifest: fixture,
       finalTreeEvidence: finalTreeDeployment?.evidence ?? null,
@@ -2462,7 +2455,7 @@ async function createProjectState(problem, config, options) {
     projectState = state;
     const prior = await missionSubmissionStore.get({ missionId: mission.mission_id });
     acceptedMission ??= prior?.submissions.find(row => row.state === 'accepted') ?? null;
-    if (acceptedMission) beginMissionCloseout(state, acceptedMission);
+    state.acceptedAtStartup = acceptedMission;
     return state;
   }
 }
@@ -2484,7 +2477,10 @@ async function runProject(problem, config, options) {
   if (!Number.isFinite(options.cleanupGraceMs ?? 30_000) || (options.cleanupGraceMs ?? 30_000) <= 0) throw new TypeError('cleanupGraceMs must be finite and positive');
   const state = await createProjectState(problem, config, options);
   try { return await executeBenchmarkProject(state, problem, config, options); }
-  finally {
+  catch (error) {
+    finishPreflightObservation(state.observationStore, state.runId, options.signal?.aborted === true);
+    throw error;
+  } finally {
     if (!state.cleanupPromise) await stopBenchmarkRuntime(state, { cleanupGraceMs: options.cleanupGraceMs ?? 30_000 });
     if (state.unhandledRejectionHandler) process.off('unhandledRejection', state.unhandledRejectionHandler);
     // Also owns exceptions during orchestration, report generation and write.
@@ -2494,8 +2490,14 @@ async function runProject(problem, config, options) {
 }
 
 export async function runBenchmarkProject(problem, config, options = {}) {
+  const setupStartedAt = Date.now();
+  let startedAt = null;
+  const notify = options.onRunStarted;
+  options = { ...options, setupStartedAt, onRunStarted: start => { startedAt = start; notify?.(start); } };
   try { return await runProject(problem, config, options); }
   catch (error) {
+    error.runTiming = { setup_started_at: new Date(setupStartedAt).toISOString(), setup_elapsed_ms: (startedAt ?? Date.now()) - setupStartedAt,
+      started_at: startedAt === null ? null : new Date(startedAt).toISOString() };
     if (error.code !== 'BENCHMARK_OPERATOR_STOPPED') throw error;
     return writeUnavailableProjectReport(problem, options, error, { operatorStopped: true });
   }
@@ -2579,16 +2581,28 @@ async function executeBenchmarkProject(state, problem, config, options) {
       state.observationStore.append({ experimentId: state.runId, source: 'task-controller', kind: sanitized.kind, taskId: sanitized.task_id, coreId: sanitized.core_id, visibility: 'operator', payload: sanitized });
     },
   });
-  state.controller.start();
   let resolveIdentityWake;
   let identityWake = new Promise((resolve) => { resolveIdentityWake = resolve; });
   state.identityWakeRequested = false;
-  const startedAt = Date.now();
+  if (state.signal?.aborted) throw operatorStop();
+  const startedAt = options.waitForRunStart ? await options.waitForRunStart() : Date.now();
+  if (state.signal?.aborted) throw operatorStop();
+  const durationMs = state.timeboxMs;
+  const deadline = startedAt + durationMs;
+  state.runDeadlineAt = deadline;
+  if (state.acceptedAtStartup) beginMissionCloseout(state, state.acceptedAtStartup);
+  for (const core of state.cores) core.runtime.setRunDeadline(deadline);
+  options.onRunStarted?.(startedAt);
+  state.observationStore.registerExperiment({ experimentId: state.runId, status: 'RUNNING', startedAt: new Date(startedAt).toISOString() });
+  state.observationStore.append({
+    experimentId: state.runId, source: 'runtime', kind: 'experiment_started', occurredAt: new Date(startedAt).toISOString(),
+    payload: { problem_id: problem.id, core_count: state.cores.length, initial_bot_stagger_ms: state.initialBotStaggerMs,
+      timebox_ms: durationMs, mission_id: state.missionId, workspace_id: state.workspaceId,
+      initial_task_count: state.initialTaskIds.length, proposed_task_count: 0, normal_flow: state.normalFlow },
+  });
+  state.controller.start();
   state.parallelism.start(startedAt);
   recordReadinessSnapshot(state, startedAt);
-  const durationMs = options.timeboxMs ?? 60 * 60_000;
-  const deadline = state.runDeadlineAt;
-  for (const core of state.cores) core.runtime?.setRunDeadline?.(deadline);
   const turnTimeoutMs = options.turnTimeoutMs ?? 9 * 60_000;
   // IdentityTaskLoop waits for the whole Runtime Execution to release after a
   // successful take. Keep that ownership deadline at least as long as the
@@ -2948,6 +2962,9 @@ export async function writeUnavailableProjectReport(problem, options, error, { o
       solved: false,
       ended_early: operatorStopped,
       ...(operatorStopped ? { stop_reason: 'operator_stop', cleanup_errors: error.cleanupErrors ?? [] } : {}),
+      started_at: null,
+      ended_at: new Date().toISOString(),
+      ...error.runTiming,
       elapsed_ms: null,
       deadline_reached: false,
       cleanup_elapsed_ms: null,

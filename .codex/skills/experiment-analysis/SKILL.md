@@ -15,6 +15,7 @@ There are two output paths:
 
 Identify the tested Issue contract, code commit and clean state, actual inputs, fixture/environment, model/provider, prompt/tool/schema identity, resources, timebox and actual duration. Inventory metadata, raw Agent JSONL, authoritative Task/Execution state, Agent logs, Runtime/Service events, Workspace versions, Materials, Candidate/Judge checks and external observation stores. For every recorded request/response pair, preserve the expected result, actual result and operational effect.
 
+- Use the timing contract at the tested commit. Where setup is reported separately, align each project or Pass@K group to its recorded research start and measure time to trusted acceptance from that point. Record startup preparation and post-window settlement separately.
 - Source-verified, deterministic tests, controlled probes and natural Agent runs are different evidence classes.
 - Missing sources or links are **unknown**, not zero. For a formal run, absent preregistration or unmatched comparison must be identified as retrospective or diagnostic-only.
 - Start with the Architecture at the run commit. For each disputed decision, trace the Bot startup instructions, CLI help or discovery response, authenticated Bridge binding and provider operation that were available at that moment. Locate the actual request and returned content by ID. A stored column, Runtime maintenance operation or term from a different release supplies no evidence that this Bot saw a choice. If the run contract cannot be recovered, mark `schema unavailable`.

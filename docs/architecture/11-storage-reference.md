@@ -683,7 +683,7 @@ CREATE TABLE IF NOT EXISTS checker_preflights (
 
 ### Observation database
 
-Source: [src/observability/observation-store.js](../../src/observability/observation-store.js); source SHA-256: `78d5da3d61469f0bc46443e44bf51fb714155fd1695211c24281bd05061cfefa`.
+Source: [src/observability/observation-store.js](../../src/observability/observation-store.js); source SHA-256: `b2f03ce533d84621a645671e3f37ab327f5323d2068fcc8ba1c9d6c23b81f269`.
 
 ```sql
 PRAGMA foreign_keys = ON;

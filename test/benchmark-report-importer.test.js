@@ -23,3 +23,18 @@ test('benchmark report imports do not create a synthetic Task root', async t => 
     assert.equal(Object.hasOwn(imported.experiment, 'root_task_id'), false);
   }
 });
+
+test('a failed preflight imports without an experiment start', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'swarm-preflight-import-'));
+  const observationStore = new ObservationStore();
+  t.after(async () => { observationStore.close(); await rm(directory, { recursive: true }); });
+  const reportPath = join(directory, 'report.json');
+  await writeFile(reportPath, JSON.stringify({ project: { run_id: 'preflight' },
+    run: { started_at: null, ended_at: '2026-01-01T00:01:00Z', setup_elapsed_ms: 60000 } }));
+  const { experiment } = await importBenchmarkReport({ observationStore, reportPath, experimentDir: directory });
+  assert.equal(experiment.status, 'FAILED');
+  assert.equal(experiment.started_at, null);
+  assert.equal(experiment.metadata.setup_elapsed_ms, 60000);
+  const { events } = observationStore.listEvents({ experimentId: 'preflight' });
+  assert.deepEqual(events.map(event => event.kind), ['experiment_finished']);
+});

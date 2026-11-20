@@ -180,6 +180,8 @@ Sources: [Workspace provider](../../src/observability/workspace-provider.js), [r
 
 ## 6. Benchmark outcome metrics and their limits
 
+During CLI preparation, `metadata/experiment.json` records `setup_started_at` with status `preparing` and a null `started_at`. First project admission sets the live manifest to `running` and records setup duration. The Observation Store exposes registration as `created_at` and assigns `started_at` on the transition to RUNNING. A project that never starts has no start event or research duration, including on sanitized report import. Aggregate project rows carry each project's own preparation and admission times. With Pass@K the group also reports the shared window and settlement separately.
+
 The runner finalizes its report from Task/Execution/Material/check data, Core accounting, cleanup evidence and protocol checks. Important meanings are:
 
 The Workspace audit reads every taken Execution from Task Service after cleanup.

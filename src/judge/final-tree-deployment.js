@@ -336,5 +336,6 @@ export async function createLockedFinalTreeVerifier({ configuration, problem }) 
     ...deployment, identity, targetPath: problem.problem_file, declarationName: problem.declaration_name ?? problem.id,
     fixtureSource: problem.source, fixtureSha256: problem.source_hash,
   });
-  return { adapter, evidence: { artifact_lock_sha256: sha256, identity, sources: sourcePins(deployment), dependency_pins: manifest.dependencyPins, timeout_ms: adapter.timeoutMs, project_checks: adapter.projectChecks, project_jobs: adapter.projectJobs, resources } };
+  await adapter.verifyExportCompatibility();
+  return { adapter, evidence: { export_compatibility_verified: true, artifact_lock_sha256: sha256, identity, sources: sourcePins(deployment), dependency_pins: manifest.dependencyPins, timeout_ms: adapter.timeoutMs, project_checks: adapter.projectChecks, project_jobs: adapter.projectJobs, resources } };
 }

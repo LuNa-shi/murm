@@ -38,7 +38,7 @@ startup receipt. It invokes Pi and CLI help/version commands without contacting
 a model. Confirm the built-image test passed. Without the image environment
 variable it is skipped. The disk probe runs a disposable offline worker and
 exercises byte and inode limits and write restrictions for child processes.
-Successful probes allow you to use this image for launch. The CLI's OpenSandbox
+Run both probes before launching the benchmark. Their duration belongs to deployment preparation. Successful probes allow you to use this image for launch. The CLI's OpenSandbox
 preflight is a separate lifecycle API listing request. It verifies provider
 reachability and access. The live Bot startup then validates the deployed
 worker and verifies per-Bot isolation before discovery.
