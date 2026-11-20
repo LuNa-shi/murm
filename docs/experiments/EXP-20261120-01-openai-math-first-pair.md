@@ -34,3 +34,32 @@ Under the approved 600 s lock, the private complete proofs passed for all four e
 A separate offline replay matched all 22 historical module errors from the single-project run to their immutable Workspace revisions. Seven modules passed and 15 returned Lean source errors. Six passing modules or their dependencies still carried placeholders. The original run's recorded verdicts and Mission outcome stand.
 
 The image passed the isolated Pi startup, fixed input and filesystem quota probes. Its CLI reported the deployed HTTP allowance of 2,430,000 ms for Judge checks. The ordinary and final Lean process limits are each 600,000 ms, also bounded by remaining lifecycle time.
+
+### Interrupted observation
+
+The launcher started at 02:35:28 UTC on November 20, received SIGINT at 03:01:11, and exited with status 130 at 03:01:16. The two projects ran concurrently at implementation `b56d030` and registered checkout `a597af1`. Both reports record `solved=false`, zero Mission submissions and `protocol_valid=false` with reason `operator_stop`.
+
+| Observation | Seymour | OneWay |
+|---|---:|---:|
+| Elapsed after initialization | 23 min 56.694 s | 23 min 55.404 s |
+| Cores that took Tasks | 4 | 4 |
+| Closed Bots / successful Executions | 17 / 9 | 24 / 11 |
+| Materials / consumption records | 9 / 7 | 11 / 11 |
+| Judge PASS / source FAIL / infrastructure ERROR | 20 / 26 / 0 | 11 / 5 / 1 |
+| Completed model requests / unknown receipts | 332 / 3 | 298 / 4 |
+| Settled input / output tokens | 11,270,289 / 119,135 | 10,187,606 / 104,980 |
+| Cleanup errors / duration | 0 / 3.183 s | 0 / 1.746 s |
+
+Both projects closed all Bots and settled every Judge admission. Post-stop checks found zero remaining research containers and zero running checker units. All completed model requests returned HTTP 200. Billing amounts were unavailable. Each project's report and SQLite stores, read-only per-Bot audit, math snapshots and supervisor samples remain in its private experiment evidence.
+
+## Analysis
+
+Seymour's main revision 0.55 includes checked special cases for tournaments and minimum out-degree at most four, plus reductions for strongly connected graphs and constraints on minimal counterexamples. A degree-four module passed at 02:56:04 UTC (check prefix `595ae63a`). The general target still contains its original proof hole.
+
+OneWay's main revision 0.25 includes the no-left NFA construction using at most h+3 states, a transition-table counting bound and the finite range through h=1055. Check `6407a7ec-eef8-4991-ac07-eb4219078018` at 02:59:32 validated the module containing the finite-range step. The general exponential lower bound remained open. Check `6eab33e0-4db6-4203-a865-2e12938b6eb4` returned a checker infrastructure error. Its immutable revision 0.22 later passed the same module checker in 19.056 s during a private replay. The original failure cause remains unknown. These comparative observations are limited to the interrupted window.
+
+OneWay Core 3 reached Task preparation as its selecting Bot expired. The previous discovery session closed while the Execution was still active, and the preparation subsequently failed. Successive replacement Bots completed ready RPCs with zero discovery prompts. A captured sequence shows session start (120177), take failure (120349) and exhausted attempts (120588). The other Cores continued advancing. A deterministic reproduction exposed a stale active turn on the same Core. The live take-failure event omits the exception text, which limits attribution of individual replacements.
+
+## Next steps
+
+The owner requested a repaired, single-project four-hour run first. Use the first configured problem, Seymour, with four Cores and the same 600 s Lean policy. The interrupted pair remains a separate attempt. The second pair is on hold.
