@@ -4,6 +4,8 @@ import json
 import subprocess
 from pathlib import Path
 
+from seymour_inputs import library_digest
+
 HERE = Path(__file__).resolve().parent
 
 
@@ -55,6 +57,14 @@ def snapshot(run):
              'docker.gitea.com/gitea:1.22.6', 'gitea/act_runner:0.2.11']
     ids = subprocess.check_output(['docker', 'image', 'inspect', '--format', '{{.Id}}', *tags], text=True).splitlines()
     extra = {'public_mathlib_sha256': public_source_digest(run / 'public-mathlib')} if launch['TASK'] == 'oai_seymour_second_neighborhood' else {}
+    if (run / 'worker-libraries').is_dir():
+        library_hashes = []
+        for i, src in enumerate(dep['final_tree_checker']['libraryRoots']):
+            expected = library_digest(Path(src))
+            if library_digest(run / 'worker-libraries' / str(i), worker_copy=True) != expected:
+                raise ValueError('Worker library bytes differ from the locked deployment')
+            library_hashes.append(expected)
+        extra['worker_library_sha256'] = library_hashes
     return {**extra, 'upstream': git('rev-parse', 'HEAD'), 'fixture_commit': subprocess.check_output(
         ['git', '-C', source, 'rev-parse', 'HEAD'], text=True).strip(),
         'images': dict(zip(tags, ids, strict=True)), 'files': {k: digest(v) for k, v in files.items()}}

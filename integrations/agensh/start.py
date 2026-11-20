@@ -9,6 +9,7 @@ import time
 sys.dont_write_bytecode = True
 from manifest import snapshot
 from stage import MATRIX, SEYMOUR
+from seymour_inputs import TARGET, probe_worker
 from threading import Timer
 
 run = Path(sys.argv[1]).resolve(strict=True)
@@ -36,6 +37,8 @@ if seymour:
     # against the original artifact lock in the operator verifier namespace.
     subprocess.run(['node', str(Path(__file__).with_name('domain.mjs')), 'preflight'],
                    env={**os.environ, **launch, 'AGENSH_TASK': SEYMOUR}, check=True)
+    overlay = json.loads((run / 'math-compose.json').read_text())['services']
+    probe_worker(image, overlay['agent-worker1']['volumes'], Path(launch['AGENSH_FIXTURE_ROOT']) / TARGET)
 clock = run / 'clock'
 (clock / 'started').touch(exist_ok=False)
 launch_time = time.time()

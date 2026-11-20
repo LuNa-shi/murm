@@ -109,7 +109,11 @@ def main():
         matched.chmod(0o644)
         volumes.append(mount(matched, '/opt/omcgitea/pi/config.py'))
     libraries = []
-    for i, lib in enumerate(checker['libraryRoots']):
+    library_sources = list(map(Path, checker['libraryRoots']))
+    if args.task == SEYMOUR:
+        seymour_inputs.copy_libraries(library_sources, run / 'worker-libraries')
+        library_sources = [run / 'worker-libraries' / str(i) for i in range(len(library_sources))]
+    for i, lib in enumerate(library_sources):
         target = f'/opt/lean-libraries/{i}'
         volumes.append(mount(lib, target))
         libraries.append(target)
