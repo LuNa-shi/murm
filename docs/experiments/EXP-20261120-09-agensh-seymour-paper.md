@@ -20,6 +20,10 @@ The four-Core SwarmEnv paper case reported trusted acceptance in 58 min 54.716 s
 
 Registered before worker startup. The actual prepare hook generated exactly the three pinned benchmark inputs. The pinned upstream checkout has no tracked changes. The native model window opens only after checker, input and isolation preflight.
 
+The operator compared the actual seed with all three approved hashes. At the seed cut the only target theorem has its original proof hole, the other declarations are the problem definitions, and the supplied paper is natural-language evidence. All 19 formal obligations are not completed at this cut, giving **0/19**. With the two manuscript files present the fixed Judge rejected the seed (treecheck:f6112fdd-be99-43d6-b5ab-8f345f394235) and accepted a separate operator-only complete control in 55.651 seconds (treecheck:a46854b9-d2e8-40db-9552-982f6755230b). The repaired worker rejected the original de766071 import and accepted the corrected import. All four effective Compose worker definitions had approved mounts and only the internal network. The native public collaboration implementation had zero tracked changes.
+
+At 10:16:26 UTC the single-attempt launcher entered the queue behind EXP-20261120-08. The four-hour budget starts at native launch. Repository tests passed (736 passed, 38 skipped), four dedicated regressions passed on Lean 4.34.1 and both review axes reported no blocking finding. [Live ten-minute register](https://github.com/LuNa-shi/SwarmEnv/issues/157#issuecomment-7036953360)
+
 ## Analysis
 
 Pending observation. Module counts alone cannot establish mathematical progress or integration.
