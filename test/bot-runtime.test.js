@@ -2131,7 +2131,7 @@ test('Workspace provenance records explicit uses and exposes affected revisions 
   const { guest, command, dispatch, bridge, context } = await workspaceFixture(t);
   const materialId = 'material:workspace-use';
   await bridge.call({ operation: 'context_publish_material', operationId: 'material-for-use',
-    payload: { material_id: materialId, kind: 'note', content: 'Useful proof observation' } });
+    payload: { material_id: materialId, content: 'Useful proof observation' } });
   guest.files['answer.txt'] = Buffer.from('candidate answer');
   await assert.rejects(dispatch('save', 'missing-use', { material_ids: [materialId] }), /recorded use/);
   await command('material', 'consume', '--material-ids', JSON.stringify([materialId]),
