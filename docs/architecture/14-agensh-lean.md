@@ -33,3 +33,32 @@ Seymour mounts the locked compiler bin/lib read-only. For each configured depend
 For Seymour, lean-check resolves the requested source against the Git worktree and the fixed directory containing the original theorem. It rejects tracked Lean sources outside the target module layout, copies regular tracked and eligible draft sources into a new temporary Lake project, rejects symlinks and the baseline verifier’s reserved module names, and supplies inert package metadata backed by the approved compiled libraries. It builds the requested module and its imports from source in that isolated project. The current directory determines only how the filename argument is resolved. Stale .olean files, ambient Lean paths and candidate Lake configuration do not enter this build. It discards the temporary project on return, reports build failures to the caller and limits each build to 600 s. Timeout or termination kills the owned Lake and compiler process group before temporary cleanup. This command gives local module diagnostics. Acceptance still requires the independent fixed-declaration Judge on an exported tree. Putnam and Q20 retain the standalone Lean command described above.
 
 The Seymour deployment names the historical checker checkout. Before loading that verifier, the adapter verifies its exact baseline Git commit and clean Judge sources. The operator mounts the baseline checkout read-only at the absolute paths pinned by the old checker lock, inside a private mount namespace, then drops back to the ordinary experiment user. Research containers receive the public target and allowed Lean libraries. The baseline checkout and historical solutions stay outside their mounts. The paper arm distributes its two manuscript files in Git. A separate operator samples service liveness, usage, Git and Judge evidence every minute and records ten-minute windows with individual worker responses and public activity.
+
+### Running the four-worker Seymour comparison
+
+On a host with the pinned native service images and EXP-02 artifacts installed, set `DEPLOYMENT` to the locked operator JSON, `FIXTURE` to the original fixture checkout, and `PROVIDER_CATALOG` to the operator-only Responses catalog. Set `EXP_ID` to the new registered experiment ID and `PROFILE_SUFFIX` to a fresh lowercase alphanumeric suffix. Run these commands from the repository root.
+
+```sh
+git submodule update --init third_party/agensh
+RUN_DIR="$PWD/experiments/$EXP_ID"
+python3 -B integrations/agensh/stage.py \
+  --task oai_seymour_second_neighborhood \
+  --deployment "$DEPLOYMENT" --fixture "$FIXTURE" \
+  --provider-catalog "$PROVIDER_CATALOG" --run-dir "$RUN_DIR" \
+  --worker-image swarmenv/agensh-pi:157-seymour-pi130 \
+  --profile-suffix "$PROFILE_SUFFIX"
+```
+
+This invocation selects the challenge-only arm. Its seed contains the original Lean target. For an authorized paper-arm comparison, add `--seymour-paper` at staging. The profile and private input manifest fix the arm before worker startup.
+
+In the operator environment where the exact EXP-02 checker checkout is mounted at the paths recorded in its artifact lock, start the following two processes in separate terminals or supervised services. Keep the same working directory and absolute `RUN_DIR` for both. The observer records `observer_ready` in `observations.ndjson` after it validates the verifier. Start the team once that record exists.
+
+```sh
+node integrations/agensh/observe.mjs "$RUN_DIR"
+```
+
+```sh
+python3 -B integrations/agensh/start.py "$RUN_DIR"
+```
+
+The driver enforces the four-hour deadline. For early acceptance an external monitor must match a fixed-goal PASS's checked tree to the **current server main tree**, close model admission by atomically replacing `clock/deadline` with the current Unix time, then write `finalize` to `out/oai_seymour_second_neighborhood/control`. The final exported commit, tree and locked verdict appear in `export.json` and `acceptance.json` under that task output directory. Verify worker archives and remaining profile containers after the driver exits. A module-mode PASS can occur on the original goal with its proof hole still present.
