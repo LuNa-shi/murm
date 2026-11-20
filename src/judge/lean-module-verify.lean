@@ -13,6 +13,9 @@ import Lean
 import Lean.Replay
 open Lean
 
+-- Keep the replay API available on older toolchains without compiler deprecation
+-- warnings prefixing this driver's strict JSON output on newer toolchains.
+set_option linter.deprecated false in
 unsafe def main (args : List String) : IO UInt32 := do
   initSearchPath (← findSysroot)
   let [target, moduleName, binding] := args | throw <| IO.userError "Invalid module verification arguments"

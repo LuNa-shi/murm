@@ -13,6 +13,9 @@ private def requireTheorem (environment : Export.ExportedEnv) (name : Name) : IO
   | some (.thmInfo _) => pure ()
   | _ => throw (IO.userError "Missing named theorem")
 
+-- Retain compatibility with older replay APIs without prefixing the exact
+-- success marker with compiler deprecation diagnostics on newer toolchains.
+set_option linter.deprecated false in
 def main (args : List String) : IO UInt32 := do
   let [target, originalPath, candidatePath] := args
     | throw (IO.userError "Invalid verifier arguments")
