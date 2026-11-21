@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261121-02` | [Issue #159](https://github.com/LuNa-shi/SwarmEnv/issues/159) / [#157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Registered · Seymour paper, four Cores, matched initial assignment | `365d3d9` | [Matched brief repeat](EXP-20261121-02-seymour-matched-brief.md) |
 | `EXP-20261121-01` | [Issue #159](https://github.com/LuNa-shi/SwarmEnv/issues/159) / [#157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Operator stop · Seymour paper, 43m56s, no root submission | `de79440` | [Seymour Lean tools follow-up](EXP-20261121-01-seymour-lean-parity.md) |
 | `EXP-20261120-09` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Final PASS · 35m35s from launch, four archives verified; local access repaired in-run | `eeb45c4` | [Paper run](EXP-20261120-09-agensh-seymour-paper.md) |
 | `EXP-20261120-07` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Stopped by owner at 46m34s · final FAIL, four archives verified | `8fb4d5f` | [Seymour comparison](EXP-20261120-07-agensh-seymour.md) |
