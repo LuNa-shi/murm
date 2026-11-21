@@ -112,8 +112,12 @@ class SeymourInputs(unittest.TestCase):
                 run_build([sys.executable, '-c', stub], tmp, os.environ, timeout=1)
             pid = (tmp / 'child.pid').read_text()
             status = Path('/proc') / pid / 'stat'
-            if status.exists():
-                self.assertIn(status.read_text().split()[2], ('Z', 'X'))
+            try:
+                state = status.read_text().split()[2]
+            except (FileNotFoundError, ProcessLookupError):
+                # The kernel has already reaped the stopped child.
+                return
+            self.assertIn(state, ('Z', 'X'))
 
     def test_module_root_and_source_only_build(self):
         if not os.environ.get('AGENSH_TEST_LEAN_ROOT'):
