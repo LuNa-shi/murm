@@ -17,9 +17,11 @@ EXP-09 underwent an in-run local permission repair after about 27 minutes. This 
 
 ## Results
 
-**Final exported root: unavailable.** The research window lasted 240 min 0.000 s. The independent checker returned no receipt on commit unavailable and tree unavailable. Settlement took 3 min 26.112 s. Archive verification was True and the remaining profile container count was 0.
+**Four-hour window completed. The fixed theorem failed offline adjudication.** Agensh ran from 12:27:14.893 to 16:27:14.893 UTC on Nov 20, 2026, and fenced model admission at the deadline. All four worker archives were verified and zero team containers remained after shutdown. The cutoff snapshot and the native final export agree on commit `175ce91f5205a1ac847bd576ff1a2415f6c1f73e` and tree `6df9dfb90c01fe76f40c5ffe8316fe372f2080ff`. The file containing the fixed theorem was byte-for-byte identical to the challenge and still contained the supplied `sorry`.
 
-No early stop on a trusted current-main receipt was recorded. Intermediate 19-item scores require statement-level adjudication. Local module counts do not supply a numerical score.
+The native evaluate hook stopped before checking because the host library directory had drifted from its lock. Ubuntu's unattended upgrade had changed `python3-jwt` from `2.10.1-4ubuntu1.3` to `2.10.1-4ubuntu1.4` at 14:14:17 UTC in the research window. The native teardown took 3 min 26.112 s and retained the export. On Nov 21, an offline replay reconstructed the original package files and verified them against the unchanged full checker lock in a private read-only mount namespace. The original checker evaluated the same export and returned **FAIL** with receipt `treecheck:9e92700c-694b-4209-8f77-107d500249b1` and the diagnostic “Final project contains an incomplete proof or an added axiom”. The replay made zero model calls.
+
+The 19-item rubric has no aggregate score for this run. Individual items have yet to be adjudicated against their full statements.
 
 | Minutes | Workers with HTTP 200 | HTTP 200 / other | Main ref changes | Module PASS / FAIL / ERROR | Server main |
 |---:|---:|---:|---:|---:|---|
@@ -48,7 +50,7 @@ No early stop on a trusted current-main receipt was recorded. Intermediate 19-it
 | 230 | 0 | 0 / 0 | 0 | 0 / 0 / 0 | 175ce91f52 |
 | 240 | 4 | 29 / 0 | 0 | 0 / 0 / 0 | 175ce91f52 |
 
-The proxy logged 807 successful responses by cutoff and 163 other HTTP responses. After cutoff it logged 0 successes and 38 other responses. Reported usage was 77,110,590 input tokens, including 75,001,088 cached, and 284,181 output tokens. Response timestamps can follow admission.
+The proxy logged 807 successful responses by cutoff, 126 HTTP 429 responses, and 37 HTTP 503 responses. Between minutes 50 and 60 there were 14 successes and 116 errors. The four routers and workers were still up, but from minute 80 to minute 190 only zero or one worker per ten-minute window received a successful model response. All four received successful responses again in the windows ending at minutes 200 and 240. The 38 HTTP 502 responses after cutoff were recorded during shutdown. Reported usage was 77,110,590 input tokens, including 75,001,088 cached, and 284,181 output tokens. Response timestamps can follow admission.
 The final session audit covered 4 workers. Supplied-paper instruction matches: 0; manuscript text tool-return matches: 0; audited reference-marker or credential hits: 0.
 
 Registered before the formal model window. The actual prepare hook emitted one challenge file, an empty context list and an empty manuscript instruction. Four actual worker containers matched their read-only mount plans and were attached only to the private network. Native seed b1f43d102d700ae1ca5b9a093cf51c2f58d312d4 had exactly one 913-byte benchmark file in addition to native repository metadata. With UID/GID 10000:10000 each live worker elaborated the positive Mathlib probe and rejected the wrong module import. All four actual Pi sessions received the challenge instruction and zero manuscript instructions. Initial goal verification failed on the original hole (treecheck:bb1aaa9a-c4db-49c4-bc0b-ecdbdd45666d); in private preflight the complete positive control passed the same lock (treecheck:90ba74ae-fcc8-49d9-aa7e-00c47c9ec718).
@@ -57,8 +59,16 @@ Launch was 12:27:14.893 UTC on 2026-11-20. The first native wake was 12:28:07.85
 
 ## Analysis
 
-The immutable cut table reports integration and checking separately. The historical manuscript arm included an in-run permission repair. The two observations permit a descriptive comparison.
+The final tree contains 26 Lean files, including the original challenge. The observer recorded 44 module PASS events across sampled commits. Local proofs were reused across workers. Worker 3's inverse-matrix reduction in `a367be4` used Worker 4's weighted blowup result from `9310fc3`. Worker 1 strengthened the reduction with an arc-deletion bound in `325d178`. Worker 3 then proved that it would suffice to rule out a primitive inverse obstruction in `4d35e08`, and Worker 4 derived a bound on the inverse's second-neighborhood mass in `545f090`. No merged declaration ruled out those obstructions in general, and the fixed target file never imported this chain.
+
+Worker 4 also integrated tournament-completion results for graphs whose missing edges form a matching, finite-order results through eleven vertices, and a strict bound relative to minimum outdegree. These proofs settle particular cases or bounds. The final integration at 15:35:33 UTC took place about 188 minutes after launch, with approximately 52 minutes left in the window. The cutoff snapshot shows no subsequent revision on main.
+
+EXP-09 reached trusted whole-target acceptance after 35 min 35.326 s with the manuscript and had an early local-checker permission incident. EXP-10 ran four hours and closed with the original proof hole still present. The provider errors, differing worker activity, and one observation per condition limit what these outcomes say about the separate effect of manuscript availability or decentralized prioritization.
 
 ## Next steps
 
-The authorized model run has ended. Any statement-level adjudication uses the retained immutable snapshots and checker receipts.
+The research window and offline recheck are complete. The per-item rubric remains available for statement-level adjudication against the retained cuts.
+
+## Evidence and limitations
+
+The final session audit covered all four workers. A source comparison of the final Lean tree against checked-in upstream reference modules and two previous completed submissions found zero exact file matches and zero matching ten-line windows outside the public challenge. These checks cover the staged files, recorded tool outputs and retained trees. [Ten-minute monitoring record](https://github.com/LuNa-shi/SwarmEnv/issues/157#issuecomment-7039469409)
