@@ -157,6 +157,7 @@ async function artifacts(configuration, expected = null) {
     { label: 'module-proof-verifier', path: fileURLToPath(new URL('./lean-module-verify.lean', import.meta.url)) },
     { label: 'base64', path: '/usr/bin/base64' },
     { label: 'verifier', path: fileURLToPath(new URL('./lean-final-tree-verifier.js', import.meta.url)) },
+    { label: 'lean-source-policy', path: fileURLToPath(new URL('./lean-source-policy.js', import.meta.url)) },
     { label: 'resource-launcher', path: fileURLToPath(new URL('./checker-process-limits.js', import.meta.url)) },
     { label: 'resource-owner', path: fileURLToPath(new URL('./checker-owner.js', import.meta.url)) },
     { label: 'dash', path: '/usr/bin/dash' },

@@ -159,6 +159,8 @@ Sandbox settings are `image` (required when enabled), provider `opensandbox`, `c
 
 Sandbox preflight sends a bounded authenticated GET to the OpenSandbox lifecycle list endpoint before the experiment row. A successful response verifies API access. The built-image worker and disk probes in the [benchmark runbook](../operations/benchmark.md) exercise the local image and host quota setup before a formal launch. The live Bot startup also checks its deployed worker and per-Bot isolation. Scoped provider reconciliation runs after Core Runtime construction and before any Bot launch, with the experiment already registered. Unattributable preflight events are omitted; registered reconciliation and subsequent lifecycle evidence are recorded. A failed preflight is still surfaced before any Task or Agent is created.
 
+For a Seymour comparison with native Agensh, the optional [Seymour image layer](../../services/opensandbox-agent/Dockerfile.seymour) adds the same `lean-check` command to a selected SwarmEnv worker image. The operator supplies named build contexts for the locked Lean `bin` and `lib` directories, the numbered public compiled dependencies, the exported public Mathlib source and the directory containing `seymour-lean-check`. The layer installs toolchain and library inputs under `/opt/lean` and `/opt/lean-libraries` and exposes the source at `/opt/mathlib-source/Mathlib`. The round launcher accepts `OPENAI_MATH_SEYMOUR_LOCAL_LEAN=1` only for the single Seymour paper project. It sends the fixed tool instructions in each Bot's discovery and sets the worker to four CPUs and 8 GiB, as configured for the matched Agensh arm. The instructions and limits are recorded in the private launch inputs. After take, `lean-check --swarmenv-workspace PATH.lean` enumerates Lean files from the fixed worker project directory without relying on Git metadata. It validates the module root and sources, copies the selected project inputs to private scratch under the Bot's existing `TMPDIR` quota, and runs the same offline build command. It returns the compiler exit status or an input error, with temporary files removed when the command settles. Submission uses the host's locked final checker and immutable main tree. Record the selected image ID and probe it under the Bot UID before launch.
+
 ## 6. The active outer loop
 
 Each identity loop owns discovery, Agent choice, take/bind and waiting for its Execution to release. The runner's `onTake` callback binds the existing Pi Session with no additional initial prompt. A continuation promise waits for settling, then keeps sending bound turns while that Execution is `RUNNING`. `turnInFlight`, `boundTurnPromise`, current Session identity and release checks prevent an ordinary repair tick from opening a second overlapping turn.
@@ -378,7 +380,7 @@ framework digest, so untracked or ignored local Lean files cannot enter public
 metadata. The final FLT source restriction scans all submitted `.lean` files for
 incomplete proofs, unsafe/native bypass and elaborator/diagnostic constructs
 (including `run_tac`, `trace_state`, `#eval`, `#check` and `#print`). This is a
-lexical final-delivery policy, including occurrences in comments, in addition to
+lexical final-delivery policy outside Lean comments, in addition to
 kernel replay; ordinary development diagnostics retain their existing behavior.
 
 The complete graph remains regular public Workspace input, not a cached image
@@ -464,8 +466,9 @@ foundation manifest digest and compiled artifacts. Lock creation verifies the
 reduced source inventory and rejects unexpected compiled artifacts. Candidates
 can create ordinary project modules and add imports; trusted namespace shadowing
 and source-layout restrictions still reject. `requireCompleteProject` rejects
-`sorry`, `sorryAx`, `admit` or `axiom` tokens in submitted Lean files (including
-comments). Unlike the older FLT profile, it does not freeze the textual import
+`sorry`, `sorryAx`, `admit` or `axiom` outside comments in submitted Lean files.
+The shared source-policy helper is included in the artifact lock. Renew older
+locks before startup with the new verifier. The older FLT profile freezes the textual import
 prefix. Original theorem/type comparison, transitive axiom checking and kernel
 replay still govern final PASS; ordinary project diagnostics remain unchanged.
 All existing checker resource limits, deadlines and cleanup apply.

@@ -1462,7 +1462,7 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
       if (operation === 'workspace_check') observed.push({ taskId, executionId, result });
     },
   });
-  guest.files['Proof.lean'] = Buffer.from('import Helper\ntheorem proof : True := helper');
+  guest.files['Proof.lean'] = Buffer.from('import Helper\n/- No axiom. /- No admit. -/ -/\ntheorem proof : True := helper -- no sorry');
   guest.files['Helper.lean'] = Buffer.from('theorem helper : True := True.intro');
   const saved = await dispatch('save', 'fixed-project');
   guest.files['Helper.lean'] = Buffer.from('unsaved private edit');
@@ -1483,6 +1483,7 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   await assert.rejects(bridge.call({ operation: 'workspace_check', payload: { revision: saved.revision, files: {} } }), { code: 'INVALID_CONTRACT' });
   await assert.rejects(bridge.call({ operation: 'workspace_check', payload: { revision: saved.revision, path: 'input.txt' } }), { code: 'INVALID_CONTRACT' });
   const scoped = await command('judge', 'check', '--revision', saved.revision, '--path', 'Proof.lean', '--request-id', 'delivery-check');
+  assert.equal(scoped.verdict, 'PASS', scoped.diagnostic_excerpt);
   assert.equal(scoped.workspace_input.path, 'Proof.lean');
   assert.equal(scoped.workspace_input.git_tree, saved.git_tree);
   assert.equal(builds.length, 2);

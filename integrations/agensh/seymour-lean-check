@@ -13,6 +13,7 @@ import tempfile
 CHALLENGE = Path('benchmarks/openai-math-12/lean/ComparatorChallenges/SeymourSecondNeighborhood.lean')
 LEAN = Path('/opt/lean')
 LIBRARIES = Path('/opt/lean-libraries')
+SWARMENV_PROJECT = Path('/workspace/project')
 PART = re.compile(r"[A-Za-z_][A-Za-z0-9_']*")
 
 
@@ -33,18 +34,22 @@ def terminate(signum, frame):
     raise InterruptedError('Local build interrupted')
 
 
-def main(argument):
-    repo = Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], text=True).strip())
+def main(argument, *, swarmenv_workspace=False):
+    repo = (SWARMENV_PROJECT if swarmenv_workspace else
+            Path(subprocess.check_output(['git', 'rev-parse', '--show-toplevel'], text=True).strip()))
     root = repo / CHALLENGE.parent
     if root.resolve(strict=True) != root or not (repo / CHALLENGE).is_file():
         raise ValueError('Missing canonical Seymour module root')
     target = Path(os.path.abspath(argument))
     if target.suffix != '.lean' or not target.is_relative_to(root) or target.resolve(strict=True) != target:
         raise ValueError(f'Check a regular Lean source under {CHALLENGE.parent}')
-    ls_files = ['git', '-C', str(repo), 'ls-files', '-z']
-    tracked = subprocess.check_output([*ls_files, '--cached', '--', '*.lean'])
-    drafts = subprocess.check_output([*ls_files, '--others', '--exclude-standard', '--', str(CHALLENGE.parent)])
-    names = set(tracked.split(b'\0')) | set(drafts.split(b'\0'))
+    if swarmenv_workspace:
+        names = {os.fsencode(file.relative_to(repo)) for file in repo.rglob('*.lean')}
+    else:
+        ls_files = ['git', '-C', str(repo), 'ls-files', '-z']
+        tracked = subprocess.check_output([*ls_files, '--cached', '--', '*.lean'])
+        drafts = subprocess.check_output([*ls_files, '--others', '--exclude-standard', '--', str(CHALLENGE.parent)])
+        names = set(tracked.split(b'\0')) | set(drafts.split(b'\0'))
     libs = sorted(LIBRARIES.iterdir(), key=lambda path: int(path.name))
     reserved = {'Init', 'Lean', 'Std', 'Lake', 'LakeMain', 'LeanIR', 'LeanChecker', 'Leanc', 'Mathlib'}
     for lib in libs:
@@ -98,8 +103,12 @@ def main(argument):
 if __name__ == '__main__':
     signal.signal(signal.SIGTERM, terminate)
     try:
-        if len(sys.argv) != 2:
-            raise ValueError('usage: lean-check Path/Module.lean')
-        sys.exit(main(sys.argv[1]))
+        args = sys.argv[1:]
+        swarmenv_workspace = args[:1] == ['--swarmenv-workspace']
+        if swarmenv_workspace:
+            args = args[1:]
+        if len(args) != 1:
+            raise ValueError('usage: lean-check [--swarmenv-workspace] Path/Module.lean')
+        sys.exit(main(args[0], swarmenv_workspace=swarmenv_workspace))
     except (OSError, ValueError, subprocess.SubprocessError) as exc:
         sys.exit(f'lean-check: {exc}')

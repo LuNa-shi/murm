@@ -702,6 +702,7 @@ export async function takeTaskWithAgent(core, candidates) {
         compaction_max: core.runtime.maxCompactions, context_closeout_fraction: core.runtime.handoffWindowRatio },
       services: botServiceDirectory(core.bridge.getCapabilityProfile()),
       project: { project_id: core.stateRef.problem.id, problem_file: core.stateRef.problem.problem_file, source_hash: core.stateRef.problem.source_hash,
+        ...(core.startConfig.options.localLeanTools ? { local_lean_tools: core.startConfig.options.localLeanTools } : {}),
         input_policy: core.stateRef.resume ? 'original locked formalization and public research state reconstructed at the selected historical time' : 'locked unsolved formalization only; no external answers or solution-derived candidates' },
       eligibleTasks: selectionView(candidates), firstTurn: core.botDiscoveryTurns === 0,
     });

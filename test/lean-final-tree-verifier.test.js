@@ -46,12 +46,27 @@ test('locked project forwards configured build concurrency and preserves final c
 
 test('complete-project policy rejects a hole in an unused helper before final dispatch', async () => {
   const verifier = fixture(undefined, { projectChecks: true, requireCompleteProject: true });
+  for (const { source, line, word } of [
+    { source: 'def marker := r#"\\" -- /-"#\n/- An axiom in prose. -/\ntheorem later : True := by sorry\n', line: 3, word: 'sorry' },
+    { source: '/- An axiom in prose. -/\naxiom invented : True\n', line: 2, word: 'axiom' },
+    { source: 'def marker : String := s! "{("--", (by sorry : Nat)).1}"\n', line: 1, word: 'sorry' },
+  ]) {
+    const result = await verifier.check({ files: {
+      'Toy.lean': 'theorem toy : True := by trivial\n',
+      'Unused.lean': source,
+    }, tree: 'unfinished-project' });
+    assert.equal(result.verdict, 'FAIL');
+    assert.match(result.diagnostic, new RegExp(`Unused\\.lean:${line}:\\d+:.*${word}`));
+  }
+});
+
+test('complete-project policy accepts Lean comments and still checks the original proof', lean, async () => {
+  const verifier = fixture(undefined, { projectChecks: true, requireCompleteProject: true });
   const result = await verifier.check({ files: {
-    'Toy.lean': 'theorem toy : True := by trivial\n',
-    'Unused.lean': 'theorem later : True := by sorry\n',
-  }, tree: 'unfinished-project' });
-  assert.equal(result.verdict, 'FAIL');
-  assert.match(result.diagnostic, /incomplete|axiom/);
+    'Toy.lean': 'import Helper\n/-- The proof uses no axiom. -/\ntheorem toy : True := helper -- no sorry\n',
+    'Helper.lean': 'def marker := s!"proof"\n/- No admit. /- Nested sorryAx. -/ -/\ntheorem helper : True := trivial\n',
+  }, tree: 'commented-proof' });
+  assert.equal(result.verdict, 'PASS', result.diagnostic);
 });
 
 test('root-only final checking accepts a new definition and helper import but rejects a changed goal', lean, async () => {

@@ -59,6 +59,15 @@ if (projectParallelism > requestedIds.length) throw new TypeError('OPENAI_MATH_P
 const selected = requestedIds.map(id => sourceConfig.problems.find(problem => problem.id === id));
 if (selected.some(problem => !problem)) throw new TypeError(`Unknown OpenAI Math problem ID in ${requestedIds.join(',')}`);
 const paperMode = process.env.OPENAI_MATH_PAPER_MODE ?? 'none';
+const seymourLocalLean = process.env.OPENAI_MATH_SEYMOUR_LOCAL_LEAN ?? '0';
+if (!['0', '1'].includes(seymourLocalLean) || (seymourLocalLean === '1' &&
+    (paperMode !== 'paper' || requestedIds.length !== 1 || requestedIds[0] !== 'oai_seymour_second_neighborhood'))) {
+  throw new TypeError('OPENAI_MATH_SEYMOUR_LOCAL_LEAN=1 requires a single Seymour paper project');
+}
+const localLeanTools = seymourLocalLean === '1'
+  ? 'After taking a Task, run lean-check --swarmenv-workspace PATH.lean to compile a module in your current project. Search /opt/mathlib-source/Mathlib with rg, and use #check in a local Lean file for exact signatures. The local check supplies feedback. Use swarm for shared Workspace and final Mission submission.'
+  : null;
+const localLeanResources = localLeanTools ? { cpu: '4', memory: '8Gi' } : undefined;
 const { config, problems } = await selectOpenAiMathContext(sourceConfig, selected, paperMode);
 const paperInputs = Object.fromEntries(problems.map(problem => [problem.id, {
   mode: paperMode, manifest: problem.context_manifest ?? null, sha256: problem.context_sha256 ?? null,
@@ -93,6 +102,7 @@ try {
     stop_signal: stopSignal,
     config_path: configPath,
     paper_inputs: paperInputs,
+    local_lean_tools: localLeanTools,
     fixture_commit: config.fixture_commit,
     problem_ids: requestedIds,
     checker_lock: artifactLockPath,
@@ -104,6 +114,7 @@ try {
     timebox_ms: timeboxMs,
     bot_max_ms: botMaxMs,
     sandbox_image: sandboxImage,
+    sandbox_resource_limits: localLeanResources ?? null,
     sandbox_url: sandboxUrl,
     bridge_url: bridgeUrl,
   }, null, 2) + '\n', { mode: 0o600 });
@@ -120,6 +131,7 @@ try {
     turnTimeoutMs: checkerPolicy.turn_timeout_ms,
     checkerTimeoutMs,
     cores: 4,
+    localLeanTools,
     signal: stopController.signal,
     provider,
     model,
@@ -133,6 +145,7 @@ try {
       provider: 'opensandbox',
       lifecycleBaseUrl: sandboxUrl,
       image: sandboxImage,
+      resourceLimits: localLeanResources,
       bridgeHost,
       bridgeUrl,
       networkIsolation: { mode: 'local-docker', additionalEndpoints: [] },

@@ -52,7 +52,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "sha256": "71e874f459bd62e0bad7586171229daa351a2d5f7b55f50aa0ad42dba1a597e0"
+      "sha256": "bfbcf124ec7d820bd34ce886fa52d200fdc79e2dc2c7fe2029bac04ade79fcce"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -136,7 +136,7 @@
     },
     {
       "path": "src/benchmark/putnam-runner.js",
-      "line": 712,
+      "line": 713,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
     },
     {
