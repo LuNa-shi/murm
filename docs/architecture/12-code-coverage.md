@@ -1970,7 +1970,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 |---|---|---|---|
 | [scripts/benchmarks/prepare_flt_subtrees.py](../../scripts/benchmarks/prepare_flt_subtrees.py) | Root-only FLT extraction, private typed facts and public fixture generation | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `d40cab74f2ac086746abd85b901d3a3381ac1c32f9756cab4052b4b46db5e537` |
 | [scripts/run-openai-math-coloring.mjs](../../scripts/run-openai-math-coloring.mjs) | Four-Core launcher for the embedded OpenAI Math PlaneColoring smoke run | [07-run-configuration](07-run-configuration.md) | `fe0032870a4dbe4165a2b391d699a985555e864be52d86b173b8ed1ab259fe51` |
-| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `8ba5e31c27a62b6e55b55267936c37e8a754314acba5bbaf8536ccb2c4c2be22` |
+| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `375840e35a8ec7099580a9904b3283e1e99df84fbcabef0c9cd4f2bc18235460` |
 
 ### controlled verification data (4)
 
@@ -2053,7 +2053,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [services/opensandbox-agent/Dockerfile.seymour](../../services/opensandbox-agent/Dockerfile.seymour) | Optional Seymour image layer with the matched public Lean diagnostic tool and Mathlib inputs | [07-run-configuration](07-run-configuration.md) | `057584fe14a90956c8b4a0feabeaa470a68fd742608fa199323ce13cc03fb499` |
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `50c0c4d26ea3450bb2881af65c39ffde41a42a8e8cdbdb56eac35d1af118e55c` |
 | [src/benchmark/pass-k.js](../../src/benchmark/pass-k.js) | Compose K independent one-Core Mission runs with a fixed observation window and trusted acceptance aggregation | [07-run-configuration](07-run-configuration.md), [06-observability-experiments](06-observability-experiments.md) | `3a9530594867be357f91c226c77f1a4738d570cac9039a49bdd4b97b4beaaa75` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `bfbcf124ec7d820bd34ce886fa52d200fdc79e2dc2c7fe2029bac04ade79fcce` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `47466a0abf9fa13e69f4802bcd70ca02c2e3f69546b5e989235c85a83a2f7660` |
 
 ### native Agensh experiment (23)

@@ -20,3 +20,13 @@ Stop on trusted acceptance, the four-hour cutoff, protocol or input-integrity fa
 ## Results
 
 Registered before model calls. Offline controls exercised the fixed final checker against the original incomplete seed and both historical final-phase trees. Worker image, sandbox restrictions and tool readiness are checked before the experiment window.
+
+Research started at 11:22:34.434 UTC. All four Cores received model responses, took work and recovered or replaced Bots through the native Task lifecycle. The original proof remained incomplete at operator stop. The report recorded 43m55.601s including 1.378s cleanup, no cleanup errors and no remaining worker containers. The report marks the interrupted protocol invalid with reason `operator_stop`.
+
+## Analysis
+
+The immutable public seed supplied both paper files. The first discovery messages gave the generic goal to solve Seymour and explained the local Lean tools. Core 1 read the first 90 lines and took the strongly connected reduction. Core 2 took a tournament special case without an observed direct paper read in its first Bot session. Core 3 read selected passages from Sections 2 and 3 and took the deficit lemma. Core 4 read the first 22 lines and took arc minimality. The public main accumulated reductions and bounded outdegree cases. At the 43m08s audit there was no explicit task for Section 3 pruning or the Section 4 extremal contradiction.
+
+## Next steps
+
+The owner directed a fresh repeat with the initial assignment aligned to native Agensh. The repeat has a separate registration. The run history and partial artifacts remain private.
