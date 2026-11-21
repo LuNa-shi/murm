@@ -17,4 +17,12 @@ Private staged-input manifest file SHA-256 `37d22778ea96df809c2aa4b5fd863f072d2e
 
 ## Results
 
-Registered before research model admission.
+**Startup failed before first wake.** Four staged worker UID/GID probes passed. The locked Judge preserved the original fingerprint in an isolated checker child, rejected the unproved paper seed and accepted the operator-only control. The native driver then failed when its privileged Docker lookup tried to use a host-library copy whose ownership and setuid bits had been lost during copying. There were no model requests and no remaining team containers. Driver launch was recorded for startup accounting. The research start is unavailable.
+
+## Analysis
+
+The Agensh image was installed. The message about a missing image came from the failed privileged lookup. The independent checker controls and worker Lean probes had not exercised that driver operation.
+
+## Next steps
+
+Use an ownership-preserving root-protected host-library copy and verify the actual privileged image lookup before [the fresh startup attempt](EXP-20261121-04-agensh-seymour-paper-fixed-uid.md). Preserve the original locked Judge inputs and the single model-run allowance.

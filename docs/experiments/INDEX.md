@@ -8,7 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261121-03` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Registered · native Seymour manuscript, four workers, Lean permissions fixed at startup | `490a215` | [Paper repeat with corrected permissions](EXP-20261121-03-agensh-seymour-paper-fixed-uid.md) |
+| `EXP-20261121-04` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Registered · native Seymour manuscript, four workers, Lean permissions fixed at startup | `490a215` | [Paper repeat with corrected permissions](EXP-20261121-04-agensh-seymour-paper-fixed-uid.md) |
+| `EXP-20261121-03` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Startup failure before first wake · zero model requests | `490a215` | [Paper repeat with corrected permissions](EXP-20261121-03-agensh-seymour-paper-fixed-uid.md) |
 | `EXP-20261120-09` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Final PASS · 35m35s from launch, four archives verified; local access repaired in-run | `eeb45c4` | [Paper run](EXP-20261120-09-agensh-seymour-paper.md) |
 | `EXP-20261120-07` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Stopped by owner at 46m34s · final FAIL, four archives verified | `8fb4d5f` | [Seymour comparison](EXP-20261120-07-agensh-seymour.md) |
 | `EXP-20261120-06` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Stopped by owner at 7m34s · four archives verified, plateau unassessable | `51bb3c4` | [Q20 observation](EXP-20261120-06-agensh-pi-q20.md) |
