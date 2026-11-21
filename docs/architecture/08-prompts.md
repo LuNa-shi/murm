@@ -20,6 +20,10 @@ Bridge command responses include structured results/errors and lifecycle notices
 
 On historical continuation, the runner reads the restored Mission, Task page and public main for each fresh Bot. Its startup message sets `project.input_policy` to `original locked formalization and public research state reconstructed at the selected historical time`. A replacement Bot follows the same discovery send path. [Historical continuation](13-historical-resume.md)
 
+For the opted-in Seymour paper round, the launcher supplies the fixed `project.local_lean_tools` discovery field to every Bot. Its text is `After taking a Task, run lean-check --swarmenv-workspace PATH.lean to compile a module in your current project. Search /opt/mathlib-source/Mathlib with rg, and use #check in a local Lean file for exact signatures. The local check supplies feedback. Use swarm for shared Workspace and final Mission submission.` The launcher records the same text in the private launch inputs. The field is absent from ordinary launches.
+
+With `OPENAI_MATH_SEYMOUR_MATCHED_BRIEF=1`, the single-project Seymour paper launcher sets the Mission goal to `Prove the original Lean theorem in <problem_file> in the shared Workspace. Formalize the supplied manuscript in benchmark/paper.pdf (text in benchmark/paper.txt). The pinned Lean libraries are available offline through lean-check. Work autonomously, split work as you discover it, and merge checked Lean sources to main.` The target path comes from the verified fixture. The launcher records the rendered goal in `launch-inputs.json`. The runner stores it in the Mission and includes the Mission in every discovery prompt, including for replacement Bots. The discovery input policy names the pinned public manuscript. The initial Task list is empty, and Bots propose and take responsibilities through the existing Task flow.
+
 ## Complete text and reproducible source inventory
 
 | Reference | Contents |

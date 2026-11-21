@@ -8,6 +8,7 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 import { validateFixtureManifest } from './fixture.js';
 import { checkerIdentity, normalizeCheckerResult, normalizePreflight } from './check-result.js';
+import { leanSourcePolicyFinding } from './lean-source-policy.js';
 
 function sha256(value) {
   return createHash('sha256').update(typeof value === 'string' || Buffer.isBuffer(value) ? value : stableStringify(value)).digest('hex');
@@ -251,8 +252,9 @@ export class LeanChecker {
       verdict: 'ERROR', result_class: 'request_failure', checker_process_status: started ? 'completed' : 'not_started', retryable: false,
       evidence: { ...evidence, diagnostic, diagnostic_code: diagnosticCode, checker_started: started },
     });
-    if (checkMode === 'lean-project' && path && /\b(?:sorry|admit|axiom)\b/i.test(content)) {
-      return inputFailure('Selected delivery file contains a forbidden placeholder. Use a project check without --path to diagnose partial work.',
+    const forbidden = checkMode === 'lean-project' && path && leanSourcePolicyFinding(content, /\b(?:sorry|admit|axiom)\b/i);
+    if (forbidden) {
+      return inputFailure(`${path}:${forbidden.line}:${forbidden.column}: ${forbidden.word} is forbidden in the selected delivery file. Use a project check without --path to diagnose partial work.`,
         'forbidden_placeholder', false, { forbidden_placeholder: true });
     }
     let started = false;
@@ -303,7 +305,7 @@ export class LeanChecker {
     this.logger?.append({ event: 'checker.input_prepared', workspace_source_hash: workspace_sourceHash, target_task_id: targetTask?.task_id ?? null, input_snapshot_hash: inputSnapshotHash, workspace_source_path: workspace_sourcePath });
     try {
       assertCanStart();
-      if (this.rejectSorry && /\bsorry\b/.test(workspace_source.content)) {
+      if (this.rejectSorry && leanSourcePolicyFinding(workspace_source.content, /\bsorry\b/)) {
         const result = normalizeCheckerResult({
           verdict: 'FAIL',
           result_class: 'request_failure',

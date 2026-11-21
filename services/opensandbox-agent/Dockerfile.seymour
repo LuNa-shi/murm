@@ -1,0 +1,10 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+# The named contexts contain only the pinned public toolchain and Mathlib
+# artifacts. The final verifier and all operator state stay on the host.
+COPY --from=lean_bin --chown=0:0 / /opt/lean/bin/
+COPY --from=lean_lib --chown=0:0 / /opt/lean/lib/
+COPY --from=lean_libraries --chown=0:0 / /opt/lean-libraries/
+COPY --from=mathlib_source --chown=0:0 / /opt/mathlib-source/Mathlib/
+COPY --from=agensh_tools --chown=0:0 --chmod=0555 /seymour-lean-check /usr/local/bin/lean-check

@@ -702,7 +702,10 @@ export async function takeTaskWithAgent(core, candidates) {
         compaction_max: core.runtime.maxCompactions, context_closeout_fraction: core.runtime.handoffWindowRatio },
       services: botServiceDirectory(core.bridge.getCapabilityProfile()),
       project: { project_id: core.stateRef.problem.id, problem_file: core.stateRef.problem.problem_file, source_hash: core.stateRef.problem.source_hash,
-        input_policy: core.stateRef.resume ? 'original locked formalization and public research state reconstructed at the selected historical time' : 'locked unsolved formalization only; no external answers or solution-derived candidates' },
+        ...(core.startConfig.options.localLeanTools ? { local_lean_tools: core.startConfig.options.localLeanTools } : {}),
+        input_policy: core.stateRef.resume ? 'original locked formalization and public research state reconstructed at the selected historical time'
+          : core.startConfig.options.paperMissionGoal ? 'locked unsolved formalization and pinned public manuscript only; no external answers or solution-derived candidates'
+            : 'locked unsolved formalization only; no external answers or solution-derived candidates' },
       eligibleTasks: selectionView(candidates), firstTurn: core.botDiscoveryTurns === 0,
     });
     core.runtime.recordBotWorkspacePreview({ botId: discoveryBotId, session, workspace });
@@ -1761,7 +1764,7 @@ async function createProjectState(problem, config, options) {
     observationStore.registerExperiment({ experimentId: runId, status: 'CREATED', metadata: { problem_id: problem.id } });
     const mission = resume ? taskService.getMission(resume.missionId) : taskService.createMission({
       mission_id: `mission:${problem.id}:${runId}`,
-      goal: `${solver ? `Solve ${problem.id} independently.` : `Solve ${problem.id} through independent, shared Task work.`}${config.instructions_path ? ` Read ${config.instructions_path} for the benchmark task and input contract.` : ''}`,
+      goal: options.paperMissionGoal ?? `${solver ? `Solve ${problem.id} independently.` : `Solve ${problem.id} through independent, shared Task work.`}${config.instructions_path ? ` Read ${config.instructions_path} for the benchmark task and input contract.` : ''}`,
       ...(workspaceMergeChecker ? { merge_required_check: workspaceMergeChecker.identity } : {}),
       acceptance_conditions: {
         project: problem.id,

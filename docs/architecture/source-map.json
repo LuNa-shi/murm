@@ -17276,6 +17276,14 @@
       "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
     },
     {
+      "path": "services/opensandbox-agent/Dockerfile.seymour",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Optional Seymour image layer with the matched public Lean diagnostic tool and Mathlib inputs"
+    },
+    {
       "path": "services/opensandbox-agent/pi-models.json",
       "category": "launch and composition",
       "chapters": [
@@ -17620,6 +17628,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Isolated module dependency compilation and Mission-scoped immutable artifact cache"
+    },
+    {
+      "path": "src/judge/lean-source-policy.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Shared Lean comment handling and source locations for diagnostic and final policy rejections"
     },
     {
       "path": "src/judge/lean-module-verify.lean",

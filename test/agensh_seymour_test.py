@@ -19,6 +19,31 @@ def git(root, *args):
 
 
 class SeymourInputs(unittest.TestCase):
+    def test_local_check_reads_swarmenv_workspace_without_git(self):
+        check = runpy.run_path(str(ROOT / 'integrations/agensh/seymour-lean-check'))['main']
+        with tempfile.TemporaryDirectory() as directory:
+            repo = Path(directory).resolve()
+            root = (repo / seymour_inputs.TARGET).parent
+            root.mkdir(parents=True)
+            (repo / seymour_inputs.TARGET).write_text('theorem original : True := by trivial\n')
+            helper = root / 'Helper.lean'
+            helper.write_text('theorem helper : True := by trivial\n')
+            libs = repo / 'empty-libs'
+            libs.mkdir()
+
+            def inspect_build(command, work, _env):
+                self.assertEqual(command[-1], '+Helper')
+                self.assertEqual((work / 'source' / 'Helper.lean').read_text(), helper.read_text())
+                self.assertFalse((repo / '.git').exists())
+                return 0
+
+            with patch.dict(check.__globals__, SWARMENV_PROJECT=repo, LIBRARIES=libs, run_build=inspect_build):
+                self.assertEqual(check(str(helper), swarmenv_workspace=True), 0)
+                stray = repo / 'Stray.lean'
+                stray.write_text('def stray := 1')
+                with self.assertRaisesRegex(ValueError, 'outside the canonical'):
+                    check(str(helper), swarmenv_workspace=True)
+
     def test_owner_only_objects_are_copied_readably_and_verified(self):
         with tempfile.TemporaryDirectory() as directory:
             tmp = Path(directory)
@@ -87,8 +112,12 @@ class SeymourInputs(unittest.TestCase):
                 run_build([sys.executable, '-c', stub], tmp, os.environ, timeout=1)
             pid = (tmp / 'child.pid').read_text()
             status = Path('/proc') / pid / 'stat'
-            if status.exists():
-                self.assertIn(status.read_text().split()[2], ('Z', 'X'))
+            try:
+                state = status.read_text().split()[2]
+            except (FileNotFoundError, ProcessLookupError):
+                # The kernel has already reaped the stopped child.
+                return
+            self.assertIn(state, ('Z', 'X'))
 
     def test_module_root_and_source_only_build(self):
         if not os.environ.get('AGENSH_TEST_LEAN_ROOT'):

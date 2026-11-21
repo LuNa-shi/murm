@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2043 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2045 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -49,15 +49,16 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/runtime/runtime.js](../../src/runtime/runtime.js) | Registered Bot binding, physical resource ownership, failure cleanup, fencing and rotation | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `5c97a8ff436b86e21a8b55b5dd8860100b085aba5b896147766b99241be77fe6` |
 | [src/runtime/task-controller.js](../../src/runtime/task-controller.js) | Durable readiness reconciliation and idle-identity wake signals | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `f095abf8017293a7a6e0e7e264674a2e431f23967f87af861b5cbd994fc6c69d` |
 
-### Mission acceptance and checker (6)
+### Mission acceptance and checker (7)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/lock-final-tree-checker.mjs](../../scripts/lock-final-tree-checker.mjs) | Trusted local checker lock generator with source provenance checks | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `7320052d24221f1018a029a774f1071dec2a75330cf9bed69f3d1d6444320c94` |
 | [src/judge/checker-process-limits.js](../../src/judge/checker-process-limits.js) | Verified systemd cgroup limits and process-tree cleanup ownership | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `8e3e8b2ecdc673faf8e58f1f094277c6beb3a135364c0fa360cd77e2f12a2957` |
-| [src/judge/final-tree-deployment.js](../../src/judge/final-tree-deployment.js) | Pinned source/artifact lock and production checker startup gate | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `4f079a32d7a748d07208969243ccb7cfabc29c0e6b558a7f92b8309d134f9dee` |
+| [src/judge/final-tree-deployment.js](../../src/judge/final-tree-deployment.js) | Pinned source/artifact lock and production checker startup gate | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `b33f0da9144f8f9cb970149ec9d878af40575f3d447646d70eb8d2b49664aaf6` |
 | [src/judge/final-tree-proof.lean](../../src/judge/final-tree-proof.lean) | Trusted Comparator harness consuming inert proof exports | [04-services](04-services.md) | `2939da246ffbffbd737fbd67b1921e72ad11e50e0a6fc4d1ac2fd1bf9f997480` |
-| [src/judge/lean-final-tree-verifier.js](../../src/judge/lean-final-tree-verifier.js) | Locked offline Lake project builds, isolated proof export, theorem comparison and kernel replay | [04-services](04-services.md), [05-workspace-continuity](05-workspace-continuity.md), [07-run-configuration](07-run-configuration.md) | `1fb178dbdc4e56a381f172bb615610a9b4e3ec3be0ecafbba69a354f03acbce3` |
+| [src/judge/lean-final-tree-verifier.js](../../src/judge/lean-final-tree-verifier.js) | Locked offline Lake project builds, isolated proof export, theorem comparison and kernel replay | [04-services](04-services.md), [05-workspace-continuity](05-workspace-continuity.md), [07-run-configuration](07-run-configuration.md) | `66a962815fab165be146632c45d2f23da8b30a7507ae661b2c1d5616c78d6100` |
+| [src/judge/lean-source-policy.js](../../src/judge/lean-source-policy.js) | Shared Lean comment handling and source locations for diagnostic and final policy rejections | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `103c1b26038992a8104d8e49b74d90ac964836678937109930290bc8736f5fc3` |
 | [src/runtime/mission-coordination.js](../../src/runtime/mission-coordination.js) | Trusted Task/Context/Mission acceptance assembly and observed input validation | [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `18e3cc97df6ce2781e85bbc92a34218b5fb4a75092601808e2305e36ffec4e81` |
 
 ### Mission and Task (7)
@@ -1969,7 +1970,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 |---|---|---|---|
 | [scripts/benchmarks/prepare_flt_subtrees.py](../../scripts/benchmarks/prepare_flt_subtrees.py) | Root-only FLT extraction, private typed facts and public fixture generation | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `d40cab74f2ac086746abd85b901d3a3381ac1c32f9756cab4052b4b46db5e537` |
 | [scripts/run-openai-math-coloring.mjs](../../scripts/run-openai-math-coloring.mjs) | Four-Core launcher for the embedded OpenAI Math PlaneColoring smoke run | [07-run-configuration](07-run-configuration.md) | `fe0032870a4dbe4165a2b391d699a985555e864be52d86b173b8ed1ab259fe51` |
-| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `9a53d128627436557ec7d5b341b764eb5ec4933826cac919c88ea06d08f45906` |
+| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `375840e35a8ec7099580a9904b3283e1e99df84fbcabef0c9cd4f2bc18235460` |
 
 ### controlled verification data (4)
 
@@ -2034,7 +2035,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and read-only historical reconstruction | [13-historical-resume](13-historical-resume.md) | `3ae15de790367396c5890c2ba97e2e2607e4bf1d3d9467cae3116158332bf67a` |
 | [src/replay/workspace-history.js](../../src/replay/workspace-history.js) | Reconstruct past public main and reachable Git objects without modifying the source | [13-historical-resume](13-historical-resume.md) | `63b83b4bf2ff3a17d8b8983507c33b299df3348778a652f18a0eea5f1df4e29a` |
 
-### launch and composition (15)
+### launch and composition (16)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -2049,9 +2050,10 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/service-host.mjs](../../scripts/service-host.mjs) | Built-in HTTP service process composition and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `a200b2298271615806568085abe4b8253938e7c06ae8ecd6b75226ccb1d0ddf0` |
 | [scripts/validate-benchmark-witness.mjs](../../scripts/validate-benchmark-witness.mjs) | Private complete-witness validation and launch receipt generation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `f6fbe281624437c0a0a92076f7f4cee24d9ebc402ecf868b5aea8877fa29a3fe` |
 | [services/opensandbox-agent/Dockerfile](../../services/opensandbox-agent/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `0e26cc854c0ddd4a80dca2eddd56a6df6e5b43b1c3473ca7b172aea184a0c971` |
+| [services/opensandbox-agent/Dockerfile.seymour](../../services/opensandbox-agent/Dockerfile.seymour) | Optional Seymour image layer with the matched public Lean diagnostic tool and Mathlib inputs | [07-run-configuration](07-run-configuration.md) | `057584fe14a90956c8b4a0feabeaa470a68fd742608fa199323ce13cc03fb499` |
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `50c0c4d26ea3450bb2881af65c39ffde41a42a8e8cdbdb56eac35d1af118e55c` |
 | [src/benchmark/pass-k.js](../../src/benchmark/pass-k.js) | Compose K independent one-Core Mission runs with a fixed observation window and trusted acceptance aggregation | [07-run-configuration](07-run-configuration.md), [06-observability-experiments](06-observability-experiments.md) | `3a9530594867be357f91c226c77f1a4738d570cac9039a49bdd4b97b4beaaa75` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `71e874f459bd62e0bad7586171229daa351a2d5f7b55f50aa0ad42dba1a597e0` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `47466a0abf9fa13e69f4802bcd70ca02c2e3f69546b5e989235c85a83a2f7660` |
 
 ### native Agensh experiment (23)
@@ -2078,7 +2080,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [integrations/agensh/observe.mjs](../../integrations/agensh/observe.mjs) | Read-only public Git observer and checker queue | [14-agensh-lean](14-agensh-lean.md) | `5c441f487288064feb62179abf69c942075ba8cb6e2e60e462882c10c8a06dbd` |
 | [integrations/agensh/provider_transport.py](../../integrations/agensh/provider_transport.py) | Trusted egress credential and model binding | [14-agensh-lean](14-agensh-lean.md) | `96838c79b6d5ae630e5ac67fcb3c9321a14e3454b5389a99923787adbe23ba9e` |
 | [integrations/agensh/seymour_inputs.py](../../integrations/agensh/seymour_inputs.py) | EXP-02 challenge, artifact lock and public Mathlib source projection | [14-agensh-lean](14-agensh-lean.md) | `3be66b0e45bbcdac409cacbe2b598b36912501188e86a3cea72ae0fe8277e22b` |
-| [integrations/agensh/seymour-lean-check](../../integrations/agensh/seymour-lean-check) | Source-only fixed-root local Lean module check for Seymour | [14-agensh-lean](14-agensh-lean.md) | `a5bfb827830cdb7177b6a87ffa3e1e0ff8ffd6fe740081c6e681bca726a0b137` |
+| [integrations/agensh/seymour-lean-check](../../integrations/agensh/seymour-lean-check) | Source-only fixed-root local Lean module check for Seymour | [14-agensh-lean](14-agensh-lean.md) | `92a0dbf11e79629257250039217cc7ab6880f5addfa08accd9057e05c9b51811` |
 | [integrations/agensh/stage.py](../../integrations/agensh/stage.py) | Generate private profiles and worker mounts | [14-agensh-lean](14-agensh-lean.md) | `377f06d69dc12631ed3c60dfc525c5c2c0463aa25e95b3e97d6bd7242c329ee4` |
 | [integrations/agensh/start.py](../../integrations/agensh/start.py) | Start and time-fence the native team | [14-agensh-lean](14-agensh-lean.md) | `5b58da4834c7adde26e1cb85605735f1a00c94e9195886e99a25ea8d0842e2f0` |
 
@@ -2165,7 +2167,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/judge/check-result.js](../../src/judge/check-result.js) | Check outcome/diagnostic classification and caller-safe result projections | [04-services](04-services.md), [10-service-api-reference](10-service-api-reference.md), [11-storage-reference](11-storage-reference.md) | `7664f22146d68cc09dfd1d11cb9f328c93b88815fa8e4fb6e87013ff99c5886b` |
 | [src/judge/fixture.js](../../src/judge/fixture.js) | Locked fixture metadata and Candidate identity validation | [04-services](04-services.md), [10-service-api-reference](10-service-api-reference.md), [11-storage-reference](11-storage-reference.md) | `0e64af5409c51aa97e22a113e267011040dac7df846396964d64e83f9332b0a8` |
 | [src/judge/judge-service.js](../../src/judge/judge-service.js) | Idempotent checks, preflight health, retries and durable CheckResults | [04-services](04-services.md), [10-service-api-reference](10-service-api-reference.md), [11-storage-reference](11-storage-reference.md), [13-historical-resume](13-historical-resume.md) | `7757a099a41392c00b7941810d7280ef7f183044e908dc1900feaf27cfa37363` |
-| [src/judge/lean-adapter.js](../../src/judge/lean-adapter.js) | Independent Lean preflight/compiler process and diagnostic extraction | [04-services](04-services.md), [10-service-api-reference](10-service-api-reference.md), [11-storage-reference](11-storage-reference.md) | `7b5eca56a654b9150287a9593d895429f8fd844753aa72e902df04c5268e515c` |
+| [src/judge/lean-adapter.js](../../src/judge/lean-adapter.js) | Independent Lean preflight/compiler process and diagnostic extraction | [04-services](04-services.md), [10-service-api-reference](10-service-api-reference.md), [11-storage-reference](11-storage-reference.md) | `8db988bb60adf668c61831a56e1cdcb9c811349ab5fd46302e0c2c8669aebf37` |
 | [src/judge/lean-module-build.lean](../../src/judge/lean-module-build.lean) | Pinned Lean frontend driver recording completed fixed-source elaboration before module serialization | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `5b29ed37b8f32ffbbe76e053081070501992dc21306ebeb5f5129f4ae74138d8` |
 | [src/judge/lean-module-checker.js](../../src/judge/lean-module-checker.js) | Isolated module dependency compilation and Mission-scoped immutable artifact cache | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `d43b7a496ecefa722c928776012467e35395b5d945870d617fca8aaa189dc69a` |
 | [src/judge/lean-module-verify.lean](../../src/judge/lean-module-verify.lean) | Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `60c1bc4373b04ea783e058c5b2d069b89a4af847968442544f25b764135f34b4` |
