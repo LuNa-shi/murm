@@ -839,7 +839,6 @@ async function workspaceFixture(t, options = {}) {
   if (options.createMissionSubmissionStore) f.runtime.missionSubmissionStore = options.createMissionSubmissionStore({ ...f, context });
   const bridge = new ServicesBridge({ taskService: f.service, contextService: context, runtime: f.runtime, coreId: 'core-1',
     registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, missionSubmissionStore: f.runtime.missionSubmissionStore, judgeService: options.createJudgeService?.(f.service, f.runtime) ?? options.judgeService }),
-    onWorkUnit: options.onWorkUnit,
     onTake: result => f.runtime.bindAgentExecution(result.execution.execution_id, session, { coreId: 'core-1' }) });
   await bridge.start();
   t.after(() => bridge.stop());
@@ -1380,7 +1379,6 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   const { LeanChecker } = await import('../src/judge/lean-adapter.js');
   const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
   const builds = [];
-  const observed = [];
   let holdBuild;
   let judge;
   const createJudgeService = (service, runtime) => {
@@ -1406,9 +1404,6 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   const { service, command, dispatch, guest, bridge, execution } = await workspaceFixture(t, { createJudgeService,
     runtimeOptions: { workspaceProjectCheck: true },
     completionContract: { workspace_delivery: { paths: ['Proof.lean'], check: checkerIdentity } },
-    onWorkUnit: ({ operation, taskId, executionId, result }) => {
-      if (operation === 'workspace_check') observed.push({ taskId, executionId, result });
-    },
   });
   guest.files['Proof.lean'] = Buffer.from('import Helper\n/- No axiom. /- No admit. -/ -/\ntheorem proof : True := helper -- no sorry');
   guest.files['Helper.lean'] = Buffer.from('theorem helper : True := True.intro');
@@ -1422,10 +1417,10 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   assert.equal(project.workspace_input.path, undefined);
   assert.deepEqual(project.build, { scope: 'project', requested_path: null, cache: null, checked_paths_truncated: false, checked_count: 2, checked_paths: ['Helper.lean', 'Proof.lean'],
     warnings: ['Helper.lean: provisional proof'] });
-  assert.deepEqual(observed, [{ taskId: execution.task_id, executionId: execution.execution_id, result: project }]);
+  assert.deepEqual(judge.getAgentCheckResult(project.check_result_id), project);
   assert.equal(String(builds[0].files['Helper.lean']), 'theorem helper : True := True.intro');
   assert.deepEqual(await command('judge', 'result', '--request-key', 'project-check'), project);
-  assert.equal(observed.length, 1);
+  assert.equal(builds.length, 1);
   const finish = checkId => command('task', 'finish', '--outcome', 'done', '--workspace-revision', saved.revision, '--check-result-id', checkId);
   await assert.rejects(finish(project.check_result_id), /did not pass for this delivery/);
   await assert.rejects(bridge.call({ operation: 'workspace_check', payload: { revision: saved.revision, files: {} } }), { code: 'INVALID_CONTRACT' });
@@ -1455,7 +1450,7 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
     const result = await command('judge', 'check', '--revision', revision, '--path', path);
     assert.equal(result.result_class, 'request_failure');
     assert.equal(result.diagnostic_code, diagnosticCode);
-    assert.deepEqual(observed.at(-1), { taskId: execution.task_id, executionId: execution.execution_id, result });
+    assert.deepEqual(judge.getAgentCheckResult(result.check_result_id), result);
   };
   await observedFailure('lakefile.lean', partial.revision, 'project_path_uncovered');
   await observedFailure('Helper.lean', partial.revision, 'forbidden_placeholder');
@@ -1479,9 +1474,16 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   await stopping;
   const late = judge.getByRequestKey('late-project-check');
   assert.equal(late.status, 'RECEIVED');
-  assert.equal(observed.at(-1).result.check_result_id, late.check_result_id);
-  assert.equal(observed.at(-1).executionId, execution.execution_id);
-  assert.equal(observed.at(-1).result.workspace_input.git_tree, saved.git_tree);
+  assert.equal(late.target_task_id, execution.task_id);
+  assert.equal(late.execution_id, execution.execution_id);
+  assert.equal(late.evidence.workspace_input.git_tree, saved.git_tree);
+  assert.equal(service.getExecution(execution.execution_id).state, 'SUCCEEDED');
+  assert.equal(service.getBot(execution.owner_ref).state, 'CLOSED');
+  const lateReceipt = judge.getAgentCheckResult(late.check_result_id);
+  assert.deepEqual(judge.dispatch('get_check_result', { request_key: 'late-project-check' }, makeEnvelope({ actorRef: 'operator:test' })), lateReceipt);
+  assert.equal(lateReceipt.workspace_input.git_tree, saved.git_tree);
+  assert.equal(lateReceipt.workspace_input.revision, saved.revision);
+  assert.equal(lateReceipt.verdict, 'PASS');
 });
 
 const mergeCheckerIdentity = { checker_ref: 'controlled-tree', checker_version: '1', environment_ref: 'network-disabled-test' };

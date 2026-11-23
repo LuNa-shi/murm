@@ -36,7 +36,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1"
+      "sha256": "177627d58eedec716a000a2dea7657cefb6bbc1eb2395c3aa601ba91cbaddcf6"
     },
     {
       "path": "src/core/index.js",
@@ -366,13 +366,13 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 571,
+      "line": 565,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 578,
+      "line": 572,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -466,7 +466,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "eb5922ba7031e72074c409c298ecb54e7de890274dc513e71f4fd0210ee5674e"
+      "sha256": "36bd351d0a7a8afa47071bcca6d09e7a7152032d9e358b43f22f1dbd0dc87c26"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
