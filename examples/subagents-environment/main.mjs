@@ -79,10 +79,10 @@ export async function runSubagentsEnvironment({ backend, model = 'default', imag
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   if (!process.argv[2]) throw new Error('Supply the host configuration module');
-  const config = (await import(pathToFileURL(resolve(process.argv[2])).href)).default;
   const abort = new AbortController(); const stop = () => abort.abort();
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
+    const config = (await import(pathToFileURL(resolve(process.argv[2])).href)).default;
     const report = await runSubagentsEnvironment(config, abort.signal);
     process.stdout.write(`${JSON.stringify(report)}\n`);
     process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;

@@ -64,7 +64,7 @@
     },
     {
       "path": "examples/notes-environment/main.mjs",
-      "sha256": "fb99a2610c76e10c7de30f4785a7ff43640bf27689cf1219b5221ce184a05a9f"
+      "sha256": "03361e6b1f10257fb58a1d755651e61a974bdf29715bccd7841b7c41ee80c87d"
     },
     {
       "path": "src/environments/shared/run-input.js",
@@ -76,7 +76,7 @@
     },
     {
       "path": "examples/subagents-environment/main.mjs",
-      "sha256": "b5d4d7c3fb6c0e24c4716e509f792f9fb6472eaab9608ec92286ad5b5c0f5b93"
+      "sha256": "a6422e223cc314f71ae25f9305e780d51298c7999b94d7f51f0b119c113c9151"
     },
     {
       "path": "examples/subagents-environment/controller.mjs",

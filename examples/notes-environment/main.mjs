@@ -140,12 +140,12 @@ export async function runNotesEnvironment({ backend, model = 'default', image, o
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   if (!process.argv[2]) throw new Error('Supply a host configuration module as the sole argument');
-  const config = (await import(pathToFileURL(resolve(process.argv[2])).href)).default;
   const controller = new AbortController();
   const abort = () => controller.abort();
   process.once('SIGINT', abort);
   process.once('SIGTERM', abort);
   try {
+    const config = (await import(pathToFileURL(resolve(process.argv[2])).href)).default;
     const report = await runNotesEnvironment(config, controller.signal);
     process.stdout.write(`${JSON.stringify(report)}\n`);
     process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;
