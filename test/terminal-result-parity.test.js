@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawn, execFile } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -101,7 +102,9 @@ test('installed terminal and saved-result entries preserve pending receipts with
   t.after(() => installed.close());
   const packageRoot = join(installed.directory, 'node_modules', '@swarmenv', 'core');
   for (const path of ['src/observability/client', 'src/observability/public', 'src/observability/vite.config.js']) {
-    await rm(join(packageRoot, path), { recursive: true, force: true });
+    await assert.rejects(access(join(packageRoot, path)), { code: 'ENOENT' });
   }
+  const require = createRequire(join(packageRoot, 'package.json'));
+  for (const name of ['react', 'react-dom', 'vite', 'tailwindcss', 'shadcn']) assert.throws(() => require.resolve(name), { code: 'MODULE_NOT_FOUND' });
   await assertReceiptParity(t, { failure: 'collect-artifacts', execution: 'stopped', action: 'collect-artifacts', failureCode: 'ARTIFACT_WRITE_FAILED' }, pathToFileURL(`${packageRoot}/`));
 });

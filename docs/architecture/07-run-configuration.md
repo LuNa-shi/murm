@@ -14,7 +14,7 @@ The host selects an Environment and supplies its model, image, Service and resou
 | `scripts/read-environment-result.mjs` | Saved report inspection with explicit directory and expected Runtime ID. [Saved results](17-environment-reporting.md) |
 | `scripts/service-host.mjs` | Built-in Task, Context, Judge or Catalog HTTP provider with explicit role/binding authority. [Services](04-services.md) |
 | `scripts/mathlib-search-service.mjs` | Optional HTTP search over configured upstream or mounted source. [Services](04-services.md#6-optional-mathlib-search) |
-| `scripts/serve-observability.mjs` | Existing event-store discovery, authenticated HTTP/SSE queries and legacy dashboard. [Observability](06-observability-experiments.md) |
+| `scripts/serve-observability.mjs` | Existing event-store discovery, authenticated HTTP/SSE queries without a browser UI. [Observability](06-observability-experiments.md) |
 
 Public package exports resolve Core, Services and Pi/OpenSandbox backend. The legacy source barrel contains directly importable domain components. The benchmark runner, scheduling helpers, fixed configurations, mathematical datasets, Pass@K and historical report importer have been retired. Their version-bound implementations are preserved in [research](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9).
 
@@ -30,23 +30,28 @@ Core writes records under the configured output directory and Runtime ID. Eviden
 
 The root `/experiments/` and `/reports/` ignore rules cover private raw evidence and local reports. npm uses that boundary through its Git ignore packlist fallback, including unreadable local facility volumes. Historical tracked inputs and reports are preserved at the fixed research revision. Committed `docs/experiments/` contains version-bound summaries.
 
-## Optional service and browser builds
+## Optional services and Observer migration
 
 Built-in service launchers use HTTP manifests and role/binding enforcement. Built-in invocation requires actor-bound principals. Independent Context/Judge composition owns peer authentication, durable request/commit gates, checker reconciliation and bounded shutdown. Hosts supply the actual domain stores and deployment configuration. Mathlib Search needs a configured upstream or mounted source tree. [Services](04-services.md) describes each callable path.
 
-The maintained legacy dashboard source is `src/observability/client/`. `npm run build:observability` uses development dependencies to build `src/observability/public/app.js` and `styles.css`. The Observer serves the built files directly. Its development proxy uses `127.0.0.1:8787`. `components.json` configures the UI generator. Core and foreground entry points work in a production-only install without React, UI build dependencies or a dashboard build. `npm test` runs serial Node tests with the offline `docs:check` pretest. `docs:generate` refreshes prompt/API/storage references and source fingerprints; explanatory chapters are reviewed alongside those generated files.
+The React dashboard has been retired after separating pure observation functions and verifying the terminal/saved-result handoff. Observer remains an authenticated read-only HTTP/SSE service over actual registered SQLite stores. It no longer serves HTML, JavaScript or CSS; authenticated non-API requests return JSON 404. Its event queries, cursor/limit behavior, registry discovery, redaction and exposure guards retain their existing implementation. [Observability](06-observability-experiments.md#4-bounds-sse-and-non-ui-consumers) gives direct JSON/SSE commands and their limits.
 
-The current behavior handoff from the React client is explicit:
+The bounded migration and removal mapping is:
 
-| Behavior | Current non-UI owner / entry | Retained browser role |
+| Retired group / necessary behavior | Current owner or entry | Evidence and remaining limitation |
 |---|---|---|
-| Derive queues, tools and traces from bounded observations | `src/observability/observation-projection.js`; Node projection tests | The React hook imports the same pure projection |
-| Format observed times, states, IDs and values | `src/observability/format.js` | React components consume these helpers |
-| Observe and control the current foreground run | `runForegroundEnvironment` and `scripts/run-environment.mjs` use the existing Core and mode controller/router | The old dashboard is not a controller for this host |
-| Save events, lifecycle and result receipts | Core records plus Environment `runWithReport`; no browser subscription is required | The dashboard separately queries registered observation stores |
-| Inspect saved reports and artifact availability | `readEnvironmentResult` and `scripts/read-environment-result.mjs` | The legacy Observer retains its separate report and event views |
+| `client/App.jsx`, hash navigation and page details | Existing Observer overview, timeline, execution, Task, Material, report and Service JSON routes | HTTP server tests preserve data queries, bounds and redaction; graphical navigation is retired |
+| `client/hooks/use-observation.js` browser fetching, refresh and event caching | Observer registry/event SSE and cursor APIs; a consumer owns reconnect and deduplication | HTTP tests verify actual SQLite changes across writer/reader connections and registry updates; the old browser debounce/cache policy is removed |
+| Pure queue/tool/trace derivation and formatting previously consumed by React | Retained `observation-projection.js` and `format.js` outside UI | Node projection tests still exercise these modules; no new Core public export |
+| UI components, `client/lib/utils.js`, HTML and CSS | Rendering-only code removed | Theme, layout, animations and graphical trace selection have no replacement UI; they never owned run state |
+| `public/` built assets, `vite.config.js`, `components.json`, `build:observability` and `dev:observability` | Current Core/Environment host and result scripts run directly with Node | Actual package installation and terminal stop/report tests require no old source, assets or frontend build |
+| React, Tailwind, Vite, shadcn and associated UI dependency declarations | Removed from package and lockfile | TypeScript remains a development dependency for the installed public declaration checks; Core and AJV runtime dependencies are retained |
+| Current-run status, directed input and stop | `runForegroundEnvironment` and `scripts/run-environment.mjs`, through existing mode controllers and Core | Foreground tests exercise target identity, same-request semantics and cancellation; no second lifecycle |
+| Durable events, report saving and saved-result inspection | Core records, Environment `runWithReport`, `readEnvironmentResult` and `scripts/read-environment-result.mjs` | Terminal tests compare actual saved reports, including unknown execution and required export pending; browser subscriptions are unnecessary |
 
-The [terminal receipt checks](17-environment-reporting.md#terminal-receipts-when-cleanup-is-incomplete) exercise actual CLI output against saved reports, including an installed package with browser files removed. The legacy Observer's HTTP/SSE views, React components, dependencies and optional build remain supported independently; this handoff does not claim a terminal replacement for every historical dashboard view or authorize deleting those paths.
+The [terminal receipt checks](17-environment-reporting.md#terminal-receipts-when-cleanup-is-incomplete) cover controlled execution and artifact failures after an actual production package installation. Observer query/stream tests cover its retained data surface separately. These checks do not assert that every old graphical workflow has a terminal equivalent or replace real-mode acceptance tracked by #181/#182. The last dashboard source remains available in [fixed Git history](https://github.com/LuNa-shi/SwarmEnv/tree/38b352ef799b7a693e1535b679e51dbff5ffd564/src/observability/client).
+
+`npm test` runs serial Node tests with only the offline `docs:check` pretest. `docs:generate` refreshes prompt/API/storage references and source fingerprints; explanatory chapters are reviewed alongside those generated files. There is no frontend build command or build prerequisite for the retained entries.
 
 ## Final-tree acceptance configuration
 

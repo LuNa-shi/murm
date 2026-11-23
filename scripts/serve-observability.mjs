@@ -59,7 +59,7 @@ function inferRepositoryWorktreeRoots(options) {
       const candidate = join(repositoryRoot, name);
       // Keep the conventional path even before the directory exists. The
       // registry rescan can then discover a worktree created while the daemon
-      // is already serving an open dashboard.
+      // is already serving Observation Store queries.
       scanRoots.add(candidate);
     }
   }

@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **202 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **187 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. Root files: `package.json`, `package-lock.json`, `components.json`, `.env.example`, `.gitignore`, `.gitmodules`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. Root files: `package.json`, `package-lock.json`, `.env.example`, `.gitignore`, `.gitmodules`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -160,25 +160,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [fixtures/putnam-1966-a1/putnam_1966_a1.lean](../../fixtures/putnam-1966-a1/putnam_1966_a1.lean) | Locked formalization used by controlled fixture | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `4b1bd530669e71e5909398d54caddeb65eb33a708850e25ba4f1d7fc88ba0cad` |
 | [fixtures/putnam-1966-a1/valid-candidate.lean](../../fixtures/putnam-1966-a1/valid-candidate.lean) | Known controlled repair fixture; not benchmark solution input | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `0f7dd8813d2f4cee8d30cc74d8d7a890a1c7e632c01f58372e58126ed1f95c1d` |
 
-### dashboard and build (14)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [components.json](../../components.json) | UI component generator aliases/theme configuration | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `e49b0f8635058dba2b8514b504d10cae8cbc73412122e3f9178045337a2b3178` |
-| [src/observability/client/App.jsx](../../src/observability/client/App.jsx) | Dashboard navigation, experiment/Core/Task/Material/Check/Workspace views | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `966f8739b4550edf42da1427011cfd2fec52700917c3b46c806d768c51b34597` |
-| [src/observability/client/components/ui/badge.jsx](../../src/observability/client/components/ui/badge.jsx) | State/status badge rendering | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `6ea461e917d40370a585ed358886a31579a8d24f60117faa0ef8990ffab51e1a` |
-| [src/observability/client/components/ui/button.jsx](../../src/observability/client/components/ui/button.jsx) | Shared button presentation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `1bd79a9a9a4c8a9dc291dd58452b115f625a559d4402317617123a7cfa39ca44` |
-| [src/observability/client/components/ui/card.jsx](../../src/observability/client/components/ui/card.jsx) | Shared card presentation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `0da67a1d5ac05c2b066c598dd3e41efeb2f459f4a53e62ff64694026aa185e2b` |
-| [src/observability/client/components/ui/trace.jsx](../../src/observability/client/components/ui/trace.jsx) | Activity trace and timeline rendering | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `ee31eadbe57c4237b9ea77e99f3e8b909ac12820f36f6ddce5e365e29cdbf967` |
-| [src/observability/client/hooks/use-observation.js](../../src/observability/client/hooks/use-observation.js) | Fetch, polling, SSE batching and client reconciliation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `1a4caa008e6f10f5db3a2392bfc4e492f0c56f202237e7b4e75e70528ca74c0b` |
-| [src/observability/client/index.html](../../src/observability/client/index.html) | Maintained dashboard HTML entry | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `19abfb7c9ae8d2cdc869a172582ae1f645abc5e6a2c7e5e742fc4cfed6d34879` |
-| [src/observability/client/lib/utils.js](../../src/observability/client/lib/utils.js) | Class-name composition for UI components | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5c3b48f48299afa215a3748779d7c19e9db1b3e3687dcd656cc72cc135d2aba7` |
-| [src/observability/client/main.jsx](../../src/observability/client/main.jsx) | React mount entry point | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `e1e5daefed34e366a3b87ff6fdcb3b19e1aabcfaca479ade773e44fbbc8c3623` |
-| [src/observability/client/styles.css](../../src/observability/client/styles.css) | Maintained dashboard theme, layout and animations | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `09a0d73c74f59be3a13f7090f5b6bcb15317dc279ee7ebbb7d5dad371456eed0` |
-| [src/observability/format.js](../../src/observability/format.js) | Human-facing time, IDs, state and value formatting | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `0155eabc9b55f5c1c2acf364133d051608037205ccb3815bb01a16146037a6b1` |
-| [src/observability/observation-projection.js](../../src/observability/observation-projection.js) | Shared observation projection for events, timelines and derived views | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7d27b0c3275abd90be78a41495db188f536db5c984d34490960dcf7a56714d4c` |
-| [src/observability/vite.config.js](../../src/observability/vite.config.js) | Dashboard build paths, asset naming and development API proxy | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `19eb11e68ecf9ca08f30c6dcee1e2daa73b5f5a2b38aa8d901eceffba9e598fa` |
-
 ### documentation tooling (4)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -186,7 +167,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `f62d1e265a20fe3245ca1e6442f6cb4c182db09b71c8167b11cf11c95570d25c` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `fe3d888d8e1feb43e78edb0e6153768048372af336414de0a4f0a7082e691b1a` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `22a3eacc25cd4911361c8b16bc0059b5af5fcb7e62ea7ad0456d27384bf84920` |
 
 ### durable storage (3)
 
@@ -195,14 +176,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/storage/context-schema.js](../../src/storage/context-schema.js) | Material/consumption/operation SQL schema | [11-storage-reference](11-storage-reference.md), [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `beb3d52d141f9d4e0b02aff35f578907b9997835fd3084580ef18bd29a985ae7` |
 | [src/storage/judge-schema.js](../../src/storage/judge-schema.js) | Checker health/request/result/operation SQL schema | [11-storage-reference](11-storage-reference.md), [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `7fceae1e3ec7c8c5c53e4c94313e5995898a71907a3a7c8b092cb727b3239142` |
 | [src/storage/schema.js](../../src/storage/schema.js) | Mission/Task/Execution/dependency/notification/operation SQL schema | [11-storage-reference](11-storage-reference.md), [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595` |
-
-### generated served asset (3)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [src/observability/public/app.js](../../src/observability/public/app.js) | Generated dashboard JavaScript served by the observation server | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `6586f71f596524f9abd04e3cb26204e763ad72ba10dfc4ff5c05de1894ae6d42` |
-| [src/observability/public/index.html](../../src/observability/public/index.html) | Generated dashboard HTML served by the observation server | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `232d9988e73793b5d0a06e150396e8b504098c6a67ec9829804a4caed1975bf5` |
-| [src/observability/public/styles.css](../../src/observability/public/styles.css) | Generated dashboard CSS served by the observation server | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `9ed705035105becebae11d169bbc5864fe24bb30befb6b41043b707c1f75ea23` |
 
 ### historical continuation (5)
 
@@ -220,8 +193,8 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 |---|---|---|---|
 | [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5bc5f9a6013ab68a2936cfa877461691fa0b6927f37fcf6e2b5c277a443f09bf` |
 | [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree and npm packlist | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `2a44776261a1d89273680ebb27ef5b053e377b13c15be7c4a9ee835d53fc0f89` |
-| [package-lock.json](../../package-lock.json) | Exact dependency resolution, including external Pi/frontend packages | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `e0496100bc4f3e88df51b996927b434acbe03ad14e2e2d9856b314a0bc8e3180` |
-| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `64da68282351af7f1b9e9339f260ae8b2cafed7d5c2fb6e0d3f9c9f1eb30c5c5` |
+| [package-lock.json](../../package-lock.json) | Exact dependency resolution, including external Pi/frontend packages | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `2d471521d4fa707f5371b0eccc8e2476397b6d76813ebece9a88131f2d9178a8` |
+| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `eecdf495fca6a1f556e94cae1af2891fa358b94f6b34ca59788129e662085ddf` |
 | [scripts/mathlib-search-service.mjs](../../scripts/mathlib-search-service.mjs) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |
 | [scripts/read-environment-result.mjs](../../scripts/read-environment-result.mjs) | Host CLI for saved result inspection using the shared reader | [17-environment-reporting](17-environment-reporting.md) | `085216b0cbf70458a42add00b1c430c4e582e72fa51497b55edee5ff5152930d` |
 | [scripts/run-environment.mjs](../../scripts/run-environment.mjs) | Foreground host CLI for explicit local Environment configuration and bounded control | [17-environment-reporting](17-environment-reporting.md) | `079448ca418c2876e92141d21403d99b8b3a610ec71520839809f26159b80630` |
@@ -234,14 +207,21 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/shared/read-result.js](../../src/environments/shared/read-result.js) | Read saved Environment and Core receipts with expected identity and bounded normal-output projection | [17-environment-reporting](17-environment-reporting.md) | `99640d0f1709ff0777bc44c6c2f4edd48c4ad43c4791e88dfda5aa3bda17d06e` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `18a67a55c10bff7042ba2357fbc16baf0def3a9dd9820ef7cbd22ff8969bf39f` |
 
+### observability and reporting (2)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [src/observability/format.js](../../src/observability/format.js) | Human-facing time, IDs, state and value formatting | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `0155eabc9b55f5c1c2acf364133d051608037205ccb3815bb01a16146037a6b1` |
+| [src/observability/observation-projection.js](../../src/observability/observation-projection.js) | Shared observation projection for events, timelines and derived views | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7d27b0c3275abd90be78a41495db188f536db5c984d34490960dcf7a56714d4c` |
+
 ### observation and analysis (7)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/prune-private-audit.mjs](../../scripts/prune-private-audit.mjs) | Operator deletion task for expired managed private audit directories | [06-observability-experiments](06-observability-experiments.md) | `52bf50b3f51814385c629a7a3cd0149e3dab133c8b6c188ec0181e3a49cbd0e5` |
-| [scripts/serve-observability.mjs](../../scripts/serve-observability.mjs) | Persistent observer, root/worktree/database discovery and metadata lifecycle | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `2c5f69c3fe9e13740698933c1e41ff51fc050ed957049cf55b2b05c69ec3732f` |
+| [scripts/serve-observability.mjs](../../scripts/serve-observability.mjs) | Persistent observer, root/worktree/database discovery and metadata lifecycle | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7f7766417950a2ff7e0cd079a6646640793534af1d7640ce5709503980512096` |
 | [src/observability/durable-event-log.js](../../src/observability/durable-event-log.js) | Append component NDJSON with raw/sanitized logging modes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `27fb12582bf7594ca5d739807462c0f65e6d304bf8557f39407100e296c23a50` |
-| [src/observability/observability-server.js](../../src/observability/observability-server.js) | HTTP routes, SSE, multi-store queries, reports and bounded operator reads | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7acedbcc8ef38a8850890c1998b0aa834039e899b9dc43fff618b85800cac352` |
+| [src/observability/observability-server.js](../../src/observability/observability-server.js) | HTTP routes, SSE, multi-store queries, reports and bounded operator reads | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `9290d1a2f0344293e954c39b895933785a24b918d18f3a78f8a82f40147e38b4` |
 | [src/observability/observation-store.js](../../src/observability/observation-store.js) | SQLite event/projection schema, visibility and multi-database collections | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `b2f03ce533d84621a645671e3f37ab327f5323d2068fcc8ba1c9d6c23b81f269` |
 | [src/observability/private-audit-retention.js](../../src/observability/private-audit-retention.js) | Exclusive private audit roots, run ownership markers, and retention sweep | [06-observability-experiments](06-observability-experiments.md) | `bc3dce43b3f33f3beca429759653bd3f76f3421ae83c66400a5404eca36cb645` |
 | [src/observability/workspace-provider.js](../../src/observability/workspace-provider.js) | Workspace inspection adapter for observation routes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5d315a97b03ceb2aad34df6229ef443290b69e91cc47c776c723b678c96ac56a` |

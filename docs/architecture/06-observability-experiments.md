@@ -1,6 +1,6 @@
 # 06. Observability, reports and what their evidence means
 
-Observability records and projects execution facts. Task, Execution, Material, Workspace and Judge authority remain with their owning services. This chapter explains the complete evidence path: where a record comes from, how it is stored, what the HTTP/UI layers show, how a report is reconstructed, and where the projection loses information.
+Observability records and projects execution facts. Task, Execution, Material, Workspace and Judge authority remain with their owning services. This chapter explains the complete evidence path: where a record comes from, how it is stored, what the HTTP projections expose, how a report is reconstructed, and where the projection loses information.
 
 The exact observation tables are in [11 Storage](11-storage-reference.md). Startup/configuration and report finalization are covered by [07 Run configuration](07-run-configuration.md); exact prompt sources and send-path limitations are in [08 Prompts](08-prompts.md).
 
@@ -60,7 +60,7 @@ The standalone server accepts `--name value` or `--name=value` for these options
 
 Healthy-daemon reuse returns the existing metadata and exits; passing a different bind address to this invocation does not reconfigure that existing process.
 
-The HTTP server accepts GET only; writes return 405. Defaults remain read-only: there is no HTTP action to take, complete, restart or modify a Task. Static assets are served from `src/observability/public/`, the Vite build output of `client/`. The dev Vite server proxies `/api` to localhost:8787; the production observer serves the built files directly.
+The HTTP server accepts GET only; writes return 405. Defaults remain read-only: there is no HTTP action to take, complete, restart or modify a Task. The retired React client, static assets and Vite entry have been removed. After operator admission, `/`, `/index.html`, `/app.js`, `/styles.css` and other non-API paths return JSON 404 with `NOT_FOUND`; no filesystem static fallback remains. `/health` and the authenticated JSON/SSE surface below remain available. The server does not allocate Bots, send model inputs or change lifecycle state.
 
 ### Routes
 
@@ -92,9 +92,9 @@ Common event filters include `after_sequence`, `execution_id` on the event route
 
 Operator admission covers event, detail, report and owner-service routes. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
 
-Sources: [server](../../src/observability/observability-server.js), [daemon entry/discovery](../../scripts/serve-observability.mjs), [Vite configuration](../../src/observability/vite.config.js), [server tests](../../test/observability-server.test.js), [worktree discovery tests](../../test/observability-worktree-discovery.test.js).
+Sources: [server](../../src/observability/observability-server.js), [daemon entry/discovery](../../scripts/serve-observability.mjs), [server tests](../../test/observability-server.test.js), [worktree discovery tests](../../test/observability-worktree-discovery.test.js).
 
-## 4. Bounds, SSE and client updates
+## 4. Bounds, SSE and non-UI consumers
 
 The initial overview combines the last 2000 relevant events, at most 750 latest-entity seeds, and a recent tool projection. It compacts records and caps the overview at 50,000 events/4,000,000 bytes; its normal candidate set is much smaller because of the tail/seed limits. Returned metadata distinguishes payload truncation, history-window truncation, start/end sequence, seed count and whether tool counts are windowed. Tool counts deduplicate start/end records by Execution plus tool-call ID in the server's recent window. They are not necessarily all-run counts.
 
@@ -102,15 +102,25 @@ The timeline combines the last 1000 lifecycle events with up to 1000 active assi
 
 Execution detail scans at most 10,000 observations and returns selected lifecycle/tool events within 4,000,000 bytes, with explicit truncation metadata. Execution insight uses a bounded scan and recognizes older tool-return shapes such as `swarmenv_task_get` and `swarmenv_execution_get`; it is not a canonical concatenation of every prompt sent to the model. Modern flows, redaction, omitted calls or window limits can leave its prompt/instruction fields empty. Use the prompt catalog and private adapter records for exact send-path analysis.
 
-SSE reads SQLite every 250 ms in batches of up to 1000 new events and sends a keepalive every 15 seconds. This crosses process boundaries that an in-memory EventEmitter would miss. The cursor is the explicit `after_sequence` query; the stream does not implement a complete Last-Event-ID protocol. The browser may replay records on reconnect, and the client de-duplicates by sequence. The overview stream selects only the overview event kinds; it is not a full transcript export.
+SSE reads SQLite every 250 ms in batches of up to 1000 new events and sends a keepalive every 15 seconds. This crosses process boundaries that an in-memory EventEmitter would miss. The cursor is the explicit `after_sequence` query; the stream does not implement a complete Last-Event-ID protocol. A consumer owns its reconnect cursor and sequence deduplication. The overview stream selects only the overview event kinds; it is not a full transcript export.
 
 Registry updates use filesystem watches debounced by 50 ms, plus a 2-second rescan while subscribers/waiters exist. SSE publishes registry revision changes; the fallback long request waits up to 25 seconds. Watches are advisory and can miss an inaccessible/removed path; rescan/restart supplies later recovery.
 
-The React hook initially requests the experiment summary and overview, then opens the stream. It batches pending events every 300 ms, keeps the latest 4000 client events, and refreshes timeline after lifecycle events with a 450 ms debounce. Requests time out at 15 seconds. Registry SSE falls back after errors or 8 seconds without an initial event; failed fallback requests wait 2 seconds before retrying. The client's 15-second request timeout is shorter than the server's 25-second long-wait timeout, so an unchanged registry can time out on that fallback path rather than receiving the nominal server timeout response.
+The retained pure `src/observability/observation-projection.js` folds bounded Task, Execution and Material observations plus a timeline into data objects. It derives queues, correlates tool calls and creates Core trace data, using plain JavaScript format helpers. Node consumers can import these modules directly; they are not new public Core package exports, and the HTTP server keeps its existing bounded projections. Material consumers are inferred from read/consume/use/action-like event names and references, rather than certified useful reuse. These functions remain covered by the Node projection test after removal of the React hook and components.
 
-The shared observation projection folds bounded Task, Execution and Material observations plus the timeline into display objects. `src/observability/observation-projection.js` derives queues, correlates tool calls and creates Core traces. It uses plain JavaScript format helpers. The dashboard hook imports the same functions used by the Node projection tests. `App.jsx` renders overview, Executions, Tasks, Materials, diagnostics, services and detail views; trace primitives render Core lanes. Format helpers, UI components and CSS change presentation, not service authority. Detail responses are cached until reselection/refresh. Material “consumers” are inferred from read/consume/use/action-like event names and references; the UI label should not be treated as a verified useful-reuse metric. Compatibility state labels also remain in the client and may lag the modern domain vocabulary.
+For registered Observation Stores, the following loopback commands access the same retained query and streaming endpoints without a browser. Select an actual ID from the experiment registry before running the ID-specific commands. A remote or password-protected listener still requires its configured operator authentication.
 
-Sources: [server projection](../../src/observability/observability-server.js), [React hook](../../src/observability/client/hooks/use-observation.js), [observation projection](../../src/observability/observation-projection.js), [App](../../src/observability/client/App.jsx), [trace](../../src/observability/client/components/ui/trace.jsx), [format](../../src/observability/format.js), [projection test](../../test/observation-projection.test.js).
+```sh
+node scripts/serve-observability.mjs --root experiments --port 8787
+curl --fail http://127.0.0.1:8787/api/experiments
+curl --fail "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/overview"
+curl --fail "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/events?after_sequence=0&limit=100"
+curl --no-buffer "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/stream?after_sequence=0"
+```
+
+These APIs inspect registered observation databases; they do not automatically import a Core Runtime's evidence or replace live Environment control. Current-run input, status, stop and saved-result commands are documented in [Environment reporting](17-environment-reporting.md#foreground-environment-control). The old graphical navigation, theme, chart rendering and browser-local refresh/cache policy have no replacement UI. Their required data access remains in the documented APIs and pure modules. [Launch and migration](07-run-configuration.md#optional-services-and-observer-migration) maps each retired group to its retained owner and checks.
+
+Sources: [server projection](../../src/observability/observability-server.js), [observation projection](../../src/observability/observation-projection.js), [format](../../src/observability/format.js), [projection test](../../test/observation-projection.test.js).
 
 ## 5. Workspace views
 
@@ -128,7 +138,7 @@ Historical implementation details remain in the [research observation manual](ht
 
 | Question | Evidence needed |
 |---|---|
-| What did this Agent actually receive? | Exact source/version/profile plus private prompt-send/RPC records for that Session. The dashboard's initial-prompt card and report hash are insufficient on their own. |
+| What did this Agent actually receive? | Exact source/version/profile plus private prompt-send/RPC records for that Session. A bounded execution-insight projection and report hash are insufficient on their own. |
 | Was a Task really taken/completed? | Task/Execution rows, versions/fences and the successful domain result; UI event text is secondary. |
 | Did a successor reuse prior work? | Material producer/link/consumer identity, saved Workspace/Git lineage, subsequent concrete action and a semantic assessment. |
 | Did Judge check the right candidate/environment? | Workspace artifact source/hash/revision, target Task/spec, input snapshot and locked fixture/preflight identity, result/application facts. |
