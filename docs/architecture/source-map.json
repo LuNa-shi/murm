@@ -18649,6 +18649,33 @@
         "docs/architecture/15-core-runtime.md"
       ],
       "role": "Trusted Core-returned flat Bot identity registration and readiness"
+    },
+    {
+      "path": "src/environments/flat/task-service.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Flat trusted Service-v2 discovery and idempotent Task handoff entry"
+    },
+    {
+      "path": "src/environments/flat/task-handoff.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Preparation heartbeat, Core file handoff and stop-confirmed domain compensation"
+    },
+    {
+      "path": "src/environments/flat/prepare-inputs.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Fixed Workspace and Material input provenance and canonical FileSeed preparation"
     }
   ]
 }

@@ -189,3 +189,13 @@ Prove the original Lean theorem in ${TARGET_FILE} in ${REPO}.${PAPER_BRIEF} The 
 5. Push, open a PR and merge to main. If refused, merge latest main into your branch, re-check and push again.
 6. Share a PATCH_SUMMARY with files, idea and evidence on the board, then choose the next area.
 ```
+
+### Flat take preview notice
+
+`src/environments/flat/prepare-inputs.js` composes one additional tool-result notice only when a host-recorded Task view preview differs from the authoritative public revision selected during take:
+
+```text
+Execution ${execution.execution_id} starts from ${snapshot.revision}, different from preview ${preview.revision}; reread the affected project files.
+```
+
+The Execution ID comes from TaskService's accepted reservation; selected revision comes from MissionWorkspace.exportRevision; preview revision comes from the same trusted Bot's earlier Task view. Flat stores the notice with immutable Workspace input provenance. On successful take it travels through the Service-v2 response and original Bash tool result; it is not independently injected as a model message. Core prepare/grant consumes only canonical file bytes and never composes this notice. `flatResearcherProfile` forwards the host-supplied prompt unchanged and supplies readonly resource defaults; it adds no repository prompt template.
