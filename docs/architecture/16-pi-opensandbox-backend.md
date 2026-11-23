@@ -12,6 +12,8 @@ The Worker receives the authenticated `swarmenv-core-v1` startup contract. This 
 
 After starting Pi, spawn sends a bounded `get_state` request as the readiness check. It supplies no work prompt. It then starts authenticated Worker-history polling. The public Runtime can return an idle Bot and establish application routing before its first send.
 
+An unrecoverable Worker-history gap emits a fatal error and ends polling without inventing a settlement or confirmed process exit. Core fences that Bot's Service, model and fresh-input authority synchronously; it retains the Bot, Slot, original input receipts and owned sandbox for normal stop/reconciliation. A fatal error observed during readiness also aborts the startup guard, so startup cannot later return a usable idle Bot. A recoverable polling error remains diagnostic and does not revoke authority. [Core Runtime](15-core-runtime.md) describes the event ordering and separate physical cleanup receipt.
+
 ## Trusted workDir preparation and grant
 
 The root Worker initially requires a root-owned, empty workDir with mode 0555. It validates the FileSeed again inside the sandbox, creates each ordinary file exclusively, and verifies the resulting bytes, modes and root-controlled ancestor directories. It seals the directory after installation. The startup response supplies a `project_files` attestation with version, digest when prepared, and write state. The manager compares this information with the requested snapshot before the backend reports readiness.

@@ -91,7 +91,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
   }] : []);
   const liveBot = (botId, alias) => {
     const bot = getBot(botId);
-    return !closed && bot && ['starting', 'idle', 'running'].includes(bot.status) &&
+    return !closed && bot && !bot.unavailable && ['starting', 'idle', 'running'].includes(bot.status) &&
       bot.model === alias && typeof bot.profile === 'string' && bot.profile ? bot : null;
   };
   const close = () => {

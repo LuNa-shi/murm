@@ -33,7 +33,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
   const botTokens = new Map();
   let closing = false;
   let closePromise;
-  const active = new Set();
+  const active = new Map();
   const server = createServer(async (request, response) => {
     let body;
     let controller;
@@ -43,7 +43,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
     const botId = tokens.get(token);
     const live = () => {
       const bot = getBot(botId);
-      if (closing || !botId || tokens.get(token) !== botId || !bot || !['idle', 'running'].includes(bot.status)) {
+      if (closing || !botId || tokens.get(token) !== botId || !bot || bot.unavailable || !['idle', 'running'].includes(bot.status)) {
         throw new SwarmEnvError('NOT_ALLOWED', 'Bridge caller is unavailable');
       }
       return bot;
@@ -51,7 +51,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
     try {
       // Health also supports starting Bots while the backend is assembling.
       const bot = botId && getBot(botId);
-      if (closing || !bot || ['exited', 'closing', 'closed'].includes(bot.status)) throw new SwarmEnvError('NOT_ALLOWED', 'Bridge caller is unavailable');
+      if (closing || !bot || bot.unavailable || ['exited', 'closing', 'closed'].includes(bot.status)) throw new SwarmEnvError('NOT_ALLOWED', 'Bridge caller is unavailable');
       if (request.method === 'GET' && request.url === '/health') {
         request.resume(); reply(response, 200, { ok: true, runtimeId, botId }); return;
       }
@@ -93,7 +93,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
           operation: body.operation, operationId: body.operation_id, state: 'response', outcome: 'unknown' });
       });
       controller = new AbortController();
-      active.add(controller);
+      active.set(controller, botId);
       instrumented = true;
       const result = await invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
         envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService }, serviceTimeoutMs);
@@ -120,7 +120,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
   function close() {
     if (closePromise) return closePromise;
     closing = true;
-    for (const controller of active) controller.abort();
+    for (const controller of active.keys()) controller.abort();
     tokens.clear();
     botTokens.clear();
     closePromise = new Promise((resolve, reject) => {
@@ -148,7 +148,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
     publicUrl,
     credentialsForBot(botId) {
       const bot = getBot(botId);
-      if (closing || !bot || ['exited', 'closing', 'closed'].includes(bot.status)) {
+      if (closing || !bot || bot.unavailable || ['exited', 'closing', 'closed'].includes(bot.status)) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge credentials require a live Bot');
       }
       let token = botTokens.get(botId);
@@ -164,6 +164,9 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       const token = botTokens.get(botId);
       tokens.delete(token);
       botTokens.delete(botId);
+      for (const [controller, callerId] of active) {
+        if (callerId === botId) controller.abort();
+      }
     },
     close,
   };

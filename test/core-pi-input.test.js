@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,7 +22,7 @@ const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-
 const { ServiceRegistry } = await import('@swarmenv/core/services');
 hooks.deregister();
 
-async function setup(t) {
+async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxBots = 1 } = {}) {
   provider.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'core-pi-input-'));
   const runtime = await createRuntime({
@@ -28,14 +30,22 @@ async function setup(t) {
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
-      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
+      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstreamUrl, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
     }),
-    profiles: { worker: { prompt: 'fixed', model: 'default', image: 'test', writable: true, services: {} } },
-    services: new ServiceRegistry(), maxBots: 1, outputDir,
+    profiles: { worker: { prompt: 'fixed', model: 'default', image: 'test', writable, services: permissions } },
+    services, maxBots, outputDir,
   });
   t.after(async () => { await runtime.close(); await rm(outputDir, { recursive: true, force: true }); });
   return { runtime, bot: await runtime.spawn({ requestId: 'spawn', profile: 'worker' }) };
+}
+
+function bridgeCall(botId, operation = 'list_services', payload = {}) {
+  const startup = provider.starts.get(botId);
+  return fetch(startup.env.SWARMENV_BRIDGE_URL.replace('172.17.0.1', '127.0.0.1') + '/call', {
+    method: 'POST', headers: { authorization: `Bearer ${startup.secretEnvironment.SWARMENV_BRIDGE_TOKEN}`,
+      'content-type': 'application/json' }, body: JSON.stringify({ operation, operation_id: 'fixed-operation', ...payload }),
+  });
 }
 
 test('adapter receipt recovery never repeats a prompt after a socket failure', async t => {
@@ -140,4 +150,145 @@ test('lost Worker history emits a fatal gap and never fabricates a later settled
   assert.match(gap.error.message, /gap/);
   assert.equal(events.some(event => event.type === 'settled'), false);
   await assert.rejects(runtime.send(bot.id, 'unsafe fresh input', { requestId: 'after-gap' }), { code: 'NOT_ALLOWED' });
+});
+
+test('a fatal history gap fences authority before subscribers while preserving receipts and owned cleanup', async t => {
+  const { runtime, bot } = await setup(t, { writable: false });
+  const unknown = await runtime.send(bot.id, 'original input', { requestId: 'original' });
+  assert.equal(unknown.status, 'unknown');
+  assert.equal((await bridgeCall(bot.id)).status, 200);
+  let observed;
+  const fatal = new Promise(resolve => runtime.onEvent(event => {
+    if (event.type === 'error' && event.fatal) {
+      observed = { event, snapshot: runtime.get(bot.id), denied: bridgeCall(bot.id) };
+      resolve();
+    }
+  }));
+  provider.records.push({ type: 'agent_settled', worker_sequence: 9 });
+  await fatal;
+  assert.equal((await observed.denied).status, 403);
+  const snapshot = await observed.snapshot;
+  assert.equal(snapshot.cursor, observed.event.seq);
+  assert.match(snapshot.lastError.message, /gap/);
+  assert.equal(snapshot.status, 'running'); // No evidence that Pi physically exited.
+  await assert.rejects(runtime.send(bot.id, 'fresh input', { requestId: 'fresh' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.files.prepare(bot.id, { requestId: 'prepare', files: {} }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.spawn({ profile: 'worker', parentId: bot.id, requestId: 'child' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.spawn({ profile: 'worker', requestId: 'before-cleanup' }), { code: 'CONFLICT' });
+  provider.responses.set(unknown.inputId, { response: { id: unknown.inputId, command: 'prompt', success: true, data: { disposition: 'started' } }, records: [] });
+  assert.deepEqual(await runtime.send(bot.id, 'original input', { requestId: 'original' }), {
+    inputId: unknown.inputId, status: 'accepted', disposition: 'started',
+  });
+  assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 1);
+  const stopped = await runtime.stop(bot.id);
+  assert.equal(stopped.execution, 'stopped');
+  assert.equal(stopped.cleanup, 'complete');
+  assert.equal((await runtime.get(bot.id)).status, 'closed');
+  provider.records = []; // The replacement has its own Worker record history.
+  assert.equal((await runtime.spawn({ profile: 'worker', requestId: 'replacement' })).status, 'idle');
+});
+
+test('a fatal history gap revokes a held model stream and denies new model requests', { timeout: 5000 }, async t => {
+  let requests = 0;
+  const upstream = createServer(async (request, response) => {
+    for await (const _chunk of request) { /* Consume the local scripted request. */ }
+    requests++;
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.write('event: response.created\ndata: {"type":"response.created"}\n\n');
+  });
+  upstream.listen(0, '127.0.0.1');
+  await once(upstream, 'listening');
+  t.after(async () => { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); });
+  const { runtime, bot } = await setup(t, { upstreamUrl: `http://127.0.0.1:${upstream.address().port}/v1/responses` });
+  const start = provider.starts.get(bot.id);
+  const url = start.env.PI_KIMI_PROXY_BASE_URL.replace('172.17.0.1', '127.0.0.1') + '/responses';
+  const call = requestId => fetch(url, { method: 'POST', headers: {
+    authorization: `Bearer ${start.secretEnvironment.PI_KIMI_PROXY_API_KEY}`,
+    'content-type': 'application/json', 'x-swarmenv-request-id': requestId,
+  }, body: JSON.stringify({ model: 'k3', input: 'fixed' }) });
+  const response = await call('held');
+  assert.equal(response.status, 200);
+  const reader = response.body.getReader();
+  assert.equal((await reader.read()).done, false);
+  const streamClosed = reader.read().then(value => value.done, () => true);
+  const fatal = new Promise(resolve => runtime.onEvent(event => { if (event.fatal) resolve(); }));
+  provider.records.push({ type: 'agent_settled', worker_sequence: 9 });
+  await fatal;
+  assert.equal(await streamClosed, true);
+  assert.equal((await call('after-fatal')).status, 401);
+  assert.equal(requests, 1);
+});
+
+test('fatal revocation cancels only its own pending Service and preserves unknown write outcomes', { timeout: 5000 }, async t => {
+  const pending = new Map();
+  let ready;
+  const entered = new Promise(resolve => { ready = resolve; });
+  const services = new ServiceRegistry();
+  services.registerService({ manifest: {
+    id: 'notes', title: 'Notes', purpose: 'Store a fixed note', provider_version: '1', contract_version: '2',
+    endpoint: { transport: 'in-process' }, capabilities: [{
+      name: 'put', operation: 'put', description: 'Store a note', side_effect: 'write', idempotent: true,
+      help: { when: 'Store a note' }, input_schema: { type: 'object', properties: {}, additionalProperties: false },
+      output_schema: { type: 'string' }, errors: [],
+    }],
+  }, adapter: { invoke: ({ caller, signal }) => new Promise(resolve => {
+    pending.set(caller.botId, { signal, resolve });
+    if (pending.size === 2) ready();
+  }) } });
+  const { runtime, bot } = await setup(t, { services, permissions: { notes: ['put'] }, maxBots: 2 });
+  const other = await runtime.spawn({ profile: 'worker', requestId: 'other' });
+  const firstWrite = bridgeCall(bot.id, 'put', { service_id: 'notes', payload: {} });
+  const otherWrite = bridgeCall(other.id, 'put', { service_id: 'notes', payload: {} });
+  await entered;
+  provider.wait = async message => provider.responses.set(message.id, {
+    response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'started' } },
+    records: [{ type: 'agent_settled', worker_sequence: 9 }],
+  });
+  await runtime.send(bot.id, 'trigger fixed gap', { requestId: 'gap' });
+  assert.equal(pending.get(bot.id).signal.aborted, true);
+  assert.equal(pending.get(other.id).signal.aborted, false);
+  pending.get(bot.id).resolve('late result'); // Adapter did not roll back an already-started write.
+  pending.get(other.id).resolve('other result');
+  const failed = await firstWrite;
+  assert.equal(failed.status, 503);
+  const failure = await failed.json();
+  assert.equal(failure.error.code, 'SERVICE_UNAVAILABLE');
+  assert.equal(failure.error.details.request_outcome, 'unknown');
+  assert.equal(failure.error.details.operation_id, 'fixed-operation');
+  assert.deepEqual(await (await otherWrite).json(), { ok: true, result: 'other result' });
+  assert.equal((await bridgeCall(other.id)).status, 200);
+});
+
+test('a recoverable polling error preserves live Bot authority', { timeout: 5000 }, async t => {
+  const { runtime, bot } = await setup(t);
+  const error = new Promise(resolve => runtime.onEvent(event => { if (event.type === 'error') resolve(event); }));
+  provider.pollError = Object.assign(new Error('controlled poll interruption'), { code: 'SERVICE_UNAVAILABLE' });
+  assert.equal((await error).fatal, false);
+  provider.pollError = undefined;
+  assert.equal((await bridgeCall(bot.id)).status, 200);
+  provider.wait = async message => provider.responses.set(message.id, {
+    response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'handled' } }, records: [],
+  });
+  assert.equal((await runtime.send(bot.id, 'after recovery', { requestId: 'recovered' })).status, 'accepted');
+  assert.equal((await runtime.get(bot.id)).status, 'idle');
+});
+
+test('a healthy parent can still inspect and stop its fatal child', async t => {
+  const { runtime, bot: parent } = await setup(t, { permissions: { bot: ['get', 'stop'] }, maxBots: 2 });
+  const child = await runtime.spawn({ profile: 'worker', parentId: parent.id, requestId: 'child' });
+  provider.wait = async message => provider.responses.set(message.id, {
+    response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'started' } },
+    records: [{ type: 'agent_settled', worker_sequence: 9 }],
+  });
+  await runtime.send(child.id, 'fixed gap', { requestId: 'gap' });
+  const inspect = await bridgeCall(parent.id, 'get', { service_id: 'bot', payload: { bot_id: child.id } });
+  assert.equal(inspect.status, 200);
+  const snapshot = (await inspect.json()).result;
+  assert.equal(snapshot.id, child.id);
+  assert.match(snapshot.lastError.message, /gap/);
+  assert.equal(Object.hasOwn(snapshot, 'unavailable'), false);
+  const stopped = await bridgeCall(parent.id, 'stop', { service_id: 'bot', payload: { bot_id: child.id } });
+  assert.equal(stopped.status, 200);
+  assert.equal((await stopped.json()).result.cleanup, 'complete');
+  assert.equal((await bridgeCall(parent.id)).status, 200);
 });

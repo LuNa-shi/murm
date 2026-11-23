@@ -184,6 +184,26 @@ test('child creation finishes after parent stop but does not admit a late initia
   assert.equal((await runtime.get(childId)).parentId, parent.id);
 });
 
+test('child creation finishing after a parent fatal error cannot send its late initial input', async t => {
+  const { runtime, parent, call } = await setup(t);
+  let ready; let release;
+  const created = new Promise(resolve => { ready = resolve; });
+  transport.onSpawn = async options => { ready(options.botId); await new Promise(resolve => { release = resolve; }); };
+  const pending = call('spawn', { profile: 'child', input: 'never dispatched' });
+  const childId = await created;
+  transport.spawns.get(parent.id).onEvent({ type: 'error', fatal: true,
+    error: { code: 'SERVICE_UNAVAILABLE', message: 'irrecoverable event gap', retryable: false } });
+  const failure = await pending;
+  assert.equal(failure.error.code, 'SERVICE_UNAVAILABLE');
+  assert.equal(failure.error.details.request_outcome, 'unknown');
+  release();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(transport.submissions.size, 0);
+  assert.equal((await runtime.get(childId)).status, 'idle');
+  assert.equal((await runtime.get(childId)).parentId, parent.id);
+  assert.equal((await runtime.stop(childId)).cleanup, 'complete');
+});
+
 test('a read-only control grant does not authorize spawn, send or stop', async t => {
   const profile = { prompt: 'fixed', model: 'default', image: 'test', writable: true, services: {} };
   const { runtime, parent, call } = await setup(t, { profiles: { parent: { ...profile, services: { bot: ['get'] }, spawnProfiles: ['child'] }, child: profile } });
