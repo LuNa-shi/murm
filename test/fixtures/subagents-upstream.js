@@ -70,8 +70,37 @@ function texts(value, result = []) {
   else if (value && typeof value === 'object') for (const item of Object.values(value)) texts(item, result);
   return result;
 }
+// Pinned Pi Responses conversion emits each host text input as one user
+// message with one input_text block. Assistant/tool echoes are not deliveries.
+function deliveredResults(input, children, native, history) {
+  const current = new Map();
+  for (const message of input) {
+    if (message.role !== 'user' || message.type !== undefined && message.type !== 'message' ||
+        !Array.isArray(message.content) || message.content.length !== 1 || message.content[0].type !== 'input_text') continue;
+    let row;
+    try { row = JSON.parse(message.content[0].text); } catch { continue; }
+    if (!row || typeof row !== 'object' || !Object.hasOwn(row, 'childId')) continue;
+    assert.deepEqual(Object.keys(row).sort(), ['childId', 'eventSeq', 'outcome', 'output']);
+    assert.equal(row.outcome, 'completed'); assert.ok(Number.isSafeInteger(row.eventSeq) && row.eventSeq > 0);
+    const index = children?.findIndex(child => child.id === row.childId); assert.ok(index >= 0);
+    const role = index === 0 ? 'A' : 'B';
+    const source = native.find(entry => entry.role === role && entry.output === row.output); assert.ok(source);
+    const key = `${row.childId}:${row.eventSeq}`;
+    assert.ok(!current.has(key));
+    if (source.eventSeq !== undefined) assert.equal(row.eventSeq, source.eventSeq);
+    else {
+      assert.ok(!history.has(key));
+      const earlier = native.filter(entry => entry.role === role && entry.turn < source.turn);
+      assert.ok(earlier.every(entry => Number.isSafeInteger(entry.eventSeq) && entry.eventSeq < row.eventSeq));
+      source.eventSeq = row.eventSeq;
+    }
+    if (history.has(key)) assert.deepEqual(row, history.get(key));
+    current.set(key, row); history.set(key, row);
+  }
+  return [...current.values()];
+}
 export async function createSubagentsUpstream({ onFailure = () => {}, observeSessions = async () => {} } = {}) {
-  let arrivals = 0; let accepted = 0; let failure; let parentPhase = 'initial'; let children;
+  let arrivals = 0; let accepted = 0; let failure; let parentPhase = 'initial'; let children; let finalResults;
   const counts = { A: 0, B: 0 }; const results = new Map(); const native = [];
   const deadline = Date.now() + 120_000;
   const server = createServer(async (request, response) => {
@@ -92,20 +121,20 @@ export async function createSubagentsUpstream({ onFailure = () => {}, observeSes
       };
       if (parent) {
         stage = `parent-${parentPhase}`;
-        for (const text of strings) {
-          let row; try { row = JSON.parse(text); } catch { continue; }
-          if (row.childId && Number.isSafeInteger(row.eventSeq)) results.set(`${row.childId}:${row.eventSeq}`, row);
-        }
+        const currentResults = deliveredResults(body.input, children, native, results);
         if (parentPhase === 'initial') { item = tool('delegate', delegationCommand()); parentPhase = 'delegated'; }
         else if (parentPhase === 'delegated') {
           const row = output('delegate'); assert.equal(row.children.length, 2); assert.deepEqual(row.negativeChecks, [true, true, true, true, true]); children = row.children;
           item = message('Delegated two subproblems.'); parentPhase = 'results';
         } else if (parentPhase === 'followup-sent') {
           const row = output('followup'); assert.equal(row.status, 'accepted'); item = message('Waiting for the same child followup.'); parentPhase = 'results';
-        } else if (results.size === 3) {
+        } else if (native.length === 3) {
+          assert.equal(currentResults.length, 3); assert.equal(results.size, 3);
+          assert.equal(new Set(currentResults.map(row => row.childId)).size, 2);
+          finalResults = currentResults;
           assert.equal(native.length, 3); await observeSessions('final', native);
           item = message(JSON.stringify({ summary: 'Request validation checks data shape; authentication establishes the caller. The original child adds that neither substitutes for authorization.',
-            conclusions: [...results.values()].map(row => ({ childId: row.childId, eventSeq: row.eventSeq, quote: row.output })) }));
+            conclusions: currentResults.map(row => ({ childId: row.childId, eventSeq: row.eventSeq, quote: row.output })) }));
         } else if (results.size === 2 && counts.A === 2) {
           await observeSessions('before-followup', native);
           const child = children[0].id;
@@ -119,8 +148,9 @@ export async function createSubagentsUpstream({ onFailure = () => {}, observeSes
         else {
           const row = output(`child_${role}_${turn - 1}`); assert.equal(row.cwd, '/workspace/project'); assert.equal(row.recursionDenied, true); assert.ok(row.process.pid > 1); assert.match(row.process.starttime, /^\d+$/);
           if (turn === 4) { assert.deepEqual(row.process, native.find(entry => entry.role === 'A').process); assert.ok(row.sessionFile); }
-          native.push({ role, turn, ...row });
-          item = message(role === 'B' ? 'Authentication establishes the caller identity.' : turn === 2 ? 'Validation checks input shape before side effects.' : 'Followup: authorization separately checks what this caller may do.');
+          const text = role === 'B' ? 'Authentication establishes the caller identity.' : turn === 2 ? 'Validation checks input shape before side effects.' : 'Followup: authorization separately checks what this caller may do.';
+          native.push({ role, turn, ...row, output: text });
+          item = message(text);
         }
       }
       assert.ok(!failure); accepted++; response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', ordinal, item));
@@ -132,5 +162,5 @@ export async function createSubagentsUpstream({ onFailure = () => {}, observeSes
   });
   server.requestTimeout = 10000; server.headersTimeout = 10000;
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  return { url: `http://127.0.0.1:${server.address().port}/v1/responses`, receipt: () => ({ arrivals, accepted, failure, children, results: [...results.values()], native }), close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
+  return { url: `http://127.0.0.1:${server.address().port}/v1/responses`, receipt: () => ({ arrivals, accepted, failure, children, results: [...results.values()], finalResults, native }), close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }

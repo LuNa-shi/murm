@@ -57,6 +57,7 @@ test('installed subagents parent delegates natively and adopts two child results
   assert.equal(rows.filter(row => row.type === 'input' && row.state === 'registered').length, 7);
   assert.equal(report.routing.childIds.length, 2); assert.equal(report.routing.pendingJobs, 0);
   assert.equal(report.result.delivery.conclusions.length, 3); assert.equal(new Set(report.result.delivery.conclusions.map(row => row.childId)).size, 2);
+  assert.deepEqual(report.result.delivery.conclusions, upstream.receipt().finalResults.map(row => ({ childId: row.childId, eventSeq: row.eventSeq, quote: row.output })));
   assert.equal(upstream.receipt().results.length, 3); assert.equal(upstream.receipt().native.length, 3); assert.equal(sessions.length, 3);
   assert.deepEqual(JSON.parse(await readFile(report.reportPath, 'utf8')).result, report.result); proof.failure = false;
 });
