@@ -194,6 +194,15 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       finally{clearTimeout(timeout);}
       return snapshot();
     },
-    async reconcileClose(receipt) {for(const stopped of receipt?.bots??[]) {const row=bots.get(stopped.botId);if(row) await applyStop(row,stopped);}return snapshot();},
+    async reconcileClose(receipt) {
+      for(const stopped of receipt?.bots??[]) {
+        const row=bots.get(stopped.botId);
+        if(!row) continue;
+        const owner=taskService.getBot(row.botId);
+        if(owner && !['CLOSING','CLOSED'].includes(owner.state)) taskService.requestBotStop(row.botId,row.stopReason??'controller-close',{terminalState:'FAILED'});
+        await applyStop(row,stopped);
+      }
+      return snapshot();
+    },
   });
 }

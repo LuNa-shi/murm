@@ -108,6 +108,32 @@ test('confirmed execution stop and pending cleanup release Task outcome but reta
   assert.equal(f.controller.snapshot().bots.length,2);
 });
 
+test('host close records intent for a still-unbound discovery Bot before finalizing its domain Slot',async t=>{
+  const f=await fixture(t);
+  assert.equal(f.tasks.getBot(f.bot.botId).state,'UNBOUND');
+  f.controller.halt();
+  const receipt=await f.runtime.close();
+  assert.equal(receipt.cleanup,'complete');
+  await f.controller.reconcileClose(receipt);
+  assert.equal(f.tasks.getBot(f.bot.botId).state,'CLOSED');
+  const row=f.controller.snapshot().bots[0];
+  assert.equal(row.lastStop.execution,'stopped');assert.equal(row.lastStop.cleanup,'complete');assert.equal(row.released,true);
+});
+
+test('host close with unknown execution retains its active Task owner until a stopped receipt is reconciled',async t=>{
+  const f=await fixture(t);const execution=f.take();
+  f.controller.halt();controls.stopError=Object.assign(new Error('Fixed host close uncertainty'),{code:'OPERATION_UNKNOWN'});
+  const unknown=await f.runtime.close({timeoutMs:100});
+  await f.controller.reconcileClose(unknown);
+  assert.equal(f.tasks.getBot(f.bot.botId).state,'CLOSING');assert.equal(f.tasks.getTask(f.task.task_id).state,'RUNNING');
+  assert.equal(f.tasks.getExecution(execution.execution_id).owner_ref,f.bot.botId);assert.equal(f.tasks.getExecution(execution.execution_id).state,'RUNNING');
+  assert.equal(f.controller.snapshot().bots[0].released,false);
+  controls.stopError=null;
+  await f.controller.reconcileClose(await f.runtime.close());
+  assert.equal(f.tasks.getBot(f.bot.botId).state,'CLOSED');assert.equal(f.tasks.getExecution(execution.execution_id).state,'FAILED');
+  assert.equal(f.controller.snapshot().bots[0].released,true);
+});
+
 test('feedback selected before a close race is recorded without dispatch or retargeting',async t=>{
   const f=await fixture(t);const execution=f.take();
   const pending=f.controller.feedback({taskId:f.task.task_id,input:'Must not arrive after finish',requestId:'racing'});
