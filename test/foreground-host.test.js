@@ -243,3 +243,33 @@ test('CLI self-fence exits unsuccessfully and a configuration throwing null emit
     else assert.deepEqual(records, [{ code: 'HOST_START_FAILED' }]);
   }
 });
+
+test('startup source self-fence preserves its first safe cause and actual cleanup across later subscription rejection', async t => {
+  for (const rejectAfterFence of [false, true]) {
+    const config = await configuration(t);
+    const prepare = config.options.prepare;
+    let facilityClosed = false, stopped = 0, entered = false;
+    config.options.prepare = async options => {
+      options.resources.own({ kind: 'facility', id: 'startup-owned', close() { facilityClosed = true; } });
+      return prepare(options);
+    };
+    config.options.router.subscribe = async ({ onFailure }) => {
+      onFailure({ code: 'EVENT_SOURCE_FAILED', message: 'private startup detail' });
+      if (rejectAfterFence) throw Object.assign(new Error('private later detail'), { code: 'LATER_SUBSCRIPTION_FAILED' });
+      return { ready: true, stop: async () => {} };
+    };
+    transport.onStop = () => { stopped++; };
+    const report = await runForegroundEnvironment(config, async () => { entered = true; });
+    assert.equal(report.businessFailure.code, 'AGENSH_TEAM_FENCED');
+    assert.equal(report.businessFailure.cleanup, 'complete');
+    assert.deepEqual(report.businessFailure.details[0], { code: 'EVENT_SOURCE_FAILED' });
+    const [snapshot, receipt] = report.businessFailure.details.slice(1);
+    assert.equal(snapshot.closing, true); assert.equal(snapshot.peers.length, 2);
+    assert.equal(receipt.cleanup, 'complete');
+    assert.ok(receipt.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
+    assert.equal(facilityClosed, true); assert.equal(stopped, 2); assert.equal(entered, false);
+    assert.equal(transport.submissions.size, 0);
+    assert.ok(!JSON.stringify(report).includes('private startup detail'));
+    assert.ok(!JSON.stringify(report).includes('LATER_SUBSCRIPTION_FAILED'));
+  }
+});

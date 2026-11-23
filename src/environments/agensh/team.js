@@ -30,8 +30,8 @@ export async function createAgenshTeam(options) {
   const secrets = [options.gitea?.adminToken, options.mattermost?.adminToken, ...(options.secretValues ?? [])].filter(value => typeof value === 'string' && value);
   const redact = value => { let bytes = JSON.stringify(value); for (const secret of [...secrets].sort((a, b) => b.length - a.length)) bytes = bytes.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(bytes); };
   const peers = new Map(); const routers = new Map(); const subscriptions = new Map(); const unsubscriptions = []; const pendingSources = new Set();
-  let runtime, facilities, services, closing = false, closeWork, completed;
-  const check = () => { if (signal.aborted) throw fail('ENVIRONMENT_START_ABORTED'); };
+  let runtime, facilities, services, closing = false, closeWork, completed, fencedFailure;
+  const check = () => { if (signal.aborted) throw fencedFailure ?? fail('ENVIRONMENT_START_ABORTED'); };
   const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), resources: resources.snapshot(),
     peers: [...peers].map(([key, bot]) => ({ key, botId: bot.id, profile: bot.profile, router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() })) });
   function stop(reason) { closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
@@ -39,7 +39,8 @@ export async function createAgenshTeam(options) {
     if (closing || signal.aborted) return;
     const code = typeof reason === 'string' ? reason : reason?.code;
     const detail = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'AGENSH_SOURCE_FAILED';
-    stop(Object.assign(fail('AGENSH_TEAM_FENCED'), { details: [{ code: detail }] }));
+    fencedFailure = Object.assign(fail('AGENSH_TEAM_FENCED'), { details: [{ code: detail }] });
+    stop(fencedFailure);
   }
   async function close({ timeoutMs = 60_000 } = {}) {
     if (!finite(timeoutMs)) throw new TypeError('Agensh close requires a finite wait');
@@ -106,7 +107,7 @@ export async function createAgenshTeam(options) {
     });
   } catch (error) {
     const receipt = !runtime && error.cleanup === 'pending' ? { cleanup: 'pending' } : await close({ timeoutMs: options.closeTimeoutMs ?? 60_000 }).catch(() => ({ cleanup: 'pending' }));
-    throw Object.assign(new Error('Agensh team initialization failed'), { code: error.code ?? 'TEAM_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [snapshot(), redact(receipt)] });
+    throw Object.assign(new Error('Agensh team initialization failed'), { code: fencedFailure?.code ?? error.code ?? 'TEAM_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [...(fencedFailure?.details ?? []), snapshot(), redact(receipt)] });
   } finally { signal.removeEventListener('abort', abortStartup); }
 }
 
