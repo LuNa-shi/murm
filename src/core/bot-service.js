@@ -54,7 +54,7 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }) 
   }, { async invoke({ caller, capability, input, envelope }) {
     const operation = capability.operation;
     const parent = getBot(caller.botId);
-    if (caller.runtimeId !== runtimeId || !parent || !['idle', 'running'].includes(parent.status) ||
+    if (caller.runtimeId !== runtimeId || !parent || parent.unavailable || !['idle', 'running'].includes(parent.status) ||
         !Object.hasOwn(parent.services, 'bot') || !parent.services.bot.includes(operation)) deny('Bot control caller is unavailable or unauthorized');
     const source = `bot:${caller.botId}`;
     const requestId = envelope.operation_id;
@@ -85,7 +85,8 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }) 
         if (input.input === undefined) request.initialInput = null;
         else if (!request.initialInput || request.initialInput.status === 'unknown') {
           try {
-            if (!['idle', 'running'].includes(getBot(caller.botId)?.status)) deny('Parent stopped before initial input admission');
+            const currentParent = getBot(caller.botId);
+            if (!currentParent || currentParent.unavailable || !['idle', 'running'].includes(currentParent.status)) deny('Parent stopped before initial input admission');
             request.initialInput = await send(request.bot.id, input.input, { requestId, mode: parameters.mode }, source + ':initial');
           }
           catch (error) { request.initialInput = { status: 'rejected', error: { code: error.code ?? 'SERVICE_UNAVAILABLE', message: error.message, retryable: error.retryable ?? false } }; }

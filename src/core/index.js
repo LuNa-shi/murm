@@ -85,6 +85,7 @@ export async function createRuntime(options) {
     const bot = bots.get(botId);
     return bot && {
       profile: bot.info.profile, model: bot.profile.model, status: bot.info.status,
+      unavailable: bot.fatal === true,
       services: bot.profile.services, bindings: bot.bindings, parentId: bot.info.parentId, spawnProfiles: bot.profile.spawnProfiles,
     };
   };
@@ -187,7 +188,7 @@ export async function createRuntime(options) {
   const spawnRequests = new Map();
   const inputRequests = createInputLedger(runtimeId);
   const fileControls = createFileControls({ backend, findBot, problem, observe, timedOut,
-    isLive: bot => !closing && liveStates.has(bot.info.status) });
+    isLive: bot => !closing && isLive(bot) });
   const handlerErrors = [];
   let handlerErrorCount = 0;
   let closeWork;
@@ -222,6 +223,10 @@ export async function createRuntime(options) {
     modelAccess.revokeBot(botId);
   }
 
+  function isLive(bot) {
+    return !bot.fatal && liveStates.has(bot.info.status);
+  }
+
   function refreshActivity(bot) {
     if (liveStates.has(bot.info.status)) {
       bot.info.status = bot.nativeExecuting || bot.activityClaims.size ? 'running' : 'idle';
@@ -246,7 +251,16 @@ export async function createRuntime(options) {
       info.latestOutput = event.output;
       info.lastError = event.error;
     }
-    if (event.type === 'error') info.lastError = event.error;
+    if (event.type === 'error') {
+      info.lastError = event.error;
+      if (event.fatal) {
+        // A fatal failure fences authority, but does not prove physical exit or
+        // release any owned resource. Keep original receipt lookups available.
+        bot.fatal = true;
+        bot.controller.abort();
+        revoke(info.id);
+      }
+    }
     if (event.type === 'exit' && info.status !== 'closing' && info.status !== 'closed') {
       info.status = 'exited';
       revoke(info.id);
@@ -344,7 +358,7 @@ export async function createRuntime(options) {
       }
     } else {
       if (closing) throw problem('NOT_ALLOWED', 'Runtime is closing', 'spawn', undefined, requestId);
-      if (parameters.parentId && !liveStates.has(findBot(parameters.parentId, 'spawn', requestId).info.status)) {
+      if (parameters.parentId && !isLive(findBot(parameters.parentId, 'spawn', requestId))) {
         throw problem('NOT_ALLOWED', 'Parent Bot is unavailable', 'spawn', parameters.parentId, requestId);
       }
       if ([...bots.values()].filter(bot => bot.info.status !== 'closed').length >= maxBots) {
@@ -374,7 +388,7 @@ export async function createRuntime(options) {
             bot.nativeExecuting = true;
             refreshActivity(bot);
           } });
-        if (info.status !== 'starting') throw new Error('Bot stopped before becoming idle');
+        if (bot.fatal || info.status !== 'starting') throw new Error('Bot stopped before becoming idle');
         info.status = 'idle';
         records.record('spawn', { state: 'ready', botId: info.id, requestId: redactor.text(requestId),
           sandboxId: resource.sandboxId, versions: resource.versions });
@@ -410,7 +424,7 @@ export async function createRuntime(options) {
     try { request = inputRequests.get(caller, botId, requestId, { input, mode }); }
     catch (error) { throw problem(error.code, error.message, 'send', botId, requestId); }
     if (!request) {
-      if (closing || !liveStates.has(bot.info.status) || !fileControls.canSend(bot)) {
+      if (closing || !isLive(bot) || !fileControls.canSend(bot)) {
         throw problem('NOT_ALLOWED', 'Bot is not accepting input', 'send', botId, requestId);
       }
       const inputId = randomUUID();
@@ -422,7 +436,7 @@ export async function createRuntime(options) {
       };
       request = { inputId, input, mode, run: async () => {
         if (request.dispatched && bot.info.status === 'closed') return { inputId, status: 'unknown' };
-        if (!request.dispatched && (closing || !liveStates.has(bot.info.status) || !fileControls.canSend(bot))) {
+        if (!request.dispatched && (closing || !isLive(bot) || !fileControls.canSend(bot))) {
           releaseActivity();
           throw problem('NOT_ALLOWED', 'Bot stopped before input dispatch', 'send', botId, requestId);
         }
