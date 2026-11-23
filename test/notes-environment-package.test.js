@@ -1,11 +1,49 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { fork } from 'node:child_process';
+import { once } from 'node:events';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { completeSimple, isRetryableAssistantError } from '@earendil-works/pi-ai/compat';
 import { test } from 'node:test';
 import { installNotesExample, execute } from './fixtures/notes-installed-package.js';
 import { createNotesEnvironmentUpstream, notesEnvironmentCommand } from './fixtures/notes-environment-upstream.js';
+
+test('installed Notes and subagents CLIs preserve cancellation received during configuration import', { timeout: 210_000 }, async t => {
+  const installed = await installNotesExample(); t.after(() => installed.close());
+  for (const mode of ['notes', 'subagents']) {
+    if (mode === 'subagents') {
+      for (const name of ['main', 'controller', 'prompts']) {
+        await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/examples/subagents-environment', `${name}.mjs`), join(installed.directory, `${name}.mjs`));
+      }
+    }
+    const outputDir = join(installed.directory, `${mode}-cancelled`);
+    await writeFile(join(installed.directory, 'delayed-config.mjs'), `
+process.send('config-ready');
+await new Promise(resolve => setTimeout(resolve, 150));
+export default {backend:{},image:'unused',outputDir:${JSON.stringify(outputDir)}};
+`);
+    const child = fork(join(installed.directory, 'main.mjs'), [join(installed.directory, 'delayed-config.mjs')], {
+      cwd: installed.directory, env: installed.env, silent: true, timeout: 15_000, killSignal: 'SIGKILL',
+    });
+    t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
+    let stdout = ''; let stderr = '';
+    child.stdout.setEncoding('utf8'); child.stdout.on('data', text => { stdout += text; });
+    child.stderr.setEncoding('utf8'); child.stderr.on('data', text => { stderr += text; });
+    const exited = once(child, 'close');
+    assert.deepEqual(await once(child, 'message'), ['config-ready', undefined]);
+    assert.ok(child.kill(mode === 'notes' ? 'SIGINT' : 'SIGTERM'));
+    const [code, signal] = await exited;
+    assert.equal(signal, null, `${mode} must preserve its cancellation report`);
+    assert.equal(code, 1, stderr);
+    const report = JSON.parse(stdout);
+    assert.equal(report.businessFailure.message, 'This operation was aborted');
+    assert.equal(report.cleanup, null); assert.equal(report.cleanupFailure, null);
+    assert.ok(report.reportPath.startsWith(outputDir));
+    assert.deepEqual(JSON.parse(await readFile(report.reportPath, 'utf8')).businessFailure, report.businessFailure);
+    assert.deepEqual(await readdir(join(outputDir, report.runtimeId)), ['environment-report.json']);
+  }
+});
 
 test('external installed archive resolves public exports and runs the copied Environment without a checkout import', { timeout: 210_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
