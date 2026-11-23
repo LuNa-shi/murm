@@ -2,7 +2,7 @@
 
 SwarmEnv is a research environment for autonomous collaboration among multiple Agents. Agents can work on a shared Mission, define independent Tasks, exchange versioned Materials, and use Judge, Workspace and Runtime capabilities to check and continue their work.
 
-The Phase 0005 refactor provides a programmable Core and Environment modules. Dedicated mathematical benchmark launchers and embedded datasets are preserved in the research branch.
+The Phase 0005 refactor provides a programmable Core and Environment modules. The benchmark runner, dedicated mathematical launchers and embedded datasets are preserved in the [fixed research branch](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9).
 
 ## Start here
 
@@ -23,7 +23,9 @@ For the Core / Environment stage, the [Phase 0005 design on main](docs/phases/00
 
 ## Implementation map
 
-- `src/agent/` — Pi Agent adapter, prompts, capability profiles, Services Bridge
+- `src/core/` — programmable Runtime, Bot lifecycle, Service Bridge and Pi/OpenSandbox backend
+- `src/environments/` — flat, agensh and peer collaboration policies
+- `src/agent/` — legacy Pi adapter, prompts, capability profiles and Services Bridge
 - `src/task/`, `src/context/`, `src/judge/` — authoritative domain state
 - `src/runtime/` — Execution processes, resources and Workspaces
 - `src/observability/` — event/state inspection

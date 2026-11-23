@@ -18,23 +18,13 @@ The existing registered Swarm Bot and independent solver contracts use Pi's nati
 
 `agentContract` in [bot-contract.js](../../src/agent/bot-contract.js) chooses the system addendum, protocol version and pinned resource hashes. Normal Bot mode includes `system.txt` and the four `plan-task`, `use-material`, `use-workspace`, and `finish-task` skill resources. Solver mode includes `solver-system.txt` and no Swarm skills. The OpenSandbox worker validates resource bytes and permissions, disables ambient resource discovery, and launches Pi with explicit native tools, system and skill paths. The system addenda append to Pi's own system input; repository files cannot reconstruct Pi/provider-owned rendering.
 
-A normal Session starts UNBOUND. After readiness, the benchmark sends `buildBotStartupMessage` with the durable Bot/Core/Session identity, Mission goal and acceptance conditions, Workspace main preview, budgets/deadlines, project boundary, available CLI Service directory and an explicitly incomplete eligible Task page. Values come from current Task/Runtime/Workspace state. The preview does not grant a writable Execution directory. Take prepares the actual pinned revision and returns its identity; when that differs from preview, the response requires rereading. Task-local instructions and completion contracts are ordinary public Task state, not a second system prompt. Repeated discovery refreshes state and marks the message as continued selection.
-
-The startup directory contains CLI namespace names, permission summaries, manifests and documentation references from the configured Registry. Full optional Service documentation enters context when the Bot fetches it using Service metadata/help commands. Full skill text enters context when read through Pi's skill/native read path. Resource presence, a manifest hash or a composed example does not prove the model read its body.
+The legacy adapter accepts immutable Bot and solver resource sets. Its host owns startup messages and any repeated inputs. The former benchmark discovery builder and paper/local-tools message branches have been retired. The public-Core flat controller's actual discovery and continuation composition is documented below.
 
 ## Continuations, notifications and lifecycle feedback
-
-The benchmark only sends another bound turn after rereading the current Session, Bot, Execution, Mission stop gate and deadlines. Ordinary continuation uses `BOT_CONTINUATION_MESSAGE`; a reached soft-closeout boundary substitutes the closeout notice and `BOT_SOFT_CLOSEOUT_MESSAGE`. The same phase selection applies after compaction. Compaction is not a Workspace save, Material publication or Task delivery.
 
 Runtime delivers Task notifications to a live bound Session using `buildBotNotification`. Handoff warnings name the Execution and remaining deadline allowance. Material notifications identify producer, Material and notification IDs and require reading and explicit feedback. Dependency updates direct the Bot to inspect Task state. None grants ownership, establishes correctness or completes the current Task. Notification delivery can fail if the Session has closed; durable public state remains the authority on later reads.
 
 Bridge command responses include structured results/errors and lifecycle notices. Native Bash carries these back into the model conversation; the Bridge does not create a separate turn for a tool response. Workspace conflicts also write an ordinary README artifact: it becomes model input only when read. Judge results carry actual checker diagnostics; successful request transport is not proof acceptance. Fixed guidance fields are catalogued separately from dynamic Task, Material, provider and checker content.
-
-On historical continuation, the runner reads the restored Mission, Task page and public main for each fresh Bot. Its startup message sets `project.input_policy` to `original locked formalization and public research state reconstructed at the selected historical time`. A replacement Bot follows the same discovery send path. [Historical continuation](13-historical-resume.md)
-
-The retained runner accepts the host library option `localLeanTools`. When this value is truthy, its exact text becomes `project.local_lean_tools` in the ordinary discovery message. The source is the host-supplied option. The composed message follows the same identity, Session and deadline guards and native Pi send path as other discovery inputs.
-
-The host library option `paperMissionGoal` supplies the Mission goal at creation. The runner reads that stored Mission into each discovery message, including replacement Bots. A truthy `paperMissionGoal` selects the fixed discovery input policy `locked unsolved formalization and pinned public manuscript only; no external answers or solution-derived candidates`. The goal text itself comes from the host composition. Bots propose and take responsibilities through the ordinary Task flow.
 
 ## Complete text and reproducible source inventory
 
@@ -42,7 +32,7 @@ The host library option `paperMissionGoal` supplies the Mission goal at creation
 |---|---|
 | [System addenda](prompts/01-system-identity.md) | Complete Bot and solver resource text |
 | [CLI directory and provider documents](prompts/02-task-loop-and-tools.md) | Actual startup directory fixtures and available optional bundle documents |
-| [Benchmark turns](prompts/03-benchmark-turns.md) | Complete synthetic startup, continuation, compaction and notification bodies |
+| [Runtime turns](prompts/03-runtime-turns.md) | Complete retained continuation, compaction and notification bodies |
 | [Runtime notifications](prompts/04-runtime-messages.md) | Exact current notification builder output |
 | [Tool-result guidance](prompts/06-tool-return-guidance.md) | Fixed executable hint/remediation/guidance fields and delivery conditions |
 | [Bot skills](prompts/08-bot-skills.md) | Complete immutable skill resources |
@@ -52,9 +42,7 @@ The host library option `paperMissionGoal` supplies the Mission goal at creation
 
 ## Phase-sensitive bound follow-up
 
-Both benchmark continuation paths call `buildBotContinuationMessage`; `runTurn` rereads the original E after `waitForReady` and replaces any earlier ordinary body if the durable soft boundary has been reached. A changed Session/E, stopping Core, non-RUNNING E, durable Bot other than ACTIVE or with a different E, or elapsed Bot hard deadline prevents the send. Registered compaction follow-up uses the same phase selector with the normal compaction text as its ordinary body. The selector reads only `handoff_deadline`, `handoff_reminder_sent_at` and current time; no model-written field decides the phase. The generated benchmark-message reference includes the complete closeout body. It directs save/publish/finish, forbids new proposals/apply/check/merge, and distinguishes accepted request replay from new work. It does not claim OS enforcement from a prompt alone.
-
-Trusted startup context includes the Bot’s actual `coordination_permissions`. Service-directory prose advertises the implemented Mission submission, checked merge and narrow correction/Task repair routes, with the applicable grants for submission, merge and Material correction. Open unowned Task revise/cancel instead use the UNBOUND and version guards described above. A soft-closeout continuation explicitly prohibits new Mission acceptance work as well as Judge/apply/merge work. Actual continuation dispatch also checks the durable Mission stop gate after Session readiness, so accepted Missions do not receive another research turn.
+The legacy Runtime compaction path calls `buildBotContinuationMessage` using the Execution's durable handoff deadline and reminder state. It selects ordinary compaction follow-up or the fixed soft-closeout body before dispatch. The public-Core flat controller calls the same builder for an unfinished active Execution after a settled turn. Its identity, lease, fence, deadline and stop guards remain controller/domain responsibilities. The generated runtime-turn reference contains the complete fixed body. Closeout instructions direct save, publish and finish, and domain guards enforce which new contributions remain allowed.
 
 ## Lifecycle and result feedback
 
@@ -73,9 +61,7 @@ The `use-workspace` skill directs ordinary local-proposition iteration to save a
 
 ## Retained solver prompt delivery
 
-The Pass@K CLI and group scheduler have been retired. The retained runner can still select solver mode directly. The generated [system reference](prompts/01-system-identity.md) includes the complete independent solver addendum, and [benchmark reference](prompts/03-benchmark-turns.md) includes its continuation and soft-closeout text. The adapter selects these only for explicit solver mode and verifies the pinned worker resource. Swarm's skills are not loaded. After the host binds the real Execution, the initial user prompt appends JSON containing `problem` and `target_path` from the verified fixture, the fixed `/workspace/project` path and the group deadline from run state. These are actual send inputs, using the same verified immutable resource contract. The next ordinary turns and compaction follow-up reuse solver continuation; soft closeout substitutes save-only guidance. No Task/Material tool instructions are sent by these solver paths.
-
-The Workspace skill also distinguishes the default 30-second CLI HTTP wait from the checker execution limit. Its 630000 ms example assumes an already-ready preflight, no queue wait and a ten-minute source allowance; queue/cold-preflight time is additional, and no client timeout extends lifecycle deadlines. This text is included through the same protected skill read path.
+A trusted legacy adapter caller can select solver resource mode, which loads the pinned independent solver addendum with no collaboration skills. Runtime compaction retains its solver continuation/soft-closeout branch. The retired benchmark's initial solver prompt and attempt scheduler have been removed. The generated [system reference](prompts/01-system-identity.md) and [runtime turns](prompts/03-runtime-turns.md) contain the retained text and delivery conditions.
 
 ### Flat take preview notice
 
