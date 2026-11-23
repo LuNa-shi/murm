@@ -11,6 +11,8 @@ import { ServiceRegistry } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { createIsolationUpstream } from './fixtures/core-isolation-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
+import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
+import { openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
 
 const execute = promisify(execFile);
 const disk = { bytes: 64 * 1024 ** 2, inodes: 4096 };
@@ -79,11 +81,14 @@ print(json.dumps(checks))
 }
 
 async function containerEvidence(container) {
-  const image = JSON.parse((await execute('docker', ['inspect', '--format', '{{json .Config.Image}}', container], { timeout: 5000 })).stdout);
+  const identity = JSON.parse((await execute('docker', ['inspect', '--format',
+    '{"requestedImage":{{json .Config.Image}},"imageId":{{json .Image}},"labels":{{json .Config.Labels}},"memory":{{json .HostConfig.Memory}},"nanoCpus":{{json .HostConfig.NanoCpus}},"cpuQuota":{{json .HostConfig.CpuQuota}},"cpuPeriod":{{json .HostConfig.CpuPeriod}}}', container], { timeout: 5000 })).stdout);
   const sessionScript = "const f=require('fs');for(const p of f.readdirSync('/proc')){try{const a=f.readFileSync('/proc/'+p+'/cmdline','utf8').split('\\0');const i=a.indexOf('--session-id');if(i>=0){process.stdout.write(a[i+1]);break}}catch{}}";
   const session = (await execute('docker', ['exec', container, 'node', '-e', sessionScript], { timeout: 5000 })).stdout.trim();
   assert.match(session, /^[a-f0-9-]{36}$/);
-  return { image, session };
+  return { containerId: container, requestedImage: identity.requestedImage, imageId: identity.imageId,
+    sessionId: session, botKey: identity.labels.bot_key, memory: identity.memory,
+    nanoCpus: identity.nanoCpus, cpuQuota: identity.cpuQuota, cpuPeriod: identity.cpuPeriod };
 }
 
 test('Core isolates concurrent Bots, frozen roles and independent Runtimes on actual Pi/OpenSandbox', {
@@ -104,7 +109,7 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
   const oldSentinel = process.env.CORE_HOST_SENTINEL;
   process.env.CORE_HOST_SENTINEL = 'must-not-be-inherited';
   t.after(() => { if (oldSentinel === undefined) delete process.env.CORE_HOST_SENTINEL; else process.env.CORE_HOST_SENTINEL = oldSentinel; });
-  const reports = { resources: {}, turns: {}, cleanup: [], failure: true };
+  const reports = { resources: {}, bots: [], turns: {}, cleanup: [], failure: true, workloadLimitMs: 180_000, cleanupTailLimitMs: 30_000 };
   const runtimes = [];
   const callers = [];
   let deadlineExpired = false;
@@ -114,12 +119,7 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
   }, 180_000);
   t.after(() => clearTimeout(deadline));
   t.after(async () => {
-    for (const runtime of runtimes) {
-      const closed = await runtime.close({ timeoutMs: 30_000 });
-      reports.cleanup.push({ runtimeId: runtime.id, cleanup: closed.cleanup,
-        bots: closed.bots.map(bot => ({ botId: bot.botId, execution: bot.execution, cleanup: bot.cleanup })) });
-      reports.resources[runtime.id] = { empty: (await ownedContainers(runtime.id)).length === 0 };
-    }
+    reports.cleanup = await cleanupRuntimes(runtimes, { inspect: ownedContainers, resources: reports.resources });
     reports.failure ||= deadlineExpired || reports.cleanup.some(row => row.cleanup !== 'complete') ||
       Object.values(reports.resources).some(row => !row.empty);
     reports.upstream = upstream.receipts;
@@ -151,6 +151,8 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
   const modelAccessPolicy = { authorize(caller) { callers.push(caller); return { phase: 'work', deadlineAt: Date.now() + 15_000 }; }, withCommit: commit => commit() };
   const runtime = await createRuntime({ backend: configuration(), profiles, services: new ServiceRegistry(), maxBots: 2, outputDir, modelAccessPolicy });
   runtimes.push(runtime);
+  reports.resources[runtime.id] = { maxBots: 2, beforeSpawnCount: (await ownedContainers(runtime.id)).length };
+  assert.equal(reports.resources[runtime.id].beforeSpawnCount, 0);
   profiles.writer.env.CORE_ROLE = 'mutated';
   profiles.writer.prompt = 'MUTATED_PROFILE';
   profiles.writer.image = imageB;
@@ -163,15 +165,34 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
   await assert.rejects(runtime.spawn({ requestId: 'no-slot', profile: 'writer' }), { code: 'CONFLICT' });
   const containers = await ownedContainers(runtime.id);
   assert.equal(containers.length, 2);
+  Object.assign(reports.resources[runtime.id], { afterSpawnCount: 2, idleCapacityRejected: true });
   const initial = await Promise.all(containers.map(containerEvidence));
-  assert.deepEqual(new Set(initial.map(row => row.image)), new Set([imageA, imageB]));
-  assert.notEqual(initial[0].session, initial[1].session);
+  assert.deepEqual(new Set(initial.map(row => row.requestedImage)), new Set([imageA, imageB]));
+  assert.notEqual(initial[0].sessionId, initial[1].sessionId);
+  for (const bot of [a, b]) {
+    const observed = initial.find(row => row.botKey === openSandboxBotKey(bot.id));
+    assert.ok(observed);
+    assert.match(observed.imageId, /^sha256:[a-f0-9]{64}$/);
+    assert.equal(observed.memory, 1024 ** 3);
+    assert.ok(observed.nanoCpus === 1_000_000_000 || observed.cpuQuota > 0 && observed.cpuQuota === observed.cpuPeriod);
+    reports.bots.push({ runtimeId: runtime.id, botId: bot.id, profile: bot.profile, initialStatus: bot.status, ...observed });
+  }
   reports.distinctSessions = true;
   const other = await createRuntime({ backend: configuration(), profiles: {
     observer: { prompt: 'FROZEN_PROFILE_C', model: 'alpha', image: imageB, writable: false, services: {}, env: { CORE_ROLE: 'B' } },
   }, services: new ServiceRegistry(), maxBots: 1, outputDir, modelAccessPolicy });
   runtimes.push(other);
+  reports.resources[other.id] = { maxBots: 1, beforeSpawnCount: (await ownedContainers(other.id)).length };
+  assert.equal(reports.resources[other.id].beforeSpawnCount, 0);
   const c = await other.spawn({ requestId: 'spawn-C', profile: 'observer', secretEnv: { CORE_APP_SECRET: 'B_test_only' } });
+  const otherContainers = await ownedContainers(other.id);
+  assert.equal(otherContainers.length, 1);
+  const cObserved = await containerEvidence(otherContainers[0]);
+  assert.equal(cObserved.requestedImage, imageB);
+  assert.equal(cObserved.botKey, openSandboxBotKey(c.id));
+  assert.ok(initial.every(row => row.sessionId !== cObserved.sessionId));
+  reports.bots.push({ runtimeId: other.id, botId: c.id, profile: c.profile, initialStatus: c.status, ...cObserved });
+  Object.assign(reports.resources[other.id], { afterSpawnCount: 1 });
   await assert.rejects(other.get(a.id), { code: 'NOT_FOUND' });
   await assert.rejects(runtime.send(c.id, 'foreign', { requestId: 'foreign' }), { code: 'NOT_FOUND' });
   async function turn(owner, bot, id, role, writable, repeat, quota) {
@@ -198,12 +219,15 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
   await turn(runtime, a, 'T03_A2', 'A', true, true, false);
   assert.deepEqual(await ownedContainers(runtime.id), containers);
   assert.deepEqual(await Promise.all(containers.map(containerEvidence)), initial);
+  reports.resources[runtime.id].idleRetained = true;
   await assert.rejects(runtime.spawn({ requestId: 'still-no-slot', profile: 'writer' }), { code: 'CONFLICT' });
   await turn(other, c, 'T03_C1', 'B', false, false, false);
   const firstClose = await runtime.close({ timeoutMs: 30_000 });
   assert.equal(firstClose.cleanup, 'complete');
   assert.deepEqual(await ownedContainers(runtime.id), []);
   assert.equal((await ownedContainers(other.id)).length, 1);
+  reports.resources[runtime.id].emptyAfterExplicitClose = true;
+  reports.resources[other.id].retainedAfterSiblingClose = true;
   await turn(other, c, 'T03_C2', 'B', false, true, false);
   assert.ok(callers.some(caller => caller.botId === a.id && caller.model === 'alpha'));
   assert.ok(callers.some(caller => caller.botId === b.id && caller.model === 'beta'));
