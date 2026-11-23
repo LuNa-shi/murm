@@ -183,13 +183,13 @@ corrections and the affected files before deciding whether they require revalida
 
 Normal public writes automatically retain committed events in `.swarm-history/`,
 including the main pointer, public revision index, freezes and request receipts.
-The publication intent still provides crash recovery. After an experiment ends,
-the historical importer can select a time, copy the then-visible Git objects and
-public revisions into a new repository, and continue normal writes. Old runs use
-recorded revision metadata and main's first-parent ancestry where sufficient;
-latest save is never treated as main by default. See
-[Historical continuation](13-historical-resume.md) for timestamp precision,
-compatibility, fresh-run ownership and evidence requirements.
+The publication intent still provides crash recovery. For a quiescent source,
+`restoreWorkspaceAt` can select a time, copy the then-visible Git objects and
+public revisions into a new repository, and continue normal writes. Workspaces
+without committed history use recorded revision metadata and main's first-parent
+ancestry where sufficient; latest save is never treated as main by default. See
+[private history](13-historical-resume.md) for timestamp precision and evidence
+requirements. This standalone reader does not assemble or hand off an experiment.
 
 ## Lean projects across public revisions
 

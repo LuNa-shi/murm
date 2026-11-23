@@ -148,4 +148,4 @@ Bot capacity is an independent host setting.
 
 ## Offline historical reconstruction
 
-The retained replay modules reconstruct service databases and public Git state at an explicit historical time. A caller supplies a completed source, fresh destination, fixed problem/configuration and timestamp. They perform no Bot startup or model request. The former benchmark resume entry and automatic four-lane continuation have been removed. See [historical reconstruction](13-historical-resume.md).
+The retained private history utilities independently reconstruct a current journaled service database or public Workspace at an explicit historical time into a new destination. Service reconstruction requires automatic-history coverage and returns `REPLAY_HISTORY_MISSING` when unavailable. Workspace immutable-revision reconstruction remains separate. They perform no Bot startup or model request. Experiment assembly, archived service-schema conversion and fresh-run ownership handoff have been removed. See [private history](13-historical-resume.md).

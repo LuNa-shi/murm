@@ -331,8 +331,8 @@ function rewindJournal(db, { domain, at }) {
   return { domain, at, mode: 'journal', coverage: { from, through }, events_reverted: rows.length, warnings: [] };
 }
 
-/** Reconstruct only a new destination. The caller starts new cores after
- * retiring historical runtime ownership; this function never touches providers. */
+/** Reconstruct one journaled service database into a new destination.
+ * The caller owns any later use; this function never touches providers. */
 export async function restoreServiceDatabaseAt({ sourcePath, destinationPath, domain, at }) {
   at = parseReplayTime(at);
   if (!['task', 'context', 'judge'].includes(domain)) throw new TypeError('Unknown replay service domain');
@@ -345,7 +345,7 @@ export async function restoreServiceDatabaseAt({ sourcePath, destinationPath, do
   let sourceDb, db, stage;
   try {
     // Even SQLite's readOnly connection may change a WAL source's -shm file.
-    // The source is a finished experiment: copy its stable disk files before
+    // The source database must be quiescent: copy its stable disk files before
     // opening SQLite at all, and let recovery/checkpointing touch only this copy.
     stage = await mkdtemp(join(dirname(destination), '.replay-source-'));
     const stagedSource = join(stage, 'source.sqlite');
@@ -360,18 +360,14 @@ export async function restoreServiceDatabaseAt({ sourcePath, destinationPath, do
     }
     const after = await Promise.all(suffixes.map(suffix => signature(`${source}${suffix}`)));
     if (before.some((value, index) => value !== after[index])) {
-      throw missing(domain, 'source files changed during import; use a finished experiment');
+      throw missing(domain, 'source files changed during import; use a quiescent source database');
     }
     sourceDb = new DatabaseSync(stagedSource);
     await backup(sourceDb, destination);
     sourceDb.close(); sourceDb = null;
     db = new DatabaseSync(destination);
-    let result = rewindJournal(db, { domain, at });
-    if (!result) {
-      dropReplayHistory(db);
-      const { projectLegacyServiceState } = await import('./legacy-service-state.js');
-      result = projectLegacyServiceState(db, { domain, at });
-    }
+    const result = rewindJournal(db, { domain, at });
+    if (!result) throw missing(domain, 'automatic history does not cover the requested time');
     db.close(); db = null;
     return result;
   } catch (error) {

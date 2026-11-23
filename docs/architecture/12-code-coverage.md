@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **187 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **184 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -177,16 +177,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/storage/judge-schema.js](../../src/storage/judge-schema.js) | Checker health/request/result/operation SQL schema | [11-storage-reference](11-storage-reference.md), [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `7fceae1e3ec7c8c5c53e4c94313e5995898a71907a3a7c8b092cb727b3239142` |
 | [src/storage/schema.js](../../src/storage/schema.js) | Mission/Task/Execution/dependency/notification/operation SQL schema | [11-storage-reference](11-storage-reference.md), [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595` |
 
-### historical continuation (5)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [src/replay/legacy-service-state.js](../../src/replay/legacy-service-state.js) | Project recorded public research facts from existing service receipts at a selected time | [13-historical-resume](13-historical-resume.md) | `d21b9e9db0f7ec88472deaefe320b541ef99d866830be881a20004deaaf2b649` |
-| [src/replay/resume-experiment.js](../../src/replay/resume-experiment.js) | Prepare historical service data and fresh ownership before the ordinary four-Core runner | [13-historical-resume](13-historical-resume.md) | `178de9f2ba922488fa8f780ee3c0353e15645b1e973cc24e015fb22dae9b43a3` |
-| [src/replay/resume-schema.js](../../src/replay/resume-schema.js) | Convert a reconstructed archive to the supported current service schemas before handoff | [13-historical-resume](13-historical-resume.md) | `526109b9f288217d021cc7f0b123700cf9844a88f79c5081a5fa69cadbc43be8` |
-| [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and read-only historical reconstruction | [13-historical-resume](13-historical-resume.md) | `3ae15de790367396c5890c2ba97e2e2607e4bf1d3d9467cae3116158332bf67a` |
-| [src/replay/workspace-history.js](../../src/replay/workspace-history.js) | Reconstruct past public main and reachable Git objects without modifying the source | [13-historical-resume](13-historical-resume.md) | `63b83b4bf2ff3a17d8b8983507c33b299df3348778a652f18a0eea5f1df4e29a` |
-
 ### launch and composition (15)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -225,6 +215,13 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/observability/observation-store.js](../../src/observability/observation-store.js) | SQLite event/projection schema, visibility and multi-database collections | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `b2f03ce533d84621a645671e3f37ab327f5323d2068fcc8ba1c9d6c23b81f269` |
 | [src/observability/private-audit-retention.js](../../src/observability/private-audit-retention.js) | Exclusive private audit roots, run ownership markers, and retention sweep | [06-observability-experiments](06-observability-experiments.md) | `bc3dce43b3f33f3beca429759653bd3f76f3421ae83c66400a5404eca36cb645` |
 | [src/observability/workspace-provider.js](../../src/observability/workspace-provider.js) | Workspace inspection adapter for observation routes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5d315a97b03ceb2aad34df6229ef443290b69e91cc47c776c723b678c96ac56a` |
+
+### private history (2)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and source-preserving journal reconstruction | [13-historical-resume](13-historical-resume.md) | `e569560cb2638bac98f43584f58a612bf7b6cd50ffc0682635662ff46d850630` |
+| [src/replay/workspace-history.js](../../src/replay/workspace-history.js) | Reconstruct past public main and reachable Git objects without modifying the source | [13-historical-resume](13-historical-resume.md) | `63b83b4bf2ff3a17d8b8983507c33b299df3348778a652f18a0eea5f1df4e29a` |
 
 ### programmable Core (17)
 
