@@ -85,6 +85,73 @@ test('a valid excessive output count fences even when the terminal input count i
   assert.deepEqual(cap.receipt().failure, { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 1, maxOutputTokens: 768, outputTokens: 865 });
 });
 
+test('hosted success without valid usage fences its terminal and the next arrival', { timeout: 4000 }, async t => {
+  const invalidUsages = [undefined, {}, { input_tokens: 1 }, { input_tokens: -1, output_tokens: 5 },
+    { input_tokens: 1, output_tokens: -1 }, { input_tokens: 1, output_tokens: 1.5 }];
+  for (const [index, usage] of invalidUsages.entries()) await t.test(`invalid usage case ${index}`, async t => {
+    let calls = 0;
+    const failures = [];
+    const upstreamUrl = await localUpstream(t, (request, response) => {
+      request.resume(); calls++;
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.end('data: ' + JSON.stringify({ type: 'response.completed', response: { id: 'unmetered', usage, output: [] } }) + '\n\n');
+    });
+    const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 3000, filename: 'unused', marker: 'unused',
+      failFast: true, onFailure: failure => failures.push(failure) });
+    t.after(() => cap.close());
+    const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+    const response = await send().catch(() => null);
+    const body = await response?.text().catch(() => '');
+    assert.ok(!body?.includes('response.completed'));
+    assert.equal((await send()).status, 400);
+    assert.equal(calls, 1);
+    const receipt = cap.receipt();
+    assert.deepEqual(receipt.failure, { code: 'LIVE_TERMINAL_USAGE_INVALID', number: 1 });
+    assert.deepEqual(failures, [receipt.failure]);
+    assert.equal(receipt.requests[0].usage, undefined);
+    await cap.close();
+    assert.deepEqual(cap.receipt().failure, receipt.failure);
+  });
+});
+
+test('hosted stream ending without a terminal fences siblings and later arrivals', { timeout: 4000 }, async t => {
+  const held = [], failures = [];
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.write(':held\n\n'); held.push(response);
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 3000, filename: 'unused', marker: 'unused',
+    maxConcurrent: 2, failFast: true, onFailure: failure => failures.push(failure) });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const peer = await send(), peerBody = peer.text().catch(() => 'cancelled');
+  const offender = await send(), offenderBody = offender.text().catch(() => 'cancelled');
+  held[1].end();
+  await Promise.all([peerBody, offenderBody]);
+  assert.equal((await send()).status, 400);
+  const receipt = cap.receipt();
+  assert.equal(receipt.forwarded, 2); assert.equal(receipt.deadlineReached, false);
+  assert.deepEqual(receipt.failure, { code: 'LIVE_TERMINAL_MISSING', number: 2 });
+  assert.deepEqual(failures, [receipt.failure]);
+  assert.equal(receipt.requests[1].transport.firstTermination.kind, 'upstream_end');
+  assert.equal(receipt.requests[0].transport.firstTermination.kind, 'terminal_missing_abort');
+});
+
+test('explicit hosted close preserves host cancellation without classifying a missing terminal', { timeout: 3000 }, async t => {
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':held\n\n');
+  });
+  const failures = [];
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, filename: 'unused', marker: 'unused',
+    failFast: true, onFailure: failure => failures.push(failure) });
+  t.after(() => cap.close());
+  const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const body = response.text().catch(() => 'cancelled');
+  await cap.close(); await body;
+  assert.equal(cap.receipt().failure, undefined); assert.deepEqual(failures, []);
+  assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'proxy_close');
+});
+
 test('closing a held HTTP200 stream records host cancellation before its resulting transport error', { timeout: 3000 }, async t => {
   const upstreamUrl = await localUpstream(t, (request, response) => {
     request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':held\n\n');
