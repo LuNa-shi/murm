@@ -1,11 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createCoreBridge } from './bridge.js';
 import { snapshotProfiles, snapshotSpawn, validId } from './config.js';
 import { createCoreModelAccess } from './model-access.js';
 import { createInputLedger } from './input-ledger.js';
 import { createFileControls } from './file-controls.js';
+import { saveBotArtifacts } from './artifact-collection.js';
 import { claimPiOpenSandboxBackend, openPiOpenSandboxBackend } from './pi-opensandbox-backend.js';
 import { snapshotServiceRegistry } from './services.js';
 
@@ -38,7 +39,14 @@ async function observe(work, timeoutMs = defaultTimeoutMs) {
 }
 
 async function writeRecord(path, value) {
-  await writeFile(path, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, JSON.stringify(value, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 export async function createRuntime(options) {
@@ -77,50 +85,87 @@ export async function createRuntime(options) {
   let bridge, modelAccess, backend;
   let closing = false;
   let recordsReady = false;
+  let reportSaved = false;
+  const assertAssembling = () => {
+    if (closing) throw Object.assign(new Error('Runtime initialization was closed'), { code: 'OPERATION_UNKNOWN' });
+  };
+  const endpointCleanup = {
+    bridge: { kind: 'bridge', id: runtimeId, action: 'close', done: false },
+    model: { kind: 'model', id: runtimeId, action: 'close', done: false },
+    backend: { kind: 'backend', id: runtimeId, action: 'close', done: false },
+  };
+  function pendingEndpoint(subject) {
+    const { kind, id, action, error } = subject;
+    return { kind, id, action, ...(error ? { error } : {}) };
+  }
+  async function closeEndpoint(kind, endpoint) {
+    const subject = endpointCleanup[kind];
+    if (subject.done) return;
+    try {
+      await endpoint?.close();
+      subject.done = true;
+      subject.error = undefined;
+    } catch (error) {
+      subject.error = errorInfo(error);
+    }
+  }
+  function pendingEndpoints() {
+    return Object.values(endpointCleanup).filter(subject => !subject.done).flatMap(subject => {
+      const details = subject.kind === 'model' ? modelAccess?.pendingCleanup() : undefined;
+      return details?.length ? details : [pendingEndpoint(subject)];
+    });
+  }
   const assembly = (async () => {
     await mkdir(outputDir, { recursive: true, mode: 0o700 });
     recordsReady = true;
     await writeRecord(reportPath, { runtimeId, status: 'starting', maxBots });
-    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy });
-    bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getBot, registrations });
+    reportSaved = true;
+    assertAssembling();
+    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy,
+      onOwned: owner => { modelAccess = owner; } });
+    assertAssembling();
+    bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getBot, registrations,
+      onOwned: owner => { bridge = owner; } });
+    assertAssembling();
     backend = await openPiOpenSandboxBackend(config, { runtimeId, outputDir, bridge, modelAccess });
     await writeRecord(reportPath, { runtimeId, status: 'open', maxBots });
   })();
-  const closeEndpoints = async () => {
-    const results = await Promise.allSettled([
-      Promise.resolve().then(() => bridge?.close()),
-      Promise.resolve().then(() => modelAccess?.close()),
-    ]);
-    return results.flatMap(result => result.status === 'rejected' ? [errorInfo(result.reason)] : []);
-  };
+  const closeEndpoints = () => Promise.all([closeEndpoint('bridge', bridge), closeEndpoint('model', modelAccess)]);
   const rollbackAssembly = async () => {
     await assembly.catch(() => {});
-    const errors = await closeEndpoints();
-    try { await backend?.close(); } catch (error) { errors.push(errorInfo(error)); }
+    await Promise.all([closeEndpoints(), closeEndpoint('backend', backend)]);
+    const pending = pendingEndpoints();
+    const errors = pending.flatMap(item => item.error ? [item.error] : []);
     if (recordsReady) {
       try {
         await writeRecord(reportPath, { runtimeId, status: 'initialization-failed',
-          cleanup: errors.length ? 'pending' : 'complete', errors });
-      } catch (error) { errors.push(errorInfo(error)); }
+          cleanup: pending.length ? 'pending' : 'complete', errors, pending });
+        reportSaved = true;
+      } catch (error) {
+        const failure = { ...errorInfo(error), code: 'REPORT_WRITE_FAILED' };
+        errors.push(failure);
+        pending.push({ kind: 'report', id: runtimeId, action: 'save', error: failure });
+      }
     }
-    return errors;
+    return { errors, pending };
   };
   try {
     if (await observe(assembly) === timedOut) {
+      closing = true;
       void rollbackAssembly();
       throw resourceError('OPERATION_UNKNOWN', 'Runtime initialization timed out', {
-        ...context, ...(recordsReady ? { reportPath } : {}),
-      }, { cleanup: 'pending' });
+        ...context, ...(reportSaved ? { reportPath } : {}),
+      }, { cleanup: 'pending', details: [{ code: 'OPERATION_UNKNOWN', message: 'Runtime assembly is still being reconciled', retryable: true }] });
     }
   } catch (error) {
     if (error.name === 'ResourceError') throw error;
-    const errors = await observe(rollbackAssembly(), Math.max(1, assemblyDeadline - performance.now()));
+    const rollback = await observe(rollbackAssembly(), Math.max(1, assemblyDeadline - performance.now()));
     const code = error.code === 'INVALID_CONFIG' ? 'INVALID_CONTRACT' : error.code ?? 'SERVICE_UNAVAILABLE';
     throw resourceError(code, error.message, {
-      ...context, ...(recordsReady ? { reportPath } : {}),
+      ...context, ...(reportSaved ? { reportPath } : {}),
     }, {
-      cleanup: errors === timedOut || errors.length ? 'pending' : 'complete',
-      details: errors === timedOut ? [errorInfo(error)] : [errorInfo(error), ...errors],
+      cleanup: rollback === timedOut || rollback.pending.length ? 'pending' : 'complete',
+      details: rollback === timedOut ? [errorInfo(error)] : [errorInfo(error), ...rollback.errors],
     });
   }
 
@@ -194,10 +239,23 @@ export async function createRuntime(options) {
     }
   }
 
-  function pendingStop(bot, execution = bot.executionStopped ? 'stopped' : 'unknown') {
-    return { botId: bot.info.id, execution, cleanup: 'pending', artifacts: [], errors: [{
-      code: 'OPERATION_UNKNOWN', message: 'Waiting for stop and resource cleanup confirmation', retryable: true,
-    }] };
+  function stopReceipt(bot, pendingError) {
+    const botId = bot.info.id;
+    const error = pendingError ?? bot.cleanupError;
+    return { botId, execution: bot.executionStopped ? 'stopped' : 'unknown',
+      cleanup: bot.info.status === 'closed' ? 'complete' : 'pending',
+      artifacts: bot.artifacts ?? [], errors: [bot.optionalCollectionError, bot.cleanupError, pendingError].filter(Boolean),
+      ...(bot.info.status === 'closed' ? {} : { pending: {
+        kind: 'bot', id: botId, action: bot.cleanupAction ?? 'stop-execution',
+        ...backend.resource(botId), ...(error ? { error } : {}),
+      } }),
+    };
+  }
+
+  function currentStop(bot) {
+    return bot.stopWork ? stopReceipt(bot, {
+      code: 'OPERATION_UNKNOWN', message: `Waiting for ${bot.cleanupAction} confirmation`, retryable: true,
+    }) : bot.info.lastStop ?? stopReceipt(bot);
   }
 
   function beginStop(bot) {
@@ -207,23 +265,35 @@ export async function createRuntime(options) {
     info.status = 'closing';
     bot.controller.abort();
     revoke(info.id);
+    bot.cleanupAction = 'await-startup';
     bot.stopWork = (async () => {
       await bot.start?.catch(() => {});
-      const errors = [];
       try {
-        if (!bot.executionStopped) await backend.stopExecution(info.id);
-        bot.executionStopped = true;
+        if (!bot.executionStopped) {
+          bot.cleanupAction = 'stop-execution';
+          const { collectable } = await backend.stopExecution(info.id);
+          bot.executionStopped = true;
+          bot.collectable = collectable;
+        }
+        if (bot.collect && bot.collectable && !bot.artifacts && !bot.optionalCollectionError) {
+          bot.cleanupAction = 'collect-artifacts';
+          try {
+            bot.artifacts = await saveBotArtifacts({ outputDir, botId: info.id, collect: bot.collect,
+              bounds: config.isolation.disk, records: () => backend.collect(info.id, bot.collect) });
+          } catch (error) {
+            if (bot.collect.required) throw error;
+            bot.optionalCollectionError = errorInfo(error);
+          }
+        }
+        bot.cleanupAction = 'delete-sandbox';
         await backend.destroy(info.id);
+        bot.cleanupError = undefined;
+        info.status = 'closed';
       } catch (error) {
-        errors.push(errorInfo(error));
+        bot.cleanupError = errorInfo(error);
       }
-      const receipt = {
-        botId: info.id, execution: bot.executionStopped ? 'stopped' : 'unknown',
-        cleanup: errors.length ? 'pending' : 'complete', artifacts: [], errors,
-      };
-      info.lastStop = receipt;
-      if (receipt.cleanup === 'complete') info.status = 'closed';
-      return receipt;
+      info.lastStop = stopReceipt(bot);
+      return info.lastStop;
     })().finally(() => { bot.stopWork = undefined; });
     return bot.stopWork;
   }
@@ -251,7 +321,7 @@ export async function createRuntime(options) {
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       const bot = {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
-        activityClaims: new Set(), nativeExecuting: false, executionStopped: false, bindings: parameters.bindings,
+        activityClaims: new Set(), nativeExecuting: false, executionStopped: false, bindings: parameters.bindings, collect: parameters.collect,
       };
       fileControls.register(bot, { writable: parameters.writable ?? bot.profile.writable,
         seeded: parameters.files !== undefined });
@@ -285,7 +355,8 @@ export async function createRuntime(options) {
   }
 
   async function get(botId) {
-    return structuredClone(findBot(botId, 'get').info);
+    const bot = findBot(botId, 'get');
+    return structuredClone({ ...bot.info, ...(bot.stopWork ? { lastStop: currentStop(bot) } : {}) });
   }
 
   async function send(botId, input, options) {
@@ -351,12 +422,15 @@ export async function createRuntime(options) {
     const timeoutMs = bound(options, 'stop', botId);
     const bot = findBot(botId, 'stop');
     const result = await observe(beginStop(bot), timeoutMs);
-    return result === timedOut ? pendingStop(bot) : structuredClone(result);
+    return structuredClone(result === timedOut ? currentStop(bot) : result);
   }
 
-  function closeReceipt(botReceipts, errors) {
-    return { bots: botReceipts, cleanup: errors.length || botReceipts.some(bot => bot.cleanup === 'pending')
-      ? 'pending' : 'complete', errors, outputDir, reportPath };
+  let savingClose = false;
+  function closeReceipt(botReceipts, errors, reportError) {
+    const pending = [...botReceipts.flatMap(bot => bot.pending ? [bot.pending] : []), ...pendingEndpoints()];
+    if (reportError || savingClose) pending.push({ kind: 'report', id: runtimeId, action: 'save', ...(reportError ? { error: reportError } : {}) });
+    return { bots: botReceipts, cleanup: errors.length || pending.length ? 'pending' : 'complete',
+      errors, pending, outputDir, ...(reportSaved ? { reportPath } : {}) };
   }
 
   async function close(options) {
@@ -366,26 +440,31 @@ export async function createRuntime(options) {
     if (!closeWork) {
       closeWork = (async () => {
         const stopping = Promise.all([...bots.values()].map(beginStop));
-        const errors = await closeEndpoints();
+        await closeEndpoints();
         const botReceipts = await stopping;
         if (botReceipts.every(bot => bot.cleanup === 'complete')) {
-          try { await backend.close(); } catch (error) { errors.push(errorInfo(error)); }
+          await closeEndpoint('backend', backend);
         }
+        const errors = pendingEndpoints().flatMap(subject => subject.error ? [subject.error] : []);
         let receipt = closeReceipt(botReceipts, errors);
+        savingClose = true;
         try {
+          receipt.reportPath = reportPath;
           await writeRecord(reportPath, { runtimeId, status: receipt.cleanup === 'complete' ? 'closed' : 'closing',
             ...receipt, handlerErrors });
+          reportSaved = true;
         } catch (error) {
-          errors.push(errorInfo(error, 'REPORT_WRITE_FAILED'));
-          receipt = closeReceipt(botReceipts, errors);
-        }
+          const failure = { ...errorInfo(error), code: 'REPORT_WRITE_FAILED' };
+          errors.push(failure);
+          reportSaved = false;
+          receipt = closeReceipt(botReceipts, errors, failure);
+        } finally { savingClose = false; }
         if (receipt.cleanup === 'complete') finalClose = receipt;
         return receipt;
       })().finally(() => { closeWork = undefined; });
     }
     const result = await observe(closeWork, timeoutMs);
-    return result === timedOut ? closeReceipt([...bots.values()].map(bot =>
-      bot.info.status === 'closed' ? structuredClone(bot.info.lastStop) : pendingStop(bot)), [{
+    return result === timedOut ? closeReceipt([...bots.values()].map(currentStop), [{
       code: 'OPERATION_UNKNOWN', message: 'Runtime close is still pending', retryable: true,
     }]) : structuredClone(result);
   }

@@ -15,7 +15,7 @@ function invalid(message) {
   throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, message);
 }
 
-export async function createCoreBridge({ runtimeId, configuration, getBot, registrations, serviceTimeoutMs = 30_000 }) {
+export async function createCoreBridge({ runtimeId, configuration, getBot, registrations, serviceTimeoutMs = 30_000, onOwned }) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof getBot !== 'function' || !(registrations instanceof Map)) {
     invalid('Bridge requires runtime identity, Bot lookup and Service registrations');
   }
@@ -104,10 +104,22 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
   server.requestTimeout = WAIT_TIMEOUT_MS;
   server.headersTimeout = Math.min(10_000, WAIT_TIMEOUT_MS);
   server.timeout = WAIT_TIMEOUT_MS;
+  function close() {
+    if (closePromise) return closePromise;
+    closing = true;
+    for (const controller of active) controller.abort();
+    tokens.clear();
+    botTokens.clear();
+    closePromise = new Promise((resolve, reject) => {
+      server.close(error => error && error.code !== 'ERR_SERVER_NOT_RUNNING' ? reject(error) : resolve());
+      server.closeAllConnections();
+    }).catch(error => { closePromise = undefined; throw error; });
+    return closePromise;
+  }
+  onOwned?.({ close });
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
-      server.close();
-      server.closeAllConnections();
+      if (!onOwned) void close().catch(() => {});
       reject(new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'Bridge listener startup timed out'));
     }, WAIT_TIMEOUT_MS);
     const onError = error => { clearTimeout(timer); reject(error); };
@@ -139,17 +151,6 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       tokens.delete(token);
       botTokens.delete(botId);
     },
-    close() {
-      if (closePromise) return closePromise;
-      closing = true;
-      for (const controller of active) controller.abort();
-      tokens.clear();
-      botTokens.clear();
-      closePromise = new Promise((resolve, reject) => {
-        server.close(error => error ? reject(error) : resolve());
-        server.closeAllConnections();
-      });
-      return closePromise;
-    },
+    close,
   };
 }

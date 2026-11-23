@@ -7,6 +7,8 @@ import { readFile, writeFile, mkdir, chown, chmod, readdir, lstat, realpath, sta
 import { dirname, join } from 'node:path';
 import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
 import { CoreWorkDir } from './core-work-dir.mjs';
+import { collectCoreWorkDir, MAX_COLLECTION_ENTRIES } from './core-collection.mjs';
+import { once } from 'node:events';
 import { createPiRpcSubmissions } from './pi-rpc-submissions.mjs';
 
 const argv = process.argv.slice(2);
@@ -20,6 +22,8 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('worke
 
 const project = new SandboxProject();
 let coreWorkDir;
+let executionStopped = false;
+let collectionMaxEntries = MAX_COLLECTION_ENTRIES;
 const quotaRequired = argv.includes('--require-project-quota');
 const catalogPath = '/opt/swarmenv/pi-agent/models.json';
 const filesystemPolicy = '/opt/swarmenv/bot-filesystem-policy';
@@ -145,6 +149,7 @@ async function startAgent(input) {
     await project.initialize();
     initialized = true;
     projectQuota = { bytes, inodes };
+    collectionMaxEntries = Math.min(inodes, MAX_COLLECTION_ENTRIES);
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
   const core = input.contract_version === 'swarmenv-core-v1';
   if (core && (input.command !== 'pi' || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt`)) throw startupContractError('Core startup requires direct Pi and an explicit role prompt');
@@ -313,9 +318,10 @@ function stopBot() {
       if (Date.now() >= deadline) throw new Error('Bot descendant stop was not confirmed');
       await new Promise(resolve => setTimeout(resolve, 10));
     }
-    if (!initialized) return { stopped: true, project_installs: [] };
+    if (!initialized) { executionStopped = true; return { stopped: true, project_installs: [] }; }
     await coreWorkDir?.drain();
     await project.close();
+    executionStopped = true;
     return { stopped: true, project_installs: await project.installReceipts() };
   })().catch(error => { stopping = null; throw error; });
   return stopping;
@@ -339,6 +345,27 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request, 32 * 1024 ** 2)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/core/files/collect') {
+      if (!coreWorkDir || !executionStopped) throw Object.assign(new Error('Core collection requires confirmed stopped execution'), { code: 'NOT_ALLOWED' });
+      const input = await body(request);
+      const controller = new AbortController();
+      const deadline = setTimeout(() => { controller.abort(); response.destroy(); }, 25_000);
+      const disconnected = () => controller.abort();
+      response.on('close', disconnected);
+      response.writeHead(200, { 'content-type': 'application/x-ndjson' });
+      try {
+        for await (const record of collectCoreWorkDir(PROJECT_DIR, input, { signal: controller.signal, maxEntries: collectionMaxEntries })) {
+          if (!response.write(`${JSON.stringify(record)}\n`)) await once(response, 'drain', { signal: controller.signal });
+        }
+      } catch (error) {
+        if (!response.destroyed) response.write(`${JSON.stringify({ type: 'error', code: error.code ?? 'SERVICE_UNAVAILABLE', message: error.message })}\n`);
+      } finally {
+        clearTimeout(deadline);
+        response.off('close', disconnected);
+        response.end();
+      }
+      return;
+    }
     if (request.method === 'POST' && url.pathname === '/core/files/prepare') {
       send(response, 200, { ok: true, result: await controlCoreFiles('prepare', await body(request, 32 * 1024 ** 2)) });
       return;

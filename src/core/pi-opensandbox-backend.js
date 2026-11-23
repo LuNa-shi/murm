@@ -119,7 +119,6 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
   return {
     async spawn({ botId, profile, options = {}, signal, onEvent, onExecutionStart }) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
-      if (options.collect || profile.collect) throw invalid('Artifact collection requires the collection implementation');
       const manager = new OpenSandboxManager({ ...config.sandbox, image: profile.image });
       const bot = { id: botId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
       bots.set(botId, bot);
@@ -205,19 +204,37 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
     },
     async stopExecution(botId) {
       const bot = bots.get(botId);
-      if (!bot) return;
+      if (!bot) return { collectable: false };
       bot.stopping = true;
-      const stopped = await bot.manager.stopAgent(botId);
+      const stopped = await bot.manager.stopAgent(botId, 'SIGTERM', { preserveWorker: true });
+      bot.executionStopped = true;
       bot.pollController.abort();
       await bot.polling;
       if (stopped && bot.started && !bot.exited) {
         bot.exited = true;
         bot.onEvent({ type: 'exit', reason: 'Worker confirmed Pi stopped', expected: true });
       }
+      return { collectable: stopped };
+    },
+    async *collect(botId, specification) {
+      const bot = bots.get(botId);
+      if (!bot?.executionStopped) throw Object.assign(new Error('Artifact collection requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
+      try { yield* bot.manager.collectCoreFiles(botId, specification); }
+      catch (error) {
+        const rejected = ['INVALID_CONTRACT', 'NOT_ALLOWED', 'CONFLICT'].includes(error.code);
+        throw Object.assign(new Error(rejected ? error.message : 'Worker artifact export could not be confirmed'), {
+          code: 'ARTIFACT_EXPORT_FAILED', retryable: !rejected,
+        });
+      }
+    },
+    resource(botId) {
+      const bot = bots.get(botId);
+      return bot?.manager.coreResource(botId);
     },
     async destroy(botId) {
       const bot = bots.get(botId);
       if (!bot) return;
+      if (!bot.executionStopped) throw Object.assign(new Error('Sandbox deletion requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
       bot.pollController.abort();
       await bot.manager.stopExecution(botId);
       await bot.polling;

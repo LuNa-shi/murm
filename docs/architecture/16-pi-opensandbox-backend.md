@@ -32,15 +32,19 @@ Polling requests Worker records after the last consumed sequence, with a five-se
 
 Worker exit records preserve whether stop had been requested. An invalid or skipped sequence emits one fatal gap error, stops history interpretation and further polling, and rejects fresh inputs; it does not fabricate later settled results. Transient polling failure emits a retryable error and polling continues while the Bot remains live. The Worker retains at most 2,048 event records, so transport recovery is bounded and is not arbitrary historical replay. Event binding and readiness occur before the first model input. Native Pi/OpenSandbox input acceptance is gated separately from deterministic tests and recorded on #168.
 
-## Stop and destruction
+## Stop, export and destruction
 
-The new backend exposes execution stop and sandbox destruction as distinct internal operations. Stop closes backend input for the Bot, asks the Worker to terminate the Bot process and descendants, and requires an explicit stopped confirmation. The host then stops its polling loop. Worker project closure protects the directory against further Bot writes while the Worker process remains available.
+The backend exposes execution stop, private artifact export and sandbox destruction as distinct internal operations. Stop closes backend input for the Bot, asks the Worker to terminate the Pi process group and any remaining Bot UID processes, drains file mutations and requires an explicit stopped confirmation. The host then stops its polling loop. The manager retains its authenticated Worker connection for export while the process is stopped. Runtime-managed destruction requires confirmed execution stop.
+
+The authenticated `/core/files/collect` route requires the Worker to have confirmed stop. It resolves each requested workDir path, validates ancestors, rejects symbolic links, hardlinks and special files, and traverses directories without allowing escapes. The root `.git` is skipped when `includeGit` is false and included in full when true. Including it requires a regular local Git directory. Linked metadata and external Git common directories, includes and object stores are rejected. Uncommitted files and local Git objects can therefore be saved together. Missing paths, file byte overruns or incomplete transport cause export failure.
+
+The Worker streams newline-delimited directory, file, chunk, file-end and final records. File hashes are computed from the streamed bytes. Base64 chunks decode to at most 64 KiB, and the manager limits a record to 128 KiB. The Worker limits inventory metadata to 16 MiB and bounds entry count by the sandbox quota. Traversal, Worker route and manager transport have limits of 20, 25 and 30 seconds respectively. The host verifies the declared size of every file, canonical chunk encoding, hashes and final counts before publishing artifacts. A retry uses the original immutable collection policy; a completed save is reused if only provider deletion needs retry.
 
 Only backend destruction calls provider resource deletion for this Core path. Provider endpoint/readiness preparation failures retain ownership for the Runtime's cleanup flow. An uncertain startup request retains the authenticated Worker endpoint so stop can still query and terminate possible execution. Deletion uses the existing manager's confirmation request and clears backend ownership after confirmation. Backend close reports a conflict if any Bot resources remain owned.
 
 The manager records uncertain creates and can reconcile them using Runtime labels without a Mission. Foreign Runtime labels prevent resource deletion. A failed or unconfirmed deletion leaves the resource registered for retry. The Runtime owns the user-visible timeout, receipts, model-token revocation and saved Bot state.
 
-Artifact collection remains assigned to #171. Additional frozen Profile origins are installed before any model work. The actual hosted model acceptance is recorded in #166.
+The opt-in `test/core-artifacts-real.test.js` checks one Bot with a fixed uncommitted file and an unpushed commit. It blocks the first host save, observes a stopped sandbox and retained Slot, then clears the blocker, retries stop and verifies the saved Git history and file bytes after confirmed destruction. It uses one fixed input and two scripted local Responses replies. #171 records the executed revision, budget and result.
 
 ## Transitional callers
 

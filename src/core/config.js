@@ -1,5 +1,6 @@
 import { isIPv4 } from 'node:net';
 import { snapshotFileSeed } from '../../scripts/core-file-seed.mjs';
+import { snapshotCollectionSpec } from '../../scripts/core-collection.mjs';
 
 export function validId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
@@ -31,6 +32,12 @@ function origin(value) {
   return isIPv4(url.hostname) && !url.hostname.startsWith('127.') && url.hostname !== '0.0.0.0' && url.port !== '0';
 }
 
+function snapshotCollection(value) {
+  if (value === undefined) return undefined;
+  if (!record(value)) throw new TypeError('collect must be a CollectionSpec object');
+  return snapshotCollectionSpec(value);
+}
+
 export function snapshotProfiles(profiles, models, registrations) {
   if (!record(profiles) || Object.keys(profiles).length === 0) throw new TypeError('At least one Profile is required');
   const snapshots = new Map();
@@ -46,7 +53,7 @@ export function snapshotProfiles(profiles, models, registrations) {
         !Array.isArray(input.network.allow) || !input.network.allow.every(origin))) {
       throw new TypeError(`Profile ${name} network must contain non-loopback IPv4 HTTP(S) origins`);
     }
-    if (input.collect !== undefined) throw new TypeError('Artifact collection is unavailable in this implementation slice');
+    const collect = snapshotCollection(input.collect);
     if (input.spawnProfiles !== undefined && !strings(input.spawnProfiles)) {
       throw new TypeError(`Profile ${name} has invalid spawnProfiles`);
     }
@@ -57,7 +64,7 @@ export function snapshotProfiles(profiles, models, registrations) {
         throw new TypeError(`Profile ${name} references unknown Service operations in ${service}`);
       }
     }
-    snapshots.set(name, structuredClone(input));
+    snapshots.set(name, { ...structuredClone(input), ...(collect === undefined ? {} : { collect }) });
   }
   for (const [name, profile] of snapshots) {
     if (profile.spawnProfiles?.some(target => !snapshots.has(target))) {
@@ -69,7 +76,7 @@ export function snapshotProfiles(profiles, models, registrations) {
 
 export function snapshotSpawn(input, profiles, registrations) {
   if (!record(input) || !validId(input.requestId) || !profiles.has(input.profile) ||
-      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv'].includes(key)) ||
+      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect'].includes(key)) ||
       (input.writable !== undefined && typeof input.writable !== 'boolean') ||
       (input.parentId !== undefined && !validId(input.parentId))) {
     throw new TypeError('Invalid spawn request or unsupported spawn options');
@@ -80,6 +87,8 @@ export function snapshotSpawn(input, profiles, registrations) {
     throw new TypeError('Invalid Service bindings');
   }
   const snapshot = structuredClone(input);
+  const collect = snapshotCollection(input.collect) ?? profiles.get(input.profile).collect;
+  if (collect !== undefined) snapshot.collect = collect;
   if (input.files !== undefined) snapshot.files = snapshotFileSeed(input.files).files;
   if (snapshot.secretEnv) snapshot.secretEnv = Object.fromEntries(Object.entries(snapshot.secretEnv).sort());
   if (snapshot.bindings) snapshot.bindings = Object.fromEntries(Object.entries(snapshot.bindings).sort());

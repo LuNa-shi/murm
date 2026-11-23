@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { Server } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -90,6 +92,74 @@ test('An empty Runtime opens and closes without contacting an unavailable sandbo
   } finally {
     await runtime.close();
   }
+});
+
+test('factory timeout retains its identity and reconciles a late model listener without opening the Bridge', { timeout: 5000 }, async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-late-listener-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const config = options(outputDir);
+  config.profiles.writer.model = 'default';
+  let expire;
+  const realSetTimeout = globalThis.setTimeout;
+  const clock = t.mock.method(globalThis, 'setTimeout', function (callback, ms, ...args) {
+    if (ms === 60_000 && !expire) expire = () => callback(...args);
+    return Reflect.apply(realSetTimeout, this, [callback, ms, ...args]);
+  });
+  const originalListen = Server.prototype.listen;
+  let release;
+  let capture;
+  let listeners = 0;
+  const held = new Promise(resolve => { capture = resolve; });
+  const interception = t.mock.method(Server.prototype, 'listen', function (...args) {
+    listeners++;
+    release = () => Reflect.apply(originalListen, this, args);
+    capture();
+    return this;
+  });
+  const starting = createRuntime(config);
+  await held;
+  try {
+    expire();
+    const failure = await starting.catch(error => error);
+    assert.equal(failure.code, 'OPERATION_UNKNOWN');
+    assert.equal(failure.cleanup, 'pending');
+    assert.equal(failure.reportPath, join(outputDir, failure.runtimeId, 'runtime.json'));
+    release();
+    let record;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      record = JSON.parse(await readFile(failure.reportPath, 'utf8'));
+      if (record.status === 'initialization-failed') break;
+      await delay(5);
+    }
+    assert.equal(listeners, 1);
+    assert.equal(record.status, 'initialization-failed');
+    assert.equal(record.cleanup, 'complete');
+    assert.deepEqual(record.pending, []);
+  } finally { interception.mock.restore(); clock.mock.restore(); }
+});
+
+test('close exposes a failed report save and later publishes the same closed Runtime', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-report-retry-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const config = options(outputDir);
+  config.profiles.writer.model = 'default';
+  const runtime = await createRuntime(config);
+  const reportPath = join(outputDir, runtime.id, 'runtime.json');
+  await rm(reportPath);
+  await mkdir(reportPath);
+  try {
+    const failed = await runtime.close();
+    assert.equal(failed.cleanup, 'pending');
+    assert.equal(failed.reportPath, undefined);
+    assert.equal(failed.pending[0].kind, 'report');
+    assert.equal(failed.pending[0].error.code, 'REPORT_WRITE_FAILED');
+  } finally {
+    await rm(reportPath, { recursive: true, force: true });
+  }
+  const closed = await runtime.close();
+  assert.equal(closed.cleanup, 'complete');
+  assert.equal(closed.reportPath, reportPath);
+  assert.equal(JSON.parse(await readFile(reportPath, 'utf8')).status, 'closed');
 });
 
 

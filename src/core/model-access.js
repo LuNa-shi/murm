@@ -35,7 +35,7 @@ function synchronousPolicy(policy) {
   };
 }
 
-export async function createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy }) {
+export async function createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy, onOwned }) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof outputDir !== 'string' || !outputDir ||
       typeof getBot !== 'function' || !config?.models || !Object.keys(config.models).length) {
     throw invalid('Model access requires Runtime identity, output directory, models and Bot authority');
@@ -59,6 +59,11 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
   let closed = false;
   let closePromise;
   const tokens = new Map();
+  const closeFailures = new Map();
+  const pendingCleanup = () => [...aliases].flatMap(([alias, entry]) => entry.gateway || entry.db ? [{
+    kind: 'model', id: `${runtimeId}:${alias}`, action: 'close',
+    ...(closeFailures.has(alias) ? { error: closeFailures.get(alias) } : {}),
+  }] : []);
   const liveBot = (botId, alias) => {
     const bot = getBot(botId);
     return !closed && bot && ['starting', 'idle', 'running'].includes(bot.status) &&
@@ -68,12 +73,29 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
     if (closePromise) return closePromise;
     closed = true;
     tokens.clear();
-    closePromise = Promise.all([...aliases.values()].map(async entry => {
-      try { await entry.gateway?.stop(); }
-      finally { entry.db?.close(); }
-    })).then(() => undefined);
+    closePromise = Promise.allSettled([...aliases].map(async ([alias, entry]) => {
+      try {
+        if (entry.gateway) {
+          await entry.gateway.stop();
+          entry.gateway = undefined;
+        }
+        if (entry.db) {
+          entry.db.close();
+          entry.db = undefined;
+        }
+        closeFailures.delete(alias);
+      } catch (error) {
+        closeFailures.set(alias, { code: 'MODEL_CLOSE_FAILED', message: 'Model listener or ledger closure has not been confirmed', retryable: true });
+        throw error;
+      }
+    })).then(results => {
+      if (results.some(result => result.status === 'rejected')) {
+        throw Object.assign(new Error('Runtime model resources could not all be closed'), { code: 'MODEL_CLOSE_FAILED', retryable: true });
+      }
+    }).finally(() => { closePromise = undefined; });
     return closePromise;
   };
+  onOwned?.({ close, pendingCleanup });
   try {
     for (const [alias, entry] of aliases) {
       const filename = `${createHash('sha256').update(alias).digest('hex')}.sqlite`;
@@ -104,7 +126,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
       entry.baseUrl = `http://${hostname}:${listening.port}/v1`;
     }
   } catch (error) {
-    await close();
+    if (!onOwned) await close().catch(() => {});
     if (!error.code) error.code = 'INVALID_CONFIG';
     throw error;
   }
@@ -127,5 +149,6 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
       tokens.set(botId, null);
     },
     close,
+    pendingCleanup,
   };
 }
