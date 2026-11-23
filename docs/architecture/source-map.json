@@ -61,6 +61,14 @@
       "role": "Raw evidence and credential retention boundary in the working tree"
     },
     {
+      "path": ".gitmodules",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Pinned third-party checkout location"
+    },
+    {
       "path": "benchmarks/flt10/ATTRIBUTION.md",
       "category": "benchmark inputs",
       "chapters": [
@@ -80,6 +88,15 @@
     },
     {
       "path": "benchmarks/flt10/NOTICE",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/flt10/README.md",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -376,15 +393,6 @@
       "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
     },
     {
-      "path": "benchmarks/flt10/README.md",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
-    },
-    {
       "path": "benchmarks/flt10/subtree-instructions.md",
       "category": "benchmark inputs",
       "chapters": [
@@ -401,6 +409,42 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Pinned FLT10 statement, metadata, provenance or public-context reader"
+    },
+    {
+      "path": "benchmarks/openai-math-12/LICENSE",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math challenge, dependency or local audit input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/OPENAI-MATH-README.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math challenge, dependency or local audit input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/README.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math challenge, dependency or local audit input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/SELECTION.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math challenge, dependency or local audit input"
     },
     {
       "path": "benchmarks/openai-math-12/lean/ComparatorChallenges/EgyptianFractions.json",
@@ -629,33 +673,6 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/ComparatorChallenges/StronglyRayleighDPP.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math challenge, dependency or local audit input"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/lake-manifest.json",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math challenge, dependency or local audit input"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/lakefile.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math challenge, dependency or local audit input"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/lean-toolchain",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -1771,15 +1788,6 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Binary/BinaryLists.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Binary/BinaryListSelection.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -1790,6 +1798,15 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Binary/BinaryListZip.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Binary/BinaryLists.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -4201,15 +4218,6 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/CountsMaskProgram.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/CountSource.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -4238,6 +4246,15 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/CountVariance.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/CountsMaskProgram.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -4516,6 +4533,24 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/RoundParameters.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/RoundWithCount.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/RoundingCoordinateHeight.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -4562,24 +4597,6 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/RoundingUniformStep.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/RoundParameters.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Process/RoundWithCount.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -4858,7 +4875,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Programs/InstanceRounding.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Programs/InstanceRoundProgram.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -4867,7 +4884,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Programs/InstanceRoundProgram.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Programs/InstanceRounding.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -5578,7 +5595,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Rounding/RationalRounding.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Rounding/RationalRoundParameters.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -5587,7 +5604,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Rounding/RationalRoundParameters.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/KMedian/Rounding/RationalRounding.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -7711,6 +7728,15 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolyTactic.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolynomial.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -7784,15 +7810,6 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolynomialSums.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Complexity/TreePolyTactic.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -8053,6 +8070,15 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Graphs/PM.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Graphs/PathActivity.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -8063,15 +8089,6 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Graphs/PathStrength.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Graphs/PM.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -8215,7 +8232,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Graphs/TreeBags.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Graphs/TreeBagTable.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -8224,7 +8241,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Graphs/TreeBagTable.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Graphs/TreeBags.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -8701,7 +8718,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Machines/TreeColoredIndex.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Machines/TreeColorRaw.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -8710,7 +8727,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Machines/TreeColorRaw.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Machines/TreeColoredIndex.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -9421,7 +9438,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/DiscreteLadderSteps.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/DPEnvelope.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -9430,7 +9447,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/DPEnvelope.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/DiscreteLadderSteps.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -9547,6 +9564,15 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/PM.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/PairStep.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -9557,15 +9583,6 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/Plan.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/PM.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -9736,7 +9753,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/TreeFastDescent.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/TreeFastDPEntry.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -9745,7 +9762,7 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/TreeFastDPEntry.lean",
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/TreeFastDescent.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -9952,6 +9969,15 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
+      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/TreePrepareLadder.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/TreePrepared.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -9971,15 +9997,6 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/TreePreparedTop.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/OAI/Combinatorics/MatchingCount/Sampling/TreePrepareLadder.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -13093,6 +13110,15 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
+      "path": "benchmarks/openai-math-12/lean/OAI/NumberTheory/EgyptianFractions/SampleWordTransfer.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
       "path": "benchmarks/openai-math-12/lean/OAI/NumberTheory/EgyptianFractions/SampledDenominatorCertificate.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -13103,15 +13129,6 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/NumberTheory/EgyptianFractions/SampledResidueDenominator.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/OAI/NumberTheory/EgyptianFractions/SampleWordTransfer.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -13849,15 +13866,6 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
-      "path": "benchmarks/openai-math-12/lean/OAI/NumberTheory/PowerFree/NormalMonomials.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
       "path": "benchmarks/openai-math-12/lean/OAI/NumberTheory/PowerFree/NormBoxes.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -13877,6 +13885,15 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/NumberTheory/PowerFree/NormHilbert.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
+      "path": "benchmarks/openai-math-12/lean/OAI/NumberTheory/PowerFree/NormalMonomials.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -14920,6 +14937,15 @@
       "role": "Embedded OpenAI Math reference proof source closure"
     },
     {
+      "path": "benchmarks/openai-math-12/lean/OAI/Probability/StrongRayleigh/DPPReindex.lean",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Embedded OpenAI Math reference proof source closure"
+    },
+    {
       "path": "benchmarks/openai-math-12/lean/OAI/Probability/StrongRayleigh/DecoderUniqueness.lean",
       "category": "benchmark inputs",
       "chapters": [
@@ -14948,15 +14974,6 @@
     },
     {
       "path": "benchmarks/openai-math-12/lean/OAI/Probability/StrongRayleigh/DeterminantalUniqueness.lean",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math reference proof source closure"
-    },
-    {
-      "path": "benchmarks/openai-math-12/lean/OAI/Probability/StrongRayleigh/DPPReindex.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -16252,7 +16269,7 @@
       "role": "Embedded OpenAI Math challenge, dependency or local audit input"
     },
     {
-      "path": "benchmarks/openai-math-12/LICENSE",
+      "path": "benchmarks/openai-math-12/lean/lake-manifest.json",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -16261,7 +16278,7 @@
       "role": "Embedded OpenAI Math challenge, dependency or local audit input"
     },
     {
-      "path": "benchmarks/openai-math-12/OPENAI-MATH-README.md",
+      "path": "benchmarks/openai-math-12/lean/lakefile.lean",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -16270,67 +16287,13 @@
       "role": "Embedded OpenAI Math challenge, dependency or local audit input"
     },
     {
-      "path": "benchmarks/openai-math-12/README.md",
+      "path": "benchmarks/openai-math-12/lean/lean-toolchain",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Embedded OpenAI Math challenge, dependency or local audit input"
-    },
-    {
-      "path": "benchmarks/openai-math-12/paper-progress/README.md",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Evaluator-only paper-route scoring specification"
-    },
-    {
-      "path": "benchmarks/openai-math-12/paper-progress/SeymourSecondNeighborhood.json",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Evaluator-only paper-route scoring specification"
-    },
-    {
-      "path": "benchmarks/openai-math-12/paper-progress/SeymourSecondNeighborhood.md",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Evaluator-only paper-route scoring specification"
-    },
-    {
-      "path": "benchmarks/openai-math-12/papers/173/manifest.json",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Fixed upstream manuscript or hashed public Workspace input"
-    },
-    {
-      "path": "benchmarks/openai-math-12/papers/173/paper.pdf",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Fixed upstream manuscript or hashed public Workspace input"
-    },
-    {
-      "path": "benchmarks/openai-math-12/papers/173/paper.txt",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Fixed upstream manuscript or hashed public Workspace input"
     },
     {
       "path": "benchmarks/openai-math-12/paper-progress/EgyptianFractions.json",
@@ -16477,6 +16440,15 @@
       "role": "Evaluator-only paper-route scoring specification"
     },
     {
+      "path": "benchmarks/openai-math-12/paper-progress/README.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
       "path": "benchmarks/openai-math-12/paper-progress/SecondKahnKalai.json",
       "category": "benchmark inputs",
       "chapters": [
@@ -16487,6 +16459,24 @@
     },
     {
       "path": "benchmarks/openai-math-12/paper-progress/SecondKahnKalai.md",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/SeymourSecondNeighborhood.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Evaluator-only paper-route scoring specification"
+    },
+    {
+      "path": "benchmarks/openai-math-12/paper-progress/SeymourSecondNeighborhood.md",
       "category": "benchmark inputs",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -16693,6 +16683,33 @@
       "role": "Fixed upstream manuscript or hashed public Workspace input"
     },
     {
+      "path": "benchmarks/openai-math-12/papers/173/manifest.json",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/173/paper.pdf",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
+      "path": "benchmarks/openai-math-12/papers/173/paper.txt",
+      "category": "benchmark inputs",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Fixed upstream manuscript or hashed public Workspace input"
+    },
+    {
       "path": "benchmarks/openai-math-12/papers/176/manifest.json",
       "category": "benchmark inputs",
       "chapters": [
@@ -16810,15 +16827,6 @@
       "role": "Embedded OpenAI Math challenge, dependency or local audit input"
     },
     {
-      "path": "benchmarks/openai-math-12/SELECTION.md",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Embedded OpenAI Math challenge, dependency or local audit input"
-    },
-    {
       "path": "components.json",
       "category": "dashboard and build",
       "chapters": [
@@ -16890,6 +16898,191 @@
       "role": "Known controlled repair fixture; not benchmark solution input"
     },
     {
+      "path": "integrations/agensh/domain.mjs",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Seed, export and check fixed Git trees"
+    },
+    {
+      "path": "integrations/agensh/lean-check",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Local Lean elaboration command"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/hooks/evaluate.sh",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Native pack evaluate hook"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/hooks/export.sh",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Native pack export hook"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/hooks/prepare.sh",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Native pack prepare hook"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/pack.toml",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Native team driver math pack"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/prompts/deadline_45m.txt",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Math deadline_45m prompt fragment"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/prompts/deadline_5m.txt",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Math deadline_5m prompt fragment"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/prompts/delivery.txt",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Math delivery prompt fragment"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/prompts/focus.txt",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Math focus prompt fragment"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/prompts/idle.txt",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Math idle prompt fragment"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/prompts/idle_delivery.txt",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Math idle_delivery prompt fragment"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/prompts/objective.txt",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Math objective prompt fragment"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/prompts/task_brief.txt",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Math task_brief prompt fragment"
+    },
+    {
+      "path": "integrations/agensh/lean-proof/prompts/work_cycle.txt",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Math work_cycle prompt fragment"
+    },
+    {
+      "path": "integrations/agensh/manifest.py",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Freeze and revalidate the effective profile, authority, inputs, service and worker images"
+    },
+    {
+      "path": "integrations/agensh/observe.mjs",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Read-only public Git observer and checker queue"
+    },
+    {
+      "path": "integrations/agensh/provider_transport.py",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Trusted egress credential and model binding"
+    },
+    {
+      "path": "integrations/agensh/seymour-lean-check",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Source-only fixed-root local Lean module check for Seymour"
+    },
+    {
+      "path": "integrations/agensh/seymour_inputs.py",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "EXP-02 challenge, artifact lock and public Mathlib source projection"
+    },
+    {
+      "path": "integrations/agensh/stage.py",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Generate private profiles and worker mounts"
+    },
+    {
+      "path": "integrations/agensh/start.py",
+      "category": "native Agensh experiment",
+      "chapters": [
+        "docs/architecture/14-agensh-lean.md"
+      ],
+      "role": "Start and time-fence the native team"
+    },
+    {
       "path": "package-lock.json",
       "category": "launch and composition",
       "chapters": [
@@ -16919,15 +17112,6 @@
       "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
     },
     {
-      "path": "scripts/benchmarks/prepare_flt_subtrees.py",
-      "category": "benchmark setup",
-      "chapters": [
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Root-only FLT extraction, private typed facts and public fixture generation"
-    },
-    {
       "path": "scripts/benchmarks/prepare_flt10.py",
       "category": "benchmark inputs",
       "chapters": [
@@ -16935,6 +17119,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
+    },
+    {
+      "path": "scripts/benchmarks/prepare_flt_subtrees.py",
+      "category": "benchmark setup",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Root-only FLT extraction, private typed facts and public fixture generation"
     },
     {
       "path": "scripts/bot-filesystem-policy.c",
@@ -16965,6 +17158,32 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
+      "path": "scripts/core-collection.mjs",
+      "category": "Pi and sandbox execution",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared collection policy and bounded trusted Worker artifact traversal"
+    },
+    {
+      "path": "scripts/core-file-seed.mjs",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared FileSeed validation, portable byte representation and canonical digest"
+    },
+    {
+      "path": "scripts/core-work-dir.mjs",
+      "category": "Pi and sandbox execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Trusted Worker FileSeed installation, readback, versioned write grant and close coordination"
+    },
+    {
       "path": "scripts/generate-architecture-api.mjs",
       "category": "documentation tooling",
       "chapters": [
@@ -16990,6 +17209,14 @@
         "docs/architecture/12-code-coverage.md"
       ],
       "role": "Offline exact prompt extraction, synthetic composition and drift check"
+    },
+    {
+      "path": "scripts/git-credential-agensh.mjs",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
     },
     {
       "path": "scripts/judge-service-peer.mjs",
@@ -17038,6 +17265,14 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Sandbox-resident Pi worker and authenticated RPC/event HTTP surface"
+    },
+    {
+      "path": "scripts/pi-rpc-submissions.mjs",
+      "category": "Pi and sandbox execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries"
     },
     {
       "path": "scripts/project-install.mjs",
@@ -17156,15 +17391,6 @@
       "role": "Private complete-witness validation and launch receipt generation"
     },
     {
-      "path": "services/builtin/compose.yaml",
-      "category": "provider deployment and instructions",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Four-process isolated service deployment with independent persistent volumes"
-    },
-    {
       "path": "services/builtin/Dockerfile",
       "category": "provider deployment and instructions",
       "chapters": [
@@ -17176,16 +17402,6 @@
       "role": "Built-in service image recipe and persisted database mount"
     },
     {
-      "path": "services/builtin/judge-peer-entrypoint.sh",
-      "category": "service deployment",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/11-storage-reference.md"
-      ],
-      "role": "Independent service transport, authorization, lifecycle and deployment"
-    },
-    {
       "path": "services/builtin/README.md",
       "category": "provider deployment and instructions",
       "chapters": [
@@ -17195,6 +17411,25 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Built-in provider deployment configuration"
+    },
+    {
+      "path": "services/builtin/compose.yaml",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Four-process isolated service deployment with independent persistent volumes"
+    },
+    {
+      "path": "services/builtin/judge-peer-entrypoint.sh",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/11-storage-reference.md"
+      ],
+      "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
       "path": "services/mathlib-search/Dockerfile",
@@ -17219,6 +17454,17 @@
       "role": "Mathlib provider configuration and operation notes"
     },
     {
+      "path": "services/mathlib-search/SKILL.md",
+      "category": "provider deployment and instructions",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/10-service-api-reference.md"
+      ],
+      "role": "Repository-owned full Mathlib tool usage instructions loaded by bundle"
+    },
+    {
       "path": "services/mathlib-search/references/loogle.md",
       "category": "provider deployment and instructions",
       "chapters": [
@@ -17241,23 +17487,13 @@
       "role": "Optional provider manifest, schemas, help and documentation declarations"
     },
     {
-      "path": "services/mathlib-search/SKILL.md",
-      "category": "provider deployment and instructions",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Repository-owned full Mathlib tool usage instructions loaded by bundle"
-    },
-    {
       "path": "services/opensandbox-agent/Dockerfile",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/01-agent-core.md",
         "docs/architecture/07-run-configuration.md",
-        "docs/architecture/16-pi-opensandbox-backend.md"
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/18-agensh-environment.md"
       ],
       "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
     },
@@ -17366,6 +17602,14 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Role-specific capability profile, binding requirements and tool directory"
+    },
+    {
+      "path": "src/agent/model-catalog.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared pinned Pi Responses model and image catalog validation"
     },
     {
       "path": "src/agent/opensandbox-agent-adapter.js",
@@ -17484,6 +17728,196 @@
         "docs/architecture/13-historical-resume.md"
       ],
       "role": "Material publication, lineage, read/search and consumption persistence"
+    },
+    {
+      "path": "src/core/artifact-collection.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Host artifact stream validation, private staging and manifest publication"
+    },
+    {
+      "path": "src/core/backends/pi-opensandbox.d.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Public Pi/OpenSandbox deployment and model configuration declarations"
+    },
+    {
+      "path": "src/core/backends/pi-opensandbox.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Public opaque Pi/OpenSandbox backend factory export"
+    },
+    {
+      "path": "src/core/bridge.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch"
+    },
+    {
+      "path": "src/core/config.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Profile snapshot, spawn request and environment validation"
+    },
+    {
+      "path": "src/core/file-controls.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Bot file-operation identity, preparation receipts, write authority and pending grant fences"
+    },
+    {
+      "path": "src/core/index.d.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Public Runtime, Bot and model policy declarations"
+    },
+    {
+      "path": "src/core/index.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Runtime assembly, Bot admission, input and bounded lifecycle"
+    },
+    {
+      "path": "src/core/input-ledger.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Runtime/caller/operation/target/request input identity and parameter conflict ledger"
+    },
+    {
+      "path": "src/core/model-access.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
+    },
+    {
+      "path": "src/core/pi-opensandbox-backend.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Core backend lifecycle, Worker transport and confirmed cleanup"
+    },
+    {
+      "path": "src/core/services.d.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Public Service registry, manifest and adapter declarations"
+    },
+    {
+      "path": "src/core/services.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
+    },
+    {
+      "path": "src/environments/agensh/board-process.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/http.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/index.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/provision.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/resources.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/services.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/flat/bot-coordinator.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Trusted Core-returned flat Bot identity registration and readiness"
+    },
+    {
+      "path": "src/environments/flat/model-access-policy.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Flat Task/Mission model authority and Core synchronous policy adapter"
+    },
+    {
+      "path": "src/environments/shared/run-input.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Environment-owned exclusive idle Bot input wait and uncertain submission guard"
+    },
+    {
+      "path": "src/environments/shared/run-report.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Environment host reporting with independent business, cleanup and save failures"
     },
     {
       "path": "src/errors.js",
@@ -17609,15 +18043,6 @@
       "role": "Isolated module dependency compilation and Mission-scoped immutable artifact cache"
     },
     {
-      "path": "src/judge/lean-source-policy.js",
-      "category": "Mission acceptance and checker",
-      "chapters": [
-        "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Shared Lean comment handling and source locations for diagnostic and final policy rejections"
-    },
-    {
       "path": "src/judge/lean-module-verify.lean",
       "category": "services and contracts",
       "chapters": [
@@ -17625,6 +18050,15 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers"
+    },
+    {
+      "path": "src/judge/lean-source-policy.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Shared Lean comment handling and source locations for diagnostic and final policy rejections"
     },
     {
       "path": "src/observability/benchmark-report-importer.js",
@@ -18291,382 +18725,6 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Task/Execution state vocabulary, legacy Task proposal defaults and completion-contract normalization"
-    },
-    {
-      "path": ".gitmodules",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Pinned third-party checkout location"
-    },
-    {
-      "path": "integrations/agensh/domain.mjs",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Seed, export and check fixed Git trees"
-    },
-    {
-      "path": "integrations/agensh/lean-check",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Local Lean elaboration command"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/hooks/evaluate.sh",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Native pack evaluate hook"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/hooks/export.sh",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Native pack export hook"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/hooks/prepare.sh",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Native pack prepare hook"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/pack.toml",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Native team driver math pack"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/deadline_45m.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math deadline_45m prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/deadline_5m.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math deadline_5m prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/delivery.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math delivery prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/focus.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math focus prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/idle.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math idle prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/idle_delivery.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math idle_delivery prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/objective.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math objective prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/task_brief.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math task_brief prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/work_cycle.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math work_cycle prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/observe.mjs",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Read-only public Git observer and checker queue"
-    },
-    {
-      "path": "integrations/agensh/provider_transport.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Trusted egress credential and model binding"
-    },
-    {
-      "path": "integrations/agensh/seymour-lean-check",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Source-only fixed-root local Lean module check for Seymour"
-    },
-    {
-      "path": "integrations/agensh/seymour_inputs.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "EXP-02 challenge, artifact lock and public Mathlib source projection"
-    },
-    {
-      "path": "integrations/agensh/stage.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Generate private profiles and worker mounts"
-    },
-    {
-      "path": "integrations/agensh/start.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Start and time-fence the native team"
-    },
-    {
-      "path": "integrations/agensh/manifest.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Freeze and revalidate the effective profile, authority, inputs, service and worker images"
-    },
-    {
-      "path": "src/core/index.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Runtime assembly, Bot admission, input and bounded lifecycle"
-    },
-    {
-      "path": "src/core/index.d.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Public Runtime, Bot and model policy declarations"
-    },
-    {
-      "path": "src/core/config.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Profile snapshot, spawn request and environment validation"
-    },
-    {
-      "path": "src/core/services.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md",
-        "docs/architecture/17-environment-reporting.md"
-      ],
-      "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
-    },
-    {
-      "path": "src/core/services.d.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Public Service registry, manifest and adapter declarations"
-    },
-    {
-      "path": "src/core/bridge.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md",
-        "docs/architecture/17-environment-reporting.md"
-      ],
-      "role": "Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch"
-    },
-    {
-      "path": "src/core/model-access.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
-    },
-    {
-      "path": "src/core/pi-opensandbox-backend.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Core backend lifecycle, Worker transport and confirmed cleanup"
-    },
-    {
-      "path": "src/core/backends/pi-opensandbox.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Public opaque Pi/OpenSandbox backend factory export"
-    },
-    {
-      "path": "src/core/backends/pi-opensandbox.d.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Public Pi/OpenSandbox deployment and model configuration declarations"
-    },
-    {
-      "path": "src/agent/model-catalog.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Shared pinned Pi Responses model and image catalog validation"
-    },
-    {
-      "path": "scripts/pi-rpc-submissions.mjs",
-      "category": "Pi and sandbox execution",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries"
-    },
-    {
-      "path": "src/core/input-ledger.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Runtime/caller/operation/target/request input identity and parameter conflict ledger"
-    },
-    {
-      "path": "src/core/file-controls.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Bot file-operation identity, preparation receipts, write authority and pending grant fences"
-    },
-    {
-      "path": "scripts/core-file-seed.mjs",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md",
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Shared FileSeed validation, portable byte representation and canonical digest"
-    },
-    {
-      "path": "scripts/core-work-dir.mjs",
-      "category": "Pi and sandbox execution",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Trusted Worker FileSeed installation, readback, versioned write grant and close coordination"
-    },
-    {
-      "path": "scripts/core-collection.mjs",
-      "category": "Pi and sandbox execution",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md",
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Shared collection policy and bounded trusted Worker artifact traversal"
-    },
-    {
-      "path": "src/core/artifact-collection.js",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md",
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Host artifact stream validation, private staging and manifest publication"
-    },
-    {
-      "path": "src/environments/shared/run-input.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Environment-owned exclusive idle Bot input wait and uncertain submission guard"
-    },
-    {
-      "path": "src/environments/flat/model-access-policy.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Flat Task/Mission model authority and Core synchronous policy adapter"
-    },
-    {
-      "path": "src/environments/flat/bot-coordinator.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Trusted Core-returned flat Bot identity registration and readiness"
-    },
-    {
-      "path": "src/environments/shared/run-report.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/17-environment-reporting.md"
-      ],
-      "role": "Environment host reporting with independent business, cleanup and save failures"
     }
   ]
 }

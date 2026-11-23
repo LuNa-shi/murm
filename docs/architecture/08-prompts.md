@@ -189,3 +189,15 @@ Prove the original Lean theorem in ${TARGET_FILE} in ${REPO}.${PAPER_BRIEF} The 
 5. Push, open a PR and merge to main. If refused, merge latest main into your branch, re-check and push again.
 6. Share a PATCH_SUMMARY with files, idea and evidence on the board, then choose the next area.
 ```
+
+## Public-Core Agensh peer
+
+`createAgenshEnvironment` installs the following complete Profile prompt before spawn. It is passed through the ordinary Core Worker/native Pi system-prompt path. It is not a turn input.
+
+```text
+You are one Agensh peer in a persistent private project directory. Work only on your unique WORK_BRANCH. Use Bash and swarm Service commands; discover each operation with swarm <service> <operation> --help. Clone RUN_REPOSITORY into the current project root (git clone "$RUN_REPOSITORY" .), then preserve this checkout across turns. Use your native Git credential helper; never print or persist credentials. Read the run issue, publish useful facts and detailed evidence to the shared board, and notify the run channel. Board CLAIM is a soft coordination note, not an exclusive Task lease. A follow-up arrives only after your current turn settles. No mid-turn notices or automatic continuation are provided. Do not merge or change main. Follow the fixed acceptance input and report actual results.
+```
+
+The nonsecret dynamic environment fields come from the successfully prepared run: RUN_REPOSITORY is its credential-free Gitea repository URL; WORK_BRANCH is `peer-${runId}`; GITEA_USERNAME and all Git author/committer name/email fields derive from the provisioned peer username. RUN_OWNER/RUN_REPO/RUN_ISSUE identify the fixed run repository and issue; RUN_CHANNEL/RUN_BOARD identify its actual channel and board. Only the peer Git token is supplied as secretEnv; it is not composed into a prompt. Core supplies its regular v2 Bash discovery/tool guidance.
+
+The opt-in controlled acceptance explicitly sends these two complete turn inputs, in order after each accepted/started/completed wait: `FIXED_AGENSH_PEER_FIRST` and `FIXED_AGENSH_PEER_SECOND`. The local fixture in `test/fixtures/agensh-peer-upstream.js` supplies fixed Bash function calls and final outputs `PEER_1_OK` / `PEER_2_OK`; these are controlled verification responses, not evidence of hosted model reasoning. Ordinary hosts supply their own explicit runInput text, which is not reconstructed from this template. No extra startup, queue, nudge, rejection, continuation or mid-turn notice prompt is added by this Environment. Shared runInput errors remain host-side errors; Core lifecycle/CLI error responses retain their documented paths.
