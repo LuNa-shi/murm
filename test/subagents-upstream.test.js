@@ -40,3 +40,20 @@ test('fixed local script adopts both child results and an original child followu
   assert.deepEqual(observations, ['before-followup', 'final']);
   const receipt = upstream.receipt(); assert.equal(receipt.arrivals, 11); assert.equal(receipt.accepted, 11); assert.equal(receipt.results.length, 3); assert.equal(receipt.native.length, 3);
 });
+
+test('all arrivals count before parsing and the seventeenth cannot exceed sixteen admitted Responses', async t => {
+  let failures = 0;
+  const upstream = await createSubagentsUpstream({ onFailure: () => { failures++; } }); t.after(() => upstream.close());
+  const parent = [{ role: 'user', content: 'SUBAGENTS_PARENT' }];
+  const send = input => fetch(upstream.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input }) });
+  await send(parent);
+  await send([...parent, { type: 'function_call_output', call_id: 'delegate', output: JSON.stringify({ children: [{ id: 'a' }, { id: 'b' }], negativeChecks: [true, true, true, true, true] }) }]);
+  for (let index = 2; index < 16; index++) await send(parent);
+  assert.equal(upstream.receipt().arrivals, 16); assert.equal(upstream.receipt().accepted, 16);
+  const overLimit = await fetch(upstream.url, { method: 'POST', body: 'not-json' });
+  assert.match(await overLimit.text(), /response.failed/);
+  await send(parent);
+  assert.equal(upstream.receipt().arrivals, 18); assert.equal(upstream.receipt().accepted, 16);
+  assert.deepEqual(upstream.receipt().failure, { code: 'SUBAGENTS_FIXTURE_FAILED', stage: 'bounds', ordinal: 17 });
+  assert.equal(failures, 1);
+});

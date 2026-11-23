@@ -76,7 +76,7 @@
     },
     {
       "path": "examples/subagents-environment/controller.mjs",
-      "sha256": "5b3d73e5fedc7b0358f49c4bfceb41cbc283d72081cb283cbb8f76064d660fd3"
+      "sha256": "141b59749c778172f4d9c783e99496aff4c12687bf1fdacd483a7ce4e46a5292"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
@@ -225,7 +225,7 @@
     },
     {
       "path": "examples/subagents-environment/controller.mjs",
-      "line": 23,
+      "line": 25,
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     }
   ],

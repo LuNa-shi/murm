@@ -53,6 +53,13 @@ test('subagents host closes its complete dynamic tree and verifies adoption thro
       const result = JSON.parse((await execute('bash', ['-c', delegationCommand()], { cwd: outputDir, env: { ...process.env, ...credentials.environment, ...credentials.secretEnvironment, PATH: bin + ':' + process.env.PATH }, timeout: 15000 }).catch(error => { nativeError = error.stderr; throw error; })).stdout);
       assert.deepEqual(result.negativeChecks, [true, true, true, true, true]);
       child = result.children[0].id;
+      // This text guesses all future quotes before any child result has been
+      // dispatched to parent. Later delivery must never rehabilitate this turn.
+      transport.spawns.get(parentId).onEvent({ type: 'settled', outcome: 'completed', output: JSON.stringify({ summary: 'Premature unadmitted result.', conclusions: [
+        { childId: child, eventSeq: 1, quote: 'SUBAGENTS_CHILD_A' },
+        { childId: result.children[1].id, eventSeq: 1, quote: 'SUBAGENTS_CHILD_B' },
+        { childId: child, eventSeq: 2, quote: 'followup' },
+      ] }) });
     } else if (row.botId !== parentId) {
       transport.spawns.get(row.botId).onEvent({ type: 'settled', outcome: 'completed', output: row.input });
     } else if (row.input === 'USER_SUPPLEMENT') {
@@ -67,6 +74,7 @@ test('subagents host closes its complete dynamic tree and verifies adoption thro
   const report = await runSubagentsEnvironment({ backend: { sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }, image: 'test', outputDir, supplements: ['USER_SUPPLEMENT'], workTimeoutMs: 3000, closeTimeoutMs: 1000 });
   assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure) + String(nativeError ?? '')); assert.equal(report.cleanupFailure, null);
   assert.equal(report.cleanup.bots.length, 3); assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(report.result.eventSeq, 2, 'The premature first parent final cannot become valid after later dispatches');
   assert.equal(transport.spawns.size, 3); assert.equal(childResults.length, 3); assert.equal(sends, 8);
   assert.equal(new Set(report.result.delivery.conclusions.map(result => result.childId)).size, 2);
   assert.ok(report.routing.deliveries.every(entry => entry.state === 'accepted'));

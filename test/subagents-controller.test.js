@@ -99,3 +99,43 @@ test('event and user budgets reject excess work without sending replacements', a
   await controller.drain(); assert.equal(controller.report().errors[0].code, 'EVENT_LIMIT');
   assert.equal(core.sent.length, 5); controller.dispose();
 });
+
+for (const ordering of ['parent-first', 'child-queued']) test(`later child delivery cannot retrospectively validate an earlier parent final: ${ordering}`, async () => {
+  const core = runtime(); const controller = createSubagentsController(core, 'parent');
+  const final = controller.waitForFinal({ timeoutMs: 1000,
+    accept: (event, deliveries) => event.output === 'quote: child result' && deliveries.some(row => row.result?.output === 'child result' && row.state === 'accepted') });
+  const parentEvent = { type: 'settled', botId: 'parent', seq: 1, outcome: 'completed', output: 'quote: child result' };
+  const childEvent = { type: 'settled', botId: 'a', seq: 1, outcome: 'completed', output: 'child result' };
+  for (const event of ordering === 'parent-first' ? [parentEvent, childEvent] : [childEvent, parentEvent]) core.emit(event);
+  await controller.drain();
+  core.emit({ type: 'settled', botId: 'parent', seq: 2, outcome: 'completed', output: 'quote: child result' });
+  assert.equal((await final).seq, 2, 'Only the new parent turn can use the subsequently dispatched result');
+  controller.dispose();
+});
+
+test('fast parent settled before the accepted send receipt can use the already dispatched child snapshot', async () => {
+  const core = runtime(); const controller = createSubagentsController(core, 'parent');
+  core.send = async (_botId, input, options) => {
+    core.sent.push({ input, ...options });
+    core.emit({ type: 'settled', botId: 'parent', seq: 1, outcome: 'completed', output: 'quote: child result' });
+    await new Promise(resolve => setImmediate(resolve));
+    return { inputId: 'fast-original', status: 'accepted', disposition: 'started' };
+  };
+  const final = controller.waitForFinal({ timeoutMs: 1000,
+    accept: (event, deliveries) => event.output === 'quote: child result' && deliveries.some(row => row.result?.output === 'child result' && row.receipt?.inputId === 'fast-original') });
+  core.emit({ type: 'settled', botId: 'a', seq: 1, outcome: 'completed', output: 'child result' });
+  assert.equal((await final).seq, 1); assert.equal(core.sent.length, 1);
+  controller.dispose();
+});
+
+test('fast settled with an unknown receipt remains uncertain and cannot validate a final', async () => {
+  const core = runtime(); const controller = createSubagentsController(core, 'parent');
+  core.send = async () => {
+    core.emit({ type: 'settled', botId: 'parent', seq: 1, outcome: 'completed', output: 'guessed final' });
+    return { inputId: 'unknown-original', status: 'unknown' };
+  };
+  const final = controller.waitForFinal({ timeoutMs: 1000, accept: () => true });
+  core.emit({ type: 'settled', botId: 'a', seq: 1, outcome: 'completed', output: 'result' });
+  await assert.rejects(final, { code: 'INPUT_UNKNOWN' });
+  assert.equal(controller.report().deliveries[0].receipt.inputId, 'unknown-original'); controller.dispose();
+});

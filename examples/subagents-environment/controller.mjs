@@ -2,8 +2,8 @@
 export function createSubagentsController(runtime, parentId) {
   const waiters = new Set(); const children = new Set();
   const seen = new Set(); const failures = new Set(); const users = new Set();
-  const deliveries = []; const parentTurns = []; const lifecycle = []; const errors = [];
-  let pendingJobs = 0;
+  const deliveries = []; const parentTurns = []; const turnEvidence = new Map(); const lifecycle = []; const errors = [];
+  let pendingJobs = 0; let observationOrder = 0;
   let accepting = true; let fenced = false; let parentClosed = false; let work = Promise.resolve();
   const failure = code => Object.assign(new Error(code), { code });
   function notify() { for (const check of [...waiters]) check(); }
@@ -20,6 +20,8 @@ export function createSubagentsController(runtime, parentId) {
     const parent = await runtime.get(parentId);
     if (!['idle', 'running'].includes(parent.status)) { parentClosed = true; entry.reason = 'parent-closed'; return entry; }
     try {
+      // Record invocation before calling send: a fast settled can precede its receipt.
+      entry.dispatchOrder = ++observationOrder;
       entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });
       entry.state = entry.receipt.status === 'accepted' ? 'accepted' : 'unknown';
       if (entry.state === 'unknown') fenced = true;
@@ -37,6 +39,12 @@ export function createSubagentsController(runtime, parentId) {
     }
     seen.add(key);
     const snapshot = structuredClone(event);
+    const observedOrder = ++observationOrder;
+    if (snapshot.botId === parentId && snapshot.type === 'settled') {
+      // Freeze membership in the synchronous callback, not in its later queue job.
+      // References may receive a late admission receipt, but future sends never join.
+      turnEvidence.set(snapshot.seq, { observedOrder, entries: deliveries.filter(entry => entry.dispatchOrder !== undefined && entry.dispatchOrder < observedOrder) });
+    }
     void enqueue(async () => {
       if (snapshot.botId === parentId) {
         if (snapshot.type === 'settled') parentTurns.push(snapshot);
@@ -80,7 +88,7 @@ export function createSubagentsController(runtime, parentId) {
           try {
             if (signal?.aborted) return aborted();
             if (fenced || errors.length) return done(failure(fenced ? 'INPUT_UNKNOWN' : errors[0].code));
-            const event = parentTurns.find(event => event.outcome === 'completed' && accept(event, structuredClone(deliveries)));
+            const event = parentTurns.find(event => event.outcome === 'completed' && accept(event, structuredClone(turnEvidence.get(event.seq).entries.filter(entry => entry.state === 'accepted'))));
             if (event) return done(null, event);
             if (parentClosed) done(failure('PARENT_CLOSED'));
           } catch (error) { done(error); }
@@ -91,6 +99,6 @@ export function createSubagentsController(runtime, parentId) {
     },
     stop() { accepting = false; },
     dispose() { accepting = false; unsubscribe(); },
-    report: () => structuredClone({ accepting, fenced, parentClosed, pendingJobs, childIds: [...children], deliveries, parentTurns, lifecycle, errors }),
+    report: () => structuredClone({ accepting, fenced, parentClosed, pendingJobs, childIds: [...children], deliveries, parentTurns, parentEvidence: [...turnEvidence].map(([eventSeq, evidence]) => ({ eventSeq, observedOrder: evidence.observedOrder, dispatchedRequestIds: evidence.entries.map(entry => entry.requestId) })), lifecycle, errors }),
   });
 }
