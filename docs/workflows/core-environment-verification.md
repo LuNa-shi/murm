@@ -2,7 +2,7 @@
 
 This reference supports [Issue #165](https://github.com/LuNa-shi/SwarmEnv/issues/165) and the Phase 0005 implementation. Requirements and acceptance come from the [complete Phase 0005 design at `c790fe1`](https://github.com/LuNa-shi/SwarmEnv/tree/c790fe1f4e3e1f13f098910ea3190a98cd74ca2d/docs/phases/0005-core-environment). Ticket progress, reviews and execution receipts belong on the corresponding GitHub Issue/PR.
 
-The inspected implementation is `c790fe1f4e3e1f13f098910ea3190a98cd74ca2d`, archived as `research` before refactoring. The design's earlier implementation reference is `fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e`. The intervening commits add the authoritative design and its authority routing. This reference records the newer inspected tree explicitly. The tables below describe that fixed baseline and the verification obligations for its replacement.
+The inspected implementation is `c790fe1f4e3e1f13f098910ea3190a98cd74ca2d`, first archived on `research` before refactoring and retained in its history. After Kimi PR #193, `research` points to the pre-refactor `dc01100` revision. The design's earlier implementation reference is `fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e`. The intervening commits add the authoritative design and its authority routing. This reference records the newer inspected tree explicitly. The tables below describe that fixed baseline and the verification obligations for its replacement.
 
 ## Vocabulary and ownership
 
@@ -113,7 +113,7 @@ The table is the requirements-to-ticket cross-reference for review. GitHub Issue
 | Issue | Behavioral handoff and required predecessors |
 | --- | --- |
 | #165 | Pinned contract, migration and regression baseline, no predecessor |
-| #166 | No-Task real model/Service/lifecycle path, after #165 |
+| #166 | No-Task real model/lifecycle path with Bridge initialized, after #165. Real custom Service invocation is verified by #169 |
 | #167 | Independent resources, capacity and frozen configuration, after #166 |
 | #168 | Continuous input, events and in-flight deduplication, after #166 |
 | #169 | v2 manifest, trusted Bash caller/schema/adapter path, after #167 |
