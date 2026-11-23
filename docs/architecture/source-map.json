@@ -18695,6 +18695,36 @@
         "docs/architecture/15-core-runtime.md"
       ],
       "role": "Fixed Workspace and Material input provenance and canonical FileSeed preparation"
+    },
+    {
+      "path": "src/environments/flat/publication-services.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Flat trusted Material/Task publication and explicitly injected stable Workspace snapshot adapter"
+    },
+    {
+      "path": "src/environments/flat/controller.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Flat serial discovery, continuation, directed feedback and stop-confirmed replacement policy"
+    },
+    {
+      "path": "src/environments/flat/environment.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Flat host composition and independent business/resource reporting with explicit live snapshot readiness gate"
     }
   ]
 }
