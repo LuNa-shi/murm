@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { registerHooks } from 'node:module';
 import { promisify } from 'node:util';
+import { setTimeout as wait } from 'node:timers/promises';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../src/protocol/envelope.js';
@@ -133,7 +134,7 @@ async function runPublicationProbe(t, snapshotProject, probe) {
             signal: AbortSignal.timeout(5000) });
           return { status: response.status, body: await response.json() };
         };
-        await probe({ ...stores, bot, call });
+        await probe({ ...stores, bot, call, controller });
       } catch (error) { probeFailure = error; }
       finally { controller.halt('publication-probe-finished'); }
     },
@@ -243,3 +244,58 @@ for (const expired of ['lease_expires_at', 'execution_deadline']) {
     });
   });
 }
+
+test('fatal Core revocation prevents a held flat capture from publishing before domain stop', { timeout: 25_000 }, async t => {
+  const captureEntered = Promise.withResolvers();
+  const releaseCapture = Promise.withResolvers();
+  const feedbackSent = Promise.withResolvers();
+  const releaseFeedback = Promise.withResolvers();
+  await runPublicationProbe(t, async identity => {
+    captureEntered.resolve();
+    await releaseCapture.promise;
+    return publicationSnapshot(identity, 'Bytes returned after fatal revocation\n');
+  }, async ({ bot, call, controller, task, tasks, workspace, workspaceId }) => {
+    // Keep the controller in a pending input admission so Core can revoke the
+    // caller while the durable Task and Execution still authorize its owner.
+    transport.next = async inputId => {
+      feedbackSent.resolve();
+      await releaseFeedback.promise;
+      transport.confirm(inputId, 'started');
+    };
+    const feedback = controller.feedback({ taskId: task.task_id, requestId: 'hold-feedback', input: 'Hold controller admission' });
+    void feedback.catch(() => {});
+    let save;
+    try {
+      await feedbackSent.promise;
+      save = call('workspace_save', 'fatal-held-capture');
+      void save.catch(() => {});
+      await captureEntered.promise;
+      const execution = tasks.listExecutions(task.task_id)[0];
+      transport.listeners.get(bot.botId)({ type: 'error', fatal: true, error: { code: 'WORKER_FAILED' } });
+      const rejected = await save;
+      assert.equal(rejected.status, 503);
+      assert.equal(rejected.body.error.details.request_outcome, 'unknown');
+      assert.equal((await call('workspace_save', 'new-after-fatal')).status, 403);
+      releaseCapture.resolve();
+      // Join behind the admitted save at its existing transaction boundary so
+      // absence of a revision cannot be asserted before that save settles.
+      const lock = createHash('sha256').update(`execution:${execution.execution_id}`).digest('hex');
+      const deadline = Date.now() + 4000;
+      while (true) {
+        try {
+          await workspace.repository.requestLocked(workspace.workspacePath(workspaceId), lock, () => {});
+          break;
+        } catch (error) {
+          if (error.code !== 'WORKSPACE_BUSY' || Date.now() >= deadline) throw error;
+          await wait(20);
+        }
+      }
+      assert.equal(tasks.getExecution(execution.execution_id).state, 'RUNNING');
+      assert.equal((await workspace.listRevisions({ workspaceId })).length, 1);
+    } finally {
+      releaseCapture.resolve();
+      releaseFeedback.resolve();
+      await Promise.allSettled([feedback, save]);
+    }
+  });
+});
