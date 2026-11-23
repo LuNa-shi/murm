@@ -12,6 +12,51 @@ async function localUpstream(t, handler) {
   return `http://127.0.0.1:${server.address().port}/v1/responses`;
 }
 
+test('opted-in request options retain only fixed enums and encrypted-content membership', async t => {
+  const received = [];
+  const sse = 'data: ' + JSON.stringify({ type: 'response.completed', response: {
+    id: 'local-options', model: 'k3', status: 'completed', usage: { input_tokens: 1, output_tokens: 7 },
+  } }) + '\n\n';
+  const upstreamUrl = await localUpstream(t, async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    received.push(JSON.parse(Buffer.concat(chunks)));
+    response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(sse);
+  });
+  const absent = { reasoningEffort: null, reasoningSummary: null, includeReasoningEncryptedContent: null };
+  const cases = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].map(effort => ({
+    options: { reasoning: { effort, summary: 'auto' }, include: ['reasoning.encrypted_content'] },
+    expected: { reasoningEffort: effort, reasoningSummary: 'auto', includeReasoningEncryptedContent: true },
+  }));
+  cases.push(
+    { options: {}, expected: absent },
+    { options: { reasoning: null, include: null }, expected: absent },
+    { options: { reasoning: 'PRIVATE', include: 'reasoning.encrypted_content' }, expected: absent },
+    { options: { reasoning: { effort: ['medium'], summary: { PRIVATE: 'auto' } }, include: [] },
+      expected: { ...absent, includeReasoningEncryptedContent: false } },
+    { options: { reasoning: { effort: 'medium\u0000PRIVATE', summary: 'PRIVATE'.repeat(1024), PRIVATE: 'PRIVATE' },
+      include: [{ PRIVATE: 'reasoning.encrypted_content' }, 'PRIVATE'] }, expected: { ...absent, includeReasoningEncryptedContent: false } },
+    { options: { reasoning: { effort: 1, summary: 'concise' }, include: Array(256).fill('PRIVATE').concat('reasoning.encrypted_content') },
+      expected: { ...absent, reasoningSummary: 'concise', includeReasoningEncryptedContent: true } },
+    { options: { reasoning: { effort: false, summary: 'detailed' }, include: ['reasoning.encrypted_content.PRIVATE'] },
+      expected: { ...absent, reasoningSummary: 'detailed', includeReasoningEncryptedContent: false } },
+  );
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, maxRequests: cases.length,
+    maxOutputTokens: 64, filename: 'unused', marker: 'unused', failFast: true, recordGeometry: true });
+  t.after(() => cap.close());
+  for (const [index, { options, expected }] of cases.entries()) {
+    const body = { model: 'k3', input: [], max_output_tokens: 9999, ...options };
+    const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify(body) });
+    assert.equal(await response.text(), sse);
+    assert.deepEqual(received[index], { ...body, max_output_tokens: 64 });
+    assert.deepEqual(cap.receipt().requests[index].requestOptions, expected);
+  }
+  const receipt = cap.receipt();
+  assert.equal(receipt.reservedOutputTokens, cases.length * 64);
+  assert.equal(receipt.failure, undefined);
+  assert.equal(JSON.stringify(receipt).includes('PRIVATE'), false);
+});
+
 test('opted-in terminal geometry records safe provider counts without changing capped forwarding or SSE bytes', async t => {
   let received;
   const terminal = {
@@ -74,12 +119,16 @@ test('optional terminal details stay bounded and cannot bypass the first output 
     const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
       maxOutputTokens: 768, filename: 'unused', marker: 'unused', failFast: true, recordGeometry: true });
     t.after(() => cap.close());
-    const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+    const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [],
+      reasoning: { effort: { private: 'private-effort' }, summary: ['private-summary'] }, include: 'private-include' }) });
     const response = await send().catch(() => null);
     await response?.text().catch(() => {});
     const receipt = cap.receipt();
     assert.deepEqual(receipt.failure, { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 1, maxOutputTokens: 768, outputTokens: 865 });
     assert.deepEqual(receipt.requests[0].usage, { inputTokens: 10, outputTokens: 865 });
+    assert.deepEqual(receipt.requests[0].requestOptions, {
+      reasoningEffort: null, reasoningSummary: null, includeReasoningEncryptedContent: null,
+    });
     assert.deepEqual(receipt.requests[0].terminalGeometry, {
       status: 'other', modelMatches: false,
       outputItems: { reasoning: 0, message: 126, function_call: 0, other: 2 }, outputItemsTruncated: true,
@@ -537,6 +586,7 @@ test('capped upstream limits actual forwarding and preserves SSE IDs with capped
   assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'upstream_end');
   assert.equal(received[0].body.max_output_tokens, 64);
   assert.equal(cap.receipt().requests[0].geometry, undefined);
+  assert.equal(cap.receipt().requests[0].requestOptions, undefined);
   assert.equal(cap.receipt().requests[0].terminalGeometry, undefined);
   assert.equal(received[0].headers['x-swarmenv-request-id'], 'original-id');
   assert.equal(received[0].headers.authorization, 'Bearer local-test-only');

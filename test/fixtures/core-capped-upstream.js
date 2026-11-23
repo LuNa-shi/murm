@@ -62,6 +62,15 @@ function requestGeometry(input) {
     emptyAssistantMessages, emptyAssistantText, reasoningSummaryPresent, reasoningEncryptedContentPresent };
 }
 
+function requestOptions(body) {
+  const effort = body.reasoning?.effort, summary = body.reasoning?.summary;
+  return {
+    reasoningEffort: ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort) ? effort : null,
+    reasoningSummary: ['auto', 'concise', 'detailed'].includes(summary) ? summary : null,
+    includeReasoningEncryptedContent: Array.isArray(body.include) ? body.include.includes('reasoning.encrypted_content') : null,
+  };
+}
+
 function terminalGeometry(response, model) {
   const geometry = {
     status: ['completed', 'incomplete', 'failed'].includes(response?.status) ? response.status : 'other',
@@ -239,7 +248,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     if (data.length > maxInputBytes || reservedInputBytes + data.length > maxAggregateInputBytes) { rejectAdmission(response, 429, 'LIVE_INPUT_BUDGET'); return; }
     reservedInputBytes += data.length;
     const number = ++forwarded; reservedOutputTokens += body.max_output_tokens;
-    const record = { ...(recordGeometry ? { geometry: requestGeometry(body.input) } : {}), number, inputBytes: data.length, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
+    const record = { ...(recordGeometry ? { geometry: requestGeometry(body.input), requestOptions: requestOptions(body) } : {}), number, inputBytes: data.length, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
     records.push(record);
     const outgoingHeaders = { ...headers, 'content-type': 'application/json', accept: 'text/event-stream', 'content-length': data.length };
     for (const name of ['x-swarmenv-request-id', 'x-request-id', 'idempotency-key']) {
