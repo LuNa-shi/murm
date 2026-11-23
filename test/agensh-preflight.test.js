@@ -23,7 +23,8 @@ test('exact Agensh Profile and Services assemble actual Runtime/Bridge/gateway w
   const closed = await runtime.close(); assert.equal(closed.cleanup, 'complete'); assert.deepEqual(closed.bots, []);
   const configuration = JSON.parse(await readFile(join(outputDir, runtime.id, 'runtime.json'), 'utf8')).config;
   assert.equal(configuration.models.default.model, 'k3'); assert.equal(configuration.profiles.peer.services['agensh-context'].length, 4);
-  assert.equal(configuration.services.length, 3);
+  assert.deepEqual(configuration.services.map(service => service.id).sort(), ['agensh-context', 'bot', 'gitea', 'message']);
+  assert.equal(configuration.profiles.peer.services.bot, undefined);
   assert.equal(typeof createBoardLauncher({ sourceDirectory: '/unused-pinned-native-board', mysqlDsn: 'mysql://agensh:private@127.0.0.1/board', origin: 'http://127.0.0.1:8660' }), 'function');
   assert.throws(() => createBoardLauncher({ sourceDirectory: '/unused', mysqlDsn: 'private', origin: 'http://user:private@127.0.0.1:8660' }));
 });
