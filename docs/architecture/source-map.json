@@ -58,7 +58,7 @@
         "docs/architecture/00-overview.md",
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Raw evidence and credential retention boundary in the working tree"
+      "role": "Raw evidence and credential retention boundary in the working tree and npm packlist"
     },
     {
       "path": "benchmarks/flt10/ATTRIBUTION.md",

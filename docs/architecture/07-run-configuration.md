@@ -195,7 +195,7 @@ The runner verifies the fixture and model configuration, checks the locked verif
 | `<experiment root>/.observability/observability.sqlite` | Shared CLI observation projection, only with `--observability`; otherwise the runner uses its project-local database |
 | `<report root>/<problem>/report.json`, `<report root>/aggregate-report.json` | Exported reports; counts and projections are explained in [06](06-observability-experiments.md) |
 
-The top-level ignored `experiments/` raw evidence directory and committed `docs/experiments/` report directory have different purposes. Raw conversations and proof source are not copied into the implementation manual.
+The root `/experiments/` ignore rule covers the complete private raw evidence directory. Git ignores new run artifacts there, and npm uses the same boundary through its `.gitignore` packlist fallback, including unreadable local facility volumes. The earlier tracked experiment files are preserved at the [fixed research revision](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/experiments). Committed `docs/experiments/` reports retain their version-bound reporting purpose. Raw conversations and proof source are not copied into the implementation manual.
 
 ## 9. Fixture, service and frontend boundaries
 
