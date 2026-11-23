@@ -1,7 +1,8 @@
 # Built-in service deployment
 
-Positive-duration benchmark runs default to repository-owned independent Context
-and Judge processes. Task, Mission and Workspace remain one coordinator. Each
+A trusted host can explicitly compose repository-owned independent Context
+and Judge processes through `startIndependentServices`. Its Task, Mission and
+Workspace authority remains in the coordinator. Each
 peer owns its own SQLite database and exchanges authenticated private HTTP
 commands with the coordinator; it never opens the Task database.
 
@@ -13,7 +14,7 @@ writes use durable Task-owned gates; Judge admission and process starts use
 short authorized phases. Restart reconciles receipts and interrupted work.
 The production checker ledger supports cleanup even after Judge process loss.
 See the complete [deployment and recovery contract](../../docs/architecture/04-services.md#independent-contextjudge-deployment)
-and [runner configuration](../../docs/architecture/07-run-configuration.md).
+and [host configuration](../../docs/architecture/07-run-configuration.md).
 
 `context-service-peer.mjs` and `judge-service-peer.mjs` are the peer entrypoints.
 The Judge container entrypoint `judge-peer-entrypoint.sh` supplies its mandatory
@@ -87,9 +88,9 @@ Task/Context/Judge volumes and a stateless Catalog. Its host ports default to
 8781–8784; override with `SWARMENV_{TASK,CONTEXT,JUDGE,CATALOG}_PORT`.
 Per-service principal arrays use `SWARMENV_<SERVICE>_SERVICE_PRINCIPALS`.
 `docker compose -f services/builtin/compose.yaml up --build -d` starts those
-hosts with the limitations above; it is not the normal benchmark launch path.
-The repository-owned independent peers described above provide the supported
-positive-duration composition; this generic Compose recipe does not use them.
+hosts with the limitations above. The generic Compose recipe does not use the
+repository-owned independent peer protocol described above. The dedicated
+benchmark launcher has been retired; a consuming host owns peer composition.
 
 ## Checker assets and shutdown
 
@@ -103,7 +104,7 @@ and the same key skips rebuilding. These assets do not repair the missing
 lifecycle authority. Readiness does not execute Lean preflight.
 
 SIGINT/SIGTERM stops HTTP admission and closes domain services and the database.
-For the supported benchmark composition, admission, checker cleanup and deferred
-database close are owned by the coordinator. See [Services](../../docs/architecture/04-services.md)
+When a host composes the independent peers, admission, checker cleanup and
+deferred database close are owned by that coordinator. See [Services](../../docs/architecture/04-services.md)
 and [Run configuration](../../docs/architecture/07-run-configuration.md) for the
 complete current path, including its failure and cleanup boundaries.

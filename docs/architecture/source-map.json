@@ -6,7 +6,6 @@
     "src",
     "scripts",
     "services",
-    "fixtures",
     "integrations"
   ],
   "scope_root_files": [
@@ -59,42 +58,6 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Raw evidence and credential retention boundary in the working tree and npm packlist"
-    },
-    {
-      "path": "fixtures/putnam-1966-a1/fixture-manifest.json",
-      "category": "controlled verification data",
-      "chapters": [
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/04-services.md"
-      ],
-      "role": "Controlled fixture input/checker identity"
-    },
-    {
-      "path": "fixtures/putnam-1966-a1/invalid-candidate.lean",
-      "category": "controlled verification data",
-      "chapters": [
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/04-services.md"
-      ],
-      "role": "Intentionally invalid deterministic fixture input; not benchmark input"
-    },
-    {
-      "path": "fixtures/putnam-1966-a1/putnam_1966_a1.lean",
-      "category": "controlled verification data",
-      "chapters": [
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/04-services.md"
-      ],
-      "role": "Locked formalization used by controlled fixture"
-    },
-    {
-      "path": "fixtures/putnam-1966-a1/valid-candidate.lean",
-      "category": "controlled verification data",
-      "chapters": [
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/04-services.md"
-      ],
-      "role": "Known controlled repair fixture; not benchmark solution input"
     },
     {
       "path": "package-lock.json",
@@ -564,7 +527,7 @@
         "docs/architecture/00-overview.md",
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Public exports for domain services, Runtime, SDK, benchmark and fixtures"
+      "role": "Source exports for domain services, Runtime, SDK and generic checker fixture contracts"
     },
     {
       "path": "src/judge/check-result.js",
