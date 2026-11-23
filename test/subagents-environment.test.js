@@ -80,3 +80,80 @@ test('subagents host closes its complete dynamic tree and verifies adoption thro
   assert.ok(report.routing.deliveries.every(entry => entry.state === 'accepted'));
   assert.equal(report.routing.deliveries.filter(entry => entry.kind === 'user').length, 2);
 });
+
+
+test('scaled delivery requires every configured child and one original child followup', () => {
+  for (const childCount of [3, 7]) {
+    const results = Array.from({ length: childCount }, (_, index) => ({ childId: `child-${index}`, eventSeq: 1, output: `fixed-${index}` }));
+    results.push({ childId: 'child-0', eventSeq: 2, output: 'followup' });
+    const deliveries = results.map(result => ({ kind: 'child', state: 'accepted', result: { ...result, outcome: 'completed' } }));
+    const final = { summary: 'All distinct original children and followup.', conclusions: results.map(({ output, ...identity }) => ({ ...identity, quote: output })) };
+    assert.deepEqual(checkDelivery(JSON.stringify(final), deliveries, childCount), final);
+    assert.equal(checkDelivery(JSON.stringify({ ...final, conclusions: final.conclusions.slice(1) }), deliveries, childCount), null);
+    deliveries.at(-1).state = 'unknown';
+    assert.equal(checkDelivery(JSON.stringify(final), deliveries, childCount), null);
+  }
+});
+
+for (const [childCount, pending] of [[3, false], [7, false], [3, true]]) {
+  test(`${childCount + 1}-Bot subagents retain every original child and followup with ${pending ? 'pending' : 'complete'} cleanup`, async t => {
+    transport.reset(); transport.collectable = true;
+    if (pending) transport.onStop = async () => { throw Object.assign(new Error('Fixed stop uncertainty'), { code: 'STOP_UNCONFIRMED' }); };
+    const outputDir = await mkdtemp(join(tmpdir(), 'subagents-capacity-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
+    let parentId; const children = [], results = [];
+    transport.onSpawn = options => { if (!options.options.parentId) parentId = options.botId; };
+    const call = async (operation, payload, operation_id) => {
+      const credentials = transport.spawns.get(parentId).credentials;
+      const response = await fetch(transport.url + '/call', { method: 'POST', headers: { authorization: `Bearer ${credentials.secretEnvironment.SWARMENV_BRIDGE_TOKEN}` },
+        body: JSON.stringify({ service_id: 'bot', operation, payload, operation_id }) });
+      return response.json();
+    };
+    function arm() { transport.next = async inputId => {
+      arm(); const row = transport.submissions.get(inputId);
+      if (row.botId !== parentId) {
+        transport.spawns.get(row.botId).onEvent({ type: 'settled', outcome: 'completed', output: row.input });
+      } else if (row.input.startsWith(`Explain ${childCount}`)) {
+        for (let index = 0; index < childCount; index++) {
+          const result = await call('spawn', { profile: 'child', input: `original-${index}`, mode: 'followUp' }, `child-${index}`);
+          assert.equal(result.ok, true); children.push(result.result.bot.id);
+          assert.equal(result.result.initialInput.status, 'accepted');
+        }
+        const full = await call('spawn', { profile: 'child' }, 'beyond-capacity');
+        assert.equal(full.ok, false); assert.equal(full.error.code, 'CONFLICT');
+      } else {
+        results.push(JSON.parse(row.input));
+        if (results.length === childCount) {
+          const result = await call('send', { bot_id: children[0], input: 'same-child-followup', mode: 'followUp' }, 'followup');
+          assert.equal(result.ok, true);
+        }
+        if (results.length === childCount + 1) transport.spawns.get(parentId).onEvent({ type: 'settled', outcome: 'completed', output: JSON.stringify({
+          summary: 'Distinct original children with one reused child.', conclusions: results.map(({ childId, eventSeq, output }) => ({ childId, eventSeq, quote: output })),
+        }) });
+      }
+    }; }
+    arm();
+    const report = await runSubagentsEnvironment({ childCount, backend: { sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
+      bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
+      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
+      isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }, image: 'test', outputDir, workTimeoutMs: 3000, closeTimeoutMs: 1000 });
+    assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure));
+    assert.equal(report.result.childCount, childCount);
+    assert.equal(transport.spawns.size, childCount + 1); assert.equal(report.cleanup.bots.length, childCount + 1);
+    assert.ok(children.every(id => transport.spawns.get(id).options.parentId === parentId));
+    assert.equal(new Set(report.result.delivery.conclusions.map(row => row.childId)).size, childCount);
+    assert.equal(report.routing.maxChildren, childCount);
+    assert.equal(results.filter(row => row.childId === children[0]).length, 2);
+    assert.ok(report.routing.deliveries.every(row => row.state === 'accepted'));
+    assert.equal(report.cleanup.cleanup, pending ? 'pending' : 'complete');
+    assert.equal(report.cleanupFailure?.code ?? null, pending ? 'CLEANUP_PENDING' : null);
+    if (pending) assert.ok(report.cleanup.bots.every(row => row.execution === 'unknown' && row.cleanup === 'pending'));
+  });
+}
+
+test('invalid subagents child counts fail before Bot creation', async () => {
+  transport.reset();
+  for (const childCount of [1, 8, 2.5, '3']) {
+    await assert.rejects(runSubagentsEnvironment({ childCount, backend: {}, outputDir: 'unused' }), TypeError);
+  }
+  assert.equal(transport.spawns.size, 0);
+});

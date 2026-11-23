@@ -12,8 +12,10 @@ import assert from 'node:assert/strict';
 import {runSubagentsEnvironment} from './main.mjs';
 for (const name of ['@swarmenv/core','@swarmenv/core/services','@swarmenv/core/backends/pi-opensandbox']) assert.ok(import.meta.resolve(name).startsWith(new URL('./node_modules/',import.meta.url).href));
 const cancelled=new AbortController(); cancelled.abort();
-const report=await runSubagentsEnvironment({backend:{},image:'unused',outputDir:'./runs'},cancelled.signal);
+for (const childCount of [2,3,7]) {
+const report=await runSubagentsEnvironment({childCount,backend:{},image:'unused',outputDir:'./runs-'+childCount},cancelled.signal);
 assert.equal(report.businessFailure.message,'This operation was aborted'); assert.equal(report.cleanup,null); assert.ok(report.reportPath);
+}
 console.log(JSON.stringify({external:true,cancelled:true}));
 `);
   const result = await execute(process.execPath, ['smoke.mjs'], { cwd: installed.directory, env: installed.env, timeout: 15_000 });

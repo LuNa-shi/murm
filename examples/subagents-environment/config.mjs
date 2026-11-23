@@ -10,6 +10,7 @@ const token = process.env.SWARMENV_SUBAGENTS_MODEL_TOKEN;
 
 export default {
   model: 'default',
+  childCount: Number(process.env.SWARMENV_SUBAGENTS_CHILD_COUNT ?? 2),
   image: required('SWARMENV_SUBAGENTS_IMAGE'),
   outputDir: './subagents-runs',
   workTimeoutMs: 120_000,

@@ -1,5 +1,6 @@
 /** Host-owned multi-source routing. Input receipts are never turn-completion receipts. */
-export function createSubagentsController(runtime, parentId) {
+export function createSubagentsController(runtime, parentId, { maxChildren = 2 } = {}) {
+  if (!Number.isSafeInteger(maxChildren) || maxChildren < 2 || maxChildren > 7) throw new TypeError('Subagents controller requires two to seven children');
   const waiters = new Set(); const children = new Set();
   const seen = new Set(); const failures = new Set(); const users = new Set();
   const deliveries = []; const parentTurns = []; const turnEvidence = new Map(); const lifecycle = []; const errors = [];
@@ -54,7 +55,7 @@ export function createSubagentsController(runtime, parentId) {
       const child = await runtime.get(snapshot.botId);
       if (child.parentId !== parentId) return;
       children.add(child.id);
-      if (children.size > 2) { accepting = false; throw failure('CHILD_LIMIT'); }
+      if (children.size > maxChildren) { accepting = false; throw failure('CHILD_LIMIT'); }
       if (snapshot.type === 'exit') lifecycle.push(snapshot);
       const failedTurn = snapshot.type === 'settled' && ['failed', 'aborted'].includes(snapshot.outcome);
       const terminalFailure = snapshot.type === 'error' && snapshot.fatal || snapshot.type === 'exit' && !snapshot.expected;
@@ -99,6 +100,6 @@ export function createSubagentsController(runtime, parentId) {
     },
     stop() { accepting = false; },
     dispose() { accepting = false; unsubscribe(); },
-    report: () => structuredClone({ accepting, fenced, parentClosed, pendingJobs, childIds: [...children], deliveries, parentTurns, parentEvidence: [...turnEvidence].map(([eventSeq, evidence]) => ({ eventSeq, observedOrder: evidence.observedOrder, dispatchedRequestIds: evidence.entries.map(entry => entry.requestId) })), lifecycle, errors }),
+    report: () => structuredClone({ accepting, fenced, parentClosed, maxChildren, pendingJobs, childIds: [...children], deliveries, parentTurns, parentEvidence: [...turnEvidence].map(([eventSeq, evidence]) => ({ eventSeq, observedOrder: evidence.observedOrder, dispatchedRequestIds: evidence.entries.map(entry => entry.requestId) })), lifecycle, errors }),
   });
 }

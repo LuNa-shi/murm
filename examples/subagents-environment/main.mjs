@@ -5,13 +5,14 @@ import { ServiceRegistry } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { runWithReport } from './run-report.mjs';
 import { createSubagentsController } from './controller.mjs';
-import { parentPrompt, childPrompt, initialGoal } from './prompts.mjs';
+import { parentPromptFor, childPrompt, initialGoalFor } from './prompts.mjs';
 
 /** Text references must point at the actual delivered round snapshots. */
-export function checkDelivery(output, deliveries) {
+export function checkDelivery(output, deliveries, childCount = 2) {
+  if (!Number.isSafeInteger(childCount) || childCount < 2 || childCount > 7) return null;
   let final;
   try { final = JSON.parse(output); } catch { return null; }
-  if (typeof final?.summary !== 'string' || !final.summary.trim() || !Array.isArray(final.conclusions) || final.conclusions.length !== 3) return null;
+  if (typeof final?.summary !== 'string' || !final.summary.trim() || !Array.isArray(final.conclusions) || final.conclusions.length !== childCount + 1) return null;
   const completed = deliveries.filter(row => row.kind === 'child' && row.state === 'accepted' && row.result.outcome === 'completed');
   const keys = new Set(); const children = new Map();
   for (const conclusion of final.conclusions) {
@@ -21,14 +22,14 @@ export function checkDelivery(output, deliveries) {
     if (keys.has(key)) return null;
     keys.add(key); children.set(conclusion.childId, (children.get(conclusion.childId) ?? 0) + 1);
   }
-  if (children.size !== 2 || ![...children.values()].includes(2)) return null;
+  if (children.size !== childCount || ![...children.values()].includes(2)) return null;
   return final;
 }
 
 export async function runSubagentsEnvironment({ backend, model = 'default', image, outputDir,
-  goal = initialGoal, supplements = [], workTimeoutMs = 120_000, closeTimeoutMs = 30_000 }, signal) {
-  if (typeof goal !== 'string' || !goal || Buffer.byteLength(goal) > 64 * 1024 || !Array.isArray(supplements) || supplements.length > 4 || supplements.some(input => typeof input !== 'string' || Buffer.byteLength(input) > 64 * 1024) ||
-      !Number.isSafeInteger(workTimeoutMs) || workTimeoutMs < 1 || workTimeoutMs > 2147483647) throw new TypeError('Provide a text goal, at most four supplements and a finite work deadline');
+  childCount = 2, goal = initialGoalFor(childCount), supplements = [], workTimeoutMs = 120_000, closeTimeoutMs = 30_000 }, signal) {
+  if (!Number.isSafeInteger(childCount) || childCount < 2 || childCount > 7 || typeof goal !== 'string' || !goal || Buffer.byteLength(goal) > 64 * 1024 || !Array.isArray(supplements) || supplements.length > 4 || supplements.some(input => typeof input !== 'string' || Buffer.byteLength(input) > 64 * 1024) ||
+      !Number.isSafeInteger(workTimeoutMs) || workTimeoutMs < 1 || workTimeoutMs > 2147483647) throw new TypeError('Provide two to seven children, a text goal, at most four supplements and a finite work deadline');
   let controller; let final;
   const secrets = [backend?.sandbox?.apiKey, backend?.sandbox?.execdToken,
     ...Object.values(backend?.models ?? {}).flatMap(value => Object.values(value.upstream?.headers ?? {}))]
@@ -40,8 +41,8 @@ export async function runSubagentsEnvironment({ backend, model = 'default', imag
     createRuntime: async () => {
       signal?.throwIfAborted();
       const common = { model, image, writable: true };
-      const runtime = await createRuntime({ backend: createPiOpenSandboxBackend(backend), outputDir, services: new ServiceRegistry(), maxBots: 3, profiles: {
-        parent: { ...common, prompt: parentPrompt, services: { bot: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] },
+      const runtime = await createRuntime({ backend: createPiOpenSandboxBackend(backend), outputDir, services: new ServiceRegistry(), maxBots: childCount + 1, profiles: {
+        parent: { ...common, prompt: parentPromptFor(childCount), services: { bot: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] },
         child: { ...common, prompt: childPrompt, services: {} },
       } });
       return { ...runtime, close(options) {
@@ -52,11 +53,11 @@ export async function runSubagentsEnvironment({ backend, model = 'default', imag
     },
     async run(runtime) {
       const parent = await runtime.spawn({ profile: 'parent', requestId: 'parent' });
-      controller = createSubagentsController(runtime, parent.id);
+      controller = createSubagentsController(runtime, parent.id, { maxChildren: childCount });
       const waiting = new AbortController();
       const waitSignal = signal ? AbortSignal.any([signal, waiting.signal]) : waiting.signal;
       const finished = controller.waitForFinal({ timeoutMs: workTimeoutMs, signal: waitSignal,
-        accept: (event, deliveries) => Boolean(final = checkDelivery(event.output, deliveries)) });
+        accept: (event, deliveries) => Boolean(final = checkDelivery(event.output, deliveries, childCount)) });
       // Attach immediately: failures can precede admission receipts.
       finished.catch(() => {});
       try {
@@ -66,7 +67,7 @@ export async function runSubagentsEnvironment({ backend, model = 'default', imag
           if (entry.state !== 'accepted') throw Object.assign(new Error('Parent input was not admitted; preserve its receipt'), { code: 'INPUT_UNKNOWN', requestId: entry.requestId, receipt: entry.receipt });
         }
         const event = await finished;
-        return { parentId: parent.id, eventSeq: event.seq, delivery: final };
+        return { parentId: parent.id, childCount, eventSeq: event.seq, delivery: final };
       } finally {
         // Retain the listener for Runtime close events, while preventing all new dispatch.
         controller.stop(); waiting.abort();

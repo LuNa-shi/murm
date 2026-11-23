@@ -6,6 +6,7 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
+import { parentPromptFor, initialGoalFor } from '../examples/subagents-environment/prompts.mjs';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
 import { SOLVER_SYSTEM_PROMPT, SOLVER_CONTINUATION_MESSAGE, SOLVER_CLOSEOUT_MESSAGE, BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
@@ -155,7 +156,9 @@ output('08-subagents-environment.md', header('Subagents Environment prompts',
   'The host stages Profile prompts verbatim. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in controller.mjs with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Bot Service requests.')
   + block('Parent Profile prompt', evaluate(between(subagentsPath, 'export const parentPrompt = ', ';\n')))
   + block('Child Profile prompt', evaluate(between(subagentsPath, 'export const childPrompt = ', ';\n')))
-  + block('Default initial goal', evaluate(between(subagentsPath, 'export const initialGoal = ', ';\n'))));
+  + block('Default initial goal', evaluate(between(subagentsPath, 'export const initialGoal = ', ';\n')))
+  + [3, 4, 5, 6, 7].map(childCount => block(`Parent Profile prompt: ${childCount + 1} Bots`, parentPromptFor(childCount))
+    + block(`Default initial goal: ${childCount + 1} Bots`, initialGoalFor(childCount))).join(''));
 for (const [index, line] of sources.get('examples/subagents-environment/controller.mjs').split('\n').entries()) {
   if (line.includes('await runtime.send(')) sendSites.push({ path: 'examples/subagents-environment/controller.mjs', line: index + 1, expression: line.trim() });
 }
