@@ -11,6 +11,13 @@ export async function createAgenshEventSubscription({ facilities, mapping, inges
   const git = httpClient(facilities.endpoints.gitea, `token ${facilities.peer.gitea.token}`);
   const mm = httpClient(facilities.endpoints.message, `Bearer ${facilities.peer.message.token}`);
   const repo = `/api/v1/repos/${e(facilities.repository.owner)}/${e(facilities.repository.name)}`;
+  const members = facilities.peers ?? [facilities.peer];
+  if (!Array.isArray(members) || members.length < 1 || members.length > 8 || new Set(members.map(peer => peer.gitea.username)).size !== members.length) throw new TypeError('Event subscription needs distinct trusted peers');
+  const targets = text => {
+    const mentions = [...text.matchAll(/@([a-zA-Z0-9_.-]+)/g)].map(match => match[1]);
+    const named = members.filter(peer => mentions.includes(peer.gitea.username));
+    return { mentions, addressed: !mentions.length || named.some(peer => peer.board?.workerId === mapping.workerId) };
+  };
   const seen = new Set(); const records = []; let polls = 0, closed = false, timer, inFlight, failure;
   const check = () => { if (closed || combined.aborted) throw fail('ROUTER_SOURCE_STOPPED'); };
   async function read() {
@@ -19,7 +26,7 @@ export async function createAgenshEventSubscription({ facilities, mapping, inges
     if (!Array.isArray(comments) || comments.length >= 50) throw fail('ROUTER_SOURCE_PAGE_LIMIT');
     const result = comments.map(row => {
       if (!Number.isSafeInteger(row.id) || typeof row.body !== 'string' || !Number.isSafeInteger(row.user?.id)) throw fail('ROUTER_SOURCE_INVALID');
-      return { source: 'gitea', eventId: `comment:${row.id}`, targetWorker: mapping.workerId, kind: 'external', text: row.body, self: String(row.user.id) === facilities.peer.gitea.accountId };
+      return { ignored: members.length > 1 && !targets(row.body).addressed, source: 'gitea', eventId: `comment:${row.id}`, targetWorker: mapping.workerId, kind: 'external', text: row.body, self: String(row.user.id) === facilities.peer.gitea.accountId };
     });
     for (const channel of [facilities.channelId, ...dmChannelIds]) {
       check();
@@ -30,7 +37,7 @@ export async function createAgenshEventSubscription({ facilities, mapping, inges
         if (typeof row?.id !== 'string' || !row.id || typeof row.message !== 'string' || row.channel_id !== channel || typeof row.user_id !== 'string' || !Number.isSafeInteger(row.create_at)) throw fail('ROUTER_SOURCE_INVALID');
         const mentions = [...row.message.matchAll(/@([a-zA-Z0-9_.-]+)/g)].map(match => match[1]);
         const mention = mentions.includes(facilities.peer.gitea.username) ? facilities.peer.gitea.username : mentions[0]; const direct = dmChannelIds.includes(channel);
-        result.push({ source: 'mattermost', eventId: `post:${row.id}`, targetWorker: !direct && mention && mention !== facilities.peer.gitea.username ? `unmapped:${mention}` : mapping.workerId,
+        result.push({ ignored: members.length > 1 && !direct && !targets(row.message).addressed, source: 'mattermost', eventId: `post:${row.id}`, targetWorker: !direct && mention && mention !== facilities.peer.gitea.username ? `unmapped:${mention}` : mapping.workerId,
           kind: direct ? 'dm' : mention ? 'mention' : 'peer-message', text: row.message, self: row.user_id === facilities.peer.message.accountId || Boolean(row.type) });
       }
     }
@@ -48,8 +55,8 @@ export async function createAgenshEventSubscription({ facilities, mapping, inges
         for (const row of await read()) {
           const id = `${row.source}:${row.eventId}`; if (seen.has(id)) continue;
           if (seen.size >= 1024) throw fail('ROUTER_SOURCE_EVENT_LIMIT');
-          if (!row.self && row.text) {
-            const { self, ...event } = row; const batch = ingest(event);
+          if (!row.self && !row.ignored && row.text) {
+            const { self, ignored, ...event } = row; const batch = ingest(event);
             records.push({ source: event.source, eventId: event.eventId, targetWorker: event.targetWorker, kind: event.kind, batchId: batch.batchId });
           }
           seen.add(id);

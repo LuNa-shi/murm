@@ -44,3 +44,30 @@ test('all three Services resolve only their own trusted account and fix board id
   assert.equal(seen.length, 8);
   assert.equal(JSON.stringify(service.identities()).includes('secret'), false);
 });
+
+test('one registry selects each peer token and board identity from its trusted Bot binding', async t => {
+  const requests = [];
+  const server = createServer(async (request, response) => {
+    const chunks = []; for await (const chunk of request) chunks.push(chunk);
+    requests.push({ auth: request.headers.authorization, path: request.url, body: chunks.length ? JSON.parse(Buffer.concat(chunks)) : null });
+    response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ number: 1, rendered: 'shared', status: 'admitted' }));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const peers = ['a', 'b'].map(name => ({ key: name, gitea: { binding: `git-${name}`, accountId: name, token: `git-token-${name}` },
+    message: { binding: `mm-${name}`, accountId: name, token: `mm-token-${name}` }, board: { binding: `board-${name}`, workerId: `worker-${name}` } }));
+  const service = createAgenshServices({ runId: 'team', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board', endpoints: { gitea: origin, message: origin, board: origin }, peers });
+  for (const peer of peers) service.bindBot({ runtimeId: 'runtime', botId: `bot-${peer.key}`, peerKey: peer.key });
+  const registry = snapshotServiceRegistry(service.services);
+  const call = (key, id, operation, input, binding) => invokeService(registry.get(id), { operation, input,
+    caller: { runtimeId: 'runtime', botId: `bot-${key}`, profile: 'peer', binding }, envelope: { operation_id: `${key}-${operation}` } });
+  for (const key of ['a', 'b']) {
+    await call(key, 'gitea', 'issue_read', { owner: 'owner', repo: 'repo', method: 'get', index: 1 }, `git-${key}`);
+    await call(key, 'agensh-context', 'board_write', { board_id: 'board', type: 'CLAIM', content: 'same work' }, `board-${key}`);
+  }
+  assert.deepEqual(requests.filter(row => row.auth).map(row => row.auth), ['token git-token-a', 'token git-token-b']);
+  assert.deepEqual(requests.filter(row => row.body).map(row => row.body.thread_id), ['worker-a', 'worker-b']);
+  await assert.rejects(call('b', 'gitea', 'issue_read', { owner: 'owner', repo: 'repo', method: 'get', index: 1 }, 'git-a'), { code: 'NOT_ALLOWED' });
+  assert.equal(requests.length, 4);
+});

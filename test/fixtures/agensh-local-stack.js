@@ -161,10 +161,10 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
       secrets.push(mmToken);
       const team = await request(mmOrigin, `Bearer ${mmToken}`)('POST', '/api/v4/teams', { name: owner, display_name: owner, type: 'I' });
       stack.configuration = { gitea: { origin: gitOrigin, adminToken: gitToken, owner: 'run-owner' }, mattermost: { origin: mmOrigin, adminToken: mmToken, teamId: team.id },
-        startBoard: async ({ boardId, workerId, own, signal }) => {
+        startBoard: async ({ boardId, workerId, workerIds = [workerId], own, signal }) => {
           signal?.throwIfAborted();
           const name = await run('board', { signal, cpu: 0.25, memory: '256m', ports: ['127.0.0.1::8660'], env: {
-            MYSQL_DSN: `mysql://agensh:${dbPassword}@${database}:3306/board`, BOARD_MEMBERS_JSON: JSON.stringify({ [boardId]: [workerId] }) } });
+            MYSQL_DSN: `mysql://agensh:${dbPassword}@${database}:3306/board`, BOARD_MEMBERS_JSON: JSON.stringify({ [boardId]: workerIds }) } });
           signal?.throwIfAborted();
           const origin = await published(name, 8660, '127.0.0.1', signal);
           stack.boardOrigin = origin;

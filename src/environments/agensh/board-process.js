@@ -9,7 +9,7 @@ export function createBoardLauncher({ sourceDirectory, mysqlDsn, origin, python 
   const address = new URL(origin);
   if (!['127.0.0.1', '0.0.0.0'].includes(address.hostname) || address.protocol !== 'http:' || !address.port || address.username || address.password || address.pathname !== '/' || address.search || address.hash ||
       typeof mysqlDsn !== 'string' || !mysqlDsn || typeof sourceDirectory !== 'string' || !sourceDirectory || !Number.isSafeInteger(startupTimeoutMs) || startupTimeoutMs < 1 || startupTimeoutMs > 30_000) throw new TypeError('Board launcher requires explicit local origin, source, MySQL DSN and bounded startup');
-  return async function startBoard({ boardId, workerId, own, signal }) {
+  return async function startBoard({ boardId, workerId, workerIds = [workerId], own, signal }) {
     signal?.throwIfAborted();
     await new Promise((resolve, reject) => {
       const reservation = createServer();
@@ -19,7 +19,7 @@ export function createBoardLauncher({ sourceDirectory, mysqlDsn, origin, python 
     signal?.throwIfAborted();
     const child = spawn(python, ['-m', 'uvicorn', 'main:app', '--host', address.hostname, '--port', address.port, '--no-access-log', '--log-level', 'error'], {
       cwd: sourceDirectory, stdio: 'ignore', env: { PATH: process.env.PATH, LANG: process.env.LANG ?? 'C.UTF-8', MYSQL_DSN: mysqlDsn,
-        BOARD_MEMBERS_JSON: JSON.stringify({ [boardId]: [workerId] }), BOARD_OPERATOR: `operator-${boardId}` },
+        BOARD_MEMBERS_JSON: JSON.stringify({ [boardId]: workerIds }), BOARD_OPERATOR: `operator-${boardId}` },
     });
     let ended = false; let failed = false;
     const exited = new Promise(resolve => { child.once('exit', () => { ended = true; resolve(); }); child.once('error', () => { ended = true; failed = true; resolve(); }); });

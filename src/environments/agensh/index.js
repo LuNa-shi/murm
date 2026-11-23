@@ -11,7 +11,7 @@ export function createPeerProfile({ image, model = 'default', facilities }) {
   const { runId } = facilities;
   const repository = new URL(facilities.repositoryUrl);
   return { image, model, writable: true, prompt: peerPrompt,
-        env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: `peer-${runId}`, GITEA_USERNAME: facilities.peer.gitea.username,
+        env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: facilities.peer.branch ?? `peer-${runId}`, GITEA_USERNAME: facilities.peer.gitea.username,
           GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: facilities.peer.gitea.username, GIT_AUTHOR_EMAIL: `${facilities.peer.gitea.username}@swarmenv.invalid`,
           GIT_COMMITTER_NAME: facilities.peer.gitea.username, GIT_COMMITTER_EMAIL: `${facilities.peer.gitea.username}@swarmenv.invalid`,
           RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name, RUN_ISSUE: String(facilities.issueNumber), RUN_CHANNEL: facilities.channelId, RUN_BOARD: facilities.boardId },

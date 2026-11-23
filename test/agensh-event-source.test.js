@@ -35,3 +35,26 @@ test('real HTTP subscription baselines before readiness and routes stable extern
   assert.equal(JSON.stringify(source.snapshot()).includes('secret'), false);
   await source.stop(); await assert.rejects(source.poll(), { code: 'ROUTER_SOURCE_STOPPED' });
 });
+
+test('two trusted subscriptions route a directed repository comment once to its named peer', async t => {
+  let comments = []; const delivered = [[], []];
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify(request.url.includes('/issues/comments') ? comments : { order: [], posts: {} }));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const peers = ['one', 'two'].map(name => ({ gitea: { username: name, accountId: name, token: name }, message: { accountId: name, token: name }, board: { workerId: `worker-${name}` } }));
+  const sources = [];
+  for (let index = 0; index < 2; index++) {
+    sources.push(await createAgenshEventSubscription({ facilities: { endpoints: { gitea: origin, message: origin }, repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', peer: peers[index], peers },
+      mapping: { workerId: peers[index].board.workerId, botId: `bot-${index}` }, ingest: row => { delivered[index].push(row); return { batchId: row.eventId }; }, pollIntervalMs: 60_000, maxPolls: 3 }));
+  }
+  t.after(() => Promise.all(sources.map(source => source.stop())));
+  comments = [{ id: 1, user: { id: 5 }, body: '@one inspect this PR' }];
+  for (const source of sources) { await source.poll(); await source.poll(); }
+  assert.equal(delivered[0].length, 1);
+  assert.equal(delivered[1].length, 0);
+  assert.equal(delivered[0][0].targetWorker, 'worker-one');
+});
