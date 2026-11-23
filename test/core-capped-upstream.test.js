@@ -12,6 +12,110 @@ async function localUpstream(t, handler) {
   return `http://127.0.0.1:${server.address().port}/v1/responses`;
 }
 
+test('opted-in terminal geometry records safe provider counts without changing capped forwarding or SSE bytes', async t => {
+  let received;
+  const terminal = {
+    type: 'response.completed',
+    response: {
+      id: 'local-terminal', model: 'k3', status: 'completed', max_output_tokens: 768,
+      usage: { input_tokens: 10, output_tokens: 700, output_tokens_details: { reasoning_tokens: 600, private: 'private-detail' } },
+      output: [
+        { type: 'reasoning', summary: [{ text: 'private-reasoning' }] },
+        { type: 'function_call', arguments: 'private-arguments' },
+        { type: 'message', content: 'private-content' },
+        { type: 'private-output-type', private: 'private-item' },
+      ],
+    },
+  };
+  const sse = 'data: ' + JSON.stringify(terminal) + '\n\n';
+  const upstreamUrl = await localUpstream(t, async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    received = JSON.parse(Buffer.concat(chunks));
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.end(sse);
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 1,
+    maxOutputTokens: 768, filename: 'unused', marker: 'unused', failFast: true, recordGeometry: true });
+  t.after(() => cap.close());
+  const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [], max_output_tokens: 9999 }) });
+  assert.equal(await response.text(), sse);
+  assert.equal(received.max_output_tokens, 768);
+  const receipt = cap.receipt();
+  assert.deepEqual(receipt.requests[0].terminalGeometry, {
+    status: 'completed', modelMatches: true, maxOutputTokens: 768, reasoningTokens: 600,
+    outputItems: { reasoning: 1, message: 1, function_call: 1, other: 1 }, outputItemsTruncated: false,
+  });
+  assert.deepEqual(receipt.requests[0].usage, { inputTokens: 10, outputTokens: 700 });
+  assert.equal(receipt.reservedOutputTokens, 768);
+  assert.equal(receipt.failure, undefined);
+  assert.equal(JSON.stringify(receipt).includes('private-'), false);
+});
+
+test('optional terminal details stay bounded and cannot bypass the first output overage fence', async t => {
+  const malformed = [undefined, null, 'private-detail', { reasoning_tokens: -1 },
+    { reasoning_tokens: 1.5 }, { reasoning_tokens: Number.MAX_SAFE_INTEGER + 1 },
+    { reasoning_tokens: { private: 'private-token-value' } }];
+  for (const [index, details] of malformed.entries()) await t.test(`optional detail case ${index}`, async t => {
+    const output = [null, { type: { toString: null } }, ...Array.from({ length: 128 }, () => ({ type: 'message' }))];
+    const first = { type: 'response.completed', response: {
+      id: 'first-overage', model: 'private-model', status: 'private-status', max_output_tokens: -1,
+      usage: { input_tokens: 10, output_tokens: 865, output_tokens_details: details }, output,
+    } };
+    const second = { type: 'response.completed', response: {
+      id: 'first-overage', model: 'k3', status: 'completed', max_output_tokens: 768,
+      usage: { input_tokens: 10, output_tokens: 3, output_tokens_details: { reasoning_tokens: 0 } }, output: [],
+    } };
+    const upstreamUrl = await localUpstream(t, (request, response) => {
+      request.resume();
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.end('data: ' + JSON.stringify(first) + '\n\ndata: ' + JSON.stringify(second) + '\n\n');
+    });
+    const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
+      maxOutputTokens: 768, filename: 'unused', marker: 'unused', failFast: true, recordGeometry: true });
+    t.after(() => cap.close());
+    const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+    const response = await send().catch(() => null);
+    await response?.text().catch(() => {});
+    const receipt = cap.receipt();
+    assert.deepEqual(receipt.failure, { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 1, maxOutputTokens: 768, outputTokens: 865 });
+    assert.deepEqual(receipt.requests[0].usage, { inputTokens: 10, outputTokens: 865 });
+    assert.deepEqual(receipt.requests[0].terminalGeometry, {
+      status: 'other', modelMatches: false,
+      outputItems: { reasoning: 0, message: 126, function_call: 0, other: 2 }, outputItemsTruncated: true,
+    });
+    assert.equal(receipt.requests[0].transport.firstTermination.kind, 'output_limit_exceeded');
+    assert.equal(JSON.stringify(receipt).includes('private-'), false);
+    assert.equal((await send()).status, 400);
+    assert.equal(cap.receipt().forwarded, 1);
+  });
+});
+
+test('terminal geometry keeps the first replay observation and omits unavailable optional fields', async t => {
+  const first = { type: 'response.completed', response: {
+    id: 'stable-terminal', usage: { input_tokens: 10, output_tokens: 7 },
+  } };
+  const replay = { type: 'response.completed', response: {
+    ...first.response, model: 'k3', status: 'completed', max_output_tokens: 0,
+    usage: { ...first.response.usage, output_tokens_details: { reasoning_tokens: 0 } }, output: [],
+  } };
+  const sse = 'data: ' + JSON.stringify(first) + '\n\ndata: ' + JSON.stringify(replay) + '\n\n';
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume();
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.end(sse);
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
+    maxOutputTokens: 768, filename: 'unused', marker: 'unused', failFast: true, recordGeometry: true });
+  t.after(() => cap.close());
+  const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  assert.equal(await response.text(), sse);
+  const receipt = cap.receipt();
+  assert.deepEqual(receipt.requests[0].terminalGeometry, { status: 'other', modelMatches: false });
+  assert.equal(receipt.failure, undefined);
+  assert.equal(receipt.reservedOutputTokens, 768);
+});
+
 test('conflicting hosted terminal usage cannot replace the first metered receipt or admit another request', async t => {
   const upstreamUrl = await localUpstream(t, (_request, response) => {
     response.writeHead(200, { 'content-type': 'text/event-stream' });
@@ -73,7 +177,7 @@ test('hosted terminal usage fences an overage even when optional tool output is 
     response.write(':started\n\n');
   });
   const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
-    maxOutputTokens: 768, filename: 'unused', marker: 'unused', failFast: true });
+    maxOutputTokens: 768, filename: 'unused', marker: 'unused', failFast: true, recordGeometry: true });
   t.after(() => cap.close());
   const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
   const response = await send();
@@ -85,6 +189,7 @@ test('hosted terminal usage fences an overage even when optional tool output is 
   const receipt = cap.receipt();
   assert.deepEqual(receipt.failure, { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 1, maxOutputTokens: 768, outputTokens: 865 });
   assert.deepEqual(receipt.requests[0].usage, { inputTokens: 10, outputTokens: 865 });
+  assert.deepEqual(receipt.requests[0].terminalGeometry, { status: 'other', modelMatches: false });
   assert.equal(stream.includes('response.completed'), false);
   assert.equal((await send()).status, 400);
   assert.equal(cap.receipt().forwarded, 1);
@@ -432,6 +537,7 @@ test('capped upstream limits actual forwarding and preserves SSE IDs with capped
   assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'upstream_end');
   assert.equal(received[0].body.max_output_tokens, 64);
   assert.equal(cap.receipt().requests[0].geometry, undefined);
+  assert.equal(cap.receipt().requests[0].terminalGeometry, undefined);
   assert.equal(received[0].headers['x-swarmenv-request-id'], 'original-id');
   assert.equal(received[0].headers.authorization, 'Bearer local-test-only');
   assert.equal((await fetch(cap.url, { method: 'POST', body })).status, 429);

@@ -62,6 +62,29 @@ function requestGeometry(input) {
     emptyAssistantMessages, emptyAssistantText, reasoningSummaryPresent, reasoningEncryptedContentPresent };
 }
 
+function terminalGeometry(response, model) {
+  const geometry = {
+    status: ['completed', 'incomplete', 'failed'].includes(response?.status) ? response.status : 'other',
+    modelMatches: response?.model === model,
+  };
+  if (Number.isSafeInteger(response?.max_output_tokens) && response.max_output_tokens >= 0) {
+    geometry.maxOutputTokens = response.max_output_tokens;
+  }
+  const reasoningTokens = response?.usage?.output_tokens_details?.reasoning_tokens;
+  if (Number.isSafeInteger(reasoningTokens) && reasoningTokens >= 0) geometry.reasoningTokens = reasoningTokens;
+  if (Array.isArray(response?.output)) {
+    const outputItems = { reasoning: 0, message: 0, function_call: 0, other: 0 };
+    for (const item of response.output.slice(0, 128)) {
+      const type = item?.type;
+      const kind = typeof type === 'string' && Object.hasOwn(outputItems, type) ? type : 'other';
+      outputItems[kind]++;
+    }
+    geometry.outputItems = outputItems;
+    geometry.outputItemsTruncated = response.output.length > 128;
+  }
+  return geometry;
+}
+
 export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, deadlineAt,
   maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false, failFast = false, onFailure = () => {}, recordGeometry = false,
   maxConcurrent = maxRequests, maxAggregateOutputTokens = maxRequests * maxOutputTokens, maxInputBytes = 2 * 1024 ** 2, maxAggregateInputBytes = maxRequests * maxInputBytes }) {
@@ -121,7 +144,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     failRun({ code: 'LIVE_UNMETERED_TRANSPORT_LOSS', number: record.number }, 'unmetered_transport_abort');
   }
 
-  function observeEvent(value, record) {
+  function observeEvent(value, record, model) {
     if (['response.completed', 'response.failed', 'response.incomplete'].includes(value.type)) {
       const usage = value.response?.usage;
       const validUsage = Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens) && usage.input_tokens >= 0 && usage.output_tokens >= 0;
@@ -147,6 +170,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       if (validUsage) {
         record.usage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
       }
+      if (recordGeometry) record.terminalGeometry = terminalGeometry(value.response, model);
       if (failFast && Number.isSafeInteger(usage?.output_tokens) && usage.output_tokens > record.maxOutputTokens) {
         transport(record, 'output_limit_exceeded', true);
         failRun({ code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: record.number,
@@ -279,7 +303,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
           for (const message of messages) {
             const eventData = message.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
             if (!eventData || eventData === '[DONE]') continue;
-            try { if (observeEvent(JSON.parse(eventData), record)) return; } catch { record.observation = 'unparsed_event'; }
+            try { if (observeEvent(JSON.parse(eventData), record, body.model)) return; } catch { record.observation = 'unparsed_event'; }
           }
           if (failFast) response.write(chunk);
         });
