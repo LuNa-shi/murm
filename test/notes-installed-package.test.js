@@ -21,6 +21,20 @@ test('frozen archive requires an explicit SHA-256 and rejects changed bytes befo
   await execute(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, PATH: '' }, timeout: 5000 });
 });
 
+test('all external install gates honor the host frozen archive selection without packing a fallback', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'package-frozen-selection-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const archive = join(root, 'candidate.tgz'); await writeFile(archive, 'changed candidate');
+  const script = `import assert from 'node:assert/strict'; import {installNotesExample} from ${JSON.stringify(fixture)};
+    await assert.rejects(installNotesExample(), {code:'FROZEN_PACKAGE_DIGEST_MISMATCH'});
+    delete process.env.SWARMENV_TEST_PACKAGE_SHA256;
+    await assert.rejects(installNotesExample(), {code:'INVALID_FROZEN_PACKAGE'});
+    process.env.SWARMENV_TEST_PACKAGE_SHA256='a'.repeat(64);
+    delete process.env.SWARMENV_TEST_PACKAGE_ARCHIVE;
+    await assert.rejects(installNotesExample(), {code:'INVALID_FROZEN_PACKAGE'});`;
+  await execute(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, PATH: '',
+    SWARMENV_TEST_PACKAGE_ARCHIVE: archive, SWARMENV_TEST_PACKAGE_SHA256: 'a'.repeat(64) }, timeout: 5000 });
+});
+
 test('matching frozen archive installs its exact bytes outside checkout without attributing current Git provenance', { timeout: 30_000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'notes-frozen-install-')); t.after(() => rm(root, { recursive: true, force: true }));
   const packageRoot = join(root, 'package');
@@ -37,5 +51,17 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   assert.deepEqual(await readFile(join(installed.directory, 'frozen-package.tgz')), bytes);
   const result = await execute(process.execPath, ['--input-type=module', '-e', "import assert from 'node:assert/strict'; import {marker} from '@swarmenv/core'; import {name} from './run-input.mjs'; assert.equal(marker,'frozen-candidate'); assert.equal(name,'run-input');"], { cwd: installed.directory, env: installed.env, timeout: 5000 });
   assert.equal(result.stderr, '');
+  const selected = await execute(process.execPath, ['--input-type=module', '-e', `
+import assert from 'node:assert/strict'; import {installNotesExample,execute} from ${JSON.stringify(fixture)};
+const installed=await installNotesExample();
+try {
+  assert.equal(installed.metadata.sha256,process.env.SWARMENV_TEST_PACKAGE_SHA256);
+  assert.equal(installed.metadata.sourceCommit,null); assert.equal(installed.metadata.sourceDirty,null);
+  const result=await execute(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict'; import {marker} from '@swarmenv/core'; assert.equal(marker,'frozen-candidate');"],{cwd:installed.directory,env:installed.env,timeout:5000});
+  assert.equal(result.stderr,'');
+} finally {await installed.close();}
+`], { env: { ...process.env, SWARMENV_TEST_PACKAGE_ARCHIVE: archive,
+    SWARMENV_TEST_PACKAGE_SHA256: expectedSha256 }, timeout: 15_000 });
+  assert.equal(selected.stderr, '');
   assert.deepEqual(await readFile(archive), bytes);
 });

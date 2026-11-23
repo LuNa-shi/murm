@@ -9,7 +9,10 @@ export const execute = promisify(execFile);
 const repository = resolve(import.meta.dirname, '../..');
 
 // Install the real archive: no checkout symlink, NODE_PATH or loader hooks.
-export async function installNotesExample({ archive: frozenArchive, expectedSha256 } = {}) {
+export async function installNotesExample({ archive: frozenArchive, expectedSha256 } = {
+  archive: process.env.SWARMENV_TEST_PACKAGE_ARCHIVE,
+  expectedSha256: process.env.SWARMENV_TEST_PACKAGE_SHA256,
+}) {
   const frozen = frozenArchive !== undefined || expectedSha256 !== undefined;
   if (frozen && (typeof frozenArchive !== 'string' || !frozenArchive || typeof expectedSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(expectedSha256))) {
     throw Object.assign(new Error('Frozen package requires an archive and expected SHA-256'), { code: 'INVALID_FROZEN_PACKAGE' });
