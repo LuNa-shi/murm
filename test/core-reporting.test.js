@@ -163,7 +163,9 @@ test('Runtime report joins a rejected Service write to its trusted caller and ef
   for (const marker of [serviceToken, 'omitted-service-input', 'invalid-adapter-output', 'forged']) {
     assert.equal(raw.includes(marker) || report.includes(marker), false);
   }
-  assert.deepEqual(JSON.parse(report).config.services, [{ id: 'notes', transport: 'http-json', timeoutMs: 1234 }]);
+  assert.deepEqual(JSON.parse(report).config.services, [
+    { id: 'notes', transport: 'http-json', timeoutMs: 1234 }, { id: 'bot', transport: 'in-process' },
+  ]);
   const service = raw.trim().split('\n').map(line => JSON.parse(line)).filter(row => row.type === 'service');
   assert.equal(service.length, 4);
   assert.ok(service.every(row => row.runtimeId === runtime.id && row.botId === bot.id && row.profile === 'worker' &&

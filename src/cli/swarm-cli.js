@@ -91,7 +91,7 @@ Use a stable --request-id. After a lost response, use swarm judge result --reque
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|revise|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  bot spawn|get|send|stop     Core direct-child control when granted\n  task list|view|propose|revise|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
   if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${operationTimeoutMs(COMMAND_OPERATIONS[scope]?.[commandName] ?? commandName)})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Task and Material IDs and file paths use the documented positional arguments.\nBot identity always comes from the protected Bridge binding.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
@@ -227,7 +227,13 @@ async function request(url, { method = 'GET', token = null, body = undefined, ti
 }
 
 async function manifest(service) {
-  if (process.env.SWARMENV_BRIDGE_URL) return bridgeCall('get_service_metadata', { service: transportService(service) });
+  if (process.env.SWARMENV_BRIDGE_URL) {
+    if (service === 'bot') {
+      try { return await bridgeCall('get_service_metadata', { service: 'bot' }); }
+      catch (error) { if (error.code !== 'NOT_ALLOWED') throw error; }
+    }
+    return bridgeCall('get_service_metadata', { service: transportService(service) });
+  }
   service = transportService(service);
   const endpoint = configuredEndpoint(service);
   if (!endpoint?.url) throw new Error(`no endpoint configured for ${service}; set ${envName(service)}`);
@@ -302,6 +308,21 @@ function commandInput(service, command, options, args, input) {
 }
 
 async function invoke(service, commandName, options, args = []) {
+  if (process.env.SWARMENV_BRIDGE_URL && service === 'bot' && ['spawn', 'get', 'send', 'stop'].includes(commandName)) {
+    const metadata = await manifest('bot');
+    if (metadata.id !== 'bot' || !metadata.capabilities.some(item => item.operation === commandName)) throw new Error(`service bot does not advertise capability ${commandName}`);
+    const input = { ...(await inputFrom(options)), ...flagInput(options) };
+    if (args.length > (commandName === 'spawn' ? 0 : 1)) throw new Error('unexpected positional arguments');
+    if (args.length) {
+      if (input.bot_id !== undefined && input.bot_id !== args[0]) throw new Error('conflicting bot_id');
+      input.bot_id = args[0];
+    }
+    if (input.text !== undefined) {
+      if (input.input !== undefined && input.input !== input.text) throw new Error('conflicting input');
+      input.input = input.text; delete input.text;
+    }
+    return bridgeCall(commandName, input, options, 'bot');
+  }
   if (Object.hasOwn(COMMAND_OPERATIONS, service) && !Object.hasOwn(COMMAND_OPERATIONS[service], commandName)) {
     throw new Error(`unknown ${service} command: ${commandName}`);
   }
@@ -346,8 +367,9 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
     }
   }
   if (positionals[0] === 'context') throw new Error('unknown command group: context');
-  if (options.help && positionals[0] && positionals[0] !== 'service' && !COMMAND_OPERATIONS[positionals[0]] && process.env.SWARMENV_BRIDGE_URL) {
+  if ((options.help || (positionals[0] === 'bot' && !positionals[1])) && positionals[0] && positionals[0] !== 'service' && (!COMMAND_OPERATIONS[positionals[0]] || (positionals[0] === 'bot' && (!positionals[1] || ['spawn', 'get', 'send', 'stop'].includes(positionals[1])))) && process.env.SWARMENV_BRIDGE_URL) {
     const provider = await manifest(positionals[0]);
+    if (positionals[0] === 'bot' && !positionals[1] && provider.id !== 'bot') { stdout.write(usage('bot') + '\n'); return 0; }
     const capabilities = positionals[1] ? provider.capabilities.filter(item => item.operation === positionals[1] || item.name === positionals[1]) : provider.capabilities;
     if (!capabilities.length) throw new Error('Service does not advertise this operation');
     stdout.write(`Usage: swarm ${positionals[0]} <operation> [--input file | --stdin | --field value] [--request-id id]\n${provider.purpose}\n`);

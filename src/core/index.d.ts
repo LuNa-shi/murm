@@ -117,6 +117,14 @@ export type InputReceipt =
   | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
   | { inputId: string; status: 'unknown' };
 
+export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
+
+/** Built-in bot.spawn Service result, distinct from host Runtime.spawn. */
+export interface BotSpawnReceipt {
+  bot: BotInfo;
+  initialInput: BotInitialInputResult;
+}
+
 export type BotEvent = { botId: string; seq: number } & (
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
