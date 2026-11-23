@@ -1713,7 +1713,7 @@
         "docs/architecture/17-environment-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Subagents host Profiles, three-Slot Runtime, verified text adoption and whole-tree reporting"
+      "role": "Subagents host Profiles, bounded three-to-eight-Bot Runtime, verified text adoption and whole-tree reporting"
     },
     {
       "path": "examples/subagents-environment/controller.mjs",

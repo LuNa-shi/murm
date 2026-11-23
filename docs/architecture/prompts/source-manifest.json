@@ -84,15 +84,15 @@
     },
     {
       "path": "examples/subagents-environment/main.mjs",
-      "sha256": "a6422e223cc314f71ae25f9305e780d51298c7999b94d7f51f0b119c113c9151"
+      "sha256": "46f5e9b412a2cfd26d153685503234279f7c3a8ddcec62fd09e12de5b90addbc"
     },
     {
       "path": "examples/subagents-environment/controller.mjs",
-      "sha256": "141b59749c778172f4d9c783e99496aff4c12687bf1fdacd483a7ce4e46a5292"
+      "sha256": "f05e792396538a1383323ba0e7c4597467b7c3271c92e93d7dcc45c8c3ad63a9"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
-      "sha256": "417dcf1192ecd6795fc916895d78dda5ad4d5fc9b282960eb82be2b0d3ac36ba"
+      "sha256": "c061cefb7583f4431c82b5750d712bbfdb419a1305195b84adf52bc1166f7842"
     },
     {
       "path": "src/environments/agensh/index.js",
@@ -363,7 +363,7 @@
     },
     {
       "path": "examples/subagents-environment/controller.mjs",
-      "line": 25,
+      "line": 26,
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     },
     {
@@ -495,7 +495,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "c7ceccabdaa56313107f5abe83fa710f0666e496a51decdcd1dcde28513dd898"
+      "sha256": "0a1dc59e762a790173b3be17550dd3ec10efb077a84c3b6584e7258ee997a3f9"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",

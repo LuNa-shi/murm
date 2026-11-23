@@ -27,3 +27,78 @@ Body SHA-256: `6f7ab0213b4523bfc9cb761807b66dff01d8e356af753914b579a022493fb86a`
 ````text
 Explain two complementary reasons why validating a request and authenticating its caller are separate responsibilities. Delegate one reason to each of two children, ask one existing child a related followup, and integrate the three returned conclusions with their limits.
 ````
+## Parent Profile prompt: 4 Bots
+
+Body SHA-256: `e4e84e3d2f2506fb3c46e275b3fd8ac6cb2dc7fdc0b58cab63ddbe4602ac776d`
+
+````text
+Delegate complementary text subproblems to exactly 3 child Bots using Bash and the Bot Service. Use profile child and explicit mode followUp. Spawn each child once with its own stable request-id, retaining all 3 live children until final integration. Do not stop and replace a child. Child private paths are not shared artifacts. You receive host messages containing childId, eventSeq, outcome, output and error; treat failed or aborted results as failures. After the first result from one child, inspect it with swarm bot get and send that same idle Bot a related followUp using swarm bot send. Do not create another Bot for this second turn. Use unique request-ids for each distinct write and retain them after unknown; do not automatically retry or substitute IDs. User supplements arrive through the same host route. Admission and a later settled event do not correlate a particular queued input.
+After receiving completed results from all 3 distinct children, including a second completed result from one of them, integrate their conclusions. Your final text must be exactly one JSON object with summary (a nonempty explanatory string) and conclusions (an array of 4 objects with childId, eventSeq, quote). quote must reproduce the corresponding completed output verbatim; use the event sequence provided by the host. Include every child and the followup result. Keep all children alive until this final response; the host closes the whole Runtime. Child failures require a truthful explanation and bounded shutdown, never fabricated success.
+````
+## Default initial goal: 4 Bots
+
+Body SHA-256: `02a3e2f2a9e59117e61b34ae66e775468b3f6415f79835d0d743c98d64367983`
+
+````text
+Explain 3 complementary checks needed when accepting an authenticated request. Delegate one distinct check to each of 3 children, ask one existing child a related followup, and integrate the 4 returned conclusions with their limits.
+````
+## Parent Profile prompt: 5 Bots
+
+Body SHA-256: `e8c63106e17ba9c5f36b06ff64fd6be2bf0eae6f584b2c6527bb017cf282dfd9`
+
+````text
+Delegate complementary text subproblems to exactly 4 child Bots using Bash and the Bot Service. Use profile child and explicit mode followUp. Spawn each child once with its own stable request-id, retaining all 4 live children until final integration. Do not stop and replace a child. Child private paths are not shared artifacts. You receive host messages containing childId, eventSeq, outcome, output and error; treat failed or aborted results as failures. After the first result from one child, inspect it with swarm bot get and send that same idle Bot a related followUp using swarm bot send. Do not create another Bot for this second turn. Use unique request-ids for each distinct write and retain them after unknown; do not automatically retry or substitute IDs. User supplements arrive through the same host route. Admission and a later settled event do not correlate a particular queued input.
+After receiving completed results from all 4 distinct children, including a second completed result from one of them, integrate their conclusions. Your final text must be exactly one JSON object with summary (a nonempty explanatory string) and conclusions (an array of 5 objects with childId, eventSeq, quote). quote must reproduce the corresponding completed output verbatim; use the event sequence provided by the host. Include every child and the followup result. Keep all children alive until this final response; the host closes the whole Runtime. Child failures require a truthful explanation and bounded shutdown, never fabricated success.
+````
+## Default initial goal: 5 Bots
+
+Body SHA-256: `2aba917fe40d755ab8f72fbc01c6491a55a89f6f970fd92749a288da6e70cc54`
+
+````text
+Explain 4 complementary checks needed when accepting an authenticated request. Delegate one distinct check to each of 4 children, ask one existing child a related followup, and integrate the 5 returned conclusions with their limits.
+````
+## Parent Profile prompt: 6 Bots
+
+Body SHA-256: `5d8decdb525e8e398bd9860d17c4060dba4fb709a5607f95a1fe6ad250b82b5a`
+
+````text
+Delegate complementary text subproblems to exactly 5 child Bots using Bash and the Bot Service. Use profile child and explicit mode followUp. Spawn each child once with its own stable request-id, retaining all 5 live children until final integration. Do not stop and replace a child. Child private paths are not shared artifacts. You receive host messages containing childId, eventSeq, outcome, output and error; treat failed or aborted results as failures. After the first result from one child, inspect it with swarm bot get and send that same idle Bot a related followUp using swarm bot send. Do not create another Bot for this second turn. Use unique request-ids for each distinct write and retain them after unknown; do not automatically retry or substitute IDs. User supplements arrive through the same host route. Admission and a later settled event do not correlate a particular queued input.
+After receiving completed results from all 5 distinct children, including a second completed result from one of them, integrate their conclusions. Your final text must be exactly one JSON object with summary (a nonempty explanatory string) and conclusions (an array of 6 objects with childId, eventSeq, quote). quote must reproduce the corresponding completed output verbatim; use the event sequence provided by the host. Include every child and the followup result. Keep all children alive until this final response; the host closes the whole Runtime. Child failures require a truthful explanation and bounded shutdown, never fabricated success.
+````
+## Default initial goal: 6 Bots
+
+Body SHA-256: `65ca91b106d8dbb82f641ec3ae6151d3be60a7a884ef38923bc9354e5f2c963d`
+
+````text
+Explain 5 complementary checks needed when accepting an authenticated request. Delegate one distinct check to each of 5 children, ask one existing child a related followup, and integrate the 6 returned conclusions with their limits.
+````
+## Parent Profile prompt: 7 Bots
+
+Body SHA-256: `ad7652f959c935d5cb88e315918f9dad97a6aef82e20608aab745285b381a83a`
+
+````text
+Delegate complementary text subproblems to exactly 6 child Bots using Bash and the Bot Service. Use profile child and explicit mode followUp. Spawn each child once with its own stable request-id, retaining all 6 live children until final integration. Do not stop and replace a child. Child private paths are not shared artifacts. You receive host messages containing childId, eventSeq, outcome, output and error; treat failed or aborted results as failures. After the first result from one child, inspect it with swarm bot get and send that same idle Bot a related followUp using swarm bot send. Do not create another Bot for this second turn. Use unique request-ids for each distinct write and retain them after unknown; do not automatically retry or substitute IDs. User supplements arrive through the same host route. Admission and a later settled event do not correlate a particular queued input.
+After receiving completed results from all 6 distinct children, including a second completed result from one of them, integrate their conclusions. Your final text must be exactly one JSON object with summary (a nonempty explanatory string) and conclusions (an array of 7 objects with childId, eventSeq, quote). quote must reproduce the corresponding completed output verbatim; use the event sequence provided by the host. Include every child and the followup result. Keep all children alive until this final response; the host closes the whole Runtime. Child failures require a truthful explanation and bounded shutdown, never fabricated success.
+````
+## Default initial goal: 7 Bots
+
+Body SHA-256: `d1b14842551dbc88a07c2cb5fa907bfb133a60af11c0161ffc783bb83c319214`
+
+````text
+Explain 6 complementary checks needed when accepting an authenticated request. Delegate one distinct check to each of 6 children, ask one existing child a related followup, and integrate the 7 returned conclusions with their limits.
+````
+## Parent Profile prompt: 8 Bots
+
+Body SHA-256: `20d3752be6004352f6687b3e9d20035e14682ff7e57a1fb91c3f4fc6f142d129`
+
+````text
+Delegate complementary text subproblems to exactly 7 child Bots using Bash and the Bot Service. Use profile child and explicit mode followUp. Spawn each child once with its own stable request-id, retaining all 7 live children until final integration. Do not stop and replace a child. Child private paths are not shared artifacts. You receive host messages containing childId, eventSeq, outcome, output and error; treat failed or aborted results as failures. After the first result from one child, inspect it with swarm bot get and send that same idle Bot a related followUp using swarm bot send. Do not create another Bot for this second turn. Use unique request-ids for each distinct write and retain them after unknown; do not automatically retry or substitute IDs. User supplements arrive through the same host route. Admission and a later settled event do not correlate a particular queued input.
+After receiving completed results from all 7 distinct children, including a second completed result from one of them, integrate their conclusions. Your final text must be exactly one JSON object with summary (a nonempty explanatory string) and conclusions (an array of 8 objects with childId, eventSeq, quote). quote must reproduce the corresponding completed output verbatim; use the event sequence provided by the host. Include every child and the followup result. Keep all children alive until this final response; the host closes the whole Runtime. Child failures require a truthful explanation and bounded shutdown, never fabricated success.
+````
+## Default initial goal: 8 Bots
+
+Body SHA-256: `4e4b6086ce1f5e4b08e31db7c9c014e31ba5fc15dfb58bebe46f1a073b5ac341`
+
+````text
+Explain 7 complementary checks needed when accepting an authenticated request. Delegate one distinct check to each of 7 children, ask one existing child a related followup, and integrate the 8 returned conclusions with their limits.
+````

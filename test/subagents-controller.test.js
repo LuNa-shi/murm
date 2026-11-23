@@ -139,3 +139,24 @@ test('fast settled with an unknown receipt remains uncertain and cannot validate
   await assert.rejects(final, { code: 'INPUT_UNKNOWN' });
   assert.equal(controller.report().deliveries[0].receipt.inputId, 'unknown-original'); controller.dispose();
 });
+
+
+for (const maxChildren of [3, 7]) {
+  test(`controller permits ${maxChildren} configured direct children and fences a replacement identity`, async () => {
+    const core = runtime(); const controller = createSubagentsController(core, 'parent', { maxChildren });
+    for (let index = 0; index <= maxChildren; index++) {
+      const id = `child-${index}`; core.bots.set(id, { id, parentId: 'parent', status: 'idle' });
+      core.emit({ type: 'settled', botId: id, seq: 1, outcome: 'completed', output: `result-${index}` });
+    }
+    await controller.drain();
+    assert.equal(core.sent.length, maxChildren);
+    assert.equal(controller.report().errors[0].code, 'CHILD_LIMIT');
+    assert.equal(controller.report().accepting, false); controller.dispose();
+  });
+}
+
+test('controller rejects invalid child limits before subscribing', () => {
+  for (const maxChildren of [1, 8, 2.5, '3']) {
+    assert.throws(() => createSubagentsController({ onEvent() { assert.fail('must not subscribe'); } }, 'parent', { maxChildren }), TypeError);
+  }
+});
