@@ -18645,6 +18645,14 @@
       "role": "Host artifact stream validation, private staging and manifest publication"
     },
     {
+      "path": "src/environments/shared/run-input.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Environment-owned exclusive idle Bot input wait and uncertain submission guard"
+    },
+    {
       "path": "src/environments/flat/model-access-policy.js",
       "category": "Execution and control",
       "chapters": [
@@ -18670,6 +18678,22 @@
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Private Runtime summary configuration, ordered evidence writing and credential redaction"
+    },
+    {
+      "path": "examples/notes-environment/main.mjs",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Installed-package Notes Environment Service, role prompts, input order and archive verification"
+    },
+    {
+      "path": "examples/notes-environment/config.mjs",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Sample host lifecycle, provider, model, output and resource configuration"
     },
     {
       "path": "src/environments/shared/run-report.js",

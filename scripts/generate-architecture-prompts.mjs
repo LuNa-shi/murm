@@ -24,6 +24,7 @@ const sourcePaths = [
   'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
   'src/agent/services-bridge.js', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
+  'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
@@ -160,6 +161,16 @@ for (const path of await listSourceFiles('src')) {
   }
 }
 output('06-tool-return-guidance.md', guidanceDoc);
+const notesPath = 'examples/notes-environment/main.mjs';
+const notesKey = between(notesPath, "const key = '", "';\n");
+const notesInput = evaluate(between(notesPath, 'const inputText = Object.freeze(', ');\n'), { key: notesKey });
+output('07-notes-environment.md', header('Installed Notes Environment prompts',
+  'The host stages each role prompt at startup and supplies three fixed inputs through its exclusive input helper. The seeded fact enters the model transcript when a Bot reads its file or receives it in a Service result.')
+  + block('Writer Profile prompt', between(notesPath, "writer: { ...common, prompt: '", "', services"))
+  + block('Reader Profile prompt', between(notesPath, "reader: { ...common, prompt: '", "', services"))
+  + block('Writer publication', notesInput.put)
+  + block('Reader retrieval', notesInput.get)
+  + block('Reader follow-up', notesInput.follow));
 const manifest = {
   description: 'Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.',
   bot_protocol_version: BOT_PROTOCOL_VERSION,
