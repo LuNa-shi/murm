@@ -87,6 +87,7 @@ test('capped upstream limits actual forwarding and preserves SSE IDs with capped
   assert.equal(first.headers.get('x-request-id'), 'upstream-id');
   assert.equal(await first.text(), sse);
   assert.equal(received[0].body.max_output_tokens, 64);
+  assert.equal(cap.receipt().requests[0].geometry, undefined);
   assert.equal(received[0].headers['x-swarmenv-request-id'], 'original-id');
   assert.equal(received[0].headers.authorization, 'Bearer local-test-only');
   assert.equal((await fetch(cap.url, { method: 'POST', body })).status, 429);
@@ -268,4 +269,88 @@ test('provider history diagnostics retain finite protocol hints without indexed 
   assert.deepEqual(cap.receipt().failure.rejection.hints, ['reasoning_content', 'call_id', 'function_call', 'missing', 'unmatched']);
   const serialized = JSON.stringify(cap.receipt());
   for (const raw of ['private', 'input[4]', 'rs_local', 'bash_local', 'fc_local']) assert.equal(serialized.includes(raw), false);
+});
+
+test('hosted rejection headers fence and cancel the peer while the error body remains held', async t => {
+  let calls = 0, failures = 0, releaseHeaders;
+  const headersSent = new Promise(resolve => { releaseHeaders = resolve; });
+  const held = [];
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); calls++; held.push(response);
+    if (calls === 1) { response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':held\n\n'); }
+    else if (calls === 2) { response.writeHead(400); response.flushHeaders(); releaseHeaders(); }
+    else response.end();
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, filename: 'unused', marker: 'unused',
+    maxConcurrent: 2, failFast: true, onFailure: () => { failures++; } });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const peer = await send(); const peerBody = peer.text().catch(() => 'aborted');
+  const rejected = send(); await headersSent;
+  // A local event-loop barrier lets the proxy receive the flushed headers.
+  await new Promise(resolve => setTimeout(resolve, 20));
+  const snapshot = cap.receipt();
+  const later = await send(); await later.text();
+  held.forEach(response => response.end('{"error":{"code":"invalid_request_error"}}'));
+  await (await rejected).text(); await peerBody;
+  assert.equal(snapshot.failure?.number, 2); assert.equal(failures, 1);
+  assert.equal(later.status, 400); assert.equal(calls, 2);
+  assert.equal(snapshot.requests[0].status, 'failure_aborted');
+  assert.equal(cap.receipt().failure.rejection.code, 'invalid_request_error');
+});
+
+test('hosted abort/close preserves the first rejection while the error parse window is bounded', async t => {
+  let cap, closed;
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(400); response.flushHeaders();
+    response.write('{"error":{"message":"private incomplete');
+  });
+  cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, filename: 'unused', marker: 'unused',
+    failFast: true, onFailure: () => { closed = cap.close(); } });
+  t.after(() => cap.close());
+  const started = Date.now();
+  const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  await response.text(); await closed;
+  assert.ok(Date.now() - started < 1500);
+  assert.equal(cap.receipt().requests[0].rejectionRead, 'timeout');
+  assert.equal(cap.receipt().requests[0].status, 'rejected');
+  assert.equal(cap.receipt().failure.number, 1); assert.equal(cap.receipt().failure.statusCode, 400);
+  assert.deepEqual(cap.receipt().failure.rejection, { code: 'other', type: 'other', param: 'other' });
+  assert.equal(JSON.stringify(cap.receipt()).includes('private'), false);
+});
+
+test('opted-in outgoing geometry contains only bounded allowlisted structure and exact call matching', async t => {
+  const upstreamUrl = await localUpstream(t, (request, response) => { request.resume(); response.end(); });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, filename: 'unused', marker: 'unused', recordGeometry: true });
+  t.after(() => cap.close());
+  const send = async input => { const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input }) }); await response.text(); };
+  const input = [
+    { role: 'user', content: 'PRIVATE' },
+    { type: 'reasoning', summary: [{ type: 'summary_text', text: 'PRIVATE' }], encrypted_content: 'PRIVATE' },
+    { type: 'function_call', call_id: 'PRIVATE', arguments: '{"PRIVATE":true}' },
+    { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '' }] },
+    { type: 'function_call_output', call_id: 'PRIVATE', output: 'PRIVATE' },
+    { type: 'PRIVATE', content: 'PRIVATE' },
+  ];
+  await send(input);
+  assert.deepEqual(cap.receipt().requests[0].geometry, { itemTypes: ['message', 'reasoning', 'function_call', 'message', 'function_call_output', 'other'],
+    itemTypesTruncated: false, functionCalls: 1, functionCallOutputs: 1, callIdsMatched: true, reasoningItems: 1,
+    emptyAssistantMessages: 1, emptyAssistantText: 1, reasoningSummaryPresent: 1, reasoningEncryptedContentPresent: 1 });
+  await send([...input, { type: 'function_call_output', call_id: 'PRIVATE', output: 'PRIVATE' }]);
+  assert.equal(cap.receipt().requests[1].geometry.callIdsMatched, false);
+  await send(Array.from({ length: 200 }, () => ({ type: 'PRIVATE' })));
+  assert.equal(cap.receipt().requests[2].geometry.itemTypes.length, 128); assert.equal(cap.receipt().requests[2].geometry.itemTypesTruncated, true);
+  assert.equal(JSON.stringify(cap.receipt()).includes('PRIVATE'), false);
+});
+
+test('hosted redirect headers also fence as non-2xx without following another provider request', async t => {
+  let calls = 0;
+  const upstreamUrl = await localUpstream(t, (request, response) => { request.resume(); calls++; response.writeHead(302, { location: '/private' }); response.end(); });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, filename: 'unused', marker: 'unused', failFast: true });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', redirect: 'manual', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const response = await send(); await response.text(); assert.equal(response.status, 302);
+  const later = await send(); await later.text(); assert.equal(later.status, 400);
+  assert.equal(calls, 1); assert.equal(cap.receipt().failure.statusCode, 302);
+  assert.equal(JSON.stringify(cap.receipt()).includes('private'), false);
 });

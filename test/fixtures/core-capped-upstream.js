@@ -31,8 +31,39 @@ function rejectionClassification(bytes) {
   return { ...result, ...(hints.length ? { hints } : {}) };
 }
 
+// Fixed structural projection only; no caller-controlled keys or values survive.
+function requestGeometry(input) {
+  const itemCounts = { message: 0, reasoning: 0, function_call: 0, function_call_output: 0, custom_tool_call: 0, custom_tool_call_output: 0, other: 0 };
+  let emptyAssistantText = 0, reasoningSummaryPresent = 0, reasoningEncryptedContentPresent = 0;
+  const calls = [], outputs = [], itemTypes = [];
+  let emptyAssistantMessages = 0;
+  for (const item of input) {
+    const type = item?.type ?? (['system', 'developer', 'user', 'assistant'].includes(item?.role) ? 'message' : 'other');
+    const safeType = typeof type === 'string' && Object.hasOwn(itemCounts, type) ? type : 'other';
+    itemCounts[safeType]++;
+    if (itemTypes.length < 128) itemTypes.push(safeType);
+    if (item?.role === 'assistant' && (item.content === '' || (Array.isArray(item.content) && item.content.every(block => ['output_text', 'text'].includes(block?.type) && block.text === '')))) emptyAssistantMessages++;
+    if (item?.role === 'assistant' && Array.isArray(item.content)) {
+      emptyAssistantText += item.content.filter(block => ['output_text', 'text'].includes(block?.type) && block.text === '').length;
+    }
+    if (type === 'reasoning') {
+      reasoningSummaryPresent += Number(Object.hasOwn(item, 'summary'));
+      reasoningEncryptedContentPresent += Number(Object.hasOwn(item, 'encrypted_content'));
+    }
+    if (type === 'function_call') calls.push(item.call_id);
+    if (type === 'function_call_output') outputs.push(item.call_id);
+  }
+  const remaining = new Map();
+  for (const id of calls) if (typeof id === 'string' && id) remaining.set(id, (remaining.get(id) ?? 0) + 1);
+  let matchedPairs = 0;
+  for (const id of outputs) if (typeof id === 'string' && id && remaining.get(id) > 0) { matchedPairs++; remaining.set(id, remaining.get(id) - 1); }
+  return { itemTypes, itemTypesTruncated: input.length > itemTypes.length, functionCalls: calls.length, functionCallOutputs: outputs.length,
+    callIdsMatched: matchedPairs === calls.length && matchedPairs === outputs.length, reasoningItems: itemCounts.reasoning,
+    emptyAssistantMessages, emptyAssistantText, reasoningSummaryPresent, reasoningEncryptedContentPresent };
+}
+
 export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, deadlineAt,
-  maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false, failFast = false, onFailure = () => {},
+  maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false, failFast = false, onFailure = () => {}, recordGeometry = false,
   maxConcurrent = maxRequests, maxAggregateOutputTokens = maxRequests * maxOutputTokens, maxInputBytes = 2 * 1024 ** 2, maxAggregateInputBytes = maxRequests * maxInputBytes }) {
   let target;
   try { target = new URL(upstreamUrl); } catch { throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID'); }
@@ -45,12 +76,13 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       !Number.isInteger(maxInputBytes) || maxInputBytes < 1 || maxInputBytes > 2 * 1024 ** 2 ||
       !Number.isInteger(maxAggregateInputBytes) || maxAggregateInputBytes < 1 || maxAggregateInputBytes > maxRequests * maxInputBytes ||
       !upstreamHeaders || typeof upstreamHeaders !== 'object' || Array.isArray(upstreamHeaders) ||
-      typeof failFast !== 'boolean' || typeof onFailure !== 'function' || typeof disableTools !== 'boolean' || typeof filename !== 'string' || !filename || typeof marker !== 'string' || !marker) {
+      typeof recordGeometry !== 'boolean' || typeof failFast !== 'boolean' || typeof onFailure !== 'function' || typeof disableTools !== 'boolean' || typeof filename !== 'string' || !filename || typeof marker !== 'string' || !marker) {
     throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID');
   }
   const headers = { ...upstreamHeaders };
   const records = [];
   const active = new Set();
+  const rejectionReads = new Set();
   const tools = new Map();
   let forwarded = 0, reservedOutputTokens = 0, peakConcurrent = 0, reservedInputBytes = 0, rejectedArrivals = 0;
   function rejectAdmission(...args) { rejectedArrivals++; json(...args); }
@@ -124,37 +156,54 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     if (data.length > maxInputBytes || reservedInputBytes + data.length > maxAggregateInputBytes) { rejectAdmission(response, 429, 'LIVE_INPUT_BUDGET'); return; }
     reservedInputBytes += data.length;
     const number = ++forwarded; reservedOutputTokens += body.max_output_tokens;
-    const record = { number, inputBytes: data.length, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
+    const record = { ...(recordGeometry ? { geometry: requestGeometry(body.input) } : {}), number, inputBytes: data.length, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
     records.push(record);
     const outgoingHeaders = { ...headers, 'content-type': 'application/json', accept: 'text/event-stream', 'content-length': data.length };
     for (const name of ['x-swarmenv-request-id', 'x-request-id', 'idempotency-key']) {
       if (typeof request.headers[name] === 'string') outgoingHeaders[name] = request.headers[name];
     }
-    let upstream;
+    let upstream, parsingRejection = false;
     try {
       upstream = (target.protocol === 'https:' ? httpsRequest : httpRequest)(target, { method: 'POST', headers: outgoingHeaders }, incoming => {
         record.status = 'responding';
         record.statusCode = incoming.statusCode;
-        if ((incoming.statusCode ?? 502) >= 400) {
+        const statusCode = incoming.statusCode ?? 502;
+        if (statusCode >= 400 || (failFast && (statusCode < 200 || statusCode >= 300))) {
           const chunks = [];
-          let bytes = 0;
+          let bytes = 0, finished = false, timer;
+          parsingRejection = true;
+          record.status = 'rejected';
+          record.rejection = rejectionClassification(Buffer.alloc(0));
+          if (failFast) active.delete(upstream);
+          let resolveRead;
+          const read = new Promise(resolve => { resolveRead = resolve; });
+          rejectionReads.add(read);
+          const finish = state => {
+            if (finished) return;
+            finished = true; clearTimeout(timer); parsingRejection = false; active.delete(upstream);
+            record.rejectionRead = state;
+            record.rejection = rejectionClassification(state === 'complete' ? Buffer.concat(chunks) : Buffer.alloc(0));
+            if (failure?.number === number) failure.rejection = record.rejection;
+            rejectionReads.delete(read); resolveRead();
+            json(response, statusCode, 'LIVE_PROVIDER_REJECTED');
+            if (state !== 'complete') incoming.destroy();
+          };
           incoming.on('data', chunk => {
+            if (finished) return;
             bytes += chunk.length;
-            if (bytes <= 64 * 1024) chunks.push(chunk);
+            if (bytes > 64 * 1024) { finish('oversized'); return; }
+            chunks.push(chunk);
           });
-          incoming.on('end', () => {
-            record.status = 'rejected';
-            record.rejection = rejectionClassification(bytes <= 64 * 1024 ? Buffer.concat(chunks) : Buffer.alloc(0));
-            active.delete(upstream);
-            if (failFast && !failure) {
-              failure = { code: 'LIVE_PROVIDER_REJECTED', number, statusCode: incoming.statusCode ?? 502, rejection: record.rejection };
-              // Fence synchronously before callback cancellation can race another admission.
-              active.forEach(request => request.destroy());
-              try { onFailure(structuredClone(failure)); } catch { /* The fence remains authoritative. */ }
-            }
-            json(response, incoming.statusCode ?? 502, 'LIVE_PROVIDER_REJECTED');
-          });
-          incoming.on('error', () => { record.status = failure ? 'failure_aborted' : 'stream_failed'; active.delete(upstream); json(response, 502, 'LIVE_UPSTREAM_FAILED'); });
+          incoming.on('end', () => finish('complete'));
+          incoming.on('error', () => finish('failed'));
+          // Only the hosted fail-fast path changes the legacy error-body wait.
+          if (failFast) timer = setTimeout(() => finish('timeout'), 250);
+          if (failFast && !failure) {
+            failure = { code: 'LIVE_PROVIDER_REJECTED', number, statusCode, rejection: record.rejection };
+            // Headers are enough to fence; body parsing is separately bounded.
+            active.forEach(request => request.destroy());
+            try { onFailure(structuredClone(failure)); } catch { /* The fence remains authoritative. */ }
+          }
           return;
         }
         response.writeHead(incoming.statusCode ?? 502, incoming.headers);
@@ -176,11 +225,12 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       });
       active.add(upstream); peakConcurrent = Math.max(peakConcurrent, active.size);
       upstream.on('error', () => {
+        if (record.status === 'rejected') return;
         record.status = failure ? 'failure_aborted' : deadlineReached ? 'deadline_aborted' : 'transport_failed';
         active.delete(upstream);
         if (response.headersSent) response.destroy(); else json(response, 502, 'LIVE_UPSTREAM_FAILED');
       });
-      response.on('close', () => { if (!response.writableEnded) upstream.destroy(); });
+      response.on('close', () => { if (!response.writableEnded && !(failFast && parsingRejection)) upstream.destroy(); });
       upstream.end(data);
     } catch {
       record.status = 'dispatch_failed';
@@ -204,7 +254,11 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       closing = true;
       clearTimeout(deadline);
       active.forEach(request => request.destroy());
-      closePromise = new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
+      closePromise = (async () => {
+        // Preserve the first finite classification even if work cancellation closes the client.
+        if (failFast) await Promise.all([...rejectionReads]);
+        await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
+      })();
       return closePromise;
     },
   };
