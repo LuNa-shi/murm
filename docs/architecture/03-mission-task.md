@@ -128,13 +128,14 @@ its request ID with the same actor, Task, Execution, spec and payload returns
 that receipt, even with refreshed state/fence versions; changed content or
 identity conflicts. `getExecution` includes its persisted finish, and
 `task_view.finishes` returns finish history with accepted/closed timestamps.
-These records distinguish accepted cleanup from completed cleanup. A new
-Runtime uses the durable Bot/resource identity and Mission-scoped provider
-reconciliation after process loss. It persists a uniquely recovered sandbox
-identity before deletion and finalizes only after provider absence is confirmed.
-An ambiguous create or deletion retains cleanup ownership. An empty in-memory
-process map is insufficient to release the Task. See [Execution](02-execution.md)
-for the restart procedure and its evidence.
+These records distinguish accepted cleanup from completed cleanup. The live
+Runtime retains its Bot/resource binding through uncertain creation or deletion
+and finalizes only after isolation is confirmed. A different Runtime without
+that binding cannot stop or release the original owner; an empty in-memory
+process map is insufficient to release the Task. The unused cross-process
+Mission recovery entry has been removed. Durable receipts remain inspectable,
+without an automatic process-recovery guarantee. See [Execution](02-execution.md)
+for owned cleanup and its verification boundaries.
 
 The lifecycle tests exercise real Task/Context services, reopening current
 SQLite stores, dependency rollback, request replay and trusted finalization.

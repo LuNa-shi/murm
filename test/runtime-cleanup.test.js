@@ -74,6 +74,22 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), bind
   return { service, runtime, sandboxManager, session, executionId: take.execution.execution_id };
 }
 
+test('a Runtime without the registered resource binding cannot stop or release another owner', async t => {
+  const { runtime, service, sandboxManager, session, executionId } = await fixture(t);
+  const observer = new Runtime({ taskService: service, workspaceManager: {}, sandboxManager });
+  try {
+    const before = service.getExecution(executionId);
+    await assert.rejects(observer.stopExecution(executionId), { code: 'SERVICE_UNAVAILABLE' });
+    await assert.rejects(observer.releaseExecution(executionId), { code: 'SERVICE_UNAVAILABLE' });
+    assert.deepEqual(service.getExecution(executionId), before);
+    assert.equal(session.closed, false);
+    assert.equal(sandboxManager.snapshot().executions.length, 1);
+    assert.equal(runtime.getCoreStatus('core-1').state, 'RUNNING');
+  } finally { await observer.shutdown(); }
+  await runtime.stopExecution(executionId);
+  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
+});
+
 test('Runtime retains Core occupancy until provider deletion is confirmed', async (t) => {
   const removing = deferred();
   const removed = deferred();
