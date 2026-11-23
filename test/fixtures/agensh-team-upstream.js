@@ -5,6 +5,8 @@ import { streamResponse } from './core-controlled-upstream.js';
 export const teamFact = 'T15_FACT_BASE_VALUE=7';
 export const teamClaim = 'T15_SHARED_COMPONENT';
 export const teamInputs = ['T15_KICK_A', 'T15_KICK_B', 'T15_NEGOTIATE', 'T15_CONFIRM', 'T15_USER'];
+export const eightPeerKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+export const latePeerInput = 'T15_ADOPT_H';
 
 export function teamCommand(stage, batch, peerNames) {
   const setup = `import assert from 'node:assert/strict';
@@ -20,12 +22,12 @@ const identity={cwd:process.cwd(),pi:proc(),branch:process.env.WORK_BRANCH};
   const initial = `git('clone',process.env.RUN_REPOSITORY,'.');git('switch','-c',process.env.WORK_BRANCH);
 const note=cli('agensh-context','board_write',{...board,type:'CLAIM',content:claim});assert.equal(note.status,'admitted');
 let factLabel;
-${stage === 'a-initial' ? "const published=cli('agensh-context','board_write',{...board,type:'FACT',content:fact,detail:'Shared input required by the right contribution'});assert.equal(published.status,'admitted');factLabel=published.label;" : `const message=cli('message','post_message',{channel_id:process.env.RUN_CHANNEL,message:'@${peerNames.a} T15_NEGOTIATE I also claimed the component. I will take right.txt, please take left.txt.'});assert.ok(message.id);`}
+${stage === 'a-initial' ? "const published=cli('agensh-context','board_write',{...board,type:'FACT',content:fact,detail:'Shared input required by the right contribution'});assert.equal(published.status,'admitted');factLabel=published.label;" : stage === 'b-initial' ? `const message=cli('message','post_message',{channel_id:process.env.RUN_CHANNEL,message:'@${peerNames.a} T15_NEGOTIATE I also claimed the component. I will take right.txt, please take left.txt.'});assert.ok(message.id);` : ''}
 const result={stage,event,...identity,claimLabel:note.label,...(factLabel?{factLabel}:{})};writeFileSync('.team-state.json',JSON.stringify(result));console.log(JSON.stringify(result));`;
   const contribution = `const before=JSON.parse(readFileSync('.team-state.json','utf8'));assert.deepEqual(identity.pi,before.pi);assert.equal(identity.cwd,before.cwd);
 const context=cli('agensh-context','board_read',board);assert.ok(context.rendered.includes(fact));
 const claims=cli('agensh-context','board_grep',{...board,words:claim,types:'CLAIM',limit:10});assert.ok(claims.total>=2);
-const file=${JSON.stringify(stage === 'a-contribution' ? 'left.txt' : 'right.txt')};const adoptedFact=context.rendered.match(/T15_FACT_BASE_VALUE=[0-9]+/)?.[0];assert.equal(adoptedFact,fact);const content=${stage === 'a-contribution' ? JSON.stringify('T15_LEFT_ACCEPTED\n') : "'T15_RIGHT_ADOPTED '+adoptedFact+'\\n'"};
+const file=${JSON.stringify(stage === 'a-contribution' ? 'left.txt' : stage === 'h-contribution' ? 'eight-h.txt' : 'right.txt')};const adoptedFact=context.rendered.match(/T15_FACT_BASE_VALUE=[0-9]+/)?.[0];assert.equal(adoptedFact,fact);const content=${stage === 'a-contribution' ? JSON.stringify('T15_LEFT_ACCEPTED\n') : stage === 'h-contribution' ? "'T15_EIGHT_ADOPTED '+adoptedFact+'\\n'" : "'T15_RIGHT_ADOPTED '+adoptedFact+'\\n'"};
 writeFileSync(file,content);assert.equal(readFileSync(file,'utf8'),content);git('add',file);git('commit','-m','Peer checked contribution '+file);const head=git('rev-parse','HEAD');git('push','-u','origin',process.env.WORK_BRANCH);
 const pr=cli('gitea','pull_request_write',{...repo,method:'create',title:'T15 '+file,head:process.env.WORK_BRANCH,base:'main'});assert.equal(pr.head.sha,head);
 const summary=cli('agensh-context','board_write',{...board,type:'PATCH_SUMMARY',content:'files='+file+' | idea=agreed split contribution | evidence=verified exact file bytes; PR '+pr.number+' head '+head});assert.equal(summary.status,'admitted');
@@ -37,21 +39,25 @@ const result={stage,event,...identity,publicHead,privateHead,binary:readFileSync
   return `node --input-type=module <<'TEAM_CHECK'\n${setup}\n${stage.endsWith('initial') ? initial : stage.endsWith('contribution') ? contribution : user}\nTEAM_CHECK`;
 }
 
-export async function createTeamUpstream({ deadlineAt, peerNames, onFailure = () => {} }) {
+export async function createTeamUpstream({ deadlineAt, peerNames, peerKeys = ['a', 'b'], onFailure = () => {} }) {
+  assert.ok(JSON.stringify(peerKeys) === JSON.stringify(['a', 'b']) || JSON.stringify(peerKeys) === JSON.stringify(eightPeerKeys));
+  const names = ['a-initial', 'b-initial', 'a-contribution', 'b-contribution', 'a-user',
+    ...peerKeys.slice(2).map(key => `${key}-initial`), ...(peerKeys.length === 8 ? ['h-contribution'] : [])];
+  const markers = [...teamInputs, ...peerKeys.slice(2).map(key => `T15_KICK_${key.toUpperCase()}`), ...(peerKeys.length === 8 ? [latePeerInput] : [])];
+  const maxRequests = names.length * 2;
   const stages = new Map(); const evidence = []; let arrivals = 0, accepted = 0, failure;
   const server = createServer(async (request, response) => {
     const arrival = ++arrivals; let step = 'bounds';
     try {
-      assert.ok(!failure && arrival <= 10 && Date.now() < deadlineAt); assert.equal(request.method, 'POST'); assert.equal(request.url, '/v1/responses');
+      assert.ok(!failure && arrival <= maxRequests && Date.now() < deadlineAt); assert.equal(request.method, 'POST'); assert.equal(request.url, '/v1/responses');
       const chunks = []; let bytes = 0; for await (const chunk of request) { bytes += chunk.length; assert.ok(bytes <= 2 * 1024 ** 2); chunks.push(chunk); }
       step = 'batch'; const body = JSON.parse(Buffer.concat(chunks)); assert.equal(body.model, 'k3'); assert.ok(body.max_output_tokens > 0 && body.max_output_tokens <= 128);
       const current = body.input.filter(row => row.role === 'user').at(-1); const text = typeof current?.content === 'string' ? current.content : current.content.map(part => part.text ?? '').join('');
       const batch = JSON.parse(text.slice(text.indexOf('\n') + 1));
-      const names = ['a-initial', 'b-initial', 'a-contribution', 'b-contribution', 'a-user'];
-      const indices = teamInputs.map((marker, index) => batch.text.includes(marker) ? index : -1).filter(index => index >= 0); assert.equal(indices.length, 1);
+      const indices = markers.map((marker, index) => batch.text.includes(marker) ? index : -1).filter(index => index >= 0); assert.equal(indices.length, 1);
       const index = indices[0], stage = names[index];
-      assert.equal(batch.source, index < 2 ? 'kickoff' : index === 4 ? 'gitea' : 'mattermost');
-      if (index > 1) assert.ok(batch.context.includes(teamFact));
+      assert.equal(batch.source, stage.endsWith('initial') ? 'kickoff' : stage.endsWith('user') || stage === 'h-contribution' ? 'gitea' : 'mattermost');
+      if (!stage.endsWith('initial')) assert.ok(batch.context.includes(teamFact));
       const prior = stages.get(stage); const callId = `team_${stage}`; let item;
       if (!prior) {
         stages.set(stage, { batchId: batch.batchId, eventId: batch.eventId });
@@ -74,5 +80,5 @@ export async function createTeamUpstream({ deadlineAt, peerNames, onFailure = ()
     }
   });
   server.requestTimeout = 10_000; server.headersTimeout = 10_000; server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  return { url: `http://127.0.0.1:${server.address().port}/v1/responses`, receipt: () => ({ arrivals, accepted, failure, evidence: structuredClone(evidence) }), close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
+  return { url: `http://127.0.0.1:${server.address().port}/v1/responses`, receipt: () => ({ arrivals, accepted, maxRequests, peerKeys: [...peerKeys], failure, evidence: structuredClone(evidence) }), close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }
