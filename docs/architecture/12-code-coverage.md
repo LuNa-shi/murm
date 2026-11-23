@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **184 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **183 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. Root files: `package.json`, `package-lock.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `package.json`, `package-lock.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -151,12 +151,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 |---|---|---|---|
 | [src/agent/bot-contract/solver-system.txt](../../src/agent/bot-contract/solver-system.txt) | Immutable independent solver system addendum without collaboration skills | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md) | `33ea49d9c46fc7402dac07ec040aed24da56dd4d92cb3b7e8fe7d1cdae0c445d` |
 
-### controlled verification data (1)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [fixtures/putnam-1966-a1/putnam_1966_a1.lean](../../fixtures/putnam-1966-a1/putnam_1966_a1.lean) | Locked formalization used by controlled fixture | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `4b1bd530669e71e5909398d54caddeb65eb33a708850e25ba4f1d7fc88ba0cad` |
-
 ### documentation tooling (4)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -191,7 +185,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5bc5f9a6013ab68a2936cfa877461691fa0b6927f37fcf6e2b5c277a443f09bf` |
 | [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree and npm packlist | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `2a44776261a1d89273680ebb27ef5b053e377b13c15be7c4a9ee835d53fc0f89` |
 | [package-lock.json](../../package-lock.json) | Exact dependency resolution, including external Pi/frontend packages | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `2d471521d4fa707f5371b0eccc8e2476397b6d76813ebece9a88131f2d9178a8` |
-| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `66c242aa40819d9ae92fc48d9c7da298a5a98a35a23221edec852d5c5ad75cd8` |
+| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `bd37b62a339c4889fb7991a4d3f3d854724282093f16ec037d93c8d3ba9c90c3` |
 | [scripts/mathlib-search-service.mjs](../../scripts/mathlib-search-service.mjs) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |
 | [scripts/read-environment-result.mjs](../../scripts/read-environment-result.mjs) | Host CLI for saved result inspection using the shared reader | [17-environment-reporting](17-environment-reporting.md) | `085216b0cbf70458a42add00b1c430c4e582e72fa51497b55edee5ff5152930d` |
 | [scripts/run-environment.mjs](../../scripts/run-environment.mjs) | Foreground host CLI for explicit local Environment configuration and bounded control | [17-environment-reporting](17-environment-reporting.md) | `079448ca418c2876e92141d21403d99b8b3a610ec71520839809f26159b80630` |
@@ -202,7 +196,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/shared/foreground-commands.js](../../src/environments/shared/foreground-commands.js) | Serial JSON-line host commands and bounded status/input receipt projection | [17-environment-reporting](17-environment-reporting.md) | `6337e1674cfaf158e0b7e07d8b72af40ffc5c864b03382a3542b955c1a688760` |
 | [src/environments/shared/foreground-host.js](../../src/environments/shared/foreground-host.js) | Shared foreground Environment driver using existing mode controllers and lifecycle reports | [17-environment-reporting](17-environment-reporting.md) | `7f11f2854de935e5f13c516d2aee4b3fee96b76a613d43d3b350c0316a25b318` |
 | [src/environments/shared/read-result.js](../../src/environments/shared/read-result.js) | Read saved Environment and Core receipts with expected identity and bounded normal-output projection | [17-environment-reporting](17-environment-reporting.md) | `99640d0f1709ff0777bc44c6c2f4edd48c4ad43c4791e88dfda5aa3bda17d06e` |
-| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5f758b76c55d54d5a1a9bb32e0fa675af17b5f8592090d5cc1ddd8a7f9cbb795` |
+| [src/index.js](../../src/index.js) | Source exports for domain services, Runtime, SDK and generic checker fixture contracts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5f758b76c55d54d5a1a9bb32e0fa675af17b5f8592090d5cc1ddd8a7f9cbb795` |
 
 ### observability and reporting (2)
 

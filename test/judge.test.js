@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
@@ -12,18 +12,21 @@ import {
   agentCheckResult,
   makeEnvelope,
   validateFixtureManifest,
+  createFixtureManifest,
 } from '../src/index.js';
 
+const fixtureSource = 'theorem fixture_truth : True := by trivial\n';
+
 const fixtureManifest = {
-  fixture_id: 'putnam-1966-a1',
-  putnambench_commit: 'a635813f5edf297d928f9bd5ef8324a26bdde09c',
-  problem_file: 'lean4/src/putnam_1966_a1.lean',
-  problem_file_hash: '4b1bd530669e71e5909398d54caddeb65eb33a708850e25ba4f1d7fc88ba0cad',
+  fixture_id: 'synthetic-truth',
+  putnambench_commit: '1111111111111111111111111111111111111111',
+  problem_file: 'lean4/src/input.lean',
+  problem_file_hash: '3fdfe56b91d9bf0b84a43d332dd95e372768df80f9921b8795981510e0b963a8',
   lean_toolchain: 'leanprover/lean4:v4.33.1',
   mathlib_version: '0df444a360eaa60ab8c11dca51a86af692955474',
   checker_ref: 'lean',
   checker_version: 'mvp-1',
-  environment_ref: 'putnambench-lean4@a635813f5edf297d928f9bd5ef8324a26bdde09c',
+  environment_ref: 'synthetic-lean4-fixture',
 };
 
 const targetTask = { task_id: 'task-proof', spec_version: 1, spec_hash: 'spec-hash' };
@@ -114,12 +117,20 @@ test('Agent CheckResult feedback redacts credentials from checker diagnostics', 
   assert.doesNotMatch(feedback.diagnostic_excerpt, /sk-test-secret-value-123456|eyJsecret-token-value|another-secret-value|user:password/);
 });
 
-test('fixture manifest locks PutnamBench commit, problem hash, Lean, Mathlib, checker, and environment', async () => {
-  validateFixtureManifest(fixtureManifest);
-  const source = await readFile('fixtures/putnam-1966-a1/putnam_1966_a1.lean');
-  assert.equal(source.length, 539);
-  assert.equal(fixtureManifest.problem_file_hash, '4b1bd530669e71e5909398d54caddeb65eb33a708850e25ba4f1d7fc88ba0cad');
-  assert.equal(fixtureManifest.putnambench_commit.length, 40);
+test('fixture manifest binds original source bytes and validates locked checker identity', async t => {
+  const root = await mkdtemp('/tmp/swarmenv-original-fixture-');
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const problemFile = join(root, 'input.lean');
+  await writeFile(problemFile, fixtureSource);
+  const created = await createFixtureManifest({ fixtureId: fixtureManifest.fixture_id,
+    putnambenchCommit: fixtureManifest.putnambench_commit, problemFile,
+    leanToolchain: fixtureManifest.lean_toolchain, mathlibVersion: fixtureManifest.mathlib_version,
+    checkerRef: fixtureManifest.checker_ref, checkerVersion: fixtureManifest.checker_version,
+    environmentRef: fixtureManifest.environment_ref });
+  assert.equal(created.problem_file_hash, fixtureManifest.problem_file_hash);
+  validateFixtureManifest(created);
+  assert.throws(() => validateFixtureManifest({ ...created, problem_file_hash: 'not-sha256' }), { code: 'INVALID_CONTRACT' });
+  assert.throws(() => validateFixtureManifest({ ...created, putnambench_commit: 'not-a-commit' }), { code: 'INVALID_CONTRACT' });
 });
 
 test('Lean checker returns PASS only for a clean zero exit and preserves failure evidence', async () => {
@@ -191,8 +202,8 @@ test('Checker result contract distinguishes source failure from a checker that n
 test('Lean checker preflight reports an unavailable executable before proof checking', async () => {
   const root = await mkdtemp('/tmp/swarmenv-checker-missing-executable-');
   const projectRoot = join(root, 'lean4');
-  const problemPath = join(projectRoot, 'src', 'putnam_1966_a1.lean');
-  const source = await readFile('fixtures/putnam-1966-a1/putnam_1966_a1.lean');
+  const problemPath = join(projectRoot, 'src', 'input.lean');
+  const source = fixtureSource;
   try {
     await mkdir(join(projectRoot, 'src'), { recursive: true });
     await writeFile(problemPath, source);

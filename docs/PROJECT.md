@@ -1,6 +1,6 @@
 # SwarmEnv — research context
 
-> Type: Research context · Status: Ongoing research · Updated 2026-11-12
+> Type: Research context · Status: Ongoing research · Updated 2026-11-23
 
 SwarmEnv is an experimental platform for understanding autonomous collaboration among multiple Agents. Agents can assume independent responsibilities toward a shared objective, produce traceable contributions, and allow subsequent Agents to verify, extend, revise or integrate those contributions.
 
@@ -25,6 +25,6 @@ These are open research questions, not proven conclusions or permission to hard-
 
 ## Current experimental setting
 
-PutnamBench, Lean/Mathlib and existing multi-Core execution paths are the primary current testbed. The long-term goal is a transferable collaboration system; problem-specific mathematical strategies are not default architectural requirements.
+The current Phase 0005 builds a programmable Core shared by flat, agensh and developer-defined Environments. The fixed research revision preserves earlier mathematical benchmarks and experiment evidence. Generic Lean/Mathlib checking remains available to hosts that explicitly configure it; mathematical datasets and dedicated benchmark launchers are absent from the current distribution. The long-term goal is a transferable collaboration system; problem-specific mathematical strategies are not default architectural requirements.
 
-The **next approved work objective** lives in a human-reviewed GitHub Issue, which specifies why the task matters and the behavior and evidence expected. Coding Agents follow the approved Issue, its comments and explicitly accepted design revision, and record substantive implementation and verification progress in the Issue/PR. Numbered [phase documents](phases/INDEX.md) explain proposed changes. The complete current implementation is described in [Architecture](architecture/INDEX.md), updated in implementation PRs and reconciled at stage closeout.
+For Phase 0005, the [design on main](phases/0005-core-environment/README.md) is the authority for target requirements, scope and acceptance; linked Issues track implementation slices and evidence. Outside that exception, the next approved work objective lives in a human-reviewed GitHub Issue and its accepted design revision. Coding Agents record substantive implementation and verification progress in the Issue/PR. Numbered [phase documents](phases/INDEX.md) distinguish reviewed targets from pending proposals. The complete current implementation is described in [Architecture](architecture/INDEX.md), updated in implementation PRs and reconciled at stage closeout.
