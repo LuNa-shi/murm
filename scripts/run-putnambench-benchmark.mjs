@@ -5,6 +5,7 @@ import { renameSync, writeFileSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { join, relative, resolve, sep } from 'node:path';
+import { DEFAULT_BENCHMARK_MODEL } from '../src/agent/bot-model-access.js';
 import { loadBenchmarkConfig, runBenchmarkBatch, runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
 import { runPassK } from '../src/benchmark/pass-k.js';
 import { ObservationStore } from '../src/observability/observation-store.js';
@@ -151,8 +152,8 @@ function optionsFromArgs(argv) {
     observabilityHost: '127.0.0.1',
     observabilityAdvertiseHost: null,
     observabilityMetadataPath: process.env.SWARMENV_OBSERVABILITY_METADATA ?? null,
-    model: process.env.PI_MODEL ?? 'gpt-6.2-sol',
-    provider: process.env.PI_PROVIDER ?? 'gpt_proxy',
+    model: process.env.PI_MODEL ?? DEFAULT_BENCHMARK_MODEL.model,
+    provider: process.env.PI_PROVIDER ?? DEFAULT_BENCHMARK_MODEL.provider,
     sandbox: {
       enabled: process.env.SWARMENV_SANDBOX_ENABLED === 'true',
       provider: process.env.SWARMENV_SANDBOX_PROVIDER ?? 'opensandbox',
@@ -227,6 +228,7 @@ function usage() {
     '    --initial-bot-stagger-ms 60000',
     '    --execution-timeout-ms 600000',
     '    --checker-timeout-ms 180000',
+    `    --provider <id> --model <id>   Defaults to ${DEFAULT_BENCHMARK_MODEL.provider}/${DEFAULT_BENCHMARK_MODEL.model} after PI_PROVIDER and PI_MODEL overrides`,
     '    --experiment-root experiments',
     '    --experiment-dir experiments/putnambench-runs/run-<id>',
     '    --report-dir reports/putnambench-runs/run-<id>',

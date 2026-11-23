@@ -171,7 +171,9 @@ test('gateway stop during listen settles startup and repeated stop', async t => 
 test('timed model pairing uses the actual shipped Responses catalog and requires direct Pi', async () => {
   const pair = { provider: 'gpt_proxy', model: 'gpt-6.1-sol', command: 'pi' };
   const catalog = await readFile(new URL('../services/opensandbox-agent/pi-models.json', import.meta.url));
-  assert.deepEqual(await assertBenchmarkModelPair(pair), { path: '/opt/swarmenv/pi-agent/models.json', sha256: createHash('sha256').update(catalog).digest('hex') });
+  const resource = { path: '/opt/swarmenv/pi-agent/models.json', sha256: createHash('sha256').update(catalog).digest('hex') };
+  assert.deepEqual(await assertBenchmarkModelPair(pair), resource);
+  assert.deepEqual(await assertBenchmarkModelPair({ provider: 'kimi_proxy', model: 'k3', command: 'pi' }), resource);
   await assertBenchmarkModelPair({ ...pair, command: '/usr/local/bin/pi' });
   await assert.rejects(assertBenchmarkModelPair({ ...pair, provider: 'openai' }), /Responses catalog/);
   await assert.rejects(assertBenchmarkModelPair({ ...pair, provider: 'constructor' }), /Responses catalog/);

@@ -1,6 +1,31 @@
 {
   "$schema": "https://pi.dev/schemas/models.schema.json",
   "providers": {
+    "kimi_proxy": {
+      "name": "Kimi proxy",
+      "baseUrl": "$PI_KIMI_PROXY_BASE_URL",
+      "api": "openai-responses",
+      "apiKey": "$PI_KIMI_PROXY_API_KEY",
+      "authHeader": true,
+      "headers": {
+        "X-OpenAI-Actor-Authorization": "proxy-managed"
+      },
+      "compat": {
+        "supportsReasoningEffort": true,
+        "supportsDeveloperRole": true,
+        "supportsStrictMode": true,
+        "supportsMaxOutputTokens": true
+      },
+      "models": [
+        {
+          "id": "k3",
+          "name": "Kimi K3",
+          "reasoning": true,
+          "contextWindow": 256000,
+          "maxTokens": 128000
+        }
+      ]
+    },
     "gpt_proxy": {
       "name": "GPT proxy",
       "baseUrl": "$PI_GPT_PROXY_BASE_URL",

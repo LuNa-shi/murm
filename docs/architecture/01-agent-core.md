@@ -31,8 +31,8 @@ The Agent adapter starts direct `pi`. An explicit absolute path ending in `/pi` 
 |---|---|
 | `openai` | Direct Pi with explicit provider and model |
 | `openai-codex` | Direct Pi with explicit provider and model |
-| `gpt_proxy` | Direct Pi with explicit provider and model, the benchmark CLI default |
-| `kimi_proxy` | Direct Pi with explicit provider and model |
+| `gpt_proxy` | Direct Pi with explicit provider and model |
+| `kimi_proxy` | Direct Pi with explicit provider and model. The benchmark launchers default to this provider with model `k3`. |
 | Other value | Launch rejected with `INVALID_CONTRACT` |
 
 The registered OpenSandbox argument list, resource attestation and tool exposure are described in §2.4. Startup always uses that adapter; there is no custom local adapter factory or fallback that changes tool permissions. [Sources: benchmark composition](../../src/benchmark/putnam-runner.js), [OpenSandbox adapter](../../src/agent/opensandbox-agent-adapter.js).

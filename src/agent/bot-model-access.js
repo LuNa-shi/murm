@@ -3,6 +3,8 @@ import { readFile } from 'node:fs/promises';
 import { ResponsesBudgetGateway } from './responses-budget-gateway.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 
+export const DEFAULT_BENCHMARK_MODEL = Object.freeze({ provider: 'kimi_proxy', model: 'k3' });
+
 export async function assertBenchmarkModelPair({ provider, model, command }) {
   if (typeof command !== 'string' || (command !== 'pi' && !command.endsWith('/pi'))) {
     throw new TypeError('Timed benchmarks require direct Pi');
