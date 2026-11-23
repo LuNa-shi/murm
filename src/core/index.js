@@ -155,12 +155,22 @@ export async function createRuntime(options) {
     modelAccess.revokeBot(botId);
   }
 
+  function refreshActivity(bot) {
+    if (liveStates.has(bot.info.status)) {
+      bot.info.status = bot.nativeExecuting || bot.activityClaims.size ? 'running' : 'idle';
+    }
+  }
+
   function emit(bot, payload) {
     const { info } = bot;
     const event = structuredClone({ ...payload, botId: info.id, seq: ++info.cursor });
     if (event.type === 'output') info.latestOutput = event.text;
     if (event.type === 'settled') {
-      if (info.status === 'running') info.status = 'idle';
+      bot.nativeExecuting = false;
+      // This execution no longer owns running. Input receipts remain intact:
+      // a settled event does not establish which queued inputs were consumed.
+      bot.activityClaims.clear();
+      refreshActivity(bot);
       info.latestOutput = event.output;
       info.lastError = event.error;
     }
@@ -237,7 +247,7 @@ export async function createRuntime(options) {
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       const bot = {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
-        inputVersion: 0, executionVersion: 0, executionStopped: false,
+        activityClaims: new Set(), nativeExecuting: false, executionStopped: false,
       };
       request = { fingerprint, bot };
       bots.set(info.id, bot);
@@ -247,8 +257,8 @@ export async function createRuntime(options) {
         await backend.spawn({ botId: info.id, profile: bot.profile, options: parameters,
           signal: bot.controller.signal, onEvent: event => emit(bot, event),
           onExecutionStart: () => {
-            bot.executionVersion += 1;
-            if (info.status === 'idle') info.status = 'running';
+            bot.nativeExecuting = true;
+            refreshActivity(bot);
           } });
         if (info.status !== 'starting') throw new Error('Bot stopped before becoming idle');
         info.status = 'idle';
@@ -287,14 +297,9 @@ export async function createRuntime(options) {
         throw problem('NOT_ALLOWED', 'Bot is not accepting input', 'send', botId, requestId);
       }
       const inputId = randomUUID();
-      const wasIdle = bot.info.status === 'idle';
-      const executionVersion = bot.executionVersion;
-      const version = ++bot.inputVersion;
-      bot.info.status = 'running';
-      const restoreIdle = () => {
-        if (wasIdle && bot.inputVersion === version && bot.executionVersion === executionVersion && bot.info.status === 'running') {
-          bot.info.status = 'idle';
-        }
+      const releaseActivity = () => {
+        bot.activityClaims.delete(request);
+        refreshActivity(bot);
       };
       request = { inputId, input, mode, run: async () => {
         if (request.dispatched && bot.info.status === 'closed') return { inputId, status: 'unknown' };
@@ -305,16 +310,18 @@ export async function createRuntime(options) {
         try {
           request.dispatched = true;
           const receipt = await backend.send(botId, input, { mode, inputId });
-          if (receipt.disposition === 'handled') restoreIdle();
+          if (receipt.status === 'accepted' && receipt.disposition === 'handled') releaseActivity();
           return { ...receipt, inputId };
         } catch (error) {
           if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
-            restoreIdle();
+            releaseActivity();
             throw problem(error.code, error.message, 'send', botId, requestId);
           }
           return { inputId, status: 'unknown' };
         }
       } };
+      bot.activityClaims.add(request);
+      refreshActivity(bot);
       inputRequests.reserve('host', botId, requestId, { input, mode }, () => request);
     }
     if (!request.result) {

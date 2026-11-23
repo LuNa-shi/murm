@@ -137,3 +137,49 @@ test('handled receipt preserves existing execution and newer input activity', as
   assert.equal((await runtime.send(bot.id, '/local-command', { requestId: 'handled-while-busy' })).disposition, 'handled');
   assert.equal((await runtime.get(bot.id)).status, 'running');
 });
+
+for (const resolution of ['handled', 'rejected']) test(`overlapping local inputs release running after reverse-order ${resolution} receipt`, async t => {
+  const { runtime, bot } = await setup(t);
+  const release = [];
+  const queue = (outcome = 'handled') => {
+    transport.next = id => new Promise((resolve, reject) => { release.push(() => {
+      if (outcome === 'rejected') reject(Object.assign(new Error('Local command rejected'), { code: 'INVALID_CONTRACT' }));
+      else { transport.confirm(id, 'handled'); resolve(); }
+    }); });
+  };
+  queue(resolution);
+  const first = runtime.send(bot.id, '/first-command', { requestId: 'first-local' });
+  await new Promise(resolve => setImmediate(resolve));
+  queue();
+  const second = runtime.send(bot.id, '/second-command', { requestId: 'second-local' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal((await runtime.get(bot.id)).status, 'running');
+  release[1]();
+  assert.equal((await second).disposition, 'handled');
+  assert.equal((await runtime.get(bot.id)).status, 'running');
+  release[0]();
+  if (resolution === 'rejected') await assert.rejects(first, { code: 'INVALID_CONTRACT' });
+  else assert.equal((await first).disposition, 'handled');
+  assert.equal((await runtime.get(bot.id)).status, 'idle');
+});
+
+test('older unknown keeps running until native settlement and late receipt evidence does not resurrect the execution', async t => {
+  const { runtime, bot } = await setup(t);
+  const original = await runtime.send(bot.id, 'uncertain original', { requestId: 'original-unknown' });
+  assert.equal(original.status, 'unknown');
+  transport.next = async id => transport.confirm(id, 'handled');
+  await runtime.send(bot.id, '/local-command', { requestId: 'newer-handled' });
+  assert.equal((await runtime.get(bot.id)).status, 'running');
+  assert.deepEqual(await runtime.send(bot.id, 'uncertain original', { requestId: 'original-unknown' }), original);
+  assert.equal((await runtime.get(bot.id)).status, 'running');
+  transport.listeners.get(bot.id)({ type: 'settled', outcome: 'completed', output: 'Session execution settled' });
+  assert.equal((await runtime.get(bot.id)).status, 'idle');
+  assert.deepEqual(await runtime.send(bot.id, 'uncertain original', { requestId: 'original-unknown' }), original);
+  assert.equal((await runtime.get(bot.id)).status, 'idle');
+  transport.confirm(original.inputId, 'started');
+  const accepted = await runtime.send(bot.id, 'uncertain original', { requestId: 'original-unknown' });
+  assert.equal(accepted.status, 'accepted');
+  assert.equal(accepted.inputId, original.inputId);
+  assert.equal((await runtime.get(bot.id)).status, 'idle');
+  assert.equal(transport.submissions.size, 2);
+});
