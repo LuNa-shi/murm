@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { isIP } from 'node:net';
 import { promisify } from 'node:util';
 import { BOT_UID } from '../../scripts/sandbox-project.mjs';
-import { openSandboxBotKey, openSandboxMissionKey } from './opensandbox-metadata.js';
+import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
 
 const exec = promisify(execFile);
 const firewallPath = '/usr/sbin/nft';
@@ -47,7 +47,7 @@ export class DockerBotNetwork {
   #netIdentity(path) { return this.#sudo('/usr/bin/stat', '-Lc', '%d:%i', path); }
 
   async isolate({ sandboxId, bot, bridgeUrl, modelUrl }) {
-    if (!/^[a-zA-Z0-9_-]+$/.test(sandboxId ?? '') || !bot?.bot_id || !bot.mission_id || !bot.resource_key) throw new TypeError('Trusted Sandbox and Bot identity required');
+    if (!/^[a-zA-Z0-9_-]+$/.test(sandboxId ?? '') || !bot?.bot_id || (!bot.runtime_id && !bot.mission_id) || !bot.resource_key) throw new TypeError('Trusted Sandbox and Bot identity required');
     const permitted = [endpoint(bridgeUrl), endpoint(modelUrl)];
     const rules = [...new Map(permitted.map(row => [`${row.address}:${row.port}`, row])).values()].sort((a, b) => `${a.address}:${a.port}`.localeCompare(`${b.address}:${b.port}`));
     const before = await this.#inspect(`sandbox-${sandboxId}`);
@@ -55,7 +55,7 @@ export class DockerBotNetwork {
     if (!before.running || !Number.isSafeInteger(pid) || pid <= 1 || before.mode !== 'bridge' || before.privileged ||
         before.labels?.['opensandbox.io/id'] !== sandboxId || before.labels?.bot_key !== openSandboxBotKey(bot.bot_id) ||
         before.labels?.resource_key !== openSandboxBotKey(bot.resource_key) ||
-        before.labels?.mission_key !== openSandboxMissionKey(bot.mission_id)) {
+        (bot.runtime_id ? before.labels?.runtime_key !== openSandboxRuntimeKey(bot.runtime_id) : before.labels?.mission_key !== openSandboxMissionKey(bot.mission_id))) {
       throw new Error('Sandbox network identity or local bridge deployment does not match');
     }
 

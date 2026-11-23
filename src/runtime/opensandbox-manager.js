@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
-import { openSandboxBotKey, openSandboxMissionKey } from './opensandbox-metadata.js';
+import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
 
 const DEFAULT_EXECd_PORT = 44772;
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -247,12 +247,12 @@ export class OpenSandboxManager {
 
   async reconcileExecutions(options = {}) { return this.#reconcileExecutions(options); }
 
-  async #reconcileExecutions({ missionId, bots = [], timeoutMs = 30_000, onSandboxDiscovered = null } = {}, recoveringCreation = null) {
-    required(missionId, 'mission_id');
+  async #reconcileExecutions({ missionId, runtimeId, bots = [], timeoutMs = 30_000, onSandboxDiscovered = null } = {}, recoveringCreation = null) {
+    if (!runtimeId) required(missionId, 'mission_id');
     const owned = (key) => this.executions.has(key) ||
       (this.pendingCreations.has(key) && this.pendingCreations.get(key) !== recoveringCreation);
     const liveSandboxIds = new Set([...this.executions.values()].map((record) => record.sandboxId));
-    const targets = bots.filter((bot) => bot.mission_id === missionId && bot.bot_id && bot.resource_key &&
+    const targets = bots.filter((bot) => (runtimeId ? bot.runtime_id === runtimeId : bot.mission_id === missionId) && bot.bot_id && bot.resource_key &&
       (!bot.provider || bot.provider === 'opensandbox'));
     const deadline = Date.now() + timeout(timeoutMs);
     const remaining = () => {
@@ -281,8 +281,10 @@ export class OpenSandboxManager {
       }
     };
     const knownIds = new Set(targets.map((bot) => bot.sandbox_id).filter(Boolean));
-    const missionKey = openSandboxMissionKey(missionId);
-    const missionMismatch = metadata => metadata.mission_key && metadata.mission_key !== missionKey;
+    const ownerKey = runtimeId ? openSandboxRuntimeKey(runtimeId) : openSandboxMissionKey(missionId);
+    const missionMismatch = metadata => runtimeId
+      ? metadata.runtime_key !== ownerKey
+      : metadata.mission_key && metadata.mission_key !== ownerKey;
     for (const bot of targets) {
       if (owned(bot.resource_key)) {
         result.owned_bot_ids.push(bot.bot_id);
@@ -381,7 +383,7 @@ export class OpenSandboxManager {
   }
 
   async ensureExecution({ executionId, botId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null,
-    timeoutSeconds = 3600, projectQuotaRequired = false, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} } = {}) {
+    timeoutSeconds = 3600, projectQuotaRequired = false, cleanupOnFailure = true, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} } = {}) {
     const id = required(executionId, 'execution_id');
     required(botId, 'bot_id');
     const existing = this.executions.get(id);
@@ -396,8 +398,8 @@ export class OpenSandboxManager {
     }
     const launchBody = { ...this.environment, ...envs(environment) };
     const { mission_id: configuredMission = null, mission_key: _missionKey, bot_id: _botId, bot_key: _botKey,
-      resource_key: _resourceKey, ...labels } = { ...this.metadata, ...metadata };
-    const creation = { bot_id: botId, resource_key: id, mission_id: configuredMission, inFlight: true, onCreated };
+      resource_key: _resourceKey, runtime_id: configuredRuntime = null, runtime_key: _runtimeKey, ...labels } = { ...this.metadata, ...metadata };
+    const creation = { bot_id: botId, resource_key: id, mission_id: configuredMission, runtime_id: configuredRuntime, inFlight: true, onCreated };
     if (creation) this.pendingCreations.set(id, creation);
     const workerToken = randomUUID();
     const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort), ...(projectQuotaRequired ? ['--require-project-quota'] : [])];
@@ -419,6 +421,7 @@ export class OpenSandboxManager {
         ...(this.volumes.length > 0 ? { volumes: this.volumes } : {}),
         metadata: {
           ...labels,
+          ...(configuredRuntime ? { runtime_key: openSandboxRuntimeKey(configuredRuntime) } : {}),
           ...(configuredMission ? { mission_key: openSandboxMissionKey(configuredMission) } : {}),
           bot_key: openSandboxBotKey(botId), resource_key: openSandboxBotKey(id),
           ...(bindingVersion === null || bindingVersion === undefined ? {} : { binding_version: String(bindingVersion) }),
@@ -462,7 +465,7 @@ export class OpenSandboxManager {
       }
       if (!execdUrl) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return an Execd endpoint', { sandbox_id: sandboxId, port: this.execdPort });
     } catch (error) {
-      await this.stopExecution(id).catch((cleanupError) => {
+      if (cleanupOnFailure) await this.stopExecution(id).catch((cleanupError) => {
         this.logger?.({ event: 'sandbox.prepare_cleanup_error', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, error_class: cleanupError?.code ?? cleanupError?.name });
       });
       throw error;
@@ -472,7 +475,7 @@ export class OpenSandboxManager {
     try {
       if (this.waitForExecdReady) await this.#waitExecd(record);
     } catch (error) {
-      await this.stopExecution(id).catch(() => undefined);
+      if (cleanupOnFailure) await this.stopExecution(id).catch(() => undefined);
       throw error;
     }
     record.preparing = false;
@@ -577,11 +580,11 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ agentMode = 'swarm', executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
+  async startAgent({ agentMode = 'swarm', writable = false, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
     const record = this.#record(executionId);
     const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }) => ({ path, sha256 })).sort((a, b) => a.path.localeCompare(b.path))) : null;
-    const contract = agentContract(agentMode);
+    const contract = agentMode === 'core' ? { protocolVersion: 'swarmenv-core-v1', resources: [] } : agentContract(agentMode);
     if (signature(resources) !== signature(contract.resources)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
     if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
     if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
@@ -594,6 +597,7 @@ export class OpenSandboxManager {
     const workerHeaders = { authorization: `Bearer ${workerToken}` };
     await this.#waitWorker(endpoint, workerHeaders);
     beforeAgentStart?.();
+    if (agentMode === 'core') record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), starting: true };
     const startup = await this.#request(`${endpoint}/start`, {
       absolute: true,
       workerStart: true,
@@ -612,6 +616,7 @@ export class OpenSandboxManager {
         system_prompt_path: systemPromptPath,
         resources,
         contract_version: contract.protocolVersion,
+        writable,
         ...(projectQuota ? { project_quota: projectQuota } : {}),
         ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}),
       },
@@ -753,6 +758,7 @@ export class OpenSandboxManager {
       this.projectInstallReceipts.set(record.boundExecutionId, { bindingVersion: record.bindingVersion,
         receipts: stopped.project_installs.filter(receipt => receipt.execution_id === record.boundExecutionId && receipt.binding_version === record.bindingVersion) });
     }
+    if (stopped?.stopped !== true) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not confirm execution stopped');
     record.agent = null;
     return true;
   }
@@ -783,7 +789,7 @@ export class OpenSandboxManager {
   }
 
   async #releaseUnknownCreation(creation) {
-    const result = await this.#reconcileExecutions({ missionId: creation.mission_id, bots: [creation],
+    const result = await this.#reconcileExecutions({ missionId: creation.mission_id, runtimeId: creation.runtime_id, bots: [creation],
       onSandboxDiscovered: async (bot, sandboxId) => {
         await bot.onCreated?.({ provider: 'opensandbox', bot_id: bot.bot_id, resource_key: bot.resource_key, sandbox_id: sandboxId });
         bot.sandbox_id = sandboxId;
