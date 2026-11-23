@@ -15,8 +15,8 @@ const sandboxId = `disk-probe-${randomUUID()}`;
 const name = `sandbox-${sandboxId}`;
 const bot = { mission_id: 'mission:disk', bot_id: 'bot:disk', resource_key: 'bot:disk-resource' };
 const catalog = JSON.parse(await readFile(new URL('../services/opensandbox-agent/pi-models.json', import.meta.url)));
-const { assertBenchmarkModelPair } = await import('../src/agent/bot-model-access.js');
-const modelCatalogResource = await assertBenchmarkModelPair({ provider: 'gpt_proxy', model: catalog.providers.gpt_proxy.models[0].id, command: 'pi' });
+const { assertShippedModelPair } = await import('../src/agent/model-catalog.js');
+const modelCatalogResource = await assertShippedModelPair({ provider: 'gpt_proxy', model: catalog.providers.gpt_proxy.models[0].id });
 const request = async (route, payload) => JSON.parse((await docker('exec', name, 'node', '-e', `
   const [path, data] = process.argv.slice(1);
   const request = { headers: { authorization: 'Bearer diskprobe' } };
