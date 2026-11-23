@@ -12,6 +12,50 @@ async function localUpstream(t, handler) {
   return `http://127.0.0.1:${server.address().port}/v1/responses`;
 }
 
+test('closing a held HTTP200 stream records host cancellation before its resulting transport error', { timeout: 3000 }, async t => {
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':held\n\n');
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, filename: 'unused', marker: 'unused' });
+  t.after(() => cap.close());
+  const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const body = response.text().catch(() => 'aborted');
+  await cap.close(); await body;
+  const receipt = cap.receipt(), row = receipt.requests[0];
+  assert.equal(row.statusCode, 200); assert.equal(row.terminal, undefined); assert.equal(row.usage, undefined);
+  assert.equal(row.status, 'stream_failed', 'Legacy status alone must not be interpreted as the cause');
+  assert.equal(row.transport.firstTermination.kind, 'proxy_close');
+  const events = row.transport.events;
+  assert.ok(events.some(event => event.kind === 'upstream_error'));
+  assert.ok(events.find(event => event.kind === 'headers').order < row.transport.firstTermination.order);
+  for (const event of events.filter(event => ['upstream_error', 'request_error'].includes(event.kind))) {
+    assert.ok(event.order > row.transport.firstTermination.order);
+  }
+  assert.ok(events.every((event, index) => Object.keys(event).sort().join(',') === 'elapsedMs,kind,order' && Number.isFinite(event.elapsedMs) && event.elapsedMs >= 0 &&
+    (index === 0 || (event.order > events[index - 1].order && event.elapsedMs >= events[index - 1].elapsedMs))));
+  assert.equal(receipt.forwarded, 1); assert.equal(receipt.rejectedArrivals, 0);
+});
+
+test('an independently broken upstream stream remains the first termination after later proxy close', { timeout: 3000 }, async t => {
+  let held;
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':PRIVATE\n\n'); held = response;
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, filename: 'unused', marker: 'unused' });
+  t.after(() => cap.close());
+  const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const body = response.text().catch(() => 'aborted');
+  held.destroy(); await body;
+  const before = cap.receipt().requests[0].transport.firstTermination;
+  assert.equal(before.kind, 'upstream_error');
+  await cap.close();
+  const row = cap.receipt().requests[0];
+  assert.deepEqual(row.transport.firstTermination, before);
+  assert.ok(row.transport.events.find(event => event.kind === 'proxy_close').order > before.order);
+  assert.equal(row.terminal, undefined); assert.equal(row.statusCode, 200);
+  assert.equal(JSON.stringify(cap.receipt()).includes('PRIVATE'), false);
+});
+
 test('live peer allowance forwards at most twenty capped requests with recorded usage and cumulative input', async t => {
   let calls = 0;
   const upstreamUrl = await localUpstream(t, async (request, response) => {
@@ -86,6 +130,8 @@ test('capped upstream limits actual forwarding and preserves SSE IDs with capped
   assert.equal(first.status, 200);
   assert.equal(first.headers.get('x-request-id'), 'upstream-id');
   assert.equal(await first.text(), sse);
+  assert.deepEqual(cap.receipt().requests[0].transport.events.map(event => event.kind), ['headers', 'terminal', 'upstream_end']);
+  assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'upstream_end');
   assert.equal(received[0].body.max_output_tokens, 64);
   assert.equal(cap.receipt().requests[0].geometry, undefined);
   assert.equal(received[0].headers['x-swarmenv-request-id'], 'original-id');
@@ -110,8 +156,11 @@ test('deadline aborts an active upstream and prevents any later forwarding', asy
   const request = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
   await assert.rejects(request.text());
   assert.equal(cap.receipt().deadlineReached, true);
+  assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'work_expiry');
   assert.equal((await fetch(cap.url, { method: 'POST', body: '{}' })).status, 429);
   assert.equal(requests, 1);
+  await cap.close();
+  assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'work_expiry');
 });
 
 test('only correlated Bash and read tool results verify the requested file effect', async t => {

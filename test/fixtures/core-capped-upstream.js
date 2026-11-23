@@ -81,7 +81,19 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   }
   const headers = { ...upstreamHeaders };
   const records = [];
+  const transportStarted = performance.now();
+  let transportOrder = 0;
+  // One observation per finite kind: bounded metadata, never raw errors/body.
+  // These are host observations, not proof of an upstream failure's root cause.
+  function transport(record, kind, terminates = false) {
+    const log = record.transport ??= { events: [] };
+    if (log.events.some(event => event.kind === kind)) return;
+    const event = { kind, order: ++transportOrder, elapsedMs: performance.now() - transportStarted };
+    log.events.push(event);
+    if (terminates && !log.firstTermination) log.firstTermination = event;
+  }
   const active = new Set();
+  const requestRecords = new WeakMap();
   const rejectionReads = new Set();
   const tools = new Map();
   let forwarded = 0, reservedOutputTokens = 0, peakConcurrent = 0, reservedInputBytes = 0, rejectedArrivals = 0;
@@ -107,6 +119,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       }
     }
     if (['response.completed', 'response.failed', 'response.incomplete'].includes(value.type)) {
+      transport(record, 'terminal');
       record.terminal = value.type;
       if (typeof value.response?.id === 'string') record.responseId = value.response.id.slice(0, 256);
       const usage = value.response?.usage;
@@ -165,10 +178,12 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     let upstream, parsingRejection = false;
     try {
       upstream = (target.protocol === 'https:' ? httpsRequest : httpRequest)(target, { method: 'POST', headers: outgoingHeaders }, incoming => {
+        transport(record, 'headers');
         record.status = 'responding';
         record.statusCode = incoming.statusCode;
         const statusCode = incoming.statusCode ?? 502;
         if (statusCode >= 400 || (failFast && (statusCode < 200 || statusCode >= 300))) {
+          transport(record, 'provider_rejection', true);
           const chunks = [];
           let bytes = 0, finished = false, timer;
           parsingRejection = true;
@@ -194,14 +209,14 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
             if (bytes > 64 * 1024) { finish('oversized'); return; }
             chunks.push(chunk);
           });
-          incoming.on('end', () => finish('complete'));
-          incoming.on('error', () => finish('failed'));
+          incoming.on('end', () => { transport(record, 'upstream_end', true); finish('complete'); });
+          incoming.on('error', () => { transport(record, 'upstream_error', true); finish('failed'); });
           // Only the hosted fail-fast path changes the legacy error-body wait.
           if (failFast) timer = setTimeout(() => finish('timeout'), 250);
           if (failFast && !failure) {
             failure = { code: 'LIVE_PROVIDER_REJECTED', number, statusCode, rejection: record.rejection };
             // Headers are enough to fence; body parsing is separately bounded.
-            active.forEach(request => request.destroy());
+            active.forEach(request => { transport(requestRecords.get(request), 'peer_rejection_abort', true); request.destroy(); });
             try { onFailure(structuredClone(failure)); } catch { /* The fence remains authoritative. */ }
           }
           return;
@@ -220,19 +235,22 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
             try { observeEvent(JSON.parse(eventData), record); } catch { record.observation = 'unparsed_event'; }
           }
         });
-        incoming.on('end', () => { record.status = 'complete'; active.delete(upstream); response.end(); });
-        incoming.on('error', () => { record.status = failure ? 'failure_aborted' : 'stream_failed'; active.delete(upstream); response.destroy(); });
+        incoming.on('end', () => { transport(record, 'upstream_end', true); record.status = 'complete'; active.delete(upstream); response.end(); });
+        incoming.on('error', () => { transport(record, 'upstream_error', true); record.status = failure ? 'failure_aborted' : 'stream_failed'; active.delete(upstream); response.destroy(); });
       });
+      requestRecords.set(upstream, record);
       active.add(upstream); peakConcurrent = Math.max(peakConcurrent, active.size);
       upstream.on('error', () => {
+        transport(record, 'request_error', true);
         if (record.status === 'rejected') return;
         record.status = failure ? 'failure_aborted' : deadlineReached ? 'deadline_aborted' : 'transport_failed';
         active.delete(upstream);
         if (response.headersSent) response.destroy(); else json(response, 502, 'LIVE_UPSTREAM_FAILED');
       });
-      response.on('close', () => { if (!response.writableEnded && !(failFast && parsingRejection)) upstream.destroy(); });
+      response.on('close', () => { if (!response.writableEnded && !(failFast && parsingRejection)) { transport(record, 'client_close', true); upstream.destroy(); } });
       upstream.end(data);
     } catch {
+      transport(record, 'dispatch_error', true);
       record.status = 'dispatch_failed';
       json(response, 502, 'LIVE_UPSTREAM_FAILED');
     }
@@ -242,7 +260,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   server.timeout = Math.max(1, deadlineAt - Date.now());
   const deadline = setTimeout(() => {
     deadlineReached = true;
-    active.forEach(request => request.destroy());
+    active.forEach(request => { transport(requestRecords.get(request), 'work_expiry', true); request.destroy(); });
   }, Math.max(1, deadlineAt - Date.now()));
   server.listen(0, '127.0.0.1');
   try { await once(server, 'listening'); } catch { clearTimeout(deadline); throw new Error('LIVE_PROXY_START_FAILED'); }
@@ -253,6 +271,9 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       if (closePromise) return closePromise;
       closing = true;
       clearTimeout(deadline);
+      // Record intent before destroy(): the later stream error can be caused by
+      // this close. Preserve an earlier independently observed termination.
+      records.forEach(record => transport(record, 'proxy_close', true));
       active.forEach(request => request.destroy());
       closePromise = (async () => {
         // Preserve the first finite classification even if work cancellation closes the client.
