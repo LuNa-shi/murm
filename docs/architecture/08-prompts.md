@@ -203,6 +203,23 @@ Execution ${execution.execution_id} starts from ${snapshot.revision}, different 
 ```
 
 The Execution ID comes from TaskService's accepted reservation; selected revision comes from MissionWorkspace.exportRevision; preview revision comes from the same trusted Bot's earlier Task view. Flat stores the notice with immutable Workspace input provenance. On successful take it travels through the Service-v2 response and original Bash tool result; it is not independently injected as a model message. Core prepare/grant consumes only canonical file bytes and never composes this notice. `flatResearcherProfile` forwards the host-supplied prompt unchanged and supplies readonly resource defaults; it adds no repository prompt template.
+
+### Flat controller messages
+
+`src/environments/flat/controller.js` owns its default discovery input, sent only after coordinator domain readiness through public `Runtime.send` with explicit `followUp`:
+
+```text
+Read public Tasks and take suitable work. Continue in this Session after take.
+```
+
+The default researcher Profile prompt in `src/environments/flat/environment.js` is passed verbatim during Core assembly:
+
+```text
+Use the flat Services to discover, execute and truthfully finish Mission work.
+```
+
+Hosts can explicitly replace these texts through the Profile prompt/controller settings. Continuation reuses the full `BOT_CONTINUATION_MESSAGE` and `buildBotContinuationMessage` already documented here: the current Execution controls ordinary versus soft-closeout wording and dynamic deadline text. The controller rechecks Task state and remaining budget before its public followUp send. Directed user text is host-supplied and passes through that same controller with the chosen mode/request ID; it is not a repository-owned template. Missing snapshot readiness prevents this Environment from sending any input. These are composed/send-path descriptions, not evidence of a native closed-loop run.
+
 The built-in Core Bot Service adds no child startup prompt or business result template. Its manifest help describes child admission, initialInput and pending cleanup; the Bridge exposes only permitted capabilities and the CLI renders the discovered text and schemas. Parent-supplied `input` goes unchanged through the shared Core input ledger with default steer or explicit followUp, after child identity/parentId and backend events are installed. The target Profile supplies the child's existing system prompt composition. Core does not copy the parent conversation, bindings or secretEnv, and does not automatically send child output back to a parent. See [built-in Bot control](15-core-runtime.md#built-in-bot-control).
 
 ## Public-Core Agensh peer

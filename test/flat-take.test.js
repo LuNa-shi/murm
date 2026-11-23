@@ -80,6 +80,42 @@ test('actual CLI subprocess discovers and takes through the Core v2 Bridge with 
   await assert.rejects(cli('task', 'take', f.task.task_id, '--owner-ref', 'forged', '--request-id', 'forged'), /identity overrides/);
 });
 
+test('public take preserves binary Buffer bytes from the pinned Workspace through the host tree and Core FileSeed', async t => {
+  let seed;
+  const f = await fixture(t, { fileOperation(action, input) {
+    if (action === 'prepare') { seed = input.files; return { body: { result: { version: input.version, digest: decodeFileSeed(input.files).digest } } }; }
+    return { body: { result: { ...input, writable: true } } };
+  } });
+  const binary = Buffer.from([0, 255, 65, 10]);
+  const revision = await f.workspace.save({ workspaceId: f.task.workspace.workspace_id, files: { 'input.txt': 'fixed λ\n', 'binary.dat': binary } });
+  const snapshot = await f.workspace.exportRevision({ workspaceId: f.task.workspace.workspace_id, revision: revision.revision });
+  assert.equal(Buffer.isBuffer(snapshot.files['binary.dat']), true);
+  const task = f.tasks.createTask({ mission_id: f.task.mission_id, gap: 'Adopt binary Workspace bytes', priority: 'medium',
+    summary: 'Pinned binary input', expected_output: 'Exact bytes', acceptance_conditions: ['Exact bytes'],
+    workspace: { workspace_id: f.task.workspace.workspace_id, revision: revision.revision } }, makeEnvelope({ actorRef: 'host' })).task;
+  const bot = await f.spawn('binary');
+  const taken = await f.call(bot, 'task_take', { task_id: task.task_id }, 'binary-take');
+  assert.equal(taken.workspace.revision, revision.revision);
+  assert.deepEqual(Buffer.from(seed['binary.dat'].data, 'base64'), binary);
+  assert.deepEqual(await readFile(join(f.tasks.getExecution(taken.execution.execution_id).workspace_ref, 'binary.dat')), binary);
+});
+
+for (const [name, corrupt] of Object.entries({
+  'other byte containers': snapshot => { snapshot.files['input.txt'] = new Uint8Array([65]); },
+  'ill-formed text': snapshot => { snapshot.files['input.txt'] = '\ud800'; },
+  'wrong Buffer hash': snapshot => { snapshot.files['input.txt'] = Buffer.from('changed'); snapshot.manifest['input.txt'].bytes = 7; },
+  'wrong Buffer size': snapshot => { snapshot.files['input.txt'] = Buffer.from('fixed λ\n'); snapshot.manifest['input.txt'].bytes++; },
+  'incomplete manifest': snapshot => { snapshot.manifest['missing.txt'] = { bytes: 0, content_hash: '0'.repeat(64) }; },
+})) test(`public take still rejects ${name} before preparing Core files`, async t => {
+  let prepares = 0;
+  const f = await fixture(t, { fileOperation() { prepares++; throw new Error('Invalid input must not reach Core files'); } });
+  const original = f.workspace.exportRevision.bind(f.workspace);
+  f.workspace.exportRevision = async input => { const snapshot = await original(input); corrupt(snapshot); return snapshot; };
+  const bot = await f.spawn('invalid');
+  await assert.rejects(f.call(bot, 'task_take', { task_id: f.task.task_id }, 'invalid-take'), { code: 'NOT_ALLOWED' });
+  assert.equal(prepares, 0);
+});
+
 test('two Core Bots compete for one Task and ordinary conflict leaves the losing discovery Bot live', async t => {
   const f = await fixture(t);
   const a = await f.spawn('a'), b = await f.spawn('b');

@@ -17,8 +17,8 @@ export async function prepareFlatInputs({ execution, taskService, missionWorkspa
   if (snapshot.mission_id !== task.mission_id || snapshot.workspace_id !== selectedWorkspace) deny('Task Workspace inputs belong to another Mission');
   const files = Object.create(null);
   for (const [path, content] of Object.entries(snapshot.files)) {
-    if (typeof content !== 'string' || !content.isWellFormed()) deny('Public Workspace file content must be exact UTF-8 text');
-    const bytes = Buffer.from(content, 'utf8');
+    if (!Buffer.isBuffer(content) && (typeof content !== 'string' || !content.isWellFormed())) deny('Public Workspace file content must be exact bytes or well-formed UTF-8 text');
+    const bytes = Buffer.isBuffer(content) ? Buffer.from(content) : Buffer.from(content, 'utf8');
     const expected = snapshot.manifest[path];
     if (expected?.bytes !== bytes.length || expected.content_hash !== createHash('sha256').update(bytes).digest('hex')) deny('Public Workspace bytes differ from the pinned manifest');
     files[path] = { encoding: 'base64', data: bytes.toString('base64'), mode: 0o644 };
