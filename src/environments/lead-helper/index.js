@@ -69,7 +69,7 @@ export async function createLeadHelperEnvironment(options) {
   startup.addEventListener('abort', abortStartup, { once: true });
   try {
     if (startup.aborted) throw fail('ENVIRONMENT_START_ABORTED');
-    const facilities = await (options.prepare ?? prepareLeadHelperGit)({ ...options, signal: startup, resources });
+    const facilities = await (options.prepare ?? prepareLeadHelperGit)({ ...options, helperCount, signal: startup, resources });
     for (const actor of Object.values(facilities.actors ?? {})) secrets.push(actor.token);
     if (facilities.runId !== runId || startup.aborted) throw fail('ENVIRONMENT_START_ABORTED');
     git = createLeadHelperGit(facilities, helperCount);

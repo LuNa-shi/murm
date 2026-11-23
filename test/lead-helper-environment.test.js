@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { registerHooks } from 'node:module';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
@@ -190,4 +190,19 @@ test('invalid helper capacity fails before provisioning', async () => {
       name: 'TypeError', message: 'Lead-helper requires between two and seven helpers',
     });
   }
+});
+
+test('lead-helper provisions the capacity captured before async startup', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-capacity-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const options = {
+    runId: 'test', image: 'test', outputDir: directory, helperCount: 3,
+    async prepare({ helperCount }) {
+      assert.equal(helperCount, 3);
+      throw Object.assign(new Error('controlled startup stop'), { code: 'CAPACITY_OBSERVED' });
+    },
+  };
+  const creating = createLeadHelperEnvironment(options);
+  options.helperCount = 7;
+  await assert.rejects(creating, { code: 'CAPACITY_OBSERVED' });
 });
