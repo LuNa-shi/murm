@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2095 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2093 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -2006,7 +2006,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [benchmarks/openai-math-12/papers/273/manifest.json](../../benchmarks/openai-math-12/papers/273/manifest.json) | Fixed upstream manuscript or hashed public Workspace input | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `091e97e2b9b3e62e4ad943dc176767cab1ed2f1b5cbdbbebd759e417b2b8f087` |
 | [benchmarks/openai-math-12/papers/273/paper.pdf](../../benchmarks/openai-math-12/papers/273/paper.pdf) | Fixed upstream manuscript or hashed public Workspace input | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `d826f8ebe18596419871100e79611868dff2a45a4aa157433c58e6f49a234d82` |
 | [benchmarks/openai-math-12/papers/273/paper.txt](../../benchmarks/openai-math-12/papers/273/paper.txt) | Fixed upstream manuscript or hashed public Workspace input | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5081d3be22f1acadd07da833bdd6ec00e07b983e090d96cae96c82c0e8d9dd27` |
-| [benchmarks/openai-math-12/README.md](../../benchmarks/openai-math-12/README.md) | Embedded OpenAI Math challenge, dependency or local audit input | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `774661efdbe67a573cc09ee56ec56d25417145292c324a99217e7d59eb5c9a8b` |
+| [benchmarks/openai-math-12/README.md](../../benchmarks/openai-math-12/README.md) | Embedded OpenAI Math challenge, dependency or local audit input | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `712f6690e2d518ba1338e93589b8105b857fe9609115975fccddafdae1f03f95` |
 | [benchmarks/openai-math-12/reference-solutions.json](../../benchmarks/openai-math-12/reference-solutions.json) | Embedded OpenAI Math challenge, dependency or local audit input | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `cde42bb263e5f83749087ab9fe93bc09705ae95d14807e2e255d68e97f375e56` |
 | [benchmarks/openai-math-12/SELECTION.md](../../benchmarks/openai-math-12/SELECTION.md) | Embedded OpenAI Math challenge, dependency or local audit input | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7ee644ff4675f734e5e87cf52cdfac1ce90dd7d33ece07dbd9d679624c077c32` |
 | [config/flt10.json](../../config/flt10.json) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5addcb69f21e50738dd6d81b7fa1a6e2c691cc3dfee1a454278360dfb20a8bdd` |
@@ -2015,13 +2015,11 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/benchmarks/prepare_flt10.py](../../scripts/benchmarks/prepare_flt10.py) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7f151341138d6e3798135f454a89a327a655768b2978bf5a0b6cb4ab5cf1905e` |
 | [src/benchmark/benchmark-context.js](../../src/benchmark/benchmark-context.js) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `e2f7c30c67811fc8798d59c3042cf92b64e3b20b82b0f5963079fe96cc09060a` |
 
-### benchmark setup (3)
+### benchmark setup (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/benchmarks/prepare_flt_subtrees.py](../../scripts/benchmarks/prepare_flt_subtrees.py) | Root-only FLT extraction, private typed facts and public fixture generation | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `d40cab74f2ac086746abd85b901d3a3381ac1c32f9756cab4052b4b46db5e537` |
-| [scripts/run-openai-math-coloring.mjs](../../scripts/run-openai-math-coloring.mjs) | Four-Core launcher for the embedded OpenAI Math PlaneColoring smoke run | [07-run-configuration](07-run-configuration.md) | `f11993885dec21bea5eb7b77db349e90cbf011442d2c95f914783438ec46b5f6` |
-| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `699e1a9f7521c1c75c138ecaa3ab60de68b00448151c942444d331ec5942d40e` |
 
 ### controlled verification data (4)
 
