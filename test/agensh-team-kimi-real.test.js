@@ -14,7 +14,7 @@ import { httpClient } from '../src/environments/agensh/http.js';
 import { createLocalAgenshStack } from './fixtures/agensh-local-stack.js';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
 import { parsePrivateUpstreamHeaders } from './fixtures/flat-model-acceptance.js';
-import { liveTeamLimits, liveTeamInputs, liveMarkers, deriveLivePins, verifyLiveCooperation, verifyLiveBudget, checkLiveFile, createLiveIngress } from './fixtures/agensh-team-kimi.js';
+import { liveTeamLimits, liveTeamInputs, liveMarkers, deriveLivePins, verifyLiveCooperation, recordLiveBudget, checkLiveFile, createLiveIngress } from './fixtures/agensh-team-kimi.js';
 import { createWorkGate, createCleanupBudget } from './fixtures/agensh-deadline.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
@@ -128,7 +128,6 @@ test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Cor
     report.sessionsFinal = await Promise.all(owned.map(id => sessionEvidence(id, command))); assert.deepEqual(report.sessionsFinal, report.sessionsInitial);
     stage = 'identity-final';
     report.identitiesFinal = await Promise.all(owned.map(identity)); assert.deepEqual(report.identitiesFinal, report.identitiesInitial);
-    stage = 'usage'; report.modelUsage = verifyLiveBudget(upstream.receipt());
     stage = 'archive';
     work.remaining(); work.finish(); cleanupPhase = true;
     await cleanup.step(() => upstream.close());
@@ -192,6 +191,7 @@ test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Cor
     if ((!environment && !ownershipUnknown) || environmentCleanup?.cleanup === 'complete') { try { report.facilityCleanup = await cleanup.step(() => stack.close(cleanup)); } catch { report.facilityCleanup = { cleanup: 'pending' }; } }
     else report.facilityCleanup = { cleanup: 'pending', dependenciesRetained: true };
     await hostCleanup; report.cleanupBudget = cleanup.receipt(); report.facilities = stack.receipt(); report.upstream = upstream?.receipt();
+    if (report.upstream) recordLiveBudget(report, report.upstream);
     report.failure ||= report.workExpired || report.cleanupBudget.expired || report.facilityCleanup?.cleanup !== 'complete' || report.hostCleanup !== 'complete' || Boolean(report.cleanupFailure);
     cleanup.dispose(); work?.dispose(); let body = JSON.stringify(environment ? environment.redact(report) : report, null, 2);
     for (const secret of [...stack.secrets, ...credentialValues]) body = body.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]');

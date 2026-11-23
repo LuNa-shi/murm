@@ -25,6 +25,7 @@ export function liveTeamInputs({ seed, peerNames }) {
 }
 
 export function verifyLiveBudget(receipt) {
+  assert.equal(receipt.failure, undefined);
   assert.equal(receipt.maxAggregateInputBytes, 512 * 1024);
   assert.equal(receipt.rejectedArrivals, 0);
   assert.equal(receipt.reservedInputBytes, receipt.requests.reduce((sum, row) => sum + row.inputBytes, 0));
@@ -45,6 +46,18 @@ export function verifyLiveBudget(receipt) {
   }
   return { requests: receipt.forwarded, inputTokens: receipt.requests.reduce((sum, row) => sum + row.usage.inputTokens, 0),
     outputTokens: receipt.requests.reduce((sum, row) => sum + row.usage.outputTokens, 0) };
+}
+
+export function recordLiveBudget(report, receipt) {
+  try {
+    report.modelUsage = verifyLiveBudget(receipt);
+  } catch (error) {
+    if (error.code !== 'ERR_ASSERTION') throw error;
+    const code = receipt.failure?.code ?? 'LIVE_BUDGET_INVALID';
+    report.budgetFailure = { code };
+    report.businessFailure ??= { stage: 'usage', code };
+    report.failure = true;
+  }
 }
 
 // Only authenticated facility observations and exact main bytes enter this proof.

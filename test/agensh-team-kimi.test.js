@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { liveTeamInputs, liveCommon, liveAInitial, liveBInitial, liveAUser, liveTeamLimits, verifyLiveBudget, verifyLiveCooperation, checkLiveFile, createLiveIngress } from './fixtures/agensh-team-kimi.js';
+import { liveTeamInputs, liveCommon, liveAInitial, liveBInitial, liveAUser, liveTeamLimits, recordLiveBudget, verifyLiveBudget, verifyLiveCooperation, checkLiveFile, createLiveIngress } from './fixtures/agensh-team-kimi.js';
 
 const seed = 'a'.repeat(24);
 function evidence() {
@@ -93,4 +93,31 @@ test('live acceptance requires exact hard budgets and actual bounded provider us
     value => { value.requests[0].terminal = 'response.failed'; }]) {
     const value = budget(); alter(value); assert.throws(() => verifyLiveBudget(value));
   }
+});
+
+test('final budget validation preserves archive evidence and earlier failures', () => {
+  const overage = budget();
+  overage.requests[7].usage.outputTokens = 865;
+  overage.failure = { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 8, maxOutputTokens: 768, outputTokens: 865 };
+  const archived = { binaryVerified: true, gitVerified: true };
+  const completed = { failure: false, archived };
+  recordLiveBudget(completed, overage);
+  assert.deepEqual(completed, { failure: true, archived,
+    budgetFailure: { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED' }, businessFailure: { stage: 'usage', code: 'LIVE_OUTPUT_LIMIT_EXCEEDED' } });
+
+  const archiveFailure = { stage: 'archive', code: 'ACTUAL_TEAM_FAILED' };
+  const separateFailure = { failure: true, businessFailure: archiveFailure };
+  recordLiveBudget(separateFailure, overage);
+  assert.equal(separateFailure.businessFailure, archiveFailure);
+  assert.deepEqual(separateFailure.budgetFailure, { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED' });
+  const validUsage = { failure: true, businessFailure: archiveFailure };
+  recordLiveBudget(validUsage, budget());
+  assert.deepEqual(validUsage, { failure: true, businessFailure: archiveFailure,
+    modelUsage: { requests: 20, inputTokens: 2000, outputTokens: 500 } });
+
+  const missingUsage = budget(); delete missingUsage.requests[0].usage;
+  const invalid = { failure: false };
+  recordLiveBudget(invalid, missingUsage);
+  assert.deepEqual(invalid, { failure: true, budgetFailure: { code: 'LIVE_BUDGET_INVALID' },
+    businessFailure: { stage: 'usage', code: 'LIVE_BUDGET_INVALID' } });
 });

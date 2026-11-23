@@ -104,11 +104,11 @@
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
-      "sha256": "c6dfd943871d4f3b43061bd7129ec0d62f7cc0ba1d15a11a1c2364a8472c1911"
+      "sha256": "cd59582496043217133c83c1eb85a63fdcb088412781dfab5f28066b3d16af38"
     },
     {
       "path": "test/agensh-team-kimi-real.test.js",
-      "sha256": "ef4faf06f1562e51e3c5cc0484c1a09ae397e2da266ab33788e532afec1cf5a2"
+      "sha256": "72c225fb17fde47cc8f6870e0d67b11cdd643a03e3b0065f238fa37af9d21ce6"
     },
     {
       "path": "src/environments/lead-helper/prompts.js",
