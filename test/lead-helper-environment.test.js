@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { registerHooks } from 'node:module';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
@@ -13,6 +13,7 @@ import { createHash } from 'node:crypto';
 import { runWithReport } from '../src/environments/shared/run-report.js';
 import { leadHelperCommand, adjustedDirection } from './fixtures/lead-helper-upstream.js';
 import { transport } from './fixtures/core-bot-service-backend.js';
+import { closeLeadHelperFixture } from './fixtures/lead-helper-scenario-cleanup.js';
 const execute = promisify(execFile);
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/lead-helper-backend.js', import.meta.url).href, shortCircuit: true };
@@ -21,41 +22,58 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
 const { createLeadHelperEnvironment } = await import('../src/environments/lead-helper/index.js'); hooks.deregister();
 
 async function scenario(t, failure, fixturePrograms = false) {
-  transport.reset(); transport.collectable = true; let environment; let lock;
-  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-public-')); t.after(async () => { if (lock) { lock.exec('ROLLBACK'); lock.close(); } transport.onStop = undefined; await environment?.close({ timeoutMs: 2000 }); const reconciled = await environment?.close({ timeoutMs: 2000 }); if (failure === 'locked-failed') { assert.equal(reconciled.cleanup, 'complete'); assert.ok(reconciled.bots.every(row => row.execution === 'stopped')); assert.equal(environment.snapshot().board.subtasks.find(row => row.id === 'helper1').failure.code, 'input_failed'); } await rm(directory, { recursive: true, force: true }); });
-  const repository = join(directory, 'repo.git'); await execute('git', ['init', '--bare', repository]);
-  if (fixturePrograms) { const seed = join(directory, 'seed'); await execute('git', ['init', '-b', 'main', seed]); await writeFile(join(seed, 'README.txt'), 'Initial project\n'); await execute('git', ['-C', seed, 'add', '.']); await execute('git', ['-C', seed, '-c', 'user.name=fixture', '-c', 'user.email=fixture@test.invalid', 'commit', '-m', 'Seed']); await execute('git', ['-C', seed, 'push', repository, 'main']); }
+  transport.reset(); transport.collectable = true; let environment; let lock; let server;
+  const work = new Set(), guests = new Map(), commands = new AbortController(); let stopping = false;
+  const run = (command, args, options = {}) => {
+    if (stopping) return Promise.reject(new Error('Fixture is stopping'));
+    return execute(command, args, { timeout: 15000, ...options, signal: commands.signal });
+  };
+  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-public-'));
+  t.after(() => closeLeadHelperFixture({ directory, server, guests: guests.values(), work,
+    stopWork() { stopping = true; commands.abort(); },
+    async reconcile() {
+      if (lock) { lock.exec('ROLLBACK'); lock.close(); }
+      transport.onStop = undefined;
+      await environment?.close({ timeoutMs: 2000 });
+      const reconciled = await environment?.close({ timeoutMs: 2000 });
+      if (failure === 'locked-failed') {
+        assert.equal(reconciled.cleanup, 'complete'); assert.ok(reconciled.bots.every(row => row.execution === 'stopped'));
+        assert.equal(environment.snapshot().board.subtasks.find(row => row.id === 'helper1').failure.code, 'input_failed');
+      }
+    },
+  }));
+  const repository = join(directory, 'repo.git'); await run('git', ['init', '--bare', repository]);
+  if (fixturePrograms) { const seed = join(directory, 'seed'); await run('git', ['init', '-b', 'main', seed]); await writeFile(join(seed, 'README.txt'), 'Initial project\n'); await run('git', ['-C', seed, 'add', '.']); await run('git', ['-C', seed, '-c', 'user.name=fixture', '-c', 'user.email=fixture@test.invalid', 'commit', '-m', 'Seed']); await run('git', ['-C', seed, 'push', repository, 'main']); }
   const bin = join(directory, 'bin'); await mkdir(bin); await writeFile(join(bin, 'swarm'), `#!/usr/bin/env node\nimport(${JSON.stringify(new URL('../scripts/swarm.mjs', import.meta.url).href)});\n`, { mode: 0o700 });
-  const server = createServer(async (request, response) => {
+  server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://localhost'); let result;
-      if (url.pathname.includes('/branches/')) result = { commit: { id: (await execute('git', ['--git-dir', repository, 'rev-parse', url.pathname.split('/').at(-1)])).stdout.trim() } };
+      if (url.pathname.includes('/branches/')) result = { commit: { id: (await run('git', ['--git-dir', repository, 'rev-parse', url.pathname.split('/').at(-1)])).stdout.trim() } };
       else if (url.pathname.includes('/contents/')) {
-        const path = decodeURIComponent(url.pathname.split('/contents/')[1]); const content = (await execute('git', ['--git-dir', repository, 'show', `${url.searchParams.get('ref')}:${path}`])).stdout;
+        const path = decodeURIComponent(url.pathname.split('/contents/')[1]); const content = (await run('git', ['--git-dir', repository, 'show', `${url.searchParams.get('ref')}:${path}`])).stdout;
         result = { type: 'file', encoding: 'base64', path, size: Buffer.byteLength(content), content: Buffer.from(content).toString('base64') };
       } else throw new Error('Unexpected fixture route');
       response.setHeader('content-type', 'application/json'); response.end(JSON.stringify(result));
     } catch { response.writeHead(400).end('{}'); }
   }); server.listen(0, '0.0.0.0'); await once(server, 'listening');
-  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const localAddress = Object.values(networkInterfaces()).flat().find(row => row.family === 'IPv4' && !row.internal).address;
   const origin = `http://${localAddress}:${server.address().port}`;
   const actors = Object.fromEntries(['lead', 'helper1', 'helper2'].map(role => [role, { accountId: role, username: role, token: `private-${role}`, branch: role + (fixturePrograms ? '-test' : ''), binding: `test:${role}` }]));
-  const guests = new Map(); t.after(() => { for (const guest of guests.values()) guest.kill(); });
   const team = {}; const privateDirectories = {}; let backgroundFailure;
   transport.onSpawn = async start => {
     const role = start.options.profile; team[role] = start.botId; privateDirectories[role] = join(directory, role); await mkdir(privateDirectories[role]);
     assert.equal(start.options.parentId, undefined); assert.equal(start.options.secretEnv.GITEA_TOKEN, `private-${role}`);
     assert.equal(start.profile.services.bot, undefined); assert.equal(start.profile.env.WORK_BRANCH, actors[role].branch);
-    if (role !== 'lead' && !fixturePrograms) { await execute('git', ['clone', repository, privateDirectories[role]]); await execute('git', ['-C', privateDirectories[role], 'switch', '-c', role]); }
+    if (role !== 'lead' && !fixturePrograms) { await run('git', ['clone', repository, privateDirectories[role]]); await run('git', ['-C', privateDirectories[role], 'switch', '-c', role]); }
   };
   const call = async (role, operation, input = {}, requestId) => {
     const start = transport.spawns.get(team[role]); const file = join(privateDirectories[role], 'request.json'); await writeFile(file, JSON.stringify(input));
-    const result = await execute(process.execPath, [new URL('../scripts/swarm.mjs', import.meta.url).pathname, 'board', operation, '--input', file, '--request-id', requestId ?? `${role}-${operation}-${++serial}`], { cwd: privateDirectories[role], env: { ...process.env, ...start.credentials.environment, ...start.credentials.secretEnvironment }, timeout: 10000 });
+    const result = await run(process.execPath, [new URL('../scripts/swarm.mjs', import.meta.url).pathname, 'board', operation, '--input', file, '--request-id', requestId ?? `${role}-${operation}-${++serial}`], { cwd: privateDirectories[role], env: { ...process.env, ...start.credentials.environment, ...start.credentials.secretEnvironment }, timeout: 10000 });
     return JSON.parse(result.stdout);
   };
   let serial = 0;
-  function arm() { transport.next = async inputId => {
+  function arm() { transport.next = inputId => {
+    const pending = (async () => {
     arm();
     const input = transport.submissions.get(inputId); const payload = JSON.parse(input.input); const role = Object.keys(team).find(role => team[role] === input.botId);
     assert.equal(input.mode, 'followUp');
@@ -99,7 +117,7 @@ async function scenario(t, failure, fixturePrograms = false) {
         await assert.rejects(call(role, 'update_subtask', { subtask_id: other, expected_revision: 0, text: 'unauthorized' }));
         const text = next ? `Adopted ${state.directions.at(-1).text}\n` : `${role} actual initial delivery\n`;
         const path = `${id}.txt`; await writeFile(join(privateDirectories[role], path), text);
-        const git = args => execute('git', ['-C', privateDirectories[role], ...args], { env: { ...process.env, GIT_AUTHOR_NAME: role, GIT_COMMITTER_NAME: role, GIT_AUTHOR_EMAIL: `${role}@test.invalid`, GIT_COMMITTER_EMAIL: `${role}@test.invalid` } });
+        const git = args => run('git', ['-C', privateDirectories[role], ...args], { env: { ...process.env, GIT_AUTHOR_NAME: role, GIT_COMMITTER_NAME: role, GIT_AUTHOR_EMAIL: `${role}@test.invalid`, GIT_COMMITTER_EMAIL: `${role}@test.invalid` } });
         await git(['add', path]); await git(['commit', '-m', id]); await git(['push', 'origin', role]);
         const commit = (await git(['rev-parse', 'HEAD'])).stdout.trim();
         const delivery = { commit, path, bytes: Buffer.byteLength(text), sha256: createHash('sha256').update(text).digest('hex') };
@@ -107,7 +125,9 @@ async function scenario(t, failure, fixturePrograms = false) {
         await call(role, 'note', { subtask_id: id, text: next ? 'New direction adopted and verified' : 'Please require explicit evidence in the next direction' });
       }
       transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'completed', output: 'Public Board records contain evidence' });
-    } catch (error) { backgroundFailure = error; transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXTURE_FAILED', message: 'Deterministic fixture failed' } }); }
+    } catch (error) { if (stopping) return; backgroundFailure = error; transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXTURE_FAILED', message: 'Deterministic fixture failed' } }); }
+    })().finally(() => work.delete(pending));
+    work.add(pending); return pending;
   }; } arm();
   if (failure === 'unknown') transport.onStop = botId => { if (botId === team.helper1) throw new Error('Controlled stop uncertainty'); };
   const configuration = { runId: 'test', outputDir: directory, image: 'test', backend: {}, turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
