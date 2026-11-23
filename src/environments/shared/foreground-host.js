@@ -1,9 +1,16 @@
+import { resolve } from 'node:path';
 import { runAgenshTeam } from '../agensh/team.js';
 import { runFlatEnvironment } from '../flat/environment.js';
 
 const fail = code => Object.assign(new Error(code), { code });
 const finite = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
 const receipt = row => Object.fromEntries(['batchId', 'requestId', 'inputId', 'state', 'status', 'code', 'taskId', 'taskState', 'reason'].filter(key => row[key] !== undefined).map(key => [key, row[key]]));
+function botState({ status, cursor, lastError, lastStop }) {
+  return { status, cursor,
+    ...(lastError ? { lastErrorCode: typeof lastError.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(lastError.code) ? lastError.code : 'BOT_ERROR' } : {}),
+    ...(lastStop ? { lastStop: { execution: lastStop.execution, cleanup: lastStop.cleanup } } : {}),
+  };
+}
 
 /** One foreground host. Mode controllers retain all input and resource authority. */
 export async function runForegroundEnvironment({ mode, options, timeoutMs = 120_000, signal } = {}, interact) {
@@ -32,16 +39,17 @@ export async function runForegroundEnvironment({ mode, options, timeoutMs = 120_
   }
   try {
     if (mode === 'agensh') return await runAgenshTeam({ ...options, signal: workSignal }, async team => {
-      const status = () => {
-        const view = team.snapshot();
-        return { mode, runtimeId: team.id, closing: closing || view.closing,
-          peers: view.peers.map(peer => ({ key: peer.key, botId: peer.botId,
+      const status = async () => {
+        const view = team.currentPeers();
+        const peers = await Promise.all(view.peers.map(async peer => ({ key: peer.key, botId: peer.botId,
+            ...botState(await team.getBot(peer.botId)),
             ready: peer.router.ready, accepting: peer.router.accepting, fenced: peer.router.fenced,
-            batches: peer.router.batches.map(receipt) })) };
+            batches: peer.router.batches.map(receipt) })));
+        return team.redact({ mode, runtimeId: team.id, runDirectory: resolve(options.outputDir, team.id), closing: closing || view.closing, peers });
       };
       const recipient = key => {
         check();
-        const peer = team.snapshot().peers.find(row => row.key === key);
+        const peer = team.currentPeers().peers.find(row => row.key === key);
         if (!peer) throw fail('UNKNOWN_RECIPIENT');
         return peer;
       };
@@ -61,13 +69,15 @@ export async function runForegroundEnvironment({ mode, options, timeoutMs = 120_
         },
       }); } finally { team.signal.removeEventListener('abort', teamStopped); }
     });
-    return await runFlatEnvironment({ ...options, signal: workSignal, async drive(controller) {
+    return await runFlatEnvironment({ ...options, signal: workSignal, async drive(controller, runtime) {
       const ended = controller.wait().then(() => stop());
       try {
-        await drive({ status: () => {
+        await drive({ status: async () => {
           const view = controller.snapshot();
-          return { mode, runtimeId: view.runtimeId, closing: closing || view.closing, completion: view.completion,
-            bots: view.bots.map(bot => ({ botId: bot.botId, released: bot.released, stopReason: bot.stopReason })), inputs: view.inputs.map(receipt) };
+          const bots = await Promise.all(view.bots.map(async bot => ({ botId: bot.botId,
+            ...botState(await runtime.get(bot.botId)), released: bot.released, stopReason: bot.stopReason })));
+          return { mode, runtimeId: runtime.id, runDirectory: resolve(options.outputDir, runtime.id),
+            closing: closing || view.closing, completion: view.completion, bots, inputs: view.inputs.map(receipt) };
         }, async input(input) { check(); return receipt(await controller.feedback(input)); } });
       } finally { controller.halt(); await ended; }
     } });

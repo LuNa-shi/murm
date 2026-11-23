@@ -32,8 +32,9 @@ export async function createAgenshTeam(options) {
   const peers = new Map(); const routers = new Map(); const subscriptions = new Map(); const unsubscriptions = []; const pendingSources = new Set();
   let runtime, facilities, services, closing = false, closeWork, completed, fencedFailure;
   const check = () => { if (signal.aborted) throw fencedFailure ?? fail('ENVIRONMENT_START_ABORTED'); };
-  const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), resources: resources.snapshot(),
-    peers: [...peers].map(([key, bot]) => ({ key, botId: bot.id, profile: bot.profile, router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() })) });
+  const peerStates = () => [...peers].map(([key, bot]) => ({ key, botId: bot.id, profile: bot.profile,
+    router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() }));
+  const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), resources: resources.snapshot(), peers: peerStates() });
   function stop(reason) { closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
   function fence(reason) {
     if (closing || signal.aborted) return;
@@ -99,7 +100,8 @@ export async function createAgenshTeam(options) {
       check();
     }
     for (const router of routers.values()) router.markReady();
-    return Object.freeze({ id: runtime.id, snapshot, redact, close, signal,
+    return Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getBot: runtime.get,
+      currentPeers: () => ({ closing, peers: peerStates() }),
       kickoff(key, text) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).kickoff(text); },
       ingest(key, event) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).ingest(event); },
       wait(key, batchId, wait) { if (!routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).wait(batchId, wait); },
