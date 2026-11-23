@@ -30,6 +30,7 @@ COPY --chown=0:0 scripts/core-file-seed.mjs scripts/core-collection.mjs /opt/swa
 COPY --chown=0:0 scripts/pi-rpc-submissions.mjs /opt/swarmenv/pi-rpc-submissions.mjs
 COPY --chown=0:0 scripts/project-install.mjs scripts/project-processes.mjs /opt/swarmenv/
 COPY --chown=0:0 scripts/swarm.mjs /opt/swarmenv/scripts/swarm.mjs
+COPY --chown=0:0 scripts/git-credential-agensh.mjs /opt/swarmenv/scripts/git-credential-agensh.mjs
 COPY --chown=0:0 src /opt/swarmenv/src
 COPY --chown=0:0 services/opensandbox-agent/pi-models.json /opt/swarmenv/pi-agent/models.json
 # Git archives may mark source directories group-writable. Protect all
@@ -37,6 +38,9 @@ COPY --chown=0:0 services/opensandbox-agent/pi-models.json /opt/swarmenv/pi-agen
 RUN chmod 0755 /opt/swarmenv \
   && chmod -R u=rwX,go=rX /opt/swarmenv/src \
   && chmod 0555 /opt/swarmenv/scripts/swarm.mjs \
+  && chmod 0555 /opt/swarmenv/scripts/git-credential-agensh.mjs \
+  && git config --system credential.helper /opt/swarmenv/scripts/git-credential-agensh.mjs \
+  && git config --system credential.useHttpPath true \
   && ln -s /opt/swarmenv/scripts/swarm.mjs /usr/local/bin/swarm \
   && mkdir -p /workspace /opt/swarmenv/pi-agent
 

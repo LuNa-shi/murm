@@ -17257,7 +17257,8 @@
       "chapters": [
         "docs/architecture/01-agent-core.md",
         "docs/architecture/07-run-configuration.md",
-        "docs/architecture/16-pi-opensandbox-backend.md"
+        "docs/architecture/16-pi-opensandbox-backend.md",
+        "docs/architecture/18-agensh-environment.md"
       ],
       "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
     },
@@ -18729,6 +18730,63 @@
         "docs/architecture/15-core-runtime.md"
       ],
       "role": "Fixed Workspace and Material input provenance and canonical FileSeed preparation"
+    },
+    {
+      "path": "scripts/git-credential-agensh.mjs",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/board-process.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/http.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/index.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/provision.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/resources.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/agensh/services.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
     }
   ]
 }
