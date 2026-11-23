@@ -20,7 +20,7 @@ The exact observation tables are in [11 Storage](11-storage-reference.md). Start
 
 The run also appends observations to `ObservationStore`. Each event has an ID, experiment-local sequence, timestamp, source/kind, optional Core/Session/Task/Execution/correlation IDs, visibility, original payload, Agent payload and original payload hash. Sequence has a unique `(experiment_id, sequence)` constraint and normally uses the current maximum plus one. Duplicate IDs/sequences are not silently merged by `append`. Append emits in-process events after writing; the long-lived HTTP observer also reads SQLite because its writer commonly lives in another process.
 
-Sources: [durable logger](../../src/observability/durable-event-log.js), [Observation Store](../../src/observability/observation-store.js), [Pi adapter](../../src/agent/pi-adapter.js), [Runtime](../../src/runtime/runtime.js).
+Sources: [durable logger](../../src/observability/durable-event-log.js), [Observation Store](../../src/observability/observation-store.js), [Runtime](../../src/runtime/runtime.js).
 
 ## 2. Store, redaction and projections
 
