@@ -17650,7 +17650,7 @@
       "role": "Maintained dashboard HTML entry"
     },
     {
-      "path": "src/observability/client/lib/format.js",
+      "path": "src/observability/format.js",
       "category": "dashboard and build",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -17659,13 +17659,13 @@
       "role": "Human-facing time, IDs, state and value formatting"
     },
     {
-      "path": "src/observability/client/lib/observation.js",
+      "path": "src/observability/observation-projection.js",
       "category": "dashboard and build",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Client event/state aggregation and derived views"
+      "role": "Shared observation projection for events, timelines and derived views"
     },
     {
       "path": "src/observability/client/lib/utils.js",

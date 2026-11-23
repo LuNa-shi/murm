@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { normalizeState } from '@/lib/format';
+import { normalizeState } from '../../../format.js';
 
 const tones = {
   default: 'bg-primary text-primary-foreground',
