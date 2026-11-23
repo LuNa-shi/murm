@@ -446,20 +446,14 @@ Agent; the locked deployment is still verified independently afterward. No
 receipt is manufactured by preparation: new problems start unvalidated. Private
 reference proof source is never a public input or an additional trusted library.
 
-`scripts/validate-benchmark-witness.mjs` receives six operator paths/values:
-deployment config, public fixture checkout, problem ID, private witness directory,
-visibility audit, and a new receipt path. It verifies the fixture/context and
-requires an audit bound to the exact target/context. It collects only Lean files,
-rejects hidden entries and symlinks, applies the Workspace 2 MiB/file and 16 MiB
-total limits, and hashes the sorted file manifest. It runs the actual locked
-final checker on the complete witness tree. Only a PASS for that tree creates
-a mode-0600 receipt, exclusively (an existing output is not overwritten). Failure
-prints the diagnostic and exits nonzero without creating a receipt. The receipt
-contains the full check result, witness tree hash, target/context/lock hashes and
-visibility audit digest; it does not contain proof source. Timed launch checks
-that the embedded PASS and checked tree match the receipt. The visibility audit
-is separate operator evidence; this command does not claim to perform an Agent
-sandbox audit itself. Checker timeouts and cleanup retain the production behavior.
+The standalone private-witness creation command was retired during Phase 0005
+cleanup. Its original operator procedure is retained at the fixed
+[research revision](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/scripts/validate-benchmark-witness.mjs).
+The remaining legacy loader consumes the existing private complete-target receipt.
+It still checks the exact target, public context, artifact lock, complete witness
+tree and embedded PASS before initialization. The locked final checker continues
+to enforce its deployment, resource, deadline and cleanup contracts. Retiring the
+operator command supplies no new receipt and does not waive a required receipt.
 
 ### Per-deployment checker resources
 
