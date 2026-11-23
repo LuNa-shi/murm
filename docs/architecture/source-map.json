@@ -482,16 +482,6 @@
       "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
     },
     {
-      "path": "src/agent/bot-model-access.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Trusted Bot lifecycle and model credential composition"
-    },
-    {
       "path": "src/agent/capability-profile.js",
       "category": "Agent and prompts",
       "chapters": [

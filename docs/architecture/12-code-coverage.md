@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **187 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **186 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -75,7 +75,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [20-lead-helper-environment](20-lead-helper-environment.md), [08-prompts](08-prompts.md) | `4222770edeeb1941ef6a8a38bd36ebda9fd07ce795e1dc8d3e9a485607757132` |
 | [src/environments/lead-helper/team.js](../../src/environments/lead-helper/team.js) | Validates fixed lead-helper configuration and exact trusted team identity | [20-lead-helper-environment](20-lead-helper-environment.md) | `57b14611591fda7fdee80f7b86d9167cd6f57990547c27dc0a9f0625c394a3a4` |
 
-### Execution and control (20)
+### Execution and control (19)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -85,7 +85,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [examples/subagents-environment/controller.mjs](../../examples/subagents-environment/controller.mjs) | Bounded multi-source input queue, round snapshots, failure coalescing and shutdown receipts | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `f05e792396538a1383323ba0e7c4597467b7c3271c92e93d7dcc45c8c3ad63a9` |
 | [examples/subagents-environment/main.mjs](../../examples/subagents-environment/main.mjs) | Subagents host Profiles, bounded three-to-eight-Bot Runtime, verified text adoption and whole-tree reporting | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `46f5e9b412a2cfd26d153685503234279f7c3a8ddcec62fd09e12de5b90addbc` |
 | [examples/subagents-environment/prompts.mjs](../../examples/subagents-environment/prompts.mjs) | Complete parent and child instructions and fixed initial text goal | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `c061cefb7583f4431c82b5750d712bbfdb419a1305195b84adf52bc1166f7842` |
-| [src/agent/bot-model-access.js](../../src/agent/bot-model-access.js) | Trusted Bot lifecycle and model credential composition | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `1e4d3c62c20f7914a7d41b6e1231fb04bad3e2b34ea47d0977c664859016f27d` |
 | [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js) | Bounded Responses forwarding with durable observed attempts or explicit financial reservations | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `46daab2e9cae5d644dc2b84e52881bea67d6b5e8c91e92f22d8d94a5c03fd175` |
 | [src/environments/flat/bot-coordinator.js](../../src/environments/flat/bot-coordinator.js) | Trusted Core-returned flat Bot identity registration and readiness | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `fd5b51b26d181c2c2ffd12af7382ba213c6f28dfe7f9997f0068d7aa8fd66880` |
 | [src/environments/flat/controller.js](../../src/environments/flat/controller.js) | Flat serial discovery, continuation, directed feedback and stop-confirmed replacement policy | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `5e8df416afbab03612579f6fa24a51d42ce3adb4efe541fcfa08e83a26975831` |
