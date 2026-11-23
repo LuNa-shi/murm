@@ -5,6 +5,7 @@ import { join, relative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
 import { decodeFileSeed } from '../../scripts/core-file-seed.mjs';
+import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../../scripts/core-collection.mjs';
 
 const DEFAULT_EXECd_PORT = 44772;
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -600,6 +601,7 @@ export class OpenSandboxManager {
     const workerHeaders = { authorization: `Bearer ${workerToken}` };
     await this.#waitWorker(endpoint, workerHeaders);
     beforeAgentStart?.();
+    if (agentMode === 'core') record.coreAgent = true;
     if (agentMode === 'core') record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), starting: true };
     const startup = await this.#request(`${endpoint}/start`, {
       absolute: true,
@@ -776,9 +778,13 @@ export class OpenSandboxManager {
     }
   }
 
-  async stopAgent(executionId, signal = 'SIGTERM') {
+  async stopAgent(executionId, signal = 'SIGTERM', { preserveWorker = false } = {}) {
     const record = this.executions.get(executionId);
-    if (!record?.agent) return false;
+    if (!record?.agent) return record?.executionStopped === true;
+    if (record.executionStopped) {
+      if (!preserveWorker) record.agent = null;
+      return true;
+    }
     const response = await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { signal }, timeoutMs: 15_000 });
     const stopped = responseValue(response.body);
     if (stopped?.stopped === true && Array.isArray(stopped.project_installs) && record.boundExecutionId) {
@@ -786,8 +792,70 @@ export class OpenSandboxManager {
         receipts: stopped.project_installs.filter(receipt => receipt.execution_id === record.boundExecutionId && receipt.binding_version === record.bindingVersion) });
     }
     if (stopped?.stopped !== true) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not confirm execution stopped');
-    record.agent = null;
+    record.executionStopped = true;
+    if (!preserveWorker) record.agent = null;
     return true;
+  }
+
+  coreResource(executionId) {
+    const record = this.executions.get(executionId);
+    const creation = this.pendingCreations.get(executionId);
+    return { resourceKey: record?.executionId ?? creation?.resource_key ?? executionId,
+      ...(record?.sandboxId || creation?.sandbox_id ? { sandboxId: record?.sandboxId ?? creation.sandbox_id } : {}),
+      creation: record ? 'created' : creation ? 'pending' : 'absent',
+      executionStopped: record?.executionStopped === true };
+  }
+
+  async *collectCoreFiles(executionId, input) {
+    const spec = snapshotCollectionSpec(input);
+    const record = this.#record(executionId);
+    if (!record.executionStopped || record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Bot and retained Worker');
+    }
+    const fingerprint = JSON.stringify(spec);
+    if (record.collectionSpec && record.collectionSpec !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot collection policy is immutable');
+    record.collectionSpec = fingerprint;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), 30_000);
+    let response;
+    try {
+      response = await this.fetch(`${record.agent.endpoint}/core/files/collect`, { method: 'POST',
+        headers: { authorization: `Bearer ${record.agent.token}`, 'content-type': 'application/json', accept: 'application/x-ndjson' },
+        body: JSON.stringify(spec), signal: controller.signal, redirect: 'error' });
+      if (!response.ok || !response.body || response.headers.get('content-type')?.split(';')[0] !== 'application/x-ndjson') {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not return the bounded Core collection stream');
+      }
+      let pending = Buffer.alloc(0);
+      let ended = false;
+      for await (const chunk of response.body) {
+        let offset = 0;
+        const bytes = Buffer.from(chunk);
+        while (offset < bytes.length) {
+          controller.signal.throwIfAborted();
+          const newline = bytes.indexOf(10, offset);
+          const end = newline === -1 ? bytes.length : newline;
+          if (pending.length + end - offset > MAX_COLLECTION_LINE_BYTES) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record exceeds its line limit');
+          pending = Buffer.concat([pending, bytes.subarray(offset, end)]);
+          offset = end + (newline === -1 ? 0 : 1);
+          if (newline === -1) break;
+          if (ended) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection contains records after its final receipt');
+          let value;
+          try { value = JSON.parse(pending.toString('utf8')); } catch { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record is not valid JSON'); }
+          pending = Buffer.alloc(0);
+          if (value?.type === 'error') throw new SwarmEnvError(
+            ['INVALID_CONTRACT', 'NOT_ALLOWED', 'CONFLICT', 'SERVICE_UNAVAILABLE'].includes(value.code) ? value.code : ERROR_CODES.SERVICE_UNAVAILABLE,
+            typeof value.message === 'string' ? value.message : 'Worker collection failed');
+          if (!['directory', 'file', 'chunk', 'fileEnd', 'end'].includes(value?.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record type is invalid');
+          ended = value.type === 'end';
+          yield value;
+        }
+      }
+      if (!ended || pending.length) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker collection stream ended without a complete receipt');
+    } finally {
+      clearTimeout(deadline);
+      controller.abort();
+      if (response?.body && !response.body.locked) await response.body.cancel().catch(() => {});
+    }
   }
 
   async stopExecution(executionId) {
@@ -807,7 +875,12 @@ export class OpenSandboxManager {
   }
 
   async #deleteExecution(executionId, record) {
-    await this.stopAgent(executionId).catch(() => undefined);
+    if (record.coreAgent) {
+      if (!await this.stopAgent(executionId, 'SIGTERM', { preserveWorker: true })) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Core deletion requires confirmed execution stop');
+      }
+    }
+    else await this.stopAgent(executionId).catch(() => undefined);
     const deadline = Date.now() + 30_000;
     await this.#confirmSandboxDeletion(record.sandboxId, () => Math.max(1, deadline - Date.now()));
     for (const [key, resource] of this.executions) if (resource === record) this.executions.delete(key);
