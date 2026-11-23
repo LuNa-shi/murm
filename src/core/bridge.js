@@ -15,7 +15,7 @@ function invalid(message) {
   throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, message);
 }
 
-export async function createCoreBridge({ runtimeId, configuration, getBot, registrations, serviceTimeoutMs = 30_000, onOwned }) {
+export async function createCoreBridge({ runtimeId, configuration, getBot, registrations, serviceTimeoutMs = 30_000, onOwned, recordService }) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof getBot !== 'function' || !(registrations instanceof Map)) {
     invalid('Bridge requires runtime identity, Bot lookup and Service registrations');
   }
@@ -37,6 +37,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
   const server = createServer(async (request, response) => {
     let body;
     let controller;
+    let instrumented = false;
     const authorization = request.headers.authorization;
     const token = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice(7) : null;
     const botId = tokens.get(token);
@@ -87,14 +88,26 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       const binding = Object.hasOwn(current.bindings ?? {}, body.service_id) && typeof current.bindings[body.service_id] === 'string'
         ? current.bindings[body.service_id] : undefined;
       const caller = { runtimeId, botId, profile: current.profile, ...(binding === undefined ? {} : { binding }) };
+      response.once('close', () => {
+        if (!response.writableFinished) recordService?.({ runtimeId, botId, profile: current.profile, serviceId: body.service_id,
+          operation: body.operation, operationId: body.operation_id, state: 'response', outcome: 'unknown' });
+      });
       controller = new AbortController();
       active.add(controller);
+      instrumented = true;
       const result = await invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
-        envelope: { operation_id: body.operation_id }, caller, signal: controller.signal }, serviceTimeoutMs);
+        envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService }, serviceTimeoutMs);
       reply(response, 200, { ok: true, result });
     } catch (error) {
       request.resume();
       const code = error.code ?? 'SERVICE_UNAVAILABLE';
+      const authenticated = botId && getBot(botId);
+      if (!instrumented && authenticated && typeof body?.operation_id === 'string' && body.operation_id.length <= 256 &&
+          typeof body.service_id === 'string' && body.service_id.length <= 128 && typeof body.operation === 'string' && body.operation.length <= 128) {
+        recordService?.({ runtimeId, botId, profile: authenticated.profile, serviceId: body.service_id,
+          operation: body.operation, operationId: body.operation_id, state: 'validation', outcome: 'not_executed',
+          error: { code: ['NOT_ALLOWED', 'NOT_FOUND', 'INVALID_CONTRACT'].includes(code) ? code : 'SERVICE_UNAVAILABLE', retryable: false } });
+      }
       const status = code === 'NOT_ALLOWED' ? 403 : code === 'NOT_FOUND' ? 404 : code === 'SERVICE_TIMEOUT' ? 504 :
         ['INVALID_CONTRACT', 'SERVICE_INPUT_INVALID'].includes(code) ? 400 : code === 'CONFLICT' ? 409 : 503;
       reply(response, status, { ok: false, error: { code, message: error.message, retryable: error.retryable ?? false,

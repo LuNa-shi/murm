@@ -18513,7 +18513,8 @@
       "path": "src/core/services.js",
       "category": "programmable Core",
       "chapters": [
-        "docs/architecture/15-core-runtime.md"
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
     },
@@ -18529,7 +18530,8 @@
       "path": "src/core/bridge.js",
       "category": "programmable Core",
       "chapters": [
-        "docs/architecture/15-core-runtime.md"
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch"
     },
@@ -18657,6 +18659,14 @@
         "docs/architecture/15-core-runtime.md"
       ],
       "role": "Trusted Core-returned flat Bot identity registration and readiness"
+    },
+    {
+      "path": "src/environments/shared/run-report.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Environment host reporting with independent business, cleanup and save failures"
     }
   ]
 }
