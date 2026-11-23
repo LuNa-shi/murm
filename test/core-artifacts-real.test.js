@@ -5,15 +5,44 @@ import { mkdir, readFile, rm, lstat, writeFile } from 'node:fs/promises';
 import { join, isAbsolute } from 'node:path';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { createRuntime } from '@swarmenv/core';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { ServiceRegistry } from '@swarmenv/core/services';
 import { createArtifactsUpstream } from './fixtures/core-artifacts-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
+import { BOT_UID } from '../scripts/sandbox-project.mjs';
 
 const execute = promisify(execFile);
 const collect = { paths: ['tracked.txt', 'uncommitted.txt'], includeGit: true, maxBytes: 1024 ** 2, required: true };
+
+const processProbe = `const fs = require('node:fs');
+  const statuses = fs.readdirSync('/proc').filter(path => /^\\d+$/.test(path));
+  let count = 0;
+  for (const pid of statuses) {
+    try {
+      const status = fs.readFileSync('/proc/' + pid + '/status', 'utf8');
+      if (Number(/^Uid:\\s+(\\d+)/m.exec(status)?.[1]) === ${BOT_UID} && !/^State:\\s+Z/m.test(status)) count++;
+    } catch (error) {
+      if (!['ENOENT', 'ESRCH'].includes(error.code)) throw error;
+    }
+  }
+  console.log(count);`;
+
+test('sandbox stop probe counts live Bot UID processes and excludes unrelated UIDs', () => {
+  const states = new Map([
+    ['1', 'Uid:\t0\t0\t0\t0\nState:\tS'], ['8', 'Uid:\t1000\t1000\t1000\t1000\nState:\tR'],
+    ['9', `Uid:\t${BOT_UID}\t${BOT_UID}\t${BOT_UID}\t${BOT_UID}\nState:\tS`],
+    ['10', `Uid:\t${BOT_UID}\t${BOT_UID}\t${BOT_UID}\t${BOT_UID}\nState:\tZ`],
+  ]);
+  const counters = [];
+  runInNewContext(processProbe, {
+    require: () => ({ readdirSync: () => [...states.keys()], readFileSync: path => states.get(path.split('/')[2]) }),
+    console: { log: count => counters.push(count) },
+  });
+  assert.deepEqual(counters, [1]);
+});
 
 export async function verifyArtifactTree({ manifestPath, filesPath, botId, commit }) {
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
@@ -98,6 +127,16 @@ test('required artifacts survive a recoverable host save failure and remain read
   const bot = await runtime.spawn({ requestId: 'artifact-spawn', profile: 'worker', collect });
   report.botId = bot.id;
   const active = await ownedContainers(runtime.id); assert.equal(active.length, 1); report.containers = active;
+  async function countBotProcesses() {
+    const result = await execute('docker', ['exec', active[0], 'node', '-e', processProbe], { timeout: 5000 });
+    const count = Number(result.stdout.trim());
+    assert.ok(Number.isSafeInteger(count) && count >= 0);
+    return count;
+  }
+  report.runningBotProcesses = await countBotProcesses();
+  assert.ok(report.runningBotProcesses > 0);
+  const sandboxId = (await execute('docker', ['inspect', '--format', '{{index .Config.Labels "opensandbox.io/id"}}', active[0]], { timeout: 5000 })).stdout.trim();
+  assert.ok(sandboxId);
   let resolve;
   const settled = new Promise(done => { resolve = done; });
   const unsubscribe = runtime.onEvent(event => { if (event.botId === bot.id && event.type === 'settled') resolve(event); });
@@ -114,14 +153,12 @@ test('required artifacts survive a recoverable host save failure and remain read
   const pending = await runtime.stop(bot.id, { timeoutMs: 20_000 }); report.stops.push(pending);
   assert.equal(pending.execution, 'stopped'); assert.equal(pending.cleanup, 'pending');
   assert.deepEqual(pending.artifacts, []); assert.ok(pending.errors.some(error => error.code === 'ARTIFACT_WRITE_FAILED'));
-  if (pending.pending) {
-    assert.equal(pending.pending.kind, 'bot'); assert.equal(pending.pending.id, bot.id);
-    assert.equal(pending.pending.action, 'collect-artifacts');
-  }
+  assert.equal(pending.pending.kind, 'bot'); assert.equal(pending.pending.id, bot.id);
+  assert.equal(pending.pending.action, 'collect-artifacts');
+  assert.equal(pending.pending.sandboxId, sandboxId);
   assert.equal((await runtime.get(bot.id)).status, 'closing');
   assert.deepEqual(await ownedContainers(runtime.id), active);
-  const processes = "const f=require('fs');let n=0;for(const p of f.readdirSync('/proc')){try{const s=f.readFileSync('/proc/'+p+'/status','utf8');if(/^Uid:\\s+1000\\s/m.test(s))n++}catch{}}console.log(n)";
-  const remainingBotProcesses = Number((await execute('docker', ['exec', active[0], 'node', '-e', processes], { timeout: 5000 })).stdout.trim());
+  const remainingBotProcesses = await countBotProcesses();
   assert.equal(remainingBotProcesses, 0);
   await assert.rejects(runtime.spawn({ requestId: 'retained-slot', profile: 'worker' }), { code: 'CONFLICT' });
   report.actions.push({ action: 'observe-required-export-pending', execution: 'stopped', cleanup: 'pending', slotRetained: true, sandboxRetained: true, remainingBotProcesses });
