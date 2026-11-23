@@ -94,6 +94,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   }
   const active = new Set();
   const requestRecords = new WeakMap();
+  const terminalObservations = new WeakMap();
   const rejectionReads = new Set();
   const tools = new Map();
   let forwarded = 0, reservedOutputTokens = 0, peakConcurrent = 0, reservedInputBytes = 0, rejectedArrivals = 0;
@@ -134,11 +135,27 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       }
     }
     if (['response.completed', 'response.failed', 'response.incomplete'].includes(value.type)) {
+      const usage = value.response?.usage;
+      const validUsage = Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens) && usage.input_tokens >= 0 && usage.output_tokens >= 0;
+      if (failFast) {
+        const observation = { terminal: value.type, responseId: value.response?.id,
+          inputTokens: usage?.input_tokens, outputTokens: usage?.output_tokens };
+        const previous = terminalObservations.get(record);
+        if (previous) {
+          if (Object.keys(observation).some(key => observation[key] !== previous[key])) {
+            record.terminalConflict = { terminal: value.type, responseIdentityMatches: observation.responseId === previous.responseId,
+              ...(validUsage ? { usage: { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } } : {}) };
+            transport(record, 'terminal_conflict', true);
+            failRun({ code: 'LIVE_TERMINAL_CONFLICT', number: record.number }, 'terminal_conflict_abort');
+            return true;
+          }
+          return;
+        }
+        terminalObservations.set(record, observation);
+      }
       transport(record, 'terminal');
       record.terminal = value.type;
       if (typeof value.response?.id === 'string') record.responseId = value.response.id.slice(0, 256);
-      const usage = value.response?.usage;
-      const validUsage = Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens) && usage.input_tokens >= 0 && usage.output_tokens >= 0;
       if (validUsage) {
         record.usage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
       }
