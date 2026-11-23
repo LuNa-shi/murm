@@ -12,6 +12,7 @@ import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.
 import { httpClient } from '../src/environments/agensh/http.js';
 import { createLocalAgenshStack } from './fixtures/agensh-local-stack.js';
 import { createPeerUpstream, peerInputs } from './fixtures/agensh-peer-upstream.js';
+import { createWorkGate } from './fixtures/agensh-deadline.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
 const execute = promisify(execFile);
@@ -31,7 +32,7 @@ test('actual single Agensh peer uses trusted Services, native Git and one persis
   const directory = join(process.cwd(), 'experiments', `agensh-${runId}`); await mkdir(directory, { recursive: true, mode: 0o700 });
   const report = { schemaVersion: 1, failure: true, image, limits: { setupMs: 180_000, workMs: 120_000, cleanupMs: 80_000, arrivals: 4, bots: 1 }, businessFailure: null, cleanupFailure: null };
   const stack = await createLocalAgenshStack({ directory: join(directory, 'facilities'), advertiseHost: host });
-  let environment; let upstream; let deniedServer; let timer; let blocker; let workExpired = false; let deniedArrivals = 0;
+  let environment; let upstream; let deniedServer; let work; let blocker; let workExpired = false; let deniedArrivals = 0;
   let environmentCleanup;
   let coreOwnershipUnknown = false;
   const command = async (name, args) => {
@@ -43,21 +44,21 @@ test('actual single Agensh peer uses trusted Services, native Git and one persis
     const configuration = await stack.start();
     deniedServer = createServer((request, response) => { deniedArrivals++; request.resume(); response.end('must not reach'); });
     deniedServer.listen(0, '0.0.0.0'); await once(deniedServer, 'listening');
-    upstream = await createPeerUpstream({ deniedOrigin: `http://${host}:${deniedServer.address().port}` }); upstream.start();
-    timer = setTimeout(() => { workExpired = true; void environment?.close({ timeoutMs: 1 }).catch(() => {}); }, 120_000);
-    environment = await createAgenshEnvironment({ ...configuration, runId, image, outputDir: join(directory, 'core'), model: 'default', exportLimit: 8 * 1024 ** 2,
+    work = createWorkGate(120_000);
+    upstream = await createPeerUpstream({ deniedOrigin: `http://${host}:${deniedServer.address().port}`, onFailure: () => work.abort() }); upstream.start();
+    environment = await work.create(() => createAgenshEnvironment({ ...configuration, runId, image, outputDir: join(directory, 'core'), model: 'default', exportLimit: 8 * 1024 ** 2,
       backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
         endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 80_000, maxOutputTokens: 128 },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
-        isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } } }) });
+        isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } } }) }));
     report.runtimeId = environment.id; report.botId = environment.peer.id;
     const initial = await ownedContainers(environment.id); assert.equal(initial.length, 1); report.containerId = initial[0];
     report.piVersion = await command('docker', ['exec', initial[0], 'pi', '--version']); assert.equal(report.piVersion, '1.3.0');
     report.agentImageId = await command('docker', ['inspect', '--format', '{{.Image}}', initial[0]]);
-    const first = await environment.runInput(peerInputs[0], { requestId: 'fixed-peer-first', timeoutMs: 75_000 }); assert.equal(first.settled.output, 'PEER_1_OK');
+    const first = await work.runInput(peerInputs[0], { requestId: 'fixed-peer-first', timeoutMs: 75_000 }); assert.equal(first.settled.output, 'PEER_1_OK');
     const firstSessions = await sessionIds(initial[0]); assert.equal(firstSessions.length, 1);
-    const second = await environment.runInput(peerInputs[1], { requestId: 'fixed-peer-second', timeoutMs: 30_000 }); assert.equal(second.settled.output, 'PEER_2_OK');
+    const second = await work.runInput(peerInputs[1], { requestId: 'fixed-peer-second', timeoutMs: 30_000 }); assert.equal(second.settled.output, 'PEER_2_OK');
     assert.deepEqual(await ownedContainers(environment.id), initial); assert.deepEqual(await sessionIds(initial[0]), firstSessions); report.sessionIds = firstSessions;
     assert.equal(deniedArrivals, 0);
     const evidence = upstream.receipt().evidence; assert.equal(evidence.length, 2);
@@ -101,11 +102,12 @@ test('actual single Agensh peer uses trusted Services, native Git and one persis
     report.archive = { files: manifest.files.length, bytes: manifest.totalBytes, hashesVerified: true, gitVerified: true, plaintextSecretScan: true };
     report.environment = environment.snapshot(); report.git = { pushedCommit: evidence[0].pushedCommit, privateCommit: evidence[1].privateCommit, prNumber: pr.number };
     report.upstream = upstream.receipt(); assert.equal(report.upstream.arrivals, 4); assert.equal(report.upstream.accepted, 4); assert.equal(report.upstream.failure, undefined); assert.equal(report.upstream.deadlineReached, false);
-    assert.equal(workExpired, false); clearTimeout(timer); upstream.finish(); report.failure = false;
+    work.remaining(); assert.equal(work.expired(), false); work.dispose(); upstream.finish(); report.failure = false;
   } catch (error) { coreOwnershipUnknown = error?.cleanup === 'pending'; report.businessFailure = { code: typeof error?.code === 'string' ? error.code : 'ACTUAL_PEER_ACCEPTANCE_FAILED',
     ...(error.runtimeId ? { runtimeId: error.runtimeId } : {}), ...(error.reportPath ? { reportPath: error.reportPath } : {}), cleanup: error.cleanup }; }
   finally {
-    clearTimeout(timer);
+    environment ??= work?.environment();
+    workExpired = work?.expired() ?? false; work?.dispose();
     try {
       if (blocker) await rm(blocker).catch(() => {});
       if (environment && environmentCleanup?.cleanup !== 'complete') environmentCleanup = await bounded(environment.close({ timeoutMs: 30_000 }), 35_000);

@@ -36,13 +36,14 @@ console.log(JSON.stringify({turn:2,cwd:process.cwd(),privateCommit,pushedCommit:
   return `node --input-type=module <<'PEER_CHECK'\n${setup}\n${turn === 1 ? first : second}\nPEER_CHECK`;
 }
 
-export async function createPeerUpstream({ deniedOrigin }) {
+export async function createPeerUpstream({ deniedOrigin, onFailure = () => {} }) {
   let arrivals = 0; let accepted = 0; let failure; const evidence = [];
   let deadlineAt; let deadlineReached = false; let finished = false;
   const server = createServer(async (request, response) => {
     arrivals++;
+    const arrival = arrivals;
     try {
-      if (finished) throw new Error();
+      if (finished || failure) throw new Error();
       if (!deadlineAt || Date.now() >= deadlineAt) { deadlineReached = true; throw new Error(); }
       if (arrivals > 4 || request.method !== 'POST' || request.url !== '/v1/responses') throw new Error();
       const chunks = []; let bytes = 0;
@@ -62,7 +63,15 @@ export async function createPeerUpstream({ deniedOrigin }) {
         item = { type: 'message', id: `msg_peer_${turn}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: `PEER_${turn}_OK`, annotations: [] }] };
       }
       accepted++; response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', arrivals, item));
-    } catch { failure = 'FIXED_PEER_PROTOCOL_FAILED'; response.writeHead(400); response.end(JSON.stringify({ error: { code: failure, message: failure } })); }
+    } catch {
+      const firstFailure = !failure; failure = 'FIXED_PEER_PROTOCOL_FAILED';
+      // A successful terminal SSE is consumed once by Pi; HTTP rejection causes
+      // provider retry amplification. Correlate to this response/arrival, never
+      // include the rejected request or upstream/tool exception in diagnostics.
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.end(streamResponse('k3', arrival, { type: 'message', id: `msg_peer_rejected_${arrival}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: failure, annotations: [] }] }));
+      if (firstFailure) onFailure({ code: failure, arrival });
+    }
   });
   server.requestTimeout = 10_000; server.headersTimeout = 10_000;
   server.listen(0, '127.0.0.1'); await once(server, 'listening');

@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
 import { mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createDeadline } from './agensh-deadline.js';
 import { httpClient } from '../../src/environments/agensh/http.js';
 
 export const facilityImages = Object.freeze({
@@ -15,24 +16,28 @@ const execute = promisify(execFile);
 const sanitized = code => Object.assign(new Error(code), { code });
 
 /** No side effects until explicitly called inside the opt-in actual test. */
-export async function createLocalAgenshStack({ directory, advertiseHost = '172.17.0.1' }) {
+export async function createLocalAgenshStack({ directory, advertiseHost = '172.17.0.1', setupMs = 180_000, executeCommand = execute }) {
   const owner = `t13-${randomBytes(8).toString('hex')}`;
   const network = `${owner}-network`; const names = []; const receipts = [];
   const dbPassword = randomBytes(24).toString('hex'); const adminPassword = randomBytes(24).toString('hex');
   const secrets = [dbPassword, adminPassword];
   let networkOwned = false; let started = false;
-  const deadlineAt = Date.now() + 180_000;
-  const docker = async args => {
-    try { return (await execute('docker', args, { timeout: 15_000, maxBuffer: 1024 ** 2 })).stdout.trim(); }
-    catch { throw sanitized('LOCAL_FACILITY_DOCKER_FAILED'); }
+  let setup;
+  const setupStep = operation => setup.step(operation);
+  const request = (origin, authorization) => (method, path, body) => setupStep(({ signal }) => httpClient(origin, authorization)(method, path, body, { signal }));
+  const docker = async (args, cleanup = false) => {
+    try { const invoke = timeout => executeCommand('docker', args, { timeout, maxBuffer: 1024 ** 2 });
+      return (cleanup ? await invoke(15_000) : await setup.step(({ timeoutMs }) => invoke(timeoutMs), 15_000)).stdout.trim(); }
+    catch { if (!cleanup) setup.remaining(); throw sanitized('LOCAL_FACILITY_DOCKER_FAILED'); }
   };
   async function wait(check) {
-    while (Date.now() < deadlineAt) {
-      try { return await check(); } catch { await new Promise(resolve => setTimeout(resolve, 500)); }
+    while (true) {
+      setup.remaining();
+      try { return await check(); } catch { await new Promise(resolve => setTimeout(resolve, setup.remaining(500))); }
     }
-    throw sanitized('LOCAL_FACILITY_READINESS_TIMEOUT');
   }
   async function run(kind, { env = {}, ports = [], volumes = [], args = [], cpu, memory }) {
+    setup.remaining();
     const name = `${owner}-${kind}`; names.push(name);
     await docker(['run', '--detach', '--pull=never', '--name', name, '--network', network, '--label', `swarmenv.t13.owner=${owner}`, '--cpus', String(cpu), '--memory', memory,
       '--pids-limit', '512', ...Object.entries(env).flatMap(([key, value]) => ['--env', `${key}=${value}`]), ...ports.flatMap(value => ['--publish', value]),
@@ -46,37 +51,40 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
     return `http://${host}:${ports[`${port}/tcp`][0].HostPort}`;
   }
   async function close() {
+    setup?.dispose();
+    const cleanupDocker = args => docker(args, true);
     const results = await Promise.all(names.map(async name => {
       try {
-        const found = await docker(['ps', '--all', '--quiet', '--filter', `name=^/${name}$`, '--filter', `label=swarmenv.t13.owner=${owner}`]);
-        if (found) await docker(['rm', '--force', '--volumes', found]);
+        const found = await cleanupDocker(['ps', '--all', '--quiet', '--filter', `name=^/${name}$`, '--filter', `label=swarmenv.t13.owner=${owner}`]);
+        if (found) await cleanupDocker(['rm', '--force', '--volumes', found]);
         return { name, cleanup: 'complete' };
       } catch { return { name, cleanup: 'pending', code: 'FACILITY_CONTAINER_PENDING' }; }
     }));
     let networkCleanup = 'complete';
     if (networkOwned) {
       try {
-        const found = await docker(['network', 'ls', '--quiet', '--filter', `name=^${network}$`, '--filter', `label=swarmenv.t13.owner=${owner}`]);
-        if (found) await docker(['network', 'rm', found]); networkOwned = false;
+        const found = await cleanupDocker(['network', 'ls', '--quiet', '--filter', `name=^${network}$`, '--filter', `label=swarmenv.t13.owner=${owner}`]);
+        if (found) await cleanupDocker(['network', 'rm', found]); networkOwned = false;
       } catch { networkCleanup = 'pending'; }
     }
     let remaining;
-    try { remaining = (await docker(['ps', '--all', '--quiet', '--filter', `label=swarmenv.t13.owner=${owner}`])).split('\n').filter(Boolean); }
+    try { remaining = (await cleanupDocker(['ps', '--all', '--quiet', '--filter', `label=swarmenv.t13.owner=${owner}`])).split('\n').filter(Boolean); }
     catch { remaining = null; }
     return { cleanup: results.every(row => row.cleanup === 'complete') && networkCleanup === 'complete' && remaining?.length === 0 ? 'complete' : 'pending', results, networkCleanup, remaining };
   }
   const stack = { close, receipt: () => ({ owner, network, containers: receipts, sharedStorageRetained: true }), secrets,
     async start() {
       if (started) throw sanitized('LOCAL_STACK_ALREADY_STARTED'); started = true;
+      setup = createDeadline(setupMs, 'LOCAL_FACILITY_SETUP_EXPIRED');
       // All images must already be cached; no implicit download or install.
       for (const image of Object.values(facilityImages)) await docker(['image', 'inspect', '--format', '{{.Id}}', image]);
-      await mkdir(directory, { recursive: true, mode: 0o700 });
+      await setupStep(() => mkdir(directory, { recursive: true, mode: 0o700 }));
       const data = {};
       for (const key of ['mysql', 'gitea', 'mm-data', 'mm-config', 'mm-logs', 'mm-plugins', 'mm-client-plugins']) {
-        data[key] = join(directory, key); await mkdir(data[key], { mode: 0o700 });
-        if (key.startsWith('mm-')) await chmod(data[key], 0o777); // parent directory remains private
+        data[key] = join(directory, key); await setupStep(() => mkdir(data[key], { mode: 0o700 }));
+        if (key.startsWith('mm-')) await setupStep(() => chmod(data[key], 0o777)); // parent directory remains private
       }
-      networkOwned = true; await docker(['network', 'create', '--label', `swarmenv.t13.owner=${owner}`, network]);
+      setup.remaining(); networkOwned = true; await docker(['network', 'create', '--label', `swarmenv.t13.owner=${owner}`, network]);
       const database = await run('mysql', { cpu: 1, memory: '1g', env: { MYSQL_ROOT_PASSWORD: dbPassword, MYSQL_DATABASE: 'board', MYSQL_USER: 'agensh', MYSQL_PASSWORD: dbPassword },
         volumes: [`${data.mysql}:/var/lib/mysql`], args: ['--innodb-use-native-aio=0', '--innodb-buffer-pool-size=134217728', '--max-connections=100'] });
       await wait(() => docker(['exec', '--env', `MYSQL_PWD=${dbPassword}`, database, 'mysql', '-uroot', '-e', 'SELECT 1']));
@@ -85,7 +93,7 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
         GITEA__security__INSTALL_LOCK: 'true', GITEA__database__DB_TYPE: 'sqlite3', GITEA__service__DISABLE_REGISTRATION: 'true', GITEA__server__HTTP_PORT: '3000',
         GITEA__server__ROOT_URL: 'http://localhost:3000/', GITEA__actions__ENABLED: 'false', GITEA__log__LEVEL: 'Error' } });
       const gitHost = await published(gitea, 3000); const gitOrigin = await published(gitea, 3000, advertiseHost);
-      await wait(() => httpClient(gitHost)('GET', '/api/v1/version'));
+      await wait(() => request(gitHost)('GET', '/api/v1/version'));
       const gitArgs = ['exec', '--user', 'git', '--env', 'GITEA_WORK_DIR=/data/gitea', '--env', 'GITEA_CUSTOM=/data/gitea', gitea, 'gitea', '--config', '/data/gitea/conf/app.ini', 'admin', 'user'];
       await docker([...gitArgs, 'create', '--username', 'run-owner', '--password', adminPassword, '--email', 'owner@swarmenv.invalid', '--admin', '--must-change-password=false']);
       const gitToken = await docker([...gitArgs, 'generate-access-token', '--username', 'run-owner', '--token-name', owner, '--scopes', 'all', '--raw']); secrets.push(gitToken);
@@ -94,15 +102,15 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
         MM_SERVICESETTINGS_SITEURL: 'http://localhost:8065', MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS: 'true', MM_TEAMSETTINGS_ENABLEOPENSERVER: 'true',
         MM_LOGSETTINGS_CONSOLELEVEL: 'ERROR', MM_LOGSETTINGS_FILELEVEL: 'ERROR', MM_SQLSETTINGS_MAXOPENCONNS: '30', MM_SQLSETTINGS_MAXIDLECONNS: '10' } });
       const mmOrigin = await published(mattermost, 8065);
-      await wait(() => httpClient(mmOrigin)('GET', '/api/v4/system/ping'));
-      await httpClient(mmOrigin)('POST', '/api/v4/users', { username: 'run-owner', email: 'owner@swarmenv.invalid', password: adminPassword });
+      await wait(() => request(mmOrigin)('GET', '/api/v4/system/ping'));
+      await request(mmOrigin)('POST', '/api/v4/users', { username: 'run-owner', email: 'owner@swarmenv.invalid', password: adminPassword });
       let mmToken;
       try {
-        const response = await fetch(mmOrigin + '/api/v4/users/login', { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(10_000), headers: { 'content-type': 'application/json' }, body: JSON.stringify({ login_id: 'run-owner', password: adminPassword }) });
+        const response = await setupStep(({ signal }) => fetch(mmOrigin + '/api/v4/users/login', { method: 'POST', redirect: 'error', signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]), headers: { 'content-type': 'application/json' }, body: JSON.stringify({ login_id: 'run-owner', password: adminPassword }) }));
         mmToken = response.headers.get('Token'); await response.body?.cancel(); if (!response.ok || !mmToken) throw new Error();
-      } catch { throw sanitized('LOCAL_MATTERMOST_LOGIN_FAILED'); }
+      } catch { setup.remaining(); throw sanitized('LOCAL_MATTERMOST_LOGIN_FAILED'); }
       secrets.push(mmToken);
-      const team = await httpClient(mmOrigin, `Bearer ${mmToken}`)('POST', '/api/v4/teams', { name: owner, display_name: owner, type: 'I' });
+      const team = await request(mmOrigin, `Bearer ${mmToken}`)('POST', '/api/v4/teams', { name: owner, display_name: owner, type: 'I' });
       stack.configuration = { gitea: { origin: gitOrigin, adminToken: gitToken, owner: 'run-owner' }, mattermost: { origin: mmOrigin, adminToken: mmToken, teamId: team.id },
         startBoard: async ({ boardId, workerId, own }) => {
           const name = await run('board', { cpu: 0.25, memory: '256m', ports: ['127.0.0.1::8660'], env: {
@@ -110,7 +118,8 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
           const origin = await published(name, 8660);
           stack.boardOrigin = origin;
           own({ kind: 'board-connection', id: boardId, close: async () => {} });
-          await wait(() => httpClient(origin)('GET', `/board/${encodeURIComponent(boardId)}/read?viewer=${encodeURIComponent(workerId)}`));
+          await wait(() => request(origin)('GET', `/board/${encodeURIComponent(boardId)}/read?viewer=${encodeURIComponent(workerId)}`));
+          setup.dispose(); setup.remaining();
           return { origin };
         } };
       return stack.configuration;
