@@ -102,6 +102,14 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
   }
   async function refill() {
     if(closing || remaining()<=0 || taskService.isMissionStopped(missionId)) return;
+    // Refresh durable dependency state even when no notification reaches this
+    // controller. TaskService preserves terminal/owned and nondependency blocks.
+    for(const task of missionTasks()) {
+      if(closing || remaining()<=0 || taskService.isMissionStopped(missionId)) return;
+      if(!['OPEN','BLOCKED'].includes(task.state)) continue;
+      try {taskService.reconcileTask(task.task_id);}
+      catch(error) {failures.push(info(error));record('task-repair-failed',null,{taskId:task.task_id});}
+    }
     const tasks=missionTasks();
     if(tasks.length && tasks.every(task=>['DONE','CANCELED'].includes(task.state))) {finish('all-tasks-terminal',{tasks:tasks.map(task=>({taskId:task.task_id,state:task.state}))});return;}
     for(let index=0;index<capacity;index++) {

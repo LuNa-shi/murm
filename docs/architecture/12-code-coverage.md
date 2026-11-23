@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **202 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **201 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -73,7 +73,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `a475e66b3fb1cc33f4e76472f36258314697df35cfd4970498b7905fb6d3a49a` |
 | [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [20-lead-helper-environment](20-lead-helper-environment.md), [08-prompts](08-prompts.md) | `a9b680e62aafe7bbd5883d3d5d3255d1cd964771a0711d862e283e2f12b897ab` |
 
-### Execution and control (22)
+### Execution and control (21)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -86,7 +86,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/agent/bot-model-access.js](../../src/agent/bot-model-access.js) | Trusted Bot lifecycle and model credential composition | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `1e4d3c62c20f7914a7d41b6e1231fb04bad3e2b34ea47d0977c664859016f27d` |
 | [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js) | Bounded Responses forwarding with durable observed attempts or explicit financial reservations | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `46daab2e9cae5d644dc2b84e52881bea67d6b5e8c91e92f22d8d94a5c03fd175` |
 | [src/environments/flat/bot-coordinator.js](../../src/environments/flat/bot-coordinator.js) | Trusted Core-returned flat Bot identity registration and readiness | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `fd5b51b26d181c2c2ffd12af7382ba213c6f28dfe7f9997f0068d7aa8fd66880` |
-| [src/environments/flat/controller.js](../../src/environments/flat/controller.js) | Flat serial discovery, continuation, directed feedback and stop-confirmed replacement policy | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `6f0a353db7aedbd3295821fce52885ba6633900d2059af1299a48c6ac797246e` |
+| [src/environments/flat/controller.js](../../src/environments/flat/controller.js) | Flat serial discovery, continuation, directed feedback and stop-confirmed replacement policy | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `5e8df416afbab03612579f6fa24a51d42ce3adb4efe541fcfa08e83a26975831` |
 | [src/environments/flat/environment.js](../../src/environments/flat/environment.js) | Flat host composition and independent business/resource reporting with explicit live snapshot readiness gate | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `9dd9e7533034935876d16df0450dcb4efcb4981d87d673eca11a7982423a0cd8` |
 | [src/environments/flat/model-access-policy.js](../../src/environments/flat/model-access-policy.js) | Flat Task/Mission model authority and Core synchronous policy adapter | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `a7dd147bc6d76499e764a36de5d75a3e7632969a14a5806517fd127ae4e67bf9` |
 | [src/environments/flat/prepare-inputs.js](../../src/environments/flat/prepare-inputs.js) | Fixed Workspace and Material input provenance and canonical FileSeed preparation | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `fc29c807be4601d8b446834ffa9f751024d18bc7aa276038c4e1da47baf689ed` |
@@ -98,7 +98,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/runtime/docker-bot-network.js](../../src/runtime/docker-bot-network.js) | Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `fece9e1daeaf52f57ac4d821abd0be86fdd94738995507a9412817eb1b268096` |
 | [src/runtime/identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Per-Core discovery/take supervisor, rescans, waiting and wake events | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `dbaf8e0b032a77d4b1ab7510837f138ee07cf5769725efc932c7945dea90fcd9` |
 | [src/runtime/runtime.js](../../src/runtime/runtime.js) | Registered Bot binding, physical resource ownership, failure cleanup, fencing and rotation | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `5c97a8ff436b86e21a8b55b5dd8860100b085aba5b896147766b99241be77fe6` |
-| [src/runtime/task-controller.js](../../src/runtime/task-controller.js) | Durable readiness reconciliation and idle-identity wake signals | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `f095abf8017293a7a6e0e7e264674a2e431f23967f87af861b5cbd994fc6c69d` |
 
 ### Mission acceptance and checker (7)
 
@@ -232,7 +231,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/shared/foreground-commands.js](../../src/environments/shared/foreground-commands.js) | Serial JSON-line host commands and bounded status/input receipt projection | [17-environment-reporting](17-environment-reporting.md) | `6337e1674cfaf158e0b7e07d8b72af40ffc5c864b03382a3542b955c1a688760` |
 | [src/environments/shared/foreground-host.js](../../src/environments/shared/foreground-host.js) | Shared foreground Environment driver using existing mode controllers and lifecycle reports | [17-environment-reporting](17-environment-reporting.md) | `7f11f2854de935e5f13c516d2aee4b3fee96b76a613d43d3b350c0316a25b318` |
 | [src/environments/shared/read-result.js](../../src/environments/shared/read-result.js) | Read saved Environment and Core receipts with expected identity and bounded normal-output projection | [17-environment-reporting](17-environment-reporting.md) | `99640d0f1709ff0777bc44c6c2f4edd48c4ad43c4791e88dfda5aa3bda17d06e` |
-| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `4f70cf112e695f6bd50e871e73ef80bd02cb5bf480d7e9fa3aa6104b220fb26b` |
+| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `18a67a55c10bff7042ba2357fbc16baf0def3a9dd9820ef7cbd22ff8969bf39f` |
 
 ### observation and analysis (7)
 

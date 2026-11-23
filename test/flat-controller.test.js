@@ -22,6 +22,7 @@ async function fixture(t,options={}) {
   const reads={beforeGet:null};
   const controller=createFlatController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
   t.after(async()=>{controls.stopError=null;controls.destroyError=null;await controller.close();await runtime.close();stores.close();await rm(root,{recursive:true,force:true});});
+  await options.beforeStart?.(stores);
   await controller.start();
   const bot=controller.snapshot().bots[0];
   function take() {
@@ -224,4 +225,84 @@ test('unknown input retains its original lease heartbeat without allowing anothe
   const after=f.tasks.getExecution(execution.execution_id);
   assert.ok(after.state_version>before.state_version,'Original owned Execution must retain its heartbeat while admission is unknown');
   assert.equal(after.state,'RUNNING');assert.equal(transport.submissions.size,count);
+});
+
+
+test('flat reconciliation repairs dependency state before discovery and after missed notifications',async t=>{
+  let dependent;
+  const f=await fixture(t,{beforeStart({tasks,task,missionId}) {
+    dependent=tasks.createTask({mission_id:missionId,gap:'Track a fixed prerequisite',priority:'medium',summary:'Dependent work',expected_output:'Result',acceptance_conditions:['Verified'],depends_on:[task.task_id]},makeEnvelope({actorRef:'host'})).task;
+    // Simulate an OPEN row whose prerequisite changed in another writer.
+    tasks.db.prepare("UPDATE tasks SET state='OPEN', block_reason=NULL WHERE task_id=?").run(dependent.task_id);
+  }});
+  assert.equal(f.tasks.getTask(dependent.task_id).state,'BLOCKED');
+  const execution=f.take();
+  f.tasks.dispatch('task_finish',{outcome:'done'},makeEnvelope({actorRef:f.bot.botId,taskId:execution.task_id,executionId:execution.execution_id,specVersion:execution.spec_version,stateVersion:execution.state_version,fencingVersion:execution.fencing_version}));
+  await f.controller.tick();
+  assert.equal(f.tasks.getTask(dependent.task_id).state,'OPEN');
+  assert.equal(f.tasks.getTask(f.task.task_id).state,'DONE');
+  const current=f.tasks.getTask(dependent.task_id);
+  f.tasks.db.prepare("UPDATE tasks SET state='BLOCKED',block_reason='dependency:missed-update' WHERE task_id=?").run(current.task_id);
+  await f.controller.tick();
+  assert.equal(f.tasks.getTask(current.task_id).state,'OPEN');
+  // Operator/checker blocks remain authoritative; repair cannot erase them.
+  f.tasks.db.prepare("UPDATE tasks SET state='BLOCKED',block_reason='operator-review' WHERE task_id=?").run(current.task_id);
+  await f.controller.tick();
+  assert.equal(f.tasks.getTask(current.task_id).block_reason,'operator-review');
+});
+
+test('flat discovery continues with no eligible work and reads public changes without a wake hint',async t=>{
+  const f=await fixture(t);
+  const execution=f.take();
+  // Leave a free successor after an incomplete attempt, then block available work.
+  f.tasks.dispatch('task_finish',{outcome:'incomplete'},makeEnvelope({actorRef:f.bot.botId,taskId:execution.task_id,executionId:execution.execution_id,specVersion:execution.spec_version,stateVersion:execution.state_version,fencingVersion:execution.fencing_version}));
+  await f.controller.tick();
+  const successor=f.controller.snapshot().bots.at(-1);
+  const before=f.controller.snapshot().inputs.length;
+  f.tasks.db.prepare("UPDATE tasks SET state='BLOCKED',block_reason='operator-review' WHERE task_id=?").run(f.task.task_id);
+  assert.deepEqual(f.tasks.listEligibleTasks({missionId:f.missionId}),[]);
+  transport.listeners.get(successor.botId)({type:'settled',outcome:'completed'});
+  await f.controller.flush();
+  assert.equal(f.controller.snapshot().inputs.length,before+1);
+  // Publish while discovery is already in flight; its next settled event must
+  // continue on the same Bot without a separate public-change notification.
+  await f.workspace.save({workspaceId:f.workspaceId,baseRevision:'0.1',requestId:'during-discovery',files:{'input.txt':'new shared evidence'}});
+  transport.listeners.get(successor.botId)({type:'settled',outcome:'completed'});
+  await f.controller.flush();
+  const inputs=f.controller.snapshot().inputs;
+  assert.equal(inputs.length,before+2);
+  assert.equal(inputs.at(-1).botId,successor.botId);
+  assert.equal(inputs.at(-1).source,'discovery');
+});
+
+test('flat halt during the final asynchronous discovery lookup prevents late input and refill',async t=>{
+  const f=await fixture(t);const before=transport.submissions.size;
+  f.reads.beforeGet=()=>{f.reads.beforeGet=null;f.controller.halt();};
+  f.settle();await f.controller.flush();
+  assert.equal(transport.submissions.size,before);
+  assert.equal(f.controller.snapshot().bots.length,1);
+  assert.equal(f.controller.snapshot().inputs.at(-1).status,'not_submitted');
+  await f.controller.tick();
+  assert.equal(transport.submissions.size,before);
+});
+
+test('Material publication and correction during discovery stay visible without an idle-loop wake scheduler',async t=>{
+  const f=await fixture(t,{capacity:2});const execution=f.take();
+  const reader=f.controller.snapshot().bots.find(row=>row.botId!==f.bot.botId);
+  const envelope=id=>{
+    const current=f.tasks.getExecution(execution.execution_id);
+    return makeEnvelope({operationId:id,actorRef:f.bot.botId,taskId:current.task_id,executionId:current.execution_id,specVersion:current.spec_version,stateVersion:current.state_version,fencingVersion:current.fencing_version});
+  };
+  const before=f.controller.snapshot().inputs.filter(row=>row.botId===reader.botId).length;
+  const material=f.context.dispatch('context_publish_material',{content:'A shared claim'},envelope('during-reader-discovery')).material;
+  f.context.dispatch('material_dispute',{material_id:material.material_id,claim:'A shared claim',reason:'The claim requires independent checking'},envelope('correct-during-discovery'));
+  const read=f.context.dispatch('context_get_material',{material_id:material.material_id},makeEnvelope({actorRef:reader.botId,operationId:'reader-sees-correction'}));
+  assert.equal(read.material.material_id,material.material_id);
+  assert.equal(f.context.listMaterialRelations({material_id:material.material_id}).length,1);
+  transport.listeners.get(reader.botId)({type:'settled',outcome:'completed'});
+  await f.controller.flush();
+  const inputs=f.controller.snapshot().inputs.filter(row=>row.botId===reader.botId);
+  assert.equal(inputs.length,before+1);
+  assert.equal(inputs.at(-1).source,'discovery');
+  assert.equal(f.tasks.getExecution(execution.execution_id).state,'RUNNING');
 });

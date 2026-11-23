@@ -1086,17 +1086,6 @@
       "role": "Registered Bot binding, physical resource ownership, failure cleanup, fencing and rotation"
     },
     {
-      "path": "src/runtime/task-controller.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Durable readiness reconciliation and idle-identity wake signals"
-    },
-    {
       "path": "src/runtime/workspace-contract.js",
       "category": "Workspace and Sandbox",
       "chapters": [

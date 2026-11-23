@@ -12,10 +12,10 @@ Read [07 Run configuration](07-run-configuration.md) for current host entry poin
 |---|---|---|
 | Task Service | Durable admission, take, transition validation, dependency facts, version checks and replay | Research-value ranking |
 | IdentityTaskLoop | One Core's bounded discover/select/take/Runtime-handoff loop | It cannot bypass service-side admission |
-| TaskController | Reconcile dependency state and signal eligible idle loops | It never chooses or takes a Task; its snapshot records no take operation |
+| Flat controller | Reconcile dependency state, submit discovery and continuation, and stop its Bots | TaskService owns claim admission; public Core owns resources |
 | Runtime | Process binding, Workspace preparation, Session events, deadlines, recovery and release/fencing | Research decomposition and value ranking |
 
-TaskController reconciles dependency readiness. IdentityTaskLoop passes each reservation to Runtime through `runExecution`. Runtime binds it to the registered Bot’s original Session.
+The flat controller reconciles dependency readiness through TaskService. The retained legacy IdentityTaskLoop passes each reservation to its caller through `runExecution`. Runtime binds it to the registered Bot’s original Session.
 
 ## 2. Three different state spaces
 
@@ -45,7 +45,7 @@ Task Service independently persists `core_id`. A non-null binding is immutable f
 
 ### 2.3 Identity-loop state
 
-The normal loop is `IDLE → DISCOVERING → TAKING → RUNNING → IDLE`. `STOPPING` is explicit shutdown. `FAILED` is in the exported vocabulary and TaskController treats it as unhealthy. There is no semantic `BLOCKED` Core state: blocking research work releases capacity.
+The normal loop is `IDLE → DISCOVERING → TAKING → RUNNING → IDLE`. `STOPPING` is explicit shutdown. `FAILED` remains in the exported vocabulary. There is no semantic `BLOCKED` Core state: blocking research work releases capacity.
 
 Snapshots include discovery/take-turn/accepted-take counts, conflicts/rescans, selector failures/retry deadline, `waiting_for_work`, `discovery_retry_at`, `first_discovery_at`, idle generation, last error/timestamp and state history. These counters describe coordination activity, not useful research progress.
 
@@ -67,24 +67,15 @@ Defaults remain one conflict rescan, three selector failures before a 30-second 
 
 The loop takes `no_work` only as an explicit bounded callback result. A settled response, backend error or incomplete callback does not establish `no_work`. The host supplies the discovery callback and its decision policy. Runtime can open a successor only after it confirms cleanup and releases the previous Bot’s Core.
 
-### 3.2 TaskController
+### 3.2 Flat dependency repair and discovery
 
-The controller defaults to a 5-second sweep and 16-Task shortlist. Event/timer reconciliations are serialized; an event during reconciliation requests a subsequent pass.
+The current flat controller calls TaskService.reconcileTask for every OPEN or BLOCKED Task in its Mission before checking terminal completion or allocating free Slots. This happens at start, periodic heartbeat ticks, explicit notifications/ticks, and refill after an Execution stops. TaskService retains active owners and terminal Tasks. It persists missing prerequisite blocks and reopens only dependency blocks whose prerequisites are satisfied; operator and checker blocks remain untouched. Repair failures enter the controller's failures and decisions with the original Task ID; they do not manufacture a take or acceptance.
 
-A pass reads up to 100 `OPEN`/`BLOCKED` Tasks through the default adapter, asks Task Service to reconcile them, then reads updated blocked/eligible views and identity-loop health. Healthy idle loops in selector cooldown are excluded. Unhealthy loops can invoke an optional recovery callback.
+This sweep reads the full Mission Task set through scanAll rather than a bounded eligible page. No Material or Workspace notification is required to continue discovery: a completed turn from an UNBOUND Bot schedules another discovery in the same Session, including when no Task is eligible. Public files and Materials remain available through their owning Services. Discovery and continuation limits, selection/hard deadlines and stall limits bound this policy. It does not recreate the old TaskController's public-token wakeup scheduler.
 
-The controller signals every healthy idle loop outside retry cooldown, including
-when the eligible view is empty. Task count does not cap discovery capacity: Bots
-can inspect existing responsibilities and propose distinct local work. Task
-Service still arbitrates exclusive takes. The sorted Task IDs, loop state, idle generation and durable public-change token form a duplicate-suppression key. Observing discovery/take in
-flight preserves that receipt, so an unchanged view does not restart the same read through Controller polling. Execution completion, public change and the retry timer can each allow later discovery. A host can supply a durable public-change token to make the polling pass distinguish changed public state from a duplicate wakeup. Events request a sooner reconciliation rather than bypassing token deduplication. No broker or reliable-broadcast guarantee is assumed. Mission is not inserted into the Task view.
+All flat inputs share one serialized controller. Its public Core lookup is followed by closing, deadline and live-state guards, so halt during that await suppresses the late send. Queued events and subsequent ticks cannot refill after halt. Unknown admission retains the original owner and blocks automatic resubmission. The public Core owns physical resource stop; flat reconciles the original domain owner only from the resulting stop receipt.
 
-It publishes readiness/health snapshots, suppresses stable blocked/no-op noise,
-and keeps observer errors from changing ownership. Normal reconciliation
-preserves terminal Tasks and active owners. `dependency:` blocks can reopen
-after prerequisites satisfy. Current blocked finishes require an explicit Task prerequisite.
-
-
+The old TaskController has no remaining Environment caller and has been removed. IdentityTaskLoop remains a directly callable compatibility component with legacy Runtime regressions, including quiet-Mission retry. Removing that separate component still requires migrating its remaining required behavior and tests. [Flat controller tests](../../test/flat-controller.test.js) exercise actual public Core discovery, dependency repair, original identity and stop races with controlled provider transport. [Material authority tests](../../test/material-authority.test.js) retain durable Task/Material/Workspace token semantics independently of the removed scheduler.
 
 ## 4. Durable Execution record
 
@@ -196,7 +187,7 @@ Registered cleanup distinguishes acceptance from completion: finish first persis
 | Source | Covered behavior | Existing tests |
 |---|---|---|
 | [identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Discover/propose/take, cooldown, signal races and failed handoff | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
-| [task-controller.js](../../src/runtime/task-controller.js) | Reconciliation, discovery wake deduplication and health callbacks | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
+| [flat/controller.js](../../src/environments/flat/controller.js) | Dependency repair, discovery, continuation, directed feedback and domain cleanup | [flat-controller.test.js](../../test/flat-controller.test.js) |
 | [runtime.js](../../src/runtime/runtime.js) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.js), [cleanup integration](../../test/runtime-cleanup.test.js) |
 | [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.js) | Durable state/version/Core/lease transitions and replay | [Task behavior](../../test/task-contract.test.js), [finish lifecycle](../../test/task-finish-lifecycle.test.js) |
 | [services-bridge.js](../../src/agent/services-bridge.js) | Identity, original Bot binding and compensation | [Bot Bridge](../../test/bot-bridge.test.js), [Bot Runtime](../../test/bot-runtime.test.js) |

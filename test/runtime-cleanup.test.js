@@ -6,7 +6,6 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { TaskController } from '../src/runtime/task-controller.js';
 import { Runtime } from '../src/runtime/runtime.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { BOT_PROTOCOL_VERSION, BOT_RESOURCES } from '../src/agent/bot-contract.js';
@@ -454,19 +453,4 @@ test('maintenance retries retained Workspace cleanup after finish is already ter
   } finally { await rename(temporarilyUnavailable, originalPath); }
   await runtime.sweepExpired();
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
-test('Controller stop prevents a held public-token read from waking another Bot later', async () => {
-  const entered = deferred(), held = deferred();
-  let wakeups = 0;
-  const controller = new TaskController({ listEligibleTasks: () => [], listBlockedTasks: () => [], sweepIntervalMs: 0,
-    listIdentityLoops: () => [{ core_id: 'core-1', state: 'IDLE', healthy: true }],
-    readPublicChangeToken: async () => { entered.resolve(); await held.promise; return 'new-public-work'; },
-    signalIdleIdentity: () => { wakeups += 1; } });
-  const reconciling = controller.reconcile();
-  await entered.promise;
-  const stopping = controller.stop();
-  held.resolve();
-  await Promise.all([reconciling, stopping]);
-  assert.equal(wakeups, 0);
 });
