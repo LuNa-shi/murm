@@ -1,6 +1,6 @@
 import { ResponsesBudgetGateway } from './responses-budget-gateway.js';
 import { assertShippedModelPair } from './model-catalog.js';
-import { isSoftCloseout } from '../task/execution-budget.js';
+import { authorizeFlatBot } from '../environments/flat/model-access-policy.js';
 
 export const DEFAULT_BENCHMARK_MODEL = Object.freeze({ provider: 'kimi_proxy', model: 'k3' });
 
@@ -28,22 +28,10 @@ export class BotModelAccess {
       limits: configuration.limits, timeBounds: timeBounded ? configuration : undefined, fetchImpl,
       withLifecycleWrite: commit => taskService.withServiceLifecycleWrite(commit),
       validateBot: ({ missionId: requestedMission, botId }) => {
-        const at = Date.now();
-        const bot = taskService.getBot(botId);
-        if (isStopping() || requestedMission !== missionId || bot?.mission_id !== missionId || at >= deadline() ||
-            !Number.isFinite(Date.parse(bot?.hard_deadline)) || at >= Date.parse(bot.hard_deadline)) return null;
-        if (bot.state === 'UNBOUND') return !taskService.isMissionStopped(missionId) && at < Date.parse(bot.selection_deadline) ? { phase: 'selection', deadline: Math.min(deadline(), Date.parse(bot.hard_deadline), Date.parse(bot.selection_deadline)) } : null;
-        if (bot.state !== 'ACTIVE') return null;
-        const execution = taskService.getExecution(bot.execution_id);
-        const executionDeadline = Date.parse(execution?.execution_deadline);
-        const leaseDeadline = Date.parse(execution?.lease_expires_at);
-        if (execution?.owner_ref !== botId || execution.state !== 'RUNNING' ||
-            !(at < executionDeadline && at < leaseDeadline)) return null;
-        if (taskService.isMissionStopped(missionId) && !isSoftCloseout(execution, at)) return null;
-        const phase = isSoftCloseout(execution, at) ? 'closeout' : 'work';
-        return phase === 'closeout' && at >= closeoutDeadline() ? null : { phase, deadline: Math.min(deadline(), Date.parse(bot.hard_deadline),
-          executionDeadline, phase === 'closeout' ? closeoutDeadline() : Infinity),
-          executionId: bot.execution_id, fencingVersion: execution.fencing_version, leaseDeadline };
+        if (requestedMission !== missionId) return null;
+        const permit = authorizeFlatBot({ taskService, missionId, botId, deadline, closeoutDeadline, isStopping });
+        return permit && { phase: permit.phase, deadline: permit.deadlineAt,
+          ...(permit.lease ? { executionId: permit.lease.key, fencingVersion: permit.lease.version, leaseDeadline: permit.lease.expiresAt } : {}) };
       } });
   }
 

@@ -1,0 +1,48 @@
+function invalid(message) { return Object.assign(new Error(message), { code: 'INVALID_CONTRACT' }); }
+
+/** Host-only startup composition; no model-facing method can mark readiness. */
+export function createFlatBotCoordinator({ runtime, taskService, missionId }) {
+  if (!runtime?.id || typeof runtime.spawn !== 'function' || typeof runtime.stop !== 'function' ||
+      !taskService || typeof missionId !== 'string' || !missionId) throw invalid('Trusted Core Runtime and flat Mission are required');
+  const requests = new Map();
+  return Object.freeze({
+    async spawn({ legacySlotId, selectionDeadline, hardDeadline = selectionDeadline, ...options }) {
+      if (typeof legacySlotId !== 'string' || !legacySlotId || legacySlotId === runtime.id ||
+          !options.requestId || !options.profile || ![selectionDeadline, hardDeadline].every(value =>
+            typeof value === 'string' && Number.isFinite(Date.parse(value))) || Date.parse(selectionDeadline) > Date.parse(hardDeadline)) {
+        throw invalid('Flat startup requires a distinct legacy Slot and finite ordered deadlines');
+      }
+      const fingerprint = JSON.stringify({ legacySlotId, selectionDeadline, hardDeadline, options });
+      const previous = requests.get(options.requestId);
+      if (previous) {
+        if (previous.fingerprint !== fingerprint) throw Object.assign(new Error('Flat spawn request parameters conflict'), { code: 'CONFLICT' });
+        return structuredClone(await previous.result);
+      }
+      const result = (async () => {
+        taskService.assertMissionResearchOpen(missionId);
+        if (Date.now() >= Math.min(Date.parse(selectionDeadline), Date.parse(hardDeadline))) throw invalid('Flat startup deadline elapsed');
+        const bot = await runtime.spawn(options);
+        try {
+          if (bot?.status !== 'idle' || typeof bot.id !== 'string' || !bot.id || bot.profile !== options.profile) throw invalid('Core spawn did not return the requested ready Bot');
+          taskService.registerBot({ botId: bot.id, missionId, legacySlotId, selectionDeadline, hardDeadline });
+          taskService.markCoreBotReady(bot.id);
+          return bot;
+        } catch (error) {
+          // A failed domain admission must not leave an untracked live Core Bot.
+          // Core alone deletes resources; pending cleanup remains visible there.
+          try {
+            const receipt = await runtime.stop(bot.id);
+            const registered = taskService.getBot(bot.id);
+            if (registered?.mission_id === missionId && registered.state === 'STARTING') {
+              taskService.requestBotStop(bot.id, 'flat-startup-failed');
+              if (receipt.cleanup === 'complete') taskService.finalizeBotClose(bot.id);
+            }
+          } catch { /* Preserve the admission error; Core retains cleanup evidence. */ }
+          throw error;
+        }
+      })();
+      requests.set(options.requestId, { fingerprint, result });
+      return structuredClone(await result);
+    },
+  });
+}
