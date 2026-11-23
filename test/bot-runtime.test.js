@@ -9,7 +9,6 @@ import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
-import { finishSolverTask, beginMissionCloseout, ensureAgentSession, isPreparationFailure, sanitizedCheck, takeTaskWithAgent } from '../src/benchmark/putnam-runner.js';
 import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
@@ -146,18 +145,6 @@ test('a quiet unfinished Mission discovers a new responsibility after all Tasks 
   assert.equal(service.listActiveExecutions().length, 0);
 });
 
-for (const boundary of ['accepted', 'stopped', 'deadline']) test(
-  `discovery refuses to start a Bot after the ${boundary} boundary`, async t => {
-    const { service, runtime } = await fixture(t);
-    const mission = service.getMission('mission:bots');
-    if (boundary === 'accepted') service.setMissionStopReader(() => true);
-    const core = { runtime, stateRef: { mission, stopping: boundary === 'stopped',
-      runDeadlineAt: boundary === 'deadline' ? Date.now() - 1 : Infinity } };
-    assert.deepEqual(await takeTaskWithAgent(core, []), { take_deferred: true });
-    assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-  },
-);
-
 for (const boundary of ['accepted Mission', 'Runtime stop', 'run deadline'])
 for (const checkpoint of ['sandbox dispatch', 'sandbox receipt', 'Pi dispatch', 'ready']) test(
   `${boundary} prevents late Bot ${checkpoint} and releases its resources`, async t => {
@@ -205,23 +192,6 @@ for (const checkpoint of ['sandbox dispatch', 'sandbox receipt', 'Pi dispatch', 
     assert.equal(calls.filter(call => call.method === 'POST' && call.url.endsWith('/start')).length, checkpoint === 'ready' ? 1 : 0);
   },
 );
-
-test('benchmark rechecks Mission stop after awaiting prior Session cleanup', async t => {
-  const { service, runtime } = await fixture(t);
-  let entered, resume;
-  const reached = new Promise(resolve => { entered = resolve; });
-  const gate = new Promise(resolve => { resume = resolve; });
-  const core = { runtime, errors: [], stateRef: { mission: { mission_id: 'mission:bots' } },
-    releasedSession: { closed: true, stop: async () => { entered(); await gate; } } };
-  const starting = ensureAgentSession(core);
-  await reached;
-  service.setMissionStopReader(id => id === 'mission:bots');
-  resume();
-  assert.equal(await starting, false);
-  assert.equal(core.releasedSession, null);
-  assert.equal(core.sessionStartAttempts, undefined);
-  assert.deepEqual(core.errors, []);
-});
 
 test('selection timeout closes an unbound Bot and releases no phantom Execution', async (t) => {
   const { service, runtime, startSession } = await fixture(t);
@@ -664,7 +634,6 @@ for (const [budget, selectionFirst] of [['bot-lifetime-budget', false], ['bot-li
     assert.equal(stopped.terminal_reason, budget);
     assert.equal(stopped.started_at, null);
     assert.equal(stopped.workspace_ref, null);
-    assert.equal(isPreparationFailure(stopped), true, 'the report accepts this real pre-activation budget stop');
   } finally {
     release();
     await rejected;
@@ -705,7 +674,6 @@ test('earlier Task hard deadline automatically stops a registered Bot without an
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'execution-timebox');
 });
-
 
 test('registered take pins the complete public tree even when main advances during preparation', async t => {
   const { root, service, runtime, startSession } = await fixture(t);
@@ -842,7 +810,6 @@ test('a Task explicit public revision is used instead of the current main', asyn
   assert.equal(await readFile(join(workspace.workspace_ref, 'input.txt'), 'utf8'), 'selected saved revision');
 });
 
-
 test('a delayed project grant cannot return a successful binding after Bot stop', async t => {
   const { root, service, runtime, startSession } = await fixture(t);
   runtime.missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'public-repositories') });
@@ -864,7 +831,6 @@ test('a delayed project grant cannot return a successful binding after Bot stop'
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'controlled-hard-stop');
   assert.equal(runtime.hasActiveExecution(execution.execution_id), false);
 });
-
 
 test('registered Bot compaction sends CLI guidance without saving the controller private tree', async t => {
   const { service, runtime, startSession } = await fixture(t, { maxCompactions: 3 });
@@ -1426,7 +1392,6 @@ test('registered Judge CLI checks only a fixed public file and scopes durable re
   assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
 });
 
-
 test('registered Judge CLI builds an immutable project and binds a selected delivery file to the same tree', async t => {
   const { JudgeService } = await import('../src/judge/judge-service.js');
   const { LeanChecker } = await import('../src/judge/lean-adapter.js');
@@ -1503,20 +1468,18 @@ test('registered Judge CLI builds an immutable project and binds a selected deli
   guest.files['lakefile.lean'] = Buffer.from('-- Candidate Lake configuration is ignored');
   guest.files['Helper.lean'] = Buffer.from('theorem helper : True := by sorry');
   const partial = await dispatch('save', 'project-rejected-paths');
-  const observedFailure = async (path, revision, diagnosticCode, forbidden = false) => {
+  const observedFailure = async (path, revision, diagnosticCode) => {
     const result = await command('judge', 'check', '--revision', revision, '--path', path);
     assert.equal(result.result_class, 'request_failure');
     assert.equal(result.diagnostic_code, diagnosticCode);
     assert.deepEqual(observed.at(-1), { taskId: execution.task_id, executionId: execution.execution_id, result });
-    assert.equal(sanitizedCheck(result, {}).diagnostic_class === 'forbidden_placeholder', forbidden);
   };
   await observedFailure('lakefile.lean', partial.revision, 'project_path_uncovered');
-  await observedFailure('Helper.lean', partial.revision, 'forbidden_placeholder', true);
+  await observedFailure('Helper.lean', partial.revision, 'forbidden_placeholder');
 
   guest.files['Outside.lean'] = Buffer.from('theorem outside : True := True.intro');
   const invalidRoot = await dispatch('save', 'project-invalid-layout');
   await observedFailure('Proof.lean', invalidRoot.revision, 'project_input_invalid');
-  assert.notEqual(sanitizedCheck({ diagnostic_code: 'checker_request_rejected' }, {}).diagnostic_class, 'forbidden_placeholder');
 
   const started = Promise.withResolvers();
   const settle = Promise.withResolvers();
@@ -1602,7 +1565,6 @@ test('registered CLI merge checks the final combined public tree and preserves t
   const history = await runtime.missionWorkspace.history({ workspaceId: 'workspace-default', all: true, sourceExecution: execution.execution_id });
   assert.ok(history.items.some(revision => revision.revision === merged.main_revision));
 });
-
 
 for (const boundary of ['finish', 'freeze', 'freeze-released', 'soft-closeout']) test(`registered merge cannot advance main after ${boundary} wins during checking`, async t => {
   let entered, resume;
@@ -1999,16 +1961,14 @@ test('actual Task CLI lets an UNBOUND Bot retire work while an ACTIVE Bot only r
   assert.equal(repaired.task.relations.dependency_replacements.length, 1);
 });
 
-test('Mission acceptance gates new work but permits actual CLI save publish finish within bounded closeout', async t => {
+test('Mission stop policy permits original CLI save publish finish after a handoff reminder', async t => {
   const { service, runtime, command, execution } = await workspaceFixture(t);
-  let stopped = 0;
-  const state = { taskService: service, missionId: 'mission:bots', missionCloseoutMs: 20_000, runDeadlineAt: Date.now() + 15_000,
-    identityLoops: [{ stop: () => { stopped += 1; } }], controller: { stop: async () => { stopped += 1; } }, requestIdentityWake: () => {} };
   service.setMissionStopReader(() => true);
-  beginMissionCloseout(state, { submission_id: 'accepted', actor_ref: execution.owner_ref, finished_at: new Date().toISOString() });
-  await Promise.all(state.backgroundStopPromises);
-  assert.equal(stopped, 2);
-  assert.equal(state.missionCloseoutDeadline, state.runDeadlineAt);
+  service.recordHandoffReminder({ reminded_at: new Date().toISOString() }, makeEnvelope({
+    operationId: 'mission-stop-reminder', actorRef: execution.owner_ref, taskId: execution.task_id,
+    executionId: execution.execution_id, specVersion: execution.spec_version,
+    stateVersion: execution.state_version, fencingVersion: execution.fencing_version,
+  }));
   assert.ok(service.getExecution(execution.execution_id).handoff_reminder_sent_at);
   await assert.rejects(command('workspace', 'apply', '--from', '0.1', '--request-id', 'new-after-acceptance'), error => /NOT_ALLOWED/.test(error.stderr));
   assert.ok((await command('workspace', 'save', '--request-id', 'closeout-save')).revision);
@@ -2286,7 +2246,7 @@ test('binding cannot revive an already expired preparation lease', async t => {
   assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
 });
 
-for (const deployment of ['in-process', 'independent']) for (const accepted of [false, true]) test(`solver control completes real lifecycle with ${deployment} services and Mission acceptance=${accepted}`, async t => {
+for (const deployment of ['in-process', 'independent']) test(`host solver control takes and finishes the real lifecycle with ${deployment} services`, async t => {
   const { root, service, runtime, startSession } = await fixture(t, { agentMode: 'solver' });
   const peers = deployment === 'independent' ? await startIndependentServices({
     taskService: service, projectDir: root, logRoot: join(root, 'logs'),
@@ -2327,30 +2287,11 @@ for (const deployment of ['in-process', 'independent']) for (const accepted of [
       assert.equal(budget.queue_wait_ms, 120_000);
       assert.equal(budget.admitted_requests, 0);
     }
-    let closeoutState;
-    if (accepted) {
-      const loop = new IdentityTaskLoop({ coreId: 'core-1', taskService: service, runtime,
-        listEligibleTasks: () => [task], takeTask: async () => result, runExecution: async () => result,
-        handoffTimeoutMs: 5_000, handoffPollMs: 10,
-      });
-      const running = loop.runOnce();
-      t.after(async () => { loop.stop(); await running; });
-      while (!loop.executionId) await new Promise(resolve => setImmediate(resolve));
-      service.setMissionStopReader(() => true);
-      closeoutState = { agentMode: 'solver', taskService: service, missionId: 'mission:bots',
-        runDeadlineAt: Date.now() + 60_000, identityLoops: [loop], requestIdentityWake() {},
-      };
-      beginMissionCloseout(closeoutState, { submission_id: 'accepted-solver', actor_ref: started.bot.bot_id, finished_at: new Date().toISOString() });
-      await new Promise(resolve => setImmediate(resolve));
-      assert.equal(service.getBot(started.bot.bot_id).state, 'ACTIVE', 'acceptance must preserve the Bot until host finish');
-    }
-    const finish = { operation: 'task_finish', operation_id: 'solver-control-finish', payload: { outcome: accepted ? 'done' : 'incomplete', summary: 'Controlled completion' } };
+    const finish = { operation: 'task_finish', operation_id: 'solver-control-finish', payload: { outcome: 'incomplete', summary: 'Controlled completion' } };
     await assert.rejects(bridge.call(finish), error => error.code === 'NOT_ALLOWED');
-    if (accepted) await finishSolverTask(closeoutState, { bridge, executionId: result.execution.execution_id });
-    else await bridge.controlCall(finish);
+    await bridge.controlCall(finish);
     assert.equal(service.getBot(started.bot.bot_id).state, 'CLOSED');
     assert.equal(session.closed, true);
-    if (accepted) assert.equal(service.getTask(task.task_id).state, 'DONE');
   } finally {
     try {
       await runtime.shutdown();
@@ -2382,7 +2323,6 @@ test('solver compaction preserves the same Bot and Execution beyond the Swarm ro
   assert.ok(messages.every(message => !/swarm task|swarm material/.test(message)));
 });
 
-
 test('slow Bot preparation keeps its reservation lease live before activation', async t => {
   const { service, runtime, manager, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
@@ -2404,7 +2344,6 @@ test('slow Bot preparation keeps its reservation lease live before activation', 
   assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
   assert.doesNotThrow(() => runtime.heartbeat(execution.execution_id));
 });
-
 
 test('binding cannot revive an already expired preparation lease', async t => {
   const { service, runtime, startSession, manager } = await fixture(t);

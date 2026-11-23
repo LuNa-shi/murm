@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createHash } from 'node:crypto';
-import { createServer } from 'node:http';
-import { once } from 'node:events';
 import { access, mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,12 +15,12 @@ import { ObservationStore } from '../src/observability/observation-store.js';
 import { ServiceCommitGate } from '../src/sdk/service-commit-gate.js';
 import { CONTEXT_PEER_SCHEMA_SQL, JUDGE_PEER_SCHEMA_SQL } from '../src/storage/service-peer-schema.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { runBenchmarkProject } from '../src/benchmark/putnam-runner.js';
 import { parseReplayTime, prepareExperimentResume } from '../src/replay/resume-experiment.js';
 import { dropReplayHistory } from '../src/replay/service-history.js';
 import { WORKSPACE_HISTORY_DIR } from '../src/runtime/workspace-repository.js';
 
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
+
 const envelope = (service, executionId, operationId) => {
   const e = service.getExecution(executionId);
   return makeEnvelope({ actorRef: e.owner_ref, taskId: e.task_id, executionId, operationId,
@@ -281,44 +279,6 @@ test('missing cross-service history names the unavailable Task Material and does
   await assert.rejects(access(destination), { code: 'ENOENT' });
 });
 
-test('the ordinary runner opens reconstructed services and composes four fresh cores without contacting old sandboxes', { timeout: 20000 }, async t => {
-  const f = await finishedExperiment(t);
-  const requests = [];
-  const provider = createServer((request, response) => {
-    requests.push({ method: request.method, url: request.url });
-    response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ items: [] }));
-  });
-  provider.listen(0, '127.0.0.1'); await once(provider, 'listening');
-  t.after(async () => { provider.closeAllConnections(); await new Promise(resolve => provider.close(resolve)); });
-  const destination = join(f.root, 'runner');
-  let inspected = false;
-  const report = await runBenchmarkProject(f.problem, f.config, { experimentDir: destination, reportDir: join(destination, 'reports'),
-    resumeFrom: f.source, resumeAt: f.earlyTime, timeboxMs: 0, botMaxMs: 60_000, serviceDeployment: 'independent',
-    sandbox: { enabled: true, provider: 'opensandbox', lifecycleBaseUrl: `http://127.0.0.1:${provider.address().port}`, image: 'controlled:test' },
-    prepareProject: ({ taskService, contextService, mission, publicWorkspace }) => {
-      assert.equal(mission.mission_id, f.missionId);
-      assert.equal(publicWorkspace.main_revision, '0.1');
-      assert.equal(taskService.getTask('task:active').state, 'OPEN');
-      assert.equal(contextService.getMaterial(f.materialId).content, 'The first reusable local fact');
-      assert.equal(contextService.getMaterial(f.futureMaterialId), null);
-      inspected = true;
-    },
-  });
-  assert.equal(inspected, true);
-  assert.equal(report.protocol.core_count, 4);
-  assert.equal(report.protocol.initial_task_count, 3);
-  assert.equal(report.run.resume_count, 1);
-  assert.equal(report.run.dynamic_task_count, 0);
-  assert.equal(report.run.progress_evidence.proposed_task_count, 0);
-  assert.equal(report.run.new_material_count, 0);
-  assert.equal(report.run.material_consumption_count, 0);
-  assert.equal(report.run.inherited_material_consumption_count, 1);
-  assert.equal(report.run.made_progress, false, 'inherited Materials are not new progress');
-  assert.equal(report.audit.invalid, false);
-  assert.equal(requests.some(request => request.method !== 'GET' || request.url.includes('original-sandbox')), false);
-  for (const [name, before] of Object.entries(f.sourceHashes)) assert.equal(digest(await readFile(join(f.projectDir, name))), before);
-});
-
 test('a terminal failed run with an admitted Mission can resume from its earlier public state', async t => {
   const f = await finishedExperiment(t);
   const path = join(f.source, 'metadata', 'experiment.json');
@@ -342,20 +302,4 @@ test('resume validates the historical interval, source completion, environment a
   const metadata = JSON.parse(await readFile(path, 'utf8'));
   await writeFile(path, JSON.stringify({ ...metadata, status: 'running' }));
   await assert.rejects(prepareExperimentResume(request), { code: 'REPLAY_SOURCE_NOT_FINISHED' });
-});
-
-
-test('resume rejects a report directory pointing into its source before preflight failure or report writes', async t => {
-  const f = await finishedExperiment(t);
-  const originalReports = join(f.source, 'reports');
-  const oldReport = join(originalReports, f.problem.id, 'report.json');
-  await mkdir(join(originalReports, f.problem.id), { recursive: true });
-  await writeFile(oldReport, 'original report');
-  const alias = join(f.root, 'alias-reports');
-  await symlink(originalReports, alias);
-  const destination = join(f.root, 'new-experiment');
-  await assert.rejects(runBenchmarkProject(f.problem, f.config, { experimentDir: destination, reportDir: alias,
-    resumeFrom: f.source, resumeAt: f.earlyTime, timeboxMs: 0 }), { code: 'REPLAY_DESTINATION_CONFLICT' });
-  assert.equal(await readFile(oldReport, 'utf8'), 'original report');
-  await assert.rejects(access(destination), { code: 'ENOENT' });
 });

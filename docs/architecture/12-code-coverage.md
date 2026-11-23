@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **207 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **203 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -32,7 +32,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/agent/bot-contract.js](../../src/agent/bot-contract.js) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `eb63c71f1f576ac711bc0fde192db8bdb57cbf497f53b5130aafe214372d91ce` |
+| [src/agent/bot-contract.js](../../src/agent/bot-contract.js) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `a038025c22d974b360fcc309076f48a72d5d40daeab1a740ce3b9381f60c119d` |
 | [src/agent/bot-contract/finish-task.md](../../src/agent/bot-contract/finish-task.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `cc3748aa4502013072a030fa84fe13f8cfaa82d6e1ea642661a5b6eeaeeb32a4` |
 | [src/agent/bot-contract/plan-task.md](../../src/agent/bot-contract/plan-task.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `3cfae26c7423640d02b00402bd9dcbf6c6242935382ba1b889a0b7c3eae78ef6` |
 | [src/agent/bot-contract/system.txt](../../src/agent/bot-contract/system.txt) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `b812832173ad5efd0fce7d36f13001a0a2f1db3efd137906ae58ad0f36a2c343` |
@@ -73,7 +73,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `a475e66b3fb1cc33f4e76472f36258314697df35cfd4970498b7905fb6d3a49a` |
 | [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [20-lead-helper-environment](20-lead-helper-environment.md), [08-prompts](08-prompts.md) | `a9b680e62aafe7bbd5883d3d5d3255d1cd964771a0711d862e283e2f12b897ab` |
 
-### Execution and control (23)
+### Execution and control (22)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -85,7 +85,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [examples/subagents-environment/prompts.mjs](../../examples/subagents-environment/prompts.mjs) | Complete parent and child instructions and fixed initial text goal | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `417dcf1192ecd6795fc916895d78dda5ad4d5fc9b282960eb82be2b0d3ac36ba` |
 | [src/agent/bot-model-access.js](../../src/agent/bot-model-access.js) | Trusted Bot lifecycle and model credential composition | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `1e4d3c62c20f7914a7d41b6e1231fb04bad3e2b34ea47d0977c664859016f27d` |
 | [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js) | Bounded Responses forwarding with durable observed attempts or explicit financial reservations | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `46daab2e9cae5d644dc2b84e52881bea67d6b5e8c91e92f22d8d94a5c03fd175` |
-| [src/benchmark/benchmark-fixture.js](../../src/benchmark/benchmark-fixture.js) | Pinned Git blob and timed service composition gates | [07-run-configuration](07-run-configuration.md) | `bf6aafd3caab9041b0262cf4d916bb2110d1d11a14d7b3765fc6db6cfaa512c6` |
 | [src/environments/flat/bot-coordinator.js](../../src/environments/flat/bot-coordinator.js) | Trusted Core-returned flat Bot identity registration and readiness | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `fd5b51b26d181c2c2ffd12af7382ba213c6f28dfe7f9997f0068d7aa8fd66880` |
 | [src/environments/flat/controller.js](../../src/environments/flat/controller.js) | Flat serial discovery, continuation, directed feedback and stop-confirmed replacement policy | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `6f0a353db7aedbd3295821fce52885ba6633900d2059af1299a48c6ac797246e` |
 | [src/environments/flat/environment.js](../../src/environments/flat/environment.js) | Flat host composition and independent business/resource reporting with explicit live snapshot readiness gate | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `e2a704a52eb42efcc879586f6329efdf95999d5dc5ee38e4e567b838dd464894` |
@@ -152,12 +151,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 |---|---|---|---|
 | [src/agent/bot-contract/solver-system.txt](../../src/agent/bot-contract/solver-system.txt) | Immutable independent solver system addendum without collaboration skills | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md) | `33ea49d9c46fc7402dac07ec040aed24da56dd4d92cb3b7e8fe7d1cdae0c445d` |
 
-### benchmark inputs (1)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [src/benchmark/benchmark-context.js](../../src/benchmark/benchmark-context.js) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `8563064217c3801d586da70287c7bd374889edef5a7ca1093e6195f654540173` |
-
 ### controlled verification data (4)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -191,9 +184,9 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
-| [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `452ee5db7e6ecdf992532572a58f08a3117f5809d0443eb323b18b16bbea9bd8` |
+| [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `f62d1e265a20fe3245ca1e6442f6cb4c182db09b71c8167b11cf11c95570d25c` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `633449e501ffe6c048a9b09941cf50c09c4adab1a1c93f595c18f49cee61f221` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `fe3d888d8e1feb43e78edb0e6153768048372af336414de0a4f0a7082e691b1a` |
 
 ### durable storage (3)
 
@@ -221,7 +214,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and read-only historical reconstruction | [13-historical-resume](13-historical-resume.md) | `3ae15de790367396c5890c2ba97e2e2607e4bf1d3d9467cae3116158332bf67a` |
 | [src/replay/workspace-history.js](../../src/replay/workspace-history.js) | Reconstruct past public main and reachable Git objects without modifying the source | [13-historical-resume](13-historical-resume.md) | `63b83b4bf2ff3a17d8b8983507c33b299df3348778a652f18a0eea5f1df4e29a` |
 
-### launch and composition (16)
+### launch and composition (15)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -236,19 +229,17 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [scripts/service-host.mjs](../../scripts/service-host.mjs) | Built-in HTTP service process composition and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `a200b2298271615806568085abe4b8253938e7c06ae8ecd6b75226ccb1d0ddf0` |
 | [services/opensandbox-agent/Dockerfile](../../services/opensandbox-agent/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [18-agensh-environment](18-agensh-environment.md) | `5cbed5e9b45a6291bc0fc3734ec5e1fa6ad8f9468c0a2d3f8a52e06edc1cb85a` |
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `2495571b7ce4d3193fc851fc143f277e850bf184fbade4c614b1b3225de6f20a` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `0fc7c588549940b5b378f352e2abb6633cf4fd0cd9d043ad854594725ef1fea6` |
 | [src/environments/shared/foreground-commands.js](../../src/environments/shared/foreground-commands.js) | Serial JSON-line host commands and bounded status/input receipt projection | [17-environment-reporting](17-environment-reporting.md) | `c029586cba8513409b4f1ee8f1a6598a5d4d540e7898e93d6d8cb368cebab624` |
 | [src/environments/shared/foreground-host.js](../../src/environments/shared/foreground-host.js) | Shared foreground Environment driver using existing mode controllers and lifecycle reports | [17-environment-reporting](17-environment-reporting.md) | `d3d9f59157e22aa92816ff876f6bfd31f789975e3ba86b9a6081ec1b4b6b5b25` |
 | [src/environments/shared/read-result.js](../../src/environments/shared/read-result.js) | Read saved Environment and Core receipts with expected identity and bounded normal-output projection | [17-environment-reporting](17-environment-reporting.md) | `99640d0f1709ff0777bc44c6c2f4edd48c4ad43c4791e88dfda5aa3bda17d06e` |
-| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `47466a0abf9fa13e69f4802bcd70ca02c2e3f69546b5e989235c85a83a2f7660` |
+| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `a8d2e82e0660fa173c1b6cb621096267f099724ec7c008e50774af6f4d5c9a80` |
 
-### observation and analysis (9)
+### observation and analysis (8)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/prune-private-audit.mjs](../../scripts/prune-private-audit.mjs) | Operator deletion task for expired managed private audit directories | [06-observability-experiments](06-observability-experiments.md) | `52bf50b3f51814385c629a7a3cd0149e3dab133c8b6c188ec0181e3a49cbd0e5` |
 | [scripts/serve-observability.mjs](../../scripts/serve-observability.mjs) | Persistent observer, root/worktree/database discovery and metadata lifecycle | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `cc9b9391db2c24cb77fa32859adc47083c3d7069e48d7b349a67843e72cd6dd1` |
-| [src/benchmark/parallelism.js](../../src/benchmark/parallelism.js) | Core/turn intervals, readiness samples, utilization and work-unit projections | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `21a5b8782b2421144c8ff9ebcd0cd3810f0744bf5d2f329049e4ce007486957c` |
 | [src/observability/benchmark-report-importer.js](../../src/observability/benchmark-report-importer.js) | Import exported reports into observation projections | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `9924448b2cdceb938b8f0b9a17c63ee59995b5bbf845c078e0aad9fa00d883f7` |
 | [src/observability/durable-event-log.js](../../src/observability/durable-event-log.js) | Append component NDJSON with raw/sanitized logging modes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `27fb12582bf7594ca5d739807462c0f65e6d304bf8557f39407100e296c23a50` |
 | [src/observability/observability-server.js](../../src/observability/observability-server.js) | HTTP routes, SSE, multi-store queries, reports and bounded operator reads | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7acedbcc8ef38a8850890c1998b0aa834039e899b9dc43fff618b85800cac352` |

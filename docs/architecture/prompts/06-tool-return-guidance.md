@@ -11,7 +11,6 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 | Source | When the fixed field can be visible |
 |---|---|
 | services-bridge.js | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the protected CLI prints the structured response into the native Bash result |
-| putnam-runner.js | Candidate Material does not contain source text/a path reference, or its saved Workspace revision/hash no longer matches |
 | mission-workspace.js guidance | Written into ordinary conflict alternatives README during apply; available to the model only when its native file tools actually read that artifact. It is not a proactive prompt. |
 | workspace-contract.js remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |
 | task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |

@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
-import { SOLVER_SYSTEM_PROMPT, SOLVER_CONTINUATION_MESSAGE, SOLVER_CLOSEOUT_MESSAGE, BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION, buildBotStartupMessage } from '../src/agent/bot-contract.js';
+import { SOLVER_SYSTEM_PROMPT, SOLVER_CONTINUATION_MESSAGE, SOLVER_CLOSEOUT_MESSAGE, BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 import { IDENTITY_TAKE_PROMPT } from '../src/runtime/identity-task-loop.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
@@ -30,7 +30,7 @@ const sourcePaths = [
   'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js', 'src/environments/agensh/team.js',
   'test/fixtures/agensh-team-kimi.js', 'test/agensh-team-kimi-real.test.js',
   'src/environments/lead-helper/prompts.js', 'src/environments/lead-helper/index.js',
-  'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
+  'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
   'src/sdk/service-registry.js', 'src/sdk/service-manifest.js', 'src/protocol/envelope.js',
@@ -83,37 +83,14 @@ for (const [title, p] of [['Built-in Services', profile], ['With optional Mathli
 for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource; the startup message carries metadata and hashes, not this full body.');
 output('02-task-loop-and-tools.md', toolsDoc);
 
-const runnerPath = 'src/benchmark/putnam-runner.js';
-const runtimePath = 'src/runtime/runtime.js';
-const selectionExpression = between(runnerPath, 'function selectionView(candidates) {\n  return ', ';\n}', 'function selectionView');
-const syntheticTask = {
-  task_id: '<TASK_ID>', mission_id: '<MISSION_ID>', summary: '<TASK_SUMMARY>', relations: [],
-  goal: '<TASK_GOAL>', expected_output: '<EXPECTED_OUTPUT>',
-  task_instructions: '<TASK_LOCAL_INSTRUCTIONS>',
-  acceptance_conditions: { example: '<ACCEPTANCE_CONDITIONS>' },
-  completion_contract: { final_candidate: true, required_candidate: { kind: 'artifact', scope: 'proof_relevant' }, required_check: { checker_ref: '<CHECKER_REF>', checker_version: '<CHECKER_VERSION>' } },
-  priority: 'medium', state: 'OPEN', age_ms: 0, selection_rank: 0,
-};
-const sampleBot = { bot_id: '<BOT_ID>', mission_id: '<MISSION_ID>', core_id: '<CORE_ID>', sandbox_id: '<SANDBOX_ID>', state: 'UNBOUND', execution_id: null,
-  selection_deadline: '2026-11-14T00:05:00.000Z', hard_deadline: '2026-11-14T00:10:00.000Z' };
-const discoveryPrompt = buildBotStartupMessage({
-  mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: ['<MISSION_ACCEPTANCE>'] }, bot: sampleBot,
-  workspace: { workspace_id: '<WORKSPACE_ID>', mission_id: '<MISSION_ID>', main_revision: '0.1' }, sessionId: '<PI_SESSION_ID>',
-  budget: { run_deadline: '2026-11-14T00:30:00.000Z', execution_max_ms: 600000, soft_closeout_lead_ms: 60000, supervisor_max_take_attempts: 3, compaction_max: 3, context_closeout_fraction: 0.8 },
-  services: botServiceDirectory(profile),
-  project: { project_id: '<PROJECT_ID>', problem_file: '<PROBLEM_FILE>', source_hash: '<SOURCE_HASH>', input_policy: 'locked unsolved formalization only; no external answers or solution-derived candidates' },
-  eligibleTasks: evaluate(selectionExpression, { candidates: [syntheticTask] }), observedAt: '2026-11-14T00:00:00.000Z',
-});
-let benchmarkDoc = header('Complete benchmark turn messages', 'The registered Bot path loads the stable system contract from the image, then dispatches buildBotStartupMessage using current durable Bot identity/deadlines and the resolved Workspace main. The values below are synthetic, not an experiment transcript. Retry turns refresh the state and identify themselves as continued selection.');
-benchmarkDoc += block('IdentityTaskLoop default', IDENTITY_TAKE_PROMPT);
-benchmarkDoc += block('Registered Bot discovery: complete synthetic example', discoveryPrompt);
-benchmarkDoc += block('Independent solver continuation', SOLVER_CONTINUATION_MESSAGE, 'Pass@K initial user message appends problem ID, target path, fixed project path and ISO deadline from the current run. Continuations and compaction follow-up use this text; soft closeout uses the following message. No model-selected Task discovery is sent.');
-benchmarkDoc += block('Independent solver closeout', SOLVER_CLOSEOUT_MESSAGE);
-benchmarkDoc += block('Current bound continuation', BOT_CONTINUATION_MESSAGE, 'Both bound continuation send paths reread durable Execution state after Session readiness. Before soft closeout they use this ordinary message; after the deadline or an early reminder they send the closeout body below. Closing or expired identities do not receive another research turn.');
-benchmarkDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
-benchmarkDoc += block('Registered Bot compaction follow-up', BOT_COMPACTION_MESSAGE, 'If the current E has reached soft closeout, the closeout body replaces this ordinary follow-up.');
-for (const notification_type of ['handoff_warning', 'material_available', 'dependency_updated']) benchmarkDoc += block(`Registered Bot notification: ${notification_type}`, buildBotNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', recipient_task_id: '<TASK_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', material_id: '<MATERIAL_ID>', payload: { execution_id: '<EXECUTION_ID>', deadline: '2099-01-01T00:00:00.000Z' } }, { at: Date.parse('2098-12-31T23:59:30.000Z') }));
-output('03-benchmark-turns.md', benchmarkDoc);
+let turnsDoc = header('Complete retained Runtime turn messages', 'The generic identity loop, Flat controller and compatibility Runtime retain these repository-owned texts. The retired benchmark coordinator no longer composes or sends discovery or solver startup messages. Runtime selects the compaction follow-up from durable Execution phase; host Profile and initial input composition are described in the Environment references.');
+turnsDoc += block('IdentityTaskLoop default', IDENTITY_TAKE_PROMPT);
+turnsDoc += block('Independent solver compaction follow-up', SOLVER_CONTINUATION_MESSAGE);
+turnsDoc += block('Independent solver soft-closeout follow-up', SOLVER_CLOSEOUT_MESSAGE);
+turnsDoc += block('Flat bound continuation', BOT_CONTINUATION_MESSAGE);
+turnsDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
+turnsDoc += block('Registered Bot compaction follow-up', BOT_COMPACTION_MESSAGE);
+output('03-runtime-turns.md', turnsDoc);
 let skillDoc = header('Complete registered Bot skills', 'Root-owned immutable image files. Pi receives explicit --skill paths with ambient discovery disabled; the four metadata entries are included in system context, and actual read-tool results carry the loaded bodies into subsequent model input. The worker verifies bytes and permissions before startup.');
 for (const skill of BOT_SKILLS) skillDoc += block(`${skill.name} (${skill.version})`, sources.get(`src/agent/bot-contract/${skill.name}.md`), `Guest path: ${skill.path}; file SHA-256: ${skill.sha256}`);
 output('08-bot-skills.md', skillDoc);
@@ -142,7 +119,7 @@ const instructionActions = new Set([
   'inspect_material_and_record_task_feedback', 'use_dependency_kind_TASK_or_CAPABILITY',
 ]);
 let guidanceDoc = header('Complete fixed guidance in tool results and notification data', 'This appendix records complete literal hint, remediation and guidance fields in executable sources, plus instructional action values. These are individual response fields, not fabricated full error responses or actual run transcripts. Dynamic IDs, versions, paths, provider diagnostics and complete error envelopes follow the contracts in [Services](../04-services.md) and [the API reference](../10-service-api-reference.md).');
-guidanceDoc += '\n## Delivery conditions\n\n| Source | When the fixed field can be visible |\n|---|---|\n| services-bridge.js | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the protected CLI prints the structured response into the native Bash result |\n| putnam-runner.js | Candidate Material does not contain source text/a path reference, or its saved Workspace revision/hash no longer matches |\n| mission-workspace.js guidance | Written into ordinary conflict alternatives README during apply; available to the model only when its native file tools actually read that artifact. It is not a proactive prompt. |\n| workspace-contract.js remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |\n| task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |\n\nThe action value integration is a consumption/contract enum, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. The actions execute and queue_status are private Judge authorization protocol enums, never Agent instructions. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.\n';
+guidanceDoc += '\n## Delivery conditions\n\n| Source | When the fixed field can be visible |\n|---|---|\n| services-bridge.js | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the protected CLI prints the structured response into the native Bash result |\n| mission-workspace.js guidance | Written into ordinary conflict alternatives README during apply; available to the model only when its native file tools actually read that artifact. It is not a proactive prompt. |\n| workspace-contract.js remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |\n| task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |\n\nThe action value integration is a consumption/contract enum, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. The actions execute and queue_status are private Judge authorization protocol enums, never Agent instructions. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.\n';
 for (const path of await listSourceFiles('src')) {
   const source = await readFile(resolve(root, path), 'utf8');
   for (const [i, line] of source.split('\n').entries()) {
@@ -215,7 +192,7 @@ for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'help
 output('08-lead-helper-environment.md', leadHelperDoc);
 const flatControllerPath = 'src/environments/flat/controller.js';
 output('08-flat-environment.md', header('Flat discovery and continuation prompts',
-  'The host stages its researcher Profile prompt verbatim. After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. Continuation uses the current Execution and buildBotContinuationMessage to choose the ordinary or soft-closeout body documented in the benchmark-turn reference. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller. The default Environment rejects missing trusted live Workspace snapshot readiness before Runtime allocation, so these templates alone establish no actual native delivery.')
+  'The host stages its researcher Profile prompt verbatim. After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. Continuation uses the current Execution and buildBotContinuationMessage to choose the ordinary or soft-closeout body documented in the retained Runtime turn reference. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller. The default Environment rejects missing trusted live Workspace snapshot readiness before Runtime allocation, so these templates alone establish no actual native delivery.')
   + block('Default researcher Profile prompt', between('src/environments/flat/environment.js', "prompt='", "',\n"))
   + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
   + block('Default ordinary continuation', BOT_CONTINUATION_MESSAGE,
