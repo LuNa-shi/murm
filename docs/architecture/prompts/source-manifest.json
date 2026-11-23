@@ -72,7 +72,7 @@
     },
     {
       "path": "src/environments/scalemas/index.js",
-      "sha256": "98ae79c781c99a8ea0cca3d3102ecd48c05dd4332edcddd0897e5487d2b19be0"
+      "sha256": "d3b4881b7589521a9016d0564b631b23e44ec2854b6c3cd369eefd95ba31454c"
     },
     {
       "path": "examples/subagents-environment/main.mjs",

@@ -18,8 +18,9 @@ const capability = (operation, input_schema, output_schema) => ({ name: operatio
   input_schema, output_schema, errors: ['CONFLICT', 'NOT_FOUND', 'NOT_ALLOWED', 'INVALID_CONTRACT'].map(code => ({ code, retryable: false })) });
 
 /** Environment-owned persistent content; no Task/Execution or private directory access. */
-export function createSubstrateService({ databasePath, runId }) {
+export function createSubstrateService({ databasePath, runId, poolSize = 3 }) {
   if (typeof databasePath !== 'string' || !databasePath || typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(runId)) throw new TypeError('Substrate requires a database path and bounded run ID');
+  if (!Number.isSafeInteger(poolSize) || poolSize < 3 || poolSize > 8) throw new TypeError('scaleMAS pool size must be an integer from three to eight');
   mkdirSync(dirname(databasePath), { recursive: true, mode: 0o700 });
   const db = new DatabaseSync(databasePath); chmodSync(databasePath, 0o600);
   db.exec(`PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;
@@ -101,7 +102,12 @@ export function createSubstrateService({ databasePath, runId }) {
       if (previous && previous.runtime_id !== id) throw error('CONFLICT', 'Run ID belongs to another Runtime');
       db.prepare('INSERT OR IGNORE INTO substrate_runs VALUES(?,?)').run(runId, id); runtimeId = id;
     },
-    bindPeer(id) { if (closed || !runtimeId || typeof id !== 'string' || !id || peers.has(id) || peers.size >= 3) throw error('NOT_ALLOWED', 'Substrate requires three distinct trusted peers'); peers.add(id); },
+    bindPeer(id) {
+      if (closed || !runtimeId || typeof id !== 'string' || !id || peers.has(id) || peers.size >= poolSize) {
+        throw error('NOT_ALLOWED', 'Substrate requires distinct trusted peers within the configured pool');
+      }
+      peers.add(id);
+    },
     retirePeer(id) { if (!peers.has(id)) throw error('NOT_ALLOWED', 'Unknown peer'); retired.add(id); },
     snapshot() { return { runId, runtimeId, contents: db.prepare('SELECT address FROM substrate_contents WHERE run_id=? ORDER BY address').all(runId).map(row => read(row.address)),
       reads: db.prepare('SELECT author,operation,input,result FROM substrate_reads WHERE run_id=? ORDER BY ordinal').all(runId).map(row => ({ ...row, input: JSON.parse(row.input), result: JSON.parse(row.result) })) }; },

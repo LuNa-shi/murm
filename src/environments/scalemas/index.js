@@ -24,12 +24,12 @@ export function scaleMASPeerProfile({ image, model = 'default' }) {
 }
 
 /** Fixed no-Task pool. Environment owns content and drivers; Core owns all Bots. */
-export async function runScaleMAS({ backend, runId, image, outputDir, question, model = 'default', maxRounds = 2,
+export async function runScaleMAS({ backend, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
   workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000 }, signal) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
       ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal))) throw new TypeError('scaleMAS requires a question, image, output directory, two to 32 rounds and finite waits');
-  const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId });
+  const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId, poolSize });
   const peers = [], events = [];
   const controller = new AbortController();
   const workSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
@@ -47,11 +47,11 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
   try {
     return await runWithReport({ outputDir, closeTimeoutMs,
       redact: report => ({ ...report, peers, events, substrate: substrate.snapshot(), databasePath: join(outputDir, 'substrate.sqlite'),
-        policy: { poolSize: 3, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs, replacement: false,
+        policy: { poolSize, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs, replacement: false,
           ranking: 'token occurrences descending, incoming references descending, stable address ascending', maxSearchResults: 8 } }),
       createRuntime: async () => {
         remaining();
-        runtime = await createRuntime({ backend, outputDir, services: substrate.services, maxBots: 3, profiles: {
+        runtime = await createRuntime({ backend, outputDir, services: substrate.services, maxBots: poolSize, profiles: {
           peer: scaleMASPeerProfile({ image, model }),
         } });
         return runtime;
@@ -60,7 +60,7 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
         substrate.bindRuntime(core.id);
         const unsubscribe = core.onEvent(event => events.push({ botId: event.botId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) }));
         try {
-          for (let index = 0; index < 3; index++) {
+          for (let index = 0; index < poolSize; index++) {
             remaining();
             const bot = await waitFor(core.spawn({ requestId: `peer:${index}`, profile: 'peer', files: {
               'question.txt': { data: question, encoding: 'utf8' },

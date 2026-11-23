@@ -55,6 +55,37 @@ test('scaleMAS fixed three-peer pool uses serial fresh inputs on each same Core 
   assert.deepEqual(JSON.parse(await readFile(report.reportPath, 'utf8')).substrate, report.substrate);
 });
 
+test('a six-peer scaleMAS pool is fully ready before work and each peer completes two rounds', async t => {
+  const f = await fixture(t, ({ starts }) => { assert.equal(starts.length, 6); });
+  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  const report = await runScaleMAS({ backend: f.backend, runId: 'six-peers', image: 'fixture', outputDir: f.directory,
+    question: 'Fixed source question', poolSize: 6, workTimeoutMs: 10_000, turnTimeoutMs: 2000, closeTimeoutMs: 2000 });
+  assert.equal(report.businessFailure, null);
+  assert.equal(report.policy.poolSize, 6);
+  assert.equal(f.provider.allocations(), 6);
+  assert.equal(f.prompts.length, 12);
+  assert.deepEqual(report.peers.map(peer => peer.index), [0, 1, 2, 3, 4, 5]);
+  const peers = new Set(report.peers.map(peer => peer.botId));
+  assert.equal(peers.size, 6);
+  for (const peer of report.peers) {
+    assert.deepEqual(peer.turns.map(turn => turn.round), [0, 1]);
+    assert.ok(peer.turns.every(turn => turn.outcome === 'completed'));
+    assert.equal(new Set(peer.turns.map(turn => turn.inputId)).size, 2);
+  }
+  assert.equal(report.cleanup.cleanup, 'complete');
+  assert.deepEqual(new Set(report.cleanup.bots.map(bot => bot.botId)), peers);
+});
+
+test('scaleMAS rejects unsupported pool sizes before allocating Bots', async t => {
+  const f = await fixture(t);
+  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  for (const poolSize of [2, 9, 4.5, '6', null]) {
+    await assert.rejects(runScaleMAS({ backend: f.backend, runId: 'bad-pool', image: 'fixture', outputDir: f.directory,
+      question: 'Fixed source question', poolSize }), { name: 'TypeError', message: /pool size/i });
+  }
+  assert.equal(f.provider.allocations(), 0);
+});
+
 test('actual CLI handoff adopts immutable producer content after producer stop; a failed peer is stopped without replacement', async t => {
   const published = Promise.withResolvers(), stopped = Promise.withResolvers();
   let publication; let adopted; let followup; const rows = [];
