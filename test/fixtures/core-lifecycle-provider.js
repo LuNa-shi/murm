@@ -14,7 +14,7 @@ execute[promisify.custom] = (...args) => runCommand(...args);
 
 // Simulate only external infrastructure: provider/Worker HTTP and host OS commands.
 // Core, its backend, manager, admission state and cleanup are the actual modules.
-export async function createLifecycleProvider(t, { fileOperation, onStart } = {}) {
+export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop } = {}) {
   const resources = new Map();
   const records = [];
   const tables = new Map();
@@ -97,6 +97,12 @@ export async function createLifecycleProvider(t, { fileOperation, onStart } = {}
       onStart?.(body, result);
       return send({ result });
     }
+    if (onCollect && path === '/worker/core/files/collect') {
+      const result = await onCollect(body);
+      if (result.error) return send({ ok: false, ...result.error }, 400);
+      response.writeHead(200, { 'content-type': 'application/x-ndjson' });
+      return response.end(result.records.map(record => JSON.stringify(record) + '\n').join(''));
+    }
     if (fileOperation && path.startsWith('/worker/core/files/')) {
       const reply = await fileOperation(path.split('/').at(-1), body);
       if (reply.disconnect) return response.destroy();
@@ -105,7 +111,7 @@ export async function createLifecycleProvider(t, { fileOperation, onStart } = {}
     if (path === '/worker/rpc') return send({ result: { response: { id: body.message.id, success: true, command: body.message.type,
       ...(body.message.type === 'prompt' ? { data: { disposition: 'started' } } : {}) },
       records: records.filter(row => row.worker_sequence > (body.message.since ?? 0)) } });
-    if (path === '/worker/stop') return send({ result: { stopped: true } });
+    if (path === '/worker/stop') return send({ result: await onStop?.() ?? { stopped: true } });
     if (path.startsWith('/sandboxes/') && request.method === 'DELETE') {
       deletion();
       if (holdDelete) await deletionReleased;

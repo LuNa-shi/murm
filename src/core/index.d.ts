@@ -15,6 +15,7 @@ export interface Profile {
   spawnProfiles?: readonly string[];
   env?: Readonly<Record<string, string>>;
   network?: { allow: readonly string[] };
+  collect?: CollectionSpec;
 }
 
 export interface ModelCaller {
@@ -52,6 +53,13 @@ export interface FileEntry {
 
 export type FileSeed = Readonly<Record<string, FileEntry>>;
 
+export interface CollectionSpec {
+  paths: readonly string[];
+  includeGit: boolean;
+  maxBytes: number;
+  required: boolean;
+}
+
 export interface PreparedFiles {
   readonly botId: string;
   readonly version: number;
@@ -72,6 +80,7 @@ export interface SpawnOptions {
   files?: FileSeed;
   bindings?: Readonly<Record<string, string>>;
   secretEnv?: Readonly<Record<string, string>>;
+  collect?: CollectionSpec;
 }
 
 export interface ErrorInfo {
@@ -115,18 +124,31 @@ export type BotEvent = { botId: string; seq: number } & (
   | { type: 'exit'; reason: string; expected: boolean }
 );
 
+export interface PendingCleanup {
+  kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
+  id: string;
+  action: 'await-startup' | 'stop-execution' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  error?: ErrorInfo;
+  resourceKey?: string;
+  sandboxId?: string;
+  creation?: 'created' | 'pending' | 'absent';
+  executionStopped?: boolean;
+}
+
 export interface StopReceipt {
   botId: string;
   execution: 'stopped' | 'unknown';
   cleanup: 'complete' | 'pending';
   artifacts: readonly string[];
   errors: readonly ErrorInfo[];
+  pending?: PendingCleanup;
 }
 
 export interface CloseReceipt {
   bots: readonly StopReceipt[];
   cleanup: 'complete' | 'pending';
   errors: readonly ErrorInfo[];
+  pending: readonly PendingCleanup[];
   outputDir: string;
   reportPath?: string;
 }
