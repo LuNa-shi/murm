@@ -22,7 +22,7 @@ hooks.deregister();
 const execute = promisify(execFile);
 const hash = value => createHash('sha256').update(value).digest('hex');
 
-test('two flat Slots continue and receive feedback, publish real bytes, then replace only a retired owner and adopt its public result', { timeout: 30_000 }, async t => {
+for (const capacity of [2, 4]) test(`${capacity} flat Slots contribute distinct public results, continue and receive feedback, then replace only a retired owner and adopt its public result`, { timeout: 30_000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'flat-closed-loop-harness-'));
   const stores = await createFlatTaskStores(root);
   t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
@@ -32,6 +32,8 @@ test('two flat Slots continue and receive feedback, publish real bytes, then rep
   const createTask = (summary, extra = {}) => stores.tasks.createTask({ mission_id: stores.missionId, gap: summary,
     priority: 'medium', summary, expected_output: 'Checked public result', acceptance_conditions: ['Exact public bytes'], ...extra }, makeEnvelope({ actorRef: 'host' })).task;
   const secondTask = createTask('Independent feedback result');
+  const auditTasks = capacity === 4 ? [createTask('Audit published Material bytes'), createTask('Audit pinned Workspace binary bytes')] : [];
+  const audits = [];
   const directories = new Map(), captures = [], publications = [];
   let firstOwner, secondOwner, replacement, adoptedTask, firstExecution, firstRevision, feedback;
   const directoryFor = async botId => {
@@ -71,7 +73,7 @@ test('two flat Slots continue and receive feedback, publish real bytes, then rep
   };
   const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root, deadlineAt: Date.now() + 25_000,
-    backend: {}, image: 'fixture', model: 'default', capacity: 2,
+    backend: {}, image: 'fixture', model: 'default', capacity,
     // Explicit test-only trusted dependency. These are host fixture directories,
     // not native WorkDirs and not a supported production Core snapshot API.
     async snapshotProject({ botId, executionId, fencingVersion }) {
@@ -85,15 +87,21 @@ test('two flat Slots continue and receive feedback, publish real bytes, then rep
       return { execution_id: executionId, binding_version: fencingVersion, state: 'ACTIVE', files, manifest, content_hash: hash(stableStringify(manifest)) };
     },
     async drive(controller) {
-      const initial = controller.snapshot(); assert.equal(initial.bots.length, 2);
+      const initial = controller.snapshot(); assert.equal(initial.bots.length, capacity);
       [firstOwner, secondOwner] = initial.bots;
-      assert.equal(new Set(initial.bots.map(row => row.slot)).size, 2);
+      assert.equal(new Set(initial.bots.map(row => row.slot)).size, capacity);
       assert.ok(initial.bots.every(row => stores.tasks.getBot(row.botId).state === 'UNBOUND'));
       const listed = await cli(firstOwner.botId, 'task', 'list', '--state', 'ready');
       assert.ok(listed.tasks.some(row => row.task_id === stores.task.task_id));
       const taken = await cli(firstOwner.botId, 'task', 'take', stores.task.task_id, '--request-id', 'first-take');
       firstExecution = taken.execution.execution_id;
       await cli(secondOwner.botId, 'task', 'take', secondTask.task_id, '--request-id', 'second-take');
+      for (const [index, task] of auditTasks.entries()) {
+        const owner = initial.bots[index + 2];
+        const taken = await cli(owner.botId, 'task', 'take', task.task_id, '--request-id', `audit-${index}-take`);
+        audits.push({ owner, task, executionId: taken.execution.execution_id });
+      }
+      assert.ok(initial.bots.every(row => stores.tasks.getExecution(stores.tasks.getBot(row.botId).execution_id).state === 'RUNNING'));
       await writeFile(join(await directoryFor(firstOwner.botId), 'result.txt'), 'partial result\n');
       settle(firstOwner.botId); await controller.flush();
       assert.equal(stores.tasks.getTask(stores.task.task_id).state, 'RUNNING');
@@ -118,7 +126,7 @@ test('two flat Slots continue and receive feedback, publish real bytes, then rep
       const retired = controller.snapshot().bots.find(row => row.botId === firstOwner.botId);
       assert.equal(retired.lastStop.execution, 'stopped'); assert.equal(retired.lastStop.cleanup, 'complete'); assert.equal(retired.released, true);
       assert.equal(stores.tasks.getBot(firstOwner.botId).state, 'CLOSED');
-      replacement = controller.snapshot().bots.find(row => ![firstOwner.botId, secondOwner.botId].includes(row.botId)); assert.ok(replacement);
+      replacement = controller.snapshot().bots.find(row => !initial.bots.some(initialRow => initialRow.botId === row.botId)); assert.ok(replacement);
       assert.equal(replacement.slot, firstOwner.slot); assert.notEqual(replacement.botId, firstOwner.botId);
       assert.equal(stores.tasks.getBot(replacement.botId).state, 'UNBOUND');
       assert.equal(controller.snapshot().decisions.findIndex(row => row.reason === 'slot-released' && row.botId === firstOwner.botId) <
@@ -146,6 +154,24 @@ test('two flat Slots continue and receive feedback, publish real bytes, then rep
       assert.ok(received); await writeFile(join(await directoryFor(secondOwner.botId), 'feedback.txt'), received.input);
       const secondMaterial = await cli(secondOwner.botId, 'material', 'publish', '--content', await readFile(join(directories.get(secondOwner.botId), 'feedback.txt'), 'utf8'), '--request-id', 'second-publish');
       publications.push(secondMaterial.material.material_id);
+      // Both additional initial owners perform business work through the authenticated
+      // CLI after producer retirement, rather than merely occupying discovery Slots.
+      for (const [index, audit] of audits.entries()) {
+        let content;
+        if (index === 0) {
+          const result = await cli(audit.owner.botId, 'material', 'view', materialId);
+          assert.equal(result.material.content, 'Checked public result λ\n');
+          content = `Material audit: ${result.material.content}`;
+        } else {
+          const result = await cli(audit.owner.botId, 'workspace', 'read', '--path', 'binary.dat', '--revision', firstRevision);
+          assert.equal(result.encoding, 'base64');
+          assert.equal(result.content, 'AP9BCg==');
+          content = `Binary audit: ${result.content}\n`;
+        }
+        const published = await cli(audit.owner.botId, 'material', 'publish', '--content', content, '--request-id', `audit-${index}-publish`);
+        audit.materialId = published.material.material_id;
+        await finish(controller, audit.owner.botId, audit.materialId, `audit-${index}-finish`);
+      }
       await finish(controller, secondOwner.botId, secondMaterial.material.material_id, 'second-finish');
       await finish(controller, replacement.botId, adoptedMaterial.material.material_id, 'adopt-finish');
     },
@@ -153,11 +179,22 @@ test('two flat Slots continue and receive feedback, publish real bytes, then rep
   assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure)); assert.equal(report.cleanupFailure, null);
   assert.equal(report.result.completion, 'all-tasks-terminal'); assert.equal(report.cleanup.cleanup, 'complete');
   assert.ok(report.cleanup.bots.every(row => row.execution === 'stopped' && row.cleanup === 'complete'));
-  const idle = report.result.bots.filter(row => ![firstOwner.botId, secondOwner.botId, replacement.botId].includes(row.botId));
-  assert.equal(idle.length, 1, 'Natural refill leaves one readonly discovery Bot when the last tasks finish');
-  assert.equal(stores.tasks.getBot(idle[0].botId).execution_id, null);
-  assert.equal(stores.tasks.getBot(idle[0].botId).state, 'CLOSED');
-  assert.equal(idle[0].released, true); assert.equal(idle[0].lastStop.execution, 'stopped'); assert.equal(idle[0].lastStop.cleanup, 'complete');
+  const idle = report.result.bots.filter(row => ![firstOwner.botId, secondOwner.botId, replacement.botId, ...audits.map(audit => audit.owner.botId)].includes(row.botId));
+  assert.equal(idle.length, capacity - 1, 'Each completed owner can refill its Slot while another Task remains active');
+  for (const bot of idle) {
+    assert.equal(stores.tasks.getBot(bot.botId).execution_id, null);
+    assert.equal(stores.tasks.getBot(bot.botId).state, 'CLOSED');
+    assert.equal(bot.released, true); assert.equal(bot.lastStop.execution, 'stopped'); assert.equal(bot.lastStop.cleanup, 'complete');
+  }
+  for (const [index, audit] of audits.entries()) {
+    assert.equal(stores.tasks.getTask(audit.task.task_id).state, 'DONE');
+    assert.equal(stores.tasks.getExecution(audit.executionId).state, 'SUCCEEDED');
+    const material = stores.context.getMaterial(audit.materialId);
+    assert.equal(material.producer_bot_id, audit.owner.botId);
+    assert.equal(material.producer_task_id, audit.task.task_id);
+    assert.equal(material.producer_execution_id, audit.executionId);
+    assert.equal(material.content, index === 0 ? 'Material audit: Checked public result λ\n' : 'Binary audit: AP9BCg==\n');
+  }
   for (const task of [stores.task, secondTask, adoptedTask]) assert.equal(stores.tasks.getTask(task.task_id).state, 'DONE');
   assert.equal(stores.tasks.getExecution(firstExecution).state, 'SUCCEEDED');
   assert.equal(captures.length, 2); assert.equal(new Set(captures.map(row => row.botId)).size, 2);
