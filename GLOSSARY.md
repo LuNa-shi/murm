@@ -2,7 +2,11 @@
 
 SwarmEnv coordinates independent research responsibilities and public reusable results within a shared Mission. These terms follow the approved [Issue #122 model](docs/phases/0002-task-material-workspace/01-model-and-runtime.md); implementation and compatibility behavior belong in [Architecture](docs/architecture/INDEX.md).
 
-## Language
+## Phase 0005 target vocabulary
+
+The [Core / Environment design](docs/phases/0005-core-environment/README.md) is the authority for this new stage. Its **Core** is the importable library, **Runtime** is one host run, **Slot** is Bot capacity, and **workDir** is a Bot's private directory. **Workspace** remains flat's public Git project. The legacy Core/capacity meaning below describes the current implementation; it must not be confused with the new library or `Runtime.id`. A generic Phase 0005 Bot does not require a Task or Execution; flat retains its one-Bot/one-Execution rule. Target terms do not establish that migration is implemented.
+
+## Current implementation and flat vocabulary
 
 **Mission**: The shared research objective, resource boundary and final acceptance scope. A Mission is not a Task to be taken.
 _Avoid_: Goal object, Mission Task, root Task.
@@ -66,3 +70,4 @@ These definitions capture the [Issue #137 discussion](https://github.com/LuNa-sh
 **Mission gap**: A missing result, capability or understanding that a Task is intended to address in support of the Mission, including by solving a local problem. Its contribution may be indirect or exploratory and does not require a complete route to Mission acceptance.
 
 **Task priority**: An advisory judgment of the relative value of investing the next available computation in a Task, given the current Mission state and available evidence. It informs a Bot's choice without compelling it and can change as results, uncertainties and alternative routes change.
+

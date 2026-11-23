@@ -4,7 +4,11 @@
 
 The default engineering procedure is defined by the [installed Matt Pocock engineering skills](https://github.com/mattpocock/skills/tree/main/skills/engineering). This file adds only SwarmEnv-specific context and verification boundaries. [AGENTS.md](../../AGENTS.md) defines human/Agent autonomy and permissions.
 
-## Issue-first development
+## Phase 0005: design first, Issues track execution
+
+For the Core / Environment stage, the owner’s 2026-11-23 instruction makes the [complete design on main](../phases/0005-core-environment/README.md) the sole authority for target requirements, scope, decisions and acceptance. First merge the documentation through a reviewed PR, then derive the spec Issue and independently verifiable tickets from that exact version. Issues track dependencies, implementation and evidence. If a ticket summary differs from the design, reconcile the ticket; requirement changes go through the authoritative design PR and then update affected tickets. Notion is source material for the migration. This exception does not alter resource/research/publication permissions or declare the proposed API implemented.
+
+## Issue-first development for other stages
 
 - **GitHub Issue is the sole requirements and acceptance source.** Use `/to-spec` to convert a design discussion into a GitHub spec Issue. Read the complete Issue, its comments, accepted Agent Brief and later human decisions.
 - **`/to-tickets` is optional.** For large work, propose independently verifiable vertical slices and blocking dependencies for human review, then publish them to GitHub. An umbrella Issue with several PRs is also valid.
@@ -20,7 +24,7 @@ The default engineering procedure is defined by the [installed Matt Pocock engin
 
 ## Design-stage documentation
 
-Create a design Issue plus a documentation PR when the owner requests a new stage. The Issue states the problem, scope, user outcomes, decisions and acceptance. Its phase attachment explains the full target model, workflows, permissions, prompts/skills, failure behavior, verification plan and migration in reviewable chapters. Do not label a design as ready for runtime implementation merely because its documentation has been published.
+For Phase 0005, apply the design-first authority and sequence above. For other stages, create a design Issue plus a documentation PR when the owner requests a new stage. The Issue states the problem, scope, user outcomes, decisions and acceptance. Its phase attachment explains the full target model, workflows, permissions, prompts/skills, failure behavior, verification plan and migration in reviewable chapters. Do not label a design as ready for runtime implementation merely because its documentation has been published.
 
 During design review, keep current Architecture accurate to current code and link the target design. After implementation begins, each runtime PR updates the affected manual and references. Keep pending choices and evidence in the Issue/PR; do not maintain a duplicate local progress ledger. A change to a reviewed requirement must be made visible in the Issue and the document revision together.
 
@@ -31,3 +35,4 @@ During design review, keep current Architecture accurate to current code and lin
 - **Keep implementation progress and verification evidence in the originating GitHub Issue/PR.** At meaningful milestones, link the exact tested commit, evidence level and result, remaining gaps and next decision. Do not file separate updates after each debugging attempt. At Issue closeout, summarize the accepted behavior and unresolved limitations in the Issue/PR, and reconcile affected Architecture.
 - Update the affected [Architecture](../architecture/INDEX.md) in the implementation PR: the owner must be able to understand the changed runtime without reading code. Include full prompt changes, state/contract/default/error effects and code-to-chapter mappings. Run `npm run docs:generate`, review its diff, then `npm run docs:check` and `git diff --check`. At Issue/stage closeout, reconcile the complete flow with the final merged revision and evidence; regeneration alone does not establish semantic accuracy.
 - Do not merge, close unrelated Issues, or run unapproved paid experiments without explicit user permission. Retire obsolete documentation through Git history, not an `archive/` directory.
+
