@@ -71,6 +71,18 @@
       "sha256": "393b251d8ba49902f7b9d2270796a264ec05f44ddc8e9c47e460563f0c79d015"
     },
     {
+      "path": "examples/subagents-environment/main.mjs",
+      "sha256": "b5d4d7c3fb6c0e24c4716e509f792f9fb6472eaab9608ec92286ad5b5c0f5b93"
+    },
+    {
+      "path": "examples/subagents-environment/controller.mjs",
+      "sha256": "5b3d73e5fedc7b0358f49c4bfceb41cbc283d72081cb283cbb8f76064d660fd3"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "sha256": "417dcf1192ecd6795fc916895d78dda5ad4d5fc9b282960eb82be2b0d3ac36ba"
+    },
+    {
       "path": "src/benchmark/putnam-runner.js",
       "sha256": "7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63"
     },
@@ -165,6 +177,24 @@
       "anchor": "reader: { ...common, prompt: '",
       "line": 97,
       "sha256": "c0f2900930e9feb73c9524e5ffb86c4b5dd6fe750b3cccf4948fabdbd413095a"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const parentPrompt = ",
+      "line": 1,
+      "sha256": "eeb33346515de001490e205f69348b3950b3b0fd9723298aa7ee509eb6113dc9"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const childPrompt = ",
+      "line": 4,
+      "sha256": "6d231a982c22cbe6ce5278839ff3a8658b07f9d1a1f63623decb7955b9431130"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const initialGoal = ",
+      "line": 6,
+      "sha256": "1e96fc7dae086fcde47e0d5648f0ab79d43e74c4b8653f574ef05f6ad03cf2f6"
     }
   ],
   "prompt_send_sites": [
@@ -192,6 +222,11 @@
       "path": "src/runtime/runtime.js",
       "line": 1713,
       "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
+    },
+    {
+      "path": "examples/subagents-environment/controller.mjs",
+      "line": 23,
+      "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     }
   ],
   "fixed_instruction_fields": [
@@ -314,6 +349,10 @@
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
       "sha256": "c3ceddc88245817507b0aa32c3de66771ea59e24dd9ad001ac333121beda56ca"
+    },
+    {
+      "path": "docs/architecture/prompts/08-subagents-environment.md",
+      "sha256": "c7ceccabdaa56313107f5abe83fa710f0666e496a51decdcd1dcde28513dd898"
     }
   ]
 }
