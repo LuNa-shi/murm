@@ -14,6 +14,9 @@ import { createFlatTakeUpstream } from './fixtures/flat-task-upstream.js';
 import { createAcceptanceDeadline } from './fixtures/flat-model-acceptance.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
+import { sessionEvidence } from './fixtures/core-session-evidence.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 
 test('actual flat readonly discovery competes for one Task and continues the same native Bash through grant', {
   skip: process.env.SWARMENV_FLAT_TAKE_REAL_TEST !== '1' && 'Exact pin and bounded local harness require two independent reviews', timeout: 220_000,
@@ -47,7 +50,7 @@ test('actual flat readonly discovery competes for one Task and continues the sam
         report.domainCleanup.push({ botId: bot.id, state: stores.tasks.getBot(bot.id).state });
       }
       report.upstream = upstream?.receipt(); report.deadlineExpired = deadline.expired();
-      report.failure ||= report.deadlineExpired || report.upstream?.failure !== undefined || report.upstream?.arrivals !== 4 ||
+      report.failure ||= report.deadlineExpired || report.upstream?.failure !== undefined || report.upstream?.arrivals !== 4 || report.upstream?.accepted !== 4 ||
         !cleanup.length || cleanup.some(row => row.cleanup !== 'complete') || !resources[runtime?.id]?.empty ||
         report.domainCleanup.length !== 2 || report.domainCleanup.some(row => row.state !== 'CLOSED');
       await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify(report, null, 2), { mode: 0o600 });
@@ -99,7 +102,12 @@ test('actual flat readonly discovery competes for one Task and continues the sam
   assert.ok(outcomes.every(row => row.outcome === 'completed'));
   const evidence = Object.values(upstream.receipt().evidence);
   assert.equal(evidence.length, 2); assert.equal(evidence.filter(row => row.role === 'winner').length, 1);
-  assert.equal(new Set(evidence.map(row => row.session_digest)).size, 2);
+  // Pi may defer creating its JSONL until the first completed turn. Observe
+  // native Session names only now; the Bash checks already covered continuity
+  // of the same live process and workDir through prepare/start/grant.
+  report.sessions = await Promise.all((await ownedContainers(runtime.id)).map(container => sessionEvidence(container, promisify(execFile))));
+  assert.equal(report.sessions.length, 2);
+  assert.equal(new Set(report.sessions.map(row => row.sessionId)).size, 2);
   const executions = stores.tasks.listExecutions(stores.task.task_id);
   assert.equal(executions.length, 1); assert.equal(executions[0].state, 'RUNNING');
   const owner = stores.tasks.getBot(executions[0].owner_ref); assert.equal(owner.state, 'ACTIVE');
