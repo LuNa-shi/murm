@@ -17470,7 +17470,8 @@
       "chapters": [
         "docs/architecture/04-services.md",
         "docs/architecture/07-run-configuration.md",
-        "docs/architecture/08-prompts.md"
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/15-core-runtime.md"
       ],
       "role": "Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation"
     },
@@ -18484,6 +18485,15 @@
         "docs/architecture/14-agensh-lean.md"
       ],
       "role": "Freeze and revalidate the effective profile, authority, inputs, service and worker images"
+    },
+    {
+      "path": "src/core/bot-service.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Built-in Bot Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger"
     },
     {
       "path": "src/core/index.js",
