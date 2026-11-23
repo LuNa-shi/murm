@@ -18,7 +18,7 @@ execute[promisify.custom] = (...args) => runCommand(...args);
 
 // Simulate only external infrastructure: provider/Worker HTTP and host OS commands.
 // Core, its backend, manager, admission state and cleanup are the actual modules.
-export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate, onRpc, allowHostGit = false } = {}) {
+export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate, createExpiresAt, onRpc, allowHostGit = false } = {}) {
   const resources = new Map();
   const records = [];
   const tables = new Map();
@@ -86,8 +86,11 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
       const id = `fixture-${++allocations}`;
       records.length = 0;
       resources.set(id, { id, container: createHash('sha256').update(id).digest('hex'), labels: { ...body.metadata, 'opensandbox.io/id': id } });
-      await onCreate?.(id, body);
-      return send({ id, execd_endpoint: { url: `${base}/execd` } });
+      if (await onCreate?.(id, body) === false) return response.destroy();
+      return send({ id, expiresAt: createExpiresAt?.(id), execd_endpoint: { url: `${base}/execd` } });
+    }
+    if (path === '/sandboxes' && request.method === 'GET') {
+      return send({ items: [...resources.values()].map(row => ({ id: row.id, metadata: row.labels })) });
     }
     if (path.includes('/endpoints/')) return send({ url: `${base}/worker` });
     if (['/execd/ready', '/worker/health'].includes(path)) return send({ ok: true });
