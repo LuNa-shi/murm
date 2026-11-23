@@ -10,13 +10,13 @@ import { createSubstrateService } from '../src/environments/scalemas/substrate.j
 import { scaleMASBackendConfiguration } from './fixtures/scalemas-configuration.js';
 import { createScaleMASUpstream } from './fixtures/scalemas-upstream.js';
 
-test('exact native scaleMAS model/Bridge/Profile/Service configuration assembles both Runtime validators with zero Bots or model arrivals', async t => {
+for (const poolSize of [3, 6]) test(`exact native ${poolSize}-peer scaleMAS configuration assembles both Runtime validators with zero Bots or model arrivals`, async t => {
   const root = await mkdtemp(join(tmpdir(), 'scalemas-config-')); t.after(() => rm(root, { recursive: true, force: true }));
-  const upstream = await createScaleMASUpstream({ deadlineAt: Date.now() + 5000 }); t.after(() => upstream.close());
-  const substrate = createSubstrateService({ databasePath: join(root, 'content.sqlite'), runId: 'preflight' }); t.after(() => substrate.close());
+  const upstream = await createScaleMASUpstream({ deadlineAt: Date.now() + 5000, poolSize }); t.after(() => upstream.close());
+  const substrate = createSubstrateService({ databasePath: join(root, 'content.sqlite'), runId: 'preflight', poolSize }); t.after(() => substrate.close());
   assert.throws(() => scaleMASBackendConfiguration({ upstreamUrl: 'https://hosted.invalid/v1/responses' }));
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend(scaleMASBackendConfiguration({ upstreamUrl: upstream.url })),
-    profiles: { peer: scaleMASPeerProfile({ image: 'unused' }) }, services: substrate.services, maxBots: 3, outputDir: root });
+    profiles: { peer: scaleMASPeerProfile({ image: 'unused' }) }, services: substrate.services, maxBots: poolSize, outputDir: root });
   const closed = await runtime.close(); assert.equal(closed.cleanup, 'complete'); assert.deepEqual(closed.bots, []);
   assert.equal(upstream.receipt().arrivals, 0);
 });
