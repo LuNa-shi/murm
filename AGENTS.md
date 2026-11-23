@@ -2,9 +2,11 @@
 
 These instructions apply to **Coding Agents developing SwarmEnv**, not research Agents running inside it. They define the human/Agent decision boundary and the project-specific rules for using the installed **Matt Pocock engineering skills**.
 
-## One source for requirements: GitHub Issues
+## Requirements authority
 
-- **The human-approved GitHub Issue is the sole authority for work requirements:** why the change matters, desired behavior, research hypotheses, constraints, observable outcomes, and acceptance criteria. Read the full Issue, its linked tickets, comments, and explicit human decisions. An accepted Agent Brief is part of the Issue's discussion, not a separate specification.
+**Phase 0005 exception — Core / Environment.** The [design on main](docs/phases/0005-core-environment/README.md) is the sole authority for this stage's target requirements, scope, decisions and acceptance, as explicitly requested by the owner on 2026-11-23. Issues and sub-Issues derive implementation slices and checks from that design, cite its exact revision, and track dependencies, progress and evidence. If a ticket summary conflicts with it, the design governs; revise requirements through a reviewed documentation PR and synchronize affected tickets. Notion is migration source material. Architecture continues to describe implemented behavior, and publishing this design does not establish implementation or verification. This exception does not change resource, research, merge or external-publication permissions. Other stages follow the Issue-led rules below.
+
+- **Outside the Phase 0005 exception, the human-approved GitHub Issue is the sole authority for work requirements:** why the change matters, desired behavior, research hypotheses, constraints, observable outcomes, and acceptance criteria. Read the full Issue, its linked tickets, comments, and explicit human decisions. An accepted Agent Brief is part of the Issue's discussion, not a separate specification.
 - An Issue can cover several PRs or be split into dependent GitHub tickets using `/to-tickets`. Keep approvals, progress and the ticket graph on GitHub. Numbered [phase designs](docs/phases/INDEX.md) are version-controlled design attachments to a linked Issue, reviewed in PRs. The Issue incorporates an explicitly approved document revision; editing a document does not independently change approved scope, acceptance or budget. Do not create a second approval or status ledger.
 - [Architecture](docs/architecture/INDEX.md) documents the previously accepted system baseline; [ADRs](docs/adr/INDEX.md) explain why past decisions were made. They are references, **not independent approval to change the current Issue's scope**. When they conflict with an approved Issue, surface the discrepancy and obtain clarification rather than editing requirements to match code.
 - Current code and schemas describe what executes. Tests and experiments establish what is verified. Keep implementation progress, validation evidence and unresolved gaps in the relevant GitHub Issue/PR, with formal run evidence in experiment reports. Start from [docs/INDEX.md](docs/INDEX.md), [GLOSSARY.md](GLOSSARY.md), then relevant source/tests; do not load every document by default.
@@ -21,12 +23,12 @@ Return to the Issue for human review before changing intended behavior, acceptan
 
 Follow the **installed skills** when applicable; do not claim a skill ran if it is unavailable. These skills govern the engineering *procedure*, not product requirements or research approval.
 
-- **`/to-spec`**: turn an agreed discussion into a **GitHub spec Issue**, using the project glossary and accepted ADRs. For a substantial stage, link its complete phase design and distinguish confirmed direction from proposals awaiting review. The Issue owns approval of the specification and its document revision.
+- **`/to-spec`**: for Phase 0005, derive the **GitHub spec Issue** from its authoritative design and cite the exact revision. For other stages, turn an agreed discussion into a spec Issue using the project glossary and accepted ADRs; the Issue owns approval of its specification and document revision. Link the complete phase design and distinguish confirmed direction from proposals awaiting review.
 - **`/to-tickets`** (optional): propose complete vertical slices with blocking edges; obtain human agreement before publishing GitHub sub-Issues and dependencies. One Issue with multiple implementation PRs is also valid.
 - **`/implement`**: implement one Issue or ticket, use **`/tdd`** at pre-agreed public seams, run relevant checks, and finish with **`/code-review`**.
 - **`/implement-spec`**: implement an approved Issue/ticket graph on an integration branch with per-ticket branches/worktrees and fresh contexts where supported. Track dependencies on GitHub, not in local Markdown.
 - **`/diagnosing-bugs`**: reproduce, minimize, instrument, fix, and regression-test difficult failures.
-- **`/code-review`**: evaluate **Spec** (against the approved Issue/Agent Brief) and **Standards** (repository conventions and code quality) separately.
+- **`/code-review`**: evaluate **Spec** against the authoritative Phase 0005 design and its derived ticket, or against the approved Issue/Agent Brief for other stages. Evaluate **Standards** (repository conventions and code quality) separately.
 - **`/pr`**: present a concise Summary, before/after Evidence, and Merge Danger (reversibility and blast radius).
 
 An explicit request to invoke a skill permits its normal in-scope operations; it does **not** authorize unapproved spending, new research goals, unrelated Issue changes, or merging PRs.
@@ -56,10 +58,11 @@ The owner reads `docs/architecture/` to understand the implementation **without 
 ## Agent skills configuration
 
 ### Issue tracker
-GitHub Issues and sub-Issues own specs, approved briefs, comments, and dependencies. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+GitHub Issues and sub-Issues own execution briefs, comments, dependencies, progress and evidence. Phase 0005 requirements remain in its authoritative design; other stages retain Issue-owned specifications. See [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 
 ### Triage labels
 See [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
 
 ### Domain docs
 Single-context repository: root [GLOSSARY.md](GLOSSARY.md), [docs/adr/](docs/adr/INDEX.md), and [docs/agents/domain.md](docs/agents/domain.md).
+

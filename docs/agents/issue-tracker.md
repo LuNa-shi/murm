@@ -6,7 +6,8 @@
 
 ## Reading and writing
 
-- Read an Issue's **body, comments, labels, and linked tickets** before starting. The `/to-spec` Issue body is the spec; when `/triage` provides an accepted **Agent Brief** comment, use that brief and any later approved updates as the execution contract.
+- **Phase 0005 exception:** the [Core / Environment design on main](../phases/0005-core-environment/README.md) is the sole requirements and acceptance authority for this stage. `/to-spec` and `/to-tickets` publish derived execution summaries, cite the exact design revision and sections, and track dependencies/progress/evidence. An Issue or Agent Brief cannot independently override this design; update requirements through a reviewed design PR, then synchronize the tickets. For other stages, use the Issue-led conventions below.
+- Read an Issue's **body, comments, labels, and linked tickets** before starting. Outside the Phase 0005 exception, the `/to-spec` Issue body is the spec; when `/triage` provides an accepted **Agent Brief** comment, use that brief and any later approved updates as the execution contract.
 - `/to-spec` publishes a spec Issue, generally using the `ready-for-agent` label. Publishing an Issue or adding that label describes readiness; a human instruction or approval is still required before **executing a new research hypothesis** or spending unapproved resources.
 - `/to-tickets` publishes complete vertical-slice GitHub Issues only after its proposed split and blocking relationships have been reviewed. Prefer GitHub sub-Issues and native blocked-by relationships; when unavailable, use explicit `Parent: #N` and `Blocked by: #N` links.
 - A one-Issue implementation with multiple PRs is also valid; do not force `/to-tickets`.
@@ -30,3 +31,4 @@ For native sub-Issues and blocking edges, use the operations supported by the in
 **PRs as a request surface: no.** PRs are implementation/review artifacts; triage of new work starts from Issues unless the user explicitly asks to review a particular PR.
 
 The canonical triage-state mapping lives in [triage-labels.md](triage-labels.md). Domain vocabulary and decisions are configured in [domain.md](domain.md). For multi-PR Issues, report implementation progress and verification links in the Issue comments; do not close the parent merely because a partial PR merged.
+
