@@ -144,7 +144,10 @@ export class ExecutionWorkspace {
         if (pending.phase === 'capturing') this.#fail(pending, new SwarmEnvError(ERROR_CODES.WORKSPACE_REQUEST_ABORTED, 'Snapshot owner ended before recording its immutable input; use a new request ID'));
         else {
           const source = JSON.parse(pending.captured_json).source;
-          try { await this.#complete(pending, { actorRef: source.bot_id, taskId: source.task_id, executionId: source.execution_id, fencingVersion: source.fencing_version }); }
+          try {
+            await this.#complete(pending, { actorRef: source.bot_id, taskId: source.task_id,
+              executionId: source.execution_id, fencingVersion: source.fencing_version, signal: identity.signal });
+          }
           catch (error) { if (this.#request(pending.execution_id, pending.request_id).phase !== 'failed') throw error; }
         }
       }

@@ -55,6 +55,8 @@ If capture fails, the first response and replay return the same terminal error, 
 
 [Coordinator](../../src/runtime/execution-workspace.js), [worker](../../scripts/opensandbox-agent-worker.mjs), [project helper](../../scripts/sandbox-project.mjs), [integration tests](../../test/bot-runtime.test.js), [container probe](../../test-support/sandbox-project-probe.mjs).
 
+The [Core-backed flat adapter](02-execution.md#flat-publication-and-controller-composition) reuses this request ledger with the injected trusted snapshot binding. Its active guard also checks the current Bridge Service invocation's cancellation signal. A cancelled invocation can recover a Git receipt already committed. Late capture bytes cannot authorize new publication. The legacy Runtime uses its own live-binding guard, and host reconciliation after stop uses durable ownership and recorded receipts.
+
 ## 0.2. Same-E apply, held installation and conflict resolution
 
 `swarm workspace apply --from R/main` is an execution-bound Bridge operation with no caller-selected Workspace, host directory, source identity or file map. Runtime takes the same E operation lock used by save. A stable guest capture must match the last saved revision and have no unsaved apply metadata; otherwise the request returns `WORKSPACE_BUSY` and asks the Bot to save first. Under the public repository lock, `planApply` pins a requested `main` to its actual revision, checks Git ancestry and computes a three-way merge of the saved base and incoming revision. The immutable plan records exact files, before/after hashes, parents, changed paths and conflict provenance in the private request capture. It neither publishes a revision nor changes main.

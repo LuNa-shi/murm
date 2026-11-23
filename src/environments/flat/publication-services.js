@@ -65,6 +65,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       const execution=taskService.getExecution(identity.executionId), bot=taskService.getBot(identity.actorRef);
       if(!execution || !bot || execution.owner_ref!==identity.actorRef || execution.task_id!==identity.taskId || bot.mission_id!==missionId || execution.workspace_input?.workspace_id!==workspaceId) fail('NOT_ALLOWED','Workspace provenance is outside the current flat binding');
       if(!receiptOnly) {
+        if(identity.signal?.aborted) fail('NOT_ALLOWED','Workspace Service call was cancelled');
         const current=binding({runtimeId:getRuntime()?.id,botId:identity.actorRef,profile});
         if(current.execution?.execution_id!==identity.executionId || execution.fencing_version!==identity.fencingVersion) fail('FENCED','Workspace Execution fence changed');
       }
@@ -73,14 +74,14 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
   });
   taskService.setWorkspaceDeliveryReader(({missionId:requestedMission,workspaceId:requestedWorkspace,revision})=>
     requestedMission===missionId && requestedWorkspace===workspaceId ? missionWorkspace.readDeliveryRevision({missionId,workspaceId,revision}):null);
-  async function workspaceOperation(operation,input,current,id) {
+  async function workspaceOperation(operation,input,current,id,signal) {
     if(operation==='workspace_public_view') return missionWorkspace.get({workspaceId});
     if(operation==='workspace_public_read') return missionWorkspace.read({workspaceId,path:input.path,revision:input.revision,maxBytes:input.max_bytes});
     if(operation==='workspace_public_files') return missionWorkspace.files({workspaceId,prefix:input.path,revision:input.revision,limit:input.limit,cursor:input.cursor});
     if(!current.execution) fail('NOT_ALLOWED','Private Workspace operation requires an active Execution');
     if(typeof snapshotProject!=='function') fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
     return workspace.dispatch(({workspace_save:'save',workspace_status:'status',workspace_current_diff:'diff'})[operation],input,
-      {actorRef:current.bot.bot_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,fencingVersion:current.execution.fencing_version,requestId:id});
+      {actorRef:current.bot.bot_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,fencingVersion:current.execution.fencing_version,requestId:id,signal});
   }
   async function invoke(service,{capability:cap,input,caller,envelope,signal}) {
     const operation=cap.operation;
@@ -114,7 +115,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       const latest=binding(caller,{write:!read});
       if(latest.execution?.execution_id!==current.execution?.execution_id || latest.execution?.fencing_version!==current.execution?.fencing_version) fail('FENCED','Flat binding changed before publication');
       const domainEnvelope=latest.execution ? {...executionEnvelope(latest.execution,id),actor_ref:caller.botId}:makeEnvelope({actorRef:caller.botId,operationId:id});
-      const result=service==='workspace'?workspaceOperation(operation,input,latest,id):service==='context'?contextService.dispatch(operation,input,domainEnvelope):taskService.dispatch(operation,input,domainEnvelope);
+      const result=service==='workspace'?workspaceOperation(operation,input,latest,id,signal):service==='context'?contextService.dispatch(operation,input,domainEnvelope):taskService.dispatch(operation,input,domainEnvelope);
       if(operation==='task_finish') onFinish({botId:caller.botId,executionId:latest.execution.execution_id,requestId:envelope.operation_id});
       return result;
     });
