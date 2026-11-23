@@ -38,13 +38,14 @@ export function createAgenshDelivery({ facilities, adminToken }) {
     },
     async readMainFile(path, { signal, maxBytes = 1024 ** 2 } = {}) {
       if (typeof path !== 'string' || !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+$/.test(path) || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 1024 ** 2) throw fail('DELIVERY_INVALID');
-      const ref = await request('GET', `${scope}/git/refs/heads/main`, undefined, { signal });
-      if (!/^[a-f0-9]{40}$/.test(ref?.object?.sha ?? '')) throw fail('DELIVERY_INVALID');
-      const value = await request('GET', `${scope}/contents/${path.split('/').map(e).join('/')}?ref=${ref.object.sha}`, undefined, { signal });
+      const branch = await request('GET', `${scope}/branches/main`, undefined, { signal });
+      if (branch?.name !== 'main' || typeof branch.commit?.id !== 'string' || !/^[a-f0-9]{40}$/.test(branch.commit.id)) throw fail('DELIVERY_INVALID');
+      const commit = branch.commit.id;
+      const value = await request('GET', `${scope}/contents/${path.split('/').map(e).join('/')}?ref=${commit}`, undefined, { signal });
       if (value?.type !== 'file' || value.encoding !== 'base64' || value.path !== path || typeof value.content !== 'string' || value.content.length > Math.ceil(maxBytes / 3) * 4 + 4096) throw fail('DELIVERY_INVALID');
       const data = Buffer.from(value.content.replace(/\s/g, ''), 'base64');
       if (data.length !== value.size || data.length > maxBytes) throw fail('DELIVERY_INVALID');
-      return { commit: ref.object.sha, path, data };
+      return { commit, path, data };
     },
   });
 }
