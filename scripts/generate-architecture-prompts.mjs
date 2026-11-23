@@ -21,8 +21,8 @@ const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
   'src/agent/bot-contract.js', 'src/agent/bot-contract/system.txt', 'src/agent/bot-contract/solver-system.txt',
   ...BOT_SKILLS.map(skill => `src/agent/bot-contract/${skill.name}.md`),
-  'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
-  'src/agent/services-bridge.js', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
+  'src/agent/capability-profile.js',
+  'src/agent/services-bridge.js', 'src/agent/version-manifest.js',
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
   'src/environments/flat/controller.js', 'src/environments/flat/environment.js',

@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **187 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **185 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -28,7 +28,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 |---|---|---|---|
 | [.gitmodules](../../.gitmodules) | Pinned external Agensh source location and board schema attribution | [18-agensh-environment](18-agensh-environment.md) | `6160616b42057b75949236480e7505e9500561fd4d11194bb07bd5933b4d7a6c` |
 
-### Agent and prompts (10)
+### Agent and prompts (9)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -39,7 +39,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/agent/bot-contract/use-material.md](../../src/agent/bot-contract/use-material.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `53ff58a3a35baee7f03bd08e65334b6195ab94463ceafc3e9a2faa5bc08ccf80` |
 | [src/agent/bot-contract/use-workspace.md](../../src/agent/bot-contract/use-workspace.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `9f7c8fed6b1f4b1607a0328ffca09a67a2e83b547552a0bf276f48ae8631dcae` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
-| [src/agent/pi-adapter.js](../../src/agent/pi-adapter.js) | Shared provider routing and Pi RPC Session transport; OpenSandbox owns research startup | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `a3c709c8ff241a2d2feb46b78926c5305c18eb396e8446ee2301a0b8cbf06124` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
 | [src/agent/version-manifest.js](../../src/agent/version-manifest.js) | Adapter/version/prompt/runtime provenance manifest | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e107aad797eff177bbfc2c64489381f690fb8f814e4d42413ddd70abb40af5f8` |
 
@@ -139,12 +138,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/runtime/workspace-contract.js](../../src/runtime/workspace-contract.js) | Workspace path normalization, input/output contracts and required-input validation | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `8d602261f4d1dd30963050e4367004afd4a93205ac3cce79090af37f76d3cddf` |
 | [src/runtime/workspace-manager.js](../../src/runtime/workspace-manager.js) | Execution-owned filesystem, manifests, revisions, local Git and snapshots | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `6b15d11d8478f63dbc40dc7f32d0e9dc080a560ef2f00ee28419d1532416d853` |
 
-### agent core and transport (1)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [src/agent/opensandbox-agent-adapter.js](../../src/agent/opensandbox-agent-adapter.js) | Pi RPC adapter over an OpenSandbox worker endpoint | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `01b6adab2f010adf3e1261bf0b74d3ad1de096f3360de7202275bc0eb5a1b4b2` |
-
 ### agent prompts and tools (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -167,7 +160,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `f62d1e265a20fe3245ca1e6442f6cb4c182db09b71c8167b11cf11c95570d25c` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `3007b5f319b2a82385be8df01aede724a69c1a6e63bbbe29e9ec61baabaec42d` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `0d908a9d85b16ff4066fbd78a50931338613709ad9da82d4eb35df6c29ed9d70` |
 
 ### durable storage (3)
 
@@ -205,7 +198,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/shared/foreground-commands.js](../../src/environments/shared/foreground-commands.js) | Serial JSON-line host commands and bounded status/input receipt projection | [17-environment-reporting](17-environment-reporting.md) | `6337e1674cfaf158e0b7e07d8b72af40ffc5c864b03382a3542b955c1a688760` |
 | [src/environments/shared/foreground-host.js](../../src/environments/shared/foreground-host.js) | Shared foreground Environment driver using existing mode controllers and lifecycle reports | [17-environment-reporting](17-environment-reporting.md) | `7f11f2854de935e5f13c516d2aee4b3fee96b76a613d43d3b350c0316a25b318` |
 | [src/environments/shared/read-result.js](../../src/environments/shared/read-result.js) | Read saved Environment and Core receipts with expected identity and bounded normal-output projection | [17-environment-reporting](17-environment-reporting.md) | `99640d0f1709ff0777bc44c6c2f4edd48c4ad43c4791e88dfda5aa3bda17d06e` |
-| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `24d375ef901e62eb71b27609f6a5f35e0bb68dd69a93604979fb011a9f9adc52` |
+| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5f758b76c55d54d5a1a9bb32e0fa675af17b5f8592090d5cc1ddd8a7f9cbb795` |
 
 ### observability and reporting (2)
 

@@ -17,17 +17,13 @@ if (!process.argv.includes('--inside')) {
   const name = `swarm-contract-${randomUUID()}`;
   const root = fileURLToPath(new URL('../', import.meta.url));
   const image = process.env.SWARMENV_BOT_CONTRACT_TEST_IMAGE ?? 'swarmenv/agent:issue122';
-  const { OpenSandboxAgentAdapter } = await import('../src/agent/opensandbox-agent-adapter.js');
-  let launchArgs;
-  const sandboxManager = {
-    async ensureExecution() {},
-    async startAgent(input) { launchArgs = input.args; },
-    async *agentEvents() {},
-  };
-  const adapter = new OpenSandboxAgentAdapter({ sandboxManager, command: 'pi', provider: 'openai', model: 'fixture' });
-  const bot = { bot_id: 'bot:controlled', resource_key: 'bot:controlled', mission_id: 'mission:controlled' };
-  await adapter.start({ executionId: bot.resource_key, bot });
-  assert.ok(launchArgs);
+  // Explicit input for the retained registered Worker contract, independent of
+  // the retired host adapter. Current Core uses agentMode=core and Profile text;
+  // this probe verifies the Worker's separate pinned Bot-resource contract.
+  const launchArgs = ['--mode', 'rpc', '--session-dir', '/workspace/runtime/pi-session', '--session-id', randomUUID(),
+    '--tools', BOT_TOOL_NAMES.join(','), '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files',
+    ...BOT_SKILLS.flatMap(skill => ['--skill', skill.path]), '--append-system-prompt', BOT_SYSTEM_RESOURCE.path,
+    '--provider', 'openai', '--model', 'fixture'];
   try {
     await docker(['run', '--detach', '--name', name, '--network', 'none', '--cpus', '1', '--memory', '512m', '--pids-limit', '128',
       '--env', `SWARMENV_WORKER_TOKEN=${token}`, '--tmpfs', '/workspace:rw,nosuid,nodev,size=64m',

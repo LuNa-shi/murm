@@ -1,7 +1,5 @@
 export * from './errors.js';
 export * from './protocol/envelope.js';
-export * from './agent/pi-adapter.js';
-export * from './agent/opensandbox-agent-adapter.js';
 export * from './agent/services-bridge.js';
 export * from './agent/version-manifest.js';
 export * from './agent/capability-profile.js';

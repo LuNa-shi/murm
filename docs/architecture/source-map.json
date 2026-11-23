@@ -502,26 +502,6 @@
       "role": "Role-specific capability profile, binding requirements and tool directory"
     },
     {
-      "path": "src/agent/opensandbox-agent-adapter.js",
-      "category": "agent core and transport",
-      "chapters": [
-        "docs/architecture/01-agent-core.md",
-        "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Pi RPC adapter over an OpenSandbox worker endpoint"
-    },
-    {
-      "path": "src/agent/pi-adapter.js",
-      "category": "Agent and prompts",
-      "chapters": [
-        "docs/architecture/01-agent-core.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Shared provider routing and Pi RPC Session transport; OpenSandbox owns research startup"
-    },
-    {
       "path": "src/agent/responses-budget-gateway.js",
       "category": "Execution and control",
       "chapters": [
