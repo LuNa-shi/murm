@@ -1,6 +1,6 @@
 # 10. Complete Service and capability reference
 
-This is the exact repository-controlled API declaration inventory for the implementation pinned in [Architecture INDEX](INDEX.md). It is meant to be read with [04 Services](04-services.md): the declarations say which fields are advertised, while the narrative explains how requests actually change durable state, when Runtime intervenes, and what failures mean.
+This inventory lists the repository-controlled API declarations for this tree. The services chapter explains request handling, durable state changes, Runtime intervention and failure behavior. [Services](04-services.md) · [Source coverage](12-code-coverage.md)
 
 A JSON Schema in a manifest is a declared contract. This implementation validates manifest shape at registration and passes input schemas to Pi, but the Registry/HTTP host do **not** run a general JSON Schema validator on every input or output. Domain handlers perform their own validation. In particular, an empty Runtime output schema or the built-in “any JSON value” output schema is not a complete description of the result. The narrative and storage reference supply the missing implementation detail.
 

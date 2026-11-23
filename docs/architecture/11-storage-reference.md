@@ -1,6 +1,6 @@
 # 11. Durable records, process state and complete schemas
 
-This chapter separates persisted facts from live-process state, and provides every exported SQLite schema for the implementation pinned in [Architecture INDEX](INDEX.md). A restarted process can reconstruct facts that were committed to a database; it does not automatically recreate an in-memory Pi process, bound Core, pending callback or Sandbox job.
+This chapter lists the exported SQLite schemas for this tree. A restarted process can reconstruct committed facts from the database. Pi processes, bound Core state, pending callbacks and sandbox jobs have separate lifecycle and recovery rules. [Source coverage](12-code-coverage.md) · [Execution and recovery](02-execution.md)
 
 ## Ownership and persistence map
 

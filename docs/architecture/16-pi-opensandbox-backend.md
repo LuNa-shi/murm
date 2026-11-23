@@ -46,10 +46,9 @@ The manager records uncertain creates and can reconcile them using Runtime label
 
 The opt-in `test/core-artifacts-real.test.js` checks one Bot with a fixed uncommitted file and an unpushed commit. It blocks the first host save, observes a stopped sandbox and retained Slot, then clears the blocker, retries stop and verifies the saved Git history and file bytes after confirmed destruction. It uses one fixed input and two scripted local Responses replies. #171 records the executed revision, budget and result.
 
-## Transitional callers
+## Flat and direct domain Runtime callers
 
-The existing flat runner continues to use the old adapter and manager contracts during migration. Its Mission labels, versioned swarm/solver prompt resources and deletion callbacks remain executable. A newly created Core Bot uses the generic backend owner exclusively. Both paths reuse the provider manager, network/disk protection and Worker implementation. #183 removes superseded lifecycle entrances after callers have moved.
-
+The current flat Environment uses this Core backend for each Bot. Its controller and Service adapters own Task and Execution policy, while Core owns allocation, input, stop and verified resource deletion. The domain Runtime remains callable through `Runtime.startBot` with a host-supplied `startSession`. That host owns transport and must provide readiness and confirmed stop. Registered and solver modes of the manager and Worker remain available to trusted direct callers, with their own resource attestations and Mission labeling. The bundled legacy Pi adapter has been retired. [Flat composition](02-execution.md#flat-publication-and-controller-composition) · [Direct domain Runtime](02-execution.md#registered-bot-lifecycle)
 
 ## Per-Bot resource and network configuration
 
