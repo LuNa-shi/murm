@@ -1207,16 +1207,6 @@ export class Runtime {
     }
   }
 
-  recordBotWorkspacePreview({ botId, session, workspace }) {
-    const retained = this.botBindings.get(botId);
-    const bot = this.taskService.getBot(botId);
-    if (!retained || retained.session !== session || retained.closing || bot?.state !== 'UNBOUND' ||
-        workspace.mission_id !== bot.mission_id || workspace.workspace_id !== this.missionWorkspaceId) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace preview requires the current unbound Bot');
-    }
-    retained.workspacePreview = { workspace_id: workspace.workspace_id, revision: workspace.main_revision };
-  }
-
   async #prepareWorkspace(execution, workspaceRef = null) {
     const task = this.taskService.getTask(execution.task_id);
     if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Task is missing for execution: ${execution.execution_id}`);
@@ -1250,23 +1240,12 @@ export class Runtime {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task Workspace inputs must belong to the Bot Mission');
     }
     if (publicSnapshot) {
-      const preview = this.botBindings.get(registeredBot.bot_id)?.workspacePreview ?? null;
       if (execution.input_material_refs.length && typeof this.contextService?.readTakeMaterialInputs !== 'function') {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Task input Materials require the authoritative Context Service');
       }
       publicSnapshot.material_inputs = this.contextService?.readTakeMaterialInputs?.({
         missionId: registeredBot.mission_id, materialIds: execution.input_material_refs,
       }) ?? [];
-      publicSnapshot.preview = preview;
-      publicSnapshot.preview_changed = preview ? preview.revision !== publicSnapshot.revision : null;
-      publicSnapshot.reread_required = publicSnapshot.preview_changed === true;
-      if (publicSnapshot.reread_required) {
-        const diff = await this.missionWorkspace.diff({ workspaceId: publicSnapshot.workspace_id,
-          from: preview.revision, to: publicSnapshot.revision, limit: 20 });
-        publicSnapshot.reread_notice = `E ${execution.execution_id} 的初始输入是 ${publicSnapshot.revision}，不同于预览 ${preview.revision}。/workspace/project 已按实际输入准备，请重读受影响内容。`;
-        publicSnapshot.preview_diff = { from: diff.from.revision, to: diff.to.revision, changes: diff.changes,
-          truncated: Boolean(diff.next_cursor), next_cursor: diff.next_cursor };
-      }
     }
     const workspace = await this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,

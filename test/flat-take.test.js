@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
+import { fixedExecutionInputHash } from '../src/task/task-service.js';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
 import { decodeFileSeed } from '../scripts/core-file-seed.mjs';
 import { createFlatTaskService, flatResearcherProfile } from '../src/environments/flat/task-service.js';
@@ -78,6 +79,54 @@ test('actual CLI subprocess discovers and takes through the Core v2 Bridge with 
   assert.equal(f.service.inspect(bot.id, 'cli-take').stage, 'complete');
   assert.equal(startup.env.SWARMENV_BRIDGE_CONTRACT_VERSION, '2');
   await assert.rejects(cli('task', 'take', f.task.task_id, '--owner-ref', 'forged', '--request-id', 'forged'), /identity overrides/);
+});
+
+test('public Core CLI take pins verified Material and warns when main advances after a trusted preview', async t => {
+  let startup, seed;
+  const f = await fixture(t, { onStart(body) { startup = body; }, fileOperation(action, input) {
+    if (action === 'prepare') seed = input.files;
+    return { body: { result: action === 'prepare'
+      ? { version: input.version, digest: decodeFileSeed(input.files).digest }
+      : { ...input, writable: true } } };
+  } });
+  const task = f.tasks.createTask({ mission_id: f.task.mission_id, gap: 'Read current public inputs after preview', priority: 'medium',
+    summary: 'Current main and pinned Material', expected_output: 'Independent note', acceptance_conditions: ['Uses fixed inputs'],
+    input_material_refs: [f.material.material_id] }, makeEnvelope({ actorRef: 'host' })).task;
+  const bot = await f.spawn('preview');
+  const url = new URL(startup.env.SWARMENV_BRIDGE_URL); url.hostname = '127.0.0.1';
+  const env = { ...process.env, ...startup.env, ...startup.secret_env, SWARMENV_BRIDGE_URL: url.href };
+  const cli = async (...args) => JSON.parse((await runProcess(process.execPath, ['scripts/swarm.mjs', ...args],
+    { env, timeout: 10_000 })).stdout);
+  assert.equal((await cli('task', 'view', task.task_id, '--request-id', 'preview')).task.task_id, task.task_id);
+  const workspaceId = f.task.workspace.workspace_id;
+  const saved = await f.workspace.save({ workspaceId, baseRevision: '0.1', files: { 'updated.txt': 'new main' } });
+  const merged = await f.workspace.merge({ workspaceId, fromRevision: saved.revision });
+  await assert.rejects(cli('task', 'take', task.task_id, '--input-material-refs', '[]', '--request-id', 'forged-materials'),
+    error => JSON.parse(error.stderr).code === 'SERVICE_INPUT_INVALID');
+  assert.equal(f.tasks.listExecutions(task.task_id).length, 0);
+  const take = () => cli('task', 'take', task.task_id, '--request-id', 'take-fixed-inputs');
+  const result = await take();
+  const actual = result.execution.workspace_input;
+  assert.equal(result.execution.owner_ref, bot.id);
+  assert.equal(actual.revision, merged.main_revision);
+  assert.deepEqual(actual.preview, { workspace_id: workspaceId, revision: '0.1' });
+  assert.equal(actual.preview_changed, true);
+  assert.equal(actual.reread_required, true);
+  assert.match(actual.reread_notice, /different from preview 0.1; reread the affected project files/);
+  assert.deepEqual(actual.preview_diff.changes.map(change => [change.path, change.change]), [['input.txt', 'deleted'], ['updated.txt', 'added']]);
+  assert.deepEqual(actual.material_inputs, [{ material_id: f.material.material_id, version: f.material.version, content_hash: f.material.content_hash }]);
+  assert.deepEqual(result.materials[0].content, { text: 'fixed material bytes' });
+  assert.equal(result.execution.input_snapshot_hash, fixedExecutionInputHash(task, actual));
+  assert.deepEqual(f.tasks.getExecution(result.execution.execution_id).workspace_input, actual);
+  assert.equal(await readFile(join(result.execution.workspace_ref, 'updated.txt'), 'utf8'), 'new main');
+  await assert.rejects(readFile(join(result.execution.workspace_ref, 'input.txt')), { code: 'ENOENT' });
+  assert.deepEqual(Object.keys(seed), ['updated.txt']);
+  assert.equal(Buffer.from(seed['updated.txt'].data, 'base64').toString(), 'new main');
+  assert.deepEqual(await take(), result);
+  assert.equal(f.tasks.listExecutions(task.task_id).length, 1);
+  assert.throws(() => f.context.readTakeMaterialInputs({ missionId: 'mission:wrong', materialIds: [f.material.material_id] }), { code: 'NOT_ALLOWED' });
+  assert.throws(() => f.context.readTakeMaterialInputs({ missionId: task.mission_id,
+    materialIds: [{ material_id: f.material.material_id, content_hash: 'forged' }] }), { code: 'INVALID_CONTRACT' });
 });
 
 test('public take preserves binary Buffer bytes from the pinned Workspace through the host tree and Core FileSeed', async t => {

@@ -4,7 +4,7 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { TaskService, fixedExecutionInputHash } from '../src/task/task-service.js';
+import { TaskService } from '../src/task/task-service.js';
 import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
@@ -701,56 +701,6 @@ test('registered take pins the complete public tree even when main advances duri
     workspace_content_hash: 'next', workspace_input: { ...current.workspace_input, revision: '0.3' } }, makeEnvelope({ actorRef: 'runtime:test', taskId: task.task_id, executionId: current.execution_id,
       specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version })), /immutable/);
   assert.equal(service.getExecution(execution.execution_id).workspace_input.revision, '0.1');
-});
-
-test('registered CLI take pins verified Material and warns when the trusted preview changes', async t => {
-  const { service, runtime, startSession } = await fixture(t);
-  const context = new ContextService(':memory:', { taskService: service });
-  t.after(() => context.close());
-  runtime.contextService = context;
-  let session;
-  const bridge = new ServicesBridge({ taskService: service, contextService: context, runtime, coreId: 'core-1',
-    registry: createBuiltinServiceRegistry({ taskService: service, contextService: context, missionWorkspace: runtime.missionWorkspace }),
-    onTake: async take => {
-      const result = await runtime.bindAgentExecution(take.execution.execution_id, session, { coreId: 'core-1' });
-      take.execution = result.execution;
-      take.workspace = result.workspace;
-    } });
-  await bridge.start();
-  t.after(() => bridge.stop());
-  let env;
-  const { bot } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession: async input => {
-    env = bridge.startBotIdentity(input.bot.bot_id);
-    session = await startSession(input);
-    return session;
-  } });
-  const workspaceId = runtime.missionWorkspaceId;
-  runtime.recordBotWorkspacePreview({ botId: bot.bot_id, session, workspace: await runtime.missionWorkspace.get({ workspaceId }) });
-  const saved = await runtime.missionWorkspace.save({ workspaceId, baseRevision: '0.1', files: { 'updated.txt': 'new main' } });
-  const merged = await runtime.missionWorkspace.merge({ workspaceId, fromRevision: saved.revision });
-  const writer = service.createTask({ mission_id: bot.mission_id, summary: 'Produce exact input for the independent Task', expected_output: 'Material', acceptance_conditions: ['Published'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
-  const producer = service.takeTask(writer.task_id, { owner_ref: 'diagnostic:producer', take_key: 'take-input-producer' }).execution;
-  const material = context.dispatch('context_publish_material', { content: 'Immutable supporting note' },
-    makeEnvelope({ actorRef: producer.owner_ref, taskId: producer.task_id, executionId: producer.execution_id,
-      fencingVersion: producer.fencing_version, stateVersion: producer.state_version, specVersion: producer.spec_version })).material;
-  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Read the latest project and pinned input Material', expected_output: 'Independent note',
-    acceptance_conditions: ['Uses fixed inputs'], input_material_refs: [material.material_id] }, makeEnvelope({ actorRef: bot.bot_id })).task;
-  const command = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], { env: { PATH: process.env.PATH, ...env }, timeout: 15_000 })).stdout);
-  const take = () => command('task', 'take', task.task_id, '--input-material-refs', '[]', '--request-id', 'take-fixed-inputs');
-  const result = await take();
-  const actual = result.execution.workspace_input;
-  assert.equal(actual.revision, merged.main_revision);
-  assert.deepEqual(actual.preview, { workspace_id: workspaceId, revision: '0.1' });
-  assert.equal(actual.preview_changed, true);
-  assert.equal(actual.reread_required, true);
-  assert.match(actual.reread_notice, /不同于预览 0.1.*请重读受影响内容/);
-  assert.equal(result.execution.input_snapshot_hash, fixedExecutionInputHash(service.getTask(task.task_id), actual));
-  assert.deepEqual(actual.preview_diff.changes.map(change => [change.path, change.change]), [['input.txt', 'deleted'], ['updated.txt', 'added']]);
-  assert.deepEqual(actual.material_inputs, [{ material_id: material.material_id, version: material.version, content_hash: material.content_hash }]);
-  assert.deepEqual(service.getExecution(result.execution.execution_id).workspace_input, actual);
-  assert.deepEqual((await take()).execution.workspace_input, actual);
-  assert.throws(() => context.readTakeMaterialInputs({ missionId: 'mission:wrong', materialIds: [material.material_id] }), { code: 'NOT_ALLOWED' });
-  assert.throws(() => context.readTakeMaterialInputs({ missionId: bot.mission_id, materialIds: [{ material_id: material.material_id, content_hash: 'forged' }] }), { code: 'INVALID_CONTRACT' });
 });
 
 test('registered take fails closed when no authoritative Mission Workspace is wired', async t => {
