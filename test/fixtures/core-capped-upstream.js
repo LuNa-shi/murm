@@ -105,6 +105,16 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   let readVerified = false;
   let closePromise, failure;
 
+  function failRun(reason, terminationKind) {
+    if (!failFast || failure) return;
+    failure = reason;
+    active.forEach(request => {
+      transport(requestRecords.get(request), terminationKind, true);
+      request.destroy();
+    });
+    try { onFailure(structuredClone(failure)); } catch { /* The fence remains authoritative. */ }
+  }
+
   function observeEvent(value, record) {
     const items = value.type === 'response.output_item.done' ? [value.item] : value.response?.output ?? [];
     for (const item of items) {
@@ -125,6 +135,12 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       const usage = value.response?.usage;
       if (Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens) && usage.input_tokens >= 0 && usage.output_tokens >= 0) {
         record.usage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
+      }
+      if (failFast && Number.isSafeInteger(usage?.output_tokens) && usage.output_tokens > record.maxOutputTokens) {
+        transport(record, 'output_limit_exceeded', true);
+        failRun({ code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: record.number,
+          maxOutputTokens: record.maxOutputTokens, outputTokens: usage.output_tokens }, 'output_limit_abort');
+        return true;
       }
     }
   }
@@ -213,27 +229,29 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
           incoming.on('error', () => { transport(record, 'upstream_error', true); finish('failed'); });
           // Only the hosted fail-fast path changes the legacy error-body wait.
           if (failFast) timer = setTimeout(() => finish('timeout'), 250);
-          if (failFast && !failure) {
-            failure = { code: 'LIVE_PROVIDER_REJECTED', number, statusCode, rejection: record.rejection };
-            // Headers are enough to fence; body parsing is separately bounded.
-            active.forEach(request => { transport(requestRecords.get(request), 'peer_rejection_abort', true); request.destroy(); });
-            try { onFailure(structuredClone(failure)); } catch { /* The fence remains authoritative. */ }
-          }
+          // Headers are enough to fence; body parsing is separately bounded.
+          failRun({ code: 'LIVE_PROVIDER_REJECTED', number, statusCode, rejection: record.rejection }, 'peer_rejection_abort');
           return;
         }
         response.writeHead(incoming.statusCode ?? 502, incoming.headers);
         let pending = '';
         incoming.on('data', chunk => {
-          response.write(chunk);
+          if (failFast && failure) return;
+          if (!failFast) response.write(chunk);
           pending += chunk.toString('utf8');
-          if (pending.length > 2 * 1024 * 1024) { pending = ''; record.observation = 'event_limit'; return; }
+          if (pending.length > 2 * 1024 * 1024) {
+            pending = ''; record.observation = 'event_limit';
+            if (failFast) response.write(chunk);
+            return;
+          }
           const messages = pending.split(/\r?\n\r?\n/);
           pending = messages.pop();
           for (const message of messages) {
             const eventData = message.split(/\r?\n/).filter(line => line.startsWith('data:')).map(line => line.slice(5).trimStart()).join('\n');
             if (!eventData || eventData === '[DONE]') continue;
-            try { observeEvent(JSON.parse(eventData), record); } catch { record.observation = 'unparsed_event'; }
+            try { if (observeEvent(JSON.parse(eventData), record)) return; } catch { record.observation = 'unparsed_event'; }
           }
+          if (failFast) response.write(chunk);
         });
         incoming.on('end', () => { transport(record, 'upstream_end', true); record.status = 'complete'; active.delete(upstream); response.end(); });
         incoming.on('error', () => { transport(record, 'upstream_error', true); record.status = failure ? 'failure_aborted' : 'stream_failed'; active.delete(upstream); response.destroy(); });

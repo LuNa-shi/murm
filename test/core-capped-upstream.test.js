@@ -50,6 +50,41 @@ test('hosted output overage fences forwarding and cancels the active peer before
   assert.deepEqual(cap.receipt().failure, before.failure); assert.equal(failures.length, 1);
 });
 
+test('ordinary proxy usage observation retains an overreported output without enabling the hosted fence', async t => {
+  const requested = [], failures = [];
+  const upstreamUrl = await localUpstream(t, async (request, response) => {
+    const chunks = []; for await (const chunk of request) chunks.push(chunk);
+    requested.push(JSON.parse(Buffer.concat(chunks)).max_output_tokens);
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.end('data: ' + JSON.stringify({ type: 'response.completed', response: {
+      id: 'local-generic', usage: { input_tokens: 10, output_tokens: 865 }, output: [] } }) + '\n\n');
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
+    maxOutputTokens: 768, filename: 'unused', marker: 'unused', onFailure: failure => failures.push(failure) });
+  t.after(() => cap.close());
+  for (let index = 0; index < 2; index++) {
+    const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+    assert.equal(response.status, 200); assert.ok((await response.text()).includes('response.completed'));
+  }
+  assert.deepEqual(requested, [768, 768]); assert.equal(cap.receipt().forwarded, 2);
+  assert.equal(cap.receipt().failure, undefined); assert.deepEqual(failures, []);
+  assert.ok(cap.receipt().requests.every(row => row.status === 'complete' && row.usage.outputTokens === 865));
+});
+
+test('a valid excessive output count fences even when the terminal input count is missing', async t => {
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.end('data: ' + JSON.stringify({ type: 'response.completed', response: {
+      id: 'local-missing-input', usage: { output_tokens: 865 }, output: [] } }) + '\n\n');
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxOutputTokens: 768,
+    filename: 'unused', marker: 'unused', failFast: true });
+  t.after(() => cap.close());
+  const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) }).catch(() => null);
+  await response?.text().catch(() => {});
+  assert.deepEqual(cap.receipt().failure, { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 1, maxOutputTokens: 768, outputTokens: 865 });
+});
+
 test('closing a held HTTP200 stream records host cancellation before its resulting transport error', { timeout: 3000 }, async t => {
   const upstreamUrl = await localUpstream(t, (request, response) => {
     request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':held\n\n');
