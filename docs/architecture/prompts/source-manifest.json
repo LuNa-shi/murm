@@ -72,7 +72,7 @@
     },
     {
       "path": "src/environments/scalemas/index.js",
-      "sha256": "d3b4881b7589521a9016d0564b631b23e44ec2854b6c3cd369eefd95ba31454c"
+      "sha256": "b68afc97dcbaf5b81c42a84454355cf02d1e444f5cde40cb8c5998f06bcbeb62"
     },
     {
       "path": "src/environments/flat/controller.js",
@@ -255,7 +255,7 @@
     {
       "path": "src/environments/scalemas/index.js",
       "anchor": "runInput(core, peer.botId, `",
-      "line": 76,
+      "line": 82,
       "sha256": "413fbd1df277be812f95fca1f943dd1a3581827a19fd8df79834d4a7e7acd2f0"
     },
     {

@@ -25,10 +25,11 @@ export function scaleMASPeerProfile({ image, model = 'default' }) {
 
 /** Fixed no-Task pool. Environment owns content and drivers; Core owns all Bots. */
 export async function runScaleMAS({ backend, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
-  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000 }, signal) {
+  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, beforeCycle }, signal) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
-      ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal))) throw new TypeError('scaleMAS requires a question, image, output directory, two to 32 rounds and finite waits');
+      ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal)) ||
+      (beforeCycle !== undefined && typeof beforeCycle !== 'function')) throw new TypeError('scaleMAS requires a question, image, output directory, two to 32 rounds, finite waits and an optional host beforeCycle function');
   const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId, poolSize });
   const peers = [], events = [];
   const controller = new AbortController();
@@ -71,6 +72,11 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
           await Promise.all(peers.map(async peer => {
             try {
               for (let round = 0; round < maxRounds; round++) {
+                if (beforeCycle) {
+                  remaining();
+                  await waitFor(Promise.resolve().then(() => beforeCycle({ peerIndex: peer.index, botId: peer.botId, round, signal: workSignal })), workSignal);
+                  remaining();
+                }
                 const requestId = `${peer.botId}:cycle:${round}`;
                 const turn = { requestId, round }; peer.turns.push(turn);
                 const receipt = await runInput(core, peer.botId, `scaleMAS peer=${peer.index} cycle=${round}\n${question}\n${cyclePrompt}`,
