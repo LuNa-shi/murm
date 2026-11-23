@@ -26,7 +26,7 @@ test('two native Agensh peers negotiate overlapping claims and merge adopted con
   await mkdir(directory, { recursive: true, mode: 0o700 });
   const cleanup = createCleanupBudget(100_000), stack = await createLocalAgenshStack({ directory: join(directory, 'facilities'), advertiseHost: host });
   const report = { failure: true, hosted: 0, image, limits: { setupMs: 180_000, workMs: 180_000, cleanupMs: 100_000, bots: 2, inputs: 5, arrivals: 10, outputTokens: 128 } };
-  let work, upstream, environment, environmentCleanup, facilities, cleanupPhase = false, ownershipUnknown = false;
+  let work, upstream, environment, environmentCleanup, facilities, delivery, cleanupPhase = false, ownershipUnknown = false;
   const budget = () => cleanupPhase ? cleanup : work;
   const command = (name, args) => budget().step(({ timeoutMs, signal }) => execute(name, args, { timeout: Math.min(timeoutMs, 10_000), signal, maxBuffer: 2 * 1024 ** 2 }));
   const containers = () => budget().step(({ timeoutMs, signal }) => ownedContainers(environment.id, { timeoutMs: Math.min(timeoutMs, 5000), signal }));
@@ -59,7 +59,7 @@ test('two native Agensh peers negotiate overlapping claims and merge adopted con
     }
     assert.equal((await findCompleted('a', teamInputs[2])).state, 'completed');
     assert.equal((await findCompleted('b', teamInputs[3])).state, 'completed');
-    const delivery = createAgenshDelivery({ facilities, adminToken: configuration.gitea.adminToken });
+    delivery = createAgenshDelivery({ facilities, adminToken: configuration.gitea.adminToken });
     for (const key of ['a', 'b']) {
       const result = upstream.receipt().evidence.find(row => row.stage === `${key}-contribution`); assert.ok(result);
       await work.step(({ signal }) => delivery.merge({ peerKey: key, number: result.prNumber, headSha: result.head, signal }));
@@ -105,6 +105,7 @@ test('two native Agensh peers negotiate overlapping claims and merge adopted con
       ...(fixtureFailure ? { fixtureFailure } : {}), cleanup: error.cleanup };
   }
   finally {
+    report.delivery = delivery?.snapshot();
     cleanup.start(); cleanupPhase = true; report.workExpired = work?.expired() ?? false; work?.finish();
     const hostCleanup = cleanup.step(() => upstream?.close()).then(() => { report.hostCleanup = 'complete'; }, () => { report.hostCleanup = 'pending'; });
     if (work) { const creation = await work.awaitCreation(); report.creation = work.ownership(); if (creation.state === 'owned') environment ??= creation.environment; ownershipUnknown ||= creation.state === 'pending' || creation.error?.cleanup === 'pending'; }

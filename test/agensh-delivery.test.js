@@ -10,7 +10,7 @@ test('host merge admits only pinned own PR and repeats reuse one write receipt i
     request.resume(); response.setHeader('content-type', 'application/json');
     assert.equal(request.headers.authorization, 'token host-private');
     if (request.method === 'POST') { writes++; merged = true; return response.end('{}'); }
-    response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'branch-a', sha: 'a'.repeat(40) }, base: { ref: 'main' }, merged, merge_commit_sha: 'b'.repeat(40) }));
+    response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'branch-a', sha: 'a'.repeat(40) }, base: { ref: 'main' }, mergeable: true, merged, merge_commit_sha: 'b'.repeat(40) }));
   }); server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }] }, adminToken: 'host-private' });
   await assert.rejects(delivery.merge({ peerKey: 'a', number: 1, headSha: 'c'.repeat(40) }), { code: 'DELIVERY_INVALID' }); assert.equal(writes, 0);
@@ -26,12 +26,84 @@ test('an unknown merge response is retained and an identical invocation cannot i
   const server = createServer((request, response) => {
     request.resume();
     if (request.method === 'POST') { writes++; return response.destroy(); }
-    response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'a', sha: 'a'.repeat(40) }, base: { ref: 'main' }, merged: false }));
+    response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'a', sha: 'a'.repeat(40) }, base: { ref: 'main' }, mergeable: true, merged: false }));
   }); server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'a', gitea: { accountId: '1' } }] }, adminToken: 'host-private' });
   const input = { peerKey: 'a', number: 1, headSha: 'a'.repeat(40) };
   await assert.rejects(delivery.merge(input), { code: 'DELIVERY_MERGE_UNKNOWN' }); await assert.rejects(delivery.merge(input), { code: 'DELIVERY_MERGE_UNKNOWN' });
   assert.equal(writes, 1); assert.equal(delivery.snapshot()[0].state, 'unknown');
+});
+
+test('the second fixed-head merge waits through read-only rechecking after main advances and accepts empty HTTP 200', async t => {
+  let firstMerged = false, secondMerged = false, secondReads = 0, writes = 0;
+  const server = createServer((request, response) => {
+    request.resume(); const second = request.url.includes('/pulls/2');
+    const ready = !second || firstMerged && secondReads >= 3;
+    if (request.method === 'POST') {
+      writes++;
+      if (!ready) { response.writeHead(405); return response.end(JSON.stringify({ message: 'Please try again later' })); }
+      if (second) secondMerged = true; else firstMerged = true;
+      response.writeHead(200); return response.end();
+    }
+    if (second) secondReads++;
+    response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ user: { id: second ? 2 : 1 },
+      head: { ref: second ? 'branch-b' : 'branch-a', sha: (second ? 'b' : 'a').repeat(40) }, base: { ref: 'main' },
+      mergeable: ready, merged: second ? secondMerged : firstMerged, merge_commit_sha: 'c'.repeat(40) }));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
+    peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }, { key: 'b', branch: 'branch-b', gitea: { accountId: '2' } }] }, adminToken: 'host', readinessIntervalMs: 1 });
+  await delivery.merge({ peerKey: 'a', number: 1, headSha: 'a'.repeat(40) });
+  await delivery.merge({ peerKey: 'b', number: 2, headSha: 'b'.repeat(40) });
+  assert.equal(writes, 2); assert.equal(secondMerged, true); assert.ok(secondReads >= 4);
+  assert.ok(delivery.snapshot().every(row => row.state === 'merged'));
+});
+
+test('readiness and post-submit failures preserve their phase and never replay a merge', async t => {
+  for (const scenario of ['never-ready', 'changed-head', 'submit-405', 'readback-503', 'wrong-observation']) {
+    let reads = 0, writes = 0;
+    const server = createServer((request, response) => {
+      request.resume(); response.setHeader('content-type', 'application/json');
+      if (request.method === 'POST') {
+        writes++; response.writeHead(scenario === 'submit-405' ? 405 : 200); return response.end();
+      }
+      reads++;
+      if (writes && scenario === 'readback-503') { response.writeHead(503); return response.end('{}'); }
+      response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'a', sha: (scenario === 'changed-head' && reads > 1 || writes && scenario === 'wrong-observation' ? 'b' : 'a').repeat(40) },
+        base: { ref: 'main' }, mergeable: !['never-ready', 'changed-head'].includes(scenario), merged: writes > 0 && scenario !== 'submit-405', merge_commit_sha: 'c'.repeat(40) }));
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+    const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
+      peers: [{ key: 'a', branch: 'a', gitea: { accountId: '1' } }] }, adminToken: 'private', maxReadinessReads: 2, readinessIntervalMs: 1 });
+    const input = { peerKey: 'a', number: 1, headSha: 'a'.repeat(40) };
+    const code = scenario === 'never-ready' ? 'DELIVERY_NOT_READY' : scenario === 'changed-head' ? 'DELIVERY_INVALID' : 'DELIVERY_MERGE_UNKNOWN';
+    await assert.rejects(delivery.merge(input), { code }); await assert.rejects(delivery.merge(input), { code });
+    const receipt = delivery.snapshot()[0];
+    assert.equal(writes, ['never-ready', 'changed-head'].includes(scenario) ? 0 : 1);
+    assert.equal(receipt.state, writes ? 'unknown' : 'rejected');
+    assert.equal(receipt.failure.phase, !writes ? 'preflight' : scenario === 'submit-405' ? 'submit' : 'readback');
+    if (scenario === 'submit-405') assert.equal(receipt.failure.status, 405);
+    if (scenario === 'readback-503') assert.equal(receipt.failure.status, 503);
+    if (scenario === 'wrong-observation') assert.equal(receipt.observation.headMatches, false);
+    assert.ok(!JSON.stringify(receipt).includes('private'));
+  }
+});
+
+test('a lost merge acknowledgement can be confirmed by one authoritative read without any repeated write', async t => {
+  let writes = 0;
+  const server = createServer((request, response) => {
+    request.resume();
+    if (request.method === 'POST') { writes++; return response.destroy(); }
+    response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'a', sha: 'a'.repeat(40) },
+      base: { ref: 'main' }, mergeable: true, merged: writes > 0, merge_commit_sha: writes ? 'b'.repeat(40) : null }));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
+    peers: [{ key: 'a', branch: 'a', gitea: { accountId: '1' } }] }, adminToken: 'host' });
+  const input = { peerKey: 'a', number: 1, headSha: 'a'.repeat(40) }, result = await delivery.merge(input);
+  assert.equal(result.mergeSha, 'b'.repeat(40)); assert.deepEqual(await delivery.merge(input), result); assert.equal(writes, 1);
+  const row = delivery.snapshot()[0]; assert.equal(row.state, 'merged'); assert.equal(row.acknowledgement, 'unknown'); assert.equal(row.failure.phase, 'submit');
 });
 
 async function mainReader(t, { branch, content }) {
