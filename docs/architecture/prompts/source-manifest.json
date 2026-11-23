@@ -88,7 +88,7 @@
     },
     {
       "path": "src/environments/agensh/index.js",
-      "sha256": "257be6bcf9e058ca5a697d8850f58a8dd5c04a2c886f6bbb2297cddc85675141"
+      "sha256": "2a100e2bf98e90689c70d64a7cdd760b02d0ce5a3e19167b81cd2cd08bad1937"
     },
     {
       "path": "src/environments/agensh/router.js",
@@ -97,6 +97,10 @@
     {
       "path": "src/environments/agensh/routed.js",
       "sha256": "f69b54ff563430a31c39a937d837e2abf2a3af9cd35ee947a9698a9f79cf7aec"
+    },
+    {
+      "path": "src/environments/agensh/team.js",
+      "sha256": "0771a7cbbadf95d4ebffb6997329d8acfac99309aa07bfb749d8b9f9cfc159ea"
     },
     {
       "path": "src/environments/lead-helper/prompts.js",

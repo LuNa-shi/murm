@@ -18915,6 +18915,24 @@
         "docs/architecture/20-lead-helper-environment.md"
       ],
       "role": "Kimi K3 fixed-team sample configuration and finite resource bounds"
+    },
+    {
+      "path": "src/environments/agensh/team.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "One Runtime with independently bound peers, exclusive routers and shared cleanup"
+    },
+    {
+      "path": "src/environments/agensh/delivery.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Trusted scoped fixed-head merge receipts and immutable main-file verification"
     }
   ]
 }

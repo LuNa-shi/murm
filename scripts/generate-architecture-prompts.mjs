@@ -26,7 +26,7 @@ const sourcePaths = [
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
   'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
-  'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js',
+  'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js', 'src/environments/agensh/team.js',
   'src/environments/lead-helper/prompts.js', 'src/environments/lead-helper/index.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
