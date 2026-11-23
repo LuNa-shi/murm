@@ -18,6 +18,20 @@
       "default": "./src/core/backends/pi-opensandbox.js"
     }
   },
+  "files": [
+    "src/",
+    "scripts/",
+    "services/",
+    "fixtures/",
+    "examples/",
+    "docs/",
+    "test/",
+    "test-support/",
+    "AGENTS.md",
+    "GLOSSARY.md",
+    ".env.example",
+    ".gitmodules"
+  ],
   "engines": {
     "node": ">=22.19.0"
   },
