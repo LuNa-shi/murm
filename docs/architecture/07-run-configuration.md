@@ -36,6 +36,18 @@ Built-in service launchers use HTTP manifests and role/binding enforcement. Buil
 
 The maintained legacy dashboard source is `src/observability/client/`. `npm run build:observability` builds `src/observability/public/app.js` and `styles.css`, served by the Observer. Its development proxy uses `127.0.0.1:8787`. `components.json` configures the UI generator. Core and foreground entry points execute without building these browser assets. `npm test` runs serial Node tests with the offline `docs:check` pretest. `docs:generate` refreshes prompt/API/storage references and source fingerprints; explanatory chapters are reviewed alongside those generated files.
 
+The current behavior handoff from the React client is explicit:
+
+| Behavior | Current non-UI owner / entry | Retained browser role |
+|---|---|---|
+| Derive queues, tools and traces from bounded observations | `src/observability/observation-projection.js`; Node projection tests | The React hook imports the same pure projection |
+| Format observed times, states, IDs and values | `src/observability/format.js` | React components consume these helpers |
+| Observe and control the current foreground run | `runForegroundEnvironment` and `scripts/run-environment.mjs` use the existing Core and mode controller/router | The old dashboard is not a controller for this host |
+| Save events, lifecycle and result receipts | Core records plus Environment `runWithReport`; no browser subscription is required | The dashboard separately queries registered observation stores |
+| Inspect saved reports and artifact availability | `readEnvironmentResult` and `scripts/read-environment-result.mjs` | The legacy Observer retains its separate report and event views |
+
+The [terminal receipt checks](17-environment-reporting.md#terminal-receipts-when-cleanup-is-incomplete) exercise actual CLI output against saved reports, including an installed package with browser files removed. The legacy Observer's HTTP/SSE views, React components, dependencies and optional build remain supported independently; this handoff does not claim a terminal replacement for every historical dashboard view or authorize deleting those paths.
+
 ## Final-tree acceptance configuration
 
 A host constructing a locked final-tree verifier supplies a trusted `final_tree_checker` configuration. It contains the fixed checker identity, toolchain/library/exporter paths and `artifactLock`; the loader verifies full mounted artifacts, pinned sources, isolated Lean version and actual cgroup limits before returning a usable verifier. The lock-generating tool takes the trusted build configuration and source checkout paths, verifies the fixed source revisions, and stores only the local deployment lock at the requested local path. A changed verifier, harness, dependency or executable requires regenerating and validating the lock. The final environment identity includes its digest. The diagnostic source checker keeps its separate fixture configuration. A host can instead supply another explicitly configured checker through the existing service seam.

@@ -5,6 +5,12 @@ registerHooks({ resolve(specifier, context, next) {
   return next(specifier, context);
 } });
 transport.reset(); transport.collectable = true;
+if (process.env.FOREGROUND_TEST_CLEANUP_FAILURE === 'stop-execution') {
+  transport.onStop = async () => { throw Object.assign(new Error('PRIVATE_STOP_FAILURE'), { code: 'FIXTURE_STOP_FAILED' }); };
+}
+if (process.env.FOREGROUND_TEST_CLEANUP_FAILURE === 'collect-artifacts') {
+  transport.onCollect = async () => { throw Object.assign(new Error('PRIVATE_EXPORT_FAILURE'), { code: 'FIXTURE_EXPORT_FAILED' }); };
+}
 transport.next = function settle(id) {
   if (process.env.FOREGROUND_TEST_HOLD === '1') return;
   const submission = transport.submissions.get(id);
