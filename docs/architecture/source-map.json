@@ -1699,6 +1699,14 @@
       "role": "Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking"
     },
     {
+      "path": "src/environments/scalemas/collaboration-evidence.js",
+      "category": "Environment composition",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence"
+    },
+    {
       "path": "examples/subagents-environment/main.mjs",
       "category": "Execution and control",
       "chapters": [
