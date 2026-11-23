@@ -215,3 +215,76 @@ test('child Profile collection returns actual saved artifact paths through stop 
   assert.match(stopped.result.artifacts[1], /\/artifacts\/files$/);
   assert.deepEqual((await call('get', { bot_id: child.id })).result.lastStop, stopped.result);
 });
+
+for (const size of [4, 8]) test(`public CLI maintains a ${size}-Bot parent tree across two distinct child rounds`, async t => {
+  const { promisify } = await import('node:util');
+  const { execFile } = await import('node:child_process');
+  const execute = promisify(execFile);
+  const { runtime, parent } = await setup(t, { maxBots: size });
+  const events = [];
+  runtime.onEvent(event => events.push(event));
+  const cli = async (caller, ...args) => {
+    const credentials = transport.spawns.get(caller).credentials;
+    const result = await execute(process.execPath, ['scripts/swarm.mjs', 'bot', ...args], {
+      env: { ...process.env, ...credentials.environment, ...credentials.secretEnvironment }, timeout: 5000,
+    });
+    return JSON.parse(result.stdout);
+  };
+
+  const children = [];
+  for (let index = 1; index < size; index++) {
+    const receipt = await cli(parent.id, 'spawn', '--profile', 'child', '--request-id', `child-${index}`);
+    assert.equal(receipt.initialInput, null);
+    assert.equal(receipt.bot.parentId, parent.id);
+    children.push(receipt.bot.id);
+  }
+  assert.equal(new Set([parent.id, ...children]).size, size);
+  assert.equal(transport.submissions.size, 0);
+  await assert.rejects(cli(parent.id, 'spawn', '--profile', 'child', '--request-id', 'over-capacity'), /CONFLICT/);
+  assert.equal(transport.spawns.size, size);
+
+  for (const round of [1, 2]) {
+    for (const [index, childId] of children.entries()) {
+      const requestId = `child-${index + 1}-round-${round}`;
+      const input = `fixed child ${index + 1} round ${round}`;
+      const sent = await cli(parent.id, 'send', '--bot-id', childId, '--text', input, '--mode', 'followUp', '--request-id', requestId);
+      assert.equal(sent.status, 'accepted');
+      assert.equal(sent.disposition, 'started');
+      assert.deepEqual(await cli(parent.id, 'send', '--bot-id', childId, '--text', input, '--mode', 'followUp', '--request-id', requestId), sent);
+      const result = `result child ${index + 1} round ${round}`;
+      transport.spawns.get(childId).onEvent({ type: 'settled', outcome: 'completed', output: result });
+      const current = await cli(parent.id, 'get', '--bot-id', childId);
+      assert.equal(current.id, childId);
+      assert.equal(current.parentId, parent.id);
+      assert.equal(current.status, 'idle');
+      assert.equal(current.latestOutput, result);
+    }
+  }
+  assert.equal(transport.submissions.size, 2 * (size - 1));
+  assert.equal(events.filter(event => event.type === 'settled').length, 2 * (size - 1));
+  for (const childId of children) {
+    assert.deepEqual(events.filter(event => event.botId === childId && event.type === 'settled').map(event => event.output), [
+      `result child ${children.indexOf(childId) + 1} round 1`,
+      `result child ${children.indexOf(childId) + 1} round 2`,
+    ]);
+    const start = transport.spawns.get(childId);
+    assert.equal(start.options.secretEnv, undefined);
+    assert.equal(start.options.bindings, undefined);
+    await assert.rejects(cli(childId, 'get', '--bot-id', parent.id), /NOT_ALLOWED/);
+    await assert.rejects(cli(childId, 'spawn', '--profile', 'child', '--request-id', 'recursive'), /NOT_ALLOWED/);
+  }
+  assert.equal(transport.spawns.size, size);
+  assert.equal(transport.submissions.size, 2 * (size - 1));
+
+  await runtime.stop(parent.id);
+  for (const childId of children) assert.equal((await runtime.get(childId)).status, 'idle');
+  const closed = await runtime.close();
+  assert.equal(closed.cleanup, 'complete');
+  assert.equal(closed.bots.length, size);
+  assert.ok(closed.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
+  const evidence = (await readFile(closed.evidence.path, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  const registrations = evidence.filter(row => row.type === 'input' && row.state === 'registered');
+  assert.equal(registrations.length, 2 * (size - 1));
+  assert.ok(registrations.every(row => row.source === `bot:${parent.id}`));
+  assert.equal(new Set(registrations.map(row => row.inputId)).size, 2 * (size - 1));
+});
