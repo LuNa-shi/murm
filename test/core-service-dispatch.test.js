@@ -77,3 +77,12 @@ test('Notes owns same-key business idempotency and conflicts while Registry perf
   assert.equal((await call('put', { ...input, text: 'changed' })).error.code, 'CONFLICT');
   assert.equal(notes.writes, 1);
 });
+
+test('Service names that match Object prototype keys never create implicit Profile permissions', async t => {
+  let calls = 0;
+  const { bot, call } = await setup(t, { invoke() { calls++; return null; } }, { manifest: notesManifest('constructor') });
+  bot.services = {};
+  assert.deepEqual((await call('list_services', {}, { service_id: undefined })).result, { services: [] });
+  assert.equal((await call('get', { key: 'one' }, { service_id: 'constructor' })).error.code, 'NOT_ALLOWED');
+  assert.equal(calls, 0);
+});

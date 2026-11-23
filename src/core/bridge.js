@@ -68,8 +68,10 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.operation !== 'string' ||
           typeof body.operation_id !== 'string' || !body.operation_id || body.operation_id.length > 256) invalid('Bridge request requires operation and operation_id');
       const current = live();
+      const allows = (service, operation) => Object.hasOwn(current.services ?? {}, service) &&
+        Array.isArray(current.services[service]) && current.services[service].includes(operation);
       const visible = [...registrations.values()].flatMap(({ manifest }) => {
-        const capabilities = manifest.capabilities.filter(capability => current.services?.[manifest.id]?.includes(capability.operation));
+        const capabilities = manifest.capabilities.filter(capability => allows(manifest.id, capability.operation));
         return capabilities.length ? [{ ...manifest, capabilities }] : [];
       });
       if (body.operation === 'list_services' && body.service_id === undefined) {
@@ -81,7 +83,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
         reply(response, 200, { ok: true, result: manifest }); return;
       }
       const registration = registrations.get(body.service_id);
-      if (!registration || !current.services?.[body.service_id]?.includes(body.operation)) throw new SwarmEnvError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
+      if (!registration || !allows(body.service_id, body.operation)) throw new SwarmEnvError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
       const caller = { runtimeId, botId, profile: current.profile,
         ...(current.bindings?.[body.service_id] === undefined ? {} : { binding: current.bindings[body.service_id] }) };
       controller = new AbortController();
