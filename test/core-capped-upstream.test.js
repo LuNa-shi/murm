@@ -12,6 +12,59 @@ async function localUpstream(t, handler) {
   return `http://127.0.0.1:${server.address().port}/v1/responses`;
 }
 
+test('conflicting hosted terminal usage cannot replace the first metered receipt or admit another request', async t => {
+  const upstreamUrl = await localUpstream(t, (_request, response) => {
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    for (const outputTokens of [700, 3]) response.write('data: ' + JSON.stringify({ type: 'response.completed', response: {
+      id: 'same-response', usage: { input_tokens: 10, output_tokens: outputTokens }, output: [] } }) + '\n\n');
+    response.end();
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
+    maxOutputTokens: 768, filename: 'unused', marker: 'unused', failFast: true });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const response = await send();
+  try { await response.text(); } catch { /* The conflicting stream is terminated. */ }
+  const receipt = cap.receipt();
+  assert.deepEqual(receipt.failure, { code: 'LIVE_TERMINAL_CONFLICT', number: 1 });
+  assert.deepEqual(receipt.requests[0].usage, { inputTokens: 10, outputTokens: 700 });
+  assert.deepEqual(receipt.requests[0].terminalConflict, { terminal: 'response.completed', responseIdentityMatches: true,
+    usage: { inputTokens: 10, outputTokens: 3 } });
+  assert.equal((await send()).status, 400);
+  assert.equal(cap.receipt().forwarded, 1);
+});
+
+test('hosted terminal replay is idempotent but remapped response identity fails without retaining the new identity', async t => {
+  for (const remapped of [false, true]) await t.test(remapped ? 'remapped identity' : 'identical replay', async t => {
+    const originalId = 'a'.repeat(256) + '-original', replacementId = 'a'.repeat(256) + '-private-remap';
+    const upstreamUrl = await localUpstream(t, (_request, response) => {
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      for (const id of [originalId, remapped ? replacementId : originalId]) response.write('data: ' + JSON.stringify({ type: 'response.completed', response: {
+        id, usage: { input_tokens: 10, output_tokens: 700 }, output: [] } }) + '\n\n');
+      response.end();
+    });
+    const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
+      maxOutputTokens: 768, filename: 'unused', marker: 'unused', failFast: true });
+    t.after(() => cap.close());
+    const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+    const response = await send();
+    try { await response.text(); } catch { /* A conflicting stream is terminated. */ }
+    const receipt = cap.receipt();
+    assert.deepEqual(receipt.requests[0].usage, { inputTokens: 10, outputTokens: 700 });
+    assert.equal(receipt.reservedOutputTokens, 768);
+    assert.equal(JSON.stringify(receipt).includes('private-remap'), false);
+    if (remapped) {
+      assert.equal(receipt.failure.code, 'LIVE_TERMINAL_CONFLICT');
+      assert.equal(receipt.requests[0].terminalConflict.responseIdentityMatches, false);
+      assert.equal((await send()).status, 400);
+    } else {
+      assert.equal(receipt.failure, undefined);
+      const next = await send(); await next.text();
+      assert.equal(cap.receipt().forwarded, 2);
+    }
+  });
+});
+
 test('hosted output overage fences forwarding and cancels the active peer before exposing that terminal chunk', { timeout: 3000 }, async t => {
   const requested = [], held = [], failures = [];
   const upstreamUrl = await localUpstream(t, async (request, response) => {
