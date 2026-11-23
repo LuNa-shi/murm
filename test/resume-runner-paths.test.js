@@ -1,13 +1,10 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
 import { access, link, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import { runBenchmarkProject, writeUnavailableProjectReport } from '../src/benchmark/putnam-runner.js';
 
-const runner = fileURLToPath(new URL('../scripts/run-putnambench-benchmark.mjs', import.meta.url));
 const problem = { id: 'resume_fixture' };
 
 async function paths(t) {
@@ -63,33 +60,4 @@ test('resume fallback protects its default report path after operator stop', asy
     experimentDir: f.experimentDir }, new Error('operator stop'), { operatorStopped: true }),
   { code: 'REPLAY_DESTINATION_CONFLICT' });
   assert.equal(await readFile(f.originalReport, 'utf8'), 'original report');
-});
-
-test('resume CLI rejects a source report path before creating the run or loading credentials', async t => {
-  const f = await paths(t);
-  const alias = join(f.root, 'report-alias');
-  await symlink(join(f.source, 'reports'), alias);
-  const run = spawnSync(process.execPath, [runner, '--resume-from', f.source, '--at', '2026-11-19T12:00:00Z',
-    '--problem', problem.id, '--experiment-root', f.root, '--experiment-dir', f.experimentDir,
-    '--report-dir', alias, '--problems', join(f.root, 'missing.json'), '--putnambench-root', f.root],
-  { encoding: 'utf8', env: { PATH: process.env.PATH } });
-  assert.equal(run.status, 1);
-  assert.match(run.stderr, /REPLAY_DESTINATION_CONFLICT/);
-  assert.equal(await readFile(f.originalReport, 'utf8'), 'original report');
-  await assert.rejects(access(f.experimentDir), { code: 'ENOENT' });
-});
-
-test('resume CLI rejects an aggregate report symlink before creating the run', async t => {
-  const f = await paths(t);
-  const reportDir = join(f.root, 'reports');
-  await mkdir(reportDir);
-  await symlink(f.originalReport, join(reportDir, 'aggregate-report.json'));
-  const run = spawnSync(process.execPath, [runner, '--resume-from', f.source, '--at', '2026-11-19T12:00:00Z',
-    '--problem', problem.id, '--experiment-root', f.root, '--experiment-dir', f.experimentDir,
-    '--report-dir', reportDir, '--problems', join(f.root, 'missing.json'), '--putnambench-root', f.root],
-  { encoding: 'utf8', env: { PATH: process.env.PATH } });
-  assert.equal(run.status, 1);
-  assert.match(run.stderr, /REPLAY_DESTINATION_CONFLICT/);
-  assert.equal(await readFile(f.originalReport, 'utf8'), 'original report');
-  await assert.rejects(access(f.experimentDir), { code: 'ENOENT' });
 });

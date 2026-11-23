@@ -262,48 +262,10 @@ The analyzer reads raw Pi `tool_execution_end`/`tool_result` events and hashes t
 
 The coordinator logs remote Context/Judge request start/completion and records the peer PIDs and HTTP deployment mode. Judge peers currently do not receive the coordinator's stage logger. Their durable CheckResult database, phase receipts, private stderr log and checker resource ledger establish peer-side outcomes; a per-stage checker NDJSON stream must not be inferred from coordinator completion records. Raw databases, logs and resource identities stay in ignored experiment storage. Checker cleanup is verified before terminal report eligibility; peer shutdown subsequently remains part of store close, and a shutdown failure propagates instead of silently confirming process cleanup.
 
-## FLT10 benchmark inputs
+## Retired embedded benchmark inputs
 
-Issue #133 adds the complete ten-checkpoint FLT10 ladder as benchmark inputs;
-its first authorized observations select Q10 and Q20 individually. The existing
-runner and Swarm organization execute them. `config/flt10.json` names the pinned
-ContextSwarm fixture commit and original paths, original baseline digests, and
-explicit Lean declaration names. Project IDs remain filesystem-safe identifiers;
-`declaration_name` selects the namespaced theorem for Mission acceptance and
-independent kernel replay. Legacy Putnam manifests still use the project ID.
+The dedicated benchmark CLI, fixed Putnam/FLT/OpenAI Math configurations, embedded mathematical datasets, paper inputs and Pass@K group scheduler have been removed. Their version-bound inputs and operator instructions remain in the [research tree](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9). Historical reports and the report importer retain their original provenance and metrics. The remaining legacy runner is still exported through the legacy source index and exercised by Runtime, cleanup and Mission regressions. Phase 0005 Environment entry points use the public Core separately.
 
-The loader requires ten entries for `benchmark=flt10` and twelve for the default
-Putnam profile, rejects unknown profiles, duplicates, malformed FLT names and
-source hash changes, and checks each original file against the pinned Git blob.
-Timed execution repeats the fixture check. Generic `fixture_commit` records the
-input revision; `putnambench_commit` remains readable for old inputs and reports.
+## Historical independent-attempt evidence
 
-Before initial Workspace creation, `readBenchmarkContext` verifies a host-bound
-context manifest and every file digest, rejects traversal, symlinks, duplicates,
-Lean source destinations and files outside `benchmark/`, and enforces 2 MiB per
-file and 14 MiB total. Failures stop setup and trigger normal project cleanup.
-The verified bytes seed the public Workspace with the original target source.
-Full graph metadata is split into independently compressed XZ shards. The Python
-reader checks each shard and searches statements in memory without extracting the
-whole graph to Bot disk. Cut metadata and safe definition text accompany it.
-These are public input files, not Tasks or Materials; the usual Workspace revision
-history records subsequent research changes. The seeded README explains the exact
-target path and metadata query commands. No completed proof or historical run is
-seeded. Core scheduling, Task selection and collaboration rules are unchanged.
-
-Root-only FLT preparation and formal readiness are separate observations. The
-operator records initial compilation, root identity, a private complete-target
-witness and visibility validation per checkpoint. A root `sorry` warning is an
-expected initial-state observation, never a solution. A validated private
-reference project is engineering evidence and is not Swarm research output.
-A timed run requires a receipt bound to its target/context/checker; missing
-validation fails before Bot creation. Earlier full-graph FLT reports retain their
-original profile. Current root-only work focuses on Q20; Q100 complete-proof
-validation and model experiments are deferred. See [run configuration](07-run-configuration.md)
-for the receipt and public/private file boundaries.
-
-## Independent-attempt evidence
-
-Pass@K preserves each attempt's normal Mission, Task, Bot, Execution, Workspace, Judge and model-budget evidence. Artifact directory keys append `-attempt-N`; `problem_id` remains the actual benchmark problem. The aggregate `pass_k` section records the group observation window separately from each Mission's active duration, attempt validity, accepted timestamps and late results. `first_success_ms` is measured from the common group start including preparation. One successful, valid attempt establishes the observed group success; validity of all K attempts is reported separately, so a partially invalid group is not a complete valid comparison. A single group is not a statistical estimate over a problem distribution.
-
-For a library composition using `selectOpenAiMathContext`, the selected mode, enriched problem manifest and manifest digest come from the host call and its returned configuration. Retain those values alongside the run evidence when evaluating a paper condition. A successful materialization establishes availability. Actual use needs dated evidence of a Bot reading or applying the paper. Paper-route milestone verdicts are evaluator records over frozen Workspace/Material evidence, and runtime activity counters retain their own meaning.
+Retained reports can contain a `pass_k` group summary and paper-condition metadata from the research revision. Interpret their recorded group start, individual acceptance times, validity and input provenance against that exact historical code and configuration. The current tree provides no Pass@K group scheduler or paper selector. Reading an existing aggregate does not execute the retired protocol or establish a comparison for Phase 0005.

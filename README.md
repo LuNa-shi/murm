@@ -2,7 +2,7 @@
 
 SwarmEnv is a research environment for autonomous collaboration among multiple Agents. Agents can work on a shared Mission, define independent Tasks, exchange versioned Materials, and use Judge, Workspace and Runtime capabilities to check and continue their work.
 
-Current research experiments primarily use PutnamBench and Lean/Mathlib to examine collaboration mechanisms. This benchmark choice does not limit the research agenda, and existing runs do not by themselves establish a multi-Agent performance advantage.
+The Phase 0005 refactor provides a programmable Core and Environment modules. Dedicated mathematical benchmark launchers and embedded datasets are preserved in the research branch.
 
 ## Start here
 
@@ -29,7 +29,7 @@ For the Core / Environment stage, the [Phase 0005 design on main](docs/phases/00
 - `src/observability/` — event/state inspection
 - `scripts/`, `config/`, `services/`, `test/` — operation, configuration, integrations and tests
 
-Operational references: [Benchmark](docs/operations/benchmark.md), [built-in services](services/builtin/README.md), and [Mathlib Search](services/mathlib-search/README.md).
+Operational references: [built-in services](services/builtin/README.md), and [Mathlib Search](services/mathlib-search/README.md).
 
 ## Evidence and history
 

@@ -71,63 +71,9 @@ The registered Bot Bridge sends Chinese `notice` fields on the same CLI response
 
 The `use-workspace` skill directs ordinary local-proposition iteration to save a fixed revision and select `--check-mode lean-module --path P`. It explains that P selects a complete module and its dependencies, rather than an individual declaration within a multi-declaration file, and permits independently useful lemmas/definitions to be organized in imported modules. A revision-only call still requests full-project diagnostics; a full-mode path binds Task delivery evidence. Local receipts do not satisfy a full delivery requirement. It explains imports under the locked source directory, actual module coverage, warnings and the separate Mission proof check. The skill remains an image resource discovered through the existing manifest and sent through the existing skill-read path; it does not grant new authority or require a particular research decomposition. The command help distinguishes deployments with project checking from compatibility source-only deployments.
 
-### FLT10 Mission context
+## Retained solver prompt delivery
 
-The benchmark runner retains the ordinary Swarm Mission goal template
-`Solve ${problem.id} through independent, shared Task work.` Explicit solver mode uses
-`Solve ${problem.id} independently.` Both append the same optional instruction pointer. When `instructions_path` is configured it appends ` Read ${config.instructions_path} for the benchmark task and input contract.` This goal enters the same Mission
-and discovery context paths described above. The README is verified public
-Workspace input and explains the pinned original target, proof-placeholder
-restriction, complete compressed statement graph queries and safe definition
-references. It is not automatically expanded into every turn. No ContextSwarm
-Agent prompt, collaboration policy or scheduler instruction is imported.
-
-## Root-only benchmark task instructions
-
-The generic Mission goal appends `Read <instructions_path> for the benchmark
-task and input contract.` only when the benchmark config supplies that path.
-The value is validated during config loading. The startup composer includes the
-Mission goal in its ordinary discovery message; no new model send path or Core
-role assignment is introduced. The README body is delivered only if the Bot
-reads the corresponding Workspace file, and that read is ordinary tool evidence.
-For `flt10-subtree-v1`, the complete repository-controlled body is
-[the root-only task instruction file](../../benchmarks/flt10/subtree-instructions.md).
-Preparation replaces the single `{{target_path}}` field with the configured
-checkpoint path (`q20/Target.lean` for Q20) before hashing the public README. It permits new
-definitions/lemmas/modules, explains the existing save/check/integrate workflow,
-and states final correctness constraints without listing a decomposition.
-
-The complete root-only README template is:
-
-```markdown
-# Formal proof project
-
-Prove the target theorem in `{{target_path}}`. Its original mathematical statement
-and the supplied foundation are fixed. The initial proof contains `sorry`; this
-makes the starting project elaboratable but is not a completed proof.
-
-You may develop your own definitions, intermediate lemmas and Lean modules in
-the target directory and its subdirectories. Import those modules from the
-root proof as needed. Use public Mathlib and the supplied foundation; readable
-foundation source is under `benchmark/foundation/`. The Judge provides the
-pinned compiled dependencies. The Bot does not have a local Lean installation.
-
-Use Task to coordinate responsibilities and Material to share explanations,
-evidence and references to exact Workspace revisions and paths. Save your code
-before asking Judge to check a revision. Incomplete intermediate revisions can
-be used for diagnostics. Integrate the needed files into Workspace main before
-Mission submission; source compilation alone is not final acceptance.
-
-Final acceptance checks the unchanged mathematical target against its trusted
-challenge, checks proof assumptions, and replays the proof through the kernel.
-The final project must have no remaining proof holes or extra axioms. Private
-answers, previous runs and external network access are unavailable. There is no
-prescribed decomposition, list of helper lemmas or assignment of Core roles.
-```
-
-## Pass@K prompt delivery
-
-The generated [system reference](prompts/01-system-identity.md) includes the complete independent solver addendum, and [benchmark reference](prompts/03-benchmark-turns.md) includes its continuation and soft-closeout text. The adapter selects these only for explicit solver mode and verifies the pinned worker resource. Swarm's skills are not loaded. After the host binds the real Execution, the initial user prompt appends JSON containing `problem` and `target_path` from the verified fixture, the fixed `/workspace/project` path and the group deadline from run state. These are actual send inputs, using the same verified immutable resource contract. The next ordinary turns and compaction follow-up reuse solver continuation; soft closeout substitutes save-only guidance. No Task/Material tool instructions are sent by these solver paths.
+The Pass@K CLI and group scheduler have been retired. The retained runner can still select solver mode directly. The generated [system reference](prompts/01-system-identity.md) includes the complete independent solver addendum, and [benchmark reference](prompts/03-benchmark-turns.md) includes its continuation and soft-closeout text. The adapter selects these only for explicit solver mode and verifies the pinned worker resource. Swarm's skills are not loaded. After the host binds the real Execution, the initial user prompt appends JSON containing `problem` and `target_path` from the verified fixture, the fixed `/workspace/project` path and the group deadline from run state. These are actual send inputs, using the same verified immutable resource contract. The next ordinary turns and compaction follow-up reuse solver continuation; soft closeout substitutes save-only guidance. No Task/Material tool instructions are sent by these solver paths.
 
 The Workspace skill also distinguishes the default 30-second CLI HTTP wait from the checker execution limit. Its 630000 ms example assumes an already-ready preflight, no queue wait and a ten-minute source allowance; queue/cold-preflight time is additional, and no client timeout extends lifecycle deadlines. This text is included through the same protected skill read path.
 
