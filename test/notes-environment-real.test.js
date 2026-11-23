@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { promisify } from 'node:util';
+import { sessionEvidence } from './fixtures/core-session-evidence.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { installNotesExample } from './fixtures/notes-installed-package.js';
 import { createNotesEnvironmentUpstream } from './fixtures/notes-environment-upstream.js';
@@ -18,7 +20,18 @@ test('installed Notes Environment exchanges a native fact and retains the reader
   // Keep the external installation and receipts after a real attempt: they own
   // reconciliation if cleanup is pending. The deterministic preflight removes its own directory.
   let child;
-  const upstream = await createNotesEnvironmentUpstream({ onFailure: () => child?.kill('SIGTERM') });
+  let nativeSessions;
+  const upstream = await createNotesEnvironmentUpstream({ onFailure: () => child?.kill('SIGTERM'),
+    observeSessions: async (phase, row) => {
+      const ids = (await readdir(outputDir)).filter(id => /^[a-f0-9-]{36}$/.test(id));
+      assert.equal(ids.length, 1);
+      const containers = (await ownedContainers(ids[0])).sort(); assert.equal(containers.length, 2);
+      const observed = await Promise.all(containers.map(async container => ({ container,
+        ...await sessionEvidence(container, promisify(execFile)) })));
+      assert.equal(new Set(observed.map(item => item.sessionId)).size, 2);
+      if (phase === 'before-followup') nativeSessions = observed;
+      else { assert.deepEqual(observed, nativeSessions); assert.ok(observed.some(item => item.sessionId === row.sessionId)); }
+    } });
   t.after(() => upstream.close());
   const evidenceDir = join(process.cwd(), 'experiments', `notes-environment-${Date.now()}`);
   await mkdir(evidenceDir, { recursive: true, mode: 0o700 });
@@ -45,7 +58,7 @@ export default config;\n`, { mode: 0o600 });
     const runtimeIds = (await readdir(outputDir).catch(() => [])).filter(id => /^[a-f0-9-]{36}$/.test(id));
     proof.resources = {};
     for (const id of runtimeIds) proof.resources[id] = { empty: (await ownedContainers(id)).length === 0 };
-    proof.upstream = upstream.receipt(); proof.deadlineExceeded = expired;
+    proof.nativeSessions = nativeSessions; proof.upstream = upstream.receipt(); proof.deadlineExceeded = expired;
     proof.failure ||= expired || Boolean(proof.upstream.failure) || proof.upstream.arrivals !== 6 || proof.upstream.accepted !== 6 ||
       runtimeIds.length !== 1 || Object.values(proof.resources).some(resource => !resource.empty);
     await writeFile(join(evidenceDir, 'acceptance.json'), JSON.stringify(proof, null, 2), { mode: 0o600 });
@@ -83,8 +96,8 @@ export default config;\n`, { mode: 0o600 });
   for (const file of ['review.md', 'followup.md']) assert.equal(await readFile(join(files, file), 'utf8'), expected);
   const [writer, reader, followup] = upstream.receipt().evidence;
   assert.equal(writer.author, report.result.writerId);
-  assert.equal(reader.author, report.result.writerId); assert.equal(reader.session, followup.session);
-  assert.notEqual(writer.session, reader.session);
+  assert.equal(reader.author, report.result.writerId); assert.deepEqual(reader.process, followup.process);
+  assert.equal(nativeSessions.length, 2);
   assert.deepEqual(JSON.parse(await readFile(report.reportPath, 'utf8')).result, report.result);
   proof.failure = false;
 });
