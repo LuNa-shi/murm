@@ -18805,6 +18805,41 @@
         "docs/architecture/08-prompts.md"
       ],
       "role": "Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking"
+    },
+    {
+      "path": "examples/subagents-environment/main.mjs",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Subagents host Profiles, three-Slot Runtime, verified text adoption and whole-tree reporting"
+    },
+    {
+      "path": "examples/subagents-environment/controller.mjs",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Bounded multi-source input queue, round snapshots, failure coalescing and shutdown receipts"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Complete parent and child instructions and fixed initial text goal"
+    },
+    {
+      "path": "examples/subagents-environment/config.mjs",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Local subagents host model, resource and deadline configuration"
     }
   ]
 }

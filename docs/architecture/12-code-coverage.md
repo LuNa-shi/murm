@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2080 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2084 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -56,12 +56,16 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/environments/agensh/resources.js](../../src/environments/agensh/resources.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `1558be3891d24e1693a792110b9a6307cc8b3b90c2833d314d5ea1f8c51eb48f` |
 | [src/environments/agensh/services.js](../../src/environments/agensh/services.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `7095fec48ff2499ff4ba5176c802f3b36fe095963e83eeb4901ca9147faccba9` |
 
-### Execution and control (16)
+### Execution and control (20)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [examples/notes-environment/config.mjs](../../examples/notes-environment/config.mjs) | Sample host lifecycle, provider, model, output and resource configuration | [17-environment-reporting](17-environment-reporting.md) | `939405a2636cb1a80977f3c1ed41488c0066ac901f561a0074653e15324bfcbb` |
 | [examples/notes-environment/main.mjs](../../examples/notes-environment/main.mjs) | Installed-package Notes Environment Service, role prompts, input order and archive verification | [17-environment-reporting](17-environment-reporting.md) | `fb99a2610c76e10c7de30f4785a7ff43640bf27689cf1219b5221ce184a05a9f` |
+| [examples/subagents-environment/config.mjs](../../examples/subagents-environment/config.mjs) | Local subagents host model, resource and deadline configuration | [17-environment-reporting](17-environment-reporting.md) | `7876ac84de99e39a6b21959468465bf08bef3e8efa815ec0cc8378aa26679979` |
+| [examples/subagents-environment/controller.mjs](../../examples/subagents-environment/controller.mjs) | Bounded multi-source input queue, round snapshots, failure coalescing and shutdown receipts | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `141b59749c778172f4d9c783e99496aff4c12687bf1fdacd483a7ce4e46a5292` |
+| [examples/subagents-environment/main.mjs](../../examples/subagents-environment/main.mjs) | Subagents host Profiles, three-Slot Runtime, verified text adoption and whole-tree reporting | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `b5d4d7c3fb6c0e24c4716e509f792f9fb6472eaab9608ec92286ad5b5c0f5b93` |
+| [examples/subagents-environment/prompts.mjs](../../examples/subagents-environment/prompts.mjs) | Complete parent and child instructions and fixed initial text goal | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `417dcf1192ecd6795fc916895d78dda5ad4d5fc9b282960eb82be2b0d3ac36ba` |
 | [src/agent/bot-model-access.js](../../src/agent/bot-model-access.js) | Trusted Bot lifecycle and model credential composition | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `1e4d3c62c20f7914a7d41b6e1231fb04bad3e2b34ea47d0977c664859016f27d` |
 | [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js) | Bounded Responses forwarding with durable observed attempts or explicit financial reservations | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `46daab2e9cae5d644dc2b84e52881bea67d6b5e8c91e92f22d8d94a5c03fd175` |
 | [src/benchmark/benchmark-fixture.js](../../src/benchmark/benchmark-fixture.js) | Pinned Git blob and timed service composition gates | [07-run-configuration](07-run-configuration.md) | `bf6aafd3caab9041b0262cf4d916bb2110d1d11a14d7b3765fc6db6cfaa512c6` |
@@ -2043,7 +2047,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `452ee5db7e6ecdf992532572a58f08a3117f5809d0443eb323b18b16bbea9bd8` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `7edd25d5d514c93032108e1a0f9c6a4e5344d419806bb24445816ec961c8b538` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `172f15aa3480a8f280497759c526b243589afa6bc6e09e11260c4256f280d626` |
 
 ### durable storage (3)
 

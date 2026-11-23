@@ -25,6 +25,7 @@ const sourcePaths = [
   'src/agent/services-bridge.js', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
+  'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
@@ -171,6 +172,15 @@ output('07-notes-environment.md', header('Installed Notes Environment prompts',
   + block('Writer publication', notesInput.put)
   + block('Reader retrieval', notesInput.get)
   + block('Reader follow-up', notesInput.follow));
+const subagentsPath = 'examples/subagents-environment/prompts.mjs';
+output('08-subagents-environment.md', header('Subagents Environment prompts',
+  'The host stages Profile prompts verbatim. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in controller.mjs with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Bot Service requests.')
+  + block('Parent Profile prompt', evaluate(between(subagentsPath, 'export const parentPrompt = ', ';\n')))
+  + block('Child Profile prompt', evaluate(between(subagentsPath, 'export const childPrompt = ', ';\n')))
+  + block('Default initial goal', evaluate(between(subagentsPath, 'export const initialGoal = ', ';\n'))));
+for (const [index, line] of sources.get('examples/subagents-environment/controller.mjs').split('\n').entries()) {
+  if (line.includes('await runtime.send(')) sendSites.push({ path: 'examples/subagents-environment/controller.mjs', line: index + 1, expression: line.trim() });
+}
 const scaleMASPath = 'src/environments/scalemas/index.js';
 output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
   'All three peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
