@@ -237,7 +237,7 @@ export async function createRuntime(options) {
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       const bot = {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
-        inputVersion: 0, executionStopped: false,
+        inputVersion: 0, executionVersion: 0, executionStopped: false,
       };
       request = { fingerprint, bot };
       bots.set(info.id, bot);
@@ -245,7 +245,11 @@ export async function createRuntime(options) {
       bot.start = Promise.resolve().then(async () => {
         bot.controller.signal.throwIfAborted();
         await backend.spawn({ botId: info.id, profile: bot.profile, options: parameters,
-          signal: bot.controller.signal, onEvent: event => emit(bot, event) });
+          signal: bot.controller.signal, onEvent: event => emit(bot, event),
+          onExecutionStart: () => {
+            bot.executionVersion += 1;
+            if (info.status === 'idle') info.status = 'running';
+          } });
         if (info.status !== 'starting') throw new Error('Bot stopped before becoming idle');
         info.status = 'idle';
         return structuredClone(info);
@@ -284,11 +288,11 @@ export async function createRuntime(options) {
       }
       const inputId = randomUUID();
       const wasIdle = bot.info.status === 'idle';
-      const cursor = bot.info.cursor;
+      const executionVersion = bot.executionVersion;
       const version = ++bot.inputVersion;
       bot.info.status = 'running';
       const restoreIdle = () => {
-        if (wasIdle && bot.inputVersion === version && bot.info.status === 'running' && bot.info.cursor === cursor) {
+        if (wasIdle && bot.inputVersion === version && bot.executionVersion === executionVersion && bot.info.status === 'running') {
           bot.info.status = 'idle';
         }
       };

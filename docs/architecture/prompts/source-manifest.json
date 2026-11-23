@@ -52,11 +52,11 @@
     },
     {
       "path": "src/core/index.js",
-      "sha256": "ed47e7a047f1b8a0e870c7ac883f022e1926a94e5bf0877cb1ecbd733792ac16"
+      "sha256": "ea093829a098974582d053860f6c8d1b6e45276c402d1574e5e86d9c70115be3"
     },
     {
       "path": "src/core/pi-opensandbox-backend.js",
-      "sha256": "ecb97817d971e3b2fe270cb3e1bae25a02196b9b69a9a10db0f71fc793af225c"
+      "sha256": "5e23c5c1fa9daf784e5a640403895b4cf56a46047b9d0da16f7e22c842b92b3a"
     },
     {
       "path": "scripts/opensandbox-agent-worker.mjs",

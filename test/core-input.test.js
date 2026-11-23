@@ -104,3 +104,36 @@ test('handled receipts do not imply execution and fresh sends reject exited and 
   await runtime.stop(bot.id);
   await assert.rejects(runtime.send(bot.id, 'new', { requestId: 'closed' }), { code: 'NOT_ALLOWED' });
 });
+
+test('handled local output restores idle without erasing its output snapshot', async t => {
+  const { runtime, bot } = await setup(t);
+  transport.next = async id => {
+    transport.listeners.get(bot.id)({ type: 'output', text: 'Local command handled' });
+    transport.confirm(id, 'handled');
+  };
+  const receipt = await runtime.send(bot.id, '/local-command', { requestId: 'local-output' });
+  assert.equal(receipt.disposition, 'handled');
+  const snapshot = await runtime.get(bot.id);
+  assert.equal(snapshot.status, 'idle');
+  assert.equal(snapshot.latestOutput, 'Local command handled');
+  assert.equal(snapshot.cursor, 1);
+});
+
+test('handled receipt preserves existing execution and newer input activity', async t => {
+  const { runtime, bot } = await setup(t);
+  let release;
+  transport.next = id => new Promise(resolve => { release = () => { transport.confirm(id, 'handled'); resolve(); }; });
+  const earlier = runtime.send(bot.id, '/local-command', { requestId: 'earlier-handled' });
+  await new Promise(resolve => setImmediate(resolve));
+  transport.next = async id => transport.confirm(id, 'started');
+  await runtime.send(bot.id, 'new work', { requestId: 'newer-execution' });
+  release();
+  assert.equal((await earlier).disposition, 'handled');
+  assert.equal((await runtime.get(bot.id)).status, 'running');
+  transport.next = async id => {
+    transport.listeners.get(bot.id)({ type: 'output', text: 'Handled while busy' });
+    transport.confirm(id, 'handled');
+  };
+  assert.equal((await runtime.send(bot.id, '/local-command', { requestId: 'handled-while-busy' })).disposition, 'handled');
+  assert.equal((await runtime.get(bot.id)).status, 'running');
+});

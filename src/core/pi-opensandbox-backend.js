@@ -72,6 +72,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       }
       bot.cursor = sequence;
       if (record.type === 'agent_start') {
+        bot.onExecutionStart?.();
         bot.output = '';
         bot.error = null;
         bot.outcome = 'completed';
@@ -108,12 +109,12 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
   }
 
   return {
-    async spawn({ botId, profile, options = {}, signal, onEvent }) {
+    async spawn({ botId, profile, options = {}, signal, onEvent, onExecutionStart }) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       if (options.files || options.collect || profile.collect) throw invalid('File seeding and collection require the file lifecycle implementation');
       if (profile.network?.allow?.length) throw invalid('Additional network origins require the Profile isolation implementation');
       const manager = new OpenSandboxManager({ ...config.sandbox, image: profile.image });
-      const bot = { id: botId, manager, onEvent, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
+      const bot = { id: botId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
       bots.set(botId, bot);
       const assertOpen = () => {
         if (closing || bot.stopping || signal?.aborted) throw Object.assign(new Error('Bot startup is closing'), { code: 'NOT_ALLOWED' });

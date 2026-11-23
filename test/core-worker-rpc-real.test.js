@@ -29,14 +29,20 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
       const message = JSON.parse(line); count++;
       fs.appendFileSync('/workspace/runtime/home/received-inputs.txt', message.id + '\\n');
       process.stdout.write(JSON.stringify({type:'input_seen', count})+'\\n');
-      setTimeout(() => process.stdout.write(JSON.stringify({type:'response', id:message.id,
-        command:message.type, success:true, data:{disposition:'started'}})+'\\n'), 150);
+      const gateDeadline = Date.now() + 5000;
+      const timer = setInterval(() => {
+        const released = fs.existsSync('/workspace/runtime/home/release-response');
+        if (!released && Date.now() < gateDeadline) return;
+        clearInterval(timer);
+        process.stdout.write(JSON.stringify({type:'response', id:message.id,
+          command:message.type, success:released, data:{disposition:'started'}})+'\\n');
+      }, 10);
     });
   `;
   const probe = `
     import assert from 'node:assert/strict';
     import { spawn } from 'node:child_process';
-    import { readFile } from 'node:fs/promises';
+    import { readFile, writeFile } from 'node:fs/promises';
     import { setTimeout as delay } from 'node:timers/promises';
     const input = JSON.parse(process.argv[1]);
     const origin = 'http://127.0.0.1:44100';
@@ -56,6 +62,10 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
       }
       const message={type:'prompt',id:'original-input',message:'fixed',streamingBehavior:'steer'};
       const first=post('/rpc',{message,timeout_ms:15,since:0});
+      const seenDeadline=Date.now()+2000;
+      while (!(await post('/rpc',{type:'get_state',since:0})).body.result.records.some(r=>r.type==='input_seen')) {
+        assert.ok(Date.now()<seenDeadline); await delay(10);
+      }
       const repeated=post('/rpc',{message,timeout_ms:15,since:0});
       const conflict=await post('/rpc',{message:{...message,message:'changed'},timeout_ms:15});
       assert.equal(conflict.body.code,'CONFLICT');
@@ -63,9 +73,16 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
       assert.equal(firstResult.state,'pending');
       assert.equal(firstResult.records[0].type,'process_ready');
       assert.equal((await repeated).body.result.state,'pending');
-      await delay(200);
-      const queried=await post('/rpc',{type:'get_rpc_result',id:message.id,since:0});
+      await writeFile('/workspace/runtime/home/release-response','release');
+      let queried;
+      const responseDeadline=Date.now()+2000;
+      do {
+        queried=await post('/rpc',{type:'get_rpc_result',id:message.id,since:0});
+        if (queried.body.result.state==='complete') break;
+        assert.ok(Date.now()<responseDeadline); await delay(10);
+      } while (true);
       assert.equal(queried.body.result.state,'complete');
+      assert.equal(queried.body.result.response.success,true);
       assert.equal(queried.body.result.response.id,message.id);
       assert.equal(queried.body.result.response.data.disposition,'started');
       assert.equal(queried.body.result.records.filter(r=>r.type==='input_seen').length,1);
@@ -79,7 +96,8 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
   `;
   const input = { contract_version: contract.protocolVersion, resources: contract.resources,
     env: { SWARMENV_AGENT_MODE: 'solver' }, command: 'node', args: ['-e', fakePi] };
-  const result = await run('docker', ['run', '--rm', '--name', name, '--label', `swarmenv.core-input-probe=${probeId}`, '--network', 'none', '--entrypoint', 'node', image,
+  const result = await run('docker', ['run', '--rm', '--name', name, '--label', `swarmenv.core-input-probe=${probeId}`,
+    '--cpus', '1', '--memory', '512m', '--pids-limit', '64', '--network', 'none', '--entrypoint', 'node', image,
     '--input-type=module', '-e', probe, JSON.stringify(input)], { timeout: 30_000, maxBuffer: 1024 * 1024 });
   assert.deepEqual(JSON.parse(result.stdout.trim()), { receivedInputs: 1, sideEffects: 1, queryState: 'complete', conflict: true });
 });

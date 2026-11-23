@@ -80,6 +80,24 @@ test('a response for another input cannot establish acceptance or rejection', as
   assert.equal(receipt.status, 'unknown');
 });
 
+test('handled receipt cannot restore idle after actual Pi execution begins', async t => {
+  const { runtime, bot } = await setup(t);
+  const events = [];
+  runtime.onEvent(event => events.push(event));
+  provider.wrapperReplay = true;
+  provider.wait = async message => {
+    provider.publish({ type: 'agent_start' });
+    provider.publish({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'Active execution output' }], stopReason: 'toolUse' } });
+    provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'handled' } } });
+  };
+  const receipt = await runtime.send(bot.id, '/local-command', { requestId: 'execution-before-handled' });
+  assert.equal(receipt.disposition, 'handled');
+  const snapshot = await runtime.get(bot.id);
+  assert.equal(snapshot.status, 'running');
+  assert.equal(snapshot.latestOutput, 'Active execution output');
+  assert.deepEqual(events.map(event => event.type), ['output']);
+});
+
 test('unknown original submission stays unknown when receipt lookup loses authorization or the Bot closes', async t => {
   const { runtime, bot } = await setup(t);
   const first = await runtime.send(bot.id, 'fixed', { requestId: 'uncertain' });
