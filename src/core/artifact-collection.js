@@ -1,9 +1,7 @@
 import { createHash } from 'node:crypto';
 import { chmod, lstat, mkdir, mkdtemp, open, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { collectionPath } from './config.js';
-
-const chunkLimit = 64 * 1024;
+import { isCollectionPath, MAX_COLLECTION_CHUNK_BYTES as chunkLimit } from '../../scripts/core-collection.mjs';
 
 function collectionError(code, message, retryable = false) {
   return Object.assign(new Error(message), { code, retryable });
@@ -38,7 +36,7 @@ export async function saveBotArtifacts({ outputDir, botId, collect, records, bou
       valid(!complete, 'Artifact stream continued after final record');
       if (record?.type === 'directory' || record?.type === 'file') {
         const { path } = record;
-        valid(!file && collectionPath(path) && path !== '.' && !seen.has(path) && includePath(path) &&
+        valid(!file && isCollectionPath(path) && !seen.has(path) && includePath(path) &&
           seen.size < bounds.inodes, 'Artifact stream contains an invalid, repeated or undeclared path');
         seen.add(path);
         if (record.type === 'directory') {
@@ -88,7 +86,7 @@ export async function saveBotArtifacts({ outputDir, botId, collect, records, bou
     staging = undefined;
     return [join(finalDir, 'manifest.json'), join(finalDir, 'files')];
   } catch (error) {
-    if (error.code?.startsWith('ARTIFACT_') || error.code?.startsWith('SERVICE_')) throw error;
+    if (error.code?.startsWith('ARTIFACT_')) throw error;
     throw collectionError('ARTIFACT_WRITE_FAILED', 'Host could not save the verified Bot artifact', true);
   } finally {
     await file?.handle.close().catch(() => {});

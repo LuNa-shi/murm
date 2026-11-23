@@ -1,5 +1,6 @@
 import { isIPv4 } from 'node:net';
 import { snapshotFileSeed } from '../../scripts/core-file-seed.mjs';
+import { snapshotCollectionSpec } from '../../scripts/core-collection.mjs';
 
 export function validId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
@@ -31,22 +32,10 @@ function origin(value) {
   return isIPv4(url.hostname) && !url.hostname.startsWith('127.') && url.hostname !== '0.0.0.0' && url.port !== '0';
 }
 
-export function collectionPath(value) {
-  return typeof value === 'string' && value.isWellFormed() && Buffer.byteLength(value) <= 4095 &&
-    !/[\\\0]/.test(value) && !/^[a-z]:\//i.test(value) &&
-    (value === '.' || value.split('/').every(part => part !== '' && part !== '.' && part !== '..'));
-}
-
 function snapshotCollection(value) {
   if (value === undefined) return undefined;
-  if (!record(value) || Object.keys(value).some(key => !['paths', 'includeGit', 'maxBytes', 'required'].includes(key)) ||
-      !Array.isArray(value.paths) || !Array.from(value.paths).every(collectionPath) ||
-      typeof value.includeGit !== 'boolean' || typeof value.required !== 'boolean' ||
-      !Number.isSafeInteger(value.maxBytes) || value.maxBytes < 1) {
-    throw new TypeError('collect requires relative paths, a positive maxBytes and explicit includeGit and required flags');
-  }
-  return { paths: [...new Set(value.paths)].sort(), includeGit: value.includeGit,
-    maxBytes: value.maxBytes, required: value.required };
+  if (!record(value)) throw new TypeError('collect must be a CollectionSpec object');
+  return snapshotCollectionSpec(value);
 }
 
 export function snapshotProfiles(profiles, models, registrations) {

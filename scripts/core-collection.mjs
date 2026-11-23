@@ -9,10 +9,15 @@ export const MAX_COLLECTION_ENTRIES = 1_000_000;
 export const MAX_COLLECTION_METADATA_BYTES = 16 * 1024 ** 2;
 const failure = (message, code = 'INVALID_CONTRACT') => Object.assign(new Error(message), { code });
 
+export function isCollectionPath(path, allowRoot = false) {
+  if (allowRoot && path === '.') return true;
+  return typeof path === 'string' && path.isWellFormed() && Buffer.byteLength(path) <= 4095 &&
+    !/[\\\0]/.test(path) && !/^[a-z]:\//i.test(path) &&
+    path.split('/').every(part => part !== '' && part !== '.' && part !== '..');
+}
+
 function pathName(path, root = false) {
-  if (root && path === '.') return path;
-  if (typeof path !== 'string' || !path.isWellFormed() || /[\\\0]/.test(path) || /^[a-z]:\//i.test(path) ||
-      path.split('/').some(part => !part || part === '.' || part === '..')) throw failure('Collection requires normalized relative paths');
+  if (!isCollectionPath(path, root)) throw failure('Collection requires normalized relative paths');
   return path;
 }
 
@@ -24,7 +29,7 @@ export function snapshotCollectionSpec(input) {
       !Number.isSafeInteger(input.maxBytes) || input.maxBytes < 1) {
     throw failure('Collection requires paths, includeGit, required and a positive safe integer maxBytes');
   }
-  const paths = [...new Set(input.paths.map(path => pathName(path, true)))].sort();
+  const paths = [...new Set(Array.from(input.paths, path => pathName(path, true)))].sort();
   if (!input.includeGit && paths.some(path => path === '.git' || path.startsWith('.git/'))) {
     throw failure('Collection paths requesting root .git require includeGit');
   }

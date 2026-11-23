@@ -420,7 +420,8 @@ export class ResponsesBudgetGateway {
         else resolve();
       })) : Promise.resolve();
     this.#server?.closeAllConnections();
-    this.#stopPromise = closed.then(() => Promise.allSettled([...this.#working])).then(() => undefined);
+    this.#stopPromise = closed.then(() => Promise.allSettled([...this.#working])).then(() => undefined)
+      .catch(error => { this.#stopPromise = undefined; throw error; });
     return this.#stopPromise;
   }
 

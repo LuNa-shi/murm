@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createCoreBridge } from './bridge.js';
 import { snapshotProfiles, snapshotSpawn, validId } from './config.js';
@@ -39,7 +39,14 @@ async function observe(work, timeoutMs = defaultTimeoutMs) {
 }
 
 async function writeRecord(path, value) {
-  await writeFile(path, JSON.stringify(value, null, 2) + '\n', { mode: 0o600 });
+  const temporary = `${path}.${randomUUID()}.tmp`;
+  try {
+    await writeFile(temporary, JSON.stringify(value, null, 2) + '\n', { mode: 0o600, flag: 'wx' });
+    await rename(temporary, path);
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 
 export async function createRuntime(options) {
@@ -79,6 +86,9 @@ export async function createRuntime(options) {
   let closing = false;
   let recordsReady = false;
   let reportSaved = false;
+  const assertAssembling = () => {
+    if (closing) throw Object.assign(new Error('Runtime initialization was closed'), { code: 'OPERATION_UNKNOWN' });
+  };
   const endpointCleanup = {
     bridge: { kind: 'bridge', id: runtimeId, action: 'close', done: false },
     model: { kind: 'model', id: runtimeId, action: 'close', done: false },
@@ -100,15 +110,23 @@ export async function createRuntime(options) {
     }
   }
   function pendingEndpoints() {
-    return Object.values(endpointCleanup).filter(subject => !subject.done).map(pendingEndpoint);
+    return Object.values(endpointCleanup).filter(subject => !subject.done).flatMap(subject => {
+      const details = subject.kind === 'model' ? modelAccess?.pendingCleanup() : undefined;
+      return details?.length ? details : [pendingEndpoint(subject)];
+    });
   }
   const assembly = (async () => {
     await mkdir(outputDir, { recursive: true, mode: 0o700 });
     recordsReady = true;
     await writeRecord(reportPath, { runtimeId, status: 'starting', maxBots });
     reportSaved = true;
-    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy });
-    bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getBot, registrations });
+    assertAssembling();
+    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy,
+      onOwned: owner => { modelAccess = owner; } });
+    assertAssembling();
+    bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getBot, registrations,
+      onOwned: owner => { bridge = owner; } });
+    assertAssembling();
     backend = await openPiOpenSandboxBackend(config, { runtimeId, outputDir, bridge, modelAccess });
     await writeRecord(reportPath, { runtimeId, status: 'open', maxBots });
   })();
@@ -123,12 +141,17 @@ export async function createRuntime(options) {
         await writeRecord(reportPath, { runtimeId, status: 'initialization-failed',
           cleanup: pending.length ? 'pending' : 'complete', errors, pending });
         reportSaved = true;
-      } catch (error) { errors.push(errorInfo(error, 'REPORT_WRITE_FAILED')); }
+      } catch (error) {
+        const failure = { ...errorInfo(error), code: 'REPORT_WRITE_FAILED' };
+        errors.push(failure);
+        pending.push({ kind: 'report', id: runtimeId, action: 'save', error: failure });
+      }
     }
     return { errors, pending };
   };
   try {
     if (await observe(assembly) === timedOut) {
+      closing = true;
       void rollbackAssembly();
       throw resourceError('OPERATION_UNKNOWN', 'Runtime initialization timed out', {
         ...context, ...(reportSaved ? { reportPath } : {}),
@@ -221,7 +244,7 @@ export async function createRuntime(options) {
     const error = pendingError ?? bot.cleanupError;
     return { botId, execution: bot.executionStopped ? 'stopped' : 'unknown',
       cleanup: bot.info.status === 'closed' ? 'complete' : 'pending',
-      artifacts: bot.artifacts ?? [], errors: [bot.optionalCollectionError, error].filter(Boolean),
+      artifacts: bot.artifacts ?? [], errors: [bot.optionalCollectionError, bot.cleanupError, pendingError].filter(Boolean),
       ...(bot.info.status === 'closed' ? {} : { pending: {
         kind: 'bot', id: botId, action: bot.cleanupAction ?? 'stop-execution',
         ...backend.resource(botId), ...(error ? { error } : {}),
@@ -402,8 +425,10 @@ export async function createRuntime(options) {
     return structuredClone(result === timedOut ? currentStop(bot) : result);
   }
 
-  function closeReceipt(botReceipts, errors) {
+  let savingClose = false;
+  function closeReceipt(botReceipts, errors, reportError) {
     const pending = [...botReceipts.flatMap(bot => bot.pending ? [bot.pending] : []), ...pendingEndpoints()];
+    if (reportError || savingClose) pending.push({ kind: 'report', id: runtimeId, action: 'save', ...(reportError ? { error: reportError } : {}) });
     return { bots: botReceipts, cleanup: errors.length || pending.length ? 'pending' : 'complete',
       errors, pending, outputDir, ...(reportSaved ? { reportPath } : {}) };
   }
@@ -422,14 +447,18 @@ export async function createRuntime(options) {
         }
         const errors = pendingEndpoints().flatMap(subject => subject.error ? [subject.error] : []);
         let receipt = closeReceipt(botReceipts, errors);
+        savingClose = true;
         try {
+          receipt.reportPath = reportPath;
           await writeRecord(reportPath, { runtimeId, status: receipt.cleanup === 'complete' ? 'closed' : 'closing',
             ...receipt, handlerErrors });
+          reportSaved = true;
         } catch (error) {
-          errors.push(errorInfo(error, 'REPORT_WRITE_FAILED'));
-          receipt = closeReceipt(botReceipts, errors);
-          receipt.pending.push({ kind: 'report', id: runtimeId, action: 'save', error: errors.at(-1) });
-        }
+          const failure = { ...errorInfo(error), code: 'REPORT_WRITE_FAILED' };
+          errors.push(failure);
+          reportSaved = false;
+          receipt = closeReceipt(botReceipts, errors, failure);
+        } finally { savingClose = false; }
         if (receipt.cleanup === 'complete') finalClose = receipt;
         return receipt;
       })().finally(() => { closeWork = undefined; });

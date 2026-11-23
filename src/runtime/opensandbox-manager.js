@@ -593,6 +593,7 @@ export class OpenSandboxManager {
     if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
     if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
     if (record.agent) return { ...record.agent };
+    record.executionStopped = false;
     const workerToken = record.workerToken;
     if (typeof workerToken !== 'string' || workerToken.length === 0) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
     let endpoint = endpointForHost((await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}/endpoints/${this.workerPort}`, { method: 'GET', timeoutMs: 30_000 })).body, this.endpointHost);
@@ -809,7 +810,7 @@ export class OpenSandboxManager {
   async *collectCoreFiles(executionId, input) {
     const spec = snapshotCollectionSpec(input);
     const record = this.#record(executionId);
-    if (!record.executionStopped || record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise) {
+    if (!record.executionStopped || !record.coreAgent || !record.agent || record.stopPromise) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Bot and retained Worker');
     }
     const fingerprint = JSON.stringify(spec);

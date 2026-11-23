@@ -39,7 +39,7 @@ This section is generated from executable exports and checked against the source
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
-| [src/core/index.d.ts](../../src/core/index.d.ts) | `5d38de5a6209510e16a2861af018d72b9ef250b9461a7cccce4829a60e7e6dd3` |
+| [src/core/index.d.ts](../../src/core/index.d.ts) | `e82a0c0ff5a84116c9c446176eda31295c961dbf6450adaba45142f9ab02e426` |
 | [src/core/services.d.ts](../../src/core/services.d.ts) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
 | [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `166e51de1b45cf32e17b0b62fdafecfe913521122450a125f3ece1c87cd267ed` |
 
@@ -3185,6 +3185,7 @@ export interface Profile {
   spawnProfiles?: readonly string[];
   env?: Readonly<Record<string, string>>;
   network?: { allow: readonly string[] };
+  collect?: CollectionSpec;
 }
 
 export interface ModelCaller {
@@ -3222,6 +3223,13 @@ export interface FileEntry {
 
 export type FileSeed = Readonly<Record<string, FileEntry>>;
 
+export interface CollectionSpec {
+  paths: readonly string[];
+  includeGit: boolean;
+  maxBytes: number;
+  required: boolean;
+}
+
 export interface PreparedFiles {
   readonly botId: string;
   readonly version: number;
@@ -3242,6 +3250,7 @@ export interface SpawnOptions {
   files?: FileSeed;
   bindings?: Readonly<Record<string, string>>;
   secretEnv?: Readonly<Record<string, string>>;
+  collect?: CollectionSpec;
 }
 
 export interface ErrorInfo {
@@ -3285,18 +3294,31 @@ export type BotEvent = { botId: string; seq: number } & (
   | { type: 'exit'; reason: string; expected: boolean }
 );
 
+export interface PendingCleanup {
+  kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
+  id: string;
+  action: 'await-startup' | 'stop-execution' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  error?: ErrorInfo;
+  resourceKey?: string;
+  sandboxId?: string;
+  creation?: 'created' | 'pending' | 'absent';
+  executionStopped?: boolean;
+}
+
 export interface StopReceipt {
   botId: string;
   execution: 'stopped' | 'unknown';
   cleanup: 'complete' | 'pending';
   artifacts: readonly string[];
   errors: readonly ErrorInfo[];
+  pending?: PendingCleanup;
 }
 
 export interface CloseReceipt {
   bots: readonly StopReceipt[];
   cleanup: 'complete' | 'pending';
   errors: readonly ErrorInfo[];
+  pending: readonly PendingCleanup[];
   outputDir: string;
   reportPath?: string;
 }

@@ -219,11 +219,17 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
     async *collect(botId, specification) {
       const bot = bots.get(botId);
       if (!bot?.executionStopped) throw Object.assign(new Error('Artifact collection requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
-      yield* bot.manager.collectCoreFiles(botId, specification, config.isolation.disk);
+      try { yield* bot.manager.collectCoreFiles(botId, specification); }
+      catch (error) {
+        const rejected = ['INVALID_CONTRACT', 'NOT_ALLOWED', 'CONFLICT'].includes(error.code);
+        throw Object.assign(new Error(rejected ? error.message : 'Worker artifact export could not be confirmed'), {
+          code: 'ARTIFACT_EXPORT_FAILED', retryable: !rejected,
+        });
+      }
     },
     resource(botId) {
       const bot = bots.get(botId);
-      return bot?.manager.coreResource?.(botId);
+      return bot?.manager.coreResource(botId);
     },
     async destroy(botId) {
       const bot = bots.get(botId);

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -131,4 +132,75 @@ test('unknown execution stop prevents collection, and optional invalid artifacts
     assert.equal(result.bots[0].errors[0].code, 'ARTIFACT_INVALID');
     assert.equal(uploads, 1);
   } finally { stopped = true; await runtime.close(); }
+});
+
+test('late creation remains registered across the host spawn deadline and a concurrent close', { timeout: 8000 }, async t => {
+  let allocated, release;
+  const allocation = new Promise(resolve => { allocated = resolve; });
+  const providerReply = new Promise(resolve => { release = resolve; });
+  const { provider, runtime } = await runtimeFixture(t, {
+    async onCreate(sandboxId) {
+      allocated(sandboxId);
+      await providerReply;
+    },
+  });
+  provider.allowDeletion();
+  const setTimer = globalThis.setTimeout;
+  let expireSpawn;
+  const clock = t.mock.method(globalThis, 'setTimeout', function (handler, ms, ...args) {
+    if (ms === 60_000 && !expireSpawn) expireSpawn = () => handler(...args);
+    return Reflect.apply(setTimer, this, [handler, ms, ...args]);
+  });
+  try {
+    const spawning = runtime.spawn({ requestId: 'late', profile: 'worker' });
+    const sandboxId = await allocation;
+    expireSpawn();
+    const failure = await spawning.catch(error => error);
+    assert.equal(failure.code, 'OPERATION_UNKNOWN');
+    assert.equal(failure.cleanup, 'pending');
+    assert.equal(failure.runtimeId, runtime.id);
+    assert.equal(failure.requestId, 'late');
+    assert.ok(failure.botId);
+    clock.mock.restore();
+    const pending = await runtime.close({ timeoutMs: 10 });
+    assert.equal(pending.cleanup, 'pending');
+    assert.equal(pending.bots[0].pending.id, failure.botId);
+    assert.equal(pending.bots[0].pending.creation, 'pending');
+    assert.equal(pending.bots[0].pending.action, 'await-startup');
+    release();
+    const closed = await runtime.close();
+    assert.equal(closed.cleanup, 'complete');
+    assert.equal(closed.bots[0].botId, failure.botId);
+    assert.equal(closed.bots[0].execution, 'stopped');
+    assert.equal((await fetch(`${provider.url}/sandboxes/${sandboxId}`)).status, 404);
+    assert.equal(provider.allocations(), 1);
+  } finally {
+    clock.mock.restore();
+    release();
+    await runtime.close();
+  }
+});
+
+test('close reports blocked Bridge and model entry failures and retries both owners', { timeout: 8000 }, async t => {
+  const { runtime } = await runtimeFixture(t, {});
+  const original = Server.prototype.close;
+  let remaining = 2;
+  const fault = t.mock.method(Server.prototype, 'close', function (callback) {
+    if (remaining-- > 0) {
+      queueMicrotask(() => callback(Object.assign(new Error('Controlled listener closure failure'), { code: 'EIO' })));
+      return this;
+    }
+    return Reflect.apply(original, this, [callback]);
+  });
+  try {
+    const pending = await runtime.close();
+    assert.equal(pending.cleanup, 'pending');
+    assert.equal(pending.pending.find(item => item.kind === 'bridge').id, runtime.id);
+    const model = pending.pending.find(item => item.kind === 'model');
+    assert.equal(model.id, `${runtime.id}:default`);
+    assert.equal(model.error.code, 'MODEL_CLOSE_FAILED');
+    const saved = JSON.parse(await readFile(pending.reportPath, 'utf8'));
+    assert.deepEqual(saved.pending, pending.pending);
+    assert.equal((await runtime.close()).cleanup, 'complete');
+  } finally { fault.mock.restore(); await runtime.close(); }
 });

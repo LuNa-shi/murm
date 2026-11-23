@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Model budget gateway
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `818049e138f689add29e6612d80bd035b189e763a97b568007f113c129ae53b7`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `04c6966854d26498828f65cd170289c525c251bdc455e9efb8f4ba496140c946`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS responses_budget_policies (
@@ -170,7 +170,7 @@ CREATE TABLE IF NOT EXISTS responses_budget_policies (
 
 ### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `818049e138f689add29e6612d80bd035b189e763a97b568007f113c129ae53b7`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `04c6966854d26498828f65cd170289c525c251bdc455e9efb8f4ba496140c946`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (
