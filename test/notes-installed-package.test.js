@@ -45,14 +45,22 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   await mkdir(join(packageRoot, 'src/environments/shared'), { recursive: true });
   await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@swarmenv/core', version: '0.0.0-frozen-fixture', type: 'module', exports: './examples/notes-environment/main.mjs' }));
   await writeFile(join(packageRoot, 'examples/notes-environment/main.mjs'), "export const marker = 'frozen-candidate';\n");
-  for (const name of ['run-input', 'run-report']) await writeFile(join(packageRoot, `src/environments/shared/${name}.js`), `export const name = '${name}';\n`);
+  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/environments/shared/${name}.js`), `export const name = '${name}';\n`);
   const archive = join(root, 'candidate.tgz');
   await execute('tar', ['-czf', archive, 'package'], { cwd: root, timeout: 5000 });
   const bytes = await readFile(archive), expectedSha256 = createHash('sha256').update(bytes).digest('hex');
   const installed = await installNotesExample({ archive, expectedSha256 }); t.after(() => installed.close());
   assert.deepEqual(installed.metadata, { name: '@swarmenv/core', version: '0.0.0-frozen-fixture', sourceCommit: null, sourceDirty: null, sha256: expectedSha256 });
   assert.deepEqual(await readFile(join(installed.directory, 'frozen-package.tgz')), bytes);
-  const result = await execute(process.execPath, ['--input-type=module', '-e', "import assert from 'node:assert/strict'; import {marker} from '@swarmenv/core'; import {name} from './run-input.mjs'; assert.equal(marker,'frozen-candidate'); assert.equal(name,'run-input');"], { cwd: installed.directory, env: installed.env, timeout: 5000 });
+  const result = await execute(process.execPath, ['--input-type=module', '-e', `
+    import assert from 'node:assert/strict';
+    import { marker } from '@swarmenv/core';
+    import { name as input } from './run-input.mjs';
+    import { name as reader } from './read-result.mjs';
+    assert.equal(marker, 'frozen-candidate');
+    assert.equal(input, 'run-input');
+    assert.equal(reader, 'read-result');
+  `], { cwd: installed.directory, env: installed.env, timeout: 5000 });
   assert.equal(result.stderr, '');
   const selected = await execute(process.execPath, ['--input-type=module', '-e', `
 import assert from 'node:assert/strict'; import {installNativeNotesExample,execute} from ${JSON.stringify(fixture)};
