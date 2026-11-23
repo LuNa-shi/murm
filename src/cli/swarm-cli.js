@@ -342,7 +342,10 @@ async function invoke(service, commandName, options, args = []) {
       if (!metadata.capabilities?.some(item => item.operation === operation || item.name === operation)) throw new Error(`service ${service} does not advertise capability ${operation}`);
       return bridgeCall(operation, input, options, transportService(service));
     }
-    return bridgeCall(operation, input, options);
+    // Core supplies this reserved routing hint with the protected connection.
+    // Legacy Bridges retain their operation-only request and one delivery.
+    return bridgeCall(operation, input, options,
+      process.env.SWARMENV_BRIDGE_CONTRACT_VERSION === '2' ? transportService(service) : undefined);
   }
   const provider = await manifest(service);
   const capability = provider.capabilities?.find((candidate) => candidate.operation === operation || candidate.name === operation);
