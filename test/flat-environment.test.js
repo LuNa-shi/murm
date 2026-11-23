@@ -103,3 +103,143 @@ test('flat host composes public Bash publication and controller finish with dura
   assert.equal(Buffer.from((await stores.workspace.exportRevision({workspaceId:stores.workspaceId,revision})).files['result.txt']).toString(),'Fixed public result\n');
   assert.equal(JSON.parse(await readFile(report.reportPath,'utf8')).result.bots[0].lastStop.execution,'stopped');
 });
+
+async function runPublicationProbe(t, snapshotProject, probe) {
+  const root = await mkdtemp(join(tmpdir(), 'flat-publication-admission-'));
+  const stores = await createFlatTaskStores(root);
+  t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
+  transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
+  const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
+  transport.next = accept;
+  let probeFailure;
+  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+    missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
+    deadlineAt: Date.now() + 20_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    // Trusted test capture only. This does not provide a production live snapshot.
+    snapshotProject,
+    async drive(controller) {
+      try {
+        const bot = controller.snapshot().bots[0];
+        const credentials = controls.credentials.get(bot.botId);
+        const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
+        const bridge = new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname = '127.0.0.1';
+        env.SWARMENV_BRIDGE_URL = bridge.origin;
+        await promisify(execFile)(process.execPath, [new URL('../scripts/swarm.mjs', import.meta.url).pathname,
+          'task', 'take', stores.task.task_id, '--request-id', 'probe-take'], { env, timeout: 5000 });
+        const call = async (operation, operationId, payload = {}) => {
+          const response = await fetch(`${bridge.origin}/call`, { method: 'POST',
+            headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ service_id: 'workspace', operation, operation_id: operationId, payload }),
+            signal: AbortSignal.timeout(5000) });
+          return { status: response.status, body: await response.json() };
+        };
+        await probe({ ...stores, bot, call });
+      } catch (error) { probeFailure = error; }
+      finally { controller.halt('publication-probe-finished'); }
+    },
+  });
+  if (probeFailure) throw probeFailure;
+  assert.equal(report.businessFailure?.code, 'FLAT_BUSINESS_FAILED');
+  assert.equal(report.cleanupFailure, null);
+  assert.equal(report.cleanup.cleanup, 'complete');
+}
+
+function publicationSnapshot({ executionId, fencingVersion }, content) {
+  const bytes = Buffer.from(content);
+  const digest = value => createHash('sha256').update(value).digest('hex');
+  const manifest = { 'result.txt': { bytes: bytes.length, content_hash: digest(bytes) } };
+  return { execution_id: executionId, binding_version: fencingVersion, state: 'ACTIVE',
+    files: { 'result.txt': bytes.toString('base64') }, manifest, content_hash: digest(stableStringify(manifest)) };
+}
+
+test('real Bridge joins concurrent flat save requests and rejects changed replay before a second capture', { timeout: 25_000 }, async t => {
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  let captures = 0;
+  await runPublicationProbe(t, async identity => {
+    captures++;
+    entered.resolve();
+    await release.promise;
+    return publicationSnapshot(identity, 'One immutable public result\n');
+  }, async ({ call, workspace, workspaceId }) => {
+    const first = call('workspace_save', 'same-save');
+    void first.catch(() => {});
+    let duplicate;
+    try {
+      await entered.promise;
+      duplicate = call('workspace_save', 'same-save');
+      void duplicate.catch(() => {});
+      const conflict = await call('workspace_save', 'same-save', { resolved: true });
+      assert.equal(conflict.status, 409); assert.equal(conflict.body.error.code, 'CONFLICT');
+      assert.equal(captures, 1);
+      assert.equal((await workspace.listRevisions({ workspaceId })).length, 1);
+    } finally {
+      release.resolve();
+      await Promise.allSettled([first, duplicate]);
+    }
+    const [saved, joined] = await Promise.all([first, duplicate]);
+    assert.equal(saved.status, 200); assert.deepEqual(joined, saved);
+    assert.equal(captures, 1);
+    assert.equal((await workspace.listRevisions({ workspaceId })).length, 2);
+    assert.deepEqual(await call('workspace_save', 'same-save'), saved);
+    const conflict = await call('workspace_save', 'same-save', { resolved: true });
+    assert.equal(conflict.status, 409); assert.equal(conflict.body.error.code, 'CONFLICT');
+    assert.equal(captures, 1);
+  });
+});
+
+test('real Bridge status and diff replays preserve one observation while new identities observe changed bytes', { timeout: 25_000 }, async t => {
+  let content = 'First private observation\n', captures = 0;
+  await runPublicationProbe(t, async identity => {
+    captures++;
+    return publicationSnapshot(identity, content);
+  }, async ({ call, workspace, workspaceId }) => {
+    for (const operation of ['workspace_status', 'workspace_current_diff']) {
+      const before = captures;
+      const observed = await call(operation, `${operation}:first`);
+      assert.equal(observed.status, 200);
+      assert.equal(observed.body.result.dirty, true);
+      assert.ok(observed.body.result.changed_paths.includes('result.txt'));
+      if (operation === 'workspace_current_diff') {
+        assert.equal(observed.body.result.changes.find(row => row.path === 'result.txt').after.bytes, Buffer.byteLength(content));
+      }
+      content += 'Changed after the observation\n';
+      assert.deepEqual(await call(operation, `${operation}:first`), observed);
+      assert.equal(captures, before + 1);
+      const later = await call(operation, `${operation}:later`);
+      assert.equal(later.status, 200);
+      assert.notEqual(later.body.result.content_hash, observed.body.result.content_hash);
+      assert.equal(captures, before + 2);
+      assert.equal((await workspace.listRevisions({ workspaceId })).length, 1);
+    }
+  });
+});
+
+for (const expired of ['lease_expires_at', 'execution_deadline']) {
+  test(`real Bridge refuses a save when ${expired} expires while trusted capture waits`, { timeout: 25_000 }, async t => {
+    const entered = Promise.withResolvers(), release = Promise.withResolvers();
+    let captures = 0;
+    await runPublicationProbe(t, async identity => {
+      captures++; entered.resolve();
+      await release.promise;
+      return publicationSnapshot(identity, 'Private bytes after the authorization expired\n');
+    }, async ({ call, tasks, task, workspace, workspaceId }) => {
+      const pending = call('workspace_save', 'expires-during-capture');
+      try {
+        await entered.promise;
+        const execution = tasks.listExecutions(task.task_id)[0];
+        // Simulate durable expiry without depending on a delayed timer firing.
+        tasks.db.prepare(`UPDATE executions SET ${expired} = ? WHERE execution_id = ?`)
+          .run('2000-01-01T00:00:00.000Z', execution.execution_id);
+      } finally { release.resolve(); }
+      const rejected = await pending;
+      assert.equal(rejected.body.ok, false);
+      assert.equal(rejected.body.error.code, 'WORKSPACE_REQUEST_ABORTED');
+      assert.equal(rejected.body.error.details.cause_code, 'NOT_ALLOWED');
+      const replay = await call('workspace_save', 'expires-during-capture');
+      assert.equal(replay.status, 403); assert.equal(replay.body.error.code, 'NOT_ALLOWED');
+      assert.equal(captures, 1);
+      assert.equal((await workspace.listRevisions({ workspaceId })).length, 1);
+      assert.equal(tasks.getTask(task.task_id).state, 'RUNNING');
+    });
+  });
+}
