@@ -18743,6 +18743,30 @@
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Read saved Environment and Core receipts with expected identity and bounded normal-output projection"
+    },
+    {
+      "path": "scripts/run-environment.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Foreground host CLI for explicit local Environment configuration and bounded control"
+    },
+    {
+      "path": "src/environments/shared/foreground-host.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Shared foreground Environment driver using existing mode controllers and lifecycle reports"
+    },
+    {
+      "path": "src/environments/shared/foreground-commands.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Serial JSON-line host commands and bounded status/input receipt projection"
     }
   ]
 }

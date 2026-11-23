@@ -30,11 +30,18 @@ export async function createAgenshTeam(options) {
   const secrets = [options.gitea?.adminToken, options.mattermost?.adminToken, ...(options.secretValues ?? [])].filter(value => typeof value === 'string' && value);
   const redact = value => { let bytes = JSON.stringify(value); for (const secret of [...secrets].sort((a, b) => b.length - a.length)) bytes = bytes.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(bytes); };
   const peers = new Map(); const routers = new Map(); const subscriptions = new Map(); const unsubscriptions = []; const pendingSources = new Set();
-  let runtime, facilities, services, closing = false, closeWork, completed;
-  const check = () => { if (signal.aborted) throw fail('ENVIRONMENT_START_ABORTED'); };
+  let runtime, facilities, services, closing = false, closeWork, completed, fencedFailure;
+  const check = () => { if (signal.aborted) throw fencedFailure ?? fail('ENVIRONMENT_START_ABORTED'); };
   const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), resources: resources.snapshot(),
     peers: [...peers].map(([key, bot]) => ({ key, botId: bot.id, profile: bot.profile, router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() })) });
-  function stop() { closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(); }
+  function stop(reason) { closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
+  function fence(reason) {
+    if (closing || signal.aborted) return;
+    const code = typeof reason === 'string' ? reason : reason?.code;
+    const detail = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'AGENSH_SOURCE_FAILED';
+    fencedFailure = Object.assign(fail('AGENSH_TEAM_FENCED'), { details: [{ code: detail }] });
+    stop(fencedFailure);
+  }
   async function close({ timeoutMs = 60_000 } = {}) {
     if (!finite(timeoutMs)) throw new TypeError('Agensh close requires a finite wait');
     stop(); if (completed) return structuredClone(completed);
@@ -74,12 +81,12 @@ export async function createAgenshTeam(options) {
     for (const peer of facilities.peers) {
       const bot = peers.get(peer.key); const mapping = { botId: bot.id, workerId: peer.board.workerId };
       const board = httpClient(facilities.endpoints.board);
-      const router = createAgenshRouter({ ...options.router, mapping, onFence: stop,
+      const router = createAgenshRouter({ ...options.router, mapping, onFence: fence,
         runInput: (text, wait) => runInput(runtime, bot.id, text, { ...wait, signal: AbortSignal.any([signal, wait.signal]) }),
         readContext: options.router?.readContext ?? (async ({ signal }) => (await board('GET', `/board/${encodeURIComponent(facilities.boardId)}/read?viewer=${encodeURIComponent(peer.board.workerId)}`, undefined, { signal })).rendered) });
       routers.set(peer.key, router); unsubscriptions.push(runtime.onEvent(router.observe));
       const subscribe = options.router?.subscribe ?? createAgenshEventSubscription;
-      const creation = Promise.resolve().then(() => subscribe({ ...options.router?.events, facilities: { ...facilities, peer }, mapping, ingest: router.ingest, signal, onFailure: stop })).then(async source => {
+      const creation = Promise.resolve().then(() => subscribe({ ...options.router?.events, facilities: { ...facilities, peer }, mapping, ingest: router.ingest, signal, onFailure: fence })).then(async source => {
         if (typeof source?.stop !== 'function') throw fail('TEAM_SOURCE_NOT_READY');
         subscriptions.set(peer.key, source);
         if (closing) await source.stop();
@@ -92,7 +99,7 @@ export async function createAgenshTeam(options) {
       check();
     }
     for (const router of routers.values()) router.markReady();
-    return Object.freeze({ id: runtime.id, snapshot, redact, close,
+    return Object.freeze({ id: runtime.id, snapshot, redact, close, signal,
       kickoff(key, text) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).kickoff(text); },
       ingest(key, event) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).ingest(event); },
       wait(key, batchId, wait) { if (!routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).wait(batchId, wait); },
@@ -100,7 +107,7 @@ export async function createAgenshTeam(options) {
     });
   } catch (error) {
     const receipt = !runtime && error.cleanup === 'pending' ? { cleanup: 'pending' } : await close({ timeoutMs: options.closeTimeoutMs ?? 60_000 }).catch(() => ({ cleanup: 'pending' }));
-    throw Object.assign(new Error('Agensh team initialization failed'), { code: error.code ?? 'TEAM_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [snapshot(), redact(receipt)] });
+    throw Object.assign(new Error('Agensh team initialization failed'), { code: fencedFailure?.code ?? error.code ?? 'TEAM_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [...(fencedFailure?.details ?? []), snapshot(), redact(receipt)] });
   } finally { signal.removeEventListener('abort', abortStartup); }
 }
 
