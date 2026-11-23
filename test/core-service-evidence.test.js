@@ -2,6 +2,28 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { setup } from './fixtures/core-notes-service.js';
 
+test('revocation before scheduled adapter entry prevents a late write and retains unknown identity', async t => {
+  let writes = 0;
+  let entrySignal;
+  let fixture;
+  const rows = [];
+  fixture = await setup(t, { invoke({ signal, input, caller }) {
+    entrySignal = signal;
+    writes++;
+    return { ...input, author: caller.botId };
+  } }, { bridge: { recordService(row) {
+    rows.push(row);
+    if (row.state === 'invocation') queueMicrotask(() => fixture.bridge.revokeBot('bot-one'));
+  } } });
+  const failure = await fixture.call('put', { key: 'one', text: 'fixed' });
+  assert.equal(failure.error.code, 'SERVICE_UNAVAILABLE');
+  assert.equal(failure.error.details.request_outcome, 'unknown');
+  assert.equal(failure.error.details.operation_id, 'fixed-request');
+  assert.equal(writes, 0, `Adapter entered after revoke with signal.aborted=${entrySignal?.aborted}`);
+  assert.equal(rows.at(-1).outcome, 'unknown');
+  assert.equal(rows.some(row => row.outcome === 'succeeded'), false);
+});
+
 function identity(row) {
   const { runtimeId, botId, profile, serviceId, operation, operationId } = row;
   return { runtimeId, botId, profile, serviceId, operation, operationId };
