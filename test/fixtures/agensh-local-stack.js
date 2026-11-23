@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { randomBytes } from 'node:crypto';
-import { mkdir, chmod } from 'node:fs/promises';
+import { randomBytes, createHash } from 'node:crypto';
+import { mkdir, chmod, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createDeadline, createCleanupBudget } from './agensh-deadline.js';
 import { httpClient } from '../../src/environments/agensh/http.js';
@@ -14,6 +14,10 @@ export const facilityImages = Object.freeze({
 });
 const execute = promisify(execFile);
 const sanitized = code => Object.assign(new Error(code), { code });
+export const boardSchema = Object.freeze({
+  revision: '2dae4e14a653da48549fd9aa093f834841475d6c',
+  sha256: 'baa0ce607371751d6e7a526179512f2ff3a59ede88749059bed1a2522b3f3bb2',
+});
 
 /** No side effects until explicitly called inside the opt-in actual test. */
 export async function createLocalAgenshStack({ directory, advertiseHost = '172.17.0.1', setupMs = 180_000, executeCommand = execute }) {
@@ -46,7 +50,10 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
   async function wait(check, signal) {
     while (true) {
       signal?.throwIfAborted(); setup.remaining();
-      try { return await check(); } catch { signal?.throwIfAborted(); await new Promise(resolve => setTimeout(resolve, setup.remaining(500))); }
+      try { return await check(); } catch (error) {
+        if (['LOCAL_BOARD_EXITED', 'LOCAL_BOARD_STATE_INVALID'].includes(error?.code)) throw error;
+        signal?.throwIfAborted(); await new Promise(resolve => setTimeout(resolve, setup.remaining(500)));
+      }
     }
   }
   async function run(kind, { env = {}, ports = [], volumes = [], args = [], cpu, memory, signal }) {
@@ -121,6 +128,16 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
       });
       readiness.mysql = { protocol: 'TCP', rootAuthenticated: true, applicationAuthenticated: true, applicationSchema: 'board', skipNetworking: false };
       await sql('mysql.schema-initialize', 'root', "CREATE DATABASE IF NOT EXISTS mattermost CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci; GRANT ALL PRIVILEGES ON mattermost.* TO 'agensh'@'%'; FLUSH PRIVILEGES;");
+      // The upstream compose seeds this table; board startup only migrates
+      // existing tables and cannot hydrate without it. Keep an attributed,
+      // byte-validated fixture independent of linked-worktree submodule state.
+      const schema = await setupStep(() => readFile(new URL('./agensh-board-schema.sql', import.meta.url)));
+      if (createHash('sha256').update(schema).digest('hex') !== boardSchema.sha256) throw sanitized('LOCAL_BOARD_SCHEMA_INVALID');
+      await sql('mysql.board-schema-install', 'agensh', schema.toString('utf8'), ['--database=board']);
+      const schemaReady = await sql('mysql.board-schema-ready', 'agensh',
+        "SELECT id,board_id,thread_id,type,content,ts_epoch,expires_at,delegation_id,detail FROM board_gists LIMIT 0; SELECT IF(SUBSTRING_INDEX(CURRENT_USER(),'@',1)='agensh' AND DATABASE()='board',1,0)", ['--database=board']);
+      if (schemaReady !== '1') throw sanitized('LOCAL_BOARD_SCHEMA_NOT_READY');
+      readiness.boardSchema = { ...boardSchema, table: 'board_gists', applicationAuthenticated: true, columnsVerified: true };
       const gitea = await run('gitea', { cpu: 1, memory: '512m', ports: ['0.0.0.0::3000'], volumes: [`${data.gitea}:/data`], env: {
         GITEA__security__INSTALL_LOCK: 'true', GITEA__database__DB_TYPE: 'sqlite3', GITEA__service__DISABLE_REGISTRATION: 'true', GITEA__server__HTTP_PORT: '3000',
         GITEA__server__ROOT_URL: 'http://localhost:3000/', GITEA__actions__ENABLED: 'false', GITEA__log__LEVEL: 'Error' } });
@@ -152,7 +169,18 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
           const origin = await published(name, 8660, '127.0.0.1', signal);
           stack.boardOrigin = origin;
           own({ kind: 'board-connection', id: boardId, close: async () => {} });
-          await wait(() => { signal?.throwIfAborted(); return setupStep(({ signal: setupSignal }) => httpClient(origin)('GET', `/board/${encodeURIComponent(boardId)}/read?viewer=${encodeURIComponent(workerId)}`, undefined, { signal: AbortSignal.any([setupSignal, ...(signal ? [signal] : [])]) })); }, signal);
+          await wait(async () => {
+            signal?.throwIfAborted();
+            const state = JSON.parse(await docker(['inspect', '--format', '{{json .State}}', name], signal, 'board.state'));
+            if (['exited', 'dead', 'removing'].includes(state.Status)) {
+              readiness.board = { state: 'exited', exitClass: Number.isInteger(state.ExitCode) ? state.ExitCode === 0 ? 'zero' : 'nonzero' : 'unknown' };
+              throw sanitized('LOCAL_BOARD_EXITED');
+            }
+            if (!['created', 'running', 'restarting', 'paused'].includes(state.Status)) throw sanitized('LOCAL_BOARD_STATE_INVALID');
+            if (!state.Running) throw sanitized('LOCAL_BOARD_NOT_READY');
+            await setupStep(({ signal: setupSignal }) => httpClient(origin)('GET', `/board/${encodeURIComponent(boardId)}/read?viewer=${encodeURIComponent(workerId)}`, undefined, { signal: AbortSignal.any([setupSignal, ...(signal ? [signal] : [])]) }));
+            readiness.board = { state: 'ready' };
+          }, signal);
           signal?.throwIfAborted();
           setup.dispose(); setup.remaining();
           return { origin };
