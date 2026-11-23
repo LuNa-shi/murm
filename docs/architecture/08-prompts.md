@@ -206,6 +206,8 @@ The Execution ID comes from TaskService's accepted reservation; selected revisio
 
 ### Flat controller messages
 
+The [generated flat reference](prompts/08-flat-environment.md) extracts the complete defaults from the Environment/controller sources and records their fingerprints and public send site.
+
 `src/environments/flat/controller.js` owns its default discovery input, sent only after coordinator domain readiness through public `Runtime.send` with explicit `followUp`:
 
 ```text

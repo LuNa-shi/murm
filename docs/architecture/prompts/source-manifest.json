@@ -75,6 +75,14 @@
       "sha256": "d3b4881b7589521a9016d0564b631b23e44ec2854b6c3cd369eefd95ba31454c"
     },
     {
+      "path": "src/environments/flat/controller.js",
+      "sha256": "6f0a353db7aedbd3295821fce52885ba6633900d2059af1299a48c6ac797246e"
+    },
+    {
+      "path": "src/environments/flat/environment.js",
+      "sha256": "e9f9c8a088a967002a13ec3a3bda514b40ed344c5e5b336be5c1538334345012"
+    },
+    {
       "path": "examples/subagents-environment/main.mjs",
       "sha256": "b5d4d7c3fb6c0e24c4716e509f792f9fb6472eaab9608ec92286ad5b5c0f5b93"
     },
@@ -333,6 +341,18 @@
       "anchor": "export const helperFollowupInstruction = '",
       "line": 6,
       "sha256": "0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85"
+    },
+    {
+      "path": "src/environments/flat/environment.js",
+      "anchor": "prompt='",
+      "line": 13,
+      "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
+    },
+    {
+      "path": "src/environments/flat/controller.js",
+      "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
+      "line": 8,
+      "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
     }
   ],
   "prompt_send_sites": [
@@ -365,6 +385,11 @@
       "path": "examples/subagents-environment/controller.mjs",
       "line": 25,
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
+    },
+    {
+      "path": "src/environments/flat/controller.js",
+      "line": 92,
+      "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
   "fixed_instruction_fields": [
@@ -503,6 +528,10 @@
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",
       "sha256": "c1420d8b42b1ccb7eb7c4dcf61a0cedb6640acbb2196f3115e44655ea3de184b"
+    },
+    {
+      "path": "docs/architecture/prompts/08-flat-environment.md",
+      "sha256": "8ea3d15794e682b030650ffe792425cefd8d20dbeacd6fee0df3488bcb5983f9"
     }
   ]
 }
