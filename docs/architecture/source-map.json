@@ -1761,6 +1761,24 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Exclude the example default private run-output directory from npm distribution"
+    },
+    {
+      "path": "src/judge/lean-module-verify.LICENSE.txt",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Pinned third-party license or provenance attachment distributed with identified Lean material"
+    },
+    {
+      "path": "src/judge/lean-module-verify.NOTICE.md",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Pinned third-party license or provenance attachment distributed with identified Lean material"
     }
   ]
 }
