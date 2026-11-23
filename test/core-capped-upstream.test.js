@@ -36,6 +36,7 @@ test('capped upstream limits actual forwarding and preserves SSE IDs with capped
   assert.equal((await fetch(cap.url, { method: 'POST', body })).status, 429);
   assert.equal(received.length, 1);
   assert.equal(cap.receipt().forwarded, 1);
+  assert.equal(cap.receipt().arrivals, 2);
   assert.equal(JSON.stringify(cap.receipt()).includes('local-test-only'), false);
 });
 

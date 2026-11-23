@@ -25,6 +25,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   const active = new Set();
   const tools = new Map();
   let forwarded = 0;
+  let arrivals = 0;
   let closing = false;
   let deadlineReached = false;
   let bashReturned = false;
@@ -63,6 +64,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   }
 
   const server = createServer(async (request, response) => {
+    arrivals++;
     if (closing || Date.now() >= deadlineAt) { json(response, 429, 'LIVE_WORK_DEADLINE'); return; }
     if (request.method !== 'POST' || request.url !== '/v1/responses') { json(response, 404, 'LIVE_ROUTE_REJECTED'); return; }
     let body;
@@ -139,7 +141,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   try { await once(server, 'listening'); } catch { clearTimeout(deadline); throw new Error('LIVE_PROXY_START_FAILED'); }
   return {
     url: `http://127.0.0.1:${server.address().port}/v1/responses`,
-    receipt() { return structuredClone({ forwarded, maxRequests, maxOutputTokens, deadlineReached, bashReturned, readVerified, requests: records }); },
+    receipt() { return structuredClone({ arrivals, forwarded, maxRequests, maxOutputTokens, deadlineReached, bashReturned, readVerified, requests: records }); },
     close() {
       if (closePromise) return closePromise;
       closing = true;
