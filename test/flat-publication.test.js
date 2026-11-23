@@ -97,3 +97,45 @@ test('malformed trusted snapshot evidence cannot create a public revision',async
   await assert.rejects(f.call('workspace','workspace_save',{},'invalid'),{code:'INVALID_CONTRACT'});
   assert.equal((await f.workspace.listRevisions({workspaceId:f.workspaceId})).length,1);
 });
+
+test('flat rejects mismatched capture evidence and still publishes exact bounded binary bytes', { timeout: 60_000 }, async t => {
+  const hash = value => createHash('sha256').update(value).digest('hex');
+  const encode = files => {
+    const manifest = Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, { bytes: bytes.length, content_hash: hash(bytes) }]));
+    return { files: Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, bytes.toString('base64')])),
+      manifest, content_hash: hash(stableStringify(manifest)) };
+  };
+  const small = encode({ 'result.bin': Buffer.from([0, 255, 128, 10]) });
+  const fullFile = Buffer.alloc(2 * 1024 * 1024, 0x80);
+  const variants = [
+    ['foreign Execution', snapshot => ({ ...snapshot, execution_id: 'foreign-execution' })],
+    ['stale resource binding', snapshot => ({ ...snapshot, binding_version: snapshot.binding_version + 1 })],
+    ['closed capture', snapshot => ({ ...snapshot, state: 'CLOSED' })],
+    ['escaping path', snapshot => ({ ...snapshot, ...encode({ '../escaped.bin': Buffer.from([1]) }) })],
+    ['protected path', snapshot => ({ ...snapshot, ...encode({ '.env/private': Buffer.from([1]) }) })],
+    ['noncanonical base64', snapshot => ({ ...snapshot, files: { 'result.bin': `${snapshot.files['result.bin']}\n` } })],
+    ['extra manifest entry', snapshot => ({ ...snapshot, manifest: { ...snapshot.manifest, 'hidden.bin': { bytes: 0, content_hash: hash(Buffer.alloc(0)) } } })],
+    ['oversized file', snapshot => ({ ...snapshot, ...encode({ 'large.bin': Buffer.alloc(fullFile.length + 1) }) })],
+    ['oversized project', snapshot => ({ ...snapshot, ...encode(Object.fromEntries(Array.from({ length: 9 }, (_, index) => [`part-${index}.bin`, fullFile]))) })],
+  ];
+  let captures = 0;
+  let transform = snapshot => snapshot;
+  const f = await fixture(t, { async snapshotProject({ executionId, fencingVersion }) {
+    captures++;
+    return transform({ execution_id: executionId, binding_version: fencingVersion, state: 'ACTIVE', ...structuredClone(small) });
+  } });
+  for (const [name, invalidSnapshot] of variants) {
+    transform = invalidSnapshot;
+    await assert.rejects(f.call('workspace', 'workspace_save', {}, `reject-${name}`), { code: 'INVALID_CONTRACT' }, name);
+    assert.equal((await f.workspace.listRevisions({ workspaceId: f.workspaceId })).length, 1, name);
+  }
+  const beforeValid = captures;
+  transform = snapshot => ({ ...snapshot, ...encode({ 'result.bin': fullFile }) });
+  const saved = await f.call('workspace', 'workspace_save', {}, 'valid-binary');
+  assert.equal(captures, beforeValid + 1);
+  assert.equal((await f.workspace.listRevisions({ workspaceId: f.workspaceId })).length, 2);
+  const published = await f.workspace.exportRevision({ workspaceId: f.workspaceId, revision: saved.revision });
+  assert.deepEqual(Buffer.from(published.files['result.bin']), fullFile);
+  assert.deepEqual(await f.call('workspace', 'workspace_save', {}, 'valid-binary'), saved);
+  assert.equal(captures, beforeValid + 1);
+});
