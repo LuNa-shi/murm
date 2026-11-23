@@ -1,0 +1,119 @@
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { promisify } from 'node:util';
+import { setTimeout as delay } from 'node:timers/promises';
+import { test } from 'node:test';
+import { createInputUpstream } from './fixtures/core-input-upstream.js';
+import { ownedContainers } from './fixtures/core-runtime-containers.js';
+
+test('real Pi preserves Session and files across two rounds and consumes busy steer before followUp', {
+  skip: process.env.SWARMENV_CORE_INPUT_REAL_TEST !== '1' && 'Controlled Pi/OpenSandbox input acceptance requires independent review and explicit opt-in',
+  timeout: 180_000,
+}, async t => {
+  const { createRuntime } = await import('@swarmenv/core');
+  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@swarmenv/core/services');
+  const image = process.env.SWARMENV_CORE_TEST_IMAGE;
+  assert.ok(image);
+  const outputDir = join(process.cwd(), 'experiments', `core-input-${Date.now()}`);
+  await mkdir(outputDir, { recursive: true, mode: 0o700 });
+  const upstream = await createInputUpstream();
+  let runtime;
+  let bot;
+  let active = [];
+  let cleanup;
+  let deleted = false;
+  const receipts = [];
+  const events = [];
+  const resources = {};
+  t.after(async () => {
+    try {
+      if (runtime) {
+        cleanup = await runtime.close({ timeoutMs: 30_000 });
+        deleted = (await ownedContainers(runtime.id)).length === 0;
+      }
+    } finally {
+      await upstream.close();
+      await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify({
+        runtimeId: runtime?.id, botId: bot?.id, receipts, events, resources,
+        upstream: upstream.receipt(), cleanup: cleanup?.cleanup, deleted,
+      }, null, 2), { mode: 0o600 });
+    }
+    assert.equal(cleanup?.cleanup, 'complete');
+    assert.equal(deleted, true);
+  });
+  runtime = await createRuntime({
+    backend: createPiOpenSandboxBackend({
+      sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+        endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY,
+        commandTimeoutMs: 30_000 },
+      bridge: { host: '0.0.0.0', publicUrl: process.env.SWARMENV_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
+      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 20_000, maxOutputTokens: 128 },
+      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
+      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+    }),
+    profiles: { worker: { prompt: 'Perform the exact requested tool steps.', model: 'default', image, writable: true, services: {} } },
+    services: new ServiceRegistry(), maxBots: 1, outputDir,
+  });
+  assert.deepEqual(await ownedContainers(runtime.id), []);
+  bot = await runtime.spawn({ profile: 'worker', requestId: 'input-acceptance-spawn' });
+  active = await ownedContainers(runtime.id);
+  assert.equal(active.length, 1);
+  const docker = (...args) => promisify(execFile)('docker', ['exec', active[0], ...args], { timeout: 5000 });
+  const sessionFiles = async () => (await docker('find', '/workspace/runtime/pi-session', '-type', 'f', '-name', '*.jsonl')).stdout.trim();
+  const settled = [];
+  let wake;
+  runtime.onEvent(event => {
+    events.push({ type: event.type, seq: event.seq, outcome: event.outcome, expected: event.expected, errorCode: event.error?.code });
+    if (event.type === 'settled') { settled.push(event); wake?.(); }
+  });
+  async function waitSettled(index) {
+    const deadline = Date.now() + 40_000;
+    while (settled.length <= index) {
+      if (Date.now() >= deadline) throw new Error('CONTROLLED_SETTLED_TIMEOUT');
+      await Promise.race([new Promise(resolve => { wake = resolve; }), delay(100)]);
+    }
+    assert.equal(settled[index].outcome, 'completed');
+    return settled[index];
+  }
+  async function send(input, requestId, mode) {
+    const receipt = await runtime.send(bot.id, input, { requestId, ...(mode ? { mode } : {}) });
+    receipts.push({ requestId, ...receipt });
+    assert.equal(receipt.status, 'accepted');
+    return receipt;
+  }
+  // These first two associations require idle, one input source, and no queued
+  // or automatic continuation. Busy inputs below intentionally share one run.
+  await send('ROUND_ONE: write the persistent file.', 'round-one');
+  assert.equal((await waitSettled(0)).output, 'ROUND_ONE_OK');
+  const firstSession = await sessionFiles();
+  assert.ok(firstSession.endsWith('.jsonl'));
+  await send('ROUND_TWO: read persistent.txt from the prior round.', 'round-two', 'steer');
+  assert.equal((await waitSettled(1)).output, 'ROUND_TWO_OK');
+  resources.sameSession = await sessionFiles() === firstSession;
+  assert.equal(resources.sameSession, true);
+  assert.deepEqual(await ownedContainers(runtime.id), active);
+  await send('BUSY_ROUND: execute the fixed long Bash operation.', 'busy-start');
+  const busyDeadline = Date.now() + 10_000;
+  while (!(await docker('cat', '/workspace/project/busy-ready.txt').then(value => value.stdout === 'READY\n', () => false))) {
+    assert.ok(Date.now() < busyDeadline, 'Bash never reached the execution boundary');
+    await delay(50);
+  }
+  assert.equal((await runtime.get(bot.id)).status, 'running');
+  const steer = await send('STEER_AT_TOOL_BOUNDARY', 'busy-steer');
+  const followUp = await send('FOLLOW_UP_AFTER_CURRENT', 'busy-follow-up', 'followUp');
+  assert.equal(steer.disposition, 'queued');
+  assert.equal(followUp.disposition, 'queued');
+  resources.bashStillRunningAfterQueue = await docker('test', '-e', '/workspace/project/busy-finished.txt').then(() => false, () => true);
+  assert.equal(resources.bashStillRunningAfterQueue, true);
+  assert.equal((await waitSettled(2)).output, 'BUSY_ROUND_OK');
+  assert.equal(settled.length, 3, 'Busy inputs may share one settled; no per-input completion assumption');
+  assert.deepEqual(upstream.receipt(), { requests: 7, failure: undefined, persistedRead: true, bashCompleted: true, steerAtBoundary: true, followUpAfterCurrent: true });
+  resources.sameContainer = JSON.stringify(await ownedContainers(runtime.id)) === JSON.stringify(active);
+  assert.equal(resources.sameContainer, true);
+  assert.equal((await runtime.stop(bot.id, { timeoutMs: 30_000 })).cleanup, 'complete');
+  assert.deepEqual(await ownedContainers(runtime.id), []);
+  assert.equal(events.filter(event => event.type === 'exit' && event.expected).length, 1);
+});

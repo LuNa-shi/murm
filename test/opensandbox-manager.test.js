@@ -141,6 +141,12 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-worker' });
       if (url === 'http://worker.test/sbx-worker/health') return response({ ok: true });
       if (url === 'http://worker.test/sbx-worker/start') return response({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } });
+      if (url === 'http://worker.test/sbx-worker/rpc') {
+        const wrapper = JSON.parse(options.body);
+        assert.equal(wrapper.since, 17);
+        assert.equal(wrapper.message.since, undefined);
+        return response({ result: { response: { id: wrapper.message.id, command: 'prompt', success: true }, records: [] } });
+      }
       if (url.includes('/sandboxes/sbx-worker')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
@@ -155,6 +161,8 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
   const launch = calls.find((call) => call.url === 'http://worker.test/sbx-worker/start');
   assert.equal(launch.options.headers.authorization.startsWith('Bearer '), true);
   assert.deepEqual(JSON.parse(launch.options.body).args, ['--mode', 'rpc']);
+  const acknowledgement = await manager.agentRpc('e-worker', { type: 'prompt', id: 'original-input', message: 'fixed' }, { timeoutMs: 50, since: 17 });
+  assert.equal(acknowledgement.response.id, 'original-input');
   await manager.stopExecution('e-worker');
 });
 

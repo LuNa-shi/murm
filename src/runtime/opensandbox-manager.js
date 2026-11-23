@@ -726,10 +726,10 @@ export class OpenSandboxManager {
   confirmBotProjectInstall({ executionId, request_id, content_hash }) { return this.#projectCall(executionId, 'install-confirm', undefined, { request_id, content_hash }); }
 
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
-  async agentRpc(executionId, message, { timeoutMs = 600_000 } = {}) {
+  async agentRpc(executionId, message, { timeoutMs = 600_000, since } = {}) {
     const record = this.#record(executionId);
     if (!record.agent) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker is not started', { execution_id: executionId });
-    const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { message, timeout_ms: timeoutMs }, timeoutMs: timeoutMs + 10_000 });
+    const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { message, timeout_ms: timeoutMs, ...(since === undefined ? {} : { since }) }, timeoutMs: timeoutMs + 10_000 });
     return responseValue(response.body);
   }
 

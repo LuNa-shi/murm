@@ -52,15 +52,15 @@
     },
     {
       "path": "src/core/index.js",
-      "sha256": "1f0c39701e8b27cd5c8872d978ec0c4b3882b68f7efc1c5999fd99f93d667997"
+      "sha256": "e558bb2c1b25928c71451a0d28b2773aa04822628eebae997350417f7d1ae6ca"
     },
     {
       "path": "src/core/pi-opensandbox-backend.js",
-      "sha256": "afedc01ea90cf6efafdd8413c593249a7e6a67f729700f2f6e7694cf87dcf3fd"
+      "sha256": "cf9afe06334fbac761806161860b31826a85dc12c691bd21e737778e56b191d5"
     },
     {
       "path": "scripts/opensandbox-agent-worker.mjs",
-      "sha256": "97fc28038ec1614ce4c81d7870b310ae3440cccfd7f78bcf45a58583a45dbe27"
+      "sha256": "e1bfaf5430d4d116563117768908a703960b833af35011c92fb198e4b69bc309"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
@@ -150,11 +150,6 @@
       "path": "src/benchmark/putnam-runner.js",
       "line": 715,
       "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
-    },
-    {
-      "path": "src/core/pi-opensandbox-backend.js",
-      "line": 148,
-      "expression": "result = await bot.manager.agentRpc(botId, { type: 'prompt', id: inputId, message: input, streamingBehavior: mode }, { timeoutMs: 30000 });"
     },
     {
       "path": "src/runtime/runtime.js",
