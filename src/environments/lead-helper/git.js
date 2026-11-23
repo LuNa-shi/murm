@@ -73,8 +73,8 @@ export function createLeadHelperGit(facilities) {
     bindTeam(id, identities) { if (team || typeof id !== 'string' || Object.keys(identities).sort().join() !== 'helper1,helper2,lead' || new Set(Object.values(identities)).size !== 3) throw fail('NOT_ALLOWED'); runtimeId = id; team = structuredClone(identities); },
     async verifyDelivery({ actor: botId, delivery, direction, requireDirectionText = false, signal }) {
       const actor = resolve(botId); const request = httpClient(origin, `token ${actor.token}`);
-      const ref = await request('GET', `${scope}/git/refs/heads/${e(actor.branch)}`, undefined, { signal });
-      if (ref?.object?.sha !== delivery.commit) throw fail('DELIVERY_INVALID');
+      const ref = await request('GET', `${scope}/branches/${e(actor.branch)}`, undefined, { signal });
+      if (ref?.commit?.id !== delivery.commit) throw fail('DELIVERY_INVALID');
       const file = await request('GET', `${scope}/contents/${delivery.path.split('/').map(e).join('/')}?ref=${delivery.commit}`, undefined, { signal });
       if (file?.type !== 'file' || file.encoding !== 'base64' || file.path !== delivery.path || typeof file.content !== 'string' || file.content.length > 1_500_000) throw fail('DELIVERY_INVALID');
       const bytes = Buffer.from(file.content.replace(/\s/g, ''), 'base64'); const sha256 = createHash('sha256').update(bytes).digest('hex');

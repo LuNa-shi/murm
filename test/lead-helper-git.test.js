@@ -20,7 +20,7 @@ test('Git proof checks own branch head and actual bytes; PR cannot forge identit
   const content = Buffer.from('actual bytes\n'); const commit = 'a'.repeat(40); const sha256 = createHash('sha256').update(content).digest('hex');
   const origin = await server(t, (request, input) => {
     requests++; assert.equal(request.headers.authorization, 'token secret-helper1');
-    if (request.url.includes('/git/refs/heads/')) return { object: { sha: wrongHead ? 'b'.repeat(40) : commit } };
+    if (request.url.includes('/branches/')) return { commit: { id: wrongHead ? 'b'.repeat(40) : commit } };
     if (request.url.includes('/contents/')) return { type: 'file', path: 'result.txt', encoding: 'base64', size: content.length, content: (wrongFile ? Buffer.from('forged') : content).toString('base64') };
     assert.equal(request.url, '/api/v1/repos/owner/repo/pulls'); assert.equal(input.head, 'helper1'); return { number: 1 };
   });

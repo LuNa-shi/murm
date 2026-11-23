@@ -131,3 +131,25 @@ for (const [error, errorClass] of [
   assert.equal(JSON.stringify(stack.receipt()).includes('PRIVATE_DIAGNOSTIC'), false);
   await stack.close();
 });
+
+test('lead-helper Gitea-only stack caches and allocates no unrelated facilities', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-git-stack-')); t.after(() => rm(directory, { recursive: true, force: true }));
+  const server = createServer((request, response) => { request.resume(); response.end('{}'); }); server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const calls = []; let owned;
+  const stack = await createLocalAgenshStack({ directory, giteaOnly: true, executeCommand: async (_name, args) => {
+    calls.push(args);
+    if (args[0] === 'run') { owned = args[args.indexOf('--name') + 1]; return { stdout: owned }; }
+    if (args[0] === 'inspect') return { stdout: args.includes('{{json .Id}}') ? JSON.stringify('a'.repeat(64)) : JSON.stringify({ '3000/tcp': [{ HostPort: String(server.address().port) }] }) };
+    if (args[0] === 'exec') return { stdout: args.includes('generate-access-token') ? 'private-fixture-token' : '' };
+    if (args[0] === 'ps') return { stdout: owned ?? '' };
+    if (args[0] === 'rm') owned = undefined;
+    if (args[0] === 'network' && args[1] === 'ls') return { stdout: 'network' };
+    return { stdout: '' };
+  } });
+  t.after(() => stack.close());
+  const config = await stack.start(); assert.equal(config.gitea.owner, 'run-owner'); assert.equal(config.mattermost, undefined); assert.equal(config.startBoard, undefined);
+  assert.deepEqual(calls.filter(args => args[0] === 'image').map(args => args.at(-1)), [facilityImages.gitea]);
+  assert.equal(calls.filter(args => args[0] === 'run').length, 1); assert.ok(calls.find(args => args[0] === 'run').includes(facilityImages.gitea));
+  assert.equal((await stack.close()).cleanup, 'complete');
+});
