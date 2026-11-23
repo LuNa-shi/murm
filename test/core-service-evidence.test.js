@@ -13,7 +13,7 @@ test('revocation before scheduled adapter entry prevents a late write and retain
     return { ...input, author: caller.botId };
   } }, { bridge: { recordService(row) {
     rows.push(row);
-    if (row.state === 'invocation') queueMicrotask(() => fixture.bridge.revokeBot('bot-one'));
+    if (row.state === 'invocation') queueMicrotask(() => fixture.bridge.revokeBot('bot-one', { abortActive: true }));
   } } });
   const failure = await fixture.call('put', { key: 'one', text: 'fixed' });
   assert.equal(failure.error.code, 'SERVICE_UNAVAILABLE');
@@ -22,6 +22,21 @@ test('revocation before scheduled adapter entry prevents a late write and retain
   assert.equal(writes, 0, `Adapter entered after revoke with signal.aborted=${entrySignal?.aborted}`);
   assert.equal(rows.at(-1).outcome, 'unknown');
   assert.equal(rows.some(row => row.outcome === 'succeeded'), false);
+});
+
+test('ordinary credential revocation lets an already authorized Service finish without another admission', async t => {
+  let writes = 0;
+  let fixture;
+  fixture = await setup(t, { invoke({ signal, input, caller }) {
+    assert.equal(signal.aborted, false);
+    writes++;
+    return { ...input, author: caller.botId };
+  } }, { bridge: { recordService(row) {
+    if (row.state === 'invocation') queueMicrotask(() => fixture.bridge.revokeBot('bot-one'));
+  } } });
+  assert.equal((await fixture.call('put', { key: 'one', text: 'fixed' })).ok, true);
+  assert.equal((await fixture.call('put', { key: 'one', text: 'fixed' })).error.code, 'NOT_ALLOWED');
+  assert.equal(writes, 1);
 });
 
 function identity(row) {

@@ -160,12 +160,14 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       return { environment: { SWARMENV_BRIDGE_URL: publicUrl, SWARMENV_BRIDGE_CONTRACT_VERSION: '2' },
         secretEnvironment: { SWARMENV_BRIDGE_TOKEN: token } };
     },
-    revokeBot(botId) {
+    revokeBot(botId, { abortActive = false } = {}) {
       const token = botTokens.get(botId);
       tokens.delete(token);
       botTokens.delete(botId);
-      for (const [controller, callerId] of active) {
-        if (callerId === botId) controller.abort();
+      if (abortActive) {
+        for (const [controller, callerId] of active) {
+          if (callerId === botId) controller.abort();
+        }
       }
     },
     close,
