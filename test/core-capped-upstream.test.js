@@ -210,3 +210,62 @@ test('unknown provider error labels and oversized rejection bodies collapse to f
     assert.equal(JSON.stringify(cap.receipt()).includes('private-secret'), false);
   }
 });
+
+test('hosted fail-fast fences all later forwards after the first classified provider rejection', async t => {
+  let calls = 0, failures = 0;
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); calls++;
+    response.writeHead(400, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: { code: 'invalid_request_error', type: 'invalid_request_error', param: 'private-param', message: 'private-provider-detail' } }));
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, filename: 'unused', marker: 'unused',
+    failFast: true, onFailure: failure => { failures++; assert.equal(failure.code, 'LIVE_PROVIDER_REJECTED'); } });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const first = await send(); assert.equal(first.status, 400); await first.text();
+  const retries = await Promise.all(Array.from({ length: 4 }, send));
+  for (const retry of retries) { assert.equal(retry.status, 400); await retry.text(); }
+  assert.equal(calls, 1); assert.equal(failures, 1); assert.equal(cap.receipt().forwarded, 1);
+  assert.equal(cap.receipt().rejectedArrivals, 4);
+  assert.deepEqual(cap.receipt().failure, { code: 'LIVE_PROVIDER_REJECTED', number: 1, statusCode: 400,
+    rejection: { code: 'invalid_request_error', type: 'invalid_request_error', param: 'other' } });
+  assert.equal(JSON.stringify(cap.receipt()).includes('private'), false);
+});
+
+test('hosted first rejection cancels an already active peer and prevents a callback race from forwarding', async t => {
+  let calls = 0, cap, raced;
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); calls++;
+    if (calls === 1) { response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':held\n\n'); }
+    else { response.writeHead(400); response.end('{"error":{"code":"invalid_request_error"}}'); }
+  });
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, filename: 'unused', marker: 'unused',
+    maxConcurrent: 2, failFast: true, onFailure: () => { raced = send(); } });
+  t.after(() => cap.close());
+  const peer = await send(); const peerBody = assert.rejects(peer.text());
+  const rejected = await send(); assert.equal(rejected.status, 400); await rejected.text(); await peerBody;
+  const race = await raced; assert.equal(race.status, 400); await race.text();
+  assert.equal(calls, 2); assert.equal(cap.receipt().forwarded, 2); assert.equal(cap.receipt().failure.number, 2);
+  assert.equal(cap.receipt().requests[0].status, 'failure_aborted');
+});
+
+test('provider history diagnostics retain finite protocol hints without indexed paths or raw error text', async t => {
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(400);
+    response.end(JSON.stringify({ error: { code: 'invalid_request_error', type: 'invalid_request_error',
+      param: 'input[4].reasoning_content', message: 'private text: required reasoning_content missing for function_call; call_id not found' } }));
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, filename: 'unused', marker: 'unused', failFast: true });
+  t.after(() => cap.close());
+  const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [
+    { type: 'reasoning', id: 'rs_local', status: 'completed', summary: [{ type: 'summary_text', text: 'local private reasoning' }] },
+    { type: 'function_call', id: 'fc_local', call_id: 'bash_local', name: 'bash', arguments: '{}' },
+    { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '', annotations: [] }] },
+    { type: 'function_call_output', call_id: 'bash_local', output: 'local private result' },
+  ] }) });
+  await response.text();
+  assert.deepEqual(cap.receipt().failure.rejection.hints, ['reasoning_content', 'call_id', 'function_call', 'missing', 'unmatched']);
+  const serialized = JSON.stringify(cap.receipt());
+  for (const raw of ['private', 'input[4]', 'rs_local', 'bash_local', 'fc_local']) assert.equal(serialized.includes(raw), false);
+});

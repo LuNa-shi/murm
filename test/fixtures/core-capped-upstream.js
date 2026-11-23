@@ -17,11 +17,22 @@ function rejectionClassification(bytes) {
     type: ['invalid_request_error', 'authentication_error', 'permission_error', 'rate_limit_error', 'server_error'],
     param: ['tools', 'tool_choice', 'max_output_tokens', 'max_completion_tokens', 'model', 'input', 'stream', 'store', 'temperature', 'top_p'],
   };
-  return Object.fromEntries(Object.entries(allowed).map(([key, values]) => [key, values.includes(error?.[key]) ? error[key] : 'other']));
+  const result = Object.fromEntries(Object.entries(allowed).map(([key, values]) => [key, values.includes(error?.[key]) ? error[key] : 'other']));
+  // Classify recognized protocol fields and failure language; never retain matches.
+  const patterns = {
+    reasoning_content: /\breasoning_content\b/i, reasoning: /\breasoning\b/i,
+    call_id: /\bcall_id\b/i, function_call_output: /\bfunction_call_output\b/i,
+    function_call: /\bfunction_call\b/i, content: /\bcontent\b/i,
+    missing: /\b(?:missing|required)\b/i, unsupported: /\b(?:unsupported|not supported)\b/i,
+    empty: /\b(?:empty|non-empty)\b/i, unmatched: /\b(?:unmatched|not found|matching)\b/i,
+  };
+  const detail = [error?.param, error?.message].filter(value => typeof value === 'string').join(' ');
+  const hints = Object.entries(patterns).filter(([, pattern]) => pattern.test(detail)).map(([label]) => label);
+  return { ...result, ...(hints.length ? { hints } : {}) };
 }
 
 export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, deadlineAt,
-  maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false,
+  maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false, failFast = false, onFailure = () => {},
   maxConcurrent = maxRequests, maxAggregateOutputTokens = maxRequests * maxOutputTokens, maxInputBytes = 2 * 1024 ** 2, maxAggregateInputBytes = maxRequests * maxInputBytes }) {
   let target;
   try { target = new URL(upstreamUrl); } catch { throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID'); }
@@ -34,7 +45,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       !Number.isInteger(maxInputBytes) || maxInputBytes < 1 || maxInputBytes > 2 * 1024 ** 2 ||
       !Number.isInteger(maxAggregateInputBytes) || maxAggregateInputBytes < 1 || maxAggregateInputBytes > maxRequests * maxInputBytes ||
       !upstreamHeaders || typeof upstreamHeaders !== 'object' || Array.isArray(upstreamHeaders) ||
-      typeof disableTools !== 'boolean' || typeof filename !== 'string' || !filename || typeof marker !== 'string' || !marker) {
+      typeof failFast !== 'boolean' || typeof onFailure !== 'function' || typeof disableTools !== 'boolean' || typeof filename !== 'string' || !filename || typeof marker !== 'string' || !marker) {
     throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID');
   }
   const headers = { ...upstreamHeaders };
@@ -48,7 +59,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   let deadlineReached = false;
   let bashReturned = false;
   let readVerified = false;
-  let closePromise;
+  let closePromise, failure;
 
   function observeEvent(value, record) {
     const items = value.type === 'response.output_item.done' ? [value.item] : value.response?.output ?? [];
@@ -83,6 +94,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
 
   const server = createServer(async (request, response) => {
     arrivals++;
+    if (failure) { rejectAdmission(response, 400, 'LIVE_RUN_FAILED'); return; }
     if (closing || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
     if (request.method !== 'POST' || request.url !== '/v1/responses') { rejectAdmission(response, 404, 'LIVE_ROUTE_REJECTED'); return; }
     let body;
@@ -101,6 +113,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       }
     } catch { rejectAdmission(response, 400, 'LIVE_REQUEST_REJECTED'); return; }
     if (closing || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
+    if (failure) { rejectAdmission(response, 400, 'LIVE_RUN_FAILED'); return; }
     if (forwarded >= maxRequests) { rejectAdmission(response, 429, 'LIVE_REQUEST_CAP'); return; }
     if (active.size >= maxConcurrent) { rejectAdmission(response, 429, 'LIVE_CONCURRENCY_CAP'); return; }
     observeToolResults(body.input);
@@ -133,9 +146,15 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
             record.status = 'rejected';
             record.rejection = rejectionClassification(bytes <= 64 * 1024 ? Buffer.concat(chunks) : Buffer.alloc(0));
             active.delete(upstream);
+            if (failFast && !failure) {
+              failure = { code: 'LIVE_PROVIDER_REJECTED', number, statusCode: incoming.statusCode ?? 502, rejection: record.rejection };
+              // Fence synchronously before callback cancellation can race another admission.
+              active.forEach(request => request.destroy());
+              try { onFailure(structuredClone(failure)); } catch { /* The fence remains authoritative. */ }
+            }
             json(response, incoming.statusCode ?? 502, 'LIVE_PROVIDER_REJECTED');
           });
-          incoming.on('error', () => { record.status = 'stream_failed'; active.delete(upstream); json(response, 502, 'LIVE_UPSTREAM_FAILED'); });
+          incoming.on('error', () => { record.status = failure ? 'failure_aborted' : 'stream_failed'; active.delete(upstream); json(response, 502, 'LIVE_UPSTREAM_FAILED'); });
           return;
         }
         response.writeHead(incoming.statusCode ?? 502, incoming.headers);
@@ -153,11 +172,11 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
           }
         });
         incoming.on('end', () => { record.status = 'complete'; active.delete(upstream); response.end(); });
-        incoming.on('error', () => { record.status = 'stream_failed'; active.delete(upstream); response.destroy(); });
+        incoming.on('error', () => { record.status = failure ? 'failure_aborted' : 'stream_failed'; active.delete(upstream); response.destroy(); });
       });
       active.add(upstream); peakConcurrent = Math.max(peakConcurrent, active.size);
       upstream.on('error', () => {
-        record.status = deadlineReached ? 'deadline_aborted' : 'transport_failed';
+        record.status = failure ? 'failure_aborted' : deadlineReached ? 'deadline_aborted' : 'transport_failed';
         active.delete(upstream);
         if (response.headersSent) response.destroy(); else json(response, 502, 'LIVE_UPSTREAM_FAILED');
       });
@@ -179,7 +198,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   try { await once(server, 'listening'); } catch { clearTimeout(deadline); throw new Error('LIVE_PROXY_START_FAILED'); }
   return {
     url: `http://127.0.0.1:${server.address().port}/v1/responses`,
-    receipt() { return structuredClone({ arrivals, forwarded, maxRequests, maxOutputTokens, maxConcurrent, peakConcurrent, maxAggregateOutputTokens, reservedOutputTokens, maxInputBytes, maxAggregateInputBytes, reservedInputBytes, rejectedArrivals, deadlineReached, bashReturned, readVerified, requests: records }); },
+    receipt() { return structuredClone({ arrivals, forwarded, maxRequests, maxOutputTokens, maxConcurrent, peakConcurrent, maxAggregateOutputTokens, reservedOutputTokens, maxInputBytes, maxAggregateInputBytes, reservedInputBytes, rejectedArrivals, deadlineReached, bashReturned, readVerified, ...(failure ? { failure } : {}), requests: records }); },
     close() {
       if (closePromise) return closePromise;
       closing = true;

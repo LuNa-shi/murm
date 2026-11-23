@@ -108,7 +108,7 @@
     },
     {
       "path": "test/agensh-team-kimi-real.test.js",
-      "sha256": "244b78dbe9b0e9b5977d822302e2480aa79223ce353ca73bcd206864c56cd6e5"
+      "sha256": "336098a604816d28a1db1ae75d6b8ff5e7c2427c712d49cf614171667fe0434e"
     },
     {
       "path": "src/environments/lead-helper/prompts.js",
