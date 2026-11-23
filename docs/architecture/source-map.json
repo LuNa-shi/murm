@@ -18572,6 +18572,22 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Shared pinned Pi Responses model and image catalog validation"
+    },
+    {
+      "path": "scripts/pi-rpc-submissions.mjs",
+      "category": "Pi and sandbox execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries"
+    },
+    {
+      "path": "src/core/input-ledger.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Runtime/caller/operation/target/request input identity and parameter conflict ledger"
     }
   ]
 }

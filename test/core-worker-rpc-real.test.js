@@ -1,0 +1,85 @@
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { promisify } from 'node:util';
+import { test } from 'node:test';
+import { agentContract } from '../src/agent/bot-contract.js';
+
+test('native Worker HTTP joins in-flight RPC and queries delayed evidence without a second process input', {
+  skip: process.env.SWARMENV_CORE_WORKER_RPC_TEST !== '1' && 'Native Worker container probe requires independent review and explicit opt-in',
+  timeout: 35_000,
+}, async t => {
+  const image = process.env.SWARMENV_TEST_AGENT_IMAGE;
+  assert.ok(image);
+  const probeId = randomUUID();
+  const name = `swarmenv-core-rpc-${probeId}`;
+  const run = promisify(execFile);
+  t.after(async () => {
+    await run('docker', ['rm', '--force', name], { timeout: 5000 }).catch(() => undefined);
+    const remaining = await run('docker', ['ps', '--all', '--quiet', '--filter', `label=swarmenv.core-input-probe=${probeId}`], { timeout: 5000 });
+    assert.equal(remaining.stdout.trim(), '', 'Native Worker probe must leave no owned container');
+  });
+  const contract = agentContract('solver');
+  const fakePi = `
+    const fs = require('node:fs');
+    const readline = require('node:readline');
+    let count = 0;
+    process.stdout.write(JSON.stringify({type:'process_ready'})+'\\n');
+    readline.createInterface({ input: process.stdin }).on('line', line => {
+      const message = JSON.parse(line); count++;
+      fs.appendFileSync('/workspace/runtime/home/received-inputs.txt', message.id + '\\n');
+      process.stdout.write(JSON.stringify({type:'input_seen', count})+'\\n');
+      setTimeout(() => process.stdout.write(JSON.stringify({type:'response', id:message.id,
+        command:message.type, success:true, data:{disposition:'started'}})+'\\n'), 150);
+    });
+  `;
+  const probe = `
+    import assert from 'node:assert/strict';
+    import { spawn } from 'node:child_process';
+    import { readFile } from 'node:fs/promises';
+    import { setTimeout as delay } from 'node:timers/promises';
+    const input = JSON.parse(process.argv[1]);
+    const origin = 'http://127.0.0.1:44100';
+    const worker = spawn(process.execPath, ['/opt/swarmenv/agent-worker.mjs','--token','controlled-rpc-test'], {stdio:'ignore'});
+    const post = async (path, body) => {
+      const response = await fetch(origin+path,{method:'POST',headers:{authorization:'Bearer controlled-rpc-test','content-type':'application/json'},
+        body:JSON.stringify(body), signal:AbortSignal.timeout(3000)});
+      return {status:response.status, body:await response.json()};
+    };
+    try {
+      const deadline=Date.now()+5000;
+      while (!(await fetch(origin+'/health').then(r=>r.ok,()=>false))) { assert.ok(Date.now()<deadline); await delay(20); }
+      const start=await post('/start',input); assert.equal(start.status,200);
+      const readyDeadline=Date.now()+2000;
+      while (!(await post('/rpc',{type:'get_state',since:0})).body.result.records.some(r=>r.type==='process_ready')) {
+        assert.ok(Date.now()<readyDeadline); await delay(10);
+      }
+      const message={type:'prompt',id:'original-input',message:'fixed',streamingBehavior:'steer'};
+      const first=post('/rpc',{message,timeout_ms:15,since:0});
+      const repeated=post('/rpc',{message,timeout_ms:15,since:0});
+      const conflict=await post('/rpc',{message:{...message,message:'changed'},timeout_ms:15});
+      assert.equal(conflict.body.code,'CONFLICT');
+      const firstResult=(await first).body.result;
+      assert.equal(firstResult.state,'pending');
+      assert.equal(firstResult.records[0].type,'process_ready');
+      assert.equal((await repeated).body.result.state,'pending');
+      await delay(200);
+      const queried=await post('/rpc',{type:'get_rpc_result',id:message.id,since:0});
+      assert.equal(queried.body.result.state,'complete');
+      assert.equal(queried.body.result.response.id,message.id);
+      assert.equal(queried.body.result.response.data.disposition,'started');
+      assert.equal(queried.body.result.records.filter(r=>r.type==='input_seen').length,1);
+      assert.equal(await readFile('/workspace/runtime/home/received-inputs.txt','utf8'),'original-input\\n');
+      const replay=await post('/rpc',{message,timeout_ms:15});
+      assert.equal(replay.body.result.state,'complete');
+      assert.equal(await readFile('/workspace/runtime/home/received-inputs.txt','utf8'),'original-input\\n');
+      assert.equal((await post('/stop',{})).status,200);
+      console.log(JSON.stringify({receivedInputs:1,sideEffects:1,queryState:'complete',conflict:true}));
+    } finally { worker.kill('SIGKILL'); }
+  `;
+  const input = { contract_version: contract.protocolVersion, resources: contract.resources,
+    env: { SWARMENV_AGENT_MODE: 'solver' }, command: 'node', args: ['-e', fakePi] };
+  const result = await run('docker', ['run', '--rm', '--name', name, '--label', `swarmenv.core-input-probe=${probeId}`, '--network', 'none', '--entrypoint', 'node', image,
+    '--input-type=module', '-e', probe, JSON.stringify(input)], { timeout: 30_000, maxBuffer: 1024 * 1024 });
+  assert.deepEqual(JSON.parse(result.stdout.trim()), { receivedInputs: 1, sideEffects: 1, queryState: 'complete', conflict: true });
+});

@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { createCoreBridge } from './bridge.js';
 import { snapshotProfiles, snapshotSpawn, validId } from './config.js';
 import { createCoreModelAccess } from './model-access.js';
+import { createInputLedger } from './input-ledger.js';
 import { claimPiOpenSandboxBackend, openPiOpenSandboxBackend } from './pi-opensandbox-backend.js';
 import { snapshotServiceRegistry } from './services.js';
 
@@ -123,6 +124,7 @@ export async function createRuntime(options) {
 
   const handlers = new Set();
   const spawnRequests = new Map();
+  const inputRequests = createInputLedger(runtimeId);
   const handlerErrors = [];
   let closeWork;
   let finalClose;
@@ -235,7 +237,7 @@ export async function createRuntime(options) {
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       const bot = {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
-        inputs: new Map(), inputVersion: 0, executionStopped: false,
+        inputVersion: 0, executionStopped: false,
       };
       request = { fingerprint, bot };
       bots.set(info.id, bot);
@@ -273,12 +275,10 @@ export async function createRuntime(options) {
       throw problem('INVALID_CONTRACT', 'send needs text, a requestId and a supported mode', 'send', botId, requestId);
     }
     const bot = findBot(botId, 'send', requestId);
-    let request = bot.inputs.get(requestId);
-    if (request) {
-      if (request.input !== input || request.mode !== mode) {
-        throw problem('CONFLICT', 'send requestId already has different parameters', 'send', botId, requestId);
-      }
-    } else {
+    let request;
+    try { request = inputRequests.get('host', botId, requestId, { input, mode }); }
+    catch (error) { throw problem(error.code, error.message, 'send', botId, requestId); }
+    if (!request) {
       if (closing || !liveStates.has(bot.info.status)) {
         throw problem('NOT_ALLOWED', 'Bot is not accepting input', 'send', botId, requestId);
       }
@@ -292,23 +292,32 @@ export async function createRuntime(options) {
           bot.info.status = 'idle';
         }
       };
-      request = { inputId, input, mode, result: Promise.resolve().then(async () => {
-        if (closing || !liveStates.has(bot.info.status)) {
+      request = { inputId, input, mode, run: async () => {
+        if (request.dispatched && bot.info.status === 'closed') return { inputId, status: 'unknown' };
+        if (!request.dispatched && (closing || !liveStates.has(bot.info.status))) {
           throw problem('NOT_ALLOWED', 'Bot stopped before input dispatch', 'send', botId, requestId);
         }
+        const querying = request.dispatched === true;
         try {
+          request.dispatched = true;
           const receipt = await backend.send(botId, input, { mode, inputId });
           if (receipt.disposition === 'handled') restoreIdle();
           return { ...receipt, inputId };
         } catch (error) {
-          if (knownInputRejections.has(error.code)) {
+          if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
             restoreIdle();
             throw problem(error.code, error.message, 'send', botId, requestId);
           }
           return { inputId, status: 'unknown' };
         }
-      }) };
-      bot.inputs.set(requestId, request);
+      } };
+      inputRequests.reserve('host', botId, requestId, { input, mode }, () => request);
+    }
+    if (!request.result) {
+      request.result = Promise.resolve().then(request.run).then(result => {
+        if (result.status === 'unknown') request.result = undefined;
+        return result;
+      });
     }
     const result = await observe(request.result);
     return result === timedOut ? { inputId: request.inputId, status: 'unknown' } : structuredClone(result);

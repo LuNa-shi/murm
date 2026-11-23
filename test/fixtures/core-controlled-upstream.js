@@ -7,7 +7,7 @@ function event(type, fields) {
   return `event: ${type}\ndata: ${JSON.stringify({ type, ...fields })}\n\n`;
 }
 
-function streamResponse(model, number, item) {
+export function streamResponse(model, number, item) {
   const response = { id: `resp_core_${number}`, object: 'response', status: 'completed', model,
     output: [item], usage: { input_tokens: 20, output_tokens: 20, total_tokens: 40 } };
   let result = event('response.created', { response: { ...response, status: 'in_progress', output: [] } });

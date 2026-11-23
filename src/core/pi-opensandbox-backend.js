@@ -61,22 +61,31 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
   const disk = new DockerBotDisk(config.isolation.disk);
 
   function consume(bot, records) {
+    if (bot.historyLost) return;
     for (const record of records) {
       const sequence = record.worker_sequence;
-      if (!Number.isSafeInteger(sequence) || sequence <= bot.cursor) continue;
-      if (sequence !== bot.cursor + 1) {
+      if (Number.isSafeInteger(sequence) && sequence <= bot.cursor) continue;
+      if (!Number.isSafeInteger(sequence) || sequence !== bot.cursor + 1) {
+        bot.historyLost = true;
         bot.onEvent({ type: 'error', error: { code: 'SERVICE_UNAVAILABLE', message: 'Worker event history has a gap', retryable: false }, fatal: true });
+        return;
       }
       bot.cursor = sequence;
+      if (record.type === 'agent_start') {
+        bot.output = '';
+        bot.error = null;
+        bot.outcome = 'completed';
+      }
       if (record.type === 'message_end' && record.message?.role === 'assistant') {
         const message = record.message;
         bot.output = (message.content ?? []).filter(part => part.type === 'text').map(part => part.text).join('');
         bot.error = message.stopReason === 'error' || message.stopReason === 'aborted'
           ? { code: 'MODEL_ERROR', message: message.errorMessage ?? message.stopReason, retryable: false } : null;
+        bot.outcome = message.stopReason === 'aborted' ? 'aborted' : bot.error ? 'failed' : 'completed';
         if (bot.output) bot.onEvent({ type: 'output', text: bot.output });
       }
       if (record.type === 'agent_settled') {
-        bot.onEvent({ type: 'settled', outcome: bot.error ? 'failed' : 'completed', output: bot.output, ...(bot.error ? { error: bot.error } : {}) });
+        bot.onEvent({ type: 'settled', outcome: bot.outcome ?? 'completed', output: bot.output, ...(bot.error ? { error: bot.error } : {}) });
       }
       if (record.type === 'worker_exit') {
         bot.exited = true;
@@ -87,7 +96,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
   }
 
   async function poll(bot) {
-    while (!bot.pollController.signal.aborted && !bot.exited) {
+    while (!bot.pollController.signal.aborted && !bot.exited && !bot.historyLost) {
       try {
         const result = await bot.manager.agentRpc(bot.id, { type: 'get_state', since: bot.cursor }, { timeoutMs: 5000 });
         consume(bot, result.records ?? []);
@@ -141,24 +150,47 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
     },
     async send(botId, input, { mode, inputId }) {
       const bot = bots.get(botId);
-      if (!bot || bot.stopping || bot.exited || closing) throw Object.assign(new Error('Bot is unavailable'), { code: 'NOT_ALLOWED' });
-      bot.output = '';
-      bot.error = null;
-      let result;
-      try {
-        result = await bot.manager.agentRpc(botId, { type: 'prompt', id: inputId, message: input, streamingBehavior: mode }, { timeoutMs: 30000 });
-      } catch (error) {
-        if (['SERVICE_TIMEOUT', 'SERVICE_UNAVAILABLE'].includes(error.code)) return { status: 'unknown' };
-        throw error;
+      if (!bot) throw Object.assign(new Error('Bot is unavailable'), { code: 'NOT_ALLOWED' });
+      bot.submissions ??= new Map();
+      let submission = bot.submissions.get(inputId);
+      if (submission && (submission.input !== input || submission.mode !== mode)) {
+        throw Object.assign(new Error('Input identity has different parameters'), { code: 'CONFLICT' });
       }
-      consume(bot, result.records ?? []);
-      if (result.response?.success !== true) {
-        if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), { code: 'INVALID_CONTRACT' });
-        return { status: 'unknown' };
+      if (!submission) {
+        if (bot.stopping || bot.exited || bot.historyLost || closing) throw Object.assign(new Error('Bot is unavailable'), { code: 'NOT_ALLOWED' });
+        submission = { input, mode, first: true };
+        bot.submissions.set(inputId, submission);
       }
-      const disposition = result.response.data?.disposition;
-      if (!['started', 'queued', 'handled'].includes(disposition)) return { status: 'unknown' };
-      return { status: 'accepted', disposition };
+      if (submission.receipt) return submission.receipt;
+      if (!submission.work) {
+        const dispatch = submission.first;
+        submission.first = false;
+        submission.work = (async () => {
+          let result;
+          try {
+            // A prior attempt, including a failed socket, can only be queried.
+            // Never transparently resubmit an uncertain prompt to Pi.
+            result = await bot.manager.agentRpc(botId, dispatch
+              ? { type: 'prompt', id: inputId, message: input, streamingBehavior: mode }
+              : { type: 'get_rpc_result', id: inputId, since: bot.cursor }, { timeoutMs: 30000, since: bot.cursor });
+          } catch {
+            // Transport status codes also cover Worker-side failures after
+            // writing stdin. Only a correlated Pi response proves rejection.
+            return { status: 'unknown' };
+          }
+          consume(bot, result.records ?? []);
+          if (result.response?.id !== inputId || result.response?.command !== 'prompt') return { status: 'unknown' };
+          if (result.response?.success !== true) {
+            if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), { code: 'INVALID_CONTRACT', inputRejected: true });
+            return { status: 'unknown' };
+          }
+          const disposition = result.response.data?.disposition;
+          if (!['started', 'queued', 'handled'].includes(disposition)) return { status: 'unknown' };
+          submission.receipt = { status: 'accepted', disposition };
+          return submission.receipt;
+        })().finally(() => { submission.work = undefined; });
+      }
+      return submission.work;
     },
     async stopExecution(botId) {
       const bot = bots.get(botId);

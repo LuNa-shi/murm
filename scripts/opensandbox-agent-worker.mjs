@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readFile, writeFile, mkdir, chown, chmod, readdir, lstat, realpath, statfs } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
+import { createPiRpcSubmissions } from './pi-rpc-submissions.mjs';
 
 const argv = process.argv.slice(2);
 function option(name, fallback = null) {
@@ -33,9 +34,10 @@ let sequence = 0;
 const records = [];
 const MAX_RECORDS = 2_048;
 const subscribers = new Set();
-const pending = new Map();
-const rpcResults = new Map();
-const MAX_RPC_RESULTS = 256;
+const rpcSubmissions = createPiRpcSubmissions({ write(message) {
+  if (!child?.stdin?.writable) throw Object.assign(new Error('worker Agent is not running'), { code: 'NOT_ALLOWED' });
+  child.stdin.write(`${JSON.stringify(message)}\n`);
+} });
 
 function authorized(request) {
   return request.headers.authorization === `Bearer ${token}`;
@@ -64,11 +66,7 @@ function publish(record) {
   records.push(value);
   if (records.length > MAX_RECORDS) records.splice(0, records.length - MAX_RECORDS);
   for (const response of subscribers) response.write(`data: ${JSON.stringify(value)}\n\n`);
-  if (value.type === 'response' && value.id && pending.has(value.id)) {
-    const waiters = pending.get(value.id);
-    pending.delete(value.id);
-    for (const waiter of waiters) waiter(value);
-  }
+  rpcSubmissions.observe(value);
   return value;
 }
 
@@ -217,25 +215,15 @@ async function rpc(input) {
     const since = Math.max(0, Number(message.since));
     return { records: records.filter((record) => record.worker_sequence > since) };
   }
-  if (!child?.stdin?.writable) throw new Error('worker Agent is not running');
-  const id = message.id ?? null;
-  if (id && rpcResults.has(id)) return rpcResults.get(id);
+  if (message.type === 'get_rpc_result') {
+    return { ...rpcSubmissions.query(message.id), records: records.filter(record => record.worker_sequence > Number(message.since ?? 0)) };
+  }
   const beforeSequence = sequence;
-  child.stdin.write(`${JSON.stringify(message)}\n`);
-  if (!id) return { records: records.filter((record) => record.worker_sequence > beforeSequence) };
-  const response = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      const waiters = pending.get(id) ?? [];
-      pending.set(id, waiters.filter((waiter) => waiter !== resolve));
-      reject(new Error(`timed out waiting for Pi RPC response: ${message.type ?? 'command'}`));
-    }, Number(input.timeout_ms ?? 600_000));
-    const waiter = (record) => { clearTimeout(timer); resolve(record); };
-    pending.set(id, [...(pending.get(id) ?? []), waiter]);
-  });
-  const result = { records: records.filter((record) => record.worker_sequence > beforeSequence), response };
-  rpcResults.set(id, result);
-  if (rpcResults.size > MAX_RPC_RESULTS) rpcResults.delete(rpcResults.keys().next().value);
-  return result;
+  if (input.since !== undefined && (!Number.isSafeInteger(input.since) || input.since < 0)) {
+    throw Object.assign(new Error('Worker replay cursor must be a nonnegative integer'), { code: 'INVALID_CONTRACT' });
+  }
+  const result = await rpcSubmissions.submit(message, Number(input.timeout_ms ?? 600_000));
+  return { ...result, records: records.filter(record => record.worker_sequence > (input.since ?? beforeSequence)) };
 }
 
 async function botProcesses() {
@@ -353,7 +341,7 @@ const server = createServer(async (request, response) => {
     }
     send(response, 404, { ok: false, error: 'unknown worker route' });
   } catch (error) {
-    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'BOT_STARTUP_CONTRACT'].includes(error.code) ? { code: error.code } : {}),
+    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'BOT_STARTUP_CONTRACT', 'CONFLICT', 'NOT_ALLOWED'].includes(error.code) ? { code: error.code } : {}),
       ...(['dirty', 'active_writer'].includes(error.applyBlocker) ? { apply_blocker: error.applyBlocker } : {}) });
   }
 });
