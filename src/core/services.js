@@ -142,6 +142,8 @@ export async function invokeService(registration, { operation, input, envelope, 
     return result;
   } catch (error) {
     if (error instanceof SwarmEnvError) { error.details = { ...error.details, ...identity }; throw error; }
+    const declared = capability.errors.find(item => item.code === error?.code);
+    if (declared) throw new SwarmEnvError(declared.code, error.message ?? 'Service operation failed', identity, { retryable: declared.retryable });
     throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'Service invocation failed', { ...identity, request_outcome: 'unknown' });
   } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
 }

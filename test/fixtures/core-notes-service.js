@@ -5,7 +5,7 @@ export function notesManifest(id = 'notes') {
   const key = { type: 'string', minLength: 1, maxLength: 12 };
   const record = { type: 'object', properties: { key, text: { type: 'string' }, author: { type: 'string' } }, required: ['key', 'text', 'author'], additionalProperties: false };
   return { id, title: 'Notes', purpose: 'Fixed notes exchange', provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [
-    { name: 'put', operation: 'put', description: 'Store a note', side_effect: 'write', idempotent: true, help: { when: 'Publish a fixed note' }, errors: [], input_schema: { type: 'object', properties: { key, text: { type: 'string', minLength: 1, maxLength: 32 } }, required: ['key', 'text'], additionalProperties: false }, output_schema: record },
+    { name: 'put', operation: 'put', description: 'Store a note', side_effect: 'write', idempotent: true, help: { when: 'Publish a fixed note' }, errors: [{ code: 'CONFLICT', retryable: false }], input_schema: { type: 'object', properties: { key, text: { type: 'string', minLength: 1, maxLength: 32 } }, required: ['key', 'text'], additionalProperties: false }, output_schema: record },
     { name: 'get', operation: 'get', description: 'Read a note', side_effect: 'read', idempotent: true, help: { when: 'Read a published note' }, errors: [], input_schema: { type: 'object', properties: { key }, required: ['key'], additionalProperties: false }, output_schema: { anyOf: [record, { type: 'null' }] } },
   ] };
 }

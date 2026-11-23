@@ -65,3 +65,15 @@ test('v1, malformed identities, unsupported schemas and asynchronous validation 
     assert.throws(() => new ServiceRegistry().registerService({ manifest, adapter: { invoke() {} } }), { code: 'INVALID_CONTRACT' });
   }
 });
+
+test('Notes owns same-key business idempotency and conflicts while Registry performs one invocation per explicit call', async t => {
+  const { createNotesService } = await import('./fixtures/core-notes-service.js');
+  const notes = createNotesService();
+  const { call } = await setup(t, notes.adapter);
+  const input = { key: 'one', text: 'fixed' };
+  assert.deepEqual((await call('put', input)).result, (await call('put', input)).result);
+  assert.equal(notes.writes, 1);
+  assert.equal(notes.calls.length, 2);
+  assert.equal((await call('put', { ...input, text: 'changed' })).error.code, 'CONFLICT');
+  assert.equal(notes.writes, 1);
+});
