@@ -66,8 +66,12 @@ test('actual single Agensh peer uses trusted Services, native Git and one persis
     const repo = `/api/v1/repos/run-owner/run-${runId}`;
     const branch = await git('GET', `${repo}/branches/peer-${runId}`); assert.equal(branch.commit.id, evidence[0].pushedCommit);
     const pr = await git('GET', `${repo}/pulls/${evidence[0].prNumber}`); assert.equal(pr.head.sha, evidence[0].pushedCommit);
+    assert.equal(String(pr.user.id), environment.snapshot().identities.gitea.accountId);
     const remote = await git('GET', `${repo}/contents/acceptance.txt?ref=peer-${runId}`); assert.equal(Buffer.from(remote.content, 'base64').toString(), 'LANDED\n');
     const post = await mm('GET', `/api/v4/posts/${evidence[0].messageId}`); assert.equal(post.user_id, environment.snapshot().identities.message.accountId);
+    assert.equal(post.channel_id, environment.snapshot().identities.message.channelId);
+    const board = await httpClient(stack.boardOrigin)('GET', `/board/board-${runId}/grep?viewer=worker-${runId}&words=T13%20fixed%20fact`);
+    assert.ok(board.entries.some(entry => entry.label === evidence[0].boardLabel && entry.thread_id === environment.snapshot().identities.board.workerId));
     blocker = join(directory, 'core', environment.id, environment.peer.id); await writeFile(blocker, 'required export blocker', { flag: 'wx', mode: 0o600 });
     const pending = await environment.close({ timeoutMs: 20_000 }); assert.equal(pending.cleanup, 'pending'); assert.equal(pending.bots[0].execution, 'stopped');
     assert.ok(pending.bots[0].errors.some(error => error.code === 'ARTIFACT_WRITE_FAILED')); assert.deepEqual(await ownedContainers(environment.id), initial);
@@ -87,6 +91,13 @@ test('actual single Agensh peer uses trusted Services, native Git and one persis
     assert.equal(await command('git', ['-C', files, 'rev-parse', 'HEAD']), evidence[1].privateCommit);
     await command('git', ['-C', files, 'fsck', '--no-reflogs']);
     assert.equal((await git('GET', `${repo}/branches/peer-${runId}`)).commit.id, evidence[0].pushedCommit);
+    const coreReport = JSON.parse(await readFile(join(directory, 'core', environment.id, 'runtime.json'), 'utf8'));
+    assert.equal(coreReport.evidence.lost, 0); assert.equal(coreReport.evidence.pending, 0);
+    const rows = (await readFile(coreReport.evidence.path, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+    const serviceRows = rows.filter(row => row.type === 'service' && row.state === 'settled');
+    assert.equal(serviceRows.length, 8); assert.ok(serviceRows.every(row => row.outcome === 'succeeded' && row.botId === environment.peer.id && row.profile === 'peer'));
+    report.operations = serviceRows.map(({ serviceId, operation, operationId, outcome, botId }) => ({ serviceId, operation, operationId, outcome, botId }));
+    report.effectiveConfig = coreReport.config; report.modelLedgerIndexes = coreReport.modelLedgers;
     report.archive = { files: manifest.files.length, bytes: manifest.totalBytes, hashesVerified: true, gitVerified: true, plaintextSecretScan: true };
     report.environment = environment.snapshot(); report.git = { pushedCommit: evidence[0].pushedCommit, privateCommit: evidence[1].privateCommit, prNumber: pr.number };
     report.upstream = upstream.receipt(); assert.equal(report.upstream.arrivals, 4); assert.equal(report.upstream.accepted, 4); assert.equal(report.upstream.failure, undefined); assert.equal(report.upstream.deadlineReached, false);

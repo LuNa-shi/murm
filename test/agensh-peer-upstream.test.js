@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createPeerUpstream, peerInputs } from './fixtures/agensh-peer-upstream.js';
+import { peerCommand } from './fixtures/agensh-peer-upstream.js';
+import { execFileSync } from 'node:child_process';
+
+test('both fixed Bash tool programs parse as native Node modules without executing them', () => {
+  for (const turn of [1, 2]) {
+    const script = peerCommand(turn, 'http://172.17.0.1:12345').split('\n').slice(1, -1).join('\n');
+    execFileSync(process.execPath, ['--check', '--input-type=module'], { input: script, timeout: 5000 });
+  }
+});
 
 test('controlled peer fixture counts every arrival and permits only four fixed local requests', async t => {
   const upstream = await createPeerUpstream({ deniedOrigin: 'http://172.17.0.1:1' }); t.after(() => upstream.close()); upstream.start();

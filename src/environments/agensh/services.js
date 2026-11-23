@@ -57,12 +57,22 @@ export function createAgenshServices(configuration) {
     for (const [key, value] of Object.entries(values)) if (value !== undefined) query.set(key, value);
     return `/board/${encodeURIComponent(boardId)}/${operation}?${query}`;
   }
+  const outputs = {
+    issue_read: { type: 'object', properties: { number: { type: 'integer', minimum: 1 } }, required: ['number'], additionalProperties: true },
+    issue_write: { type: 'object', properties: { number: { type: 'integer', minimum: 1 } }, required: ['number'], additionalProperties: true },
+    pull_request_write: { type: 'object', properties: { number: { type: 'integer', minimum: 1 }, head: { type: 'object', properties: { sha: { type: 'string', pattern: '^[a-f0-9]{40}$' } }, required: ['sha'], additionalProperties: true } }, required: ['number', 'head'], additionalProperties: true },
+    post_message: { type: 'object', properties: { id: text, user_id: text, channel_id: text }, required: ['id', 'user_id', 'channel_id'], additionalProperties: true },
+    board_read: { type: 'object', properties: { rendered: { type: 'string' } }, required: ['rendered'], additionalProperties: true },
+    board_write: { type: 'object', properties: { status: { type: 'string', enum: ['admitted', 'rejected'] } }, required: ['status'], additionalProperties: true },
+    board_grep: { type: 'object', properties: { total: { type: 'integer', minimum: 0 }, entries: { type: 'array', items: { type: 'object', additionalProperties: true } } }, required: ['total', 'entries'], additionalProperties: true },
+    board_unfold: { type: 'object', properties: { rendered: { type: 'string' } }, required: ['rendered'], additionalProperties: true },
+  };
   for (const [id, rules] of Object.entries(operations)) {
     services.registerService({
       manifest: { id, title: id, purpose: 'One run Agensh peer access', provider_version: 'agensh-2dae4e14-rest-1', contract_version: '2', endpoint: { transport: 'in-process' },
         capabilities: Object.entries(rules).map(([operation, rule]) => ({ name: operation, operation, description: `Run-scoped ${operation}`, help: { when: `Use ${operation} for this run's shared data` },
           side_effect: /read|grep|unfold/.test(operation) ? 'read' : 'write', idempotent: /read|grep|unfold/.test(operation), input_schema: rule.schema,
-          output_schema: { type: 'object', additionalProperties: true }, errors: ['NOT_ALLOWED', 'INVALID_CONTRACT', 'SERVICE_UNAVAILABLE'].map(code => ({ code, retryable: false })) })) },
+          output_schema: outputs[operation], errors: ['NOT_ALLOWED', 'INVALID_CONTRACT', 'SERVICE_UNAVAILABLE'].map(code => ({ code, retryable: false })) })) },
       adapter: { async invoke({ capability, input, caller, signal }) {
         if (!bot || caller.runtimeId !== bot.runtimeId || caller.botId !== bot.botId || caller.profile !== 'peer' || caller.binding !== bindings[id]) throw failure('NOT_ALLOWED');
         const [method, path, body] = rules[capability.operation].route(input);
@@ -86,7 +96,7 @@ export function createAgenshServices(configuration) {
       if (bot || !identity || ![identity.runtimeId, identity.botId].every(value => typeof value === 'string' && value)) throw failure('NOT_ALLOWED');
       bot = Object.freeze({ runtimeId: identity.runtimeId, botId: identity.botId });
     },
-    identities() { return { runId, ...(bot ?? {}), gitea: { binding: peer.gitea.binding, accountId: peer.gitea.accountId },
-      message: { binding: peer.message.binding, accountId: peer.message.accountId }, board: { binding: peer.board.binding, workerId: peer.board.workerId, boardId } }; },
+    identities() { return { runId, ...(bot ?? {}), gitea: { binding: peer.gitea.binding, accountId: peer.gitea.accountId, repository },
+      message: { binding: peer.message.binding, accountId: peer.message.accountId, channelId }, board: { binding: peer.board.binding, workerId: peer.board.workerId, boardId } }; },
   });
 }

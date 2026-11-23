@@ -10,7 +10,7 @@ test('all three Services resolve only their own trusted account and fix board id
   const server = createServer(async (req, res) => {
     const chunks = []; for await (const chunk of req) chunks.push(chunk);
     seen.push({ path: req.url, method: req.method, auth: req.headers.authorization, body: chunks.length ? JSON.parse(Buffer.concat(chunks)) : undefined });
-    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ id: 'object', rendered: 'FACT', status: 'admitted', entries: [], total: 0 }));
+    res.setHeader('content-type', 'application/json'); res.end(JSON.stringify({ id: 'object', number: 1, head: { sha: 'a'.repeat(40) }, user_id: 'mm-user', channel_id: 'channel', rendered: 'FACT', status: 'admitted', entries: [], total: 0 }));
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));

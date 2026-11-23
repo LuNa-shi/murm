@@ -7,6 +7,17 @@ import { createOwnedResources } from './resources.js';
 
 export const peerPrompt = `You are one Agensh peer in a persistent private project directory. Work only on your unique WORK_BRANCH. Use Bash and swarm Service commands; discover each operation with swarm <service> <operation> --help. Clone RUN_REPOSITORY into the current project root (git clone "$RUN_REPOSITORY" .), then preserve this checkout across turns. Use your native Git credential helper; never print or persist credentials. Read the run issue, publish useful facts and detailed evidence to the shared board, and notify the run channel. Board CLAIM is a soft coordination note, not an exclusive Task lease. A follow-up arrives only after your current turn settles. No mid-turn notices or automatic continuation are provided. Do not merge or change main. Follow the fixed acceptance input and report actual results.`;
 
+export function createPeerProfile({ image, model = 'default', facilities }) {
+  const { runId } = facilities;
+  const repository = new URL(facilities.repositoryUrl);
+  return { image, model, writable: true, prompt: peerPrompt,
+        env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: `peer-${runId}`, GITEA_USERNAME: facilities.peer.gitea.username,
+          GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: facilities.peer.gitea.username, GIT_AUTHOR_EMAIL: `${facilities.peer.gitea.username}@swarmenv.invalid`,
+          GIT_COMMITTER_NAME: facilities.peer.gitea.username, GIT_COMMITTER_EMAIL: `${facilities.peer.gitea.username}@swarmenv.invalid`,
+          RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name, RUN_ISSUE: String(facilities.issueNumber), RUN_CHANNEL: facilities.channelId, RUN_BOARD: facilities.boardId },
+        network: { allow: [repository.origin] }, services: { gitea: ['issue_read', 'issue_write', 'pull_request_write'], message: ['post_message'], 'agensh-context': ['board_read', 'board_write', 'board_grep', 'board_unfold'] } };
+}
+
 /** A single input owner. Core owns the Bot; Environment owns facilities. */
 export async function createAgenshEnvironment(options) {
   const { runId, image, model = 'default', exportLimit, outputDir, backend } = options;
@@ -48,12 +59,7 @@ export async function createAgenshEnvironment(options) {
     const repository = new URL(facilities.repositoryUrl);
     if (repository.origin !== new URL(facilities.endpoints.gitea).origin || repository.username || repository.password || repository.search || repository.hash) throw new TypeError('Git repository must use the configured credential-free Gitea origin');
     runtime = await createRuntime({ backend, services: service.services, maxBots: 1, outputDir,
-      profiles: { peer: { image, model, writable: true, prompt: peerPrompt,
-        env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: `peer-${runId}`, GITEA_USERNAME: facilities.peer.gitea.username,
-          GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: facilities.peer.gitea.username, GIT_AUTHOR_EMAIL: `${facilities.peer.gitea.username}@swarmenv.invalid`,
-          GIT_COMMITTER_NAME: facilities.peer.gitea.username, GIT_COMMITTER_EMAIL: `${facilities.peer.gitea.username}@swarmenv.invalid`,
-          RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name, RUN_ISSUE: String(facilities.issueNumber), RUN_CHANNEL: facilities.channelId, RUN_BOARD: facilities.boardId },
-        network: { allow: [repository.origin] }, services: { gitea: ['issue_read', 'issue_write', 'pull_request_write'], message: ['post_message'], 'agensh-context': ['board_read', 'board_write', 'board_grep', 'board_unfold'] } } } });
+      profiles: { peer: createPeerProfile({ image, model, facilities }) } });
     unsubscribe = runtime.onEvent(event => {
       // Core owns raw execution evidence. The Environment report keeps indexes.
       events.push({ botId: event.botId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });

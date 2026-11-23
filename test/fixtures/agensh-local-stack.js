@@ -108,6 +108,7 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
           const name = await run('board', { cpu: 0.25, memory: '256m', ports: ['127.0.0.1::8660'], env: {
             MYSQL_DSN: `mysql://agensh:${dbPassword}@${database}:3306/board`, BOARD_MEMBERS_JSON: JSON.stringify({ [boardId]: [workerId] }) } });
           const origin = await published(name, 8660);
+          stack.boardOrigin = origin;
           own({ kind: 'board-connection', id: boardId, close: async () => {} });
           await wait(() => httpClient(origin)('GET', `/board/${encodeURIComponent(boardId)}/read?viewer=${encodeURIComponent(workerId)}`));
           return { origin };
