@@ -1,6 +1,6 @@
 # Single-peer Agensh Environment
 
-This chapter describes the first public-Core Agensh wiring for #177. It is separate from the older Python/native Agensh benchmark path in [chapter 14](14-agensh-lean.md). The implementation has deterministic checks; its opt-in physical acceptance is a separate gate and is not established by this chapter. Requirements derive from Phase 0005 revision `c790fe1`, Environment §8, and native Agensh revision `2dae4e14a653da48549fd9aa093f834841475d6c`.
+This chapter describes the public-Core Agensh wiring for #177. The original native Agensh math experiment is preserved at the fixed [research revision](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/docs/architecture/14-agensh-lean.md). The implementation has deterministic checks; its opt-in physical acceptance is a separate gate and is not established by this chapter. Requirements derive from Phase 0005 revision `c790fe1`, Environment §8, and native Agensh revision `2dae4e14a653da48549fd9aa093f834841475d6c`.
 
 ## Entry point and ownership
 

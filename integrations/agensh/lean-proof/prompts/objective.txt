@@ -1,1 +1,0 @@
-Prove the original declaration in the seeded Lean file. New helper modules can be added under the directory containing the declaration. Keep the original statement and trusted assumptions. The external checker grades the delivered main tree.
