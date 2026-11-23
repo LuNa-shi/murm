@@ -169,6 +169,8 @@ test('Mission CLI submits an explicit empty Material selection', async t => {
   const before = keys.map(key => [key, process.env[key]]);
   t.after(() => { for (const [key, value] of before) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
   Object.assign(process.env, { SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'local-test' });
+  await assert.rejects(runSwarmCli(['mission', 'submit', '--request-id', 'implicit-materials'], { stdout: { write() {} } }), /explicit/);
+  assert.equal(invocations.length, 0);
   await runSwarmCli(['mission', 'submit', '--materials', '[]', '--request-id', 'stable-final'], { stdout: { write() {} } });
   assert.deepEqual(invocations[0], { operation: 'mission_submit', operation_id: 'stable-final', payload: { material_ids: [] } });
 });

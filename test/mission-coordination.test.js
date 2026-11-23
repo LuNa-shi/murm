@@ -54,7 +54,7 @@ async function fixture(t) {
     contextService.close();
     taskService.close();
   });
-  return { taskService, contextService, workspace, bot, bind, store, calls, accepted, stop: () => { stopping = true; } };
+  return { directory, taskService, contextService, workspace, bot, bind, store, calls, accepted, stop: () => { stopping = true; } };
 }
 
 test('granted unbound Bot submits fixed Material references and acceptance survives submitter closure', async t => {
@@ -128,4 +128,85 @@ test('unreadable selected attachment cannot start Mission checking', async t => 
   const result = await store.submit({ missionId, workspaceId, actorRef: 'coordinator', materialIds: [material.material_id], requestId: 'unreadable-input' });
   assert.equal(result.state, 'error');
   assert.deepEqual(calls, []);
+});
+
+
+test('independent public contributions merge before a failed Mission check and after its freeze releases', async t => {
+  const { taskService, workspace, bot, bind, store, calls } = await fixture(t);
+  bot('coordinator', ['mission_submit']);
+  const bound = bind('coordinator');
+  const input = { missionId, workspaceId, actorRef: 'coordinator', materialIds: [],
+    taskId: bound.taskId, executionId: bound.executionId, fencingVersion: bound.fencingVersion };
+  const saved = await workspace.save({ workspaceId, files: { 'independent.txt': 'Public note while the Mission is unsolved' } });
+  const merge = await workspace.merge({ workspaceId, fromRevision: saved.revision, requestId: 'merge-partial' });
+  assert.equal(merge.check, null);
+  assert.equal(calls.length, 0);
+  const followup = await workspace.save({ workspaceId, baseRevision: saved.revision,
+    files: { 'independent.txt': 'Public note while the Mission is unsolved', 'followup.txt': 'Another useful contribution' } });
+  const submit = await store.submit({ ...input, requestId: 'check-unsolved' });
+  assert.equal(submit.main_revision, merge.main_revision);
+  assert.equal(calls.length, 1);
+  calls[0].resolve({ verdict: 'FAIL', check_result_id: 'unsolved-final' });
+  await store.waitForIdle();
+  const describe = submissionId => store.describe({ missionId, workspaceId, submissionId });
+  const settled = await describe(submit.submission_id);
+  assert.equal(settled.result.verdict, 'FAIL');
+  assert.equal(settled.freeze_release_result, 'released');
+  assert.equal(settled.current.merge_allowed, true);
+  assert.match(settled.notice, /未通过不能记为成功/);
+  const discovery = await describe();
+  assert.equal(discovery.state, 'open');
+  assert.equal(discovery.current.main_revision, merge.main_revision);
+  assert.equal(discovery.active_submission_id, null);
+  assert.equal(discovery.submissions.find(row => row.submission_id === submit.submission_id).state, 'failed');
+  assert.equal((await workspace.get({ workspaceId })).frozen_submission_id, null);
+  const next = await workspace.merge({ workspaceId, fromRevision: followup.revision, requestId: 'merge-after-unfreeze' });
+  assert.notEqual(next.main_revision, merge.main_revision);
+  const second = await store.submit({ ...input, requestId: 'check-new-main' });
+  assert.equal(calls.length, 2);
+  try {
+    const old = await describe(submit.submission_id);
+    assert.equal(old.freeze_release_result, 'released');
+    assert.equal(old.current.active_submission_id, second.submission_id);
+    assert.equal(old.current.main_revision, next.main_revision);
+    assert.equal(old.current.merge_allowed, false);
+    assert.match(old.current.observed_at, /^\d{4}-/);
+  } finally { calls[1].resolve({ verdict: 'FAIL' }); await store.waitForIdle(); }
+  assert.equal(taskService.getExecution(bound.executionId).state, 'RUNNING');
+});
+
+test('Mission coordination pins current main and explicit empty Materials and enforces acceptance across SQLite connections', async t => {
+  const { directory, taskService, workspace, bot, bind, store, calls } = await fixture(t);
+  taskService.setMissionStopReader(id => store.isAccepted(id));
+  bot('coordinator', ['mission_submit']);
+  const bound = bind('coordinator');
+  const input = { missionId, workspaceId, actorRef: 'coordinator', taskId: bound.taskId,
+    executionId: bound.executionId, fencingVersion: bound.fencingVersion, requestId: 'accepted-snapshot' };
+  await assert.rejects(store.submit(input), { code: 'INVALID_CONTRACT' });
+  assert.equal(calls.length, 0);
+  const submission = await store.submit({ ...input, materialIds: [] });
+  assert.equal(submission.state, 'pending');
+  assert.deepEqual(submission.materials, []);
+  assert.equal(submission.actor_ref, 'coordinator');
+  assert.equal(submission.main_revision, (await workspace.get({ workspaceId })).main_revision);
+  assert.equal(submission.main_revision, '0.1');
+  assert.deepEqual(submission.checker, identity);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].input.files['solution.lean'].toString(), 'fixed public bytes');
+  assert.equal(calls[0].input.tree, submission.git_tree);
+  calls[0].resolve({ verdict: 'PASS', check_result_id: 'trusted-check' });
+  await store.waitForIdle();
+  const accepted = await store.describe({ missionId, workspaceId, submissionId: submission.submission_id });
+  assert.equal(accepted.state, 'accepted');
+  assert.equal(accepted.result.check_result_id, 'trusted-check');
+  const current = taskService.getExecution(bound.executionId);
+  const second = new TaskService(join(directory, 'tasks.sqlite'));
+  try {
+    for (const connection of [taskService, second]) {
+      assert.throws(() => connection.createTask({ gap: 'No new research after accepted Mission', priority: 'medium', mission_id: missionId,
+        summary: 'Late new research', expected_output: 'Note', acceptance_conditions: ['Evidence'] },
+      makeEnvelope({ actorRef: 'coordinator', taskId: current.task_id, executionId: current.execution_id,
+        specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version })), { code: 'NOT_ALLOWED' });
+    }
+  } finally { second.close(); }
 });

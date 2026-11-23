@@ -21,8 +21,8 @@ async function fixture(t, options = {}) {
   const bridge = new ServicesBridge({ taskService: service, contextService: context, runtime: {}, coreId: 'core-1', registry, ...options });
   await bridge.start();
   t.after(async () => { await bridge.stop(); service.close(); });
-  const start = id => {
-    service.registerBot({ botId: id, missionId: 'mission:auth', coreId: 'core-1', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+  const start = (id, coordinationPermissions = []) => {
+    service.registerBot({ botId: id, missionId: 'mission:auth', coreId: 'core-1', coordinationPermissions, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
     const env = bridge.startBotIdentity(id);
     service.recordBotSandbox(id, { provider: 'controlled', sandboxId: `sandbox:${id}` });
     service.markBotReady(id);
@@ -461,4 +461,27 @@ test('Bridge stop cancels a public read queued after Registry authorization', as
     await bridge.stop();
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test('Mission Bridge supplies trusted scope, rejects checker selection and returns the observed submission projection', async t => {
+  const calls = [];
+  const observed = { submission_id: 'submission:fixed', state: 'pending', main_revision: '0.1', materials: [],
+    current: { active_submission_id: 'submission:fixed', merge_allowed: false }, notice: 'Fixed public submission observation' };
+  const { bridge, start } = await fixture(t, { runtime: { missionWorkspaceId: 'workspace:trusted',
+    async submitMission(input) { calls.push(input); return { submission_id: observed.submission_id }; },
+    async describeMissionSubmission(input) {
+      assert.deepEqual(input, { missionId: 'mission:auth', submissionId: observed.submission_id });
+      return observed;
+    },
+  } });
+  start('bot:coordinator', ['mission_submit']);
+  await assert.rejects(bridge.call({ operation: 'mission_submit', payload: {} }), { code: 'INVALID_CONTRACT' });
+  await assert.rejects(bridge.call({ operation: 'mission_submit', payload: { material_ids: [], checker: 'caller-selected' } }), { code: 'INVALID_CONTRACT' });
+  assert.equal(calls.length, 0);
+  const result = await bridge.call({ operation: 'mission_submit', operation_id: 'fixed-submit', payload: { material_ids: [] } });
+  assert.deepEqual(result, observed);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], { missionId: 'mission:auth', workspaceId: 'workspace:trusted', actorRef: 'bot:coordinator',
+    taskId: null, executionId: null, materialIds: [], requestId: 'fixed-submit', fencingVersion: null });
 });
