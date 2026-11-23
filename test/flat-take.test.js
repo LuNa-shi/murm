@@ -9,6 +9,9 @@ import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
 import { decodeFileSeed } from '../scripts/core-file-seed.mjs';
 import { createFlatTaskService, flatResearcherProfile } from '../src/environments/flat/task-service.js';
 import { createFlatBotCoordinator } from '../src/environments/flat/bot-coordinator.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+const runProcess = promisify(execFile);
 
 async function fixture(t, hooks = {}, config = {}) {
   const root = await mkdtemp(join(tmpdir(), 'flat-take-'));
@@ -56,6 +59,25 @@ test('public flat take joins one handoff and preserves pinned Workspace/Material
   assert.equal(taken.execution.workspace_input.revision, '0.1');
   assert.equal((await readFile(join(f.tasks.getExecution(taken.execution.execution_id).workspace_ref, 'input.txt'), 'utf8')), 'fixed λ\n');
   await assert.rejects(f.call(bot, 'task_take', { task_id: 'other' }, 'take'), { code: 'CONFLICT' });
+});
+
+test('actual CLI subprocess discovers and takes through the Core v2 Bridge with trusted caller and one write', async t => {
+  let startup;
+  const f = await fixture(t, { onStart(body) { startup = body; } });
+  const bot = await f.spawn('actual-cli');
+  const url = new URL(startup.env.SWARMENV_BRIDGE_URL); url.hostname = '127.0.0.1';
+  const env = { ...process.env, ...startup.env, ...startup.secret_env, SWARMENV_BRIDGE_URL: url.href };
+  const cli = async (...args) => JSON.parse((await runProcess(process.execPath, ['scripts/swarm.mjs', ...args],
+    { env, timeout: 10_000 })).stdout);
+  assert.ok((await cli('task', 'list', '--state', 'ready', '--request-id', 'cli-list')).tasks.some(task => task.task_id === f.task.task_id));
+  assert.equal((await cli('task', 'view', f.task.task_id, '--request-id', 'cli-view')).task.task_id, f.task.task_id);
+  const taken = await cli('task', 'take', f.task.task_id, '--request-id', 'cli-take');
+  assert.equal(taken.execution.state, 'RUNNING'); assert.equal(taken.execution.owner_ref, bot.id);
+  assert.deepEqual(await cli('task', 'take', f.task.task_id, '--request-id', 'cli-take'), taken);
+  assert.equal(f.tasks.listExecutions(f.task.task_id).length, 1);
+  assert.equal(f.service.inspect(bot.id, 'cli-take').stage, 'complete');
+  assert.equal(startup.env.SWARMENV_BRIDGE_CONTRACT_VERSION, '2');
+  await assert.rejects(cli('task', 'take', f.task.task_id, '--owner-ref', 'forged', '--request-id', 'forged'), /identity overrides/);
 });
 
 test('two Core Bots compete for one Task and ordinary conflict leaves the losing discovery Bot live', async t => {

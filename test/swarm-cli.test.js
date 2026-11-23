@@ -4,18 +4,18 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 
-for (const timeoutMs of [undefined, 2_430_000]) test(`swarm take preserves its request ID after transport loss (timeout: ${timeoutMs ?? 'default'})`, async t => {
-  let invocation;
+for (const contractVersion of [undefined, '2']) for (const timeoutMs of [undefined, 2_430_000]) test(`swarm take preserves its request ID after transport loss (Bridge: ${contractVersion ?? 'legacy'}, timeout: ${timeoutMs ?? 'default'})`, async t => {
+  let invocation; let calls = 0;
   const server = createServer(async request => {
     let body = '';
     for await (const chunk of request) body += chunk;
-    invocation = JSON.parse(body);
+    invocation = JSON.parse(body); calls++;
     request.socket.destroy();
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => server.close());
-  const restore = ['SWARMENV_BRIDGE_URL', 'SWARMENV_BRIDGE_TOKEN'].map(key => [key, process.env[key]]);
+  const restore = ['SWARMENV_BRIDGE_URL', 'SWARMENV_BRIDGE_TOKEN', 'SWARMENV_BRIDGE_CONTRACT_VERSION'].map(key => [key, process.env[key]]);
   t.after(() => {
     for (const [key, value] of restore) {
       if (value === undefined) delete process.env[key];
@@ -24,9 +24,13 @@ for (const timeoutMs of [undefined, 2_430_000]) test(`swarm take preserves its r
   });
   process.env.SWARMENV_BRIDGE_URL = `http://127.0.0.1:${server.address().port}`;
   process.env.SWARMENV_BRIDGE_TOKEN = 'local-test-credential';
+  if (contractVersion) process.env.SWARMENV_BRIDGE_CONTRACT_VERSION = contractVersion;
+  else delete process.env.SWARMENV_BRIDGE_CONTRACT_VERSION;
   const args = ['task', 'take', 'task-1', ...(timeoutMs ? ['--timeout-ms', String(timeoutMs)] : [])];
   await assert.rejects(runSwarmCli(args), error => {
     assert.equal(invocation.operation, 'task_take');
+    assert.equal(invocation.service_id, contractVersion ? 'task' : undefined);
+    assert.equal(calls, 1);
     assert.match(invocation.operation_id, /^cli:take:/);
     assert.equal(error.details.request_id, invocation.operation_id);
     assert.equal(error.details.request_outcome, 'unknown');

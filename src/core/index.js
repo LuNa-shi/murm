@@ -9,6 +9,7 @@ import { createFileControls } from './file-controls.js';
 import { saveBotArtifacts } from './artifact-collection.js';
 import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
 import { claimPiOpenSandboxBackend, openPiOpenSandboxBackend } from './pi-opensandbox-backend.js';
+import { createBotService } from './bot-service.js';
 import { snapshotServiceRegistry } from './services.js';
 
 const defaultTimeoutMs = 60_000;
@@ -61,6 +62,8 @@ export async function createRuntime(options) {
     redactor.add([config.sandbox.apiKey, config.sandbox.execdToken,
       ...Object.values(config.models).flatMap(model => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
+    registrations.set('bot', createBotService({ runtimeId, getBot: id => getBot(id),
+      spawn: (input, caller) => spawn(input, caller), get, send: (id, input, options, caller) => send(id, input, options, caller), stop }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
     modelAccessPolicy = options.modelAccessPolicy;
     outputDir = join(resolve(options.outputDir), runtimeId);
@@ -82,7 +85,7 @@ export async function createRuntime(options) {
     const bot = bots.get(botId);
     return bot && {
       profile: bot.info.profile, model: bot.profile.model, status: bot.info.status,
-      services: bot.profile.services, bindings: bot.bindings,
+      services: bot.profile.services, bindings: bot.bindings, parentId: bot.info.parentId, spawnProfiles: bot.profile.spawnProfiles,
     };
   };
   let bridge, modelAccess, backend;
@@ -327,13 +330,14 @@ export async function createRuntime(options) {
     return bot.stopWork;
   }
 
-  async function spawn(input) {
+  async function spawn(input, caller = 'host') {
     const requestId = input?.requestId;
     let parameters;
     try { parameters = snapshotSpawn(input, profiles, registrations); }
     catch (error) { throw problem('INVALID_CONTRACT', error.message, 'spawn', undefined, requestId); }
     const fingerprint = createHash('sha256').update(JSON.stringify(Object.entries(parameters).sort())).digest('hex');
-    let request = spawnRequests.get(requestId);
+    const requestKey = JSON.stringify([caller, requestId]);
+    let request = spawnRequests.get(requestKey);
     if (request) {
       if (request.fingerprint !== fingerprint) {
         throw problem('CONFLICT', 'spawn requestId already has different parameters', 'spawn', request.bot.info.id, requestId);
@@ -357,9 +361,9 @@ export async function createRuntime(options) {
         seeded: parameters.files !== undefined });
       request = { fingerprint, bot };
       bots.set(info.id, bot);
-      spawnRequests.set(requestId, request);
+      spawnRequests.set(requestKey, request);
       records.record('spawn', { state: 'registered', botId: info.id, parentId: info.parentId, profile: info.profile,
-        requestId: redactor.text(requestId), collect: parameters.collect, writable: parameters.writable ?? bot.profile.writable });
+        requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? bot.profile.writable });
       bot.start = Promise.resolve().then(async () => {
         bot.controller.signal.throwIfAborted();
         const resource = await backend.spawn({ botId: info.id, profile: bot.profile, options: parameters,
@@ -393,7 +397,7 @@ export async function createRuntime(options) {
     return structuredClone({ ...bot.info, ...(bot.stopWork ? { lastStop: currentStop(bot) } : {}) });
   }
 
-  async function send(botId, input, options) {
+  async function send(botId, input, options, caller = 'host') {
     const requestId = options?.requestId;
     const mode = options?.mode === undefined ? 'steer' : options.mode;
     if (!validId(requestId) || typeof input !== 'string' || !['steer', 'followUp'].includes(mode)) {
@@ -401,14 +405,14 @@ export async function createRuntime(options) {
     }
     const bot = findBot(botId, 'send', requestId);
     let request;
-    try { request = inputRequests.get('host', botId, requestId, { input, mode }); }
+    try { request = inputRequests.get(caller, botId, requestId, { input, mode }); }
     catch (error) { throw problem(error.code, error.message, 'send', botId, requestId); }
     if (!request) {
       if (closing || !liveStates.has(bot.info.status) || !fileControls.canSend(bot)) {
         throw problem('NOT_ALLOWED', 'Bot is not accepting input', 'send', botId, requestId);
       }
       const inputId = randomUUID();
-      const identity = { botId, requestId: redactor.text(requestId), inputId, source: 'host', mode };
+      const identity = { botId, requestId: redactor.text(requestId), inputId, source: caller, mode };
       records.record('input', { ...identity, state: 'registered' });
       const releaseActivity = () => {
         bot.activityClaims.delete(request);
@@ -441,7 +445,7 @@ export async function createRuntime(options) {
       } };
       bot.activityClaims.add(request);
       refreshActivity(bot);
-      inputRequests.reserve('host', botId, requestId, { input, mode }, () => request);
+      inputRequests.reserve(caller, botId, requestId, { input, mode }, () => request);
     }
     if (!request.result) {
       request.result = Promise.resolve().then(request.run).then(result => {
@@ -451,7 +455,7 @@ export async function createRuntime(options) {
     }
     const result = await observe(request.result);
     if (result === timedOut) records.record('input', { botId, requestId: redactor.text(requestId), inputId: request.inputId,
-      source: 'host', mode, state: 'unknown', reason: 'host-wait-expired' });
+      source: caller, mode, state: 'unknown', reason: 'host-wait-expired' });
     return result === timedOut ? { inputId: request.inputId, status: 'unknown' } : structuredClone(result);
   }
 
@@ -521,5 +525,5 @@ export async function createRuntime(options) {
     }]) : structuredClone(result);
   }
 
-  return Object.freeze({ id: runtimeId, spawn, get, send, onEvent, stop, close, files: fileControls.api });
+  return Object.freeze({ id: runtimeId, spawn: input => spawn(input), get, send: (id, input, options) => send(id, input, options), onEvent, stop, close, files: fileControls.api });
 }

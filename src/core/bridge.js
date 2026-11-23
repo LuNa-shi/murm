@@ -157,7 +157,8 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
         botTokens.set(botId, token);
         tokens.set(token, botId);
       }
-      return { environment: { SWARMENV_BRIDGE_URL: publicUrl }, secretEnvironment: { SWARMENV_BRIDGE_TOKEN: token } };
+      return { environment: { SWARMENV_BRIDGE_URL: publicUrl, SWARMENV_BRIDGE_CONTRACT_VERSION: '2' },
+        secretEnvironment: { SWARMENV_BRIDGE_TOKEN: token } };
     },
     revokeBot(botId) {
       const token = botTokens.get(botId);
