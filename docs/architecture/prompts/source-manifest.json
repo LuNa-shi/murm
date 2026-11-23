@@ -76,7 +76,7 @@
     },
     {
       "path": "src/environments/lead-helper/index.js",
-      "sha256": "39f74a654432db72c339981fd7d2040ec0ebb9ae4b52f92ddf68ea50d5c93d88"
+      "sha256": "a475e66b3fb1cc33f4e76472f36258314697df35cfd4970498b7905fb6d3a49a"
     },
     {
       "path": "src/benchmark/putnam-runner.js",

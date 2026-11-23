@@ -131,7 +131,7 @@ async function listSourceFiles(directory) {
 const sendSites = [];
 const instructionFields = [];
 const nonInstructionActions = new Set(['integration', 'continue_until_boundary', 'execute', 'queue_status']);
-const cleanupActions = new Set(['close', 'save']);
+const cleanupActions = new Set(['close', 'save', 'persist-failure']);
 const instructionActions = new Set([
   'modify_task_contract_or_register_capability', 'call_the_capability_or_block_on_a_real_dependency',
   'call_list_tools_or_get_service_metadata', 'retry_with_the_registered_input_schema',
@@ -153,7 +153,7 @@ for (const path of await listSourceFiles('src')) {
     const value = evaluate(match[2]);
     assert.equal(typeof value, 'string', `non-static instruction field requires explicit documentation: ${path}`);
     if (key === 'action' && nonInstructionActions.has(value)) continue;
-    if (key === 'action' && ['src/core/index.js', 'src/core/model-access.js'].includes(path) && cleanupActions.has(value)) continue;
+    if (key === 'action' && ['src/core/index.js', 'src/core/model-access.js', 'src/environments/lead-helper/index.js'].includes(path) && cleanupActions.has(value)) continue;
     if (key === 'action') assert.ok(instructionActions.has(value), `review new literal action field for prompt delivery: ${path}: ${value}`);
     assert.ok(sourcePaths.includes(path), `new instruction-field source requires documented ownership: ${path}`);
     const line = source.slice(0, match.index).split('\n').length;

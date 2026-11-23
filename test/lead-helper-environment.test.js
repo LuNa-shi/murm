@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
 import { test } from 'node:test';
 import { registerHooks } from 'node:module';
 import { createServer } from 'node:http';
@@ -19,8 +20,8 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
 const { createLeadHelperEnvironment } = await import('../src/environments/lead-helper/index.js'); hooks.deregister();
 
 async function scenario(t, failure) {
-  transport.reset(); transport.collectable = true; let environment;
-  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-public-')); t.after(async () => { transport.onStop = undefined; await environment?.close({ timeoutMs: 2000 }); await rm(directory, { recursive: true, force: true }); });
+  transport.reset(); transport.collectable = true; let environment; let lock;
+  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-public-')); t.after(async () => { if (lock) { lock.exec('ROLLBACK'); lock.close(); } transport.onStop = undefined; await environment?.close({ timeoutMs: 2000 }); const reconciled = await environment?.close({ timeoutMs: 2000 }); if (failure === 'locked-failed') { assert.equal(reconciled.cleanup, 'complete'); assert.ok(reconciled.bots.every(row => row.execution === 'stopped')); assert.equal(environment.snapshot().board.subtasks.find(row => row.id === 'helper1').failure.code, 'input_failed'); } await rm(directory, { recursive: true, force: true }); });
   const repository = join(directory, 'repo.git'); await execute('git', ['init', '--bare', repository]);
   const bin = join(directory, 'bin'); await mkdir(bin); await writeFile(join(bin, 'swarm'), `#!/usr/bin/env node\nimport(${JSON.stringify(new URL('../scripts/swarm.mjs', import.meta.url).href)});\n`, { mode: 0o700 });
   const server = createServer(async (request, response) => {
@@ -71,6 +72,7 @@ async function scenario(t, failure) {
         const owned = await call(role, 'claim', { subtask_id: id, expected_revision: 0 });
         if (failure && role === 'helper1' && !next) {
           if (failure === 'unknown') { input.receipt = { status: 'unknown' }; return; }
+          if (failure === 'locked-failed') { lock = new DatabaseSync(join(directory, 'lead-helper-test', 'board.sqlite')); lock.exec('BEGIN IMMEDIATE'); }
           transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXED_FAILURE', message: 'Controlled failure' } }); return;
         }
         const other = role === 'helper1' ? 'helper2' : 'helper1';
@@ -95,8 +97,10 @@ async function scenario(t, failure) {
   if (!failure) assert.equal(backgroundFailure, undefined, backgroundFailure?.stderr ?? String(backgroundFailure));
   assert.equal(transport.spawns.size, 3, JSON.stringify(report.businessFailure)); assert.equal(JSON.stringify(report).includes('private-helper'), false);
   if (failure) {
-    assert.ok(report.businessFailure); const state = report.businessFailure.details.at(-1).board;
-    const task = state.subtasks.find(row => row.id === 'helper1'); assert.equal(task.owner, team.helper1); assert.ok(task.failure); assert.equal(task.state, 'claimed');
+    assert.ok(report.businessFailure);
+    if (failure === 'locked-failed') assert.equal(report.businessFailure.code, 'input_failed', 'Board persistence failure cannot replace the native failure');
+    const state = report.businessFailure.details.at(-1).board;
+    const task = state.subtasks.find(row => row.id === 'helper1'); assert.equal(task.owner, team.helper1); if (failure === 'locked-failed') assert.ok(report.businessFailure.details.at(-1).pendingBoardFailures.some(row => row.botId === team.helper1 && row.code === 'input_failed')); else assert.ok(task.failure); assert.equal(task.state, 'claimed');
     assert.equal(transport.submissions.size, 3, 'No adjustment, replacement or resubmission after failure');
     if (failure === 'unknown') { assert.ok(report.cleanupFailure); assert.equal(report.cleanup.bots.find(row => row.botId === team.helper1).execution, 'unknown'); }
   } else {
@@ -112,3 +116,5 @@ async function scenario(t, failure) {
 test('public Core and actual CLI/Bridge verify initialization, both owners, Git bytes, user feedback and adopted direction', t => scenario(t));
 test('helper failed round ends bounded work and preserves its original claim', t => scenario(t, 'failed'));
 test('helper submission and stop unknown retain original owner, input identity and required dependencies', t => scenario(t, 'unknown'));
+
+test('SQLite write lock cannot prevent Core stop or replace a failed input; pending evidence reconciles after unlock', t => scenario(t, 'locked-failed'));

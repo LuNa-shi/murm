@@ -22,15 +22,26 @@ export async function createLeadHelperEnvironment(options) {
   const boardPath = join(directory, 'board.sqlite');
   const secrets = [options.gitea?.adminToken, ...(options.secretValues ?? [])].filter(value => typeof value === 'string' && value);
   let runtime; let board; let git; let unsubscribe; let closing = false; let closeWork; let complete; let workflowUsed = false; let boardFenceFailure;
+  const pendingFences = new Map(); const activeInputs = new Set();
   const team = {}; const inputs = []; const events = [];
   const redact = value => { let body = JSON.stringify(value); for (const secret of [...secrets].sort((a, b) => b.length - a.length)) body = body.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(body); };
   const snapshot = () => {
-    const publicBoard = board?.snapshot();
-    return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, git: git?.identities(), board: publicBoard, inputs: structuredClone(inputs), events: structuredClone(events),
+    let publicBoard; let boardReadFailure;
+    try { publicBoard = board?.snapshot(); } catch { boardReadFailure = { code: 'BOARD_READ_FAILED' }; }
+    return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, git: git?.identities(), board: publicBoard, ...(boardReadFailure ? { boardReadFailure } : {}), inputs: structuredClone(inputs), events: structuredClone(events),
       delivered: publicBoard?.subtasks.filter(row => row.delivery?.verified) ?? [], unfinished: publicBoard?.subtasks.filter(row => row.state !== 'complete') ?? [], inputUnknown: inputs.filter(row => row.uncertain).map(row => ({ botId: row.botId, requestId: row.requestId, inputId: row.inputId, code: row.code })), resources: resources.snapshot(),
-      ...(boardFenceFailure ? { boardFenceFailure } : {}), limitations: ['Local SQLite Board and exclusive turn controller', 'Fixed three-Bot team; no replacement or claim reclamation', 'Upstream scale and performance not verified'] };
+      ...(boardFenceFailure ? { boardFenceFailure, pendingBoardFailures: [...pendingFences.values()] } : {}), limitations: ['Local SQLite Board and exclusive turn controller', 'Fixed three-Bot team; no replacement or claim reclamation', 'Upstream scale and performance not verified'] };
   };
-  function stop() { if (!closing) { closing = true; lifetime.abort(); try { board?.fence(); } catch { boardFenceFailure = { code: 'BOARD_FENCE_FAILED' }; } } }
+  function recordFence(record) {
+    if (record?.botId) pendingFences.set(record.botId, record);
+    try {
+      board?.fence(record);
+      if (record?.botId) pendingFences.delete(record.botId);
+      if (!pendingFences.size) boardFenceFailure = undefined;
+    } catch { boardFenceFailure = { code: 'BOARD_FENCE_FAILED' }; }
+  }
+  function stop() { if (!closing) { closing = true; lifetime.abort(); recordFence(); } }
+
   async function close({ timeoutMs = closeTimeoutMs } = {}) {
     stop(); if (complete) return structuredClone(complete);
     if (!closeWork) {
@@ -38,7 +49,13 @@ export async function createLeadHelperEnvironment(options) {
       const coreWork = runtime ? runtime.close({ timeoutMs }) : Promise.resolve({ cleanup: 'complete', bots: [], pending: [] });
       closeWork = (async () => {
         const core = await coreWork;
-        for (const [botId, failure] of Object.entries(board?.snapshot().failures ?? {})) board.fence({ botId, code: failure.code, execution: core.bots?.find(row => row.botId === botId)?.execution === 'stopped' ? 'stopped' : 'unknown' });
+        let recordedFailures = {}; let boardReadFailed = false;
+        try { recordedFailures = board?.snapshot().failures ?? {}; } catch { boardReadFailed = true; }
+        const failures = new Map(Object.entries(recordedFailures));
+        for (const [botId, failure] of pendingFences) failures.set(botId, failure);
+        for (const [botId, failure] of failures) recordFence({ botId, code: failure.code, execution: core.bots?.find(row => row.botId === botId)?.execution === 'stopped' ? 'stopped' : 'unknown' });
+        if (boardFenceFailure) recordFence();
+        if (boardReadFailed || boardFenceFailure || pendingFences.size) return { ...core, cleanup: 'pending', environment: { cleanup: 'pending', pending: [{ kind: 'board-evidence', id: boardPath, action: 'persist-failure', error: { code: 'BOARD_FENCE_FAILED' } }], resources: resources.snapshot() } };
         if (core.cleanup !== 'complete' || core.bots.some(row => row.execution !== 'stopped' || row.cleanup !== 'complete')) return { ...core, environment: { cleanup: 'pending', pending: resources.snapshot().filter(row => !['closed', 'retained'].includes(row.state)) } };
         unsubscribe?.(); const environment = await resources.close(); const receipt = { ...core, cleanup: environment.cleanup, environment }; if (environment.cleanup === 'complete') complete = receipt; return receipt;
       })().finally(() => { closeWork = undefined; });
@@ -69,14 +86,17 @@ export async function createLeadHelperEnvironment(options) {
     unsubscribe = runtime.onEvent(event => {
       if (events.length < 256) events.push({ botId: event.botId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
       if (events.length >= 256 || event.type === 'error' && event.fatal || event.type === 'settled' && event.outcome !== 'completed' || event.type === 'exit' && !event.expected) {
-        if (!closing) { board.fence({ botId: event.botId, code: 'BOT_FAILED' }); lifetime.abort(); }
+        if (!closing) { recordFence({ botId: event.botId, code: 'BOT_FAILED' });
+          // The exclusive helper owns terminal-event/late-receipt ordering.
+          // Its catch cancels the team without replacing that original outcome.
+          if (!activeInputs.has(event.botId)) lifetime.abort(); }
       }
     });
     for (const role of ['lead', 'helper1', 'helper2']) {
       if (startup.aborted || lifetime.signal.aborted) throw fail('ENVIRONMENT_START_ABORTED');
       const actor = facilities.actors[role]; const bot = await runtime.spawn({ requestId: `spawn-${role}`, profile: role, bindings: { board: `${runId}:board`, gitea: actor.binding }, secretEnv: { GITEA_TOKEN: actor.token }, collect: { paths: ['.'], includeGit: true, maxBytes: exportLimit, required: true } }); team[role] = bot.id;
     }
-    if (startup.aborted) throw fail('ENVIRONMENT_START_ABORTED');
+    if (startup.aborted || lifetime.signal.aborted) throw fail('ENVIRONMENT_START_ABORTED');
     board.bindTeam(runtime.id, team); git.bindTeam(runtime.id, team);
     return Object.freeze({ id: runtime.id, snapshot, redact, close,
       async runWorkflow({ goal, supplement, signal } = {}) {
@@ -84,10 +104,11 @@ export async function createLeadHelperEnvironment(options) {
         const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
         const send = async (role, requestId, payload) => {
           if (workSignal.aborted || closing) throw fail('WORKFLOW_STOPPED');
-          const row = { role, botId: team[role], requestId, source: payload.type }; inputs.push(row);
+          const row = { role, botId: team[role], requestId, source: payload.type }; inputs.push(row); activeInputs.add(team[role]);
           try {
             const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs: turnTimeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, state: 'completed', settledSeq: result.settled.seq }); return result;
-          } catch (error) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) }); board.fence({ botId: team[role], code: row.code }); lifetime.abort(); throw error; }
+          } catch (error) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) }); recordFence({ botId: team[role], code: row.code }); lifetime.abort(); throw error; }
+          finally { activeInputs.delete(team[role]); }
         };
         try {
           await send('lead', 'lead-initialize', { type: 'initialize', instruction: initializeInstruction, goal, helpers: { helper1: team.helper1, helper2: team.helper2 } });

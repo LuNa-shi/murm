@@ -27,7 +27,7 @@ export function createBoard({ path: databasePath, runId, verifyDelivery }) {
   const db = new DatabaseSync(databasePath); db.exec('PRAGMA busy_timeout=1000; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS board_state (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS receipts (actor TEXT, request TEXT, fingerprint TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(actor,request));');
   const initial = { runId, team: null, runtimeId: null, directions: [], assignments: [], subtasks: [], notes: [], reads: [], userInputs: [], history: [], failures: {}, fenced: false };
   db.prepare('INSERT OR IGNORE INTO board_state VALUES (1, ?)').run(JSON.stringify(initial));
-  let closed = false; let retained;
+  let closed = false; let retained; let memoryFenced = false;
   const load = () => closed ? structuredClone(retained) : JSON.parse(db.prepare('SELECT body FROM board_state WHERE id=1').get().body);
   if (load().runId !== runId) { db.close(); throw new TypeError('Board belongs to another run'); }
   function transaction(work) {
@@ -43,7 +43,7 @@ export function createBoard({ path: databasePath, runId, verifyDelivery }) {
   function authorize(state, caller, operation) {
     const role = state.team?.lead === caller.botId ? 'lead' : [state.team?.helper1, state.team?.helper2].includes(caller.botId) ? 'helper' : null;
     if (!role || state.runtimeId !== caller.runtimeId || caller.profile !== (role === 'lead' ? 'lead' : state.team.helper1 === caller.botId ? 'helper1' : 'helper2') || caller.binding !== `${runId}:board` || !boardPermissions[role].includes(operation)) throw error('NOT_ALLOWED');
-    if (state.fenced && !['read', 'list_subtasks'].includes(operation)) throw error('BOARD_FENCED');
+    if ((memoryFenced || state.fenced) && !['read', 'list_subtasks'].includes(operation)) throw error('BOARD_FENCED');
     return role;
   }
   function owned(state, caller, input, role) {
@@ -116,7 +116,7 @@ export function createBoard({ path: databasePath, runId, verifyDelivery }) {
     register(services) { services.registerService(registration); },
     bindTeam(runtimeId, team) { transaction(state => { if (state.team || typeof runtimeId !== 'string' || !runtimeId || Object.keys(team).sort().join() !== 'helper1,helper2,lead' || new Set(Object.values(team)).size !== 3 || Object.values(team).some(value => typeof value !== 'string' || !value)) throw error('NOT_ALLOWED'); state.runtimeId = runtimeId; state.team = structuredClone(team); }); },
     registerUserInput(requestId, input) { transaction(state => { if (state.fenced || typeof requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId) || typeof input !== 'string' || Buffer.byteLength(input) > 16384 || state.userInputs.length >= 5 || state.userInputs.some(row => row.requestId === requestId)) throw error('NOT_ALLOWED'); state.userInputs.push({ requestId, sha256: createHash('sha256').update(input).digest('hex') }); }); },
-    fence({ botId, code, execution = 'unknown' } = {}) { transaction(state => { state.fenced = true; if (botId) { const failure = { code: /^[A-Za-z0-9_:-]{1,80}$/.test(code ?? '') ? code : 'BOT_FAILED', execution: execution === 'stopped' ? 'stopped' : 'unknown' }; state.failures ??= {}; state.failures[botId] = failure; for (const row of state.subtasks) if (row.owner === botId && row.state !== 'complete') row.failure = failure; if (state.history.length < 512) event(state, 'failure', botId, failure); } }); },
+    fence({ botId, code, execution = 'unknown' } = {}) { memoryFenced = true; transaction(state => { state.fenced = true; if (botId) { const failure = { code: /^[A-Za-z0-9_:-]{1,80}$/.test(code ?? '') ? code : 'BOT_FAILED', execution: execution === 'stopped' ? 'stopped' : 'unknown' }; state.failures ??= {}; state.failures[botId] = failure; for (const row of state.subtasks) if (row.owner === botId && row.state !== 'complete') row.failure = failure; if (state.history.length < 512) event(state, 'failure', botId, failure); } }); },
     snapshot: () => load(),
     close() { if (!closed) { retained = load(); db.close(); closed = true; } },
   });
