@@ -79,6 +79,10 @@ test('only correlated Bash and read tool results verify the requested file effec
   assert.equal(cap.receipt().bashReturned, true);
   await send([{ type: 'function_call_output', call_id: 'unrelated', output: 'EXPECTED' }]);
   assert.equal(cap.receipt().readVerified, false);
+  await send([{ type: 'function_call_output', call_id: 'read-real', output: ' EXPECTED\n' }]);
+  assert.equal(cap.receipt().readVerified, false);
+  await send([{ type: 'function_call_output', call_id: 'read-real', output: 'EXPECTED' }]);
+  assert.equal(cap.receipt().readVerified, false);
   await send([{ type: 'function_call_output', call_id: 'read-real', output: 'EXPECTED\n' }]);
   assert.equal(cap.receipt().readVerified, true);
 });

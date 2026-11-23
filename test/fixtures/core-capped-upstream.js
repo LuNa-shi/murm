@@ -58,7 +58,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     for (const item of input) {
       if (item?.type !== 'function_call_output') continue;
       if (tools.get(item.call_id) === 'bash') bashReturned = true;
-      if (tools.get(item.call_id) === 'read' && typeof item.output === 'string' && item.output.trim() === marker) readVerified = true;
+      if (tools.get(item.call_id) === 'read' && typeof item.output === 'string' && item.output === `${marker}\n`) readVerified = true;
     }
   }
 

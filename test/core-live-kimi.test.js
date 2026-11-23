@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { randomBytes } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
+import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
 test('public Core live Kimi K3 acceptance verifies actual file tools within the authorized cap', {
   skip: process.env.SWARMENV_CORE_LIVE_KIMI_TEST !== '1' && 'Live Kimi acceptance requires explicit run authorization and opt-in configuration',
@@ -14,8 +14,8 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
   const outputDir = join(process.cwd(), 'experiments', `core-live-kimi-${startedAt}`);
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
   const reportPath = join(outputDir, 'acceptance.json');
-  const filename = `core-live-${randomBytes(8).toString('hex')}.txt`;
-  const marker = `CORE_LIVE_${randomBytes(16).toString('hex')}`;
+  const filename = 'core-live-smoke.txt';
+  const marker = 'CORE_LIVE_TOOL_EFFECT_CONFIRMED';
   const events = [];
   let runtime;
   let botId;
@@ -23,7 +23,14 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
   let stop;
   let close;
   let sendStatus;
+  let inputId;
   let outcome;
+  let expectedOutput = false;
+  let expectedLatestOutput = false;
+  let closedSendRejected = false;
+  const resources = {};
+  let phase = 'configuration';
+  let failurePhase;
   let failure = false;
   let deadlineExpired = false;
   let resolveSettled;
@@ -64,58 +71,91 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: proxy.url, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
     });
+    phase = 'runtime_create';
     runtime = await createRuntime({ backend, profiles: {
       worker: { prompt: 'Use the requested Bash and read tools directly. Verify the file contents before reporting completion. Keep the response brief.',
         model: 'default', image, writable: true, services: {} },
     }, services: new ServiceRegistry(), maxBots: 1, outputDir });
     if (Date.now() >= deadlineAt) throw new Error('LIVE_DEADLINE');
+    resources.beforeSpawnEmpty = (await ownedContainers(runtime.id)).length === 0;
+    assert.equal(resources.beforeSpawnEmpty, true);
+    phase = 'spawn';
     const bot = await runtime.spawn({ requestId: 'live-kimi-spawn', profile: 'worker' });
     botId = bot.id;
     assert.equal(bot.status, 'idle');
     assert.equal(proxy.receipt().forwarded, 0);
+    const active = await ownedContainers(runtime.id);
+    resources.spawnOne = active.length === 1;
+    assert.equal(resources.spawnOne, true);
     if (Date.now() >= deadlineAt) throw new Error('LIVE_DEADLINE');
     runtime.onEvent(event => {
       events.push({ type: event.type, botId: event.botId, seq: event.seq,
         outcome: event.outcome, expected: event.expected, errorCode: event.error?.code });
-      if (event.botId === botId && event.type === 'settled') resolveSettled({ outcome: event.outcome });
+      if (event.botId === botId && event.type === 'settled') resolveSettled({ outcome: event.outcome, output: event.output });
     });
     const input = `Use the bash tool to create ${filename} containing exactly ${marker} and a newline. Then use the read tool on ${filename}. After verifying its exact contents, reply FILE_OK.`;
+    phase = 'send';
     const sent = await runtime.send(botId, input, { requestId: 'live-kimi-input', mode: 'followUp' });
     sendStatus = sent.status;
+    inputId = sent.inputId;
     assert.equal(sendStatus, 'accepted');
-    outcome = (await settled).outcome;
+    phase = 'settled';
+    const result = await settled;
+    outcome = result.outcome;
     assert.equal(outcome, 'completed');
+    expectedOutput = result.output === 'FILE_OK';
+    assert.equal(expectedOutput, true);
     assert.equal(deadlineExpired, false);
-    assert.equal((await runtime.get(botId)).status, 'idle');
+    phase = 'result_evidence';
+    const current = await runtime.get(botId);
+    assert.equal(current.status, 'idle');
+    expectedLatestOutput = current.latestOutput === 'FILE_OK';
+    assert.equal(expectedLatestOutput, true);
+    const idleResources = await ownedContainers(runtime.id);
+    resources.settledRetained = idleResources.length === active.length && idleResources.every(value => active.includes(value));
+    assert.equal(resources.settledRetained, true);
     const evidence = proxy.receipt();
     assert.equal(evidence.bashReturned, true);
     assert.equal(evidence.readVerified, true);
     assert.ok(evidence.forwarded > 0 && evidence.forwarded <= 8);
+    phase = 'stop';
     stop = await runtime.stop(botId, { timeoutMs: Math.min(30_000, remaining()) });
     assert.equal(stop.execution, 'stopped');
     assert.equal(stop.cleanup, 'complete');
+    resources.afterStopEmpty = (await ownedContainers(runtime.id)).length === 0;
+    assert.equal(resources.afterStopEmpty, true);
+    assert.equal((await runtime.get(botId)).status, 'closed');
+    phase = 'closed_send_rejection';
+    await assert.rejects(runtime.send(botId, 'closed Bot rejection check', { requestId: 'live-kimi-closed-check' }), {
+      code: 'NOT_ALLOWED', runtimeId: runtime.id, botId, requestId: 'live-kimi-closed-check',
+    });
+    closedSendRejected = true;
+    phase = 'close';
     close = await runtime.close({ timeoutMs: Math.min(30_000, remaining()) });
     assert.equal(close.cleanup, 'complete');
     assert.equal(deadlineExpired, false);
   } catch {
     failure = true;
+    failurePhase = phase;
   } finally {
     clearTimeout(workTimer);
     try {
       if (runtime && close?.cleanup !== 'complete') close = await runtime.close({ timeoutMs: 30_000 });
-    } catch { failure = true; }
+    } catch { failure = true; failurePhase ??= 'cleanup'; }
     if (proxy) await proxy.close();
     try {
       await writeFile(reportPath, JSON.stringify({
         provider: 'kimi_proxy', model: 'k3', workloadLimitMs: 120_000, cleanupTailLimitMs: 30_000,
-        runtimeId: runtime?.id, botId, requestId: 'live-kimi-input', sendStatus, outcome,
+        runtimeId: runtime?.id, botId, requestId: 'live-kimi-input', inputId, sendStatus, outcome,
+        acceptedInputCount: sendStatus === 'accepted' ? 1 : 0,
+        expectedOutput, expectedLatestOutput, closedSendRejected, resources, failurePhase,
         deadlineExpired, elapsedMs: Date.now() - startedAt, failure,
         upstream: proxy?.receipt(), events,
         stop: receiptProjection(stop),
         close: close && { cleanup: close.cleanup, bots: close.bots.map(receiptProjection),
           errors: close.errors.map(error => ({ code: error.code, retryable: error.retryable })) },
       }, null, 2), { mode: 0o600 });
-    } catch { failure = true; }
+    } catch { failure = true; failurePhase ??= 'report'; }
   }
   if (failure) throw new Error('LIVE_CORE_ACCEPTANCE_FAILED. Inspect the redacted local acceptance receipt.');
   t.diagnostic('Live Kimi K3 acceptance passed. Redacted receipt saved under ignored experiments/core-live-kimi-*/acceptance.json.');

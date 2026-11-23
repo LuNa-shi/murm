@@ -1,19 +1,11 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { promisify } from 'node:util';
 import { createControlledUpstream } from './fixtures/core-controlled-upstream.js';
+import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
-async function ownedContainers(runtimeId) {
-  const hash = createHash('sha256').update(runtimeId).digest('hex').slice(0, 48);
-  const result = await promisify(execFile)('docker', ['ps', '--all', '--quiet', '--no-trunc',
-    '--filter', `label=runtime_key=r-${hash}`], { timeout: 5000 });
-  return result.stdout.trim().split('\n').filter(Boolean);
-}
 
 test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a Bash file effect', {
   skip: process.env.SWARMENV_CORE_REAL_TEST !== '1' && 'Set SWARMENV_CORE_REAL_TEST=1 with a verified local OpenSandbox image',
