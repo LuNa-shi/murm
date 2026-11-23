@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2095 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2093 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -2015,13 +2015,11 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/benchmarks/prepare_flt10.py](../../scripts/benchmarks/prepare_flt10.py) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7f151341138d6e3798135f454a89a327a655768b2978bf5a0b6cb4ab5cf1905e` |
 | [src/benchmark/benchmark-context.js](../../src/benchmark/benchmark-context.js) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `e2f7c30c67811fc8798d59c3042cf92b64e3b20b82b0f5963079fe96cc09060a` |
 
-### benchmark setup (3)
+### benchmark setup (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/benchmarks/prepare_flt_subtrees.py](../../scripts/benchmarks/prepare_flt_subtrees.py) | Root-only FLT extraction, private typed facts and public fixture generation | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `d40cab74f2ac086746abd85b901d3a3381ac1c32f9756cab4052b4b46db5e537` |
-| [scripts/run-openai-math-coloring.mjs](../../scripts/run-openai-math-coloring.mjs) | Four-Core launcher for the embedded OpenAI Math PlaneColoring smoke run | [07-run-configuration](07-run-configuration.md) | `f11993885dec21bea5eb7b77db349e90cbf011442d2c95f914783438ec46b5f6` |
-| [scripts/run-openai-math-round.mjs](../../scripts/run-openai-math-round.mjs) | Two-problem parallel OpenAI Math round launcher | [07-run-configuration](07-run-configuration.md) | `699e1a9f7521c1c75c138ecaa3ab60de68b00448151c942444d331ec5942d40e` |
 
 ### controlled verification data (4)
 
