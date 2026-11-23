@@ -150,6 +150,8 @@ createRuntime 内部建立 Bridge、模型入口和记录目录，spawn 才分�
 
 ### 4.1 公共接口索引
 
+> **OPEN — 待负责人决定的本地草案：** 本分支提出 `files.snapshot` 供受信宿主捕获当前可写项目；下文标为 OPEN 的接口、类型与流程尚未获批、实现或验收。现行权威仍为已合入版本，不能据本草案启动实现或扩大验证预算。
+
 | API | 作用 | 成功回执 |
 | --- | --- | --- |
 | `createRuntime(options)` | 装配本次运行 | 可接纳 Bot 的 Runtime |
@@ -159,6 +161,7 @@ createRuntime 内部建立 Bridge、模型入口和记录目录，spawn 才分�
 | `onEvent(handler)` | 订阅运行事件 | 取消订阅函数 |
 | `files.prepare(botId, options)` | 准备空且只读的工作目录 | PreparedFiles，含版本与摘要 |
 | `files.grant(options)` | 对当前 prepared 资源开放写权限 | GrantReceipt |
+| **OPEN** `files.snapshot(botId, {requestId, timeoutMs?})` | 受信宿主只读捕获当前可写项目；不接收领域身份或任意 guest 路径 | LiveFilesSnapshot；未知结果不产生可发布成果 |
 | `stop(botId, {timeoutMs})` | 停止一个 Bot 并收尾 | StopReceipt，分开报告执行与清理 |
 | `close({timeoutMs})` | 关闭本 Runtime 并收尾全部登记资源 | CloseReceipt，含所有 Bot 与 Runtime 自身的清理结果 |
 
@@ -303,6 +306,22 @@ collect 在分配资源前登记并在 Bot 生命周期内固定，所有 stop/c
 includeGit 与 paths 的组合应得到可解释的归档清单；超限或文件缺失明确报告，不截断后宣称成功。导出在 Bot 进程停止后由仍存活的 Worker 执行，结果写到本次 outputDir 的 Bot 子目录。启动凭据置于进程环境或受信位置，不作为普通 FileSeed 混入 workDir；Bot 自行写入工作目录的内容仍属于其文件，不能声称归档会自动识别并删除所有秘密。
 
 现有 Workspace snapshot 排除 `.git`，要求 ACTIVE Execution，并有限额；新的 Bot 收尾导出必须有独立的 Bot 资源授权，支持 closing 状态。[当前 snapshot](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/scripts/sandbox-project.mjs)
+
+### 7.4 OPEN：宿主读取当前可写项目
+
+本提案补齐 flat 在 Bot 等待 `workspace save/status/diff` Service 返回时读取当前项目的接缝，**不是通用 guest snapshot、任意路径读取或新的业务发布 API**。`runtime.files.snapshot(botId, {requestId, timeoutMs?})` 仅供本 Runtime 的受信宿主调用；Bot Service、Bridge manifest 和模型输入均不直接获得该操作。Core 不接收 Task、Execution、Workspace、lease 或领域 fence；这些授权仍由 flat 验证。
+
+新捕获仅接受 Core 当前登记、已开放写权限的项目资源，Bot 必须 idle/running，且尚未进入 stop/close。Core 从自己的记录选择 resourceVersion 与 Worker 身份，拒绝调用者传入版本、目录、文件集合或领域 ID。捕获与 prepare/grant 等文件操作按同一资源串行；排队后重新检查资格。stop/close 先关闭新捕获入口，不能等待一个未有界的捕获才能停执行。捕获开始与完成时都核对 Runtime/Bot/资源版本及关闭状态；只读捕获不修改资源版本、不授权写入，也不创建 Workspace revision。
+
+受信 Worker 暂停当前项目的相关 Bot 写入者，在同一有限窗口内读取并复核稳定清单，最后恢复仍应存活的写入者；失败也执行恢复，stop 已接管的进程不得因此复活。恢复或所有权无法确认时，不返回成功回执，沿用 stop/close 的 execution unknown、cleanup pending 与资源核对合同；不删除未知归属资源，不将故障伪装成业务完成。成功捕获后 Bot 可以在原 Session/cwd 继续工作。
+
+首版固定边界：项目根为当前 workDir，排除 `.git`；最多 10,000 个遍历条目、每普通文件 2 MiB、全部文件 16 MiB；Worker 暂停、扫描、稳定性复核与恢复共用至多 10 秒的窗口，并受剩余宿主期限限制。拒绝路径逃逸、受保护路径、符号链接、硬链接、特殊文件与不能无歧义表示的文件名；不静默跳过或截断后成功。宿主 timeoutMs 为正的有限整数毫秒，默认 60 秒、最大 2,147,483,647；排队与 RPC 共用这一个观察期限，较短 Worker 上限仍适用。网络/执行结果未知使用 ResourceError 的 OPERATION_UNKNOWN/pending，保留原请求身份；超时不是远端取消保证。
+
+成功回执携带 Runtime/Bot/requestId/resourceVersion、逐文件原始字节数与 SHA-256、总字节数、规范清单摘要和精确 base64 字节。路径为相对 POSIX 路径；将路径按字典序排序并按此顺序逐键序列化（不依赖 JavaScript 对象枚举序），每项固定为 `{bytes, contentHash}`；digest 为该规范清单紧凑 JSON 的 UTF-8 字节的 SHA-256，contentHash 为对应原始文件字节的 SHA-256。base64 必须规范编码且解码后与清单一致；接收端复核总量和摘要。回执与 Core 保存的原始请求结果不可被宿主改写影响后续重放。文件模式、空目录、Git 历史及其他元数据不在这次项目内容捕获合同中；所需收尾归档继续使用 collect。
+
+相同 Runtime/Bot/requestId 加规范化参数只启动一次捕获：并发调用加入原工作，完成后返回原不可变内容，即使目录后来改变也不重新扫描。不同参数复用同一身份报冲突；原请求未知时只能核对该请求，不能用新 ID 自动重拍并发布。迟到结果仍归原资源与请求，关闭后的核对不得重新唤醒写入者。成功回执只是私有项目在该次捕获时的证据；即使原回执可重读，也不代表后来领域授权仍有效。
+
+普通记录只保留操作身份、resourceVersion、摘要、数量和脱敏错误，不记录文件内容、完整路径清单、base64、Worker 凭据或 token。捕获内容只交付受信宿主，不能自动写入普通 runtime/environment 报告；内容可能包含 Bot 自行写入的秘密，Core 不声称自动识别。宿主的领域发布与显式保留另行承担数据可见性与脱敏责任。§7.3 在 stop 后使用的 collect、required 导出失败保留 sandbox/Slot、可重试 stop/close 均保持原合同；本提案不以 live snapshot 替代这些已经可用的收尾能力。
 
 ## 8. 停止、关闭与记录
 
@@ -616,6 +635,17 @@ export interface PreparedFiles {
   version: number;
   digest: string;
 }
+// OPEN proposal; not an approved or implemented public export.
+export interface LiveFilesSnapshot {
+  readonly runtimeId: string;
+  readonly botId: string;
+  readonly requestId: string;
+  readonly resourceVersion: number;
+  readonly digest: string; // SHA-256 of the canonical manifest described in §7.4
+  readonly bytes: number;
+  readonly manifest: Readonly<Record<string, { readonly bytes: number; readonly contentHash: string }>>;
+  readonly files: Readonly<Record<string, string>>; // canonical base64, same paths as manifest
+}
 export interface GrantReceipt {
   botId: string;
   version: number;
@@ -648,6 +678,8 @@ export interface Runtime {
   files: {
     prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
     grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
+    // OPEN: trusted host only; ResourceError on rejected/unknown capture.
+    snapshot(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<LiveFilesSnapshot>;
   };
 }
 export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;

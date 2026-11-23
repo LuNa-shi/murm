@@ -258,6 +258,14 @@ swarm task finish --input finish.json --request-id finish-1
 
 flat 负责 Workspace revision、Materials、Execution provenance、reservation 与 deadline；Core 只接收 Bot 和确定的文件内容，返回准备回执并实际授权。take adapter 从可信 caller 取 botId、从 envelope 取 requestId，不接受模型伪造。
 
+> **OPEN — 配套本地提案，待负责人决定：** flat 的 live Workspace 内容捕获拟经 Core `files.snapshot`，详见 Core §7.4 与附录 A；不是现有批准合同或已经验收的能力。
+
+`workspace save/status/diff` 的 Service adapter 先从 Bridge 的可信 caller 定位 botId，并在 flat 内核对当前 ACTIVE Execution、Mission、Workspace 输入来源、lease/deadline 与 fencing version。随后仅把 botId、由原 Service operationId 派生的稳定 capture requestId 和剩余有界等待交给 `runtime.files.snapshot`；领域 ID 不传给 Core。Bot 可以正在等待此 Bash Service 返回，不能要求先停止或另开 guest 任意目录读取接口才能发布。
+
+flat 在捕获前后复核同一领域身份，并在现有 Workspace 提交窗口内再次核验归属、原始输入 revision、内容/大小限制和当前 fence。Core resourceVersion 只证明资源来源，不能代替 Execution fencing version；捕获与领域数据库之间不宣称跨组件原子事务。校验成功后才把实际字节交给现有 Workspace 内容发布逻辑。状态/差异读取也必须使用可信捕获，不能由模型传入 files、伪造 caller 或旧 sandbox_id 代替。
+
+原 Service 请求重放先读取其业务幂等记录；需要等待捕获时沿用原 capture requestId，不产生第二次捕获或第二个 Workspace revision。unknown、超时、stop/close 竞争、资源版本变化、领域失效、超限或内容摘要不符均不能发布成功；保留原请求、身份与原因，先核对或按现有 stop/close 合同收尾，不能换 ID 自动重试。停止未知时不释放领域归属；required 采集失败仍保留现场并报告 pending，后续可重试既有 stop/close。私有捕获清单/正文不进入普通报告，公开 revision 与 Materials 仍由 flat 的业务可见性规则决定。
+
 以下保留真实 TaskService 入口。prepareFlatInputs、executionEnvelope、startPreparationHeartbeat、timing 及补偿函数都是 flat 的迁移代码，不属于 Core。
 
 ```ts
@@ -374,6 +382,8 @@ authorizeFlatModelCall 从旧 validateBot 提取，返回 ModelPermit：phase/de
 - 准备/grant/关闭失败时，旧执行未停不会把同一 Task 发给新 owner。
 - 补位、定向反馈正常；pending/unknown 清楚；其他 mode 不继承 flat 的 stall/continuation。
 - flat 仅用 Core 公开接口，模型 gateway 仍执行领域授权。
+
+**OPEN 提案的增量验收：** 本提案经负责人决定、设计审查合入且既定资源授权与两个独立 review gate 均满足后，固定实际 Pi/OpenSandbox 路径应证明：Bot 的真实 Bash `workspace save` 等待期间完成捕获并返回；原 Session、cwd 和进程随后继续可用；发布 revision 的二进制字节与宿主回读一致；相同 Service 请求与 capture 请求重放不产生第二个 revision 或第二次扫描；并发 stop、陈旧 owner/fence、未知响应与超限均无错误发布。prepare/grant/collect 的负向与 required/pending 收尾回归分别保留，不拿其中之一代替 live 捕获验收。实际模型路径须有明确 opt-in 的单独验证证据；缺失该证据应记录为未验证，不能替代接口决策或否定已经独立核验的收尾能力。本草案未安排实际运行。
 
 ### 6.6 来源与适配差异
 
