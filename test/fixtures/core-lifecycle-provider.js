@@ -38,15 +38,18 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
       const resource = [...resources.values()].find(row => `sandbox-${row.id}` === id || row.container === id);
       assert.ok(resource, 'Fixture OS accepts only its own resource');
       const format = args[args.indexOf('--format') + 1];
-      if (format.startsWith('{"id"')) return { stdout: JSON.stringify({ id: resource.container, pid: 54,
+      if (format.startsWith('{"id"')) return { stdout: JSON.stringify({ id: resource.container, pid: resource.pid,
         started: 'fixture-start', running: true, labels: resource.labels }) };
-      return { stdout: [resource.container, 54, true, 'fixture-start', 'bridge', false, resource.labels].map(JSON.stringify).join(' ') };
+      return { stdout: [resource.container, resource.pid, true, 'fixture-start', 'bridge', false, resource.labels].map(JSON.stringify).join(' ') };
     }
     assert.equal(command, 'sudo');
     const [, program, ...rest] = args;
     if (program.endsWith('/stat')) return { stdout: rest.at(-1) === '/proc/1/ns/net' ? '4:22' : '4:111' };
-    if (program.endsWith('/cat')) return { stdout: rest[0].endsWith('/cgroup')
-      ? `0::/docker/${[...resources.values()].at(-1).container}` : '0 0 65536' };
+    if (program.endsWith('/cat')) {
+      const pid = Number(/^\/proc\/(\d+)\//.exec(rest[0])?.[1]);
+      const resource = [...resources.values()].find(row => row.pid === pid);
+      return { stdout: rest[0].endsWith('/cgroup') ? `0::/docker/${resource.container}` : '0 0 65536' };
+    }
     if (program.endsWith('/mktemp')) return { stdout: '/tmp/swarmenv-netns.ABCDEFG123' };
     if (program.endsWith('/nsenter')) {
       const commands = rest.slice(3);
@@ -85,7 +88,7 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
     if (path === '/sandboxes' && request.method === 'POST') {
       const id = `fixture-${++allocations}`;
       records.length = 0;
-      resources.set(id, { id, container: createHash('sha256').update(id).digest('hex'), labels: { ...body.metadata, 'opensandbox.io/id': id } });
+      resources.set(id, { id, pid: 53 + allocations, container: createHash('sha256').update(id).digest('hex'), labels: { ...body.metadata, 'opensandbox.io/id': id } });
       if (await onCreate?.(id, body) === false) return response.destroy();
       return send({ id, expiresAt: createExpiresAt?.(id), execd_endpoint: { url: `${base}/execd` } });
     }

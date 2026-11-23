@@ -20,7 +20,6 @@ const DEFAULT_EXECUTION_TIMEOUT_MS = 60 * 60 * 1000;
 const DEFAULT_HANDOFF_REMINDER_MS = 55 * 60 * 1000;
 
 const ACTIVE_SESSION_PHASES = new Set(['turn', 'provider_retry', 'compaction']);
-const providerRecovery = new WeakMap();
 
 function classifySessionFailure(record) {
   if (record?.type === 'auto_retry_end' && record.success === false) {
@@ -84,10 +83,6 @@ export class Runtime {
       timeoutMs: workspaceMergeChecker.timeoutMs, check: workspaceMergeChecker.check.bind(workspaceMergeChecker) } : null;
     this.activeWorkspaceCheck = null;
     this.sandboxManager = sandboxManager;
-    if (sandboxManager) {
-      if (!providerRecovery.has(sandboxManager)) providerRecovery.set(sandboxManager, { owners: new Map(), tail: null });
-      this.providerRecovery = providerRecovery.get(sandboxManager);
-    }
     this.executionWorkspace = missionWorkspace && sandboxManager ? new ExecutionWorkspace({ taskService, contextService, workspace: missionWorkspace, sandboxManager,
       guard: (identity, options) => this.#guardExecutionWorkspace(identity, options), onPending: id => this.#scheduleWorkspaceReconcile(id) }) : null;
     if (missionWorkspace && missionWorkspaceId) {
@@ -155,7 +150,6 @@ export class Runtime {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot requires a Session factory and finite selection and lifetime limits');
     }
     if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
-    this.#refreshRecoveredCore(coreId);
     if (this.getCoreStatus(coreId)?.state !== 'IDLE' || this.taskService.getActiveExecutionForCore(coreId)) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core is occupied');
     }
@@ -165,7 +159,6 @@ export class Runtime {
     const bot = this.taskService.registerBot({ missionId, coreId, coordinationPermissions: this.coordinationPermissions, selectionDeadline: new Date(Math.min(startedAt + selectionTimeoutMs, hardDeadlineAt)).toISOString(), hardDeadline: new Date(hardDeadlineAt).toISOString() });
     const binding = { botId: bot.bot_id, coreId, session: null, starting: true, selectionTimer: null, hardTimer: null };
     this.botBindings.set(bot.bot_id, binding);
-    this.providerRecovery?.owners.set(bot.bot_id, this);
     this.#setCoreState(coreId, { state: 'STARTING', bot_id: bot.bot_id, execution_id: null, task_id: null });
     const controller = new AbortController();
     binding.cancelStartup = () => controller.abort(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped'));
@@ -293,7 +286,6 @@ export class Runtime {
     clearTimeout(this.finishCleanupTimers.get(botId));
     this.finishCleanupTimers.delete(botId);
     this.botBindings.delete(botId);
-    this.providerRecovery?.owners.delete(botId);
     if (this.getCoreStatus(binding.coreId)?.bot_id === botId) {
       this.#setCoreState(binding.coreId, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
     }
@@ -356,116 +348,6 @@ export class Runtime {
       if (this.activeWorkspaceCheck) pending.push(this.activeWorkspaceCheck.promise);
       if (pending.length === 0) return;
       await Promise.allSettled(pending);
-    }
-  }
-
-  /** Reconcile a Mission's durable Bot resources, without adopting an old Pi. */
-  async reconcileProviderExecutions({ missionId, timeoutMs = 30_000 } = {}) {
-    requireString(missionId, 'mission_id');
-    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new TypeError('Provider reconciliation requires a positive timeout');
-    const lane = this.providerRecovery;
-    if (!lane || typeof this.sandboxManager.reconcileExecutions !== 'function') {
-      return { provider: null, confirmed_bot_ids: [], closed_bot_ids: [], owned_bot_ids: [], pending: this.taskService.listRecoverableBots(missionId)
-        .map(bot => ({ bot_id: bot.bot_id, execution_id: bot.execution_id, reason: 'provider_reconciliation_unavailable' })) };
-    }
-    const deadline = Date.now() + timeoutMs;
-    const previous = lane.tail;
-    const recovery = Promise.resolve(previous).catch(() => undefined).then(() => {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'Provider reconciliation queue timed out', {}, { retryable: true });
-      return this.#recoverProviderBots({ missionId, timeoutMs: remaining });
-    });
-    lane.tail = recovery;
-    this.pendingReleasePromises.add(recovery);
-    try { return await recovery; }
-    finally {
-      this.pendingReleasePromises.delete(recovery);
-      if (lane.tail === recovery) lane.tail = null;
-    }
-  }
-
-  async #recoverProviderBots({ missionId, timeoutMs }) {
-    const owned = bot => this.providerRecovery.owners.has(bot.bot_id) || this.sandboxManager.ownsBotResource?.(bot.resource_key);
-    const targets = [];
-    const ownedIds = [];
-    const pending = [];
-    const closedIds = [];
-    for (const bot of this.taskService.listRecoverableBots(missionId)) {
-      if (owned(bot)) { ownedIds.push(bot.bot_id); continue; }
-      const closing = this.taskService.requestBotStop(bot.bot_id, 'runtime_restart', { terminalState: bot.execution_id ? 'FENCED' : null });
-      targets.push(closing);
-      const core = this.getCoreStatus(bot.core_id);
-      if (core && (core.state === 'IDLE' || core.bot_id === bot.bot_id)) {
-        this.#setCoreState(bot.core_id, { state: 'CLOSING', bot_id: bot.bot_id, execution_id: bot.execution_id,
-          task_id: bot.execution_id ? this.#getExecution(bot.execution_id).task_id : null, session_id: null });
-      }
-    }
-    const noResource = new Set(targets.filter(bot => !bot.sandbox_id && !bot.execution_id &&
-      ['NOT_DISPATCHED', 'REJECTED'].includes(bot.sandbox_create_state)).map(bot => bot.bot_id));
-    for (const botId of noResource) {
-      await this.#finalizeRecoveredBot(botId);
-      closedIds.push(botId);
-    }
-    const providerTargets = targets.filter(bot => !noResource.has(bot.bot_id));
-    const result = providerTargets.length ? await this.sandboxManager.reconcileExecutions({ missionId, bots: providerTargets,
-      timeoutMs,
-      onSandboxDiscovered: (bot, sandboxId) => {
-        if (owned(bot) || this.taskService.getBot(bot.bot_id)?.state !== 'CLOSING') {
-          throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Recovery does not own the Bot');
-        }
-        return this.taskService.recordBotSandbox(bot.bot_id, { provider: 'opensandbox', sandboxId });
-      } }) : { provider: null, pending: [], confirmed_bot_ids: [], owned_bot_ids: [] };
-    const confirmed = new Set(result.confirmed_bot_ids ?? []);
-    pending.push(...(result.pending ?? []));
-    for (const bot of providerTargets) {
-      if (!confirmed.has(bot.bot_id) || owned(bot)) {
-        if (!pending.some(entry => entry.bot_id === bot.bot_id)) pending.push({ bot_id: bot.bot_id, execution_id: bot.execution_id, reason: 'resource_unconfirmed' });
-        continue;
-      }
-      try {
-        await this.#finalizeRecoveredBot(bot.bot_id);
-        closedIds.push(bot.bot_id);
-      } catch (error) {
-        pending.push({ bot_id: bot.bot_id, execution_id: bot.execution_id, reason: 'durable_cleanup_pending', error_class: error?.code ?? error?.name });
-      }
-    }
-    this.logger?.append({ event: 'runtime.provider_reconciled', mission_id: missionId, provider: result.provider ?? null,
-      closed_bot_count: closedIds.length, pending_count: pending.length });
-    return { ...result, pending, closed_bot_ids: closedIds, owned_bot_ids: [...new Set([...ownedIds, ...(result.owned_bot_ids ?? [])])] };
-  }
-
-  async #finalizeRecoveredBot(botId) {
-    const bot = this.taskService.getBot(botId);
-    if (bot.state === 'CLOSED') return;
-    if (bot.execution_id) {
-      const executionId = bot.execution_id;
-      await this.executionWorkspace?.reconcile(executionId, { closedConfirmed: true });
-      const execution = this.#getExecution(executionId);
-      if (execution.workspace_ref) {
-        const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: execution.workspace_ref, executionId });
-        if (workspace.fencing_version < execution.fencing_version) {
-          await this.workspaceManager.fenceWorkspace({ workspaceRef: execution.workspace_ref, executionId,
-            fencingVersion: workspace.fencing_version, newFencingVersion: execution.fencing_version });
-        }
-        await this.workspaceManager.releaseWorkspace({ workspaceRef: execution.workspace_ref, executionId, fencingVersion: execution.fencing_version });
-      }
-      if (execution.finish) {
-        this.taskService.finalizeExecutionFinish(executionId, { fencingVersion: execution.fencing_version });
-      } else if (['CREATED', 'RUNNING'].includes(execution.state)) {
-        this.taskService.dispatch('stop_execution', { terminal_state: bot.stop_terminal_state ?? 'FENCED',
-          terminal_reason: bot.exit_reason ?? 'runtime_restart' }, this.#executionEnvelope(execution, operationId('recover-stop')));
-      }
-      this.sandboxManager.forgetBotProjectInstalls?.({ executionId });
-    }
-    this.taskService.finalizeBotClose(botId);
-    this.#refreshRecoveredCore(bot.core_id);
-  }
-
-  #refreshRecoveredCore(coreId) {
-    const core = this.getCoreStatus(coreId);
-    if (core?.state === 'CLOSING' && core.bot_id && !this.botBindings.has(core.bot_id) &&
-        this.taskService.getBot(core.bot_id)?.state === 'CLOSED') {
-      this.#setCoreState(coreId, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
     }
   }
 
@@ -955,7 +837,7 @@ export class Runtime {
     const bot = this.taskService.getBot(execution.owner_ref);
     if (!bot) return;
     if (bot.state !== 'CLOSED' && !this.botBindings.has(bot.bot_id)) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot requires scoped provider reconciliation before release');
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot has no in-process resource owner; isolation remains unconfirmed');
     }
     const intent = this.taskService.requestBotStop(bot.bot_id, reason, { terminalState, leaseExpiredAt });
     if (!intent) return null;
@@ -1022,7 +904,7 @@ export class Runtime {
     const bot = this.taskService.getBot(this.#getExecution(id).owner_ref);
     const retainedBot = bot ? this.botBindings.get(bot.bot_id) : null;
     if (bot && bot.state !== 'CLOSED' && !retainedBot) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot requires scoped provider reconciliation before release');
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot has no in-process resource owner; isolation remains unconfirmed');
     }
     if (retainedBot) retainedBot.closing = true;
     if (active) {
@@ -1081,7 +963,6 @@ export class Runtime {
       clearTimeout(this.botBindings.get(bot.bot_id)?.selectionTimer);
       clearTimeout(this.botBindings.get(bot.bot_id)?.hardTimer);
       this.botBindings.delete(bot.bot_id);
-      this.providerRecovery?.owners.delete(bot.bot_id);
       if (this.getCoreStatus(bot.core_id)?.bot_id === bot.bot_id) this.#setCoreState(bot.core_id, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
     }
     // Retain the binding and Core on any cleanup failure. A retry must still

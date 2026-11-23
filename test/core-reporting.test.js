@@ -241,6 +241,29 @@ test('Core distinguishes a sandbox found by cleanup when the creation response w
     [botId, 'lost', 'fixture-1', 'cleanup-lookup', null]);
 });
 
+test('cleanup of an unknown creation leaves a sibling Runtime live and owns only its resource', { timeout: 5000 }, async t => {
+  const { provider, makeRuntime } = await fixture(t, { onCreate: id => id !== 'fixture-2' });
+  const live = await makeRuntime();
+  const failed = await makeRuntime();
+  try {
+    const bot = await live.spawn({ requestId: 'live', profile: 'worker' });
+    await assert.rejects(failed.spawn({ requestId: 'lost', profile: 'worker' }), error => {
+      assert.equal(error.cleanup, 'pending');
+      return true;
+    });
+    const receipt = await failed.close();
+    assert.equal(receipt.cleanup, 'complete');
+    assert.equal(provider.allocations(), 2);
+    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-2`)).status, 404);
+    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`)).status, 200);
+    assert.equal((await live.get(bot.id)).status, 'idle');
+    assert.equal((await failed.close()).cleanup, 'complete');
+    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`)).status, 200);
+    assert.equal((await live.close()).cleanup, 'complete');
+    assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`)).status, 404);
+  } finally { await failed.close(); await live.close(); }
+});
+
 test('evidence write failure stays visible after resources close and an invalid output directory has no report path', async t => {
   const { outputDir, makeRuntime } = await fixture(t, {});
   const blocked = join(outputDir, 'blocked');

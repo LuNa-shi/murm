@@ -1,3 +1,5 @@
+import { openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
+import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { TaskService } from '../src/task/task-service.js';
@@ -127,4 +129,30 @@ test('a queued Runtime heartbeat cannot renew a registered Bot lease after expir
   assert.throws(() => service.dispatch('heartbeat', {}, envelope(renewed)),
     error => error.code === 'NOT_ALLOWED' && /Execution lease has expired/.test(error.message));
   assert.deepEqual(service.getExecution(execution.execution_id), renewed);
+});
+
+test('provider persists intent before POST, sends a finite lifetime and only records definitive rejection', async t => {
+  const tasks = new TaskService(':memory:');
+  tasks.createMission({ mission_id: 'M', goal: 'Investigate' });
+  t.after(() => tasks.close());
+  let status = 400;
+  const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test/v1', image: 'fixture', fetchImpl: async (url, request) => {
+    assert.equal(request.method, 'POST');
+    const body = JSON.parse(request.body);
+    const bot = tasks.listRecoverableBots('M').find(candidate => openSandboxBotKey(candidate.bot_id) === body.metadata.bot_key);
+    assert.equal(bot.sandbox_create_state, 'UNKNOWN');
+    assert.equal(bot.sandbox_timeout_seconds, 90);
+    assert.equal(body.timeout, 90);
+    return new Response('{}', { status });
+  } });
+  for (const [botId, responseStatus, expected] of [['rejected', 400, 'REJECTED'], ['unknown', 502, 'UNKNOWN']]) {
+    status = responseStatus;
+    tasks.registerBot({ botId, missionId: 'M', coreId: botId, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    await assert.rejects(manager.ensureExecution({ executionId: botId, botId, timeoutSeconds: 90,
+      onCreateDispatch: resource => tasks.recordBotSandboxDispatch(botId, { provider: resource.provider, timeoutSeconds: resource.timeout_seconds }),
+      onCreateRejected: () => tasks.recordBotSandboxRejection(botId),
+    }));
+    assert.equal(tasks.getBot(botId).sandbox_create_state, expected);
+    assert.equal(manager.ownsBotResource(botId), expected === 'UNKNOWN');
+  }
 });

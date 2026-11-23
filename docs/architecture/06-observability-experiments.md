@@ -10,7 +10,7 @@ The exact observation tables are in [11 Storage](11-storage-reference.md). Start
 |---|---|---|
 | Pi adapter/Agent trace | RPC commands and records, tool starts/results, process/turn events and local conversation data | What was sent/received on the adapter boundary; raw traces are private run evidence. |
 | Bridge | Operation, current Task/Execution, request/result/error, response-sent and deferred-lifecycle boundaries | Whether a tool crossed the authenticated bound interface and what returned. |
-| Runtime/identity loop | Core/Session/Execution binding, releases, provider reconciliation, progress, checkpoints, timeouts and cleanup | Physical liveness and the lifecycle action selected by Runtime or its caller. |
+| Runtime | Core/Session/Execution binding, releases, owned provider cleanup, progress, timeouts and cleanup | Physical liveness and the lifecycle action selected by Runtime or its caller. |
 | Task/Context/Registry | Dispatch starts/completions, durable state/material changes, routing and registration facts | Service outcome; use the database for authoritative current records. |
 | Judge/checker | Requests, preflight, checker result/process class, application and feedback | Distinguish compiler source feedback from an unavailable checker. |
 | Workspace metadata/Git | Revision, file hashes, checkpoint, lineage and commit references | What was saved for future execution; shell work can exist before a saved revision. |
