@@ -20,6 +20,8 @@ export async function openPiOpenSandboxBackend() {
       }
       return transport.submissions.get(inputId).receipt;
     },
-    async stopExecution() {}, async destroy() {}, async close() {},
+    async stopExecution() { return { collectable: false }; },
+    resource() { return { creation: 'absent' }; },
+    async destroy() {}, async close() {},
   };
 }
