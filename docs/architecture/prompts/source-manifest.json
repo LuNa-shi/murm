@@ -76,7 +76,7 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "sha256": "6f0a353db7aedbd3295821fce52885ba6633900d2059af1299a48c6ac797246e"
+      "sha256": "5e8df416afbab03612579f6fa24a51d42ce3adb4efe541fcfa08e83a26975831"
     },
     {
       "path": "src/environments/flat/environment.js",

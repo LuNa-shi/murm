@@ -60,7 +60,7 @@ Bot starts unbound with an empty protected guest project
 
 The **Mission Task contract** defines flat domain responsibilities. The Agent/SDK surface exposes Mission Tasks, relations, Materials and Runtime-owned Execution lifecycle facts without Root/Child structure operations. Bots use the read, write, edit and bash tools, with the typed `swarm` CLI routed through their authenticated Bridge to Task, Material, Judge and Workspace operations. They do not receive a second set of domain-native tools.
 
-The Phase 0005 flat controller owns discovery, continuation and directed feedback while the public Core owns Bot allocation and stop. The legacy `TaskController`, `IdentityTaskLoop` and domain Runtime remain directly callable components. Their former benchmark composition has been removed. The [Core Runtime](15-core-runtime.md), [flat integration](02-execution.md), and [Environment host](17-environment-reporting.md#foreground-environment-control) describe the current paths.
+The Phase 0005 flat controller owns discovery, continuation and directed feedback while the public Core owns Bot allocation and stop. The legacy `IdentityTaskLoop` and domain Runtime remain directly callable components. The old TaskController and benchmark composition have been removed; flat owns dependency repair and discovery. The [Core Runtime](15-core-runtime.md), [flat integration](02-execution.md), and [Environment host](17-environment-reporting.md#foreground-environment-control) describe the current paths.
 
 ## Current implementation versus acceptance
 
