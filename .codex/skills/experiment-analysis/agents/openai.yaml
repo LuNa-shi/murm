@@ -1,4 +1,0 @@
-interface:
-  display_name: "Experiment Analysis"
-  short_description: "Analyze completed SwarmEnv experiments from local traces"
-  default_prompt: "Analyze this completed SwarmEnv experiment: $ARGUMENTS"

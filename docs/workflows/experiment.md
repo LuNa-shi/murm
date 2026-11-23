@@ -36,7 +36,7 @@ Measure the configured research window from the project report’s `run.started_
 
 Raw Agent transcripts, Workspace, checker/candidate source, credentials and private state remain in ignored local `experiments/`. Preserve Task/Execution/Session/Core/Material/Judge/Workspace identities and source revisions; mark unavailable inputs or tools as BLOCKED rather than silently substituting.
 
-Use [experiment-analysis](../../.codex/skills/experiment-analysis/SKILL.md) and the [report template](../experiments/TEMPLATE.md): **Results** describe facts, **Analysis** evaluates evidence and competing explanations, and **Next steps** distinguish delegated fixes from pending human decisions. Unknown evidence is not zero, protocol validity is not Mission success, and busy Cores or large Material counts do not prove meaningful collaboration.
+Follow the [report template](../experiments/TEMPLATE.md). **Results** describe facts, **Analysis** evaluates evidence and competing explanations, and **Next steps** distinguish delegated fixes from pending human decisions. Unknown evidence is not zero, protocol validity is not Mission success, and busy Cores or large Material counts do not prove meaningful collaboration.
 
 ### 4. Sync decisions and evidence
 
