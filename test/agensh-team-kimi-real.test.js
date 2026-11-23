@@ -18,6 +18,7 @@ import { liveTeamLimits, liveTeamInputs, liveMarkers, deriveLivePins, verifyLive
 import { createWorkGate, createCleanupBudget } from './fixtures/agensh-deadline.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
+import { observeNativeIdentity } from './fixtures/agensh-native-identity.js';
 const execute = promisify(execFile);
 
 test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Core', {
@@ -64,9 +65,8 @@ test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Cor
     const a = environment.kickoff('a', inputs[0]), b = environment.kickoff('b', inputs[1]);
     assert.equal((await wait('a', a)).state, 'completed'); assert.equal((await wait('b', b)).state, 'completed');
     report.sessionsInitial = await Promise.all(owned.map(id => sessionEvidence(id, command)));
-    const identity = id => command('docker', ['exec', id, 'node', '--input-type=module', '-e',
-      "import{readdirSync,readFileSync,readlinkSync}from'node:fs';import{execFileSync}from'node:child_process';const peers=readdirSync('/proc').filter(p=>/^[0-9]+$/.test(p)).flatMap(p=>{try{const raw=readFileSync('/proc/'+p+'/stat','utf8'),end=raw.lastIndexOf(')'),fields=raw.slice(end+2).split(' ');return ['pi','pi-rpc'].includes(raw.slice(raw.indexOf('(')+1,end))?[{pid:Number(p),start:fields[19],cwd:readlinkSync('/proc/'+p+'/cwd')}]:[]}catch{return[]}});if(peers.length!==1)throw Error('native identity');const peer=peers[0];peer.branch=execFileSync('git',['-C',peer.cwd,'branch','--show-current'],{encoding:'utf8'}).trim();console.log(JSON.stringify(peer));"])
-      .then(result => JSON.parse(result.stdout));
+    const identity = id => observeNativeIdentity(id, command, { stage, branches: facilities.peers.map(peer => peer.branch) });
+    stage = 'identity-initial';
     report.identitiesInitial = await Promise.all(owned.map(identity));
     assert.ok(report.identitiesInitial.every(row => row.cwd === '/workspace/project'));
     assert.deepEqual(new Set(report.identitiesInitial.map(row => row.branch)), new Set(facilities.peers.map(peer => peer.branch)));
@@ -126,6 +126,7 @@ test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Cor
     assert.equal(report.environment.peers[1].subscription.records.some(row => row.eventId === `comment:${comment.id}`), false);
     assert.deepEqual(ingress.snapshot().counts, { a: 2, b: 1 }); assert.equal(ingress.snapshot().rejected, 0);
     report.sessionsFinal = await Promise.all(owned.map(id => sessionEvidence(id, command))); assert.deepEqual(report.sessionsFinal, report.sessionsInitial);
+    stage = 'identity-final';
     report.identitiesFinal = await Promise.all(owned.map(identity)); assert.deepEqual(report.identitiesFinal, report.identitiesInitial);
     stage = 'usage'; report.modelUsage = verifyLiveBudget(upstream.receipt());
     stage = 'archive';
@@ -177,7 +178,7 @@ test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Cor
     cleanup.start(); ownershipUnknown = error.cleanup === 'pending';
     const fixtureFailure = upstream?.receipt().failure;
     report.businessFailure = { stage, code: fixtureFailure?.code ?? (typeof error.code === 'string' ? error.code : 'ACTUAL_TEAM_FAILED'),
-      ...(fixtureFailure ? { fixtureFailure } : {}), cleanup: error.cleanup };
+      ...(fixtureFailure ? { fixtureFailure } : {}), ...(error.identityDiagnostic ? { identityDiagnostic: error.identityDiagnostic } : {}), cleanup: error.cleanup };
   }
   finally {
     report.delivery = delivery?.snapshot();
