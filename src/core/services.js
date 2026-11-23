@@ -165,7 +165,10 @@ export async function invokeService(registration, { operation, input, envelope, 
     });
     invoked = true;
     record('invocation', 'pending');
-    const result = await Promise.race([Promise.resolve().then(() => adapter.invoke({ manifest, capability, input: structuredClone(input), envelope: Object.freeze({ operation_id: envelope.operation_id }), caller: Object.freeze({ ...caller }), signal: controller.signal })), timeout]);
+    const result = await Promise.race([Promise.resolve().then(() => {
+      controller.signal.throwIfAborted();
+      return adapter.invoke({ manifest, capability, input: structuredClone(input), envelope: Object.freeze({ operation_id: envelope.operation_id }), caller: Object.freeze({ ...caller }), signal: controller.signal });
+    }), timeout]);
     if (!isJson(result) || !rules.output(result)) throw new SwarmEnvError('SERVICE_OUTPUT_INVALID', 'Service output violates its schema', { ...identity, request_outcome: capability.side_effect === 'write' ? 'unknown' : 'invalid_output' });
     record('settled', 'succeeded');
     return result;

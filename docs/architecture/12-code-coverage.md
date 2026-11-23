@@ -236,7 +236,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/core/pi-opensandbox-backend.js](../../src/core/pi-opensandbox-backend.js) | Core backend lifecycle, Worker transport and confirmed cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `d64b06c04729fbea74816e817eebcd9a6ad51a523a1aff1dc89e7d9e7497148a` |
 | [src/core/run-records.js](../../src/core/run-records.js) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `bfc1d587ee1a2b0013083f8061dfe2654da8c37672e1ef8c42de4b21aeb43705` |
 | [src/core/services.d.ts](../../src/core/services.d.ts) | Public Service registry, manifest and adapter declarations | [15-core-runtime](15-core-runtime.md) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
-| [src/core/services.js](../../src/core/services.js) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `d7fb913c99aaebadf86bd2af68af68400beb4a9d66398ddf4e5164f76770f8ab` |
+| [src/core/services.js](../../src/core/services.js) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `2a6160b24299c5b1adac08aef48f2449e79d34a0a3f59d17f13e534d58f7f89e` |
 
 ### provider deployment and instructions (8)
 
