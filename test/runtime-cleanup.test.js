@@ -244,7 +244,7 @@ test('an accepted asynchronous provider deletion is not yet a free Core', async 
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
-test('closing lease expiry rejects Runtime heartbeat and does not enter watchdog recovery', async (t) => {
+test('closing lease expiry rejects Runtime heartbeat while physical deletion remains outstanding', async (t) => {
   const removing = deferred();
   const removed = deferred();
   const { runtime, service, executionId } = await fixture(t, { removeSandbox: async () => { removing.resolve(); await removed.promise; return new Response('{}'); } });
@@ -253,8 +253,8 @@ test('closing lease expiry rejects Runtime heartbeat and does not enter watchdog
   try {
     await removing.promise;
     assert.throws(() => runtime.heartbeat(executionId), (error) => error.code === 'NOT_ALLOWED');
-    assert.equal(runtime.getSessionHealth(executionId).phase, 'closing');
-    assert.deepEqual(await runtime.sweepWatchdog(new Date(expires.getTime() + 600_000)), []);
+    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
+    assert.equal(runtime.hasActiveExecution(executionId), true);
   } finally { removed.resolve(); }
   await closing;
   assert.equal(service.getExecution(executionId).state, 'EXPIRED');

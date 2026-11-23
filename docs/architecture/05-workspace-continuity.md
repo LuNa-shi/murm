@@ -107,40 +107,13 @@ During execution, Pi edits the guest project. To share changes, the Bot saves th
 
 Runtime reads the private directory's recorded owner and fence during cleanup. A fence advance must increase the current generation. Release verifies Execution and generation and persists the release timestamp and revision metadata. Retrying release completes both writes. The observer reads initial file and revision metadata for the recorded Execution. Live cleanup reconciles pending Workspace operations. After host process loss, [explicit Mission-scoped provider reconciliation](02-execution.md#provider-creation-intent-and-reconciliation) confirms resource isolation before releasing recovered Core occupancy. A later Bot takes its own Execution, selects a published input and receives a fresh working directory. To establish continuity, join the predecessor's public save or Material identity to the successor's selected input or recorded consumption.
 
-## 7. Compaction and identity rotation
+## 7. Private Session memory and public continuity
 
-Compaction accounting is in Runtime memory, associated with the current Bot/Core binding. A new Bot resets its count. The count is not restored across a host crash.
+Pi owns its private context compaction and provider retry behavior. The Core backend consumes ordered Worker records, reports model failures as a failed settled turn, and reports actual Worker error/exit through the public lifecycle events. The flat controller applies its Task deadline, stall and failed-turn policy to those events. It stops the current owner and confirms cleanup before releasing capacity for a fresh Bot.
 
-Defaults are `maxCompactions = 3` and `handoffWindowRatio = 0.8`. The ratio is a fraction of context
-window capacity. Event usage accepts the supported snake/camel-case window and
-token fields, with percentage fallback; missing or nonpositive token/window
-values do not become an invented zero. At `turn_end` and
-`compaction_end`, Runtime requests `getSessionStats` with a 5-second timeout
-when available and uses a valid measured value.
+The retained Runtime logs RPC records and uses successful turn/retry boundaries to retry queued Bridge notifications. Private compaction events leave Bot/Execution ownership and public Workspace revisions intact. Runtime has no compaction counter, context-window threshold, stats polling, automatic compaction reminder or content-derived recovery action. A real process error or exit still enters its bounded stop/cleanup path.
 
-| Event/condition | Runtime action |
-| --- | --- |
-| `compaction_start` when count is already at the configured maximum | Start identity rotation immediately with reason `compaction_limit`. |
-| Successful `compaction_end` with result and not aborted | Increment lane count and queue handling in arrival order: registered Bot reminder/observation. |
-| At/above max after successful compaction, postcompaction usage unknown | Rotate conservatively with `compaction_window_unknown`. |
-| At/above max after successful compaction, known ratio at/above 0.8 | Rotate with `compaction_window_threshold`. |
-| At/above max, later `turn_end` with ratio at/above threshold | Rotate. |
-| At/above max, later `turn_end` with unknown usage | Log `continue_until_boundary`; this particular event does not immediately rotate. |
-| Successful compaction below both stopping conditions | Continue the current Bot only while its Execution remains active; after a lifecycle boundary a fresh Bot reads public state. |
-| Failed/nonaborted compaction without result | Enter the registered session-failure/cleanup path described in [02](02-execution.md). |
-
-When available, `estimatedTokensAfter` /
-`estimated_tokens_after` is preferred for the postcompaction ratio.
-A `compaction_start` event is the earliest portable signal this code uses to
-prevent a fourth compaction; the implementation does not prove that an
-external provider has not begun internal compaction before emitting it.
-Do not turn this event-based intervention into a stronger provider guarantee.
-
-### Registered Bot compaction and rotation
-
-After successful compaction, Runtime waits for settlement (up to 30 seconds), verifies the current active Bot/E/deadline and sends the phase-appropriate reminder. During soft closeout the phase selector substitutes save/publish/finish guidance. It records `runtime.bot_compaction_recorded` with `public_save:false` and returns `not_saved`; Pi compaction does not publish the guest tree, a Material or a private checkpoint as public progress. A closing/rotating Bot receives no reminder. At a rotation boundary Runtime stops E as `HANDED_OFF` with reason `compaction_rotation`, confirms physical cleanup and allows a later fresh Bot to continue from explicitly published state. It does not call same-E Session restart.
-
-Rotation coalesces concurrent requests and waits only for an already queued compaction follow-up. It stops the current Execution as HANDED_OFF and closes the Bot; no replacement Session, automatic private checkpoint or substantive-progress prompt is created. Explicit saves and Materials remain the evidence of public progress.
+Explicit Workspace saves, published Materials and the successor's pinned inputs establish public continuity. Pi private memory changes create no public revision or delivery receipt. [The Core adapter test](../../test/core-pi-input.test.js) exercises compaction/retry records and failed-turn projection through the actual backend with controlled external transport. [The registered Runtime test](../../test/bot-runtime.test.js) checks that the same records preserve active domain ownership and leave the public revision unchanged. Native Pi memory behavior is supplied by the pinned Pi version and needs its corresponding native acceptance evidence.
 
 ## 8. Sandbox provisioning and execution
 

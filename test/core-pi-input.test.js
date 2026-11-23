@@ -292,3 +292,33 @@ test('a healthy parent can still inspect and stop its fatal child', async t => {
   assert.equal((await stopped.json()).result.cleanup, 'complete');
   assert.equal((await bridgeCall(parent.id)).status, 200);
 });
+
+test('private Pi compaction and retry events retain the Session and expose a failed turn for Environment policy', { timeout: 5000 }, async t => {
+  const { runtime, bot } = await setup(t);
+  provider.wait = async message => {
+    provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true,
+      data: { disposition: 'started' } }, records: [] });
+  };
+  assert.equal((await runtime.send(bot.id, 'fixed private-memory input', { requestId: 'private-memory' })).status, 'accepted');
+  const settled = Promise.withResolvers();
+  runtime.onEvent(event => { if (event.type === 'settled') settled.resolve(event); });
+  provider.publish({ type: 'agent_start' });
+  for (let index = 0; index < 4; index++) {
+    provider.publish({ type: 'compaction_start' });
+    provider.publish({ type: 'compaction_end', result: { tokensBefore: 1000, estimatedTokensAfter: 900 }, context_window: 1000 });
+  }
+  provider.publish({ type: 'compaction_end', result: null, aborted: false });
+  provider.publish({ type: 'auto_retry_end', success: false, finalError: 'context token length exceeded' });
+  provider.publish({ type: 'message_end', message: { role: 'assistant', stopReason: 'error',
+    errorMessage: 'context length exceeded', content: [] } });
+  provider.publish({ type: 'agent_settled' });
+  const event = await settled.promise;
+  assert.equal(event.outcome, 'failed');
+  assert.equal(event.error.code, 'MODEL_ERROR');
+  assert.equal((await runtime.get(bot.id)).status, 'idle');
+  assert.equal(provider.starts.size, 1);
+  assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 1);
+  assert.equal((await runtime.send(bot.id, 'explicit next input', { requestId: 'explicit-next' })).status, 'accepted');
+  assert.equal(provider.starts.size, 1);
+  assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 2);
+});

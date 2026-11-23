@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { assertNewExecutionWork } from '../task/execution-budget.js';
-import { BOT_COMPACTION_MESSAGE, buildBotNotification, buildBotContinuationMessage } from '../agent/bot-contract.js';
+import { buildBotNotification } from '../agent/bot-contract.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
 import { publishWorkspace } from './workspace-publication.js';
 
@@ -15,57 +15,13 @@ function operationId(prefix) {
   return `runtime:${prefix}:${randomUUID()}`;
 }
 
-const DEFAULT_WATCHDOG_TIMEOUT_MS = 120_000;
 const DEFAULT_EXECUTION_TIMEOUT_MS = 60 * 60 * 1000;
 const DEFAULT_HANDOFF_REMINDER_MS = 55 * 60 * 1000;
 
-const ACTIVE_SESSION_PHASES = new Set(['turn', 'provider_retry', 'compaction']);
 const providerRecovery = new WeakMap();
 
-function classifySessionFailure(record) {
-  if (record?.type === 'auto_retry_end' && record.success === false) {
-    return /context|token|length/i.test(String(record.finalError ?? record.errorMessage ?? '')) ? 'context_overflow' : 'provider_failure';
-  }
-  if (record?.type === 'compaction_end' && !record.result && !record.aborted) return 'compaction_failure';
-  if (record?.type === 'message_end') {
-    const message = record.message ?? {};
-    const error = String(message.errorMessage ?? message.error ?? '');
-    if (/context|token|length/i.test(error)) return 'context_overflow';
-  }
-  return null;
-}
-
-function finitePositive(value) {
-  return Number.isFinite(value) && value > 0 ? value : null;
-}
-
-function contextWindowRatio(record, session) {
-  const usage = record?.usage ?? record?.result?.usage ?? record?.data?.usage ?? record?.message?.usage ?? {};
-  const contextUsage = record?.contextUsage ?? record?.context_usage ?? record?.data?.contextUsage ?? null;
-  const contextWindow = finitePositive(
-    record?.context_window ?? record?.contextWindow ?? record?.model?.contextWindow ??
-    record?.data?.model?.contextWindow ?? contextUsage?.contextWindow ?? contextUsage?.context_window ??
-    session?.contextWindow,
-  );
-  const percent = Number.isFinite(contextUsage?.percent) ? contextUsage.percent : null;
-  const tokens = finitePositive(
-    record?.tokens ?? record?.token_count ?? record?.context_tokens ??
-    record?.input_tokens ?? record?.result?.tokensBefore ?? record?.result?.tokens_before ??
-    record?.tokensBefore ?? record?.tokens_before ?? contextUsage?.tokens ??
-    usage.tokens ?? usage.total_tokens ?? usage.totalTokens ?? usage.input_tokens ??
-    usage.prompt_tokens ?? usage.input,
-  );
-  if (contextWindow === null || tokens === null) {
-    // Pi 1.3.0's get_session_stats may report only a percentage; a percentage
-    // is still authoritative for the current window ratio.
-    if (percent !== null) return { ratio: percent / 100, tokens: null, context_window: contextWindow, percent };
-    return null;
-  }
-  return { ratio: tokens / contextWindow, tokens, context_window: contextWindow, ...(percent === null ? {} : { percent }) };
-}
-
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now(), onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now(), onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -103,11 +59,6 @@ export class Runtime {
     this.finishCleanupRetryMs = finishCleanupRetryMs;
     this.maxFinishCleanupRetries = maxFinishCleanupRetries;
     this.finishCleanupTimers = new Map();
-    if (!Number.isInteger(maxCompactions) || maxCompactions < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maxCompactions must be a non-negative integer');
-    if (!Number.isFinite(handoffWindowRatio) || handoffWindowRatio <= 0 || handoffWindowRatio > 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffWindowRatio must be greater than 0 and at most 1');
-    this.maxCompactions = maxCompactions;
-    this.handoffWindowRatio = handoffWindowRatio;
-    this.watchdogTimeoutMs = watchdogTimeoutMs;
     if (!Number.isFinite(executionTimeoutMs) || executionTimeoutMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'executionTimeoutMs must be positive');
     if (!Number.isFinite(handoffReminderMs) || handoffReminderMs <= 0 || handoffReminderMs >= executionTimeoutMs) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffReminderMs must be positive and less than executionTimeoutMs');
     this.executionTimeoutMs = executionTimeoutMs;
@@ -120,10 +71,6 @@ export class Runtime {
     this.workspaceReconcileTimers = new Map();
     this.botStopPromises = new Map();
     this.coreStates = new Map();
-    // Compaction count belongs to the reusable identity/lane, not to one
-    // Execution. An ordinary Task handoff keeps the count; an explicit
-    // identity rotation resets it.
-    this.identityCompactionCounts = new Map();
     // Reusable identity Sessions remain owned by Runtime even while no
     // Execution is bound. Shutdown must stop them too.
     this.identitySessions = new Set();
@@ -911,32 +858,6 @@ export class Runtime {
     }
   }
 
-  getSessionHealth(executionId) {
-    const active = this.activeProcesses.get(executionId);
-    if (!active) return null;
-    return {
-      execution_id: executionId,
-      session_id: active.session?.sessionId ?? null,
-      phase: active.closing ? 'closing' : active.phase,
-      last_event_at: Number.isFinite(active.lastEventAt) ? new Date(active.lastEventAt).toISOString() : null,
-      last_heartbeat_at: active.lastHeartbeatAt ? new Date(active.lastHeartbeatAt).toISOString() : null,
-      last_completed_turn_at: active.lastCompletedTurnAt ? new Date(active.lastCompletedTurnAt).toISOString() : null,
-      last_productive_at: Number.isFinite(active.lastProductiveAt) ? new Date(active.lastProductiveAt).toISOString() : null,
-      last_failure_class: active.lastFailureClass,
-    };
-  }
-
-  async sweepWatchdog(at = new Date(this.clock())) {
-    const recovered = [];
-    for (const [executionId, active] of [...this.activeProcesses.entries()]) {
-      const execution = this.taskService.getExecution(executionId);
-      if (active.closing || !execution || execution.state !== 'RUNNING' || ACTIVE_SESSION_PHASES.has(active.phase)) continue;
-      if (at.getTime() - active.lastProductiveAt < this.watchdogTimeoutMs) continue;
-      recovered.push(await this.#handleSessionFailure(executionId, 'watchdog_stall'));
-    }
-    return recovered.filter(Boolean);
-  }
-
   heartbeat(executionId, payload = {}) {
     this.logger?.append({ event: 'runtime.heartbeat', execution_id: executionId });
     const execution = this.#getExecution(executionId);
@@ -945,7 +866,6 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (active) {
       active.execution = result.execution;
-      active.lastHeartbeatAt = this.clock();
     }
     return result;
   }
@@ -983,9 +903,8 @@ export class Runtime {
     let execution = this.#getExecution(executionId);
     const active = this.activeProcesses.get(executionId);
     if (active) {
-      // Drain ownership writes before fencing/releasing the Workspace.
+      // Close admission before fencing/releasing the Workspace.
       active.closing = true;
-      await this.#drainCompactionFollowup(active);
       execution = this.#getExecution(executionId);
     }
     await this.#stopExecutionResources(executionId);
@@ -1028,7 +947,6 @@ export class Runtime {
     if (active) {
       active.closing = true;
       if (this.#canUpdateExecutionCore(active.coreId, this.#getExecution(id))) this.#setCoreState(active.coreId, { state: 'CLOSING' });
-      await this.#drainCompactionFollowup(active);
       await this.#releaseSessionBinding(active, id);
     }
     if (retainedBot?.session && retainedBot.session !== active?.session) {
@@ -1105,7 +1023,6 @@ export class Runtime {
       activeBeforeFence.closing = true;
       this.#setCoreState(activeBeforeFence.coreId, { state: 'CLOSING' });
     }
-    await this.#drainCompactionFollowup(activeBeforeFence);
     await this.#stopExecutionResources(executionId);
     await this.executionWorkspace?.reconcile(executionId, { closedConfirmed: true });
     execution = this.#getExecution(executionId);
@@ -1330,10 +1247,6 @@ export class Runtime {
     }
   }
 
-  #identityKey(coreId, execution) {
-    return coreId ?? execution?.core_id ?? execution?.owner_ref ?? execution?.execution_id ?? 'identity';
-  }
-
   // A Bot owns one Session; release confirms its stop before freeing capacity.
   async #releaseSessionBinding(active, executionId) {
     if (!active?.session) return;
@@ -1346,25 +1259,14 @@ export class Runtime {
   }
 
   #registerActiveProcess(execution, workspace, session, { coreId = null } = {}) {
-    const nowMs = this.clock();
     const active = {
       session,
       execution,
       workspace,
       coreId,
-      phase: 'idle',
-      lastEventAt: nowMs,
-      lastHeartbeatAt: null,
-      lastCompletedTurnAt: null,
       lastTurnEndedAt: null,
-      lastProductiveAt: nowMs,
-      lastFailureClass: null,
       failurePromise: null,
       closing: false,
-      identityId: session.sessionId ?? randomUUID(),
-      compactionCount: this.identityCompactionCounts.get(this.#identityKey(coreId, execution)) ?? 0,
-      compactionFollowupPromise: null,
-      rotationPromise: null,
       // Initial and follow-up prompts share one queue.  Pi can accept a
       // follow-up while a turn is active, but two concurrent prompt calls
       // would reorder lifecycle notifications and Agent work.
@@ -1461,7 +1363,6 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
     active.closing = true;
-    await this.#drainCompactionFollowup(active);
     await this.#stopExecutionResources(executionId);
     const execution = this.taskService.getExecution(executionId);
     await this.#releaseSessionBinding(active, executionId);
@@ -1490,185 +1391,12 @@ export class Runtime {
     if (this.stopping) return;
     const active = this.activeProcesses.get(executionId);
     if (!active || active.closing) return;
-    active.lastEventAt = this.clock();
-    // Session events are handled concurrently. A start record bumps the
-    // phase epoch synchronously, so a completion whose handler resumes after
-    // an await cannot reset a newer turn/retry/compaction to idle (r15:
-    // turn_end awaiting get_session_stats let the watchdog fence a Session
-    // that was streaming the next reply).
-    const startsPhase = record.type === 'turn_start' || record.type === 'auto_retry_start' || record.type === 'compaction_start';
-    if (startsPhase) {
-      active.phaseEpoch = (active.phaseEpoch ?? 0) + 1;
-      active.phase = record.type === 'turn_start' ? 'turn' : record.type === 'auto_retry_start' ? 'provider_retry' : 'compaction';
-    }
-    const phaseEpoch = active.phaseEpoch ?? 0;
-    this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type, phase: active.phase });
-    let usage = contextWindowRatio(record, active.session);
-    // Pi's stream usage uses camelCase fields (`totalTokens`, `usage.input`)
-    // and its authoritative window measurement is get_session_stats. Query it
-    // at turn/compaction boundaries; never substitute zero for an unavailable
-    // measurement.
-    if ((record.type === 'turn_end' || record.type === 'compaction_end') && typeof active.session.getSessionStats === 'function') {
-      try {
-        const stats = await active.session.getSessionStats({ timeoutMs: 5_000 });
-        const measured = contextWindowRatio(stats ?? {}, active.session);
-        if (measured) usage = { ...measured, source: 'get_session_stats' };
-      } catch {
-        // Older/mock adapters may not implement the command. Keep the
-        // event-derived value or null; unknown is handled conservatively.
-      }
-    }
-    if (record.type === 'compaction_start') {
-      this.logger?.append({
-        event: 'runtime.compaction_started', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
-        context_window: usage?.context_window ?? active.session.contextWindow ?? null,
-        window_ratio: usage?.ratio ?? null, usage_source: usage ? 'event' : 'unknown',
-      });
-      // Bound compactions before closing the identity.
-      // For Swarm the fourth compaction is prohibited at the adapter boundary.  A
-      // start record is the earliest portable signal before Pi mutates its
-      // context; close and fence the identity immediately instead of waiting
-      // for a later report to discover that the limit was crossed.
-      if (active.compactionCount >= this.maxCompactions) {
-        await this.#rotateIdentity(executionId, {
-          reason: 'compaction_limit',
-          windowRatio: usage?.ratio ?? null,
-          usageSource: usage ? 'event' : 'unknown',
-        });
-        return;
-      }
-    }
-    if (record.type === 'turn_end') {
-      active.lastCompletedTurnAt = this.clock();
-      active.lastTurnEndedAt = active.lastCompletedTurnAt;
-    }
-    const completedProductiveEvent = record.type === 'turn_end' ||
-      (record.type === 'tool_execution_end' && record.isError !== true) ||
-      (record.type === 'compaction_end' && Boolean(record.result)) ||
-      (record.type === 'auto_retry_end' && record.success === true);
-    if (completedProductiveEvent) {
-      active.lastProductiveAt = this.clock();
-      if ((active.phaseEpoch ?? 0) === phaseEpoch) active.phase = 'idle';
-      if (record.type === 'auto_retry_end' && record.success === true) active.lastTurnEndedAt = active.lastProductiveAt;
-    }
-    // Provider-retry paths may emit a completed turn boundary without ever
-    // emitting Pi's agent_settled record. Retry pending notifications at each
-    // such boundary instead of leaving them starved behind one stale Promise.
+    this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type });
+    // Provider retries can finish a turn without agent_settled. Preserve this
+    // boundary for deferred notifications in the retained Bridge path.
     if (record.type === 'turn_end' || (record.type === 'auto_retry_end' && record.success === true)) {
+      active.lastTurnEndedAt = this.clock();
       this.#queuePendingNotifications(active);
-    }
-    if (record.type === 'compaction_end' && record.result && !record.aborted) {
-      active.compactionCount += 1;
-      this.identityCompactionCounts.set(this.#identityKey(active.coreId, active.execution), active.compactionCount);
-      const estimatedTokensAfter = record.result?.estimatedTokensAfter ?? record.result?.estimated_tokens_after ?? null;
-      const postCompactionUsage = estimatedTokensAfter !== null && estimatedTokensAfter !== undefined
-        ? contextWindowRatio({ ...record, tokens: estimatedTokensAfter, result: { ...record.result, tokensBefore: undefined, tokens_before: undefined } }, active.session)
-        : usage ?? contextWindowRatio(record.result, active.session);
-      this.logger?.append({
-        event: 'runtime.compaction_completed', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
-        context_window: postCompactionUsage?.context_window ?? active.session.contextWindow ?? null,
-        window_ratio: postCompactionUsage?.ratio ?? null,
-        usage_source: postCompactionUsage ? 'event' : 'unknown',
-      });
-      // Queue one follow-up after each successful compaction and the current turn.
-      this.#queueCompactionFollowup(active);
-      if (active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
-        await this.#rotateIdentity(executionId, {
-          reason: 'compaction_window_unknown', usageSource: 'unknown', windowRatio: null,
-        });
-        return;
-      }
-      if (active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
-        await this.#rotateIdentity(executionId, {
-          reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: postCompactionUsage.ratio,
-        });
-        return;
-      }
-    }
-    if (record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
-      if (!usage) {
-        this.logger?.append({ event: 'runtime.compaction_window_unknown', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, action: 'continue_until_boundary' });
-      } else if (usage.ratio >= this.handoffWindowRatio) {
-        await this.#rotateIdentity(executionId, {
-          reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: usage.ratio,
-        });
-        return;
-      }
-    }
-    const failureClass = classifySessionFailure(record);
-    if (failureClass) {
-      active.lastFailureClass = failureClass;
-      await this.#handleSessionFailure(executionId, failureClass);
-    }
-  }
-
-  #queueCompactionFollowup(active) {
-    const executionId = active.execution.execution_id;
-    // Serialize compaction follow-up in event order; public saves remain explicit.
-    const previous = active.compactionFollowupPromise ?? Promise.resolve();
-    const run = previous.catch(() => undefined).then(async () => {
-      try {
-        if (typeof active.session.waitForSettled === 'function') {
-          await active.session.waitForSettled({ timeoutMs: 30_000 });
-        }
-        const current = this.#getExecution(executionId);
-        if (!['CREATED', 'RUNNING'].includes(current.state)) return { status: 'not_applicable', execution: current };
-        const bot = this.taskService.getBot(current.owner_ref);
-        if (bot) {
-          if (bot.state !== 'ACTIVE' || bot.execution_id !== executionId) return { status: 'not_applicable', execution: current };
-          this.taskService.assertBotDeadline(bot.bot_id);
-          // Pi's private compaction is not a public Workspace save. In the
-          // Bot path, only the explicit stable-snapshot API can publish files.
-          if (!active.closing && !active.rotationPromise) {
-            await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });
-          }
-          this.logger?.append({ event: 'runtime.bot_compaction_recorded', execution_id: executionId, compaction_count: active.compactionCount, public_save: false });
-          return { status: 'not_saved', execution: current };
-        }
-        return { status: 'not_applicable', execution: current };
-      } catch (error) {
-        this.logger?.append({ event: 'runtime.compaction_followup_failed', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, error_class: error?.code ?? error?.name ?? 'followup_failed' });
-        return { status: 'followup_failed', error_class: error?.code ?? error?.name ?? 'followup_failed' };
-      }
-    });
-    const queued = run.finally(() => {
-      if (active.compactionFollowupPromise === queued) active.compactionFollowupPromise = null;
-    });
-    active.compactionFollowupPromise = queued;
-    return queued;
-  }
-
-  async #drainCompactionFollowup(active) {
-    if (!active?.compactionFollowupPromise) return;
-    await active.compactionFollowupPromise.catch(() => undefined);
-  }
-
-  async #rotateIdentity(executionId, { reason, windowRatio = null, usageSource = 'unknown' } = {}) {
-    const active = this.activeProcesses.get(executionId);
-    if (!active) return null;
-    if (active.rotationPromise) return active.rotationPromise;
-    const previousIdentity = active.identityId;
-    const previousCompactions = active.compactionCount;
-    const rotation = (async () => {
-      // A rotation raised at compaction_start must stop promptly; do not wait
-      // for a new `agent_settled` event from the compaction that is being
-      // aborted.  A successful compaction already queued its follow-up,
-      // and only that in-flight follow-up is awaited here.
-      if (active.compactionFollowupPromise) await active.compactionFollowupPromise.catch(() => undefined);
-      this.logger?.append({
-        event: 'runtime.identity_rotation_started', execution_id: executionId,
-        old_identity_id: previousIdentity, compaction_count: previousCompactions,
-        reason, window_ratio: windowRatio, usage_source: usageSource,
-      });
-      return this.stopExecution(executionId, 'HANDED_OFF', 'compaction_rotation');
-    })();
-    active.rotationPromise = rotation;
-    try {
-      return await rotation;
-    } finally {
-      active.rotationPromise = null;
     }
   }
 
@@ -1699,7 +1427,6 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (!active) return null;
     if (active.failurePromise) return active.failurePromise;
-    active.lastFailureClass = failureClass;
     const failurePromise = (async () => {
       this.#prepareBotExecutionStop(executionId, 'FAILED', failureClass);
       this.#startFinishCleanup(executionId);

@@ -10,7 +10,7 @@ import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
-import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
+import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { stableStringify } from '../src/protocol/envelope.js';
 import { createHash } from 'node:crypto';
@@ -415,20 +415,6 @@ test('provider input-copy rejection fails preparation and cleans the original Bo
   assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
 });
 
-test('compaction limit closes a registered Bot instead of replacing Pi inside its Execution', async (t) => {
-  const { service, runtime, startSession } = await fixture(t, { maxCompactions: 0 });
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect the bounded compaction lifecycle', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
-  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:compact' });
-  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1' });
-  session.emit('rpc', { type: 'compaction_start', reason: 'threshold' });
-  await runtime.activeProcesses.get(execution.execution_id).rotationPromise;
-  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
-  assert.equal(service.getExecution(execution.execution_id).state, 'HANDED_OFF');
-  assert.equal(session.closed, true);
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
 test('preparing process exit retries a transient deletion failure without a bind caller', async (t) => {
   const { service, runtime, manager, startSession } = await fixture(t, { finishCleanupRetryMs: 10, maxFinishCleanupRetries: 2 });
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
@@ -765,19 +751,65 @@ test('a delayed project grant cannot return a successful binding after Bot stop'
   assert.equal(runtime.hasActiveExecution(execution.execution_id), false);
 });
 
-test('registered Bot compaction sends CLI guidance without saving the controller private tree', async t => {
-  const { service, runtime, startSession } = await fixture(t, { maxCompactions: 3 });
+test('private Pi compaction and retry records preserve the registered Bot and explicit Workspace boundary', async t => {
+  const { service, runtime, startSession } = await fixture(t);
   const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect compaction without claiming file persistence', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
-  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:compact-message' });
+  const task = service.createTask({ mission_id: bot.mission_id, gap: 'Separate private memory from public delivery', priority: 'medium',
+    summary: 'Keep private Pi memory independent of domain ownership',
+    expected_output: 'An explicitly published result', acceptance_conditions: ['Public input remains fixed'],
+  }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'private-memory' });
   await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id });
   const before = service.getExecution(execution.execution_id);
   const messages = [];
   session.prompt = async message => { messages.push(message); };
-  session.emit('rpc', { type: 'compaction_end', result: { tokensBefore: 1000, estimatedTokensAfter: 100 } });
-  await runtime.activeProcesses.get(execution.execution_id).compactionFollowupPromise;
-  assert.deepEqual(messages, [BOT_COMPACTION_MESSAGE]);
+  for (let index = 0; index < 4; index++) {
+    session.emit('rpc', { type: 'compaction_start' });
+    session.emit('rpc', { type: 'compaction_end', result: { tokensBefore: 1000, estimatedTokensAfter: 900 }, context_window: 1000 });
+  }
+  session.emit('rpc', { type: 'compaction_end', result: null, aborted: false });
+  session.emit('rpc', { type: 'auto_retry_end', success: false, finalError: 'context token length exceeded' });
+  session.emit('rpc', { type: 'message_end', message: { errorMessage: 'context length' } });
+  await runtime.waitForSettled();
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
+  assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
   assert.equal(service.getExecution(execution.execution_id).workspace_revision, before.workspace_revision);
+  assert.equal(runtime.getCoreStatus(bot.core_id).state, 'RUNNING');
+  assert.deepEqual(messages, []);
+  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 1);
+});
+
+test('a successful retry boundary delivers one deferred handoff warning without repeating it on later turns', async t => {
+  let time = Date.now();
+  const { service, runtime, startSession } = await fixture(t, { clock: () => time });
+  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
+  const task = service.createTask({ mission_id: bot.mission_id, gap: 'Retain delivery of Task closeout guidance', priority: 'medium',
+    summary: 'Deliver a deferred warning', expected_output: 'Truthful closeout', acceptance_conditions: ['Warning delivered once'],
+  }, makeEnvelope({ actorRef: bot.bot_id })).task;
+  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'deferred-warning' });
+  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id });
+  const active = service.getExecution(execution.execution_id);
+  const messages = [];
+  session.waitForSettled = async () => { throw new SwarmEnvError('SERVICE_TIMEOUT', 'controlled missing agent_settled'); };
+  session.prompt = async (message, options) => { messages.push({ message, options }); };
+  const reminders = await runtime.sweepExecutionTimeouts(new Date(active.handoff_deadline));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reminders[0].kind, 'handoff_reminder');
+  assert.equal(messages.length, 0);
+  assert.equal(service.listPendingNotifications(task.task_id, execution.execution_id).length, 1);
+  time += 1;
+  session.emit('rpc', { type: 'auto_retry_end', success: true });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(messages.length, 1);
+  assert.match(messages[0].message, new RegExp(reminders[0].notification.notification_id));
+  assert.equal(messages[0].options.streamingBehavior, 'followUp');
+  assert.equal(service.listPendingNotifications(task.task_id, execution.execution_id).length, 0);
+  assert.ok(service.listUnprocessedNotifications(task.task_id, execution.execution_id)[0].recipient_delivery.delivered_at);
+  time += 1;
+  session.emit('rpc', { type: 'turn_end' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(messages.length, 1);
+  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
 });
 
 async function workspaceFixture(t, options = {}) {

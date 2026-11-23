@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { parentPromptFor, initialGoalFor } from '../examples/subagents-environment/prompts.mjs';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
-import { BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
+import { BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
 
@@ -82,10 +82,9 @@ for (const [title, p] of [['Built-in Services', profile], ['With optional Mathli
 for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource; the startup message carries metadata and hashes, not this full body.');
 output('02-task-loop-and-tools.md', toolsDoc);
 
-let turnsDoc = header('Complete retained Runtime turn messages', 'The Flat controller and compatibility Runtime retain these repository-owned texts. The retired benchmark coordinator no longer composes or sends benchmark startup messages. Runtime selects the compaction follow-up from durable Execution phase; host Profile and initial input composition are described in the Environment references.');
+let turnsDoc = header('Complete flat continuation messages', 'The flat controller selects these repository-owned texts from the durable Execution phase after a settled turn. Host Profile and initial input composition are described in the Environment references.');
 turnsDoc += block('Flat bound continuation', BOT_CONTINUATION_MESSAGE);
 turnsDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
-turnsDoc += block('Registered Bot compaction follow-up', BOT_COMPACTION_MESSAGE);
 output('03-runtime-turns.md', turnsDoc);
 let skillDoc = header('Complete registered Bot skills', 'Root-owned immutable image files. Pi receives explicit --skill paths with ambient discovery disabled; the four metadata entries are included in system context, and actual read-tool results carry the loaded bodies into subsequent model input. The worker verifies bytes and permissions before startup.');
 for (const skill of BOT_SKILLS) skillDoc += block(`${skill.name} (${skill.version})`, sources.get(`src/agent/bot-contract/${skill.name}.md`), `Guest path: ${skill.path}; file SHA-256: ${skill.sha256}`);

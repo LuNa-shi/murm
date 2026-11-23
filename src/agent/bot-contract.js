@@ -31,7 +31,6 @@ export function buildBotContinuationMessage(execution, { ordinary = BOT_CONTINUA
   return isSoftCloseout(execution, at) ? `${buildBotSoftCloseoutNotice(execution.execution_id, execution.execution_deadline, at)}\n${BOT_SOFT_CLOSEOUT_MESSAGE}` : ordinary;
 }
 
-export const BOT_COMPACTION_MESSAGE = '上下文压缩已完成。压缩本身没有保存或发布工作成果。继续前核对 Task、剩余预算和 Workspace 状态；有值得保留的新成果时通过 swarm workspace save、swarm material publish 持久化，确认返回结果，不把压缩元数据当成交付。';
 
 export function buildBotNotification(notification, { at = Date.now() } = {}) {
   const payload = notification.payload ?? {};
