@@ -26,6 +26,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       if(taskService.contextService && taskService.contextService!==contextService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Task Material authority does not match');
       const readinessSignal = AbortSignal.any([AbortSignal.timeout(closeTimeoutMs), ...(signal ? [signal] : [])]);
       const workspace = await missionWorkspace.get({ workspaceId, signal: readinessSignal });
+      readinessSignal.throwIfAborted();
       if (workspace.mission_id !== missionId) throw new SwarmEnvError('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       taskService.contextService=contextService;
       discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:()=>deadlineAt});

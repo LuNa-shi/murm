@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
@@ -425,4 +425,53 @@ for (const [operation, method, payload] of [
   assert.equal(report.cleanupFailure, null);
   assert.equal(report.cleanup.cleanup, 'complete');
   assert.equal(report.cleanup.bots.length, 2);
+});
+
+
+test('flat metadata admission preserves host cancellation when an already admitted read drains', {
+  timeout: 15_000,
+}, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'flat-read-admission-cancel-'));
+  const stores = await createFlatTaskStores(root);
+  t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
+  transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const locked = stores.workspace.repository.locked.bind(stores.workspace.repository);
+  let held = false;
+  stores.workspace.repository.locked = (path, operation, options) => {
+    if (held) return locked(path, operation, options);
+    held = true;
+    return locked(path, async () => {
+      const metadata = await operation();
+      entered.resolve();
+      await release.promise;
+      return metadata;
+    }, options);
+  };
+  const controller = new AbortController();
+  const pending = runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+    missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
+    deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    signal: controller.signal,
+    snapshotProject: async () => { throw new Error('No capture is needed during admission'); },
+  });
+  try {
+    await Promise.race([entered.promise, pending.then(() => { throw new Error('Metadata admission did not start'); })]);
+    controller.abort(Object.assign(new Error('Controlled host cancellation during metadata admission'), {
+      code: 'CONTROLLED_METADATA_CANCELLED',
+    }));
+  } finally { release.resolve(); }
+  const report = await pending;
+  assert.equal(report.businessFailure?.code, 'CONTROLLED_METADATA_CANCELLED');
+  assert.equal(report.cleanup, null);
+  assert.equal(report.result, null);
+  assert.equal(report.cleanupFailure, null);
+  assert.equal(report.reportSaveFailure, null);
+  assert.equal(controls.credentials.size, 0);
+  assert.equal(stores.tasks.listExecutions(stores.task.task_id).length, 0);
+  assert.deepEqual((await readdir(root)).filter(name => /^[a-f0-9-]{36}$/.test(name)), [report.runtimeId]);
+  assert.deepEqual(await readdir(join(root, report.runtimeId)), ['environment-report.json']);
+  const saved = JSON.parse(await readFile(report.reportPath, 'utf8'));
+  assert.deepEqual(saved.businessFailure, report.businessFailure);
 });
