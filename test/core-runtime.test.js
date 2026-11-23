@@ -3,14 +3,16 @@ import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 import { createRuntime } from '@swarmenv/core';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { ServiceRegistry } from '@swarmenv/core/services';
 
-function options(outputDir, model = 'k3') {
+function options(outputDir, model = 'k3', sandbox = {}) {
   return {
     backend: createPiOpenSandboxBackend({
-      sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
+      sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1', ...sandbox },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
       models: {
@@ -87,5 +89,120 @@ test('An empty Runtime opens and closes without contacting an unavailable sandbo
     });
   } finally {
     await runtime.close();
+  }
+});
+
+
+test('Runtime accepts a Profile network origin without allocating a sandbox', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const config = options(outputDir);
+  config.profiles.writer.model = 'default';
+  config.profiles.writer.env = { TOKENIZER: 'test-only-nonsecret' };
+  config.profiles.writer.network = { allow: ['http://192.0.2.10:8080', 'https://192.0.2.11'] };
+  const runtime = await createRuntime(config);
+  t.after(() => runtime.close());
+  assert.equal((await runtime.close()).cleanup, 'complete');
+});
+
+
+test('Runtime rejects reserved or unsupported ordinary environment values at assembly', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  for (const env of [{ SWARMENV_WORKER_TOKEN: 'test-only' }, { PI_API_KEY: 'test-only' }, { lower_case: 'unsupported' }, { LABEL: 'x'.repeat(4097) }]) {
+    const config = options(outputDir);
+    config.profiles.writer.model = 'default';
+    config.profiles.writer.env = env;
+    await assert.rejects(async () => {
+      const runtime = await createRuntime(config);
+      t.after(() => runtime.close());
+    }, { code: 'INVALID_CONTRACT', operation: 'createRuntime', cleanup: 'complete' });
+  }
+});
+
+
+async function lifecycleFixture(t) {
+  const requests = [];
+  let received;
+  const first = new Promise(resolve => { received = resolve; });
+  const server = createServer(async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    requests.push(JSON.parse(Buffer.concat(chunks).toString()));
+    received(response);
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  return { requests, first, url: `http://127.0.0.1:${server.address().port}/v1`, reject(response) {
+    response.writeHead(400, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ message: 'Deterministic allocation rejection' }));
+  } };
+}
+
+test('starting Bot reserves capacity before provider allocation and retains its identity on replay', { timeout: 5000 }, async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const provider = await lifecycleFixture(t);
+  const config = options(outputDir, 'k3', { lifecycleBaseUrl: provider.url });
+  config.profiles.writer.model = 'default';
+  const runtime = await createRuntime(config);
+  t.after(() => runtime.close());
+  const first = runtime.spawn({ requestId: 'first', profile: 'writer' }).catch(error => error);
+  const response = await provider.first;
+  const replay = runtime.spawn({ requestId: 'first', profile: 'writer' }).catch(error => error);
+  await assert.rejects(runtime.spawn({ requestId: 'second', profile: 'writer' }), { code: 'CONFLICT' });
+  assert.equal(provider.requests.length, 1);
+  provider.reject(response);
+  const [failure, replayFailure] = await Promise.all([first, replay]);
+  assert.equal(failure.operation, 'spawn');
+  assert.equal(replayFailure.botId, failure.botId);
+  assert.equal((await runtime.get(failure.botId)).id, failure.botId);
+  assert.equal((await runtime.close()).cleanup, 'complete');
+});
+
+test('Runtime snapshots Profiles and a backend belongs to exactly one Runtime', { timeout: 5000 }, async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const provider = await lifecycleFixture(t);
+  const config = options(outputDir, 'k3', { lifecycleBaseUrl: provider.url });
+  config.profiles.writer.model = 'default';
+  const runtime = await createRuntime(config);
+  t.after(() => runtime.close());
+  await assert.rejects(createRuntime(config), { code: 'INVALID_CONTRACT', operation: 'createRuntime' });
+  config.profiles.writer.image = 'mutated-image:must-not-run';
+  config.profiles.writer.model = 'absent';
+  config.profiles.added = { ...config.profiles.writer };
+  await assert.rejects(runtime.spawn({ requestId: 'added-role', profile: 'added' }), { code: 'INVALID_CONTRACT' });
+  const pending = runtime.spawn({ requestId: 'frozen-image', profile: 'writer' }).catch(error => error);
+  const response = await provider.first;
+  assert.equal(provider.requests[0].image.uri, 'swarmenv-agent:core-test');
+  provider.reject(response);
+  const failure = await pending;
+  assert.equal(failure.operation, 'spawn');
+  const secondConfig = options(outputDir);
+  secondConfig.profiles.writer.model = 'default';
+  const other = await createRuntime(secondConfig);
+  t.after(() => other.close());
+  assert.notEqual(other.id, runtime.id);
+  await assert.rejects(other.get(failure.botId), { code: 'NOT_FOUND', runtimeId: other.id });
+  assert.notEqual((await other.close()).outputDir, (await runtime.close()).outputDir);
+});
+
+test('Runtime rejects invalid capability and network configuration before resource creation', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const invalidProfiles = [
+    { services: { absent: ['read'] } }, { spawnProfiles: ['absent'] },
+    ...['http://127.0.0.1', 'https://example.com', 'http://192.0.2.1/path', 'http://192.0.2.1:0',
+      'http://192.0.2.1:65536', 'ftp://192.0.2.1', 'http://0.0.0.0', 'http://[::1]'].map(url => ({ network: { allow: [url] } })),
+  ];
+  for (const profile of invalidProfiles) {
+    const config = options(outputDir);
+    Object.assign(config.profiles.writer, { model: 'default' }, profile);
+    await assert.rejects(async () => {
+      const runtime = await createRuntime(config);
+      t.after(() => runtime.close());
+    }, { code: 'INVALID_CONTRACT', operation: 'createRuntime', cleanup: 'complete' });
   }
 });
