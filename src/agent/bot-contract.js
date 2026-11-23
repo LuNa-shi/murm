@@ -17,22 +17,6 @@ export const BOT_SKILLS = Object.freeze(['plan-task', 'use-material', 'use-works
 
 export const BOT_RESOURCES = Object.freeze([BOT_SYSTEM_RESOURCE, ...BOT_SKILLS.map(({ path, sha256 }) => Object.freeze({ path, sha256 }))]);
 
-export function buildBotStartupMessage({ mission, bot, workspace, sessionId, budget, services, project, eligibleTasks, observedAt = new Date().toISOString(), firstTurn = true }) {
-  if (!mission?.mission_id || !bot?.bot_id || bot.mission_id !== mission.mission_id || bot.state !== 'UNBOUND' || bot.execution_id) throw new TypeError('startup message requires the current unbound Mission Bot');
-  if (!workspace?.main_revision || workspace.mission_id !== mission.mission_id) throw new TypeError('startup preview must be resolved from this Mission Workspace');
-  const context = {
-    protocol_version: BOT_PROTOCOL_VERSION, observed_at: observedAt,
-    system_prompt_sha256: BOT_SYSTEM_HASH, mission,
-    bot: { bot_id: bot.bot_id, core_id: bot.core_id, sandbox_id: bot.sandbox_id, pi_session_id: sessionId, state: bot.state, execution_id: null, coordination_permissions: bot.coordination_permissions ?? [] },
-    workspace_preview: { workspace_id: workspace.workspace_id, resolved_main_revision: workspace.main_revision, project_path: '/workspace/project',
-      project_state: 'empty, protected; populated during take', note: 'This preview is not the actual take input. Take returns the pinned initial revision. If reread_required is true, reread its public input before continuing.' },
-    budget: { ...budget, selection_deadline: bot.selection_deadline, bot_hard_deadline: bot.hard_deadline },
-    project, services, skills: BOT_SKILLS,
-    eligible_task_page: { tasks: eligibleTasks, complete_history: false },
-  };
-  return (firstTurn ? '你已在全新的 sandbox/Pi Session 启动，尚无 Execution。' : '你仍处于当前 Bot 的选工阶段，尚无 Execution。') + '通过 swarm CLI 读取相关公开工作，在预算内优先选择合适的已有 Task。下方只是一页当前可领 Task。若无合适项且 Mission 仍开放、选工仍有额度，查询 swarm mission submission view，从当前 main 和公开成果定位一个具体缺口，可提出多个有 gap、交付、完成条件和明确 priority 的独立责任供后继选择；也可直接 take 合适已有 Task，不要求自提自领。\n\n' + JSON.stringify(context, null, 2);
-}
-
 export const BOT_CONTINUATION_MESSAGE = '继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。';
 
 

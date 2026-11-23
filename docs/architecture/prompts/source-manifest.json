@@ -4,7 +4,7 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "eb63c71f1f576ac711bc0fde192db8bdb57cbf497f53b5130aafe214372d91ce"
+      "sha256": "a038025c22d974b360fcc309076f48a72d5d40daeab1a740ce3b9381f60c119d"
     },
     {
       "path": "src/agent/bot-contract/system.txt",
@@ -127,10 +127,6 @@
       "sha256": "a475e66b3fb1cc33f4e76472f36258314697df35cfd4970498b7905fb6d3a49a"
     },
     {
-      "path": "src/benchmark/putnam-runner.js",
-      "sha256": "0fc7c588549940b5b378f352e2abb6633cf4fd0cd9d043ad854594725ef1fea6"
-    },
-    {
       "path": "src/runtime/runtime.js",
       "sha256": "5c97a8ff436b86e21a8b55b5dd8860100b085aba5b896147766b99241be77fe6"
     },
@@ -192,12 +188,6 @@
     }
   ],
   "extracted_spans": [
-    {
-      "path": "src/benchmark/putnam-runner.js",
-      "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 563,
-      "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
-    },
     {
       "path": "examples/notes-environment/main.mjs",
       "anchor": "const key = '",
@@ -362,16 +352,6 @@
       "expression": "await session.prompt(agentPrompt, { timeoutMs: 30_000 });"
     },
     {
-      "path": "src/benchmark/putnam-runner.js",
-      "line": 400,
-      "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
-    },
-    {
-      "path": "src/benchmark/putnam-runner.js",
-      "line": 664,
-      "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
-    },
-    {
       "path": "src/runtime/runtime.js",
       "line": 1384,
       "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : buildBotNotification(notification), {"
@@ -494,8 +474,8 @@
       "sha256": "01ca90cb7c3b247b3136692b5cd4cd76684e9341d4b0ccc50bb53164a7412af1"
     },
     {
-      "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "c0072418c5b2e6d0c6b309fbd7bab9faf6f27a4cd6726cfd35356745aa21f270"
+      "path": "docs/architecture/prompts/03-runtime-turns.md",
+      "sha256": "3f626d5b96d486832e30b8c3ad4be672a840ce848dd0ae86801f5b3a1d1caa8c"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
@@ -507,7 +487,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "b30c2505110fe8f8aea8f94d82465282d4e012cd161191a332fb977f284a9bf1"
+      "sha256": "eb5922ba7031e72074c409c298ecb54e7de890274dc513e71f4fd0210ee5674e"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
@@ -531,7 +511,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "8ea3d15794e682b030650ffe792425cefd8d20dbeacd6fee0df3488bcb5983f9"
+      "sha256": "4f04ad0762c325577345c95862b76e1f8369d6cd8fb42c4746c90bfad4eaeca8"
     }
   ]
 }

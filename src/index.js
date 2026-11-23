@@ -31,8 +31,6 @@ export * from './judge/judge-service.js';
 export * from './observability/observation-store.js';
 export * from './observability/observability-server.js';
 export * from './observability/workspace-provider.js';
-export * from './benchmark/putnam-runner.js';
-export * from './benchmark/parallelism.js';
 
 export { RemoteContextService } from './sdk/remote-context-service.js';
 export { RemoteJudgeService } from './sdk/remote-judge-service.js';

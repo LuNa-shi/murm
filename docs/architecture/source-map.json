@@ -563,43 +563,6 @@
       "role": "Adapter/version/prompt/runtime provenance manifest"
     },
     {
-      "path": "src/benchmark/benchmark-context.js",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
-    },
-    {
-      "path": "src/benchmark/benchmark-fixture.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Pinned Git blob and timed service composition gates"
-    },
-    {
-      "path": "src/benchmark/parallelism.js",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Core/turn intervals, readiness samples, utilization and work-unit projections"
-    },
-    {
-      "path": "src/benchmark/putnam-runner.js",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/00-overview.md",
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/13-historical-resume.md"
-      ],
-      "role": "Project composition, Agent take loop, Judge orchestration, stop and reports"
-    },
-    {
       "path": "src/cli/swarm-cli.js",
       "category": "service and Agent integration",
       "chapters": [

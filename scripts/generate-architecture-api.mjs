@@ -30,7 +30,6 @@ const registry = createBuiltinServiceRegistry({});
 const sourcePaths = [
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-manifest.js',
   'src/sdk/service-registry.js', 'src/agent/capability-profile.js', 'src/agent/services-bridge.js',
-  'src/benchmark/putnam-runner.js',
   'services/mathlib-search/service.json', 'src/errors.js',
   'src/core/index.d.ts', 'src/core/services.d.ts', 'src/core/backends/pi-opensandbox.d.ts',
 ];
