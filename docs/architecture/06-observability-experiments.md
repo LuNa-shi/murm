@@ -46,9 +46,9 @@ The benchmark CLI defaults to no observer server. It does not probe existing met
 
 The persistent entry is `scripts/serve-observability.mjs`. It defaults to `experiments`, loopback host, port 8787, database `<root>/.observability/observability.sqlite`, and metadata `<root>/.observability/server.json`. Repeated `--root` and `--scan-root` add roots; conventional `.worktrees`/`.worktree` paths are inferred even before they exist. Discovery scans for `observability.sqlite` to depth 5, excluding `.git` and `node_modules` directories. This keeps worktree-local historical runs visible to one server.
 
-A healthy existing daemon identified by metadata is reused. A requested report can be imported into that daemon's database without starting another server. New daemon metadata is written through temporary-file rename. SIGINT/SIGTERM closes the server/stores and removes metadata only if it still belongs to that process.
+A healthy existing daemon identified by metadata is reused when its host, access mode and authentication version match the requested listener. Reuse returns that daemon's metadata with `reused: true` and exits without importing files or changing its registered observations. A new server returns its listener, database and discovery roots. New daemon metadata is written through temporary-file rename. SIGINT/SIGTERM closes the server/stores and removes metadata only if it still belongs to that process.
 
-The standalone server accepts `--name value` or `--name=value` for these options, plus the bare boolean `--no-raw-logs`. An unknown option fails; this launcher does not implement a `--help` branch.
+The standalone server accepts `--name value` or `--name=value` for these options. Unknown options, including the retired `--report`, `--experiment-dir` and `--no-raw-logs` import flags, fail during argument parsing before creating database or metadata directories. This launcher does not implement a `--help` branch.
 
 | Option | Default / meaning |
 |---|---|
@@ -59,9 +59,6 @@ The standalone server accepts `--name value` or `--name=value` for these options
 | `--host` | `127.0.0.1`. |
 | `--advertise-host` | Null; optional published address distinct from the bind host. |
 | `--port` | `8787`; integer 0–65535, with 0 allowing an ephemeral port. |
-| `--report` | Null; optional report to import before serving/reusing the daemon. |
-| `--experiment-dir` | Null; optional original raw-evidence root for report import. |
-| `--no-raw-logs` | Accepted compatibility flag with no effect. This CLI imports report projections without raw logs; only a trusted library caller can opt into raw ingestion. |
 
 Healthy-daemon reuse returns the existing metadata and exits; passing a different bind address to this invocation does not reconfigure that existing process.
 
@@ -117,17 +114,15 @@ The shared observation projection folds bounded Task, Execution and Material obs
 
 Sources: [server projection](../../src/observability/observability-server.js), [React hook](../../src/observability/client/hooks/use-observation.js), [observation projection](../../src/observability/observation-projection.js), [App](../../src/observability/client/App.jsx), [trace](../../src/observability/client/components/ui/trace.jsx), [format](../../src/observability/format.js), [projection test](../../test/observation-projection.test.js).
 
-## 5. Workspace and imported-run views
+## 5. Workspace views
 
 `FileWorkspaceProvider` follows only a `workspace_ref` already present in the selected Execution's observed assignment/Workspace events. It reads `.swarm/workspace.json` and numeric revision JSON files, returning file metadata and revision/checkpoint lineage. It does not expose an arbitrary path-reading endpoint. Its initial event lookup is one 1000-row page, so an older/sparse projection can fail to find the latest Workspace. A deleted/moved local Workspace cannot be reconstructed from a path string alone.
 
-`importBenchmarkReport` converts an existing sanitized report into synthetic observations for experiment start, Core/turn intervals, assignments, Execution, Workspace writes, checks and finish. The Observer CLI imports these report projections. A trusted library caller can explicitly request raw ingestion into an isolated analysis store. Import skips an already populated experiment, so rerunning the importer is not incremental reconciliation. Some assignment timestamps use report run start rather than the original take instant. Synthetic sequence order groups reconstructed sources and must not be mistaken for the complete original interleaving of calls.
-
-Sources: [Workspace provider](../../src/observability/workspace-provider.js), [report importer](../../src/observability/benchmark-report-importer.js), [Workspace observer tests](../../test/observability-workspace.test.js), [importer tests](../../test/benchmark-report-importer.test.js).
+Sources: [Workspace provider](../../src/observability/workspace-provider.js), [Workspace observer tests](../../test/observability-workspace.test.js).
 
 ## 6. Benchmark outcome metrics and their limits
 
-During CLI preparation, `metadata/experiment.json` records `setup_started_at` with status `preparing` and a null `started_at`. First project admission sets the live manifest to `running` and records setup duration. The Observation Store exposes registration as `created_at` and assigns `started_at` on the transition to RUNNING. A project that never starts has no start event or research duration, including on sanitized report import. Aggregate project rows carry each project's own preparation and admission times. With Pass@K the group also reports the shared window and settlement separately.
+During CLI preparation, `metadata/experiment.json` records `setup_started_at` with status `preparing` and a null `started_at`. First project admission sets the live manifest to `running` and records setup duration. The Observation Store exposes registration as `created_at` and assigns `started_at` on the transition to RUNNING. A project that never starts has no start event or research duration, including a pre-admission registration. Aggregate project rows carry each project's own preparation and admission times. With Pass@K the group also reports the shared window and settlement separately.
 
 The runner finalizes its report from Task/Execution/Material/check data, Core accounting, cleanup evidence and protocol checks. Important meanings are:
 

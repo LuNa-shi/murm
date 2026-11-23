@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -64,6 +64,22 @@ test('persistent observability discovers repository .worktrees and .worktree exp
     assert.ok(startup.scan_roots.includes(join(root, '.worktrees')));
     assert.ok(startup.scan_roots.includes(join(root, '.worktree')));
 
+    const reused = spawnSync(process.execPath, [
+      'scripts/serve-observability.mjs', '--root', join(root, 'experiments'), '--port', '0',
+    ], { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 });
+    assert.equal(reused.status, 0, reused.stderr);
+    const reusedStartup = JSON.parse(reused.stdout);
+    assert.equal(reusedStartup.reused, true);
+    assert.equal(reusedStartup.pid, child.pid);
+    assert.equal(reusedStartup.url, startup.url);
+    const reusedRegistry = await fetch(`${startup.url}/api/experiments`).then(response => response.json());
+    assert.deepEqual(reusedRegistry, registry);
+    for (const record of [startup, reusedStartup]) {
+      for (const field of ['report_path', 'imported_events', 'raw_event_count']) {
+        assert.equal(Object.hasOwn(record, field), false);
+      }
+    }
+
     const waitForChanges = async (revision) => {
       const pendingChanges = fetch(`${startup.url}/api/experiments/changes?since=${encodeURIComponent(revision)}`)
       .then((response) => response.json());
@@ -112,4 +128,19 @@ test('standalone Observer fails before side effects when remote auth is omitted'
   ], { cwd: process.cwd(), env, encoding: 'utf8', timeout: 5000 });
   assert.equal(rejected.status, 1);
   assert.match(rejected.stderr, /requires explicit operator authentication/);
+});
+
+
+test('standalone Observer rejects retired report import options before creating state', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observer-retired-options-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  for (const option of ['--report=missing.json', '--experiment-dir=missing', '--no-raw-logs']) {
+    const runRoot = join(root, option.split('=')[0].slice(2));
+    const rejected = spawnSync(process.execPath, [
+      'scripts/serve-observability.mjs', '--root', runRoot, '--host', '0.0.0.0', '--port', '0', option,
+    ], { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 });
+    assert.equal(rejected.status, 1);
+    assert.match(rejected.stderr, /unknown option:/);
+    await assert.rejects(access(runRoot), { code: 'ENOENT' });
+  }
 });

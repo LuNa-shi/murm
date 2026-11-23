@@ -11,7 +11,7 @@ This chapter describes how the repository actually composes a run. It covers the
 | `runBenchmarkBatch(problems, config, options)` | Worker pool across isolated projects; each project still has four lanes; a project error becomes a sanitized fallback report |
 | `scripts/service-host.mjs` | Separately hosted built-in Task, Context, Judge or Catalog provider |
 | `scripts/mathlib-search-service.mjs` | Optional HTTP Mathlib Search provider |
-| `scripts/serve-observability.mjs` | Persistent observation/dashboard server, including report import and multi-root discovery |
+| `scripts/serve-observability.mjs` | Persistent observation/dashboard server over registered event stores and multi-root discovery |
 | `src/index.js` | Public JavaScript exports, including generic Runtime/SDK and compatibility fixture APIs |
 
 These entry points have different contracts. Deterministic in-process tests use injected adapters and checkers; they do not implement the benchmark's no-solution-input protocol or establish autonomous research ability.

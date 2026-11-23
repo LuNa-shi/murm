@@ -4,13 +4,10 @@ import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
 import { ObservationStore, ObservationStoreCollection } from '../src/observability/observation-store.js';
 import { OBSERVABILITY_AUTH_VERSION, ObservabilityServer, observabilityAccessMode } from '../src/observability/observability-server.js';
-import { importBenchmarkReport } from '../src/observability/benchmark-report-importer.js';
 import { FileWorkspaceProvider } from '../src/observability/workspace-provider.js';
 
 function optionsFromArgs(argv) {
   const options = {
-    reportPath: null,
-    experimentDir: null,
     root: 'experiments',
     db: null,
     metadata: null,
@@ -23,7 +20,6 @@ function optionsFromArgs(argv) {
   let rootWasExplicit = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === '--no-raw-logs') continue;
     const [key, inline] = arg.split('=', 2);
     const value = inline ?? argv[++index];
     if (key === '--root') {
@@ -36,8 +32,6 @@ function optionsFromArgs(argv) {
       continue;
     }
     const fields = {
-      '--report': 'reportPath',
-      '--experiment-dir': 'experimentDir',
       '--db': 'db',
       '--metadata': 'metadata',
       '--host': 'host',
@@ -118,7 +112,6 @@ const accessMode = observabilityAccessMode({ host: options.host, operatorPasswor
 options.scanRoots = inferRepositoryWorktreeRoots(options);
 const experimentRoots = discoverExperimentRoots(options);
 const experimentRoot = experimentRoots[0];
-const experimentDir = options.experimentDir ? resolve(options.experimentDir) : null;
 const databasePath = options.db ? resolve(options.db) : join(experimentRoot, '.observability', 'observability.sqlite');
 const metadataPath = options.metadata ? resolve(options.metadata) : join(experimentRoot, '.observability', 'server.json');
 await mkdir(dirname(databasePath), { recursive: true });
@@ -143,34 +136,11 @@ async function serverIsHealthy(metadata) {
 
 const existingServer = await readServerMetadata(metadataPath);
 if (existingServer && existingServer.pid !== process.pid && await serverIsHealthy(existingServer)) {
-  let imported = { imported_events: 0, raw_event_count: 0, report_path: null, experiment_id: null };
-  if (options.reportPath) {
-    const existingStore = new ObservationStore(resolve(existingServer.database_path ?? databasePath));
-    const importedReport = await importBenchmarkReport({
-      observationStore: existingStore,
-      reportPath: options.reportPath,
-      experimentDir,
-    });
-    imported = {
-      imported_events: importedReport.imported_events,
-      raw_event_count: importedReport.raw_event_count,
-      report_path: importedReport.report_path,
-      experiment_id: importedReport.experiment?.experiment_id ?? null,
-    };
-    existingStore.close();
-  }
-  process.stdout.write(JSON.stringify({ ...existingServer, ...imported, reused: true }) + '\n');
+  process.stdout.write(JSON.stringify({ ...existingServer, reused: true }) + '\n');
   process.exit(0);
 }
 
 const primaryStore = new ObservationStore(databasePath);
-const imported = options.reportPath
-  ? await importBenchmarkReport({
-    observationStore: primaryStore,
-    reportPath: options.reportPath,
-    experimentDir,
-  })
-  : { experiment: null, imported_events: 0, raw_event_count: 0, report_path: null };
 const observationStore = new ObservationStoreCollection({
   stores: [primaryStore],
   discover: () => discoverObservationDatabases(options),
@@ -200,7 +170,6 @@ const metadata = {
   port: address.port,
   url: address.url,
   started_at: new Date().toISOString(),
-  experiment_id: imported.experiment?.experiment_id ?? null,
 };
 await writeMetadata(metadataPath, metadata);
 process.stdout.write(JSON.stringify({
@@ -208,10 +177,6 @@ process.stdout.write(JSON.stringify({
   host: address.host,
   advertise_host: address.advertise_host,
   port: address.port,
-  experiment_id: imported.experiment?.experiment_id ?? null,
-  imported_events: imported.imported_events,
-  raw_event_count: imported.raw_event_count,
-  report_path: imported.report_path,
   database_path: databasePath,
   experiment_roots: experimentRoots,
   scan_roots: options.scanRoots.map((root) => resolve(root)),
