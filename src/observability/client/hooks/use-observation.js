@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { buildModel } from '@/lib/observation';
+import { buildModel } from '../../observation-projection.js';
 
 const MAX_CLIENT_EVENTS = 4_000;
 const EVENT_BATCH_MS = 300;

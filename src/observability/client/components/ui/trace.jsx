@@ -1,5 +1,5 @@
 import { cn } from '@/lib/utils';
-import { formatDuration, formatTime, shortId } from '@/lib/format';
+import { formatDuration, formatTime, shortId } from '../../../format.js';
 import { StateBadge } from './badge';
 
 export function Trace({ traces = [], selectedExecution, onExecution }) {

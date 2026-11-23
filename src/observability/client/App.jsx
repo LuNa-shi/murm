@@ -14,10 +14,10 @@ import { cn } from '@/lib/utils';
 import {
   compactText, conditionLabel, eventLabel, formatDate, formatDuration, formatNumber, formatRelative,
   formatTime, safeJson, shortId,
-} from '@/lib/format';
+} from '../format.js';
 import {
   coreTraceData, extractToolCalls, modelTaskLabel, queueDepthSeries, queueTasks, workerRows,
-} from '@/lib/observation';
+} from '../observation-projection.js';
 
 const NAV = [
   { path: 'home', label: 'Overview', icon: Home },
