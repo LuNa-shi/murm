@@ -8,8 +8,8 @@ export function peerCommand(turn, deniedOrigin) {
   const setup = `import assert from 'node:assert/strict';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {writeFileSync,readFileSync,unlinkSync} from 'node:fs';
-const git=(...args)=>execFileSync('git',args,{encoding:'utf8',timeout:15000}).trim();
-const cli=(service,operation,input)=>{writeFileSync('.service-input.json',JSON.stringify(input));try{return JSON.parse(execFileSync('swarm',[service,operation,'--input','.service-input.json','--request-id',operation+'-fixed'],{encoding:'utf8',timeout:12000}));}finally{unlinkSync('.service-input.json');}};
+const git=(...args)=>execFileSync('git',args,{encoding:'utf8',timeout:15000,stdio:['ignore','pipe','pipe']}).trim();
+const cli=(service,operation,input)=>{writeFileSync('.service-input.json',JSON.stringify(input));try{return JSON.parse(execFileSync('swarm',[service,operation,'--input','.service-input.json','--request-id',operation+'-fixed'],{encoding:'utf8',timeout:12000,stdio:['ignore','pipe','pipe']}));}finally{unlinkSync('.service-input.json');}};
 const repo={owner:process.env.RUN_OWNER,repo:process.env.RUN_REPO};
 const board={board_id:process.env.RUN_BOARD};`;
   const first = `
@@ -32,51 +32,55 @@ const before=JSON.parse(readFileSync('.peer-state.json','utf8'));assert.equal(be
 assert.equal(readFileSync('acceptance.txt','utf8'),'LANDED\\n');
 writeFileSync('private.txt','PRIVATE_COMMIT\\n');git('add','private.txt');git('commit','-m','Unpushed private checkpoint');const privateCommit=git('rev-parse','HEAD');assert.notEqual(privateCommit,before.pushedCommit);
 writeFileSync('acceptance.txt','DIRTY_PRIVATE\\n');writeFileSync('untracked.bin',Buffer.from([0,255,65,10]));
-console.log(JSON.stringify({turn:2,cwd:process.cwd(),privateCommit,pushedCommit:before.pushedCommit,continued:true}));`;
+console.log(JSON.stringify({turn:2,cwd:process.cwd(),privateCommit,pushedCommit:before.pushedCommit,continued:true,untrackedBase64:readFileSync('untracked.bin').toString('base64')}));`;
   return `node --input-type=module <<'PEER_CHECK'\n${setup}\n${turn === 1 ? first : second}\nPEER_CHECK`;
 }
 
 export async function createPeerUpstream({ deniedOrigin, onFailure = () => {} }) {
-  let arrivals = 0; let accepted = 0; let failure; const evidence = [];
+  let arrivals = 0; let accepted = 0; let failure; let failureDetail; const evidence = [];
   let deadlineAt; let deadlineReached = false; let finished = false;
   const server = createServer(async (request, response) => {
     arrivals++;
-    const arrival = arrivals;
+    const arrival = arrivals; const turn = arrival <= 2 ? 1 : 2; let stage = 'bounds';
     try {
       if (finished || failure) throw new Error();
       if (!deadlineAt || Date.now() >= deadlineAt) { deadlineReached = true; throw new Error(); }
       if (arrivals > 4 || request.method !== 'POST' || request.url !== '/v1/responses') throw new Error();
-      const chunks = []; let bytes = 0;
+      stage = 'request'; const chunks = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; if (bytes > 2 * 1024 ** 2) throw new Error(); chunks.push(chunk); }
-      const body = JSON.parse(Buffer.concat(chunks).toString());
-      const turn = arrivals <= 2 ? 1 : 2;
+      stage = 'body'; const body = JSON.parse(Buffer.concat(chunks).toString());
+      stage = 'identity';
       if (body.model !== 'k3' || !Array.isArray(body.input) || !JSON.stringify(body.input).includes(peerInputs[turn - 1])) throw new Error();
       let item;
       if (arrivals % 2) item = { type: 'function_call', id: `fc_peer_${turn}`, call_id: `call_peer_${turn}`, name: 'bash', arguments: JSON.stringify({ command: peerCommand(turn, deniedOrigin), timeout: turn === 1 ? 60 : 20 }) };
       else {
-        const result = body.input.find(item => item.type === 'function_call_output' && item.call_id === `call_peer_${turn}`);
-        const observed = JSON.parse(result.output.trim());
+        stage = 'tool-output'; const result = body.input.find(item => item.type === 'function_call_output' && item.call_id === `call_peer_${turn}`);
+        if (typeof result?.output !== 'string') throw new Error();
+        stage = 'tool-json'; const observed = JSON.parse(result.output.trim());
+        stage = 'evidence';
         if (observed.turn !== turn || !/^[a-f0-9]{40}$/.test(observed.pushedCommit)) throw new Error();
         if (turn === 1 && (!observed.networkDenied || !Number.isSafeInteger(observed.prNumber) || !observed.messageId || !observed.boardLabel)) throw new Error();
-        if (turn === 2 && (!observed.continued || !/^[a-f0-9]{40}$/.test(observed.privateCommit) || observed.pushedCommit !== evidence[0].pushedCommit || observed.cwd !== evidence[0].cwd)) throw new Error();
+        if (turn === 2 && (!observed.continued || !/^[a-f0-9]{40}$/.test(observed.privateCommit) || observed.pushedCommit !== evidence[0].pushedCommit || observed.cwd !== evidence[0].cwd || observed.untrackedBase64 !== 'AP9BCg==')) throw new Error();
         evidence.push(observed);
         item = { type: 'message', id: `msg_peer_${turn}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: `PEER_${turn}_OK`, annotations: [] }] };
       }
       accepted++; response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', arrivals, item));
     } catch {
       const firstFailure = !failure; failure = 'FIXED_PEER_PROTOCOL_FAILED';
-      // A successful terminal SSE is consumed once by Pi; HTTP rejection causes
-      // provider retry amplification. Correlate to this response/arrival, never
-      // include the rejected request or upstream/tool exception in diagnostics.
+      failureDetail ??= { code: failure, stage, turn, arrival };
+      // Native Pi consumes this correlated terminal failure once. Never return
+      // HTTP rejection (retry amplification) or fake a successful settled turn.
+      const terminal = { type: 'response.failed', response: { id: `failed_peer_${arrival}`, object: 'response', model: 'k3', status: 'failed', output: [],
+        error: { code: failure, message: failure }, usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } } };
       response.writeHead(200, { 'content-type': 'text/event-stream' });
-      response.end(streamResponse('k3', arrival, { type: 'message', id: `msg_peer_rejected_${arrival}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: failure, annotations: [] }] }));
-      if (firstFailure) onFailure({ code: failure, arrival });
+      response.end(`event: response.failed\ndata: ${JSON.stringify(terminal)}\n\n`);
+      if (firstFailure) onFailure({ ...failureDetail });
     }
   });
   server.requestTimeout = 10_000; server.headersTimeout = 10_000;
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   return { url: `http://127.0.0.1:${server.address().port}/v1/responses`, start: () => { if (deadlineAt) throw new Error('Already started'); deadlineAt = Date.now() + 120_000; },
     finish: () => { deadlineReached ||= Boolean(deadlineAt && Date.now() >= deadlineAt); finished = true; },
-    receipt: () => ({ arrivals, accepted, failure, deadlineReached: deadlineReached || Boolean(!finished && deadlineAt && Date.now() >= deadlineAt), evidence }),
+    receipt: () => ({ arrivals, accepted, failure, failureDetail, deadlineReached: deadlineReached || Boolean(!finished && deadlineAt && Date.now() >= deadlineAt), evidence }),
     close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }
