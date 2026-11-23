@@ -24,7 +24,7 @@ const sourcePaths = [
   'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
   'src/agent/services-bridge.js', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
-  'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js',
+  'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
@@ -171,6 +171,13 @@ output('07-notes-environment.md', header('Installed Notes Environment prompts',
   + block('Writer publication', notesInput.put)
   + block('Reader retrieval', notesInput.get)
   + block('Reader follow-up', notesInput.follow));
+const scaleMASPath = 'src/environments/scalemas/index.js';
+output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
+  'All three peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
+  + block('Peer Profile prompt', between(scaleMASPath, "export const peerPrompt = '", "';\n"))
+  + block('Cycle instruction', between(scaleMASPath, "export const cyclePrompt = '", "';\n"))
+  + block('Exact input composition', between(scaleMASPath, 'runInput(core, peer.botId, `', '`,\n'),
+    'index is the fixed zero-based peer index; round is its zero-based serial cycle; question is the validated host question; cyclePrompt is the complete literal above. The host runInput helper sends this string once as followUp with a fresh per-peer cycle request ID.'));
 const manifest = {
   description: 'Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.',
   bot_protocol_version: BOT_PROTOCOL_VERSION,

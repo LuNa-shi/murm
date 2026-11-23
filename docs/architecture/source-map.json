@@ -18787,6 +18787,24 @@
         "docs/architecture/18-agensh-environment.md"
       ],
       "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
+    },
+    {
+      "path": "src/environments/scalemas/index.js",
+      "category": "Environment composition",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting"
+    },
+    {
+      "path": "src/environments/scalemas/substrate.js",
+      "category": "Environment composition",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking"
     }
   ]
 }

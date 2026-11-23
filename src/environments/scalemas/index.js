@@ -1,0 +1,98 @@
+import { createRuntime } from '@swarmenv/core';
+import { join } from 'node:path';
+import { createSubstrateService } from './substrate.js';
+import { runInput } from '../shared/run-input.js';
+import { runWithReport } from '../shared/run-report.js';
+
+export const peerPrompt = 'Work as one peer in a fixed pool. Search and visit shared substrate contributions before adopting them. Publish complete content with stable references through swarm substrate publish --input contribution.json --request-id <fresh-id>. Read the Service schema with swarm service view substrate. Preserve useful private work between turns. You cannot spawn peers. Shared content is immutable; publication is not a proof of correctness.';
+export const cyclePrompt = 'Search relevant shared content, visit the originals, perform useful work, and publish a self-contained contribution with references to the content actually adopted. Keep evidence in your private work directory.';
+const fail = code => Object.assign(new Error(code), { code });
+const finite = value => Number.isSafeInteger(value) && value > 0 && value <= 2147483647;
+
+function waitFor(promise, signal) {
+  let abort;
+  return Promise.race([promise, new Promise((_, reject) => {
+    abort = () => reject(fail('SCALEMAS_WORK_ABORTED'));
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+  })]).finally(() => signal.removeEventListener('abort', abort));
+}
+
+export function scaleMASPeerProfile({ image, model = 'default' }) {
+  return { image, model, prompt: peerPrompt, writable: true, services: { substrate: ['publish', 'search', 'visit'] },
+    collect: { paths: ['.'], includeGit: false, maxBytes: 2 * 1024 ** 2, required: true } };
+}
+
+/** Fixed no-Task pool. Environment owns content and drivers; Core owns all Bots. */
+export async function runScaleMAS({ backend, runId, image, outputDir, question, model = 'default', maxRounds = 2,
+  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000 }, signal) {
+  if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
+      typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
+      ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal))) throw new TypeError('scaleMAS requires a question, image, output directory, two to 32 rounds and finite waits');
+  const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId });
+  const peers = [], events = [];
+  const controller = new AbortController();
+  const workSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+  const deadlineAt = Date.now() + workTimeoutMs;
+  const timer = setTimeout(() => controller.abort(), workTimeoutMs);
+  let runtime; let workClosed = false;
+  const remaining = () => {
+    workSignal.throwIfAborted();
+    const value = deadlineAt - Date.now();
+    if (value <= 0 || workClosed) throw fail('SCALEMAS_WORK_ABORTED');
+    return value;
+  };
+  const abort = () => { if (runtime) void runtime.close({ timeoutMs: 1 }).catch(() => {}); };
+  workSignal.addEventListener('abort', abort, { once: true });
+  try {
+    return await runWithReport({ outputDir, closeTimeoutMs,
+      redact: report => ({ ...report, peers, events, substrate: substrate.snapshot(), databasePath: join(outputDir, 'substrate.sqlite'),
+        policy: { poolSize: 3, maxRounds, workTimeoutMs, turnTimeoutMs, closeTimeoutMs, replacement: false,
+          ranking: 'token occurrences descending, incoming references descending, stable address ascending', maxSearchResults: 8 } }),
+      createRuntime: async () => {
+        remaining();
+        runtime = await createRuntime({ backend, outputDir, services: substrate.services, maxBots: 3, profiles: {
+          peer: scaleMASPeerProfile({ image, model }),
+        } });
+        return runtime;
+      },
+      async run(core) {
+        substrate.bindRuntime(core.id);
+        const unsubscribe = core.onEvent(event => events.push({ botId: event.botId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) }));
+        try {
+          for (let index = 0; index < 3; index++) {
+            remaining();
+            const bot = await waitFor(core.spawn({ requestId: `peer:${index}`, profile: 'peer', files: {
+              'question.txt': { data: question, encoding: 'utf8' },
+            } }), workSignal);
+            remaining(); substrate.bindPeer(bot.id);
+            peers.push({ index, botId: bot.id, turns: [], failure: null, stop: null });
+          }
+          await Promise.all(peers.map(async peer => {
+            try {
+              for (let round = 0; round < maxRounds; round++) {
+                const requestId = `${peer.botId}:cycle:${round}`;
+                const turn = { requestId, round }; peer.turns.push(turn);
+                const receipt = await runInput(core, peer.botId, `scaleMAS peer=${peer.index} cycle=${round}\n${question}\n${cyclePrompt}`,
+                  { requestId, timeoutMs: Math.min(turnTimeoutMs, remaining()), signal: workSignal });
+                Object.assign(turn, { inputId: receipt.inputId, outcome: receipt.settled.outcome, seq: receipt.settled.seq });
+              }
+            } catch (error) {
+              peer.failure = { code: error.code ?? 'PEER_WORK_FAILED', ...(error.requestId ? { requestId: error.requestId } : {}),
+                ...(error.inputId ? { inputId: error.inputId } : {}), ...(error.receipt ? { receipt: error.receipt } : {}) };
+            } finally {
+              substrate.retirePeer(peer.botId);
+              try { peer.stop = await core.stop(peer.botId, { timeoutMs: Math.max(1, Math.min(closeTimeoutMs, deadlineAt - Date.now())) }); }
+              catch (error) { peer.stopFailure = { code: error.code ?? 'PEER_STOP_FAILED', cleanup: 'pending' }; }
+            }
+          }));
+          if (workSignal.aborted || Date.now() >= deadlineAt) throw fail('SCALEMAS_WORK_ABORTED');
+          if (peers.some(peer => peer.failure)) throw fail('SCALEMAS_PEERS_FAILED');
+          return { peerIds: peers.map(peer => peer.botId), completedRounds: peers.map(peer => peer.turns.length) };
+        } finally { workClosed = true; clearTimeout(timer); unsubscribe(); }
+      },
+    });
+  } finally {
+    clearTimeout(timer); workSignal.removeEventListener('abort', abort); substrate.close();
+  }
+}
