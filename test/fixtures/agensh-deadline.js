@@ -8,7 +8,8 @@ export function createDeadline(milliseconds, code, deadlineAt = Date.now() + mil
   const expire = () => { expired = true; controller.abort(failure(code)); };
   const timer = setTimeout(expire, Math.max(0, deadlineAt - Date.now()));
   function remaining(cap = milliseconds) {
-    if (expired || controller.signal.aborted || Date.now() >= deadlineAt) { expire(); throw failure(code); }
+    if (expired || Date.now() >= deadlineAt) { expire(); throw failure(code); }
+    if (controller.signal.aborted) throw failure(code);
     return Math.max(1, Math.min(cap, deadlineAt - Date.now()));
   }
   return {

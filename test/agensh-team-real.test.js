@@ -98,7 +98,12 @@ test('two native Agensh peers negotiate overlapping claims and merge adopted con
     const publicRead = await cleanup.step(({ signal }) => delivery.readMainFile('right.txt', { signal })); assert.equal(publicRead.data.toString(), `T15_RIGHT_ADOPTED ${teamFact}\n`);
     assert.equal(upstream.receipt().arrivals, 10); assert.equal(upstream.receipt().accepted, 10); assert.equal(upstream.receipt().failure, undefined);
     report.archived = { binaryVerified: true, dirtyVerified: true, gitVerified: true, targetedEventVerified: true }; report.failure = false;
-  } catch (error) { cleanup.start(); ownershipUnknown = error.cleanup === 'pending'; report.businessFailure = { code: typeof error.code === 'string' ? error.code : 'ACTUAL_TEAM_FAILED', cleanup: error.cleanup }; }
+  } catch (error) {
+    cleanup.start(); ownershipUnknown = error.cleanup === 'pending';
+    const fixtureFailure = upstream?.receipt().failure;
+    report.businessFailure = { code: fixtureFailure?.code ?? (typeof error.code === 'string' ? error.code : 'ACTUAL_TEAM_FAILED'),
+      ...(fixtureFailure ? { fixtureFailure } : {}), cleanup: error.cleanup };
+  }
   finally {
     cleanup.start(); cleanupPhase = true; report.workExpired = work?.expired() ?? false; work?.finish();
     const hostCleanup = cleanup.step(() => upstream?.close()).then(() => { report.hostCleanup = 'complete'; }, () => { report.hostCleanup = 'pending'; });

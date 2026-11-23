@@ -7,6 +7,16 @@ import { createDeadline, createWorkGate, createCleanupBudget } from './fixtures/
 import { createLocalAgenshStack } from './fixtures/agensh-local-stack.js';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+test('an early fixture abort cancels the same bounded gate without claiming elapsed work expiry', async () => {
+  const work = createWorkGate(10_000);
+  try {
+    work.abort();
+    await assert.rejects(work.step(() => assert.fail('Cancelled work must not dispatch')), { code: 'ACTUAL_PEER_WORK_EXPIRED' });
+    assert.equal(work.expired(), false);
+    work.finish(); assert.equal(work.expired(), false); assert.equal(work.cleanup.started(), true);
+  } finally { work.dispose(); work.cleanup.dispose(); }
+});
+
 test('setup caps each Docker allocation and retains an uncertain network for cleanup after expiry', async t => {
   const root = await mkdtemp(join(tmpdir(), 'agensh-deadline-')); t.after(() => rm(root, { recursive: true, force: true }));
   const calls = [];
