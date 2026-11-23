@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
 import { SOLVER_SYSTEM_PROMPT, SOLVER_CONTINUATION_MESSAGE, SOLVER_CLOSEOUT_MESSAGE, BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
-import { IDENTITY_TAKE_PROMPT } from '../src/runtime/identity-task-loop.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
 
@@ -30,7 +29,7 @@ const sourcePaths = [
   'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js', 'src/environments/agensh/team.js',
   'test/fixtures/agensh-team-kimi.js', 'test/agensh-team-kimi-real.test.js',
   'src/environments/lead-helper/prompts.js', 'src/environments/lead-helper/index.js',
-  'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
+  'src/runtime/runtime.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
   'src/sdk/service-registry.js', 'src/sdk/service-manifest.js', 'src/protocol/envelope.js',
@@ -83,8 +82,7 @@ for (const [title, p] of [['Built-in Services', profile], ['With optional Mathli
 for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource; the startup message carries metadata and hashes, not this full body.');
 output('02-task-loop-and-tools.md', toolsDoc);
 
-let turnsDoc = header('Complete retained Runtime turn messages', 'The generic identity loop, Flat controller and compatibility Runtime retain these repository-owned texts. The retired benchmark coordinator no longer composes or sends discovery or solver startup messages. Runtime selects the compaction follow-up from durable Execution phase; host Profile and initial input composition are described in the Environment references.');
-turnsDoc += block('IdentityTaskLoop default', IDENTITY_TAKE_PROMPT);
+let turnsDoc = header('Complete retained Runtime turn messages', 'The Flat controller and compatibility Runtime retain these repository-owned texts. The retired benchmark coordinator no longer composes or sends discovery or solver startup messages. Runtime selects the compaction follow-up from durable Execution phase; host Profile and initial input composition are described in the Environment references.');
 turnsDoc += block('Independent solver compaction follow-up', SOLVER_CONTINUATION_MESSAGE);
 turnsDoc += block('Independent solver soft-closeout follow-up', SOLVER_CLOSEOUT_MESSAGE);
 turnsDoc += block('Flat bound continuation', BOT_CONTINUATION_MESSAGE);

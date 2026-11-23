@@ -17,7 +17,7 @@ const {createRuntime}=await import('../src/core/index.js'); hooks.deregister();
 async function fixture(t,options={}) {
   const root=await mkdtemp(join(tmpdir(),'flat-controller-'));
   const stores=await createFlatTaskStores(root); transport.reset();controls.stopError=null;controls.destroyError=null;
-  const runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:{}}},services:new ServiceRegistry(),maxBots:2,outputDir:root});
+  const runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:{}}},services:new ServiceRegistry(),maxBots:options.capacity??2,outputDir:root});
   const accepted=id=>{transport.confirm(id,'started');transport.next=accepted;}; transport.next=accepted;
   const reads={beforeGet:null};
   const controller=createFlatController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
@@ -305,4 +305,28 @@ test('Material publication and correction during discovery stay visible without 
   assert.equal(inputs.length,before+1);
   assert.equal(inputs.at(-1).source,'discovery');
   assert.equal(f.tasks.getExecution(execution.execution_id).state,'RUNNING');
+});
+
+
+test('four public Core Bots discover an empty Mission and stop without inventing Tasks or Executions',async t=>{
+  const missionId='mission:empty-discovery';
+  const f=await fixture(t,{missionId,capacity:4,beforeStart({tasks}) {
+    tasks.createMission({mission_id:missionId,goal:'Investigate distinct open questions'},makeEnvelope({actorRef:'host'}));
+  }});
+  const started=f.controller.snapshot();
+  assert.equal(started.bots.length,4);
+  assert.equal(new Set(started.bots.map(row=>row.botId)).size,4);
+  assert.deepEqual(f.tasks.listMissionTasks({mission_id:missionId}),[]);
+  assert.ok(started.bots.every(row=>f.tasks.getBot(row.botId).state==='UNBOUND'));
+  assert.equal(started.inputs.filter(row=>row.source==='discovery'&&row.status==='accepted').length,4);
+  transport.listeners.get(started.bots[0].botId)({type:'settled',outcome:'completed'});
+  await f.controller.flush();
+  assert.equal(f.controller.snapshot().inputs.length,5);
+  assert.equal(f.tasks.listActiveExecutions().length,0);
+  await f.controller.close();
+  const stopped=f.controller.snapshot();
+  assert.equal(stopped.bots.length,4);
+  assert.ok(stopped.bots.every(row=>row.released && row.lastStop.execution==='stopped'&&row.lastStop.cleanup==='complete'));
+  assert.ok(stopped.bots.every(row=>f.tasks.getBot(row.botId).state==='CLOSED'));
+  assert.deepEqual(f.tasks.listMissionTasks({mission_id:missionId}),[]);
 });

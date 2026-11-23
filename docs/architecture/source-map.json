@@ -867,17 +867,6 @@
       "role": "Authenticated guest snapshot, durable E save lineage and request reconciliation"
     },
     {
-      "path": "src/runtime/identity-task-loop.js",
-      "category": "Execution and control",
-      "chapters": [
-        "docs/architecture/02-execution.md",
-        "docs/architecture/05-workspace-continuity.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Per-Core discovery/take supervisor, rescans, waiting and wake events"
-    },
-    {
       "path": "src/runtime/manual-mission-review.js",
       "category": "Mission and Task",
       "chapters": [

@@ -22,7 +22,6 @@ export * from './runtime/mission-submission.js';
 export * from './runtime/opensandbox-manager.js';
 export * from './runtime/workspace-contract.js';
 export * from './runtime/runtime.js';
-export * from './runtime/identity-task-loop.js';
 export * from './judge/fixture.js';
 export * from './judge/check-result.js';
 export * from './judge/lean-adapter.js';

@@ -131,10 +131,6 @@
       "sha256": "5c97a8ff436b86e21a8b55b5dd8860100b085aba5b896147766b99241be77fe6"
     },
     {
-      "path": "src/runtime/identity-task-loop.js",
-      "sha256": "dbaf8e0b032a77d4b1ab7510837f138ee07cf5769725efc932c7945dea90fcd9"
-    },
-    {
       "path": "src/runtime/workspace-contract.js",
       "sha256": "8d602261f4d1dd30963050e4367004afd4a93205ac3cce79090af37f76d3cddf"
     },
@@ -475,7 +471,7 @@
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
-      "sha256": "3f626d5b96d486832e30b8c3ad4be672a840ce848dd0ae86801f5b3a1d1caa8c"
+      "sha256": "9cb7e5803d73353958c66102b7f7f33a47161bed9cd32fb779b02685fadb31e0"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
