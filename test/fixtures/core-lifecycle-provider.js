@@ -6,10 +6,15 @@ import { syncBuiltinESMExports } from 'node:module';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
 import { BOT_UID } from '../../scripts/sandbox-project.mjs';
+import { decodeFileSeed } from '../../scripts/core-file-seed.mjs';
+
+let runCommand;
+const execute = () => { throw new Error('Fixture expects promisified OS commands'); };
+execute[promisify.custom] = (...args) => runCommand(...args);
 
 // Simulate only external infrastructure: provider/Worker HTTP and host OS commands.
 // Core, its backend, manager, admission state and cleanup are the actual modules.
-export async function createLifecycleProvider(t) {
+export async function createLifecycleProvider(t, { fileOperation, onStart } = {}) {
   const resources = new Map();
   const records = [];
   const tables = new Map();
@@ -61,11 +66,10 @@ export async function createLifecycleProvider(t) {
     assert.ok(['/usr/bin/touch', '/usr/bin/mount', '/usr/bin/umount', '/usr/bin/rm', '/usr/bin/rmdir', '/usr/bin/python3'].includes(program));
     return { stdout: '' };
   };
-  const execute = () => { throw new Error('Fixture expects promisified OS commands'); };
-  execute[promisify.custom] = run;
+  runCommand = run;
   childProcess.execFile = execute;
   syncBuiltinESMExports();
-  t.after(() => { childProcess.execFile = originalExec; syncBuiltinESMExports(); });
+  t.after(() => { childProcess.execFile = originalExec; syncBuiltinESMExports(); runCommand = undefined; });
   const server = createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
@@ -85,8 +89,19 @@ export async function createLifecycleProvider(t) {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       return response.end(`event: stdout\ndata: ${JSON.stringify({ text: argv[0] === 'pi' ? '1.3.0' : 'v22.19.0' })}\n\nevent: execution_complete\ndata: {"exit_code":0}\n\n`);
     }
-    if (path === '/worker/start') return send({ result: { contract: { version: 'swarmenv-core-v1', resources: [] },
-      project_quota: body.project_quota, model_catalog_resource: body.model_catalog_resource } });
+    if (path === '/worker/start') {
+      const version = body.writable || body.files !== undefined ? 1 : 0;
+      const result = { contract: { version: 'swarmenv-core-v1', resources: [] },
+        project_quota: body.project_quota, model_catalog_resource: body.model_catalog_resource,
+        project_files: { writable: body.writable, version, ...(version ? { digest: decodeFileSeed(body.files ?? {}).digest } : {}) } };
+      onStart?.(body, result);
+      return send({ result });
+    }
+    if (fileOperation && path.startsWith('/worker/core/files/')) {
+      const reply = await fileOperation(path.split('/').at(-1), body);
+      if (reply.disconnect) return response.destroy();
+      return send(reply.body, reply.status ?? 200);
+    }
     if (path === '/worker/rpc') return send({ result: { response: { id: body.message.id, success: true, command: body.message.type,
       ...(body.message.type === 'prompt' ? { data: { disposition: 'started' } } : {}) },
       records: records.filter(row => row.worker_sequence > (body.message.since ?? 0)) } });

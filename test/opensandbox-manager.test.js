@@ -625,7 +625,7 @@ test('Core startup accepts explicitly classified nonsecret application environme
       if (url.endsWith('/health')) return response({ ok: true });
       if (url.endsWith('/start')) {
         launch = JSON.parse(options.body);
-        return response({ result: { contract: { version: 'swarmenv-core-v1', resources: [] } } });
+        return response({ result: { contract: { version: 'swarmenv-core-v1', resources: [] }, project_files: { writable: false, version: 0 } } });
       }
       throw new Error('Unexpected provider route');
     } });

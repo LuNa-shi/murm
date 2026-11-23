@@ -1,10 +1,11 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createCoreBridge } from './bridge.js';
 import { snapshotProfiles, snapshotSpawn, validId } from './config.js';
 import { createCoreModelAccess } from './model-access.js';
 import { createInputLedger } from './input-ledger.js';
+import { createFileControls } from './file-controls.js';
 import { claimPiOpenSandboxBackend, openPiOpenSandboxBackend } from './pi-opensandbox-backend.js';
 import { snapshotServiceRegistry } from './services.js';
 
@@ -125,6 +126,8 @@ export async function createRuntime(options) {
   const handlers = new Set();
   const spawnRequests = new Map();
   const inputRequests = createInputLedger(runtimeId);
+  const fileControls = createFileControls({ backend, findBot, problem, observe, timedOut,
+    isLive: bot => !closing && liveStates.has(bot.info.status) });
   const handlerErrors = [];
   let closeWork;
   let finalClose;
@@ -229,7 +232,7 @@ export async function createRuntime(options) {
     let parameters;
     try { parameters = snapshotSpawn(input, profiles, registrations); }
     catch (error) { throw problem('INVALID_CONTRACT', error.message, 'spawn', undefined, requestId); }
-    const fingerprint = JSON.stringify(Object.entries(parameters).sort());
+    const fingerprint = createHash('sha256').update(JSON.stringify(Object.entries(parameters).sort())).digest('hex');
     let request = spawnRequests.get(requestId);
     if (request) {
       if (request.fingerprint !== fingerprint) {
@@ -249,6 +252,8 @@ export async function createRuntime(options) {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
         activityClaims: new Set(), nativeExecuting: false, executionStopped: false,
       };
+      fileControls.register(bot, { writable: parameters.writable ?? bot.profile.writable,
+        seeded: parameters.files !== undefined });
       request = { fingerprint, bot };
       bots.set(info.id, bot);
       spawnRequests.set(requestId, request);
@@ -293,7 +298,7 @@ export async function createRuntime(options) {
     try { request = inputRequests.get('host', botId, requestId, { input, mode }); }
     catch (error) { throw problem(error.code, error.message, 'send', botId, requestId); }
     if (!request) {
-      if (closing || !liveStates.has(bot.info.status)) {
+      if (closing || !liveStates.has(bot.info.status) || !fileControls.canSend(bot)) {
         throw problem('NOT_ALLOWED', 'Bot is not accepting input', 'send', botId, requestId);
       }
       const inputId = randomUUID();
@@ -303,7 +308,8 @@ export async function createRuntime(options) {
       };
       request = { inputId, input, mode, run: async () => {
         if (request.dispatched && bot.info.status === 'closed') return { inputId, status: 'unknown' };
-        if (!request.dispatched && (closing || !liveStates.has(bot.info.status))) {
+        if (!request.dispatched && (closing || !liveStates.has(bot.info.status) || !fileControls.canSend(bot))) {
+          releaseActivity();
           throw problem('NOT_ALLOWED', 'Bot stopped before input dispatch', 'send', botId, requestId);
         }
         const querying = request.dispatched === true;
@@ -383,5 +389,5 @@ export async function createRuntime(options) {
     }]) : structuredClone(result);
   }
 
-  return Object.freeze({ id: runtimeId, spawn, get, send, onEvent, stop, close });
+  return Object.freeze({ id: runtimeId, spawn, get, send, onEvent, stop, close, files: fileControls.api });
 }

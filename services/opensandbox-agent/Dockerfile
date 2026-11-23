@@ -25,6 +25,8 @@ RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund
 COPY --from=filesystem-policy-build --chown=0:0 /bot-filesystem-policy /opt/swarmenv/bot-filesystem-policy
 COPY --chown=0:0 scripts/opensandbox-agent-worker.mjs /opt/swarmenv/agent-worker.mjs
 COPY --chown=0:0 scripts/sandbox-project.mjs /opt/swarmenv/sandbox-project.mjs
+COPY --chown=0:0 scripts/core-file-seed.mjs scripts/core-work-dir.mjs /opt/swarmenv/
+COPY --chown=0:0 scripts/core-file-seed.mjs /opt/swarmenv/scripts/core-file-seed.mjs
 COPY --chown=0:0 scripts/pi-rpc-submissions.mjs /opt/swarmenv/pi-rpc-submissions.mjs
 COPY --chown=0:0 scripts/project-install.mjs scripts/project-processes.mjs /opt/swarmenv/
 COPY --chown=0:0 scripts/swarm.mjs /opt/swarmenv/scripts/swarm.mjs
