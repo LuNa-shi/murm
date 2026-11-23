@@ -266,6 +266,14 @@ flat 在捕获前后复核同一领域身份，并在现有 Workspace 提交窗�
 
 原 Service 请求重放先读取其业务幂等记录；需要等待捕获时沿用原 capture requestId，不产生第二次捕获或第二个 Workspace revision。unknown、超时、stop/close 竞争、资源版本变化、领域失效、超限或内容摘要不符均不能发布成功；保留原请求、身份与原因，先核对或按现有 stop/close 合同收尾，不能换 ID 自动重试。停止未知时不释放领域归属；required 采集失败仍保留现场并报告 pending，后续可重试既有 stop/close。私有捕获清单/正文不进入普通报告，公开 revision 与 Materials 仍由 flat 的业务可见性规则决定。
 
+**OPEN — 稳定请求身份与持久发布状态。** flat 在首次捕获前，将原 Service operationId、操作与输入指纹、Runtime/Bot、当前 Execution/fence、固定初始 Workspace revision，以及本次保存所依据的 Workspace 状态版本写入现有 `execution_workspace_requests` 所属的私有请求记录。capture requestId 由这些请求身份字段的规范编码确定性派生，使用有界的不透明摘要；Core 收到 botId、该摘要和观察期限。`ExecutionWorkspace` 的捕获调用和 `snapshotProject` 适配接缝需要显式传播这份身份。当前仅传 executionId 的调用不能承担该合同。Service 重复调用先核对原操作与输入指纹，不允许同一身份更换内容、Bot、Execution 或资源后重新捕获。并发相同请求加入原工作；同一 Execution 的保存仍沿用现有串行锁。
+
+在捕获尚未得到确定结果时，持久请求保留 `capturing` 与原 capture requestId，并记录脱敏的 unknown 原因。重复 Service 请求在当前 Runtime 中核对同一 Core 请求，不能把 `capturing` 直接转换成终结失败后建议自动换 ID。等待和核对继续受剩余 Mission/Execution 期限约束，不产生额外 continuation，也不续租来扩大原预算。已有实现将未知捕获记为 `WORKSPACE_REQUEST_ABORTED`、或在恢复时终结所有 `capturing` 的分支需要按这一条件修改。原 Runtime 已结束且无法取回原捕获时保留未完成原因，阻止该请求发布；普通报告可以记录业务发布未完成和 Core 结果不可确认。此次不增加跨进程恢复、替换资源捕获或后台重试系统。
+
+成功捕获后，flat 校验回执的 Runtime/Bot/requestId/resourceVersion、规范清单与原始字节，将该不可变捕获和原领域来源持久写入请求的 `captured` 状态，再进入已有 Git/SQL 发布及对账流程。进入 `captured` 后的 Git 写入失败、SQL 回执丢失或重复调用都从原捕获继续核对，不能重新扫描当前 workDir。捕获前后分别核对同一 owner、Execution/fence、lease/deadline、Task spec、固定初始 revision 与保存父版本；发布提交窗口再次检查领域资格与当前 Workspace 状态版本，防止其他保存已改变父版本后仍采用旧决定。资格失效、输入或清单确定错误和已确认的捕获失败记录为原请求的确定失败，保留失败阶段。领域授权失效即使伴随 Core 捕获 unknown 也必须阻止发布，并保留资源结果待核对的事实。已完成发布的重放沿用原业务回执核对规则，只返回原 revision。它不授予后来的新写入权限。所有新发布必须通过当前领域复核。
+
+`workspace status/diff` 同样传播原 Service 请求身份并使用可信捕获，在原 Service 请求内返回固定观察结果。只读观察不创建 Workspace revision，也不改变保存父版本；后续新的 Service 请求可以观察后续目录状态。调用者明确发起的新业务操作使用新 operationId；unknown 重试沿用原 operationId，自动控制路径不能将它改写成新业务操作。
+
 以下保留真实 TaskService 入口。prepareFlatInputs、executionEnvelope、startPreparationHeartbeat、timing 及补偿函数都是 flat 的迁移代码，不属于 Core。
 
 ```ts
@@ -384,6 +392,15 @@ authorizeFlatModelCall 从旧 validateBot 提取，返回 ModelPermit：phase/de
 - flat 仅用 Core 公开接口，模型 gateway 仍执行领域授权。
 
 **OPEN 提案的增量验收：** 本提案经负责人决定、设计审查合入且既定资源授权与两个独立 review gate 均满足后，固定实际 Pi/OpenSandbox 路径应证明：Bot 的真实 Bash `workspace save` 等待期间完成捕获并返回；原 Session、cwd 和进程随后继续可用；发布 revision 的二进制字节与宿主回读一致；相同 Service 请求与 capture 请求重放不产生第二个 revision 或第二次扫描；并发 stop、陈旧 owner/fence、未知响应与超限均无错误发布。prepare/grant/collect 的负向与 required/pending 收尾回归分别保留，不拿其中之一代替 live 捕获验收。实际模型路径须有明确 opt-in 的单独验证证据；缺失该证据应记录为未验证，不能替代接口决策或否定已经独立核验的收尾能力。本草案未安排实际运行。
+
+OPEN 的确定性增量检查应通过公开 Core 与真实 flat Service adapter，受控注入 Worker 结果或发布故障，至少覆盖以下条件。
+
+- 相同 Service operationId 的并发、完成后重放和 unknown 后重放均传递同一 capture requestId。更改输入复用 operationId 拒绝。每个请求最多一次 Worker 扫描、一个公共 revision。
+- 第一次捕获观察到期后目录发生改变，第二次用更短剩余等待核对原请求，最终只能发布原捕获字节。两次观察不重置 Worker 执行期限。原结果仍未知时保持未完成且没有 revision。
+- 捕获成功但写入 `captured` 前宿主观察中断，在同一存活 Runtime 内重放核对原 Core 回执。写入 `captured` 后 Git 提交成功而 SQL 回执失败，重放依据原捕获及已有发布对账获得同一 revision。两种情况都不读取后来的目录内容。
+- 在首次捕获前、捕获后和发布提交窗口分别改变 owner、fence、lease/deadline、Task spec、初始 Workspace revision 或保存父状态版本，均拒绝新发布。捕获 unknown 同时发生领域失效时，业务拒绝与资源未确认各自可追踪。
+- Worker 明确拒绝、清单摘要错误、超限等确定失败重放返回原失败，不重新捕获。传输中断和观察到期保留原请求核对资格。原 Runtime 丢失、Bot 被替换或 close 已接管时，不能在新资源上补拍或错误发布。
+- `status/diff` 的相同请求重放返回同一观察结果，新的显式请求可以观察后续变化，两者均不创建 revision。已完成 save 的业务回执重放保持原 revision 和来源。
 
 ### 6.6 来源与适配差异
 
