@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2065 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2067 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -37,10 +37,12 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
 | [src/agent/version-manifest.js](../../src/agent/version-manifest.js) | Adapter/version/prompt/runtime provenance manifest | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e107aad797eff177bbfc2c64489381f690fb8f814e4d42413ddd70abb40af5f8` |
 
-### Execution and control (11)
+### Execution and control (13)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
+| [examples/notes-environment/config.mjs](../../examples/notes-environment/config.mjs) | Sample host lifecycle, provider, model, output and resource configuration | [17-environment-reporting](17-environment-reporting.md) | `939405a2636cb1a80977f3c1ed41488c0066ac901f561a0074653e15324bfcbb` |
+| [examples/notes-environment/main.mjs](../../examples/notes-environment/main.mjs) | Installed-package Notes Environment Service, role prompts, input order and archive verification | [17-environment-reporting](17-environment-reporting.md) | `d5c5adc3d8ca0d10ad7ccc061f5c1b711688ae5fdfb54f0d8d030ff7197e4ea2` |
 | [src/agent/bot-model-access.js](../../src/agent/bot-model-access.js) | Trusted Bot lifecycle and model credential composition | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `1e4d3c62c20f7914a7d41b6e1231fb04bad3e2b34ea47d0977c664859016f27d` |
 | [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js) | Bounded Responses forwarding with durable observed attempts or explicit financial reservations | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `46daab2e9cae5d644dc2b84e52881bea67d6b5e8c91e92f22d8d94a5c03fd175` |
 | [src/benchmark/benchmark-fixture.js](../../src/benchmark/benchmark-fixture.js) | Pinned Git blob and timed service composition gates | [07-run-configuration](07-run-configuration.md) | `bf6aafd3caab9041b0262cf4d916bb2110d1d11a14d7b3765fc6db6cfaa512c6` |
@@ -2019,7 +2021,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `452ee5db7e6ecdf992532572a58f08a3117f5809d0443eb323b18b16bbea9bd8` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `2e0417102b20c5736ba19fee392d1d8c8a888d107aa21805cddaf2ee11518d2d` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `927242d469f2b2c3613ea6ed8f007bf049f4eeb57a08641dadcecd2567f9a35e` |
 
 ### durable storage (3)
 

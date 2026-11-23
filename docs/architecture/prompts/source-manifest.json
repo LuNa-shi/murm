@@ -63,6 +63,14 @@
       "sha256": "4658d7f339a55ef531e1573dede1f06b8e7baf908abbaa2c94099e73a3cf6126"
     },
     {
+      "path": "examples/notes-environment/main.mjs",
+      "sha256": "d5c5adc3d8ca0d10ad7ccc061f5c1b711688ae5fdfb54f0d8d030ff7197e4ea2"
+    },
+    {
+      "path": "src/environments/shared/run-input.js",
+      "sha256": "393b251d8ba49902f7b9d2270796a264ec05f44ddc8e9c47e460563f0c79d015"
+    },
+    {
       "path": "src/benchmark/putnam-runner.js",
       "sha256": "7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63"
     },
@@ -133,6 +141,30 @@
       "anchor": "function selectionView(candidates) {\n  return ",
       "line": 614,
       "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
+    },
+    {
+      "path": "examples/notes-environment/main.mjs",
+      "anchor": "const key = '",
+      "line": 10,
+      "sha256": "1372308bcd0c2a4bf0cce93a81833b1d747d74543ebfb743f7124eecabb21c67"
+    },
+    {
+      "path": "examples/notes-environment/main.mjs",
+      "anchor": "const inputText = Object.freeze(",
+      "line": 73,
+      "sha256": "0bbf0e870d7d6809c906eb5413c61f58bf58513c7b861b4780c94f200bf4470c"
+    },
+    {
+      "path": "examples/notes-environment/main.mjs",
+      "anchor": "writer: { ...common, prompt: '",
+      "line": 96,
+      "sha256": "940b9719824154d76eae72fa2febfaf972fe288cee3b71d3b6bbf8ae87bb2bcb"
+    },
+    {
+      "path": "examples/notes-environment/main.mjs",
+      "anchor": "reader: { ...common, prompt: '",
+      "line": 97,
+      "sha256": "c0f2900930e9feb73c9524e5ffb86c4b5dd6fe750b3cccf4948fabdbd413095a"
     }
   ],
   "prompt_send_sites": [
@@ -278,6 +310,10 @@
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
       "sha256": "b30c2505110fe8f8aea8f94d82465282d4e012cd161191a332fb977f284a9bf1"
+    },
+    {
+      "path": "docs/architecture/prompts/07-notes-environment.md",
+      "sha256": "7a8eaeebde7e124bb8deaa8deb9cd116a892a4063917e02e12b4520607f589d4"
     }
   ]
 }
