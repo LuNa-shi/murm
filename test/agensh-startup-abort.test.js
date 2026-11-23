@@ -23,14 +23,16 @@ for (const phase of ['readiness', 'account', 'repository']) test(`actual product
     response.setHeader('content-type', 'application/json'); response.end(JSON.stringify(result));
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  t.after(async () => { gate.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await Promise.all(pending); });
+  t.after(async () => { gate.dispose(); gate.cleanup.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await Promise.all(pending); });
   const origin = `http://127.0.0.1:${server.address().port}`;
   gate = createWorkGate(60);
   let thrown;
   await assert.rejects(gate.create(() => createAgenshEnvironment({ runId: 'abort', image: 'unused', exportLimit: 1024, signal: gate.signal,
     gitea: { origin, adminToken: 'private-admin', owner: 'owner' }, mattermost: { origin, adminToken: 'private-mm-admin', teamId: 'team' },
     startBoard: async () => { boardStarts++; throw new Error('Unexpected board start'); },
-  })), error => { thrown = error; assert.equal(error.code, 'ENVIRONMENT_START_ABORTED'); assert.equal(error.cleanup, 'complete'); return true; });
+  })), error => ['ENVIRONMENT_START_ABORTED', 'ACTUAL_PEER_WORK_EXPIRED'].includes(error.code));
+  const creation = await gate.awaitCreation(); thrown = creation.error;
+  assert.equal(creation.state, 'failed'); assert.equal(thrown.code, 'ENVIRONMENT_START_ABORTED'); assert.equal(thrown.cleanup, 'complete');
   await Promise.all(pending);
   assert.equal(gate.expired(), true); assert.equal(boardStarts, 0); assert.equal(gate.environment(), undefined);
   const writes = rows.filter(row => row.method !== 'GET' && !row.cleanup);
@@ -75,15 +77,14 @@ test('an aborted account write absent from reconciliation stays pending until it
     response.end('{}');
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  t.after(async () => { gate.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await pending; });
+  t.after(async () => { gate.dispose(); gate.cleanup.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await pending; });
   const origin = `http://127.0.0.1:${server.address().port}`; gate = createWorkGate(60);
   await assert.rejects(gate.create(() => createAgenshEnvironment({ runId: 'late', image: 'unused', exportLimit: 1024, signal: gate.signal,
     gitea: { origin, adminToken: 'private', owner: 'owner' }, mattermost: { origin, adminToken: 'private', teamId: 'team' }, startBoard() { throw new Error('must not start'); },
-  })), error => {
-    assert.equal(error.code, 'ENVIRONMENT_START_ABORTED'); assert.equal(error.cleanup, 'pending');
-    assert.ok(error.details.some(row => row.resources?.some(resource => resource.kind === 'gitea-account' && resource.state === 'pending')));
-    return true;
-  });
+  })), error => ['ENVIRONMENT_START_ABORTED', 'ACTUAL_PEER_WORK_EXPIRED'].includes(error.code));
+  const creation = await gate.awaitCreation(); assert.equal(creation.state, 'failed');
+  assert.equal(creation.error.code, 'ENVIRONMENT_START_ABORTED'); assert.equal(creation.error.cleanup, 'pending');
+  assert.ok(creation.error.details.some(row => row.resources?.some(resource => resource.kind === 'gitea-account' && resource.state === 'pending')));
   assert.equal(created, false); await pending;
   assert.equal(created, true); assert.equal(startupWrites, 1);
 });

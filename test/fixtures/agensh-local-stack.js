@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { randomBytes } from 'node:crypto';
 import { mkdir, chmod } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createDeadline } from './agensh-deadline.js';
+import { createDeadline, createCleanupBudget } from './agensh-deadline.js';
 import { httpClient } from '../../src/environments/agensh/http.js';
 
 export const facilityImages = Object.freeze({
@@ -21,15 +21,16 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
   const network = `${owner}-network`; const names = []; const receipts = [];
   const dbPassword = randomBytes(24).toString('hex'); const adminPassword = randomBytes(24).toString('hex');
   const secrets = [dbPassword, adminPassword];
-  let networkOwned = false; let started = false;
+  let networkOwned = false; let networkCreationUnknown = false; let started = false;
+  const unknownContainers = new Set();
   let setup;
   const setupStep = operation => setup.step(operation);
   const request = (origin, authorization) => (method, path, body) => setupStep(({ signal }) => httpClient(origin, authorization)(method, path, body, { signal }));
-  const docker = async (args, cleanup = false, signal) => {
+  const docker = async (args, signal) => {
     try { signal?.throwIfAborted();
       const invoke = timeout => executeCommand('docker', args, { timeout, maxBuffer: 1024 ** 2, ...(signal ? { signal } : {}) });
-      return (cleanup ? await invoke(15_000) : await setup.step(({ timeoutMs }) => invoke(timeoutMs), 15_000)).stdout.trim(); }
-    catch { if (!cleanup) setup.remaining(); throw sanitized('LOCAL_FACILITY_DOCKER_FAILED'); }
+      return (await setup.step(({ timeoutMs }) => invoke(timeoutMs), 15_000)).stdout.trim(); }
+    catch { setup.remaining(); throw sanitized('LOCAL_FACILITY_DOCKER_FAILED'); }
   };
   async function wait(check, signal) {
     while (true) {
@@ -39,26 +40,32 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
   }
   async function run(kind, { env = {}, ports = [], volumes = [], args = [], cpu, memory, signal }) {
     signal?.throwIfAborted(); setup.remaining();
-    const name = `${owner}-${kind}`; names.push(name);
+    const name = `${owner}-${kind}`; names.push(name); unknownContainers.add(name);
     await docker(['run', '--detach', '--pull=never', '--name', name, '--network', network, '--label', `swarmenv.t13.owner=${owner}`, '--cpus', String(cpu), '--memory', memory,
       '--pids-limit', '512', ...Object.entries(env).flatMap(([key, value]) => ['--env', `${key}=${value}`]), ...ports.flatMap(value => ['--publish', value]),
-      ...volumes.flatMap(value => ['--volume', value]), facilityImages[kind], ...args], false, signal);
-    const evidence = JSON.parse(await docker(['inspect', '--format', '{{json .Id}}', name], false, signal));
+      ...volumes.flatMap(value => ['--volume', value]), facilityImages[kind], ...args], signal);
+    unknownContainers.delete(name);
+    const evidence = JSON.parse(await docker(['inspect', '--format', '{{json .Id}}', name], signal));
     signal?.throwIfAborted();
     receipts.push({ kind, name, containerId: evidence, image: facilityImages[kind], cpu, memory });
     return name;
   }
   async function published(name, port, host = '127.0.0.1', signal) {
-    const ports = JSON.parse(await docker(['inspect', '--format', '{{json .NetworkSettings.Ports}}', name], false, signal));
+    const ports = JSON.parse(await docker(['inspect', '--format', '{{json .NetworkSettings.Ports}}', name], signal));
     return `http://${host}:${ports[`${port}/tcp`][0].HostPort}`;
   }
-  async function close() {
+  async function close(budget) {
+    const ownsBudget = !budget; budget ??= createCleanupBudget(45_000).start();
     setup?.dispose();
-    const cleanupDocker = args => docker(args, true);
+    const cleanupDocker = args => budget.step(async ({ timeoutMs, signal }) => {
+      try { return (await executeCommand('docker', args, { timeout: timeoutMs, signal, maxBuffer: 1024 ** 2 })).stdout.trim(); }
+      catch { throw sanitized('LOCAL_FACILITY_DOCKER_FAILED'); }
+    }, 15_000);
     const results = await Promise.all(names.map(async name => {
       try {
         const found = await cleanupDocker(['ps', '--all', '--quiet', '--filter', `name=^/${name}$`, '--filter', `label=swarmenv.t13.owner=${owner}`]);
-        if (found) await cleanupDocker(['rm', '--force', '--volumes', found]);
+        if (found) { await cleanupDocker(['rm', '--force', '--volumes', found]); unknownContainers.delete(name); }
+        else if (unknownContainers.has(name)) throw sanitized('FACILITY_CREATE_UNKNOWN');
         return { name, cleanup: 'complete' };
       } catch { return { name, cleanup: 'pending', code: 'FACILITY_CONTAINER_PENDING' }; }
     }));
@@ -66,15 +73,19 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
     if (networkOwned) {
       try {
         const found = await cleanupDocker(['network', 'ls', '--quiet', '--filter', `name=^${network}$`, '--filter', `label=swarmenv.t13.owner=${owner}`]);
-        if (found) await cleanupDocker(['network', 'rm', found]); networkOwned = false;
+        if (found) { await cleanupDocker(['network', 'rm', found]); networkCreationUnknown = false; }
+        else if (networkCreationUnknown) throw sanitized('FACILITY_CREATE_UNKNOWN');
+        networkOwned = false;
       } catch { networkCleanup = 'pending'; }
     }
     let remaining;
     try { remaining = (await cleanupDocker(['ps', '--all', '--quiet', '--filter', `label=swarmenv.t13.owner=${owner}`])).split('\n').filter(Boolean); }
     catch { remaining = null; }
-    return { cleanup: results.every(row => row.cleanup === 'complete') && networkCleanup === 'complete' && remaining?.length === 0 ? 'complete' : 'pending', results, networkCleanup, remaining };
+    const receipt = { cleanup: results.every(row => row.cleanup === 'complete') && networkCleanup === 'complete' && remaining?.length === 0 ? 'complete' : 'pending', results, networkCleanup, remaining };
+    if (ownsBudget) budget.dispose();
+    return receipt;
   }
-  const stack = { close, receipt: () => ({ owner, network, containers: receipts, sharedStorageRetained: true }), secrets,
+  const stack = { close, receipt: () => ({ owner, network, containers: receipts, allocationIntents: names.map(name => ({ name, unknown: unknownContainers.has(name) })), networkCreationUnknown, sharedStorageRetained: true }), secrets,
     async start() {
       if (started) throw sanitized('LOCAL_STACK_ALREADY_STARTED'); started = true;
       setup = createDeadline(setupMs, 'LOCAL_FACILITY_SETUP_EXPIRED');
@@ -86,7 +97,7 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
         data[key] = join(directory, key); await setupStep(() => mkdir(data[key], { mode: 0o700 }));
         if (key.startsWith('mm-')) await setupStep(() => chmod(data[key], 0o777)); // parent directory remains private
       }
-      setup.remaining(); networkOwned = true; await docker(['network', 'create', '--label', `swarmenv.t13.owner=${owner}`, network]);
+      setup.remaining(); networkOwned = true; networkCreationUnknown = true; await docker(['network', 'create', '--label', `swarmenv.t13.owner=${owner}`, network]); networkCreationUnknown = false;
       const database = await run('mysql', { cpu: 1, memory: '1g', env: { MYSQL_ROOT_PASSWORD: dbPassword, MYSQL_DATABASE: 'board', MYSQL_USER: 'agensh', MYSQL_PASSWORD: dbPassword },
         volumes: [`${data.mysql}:/var/lib/mysql`], args: ['--innodb-use-native-aio=0', '--innodb-buffer-pool-size=134217728', '--max-connections=100'] });
       await wait(() => docker(['exec', '--env', `MYSQL_PWD=${dbPassword}`, database, 'mysql', '-uroot', '-e', 'SELECT 1']));
