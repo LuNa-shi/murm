@@ -14,7 +14,10 @@
     "package-lock.json",
     ".env.example",
     ".gitignore",
-    ".gitmodules"
+    ".gitmodules",
+    "examples/notes-environment/.npmignore",
+    "examples/subagents-environment/.npmignore",
+    "examples/lead-helper-environment/.npmignore"
   ],
   "excluded": [
     {
@@ -1734,6 +1737,30 @@
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Serial JSON-line host commands and bounded status/input receipt projection"
+    },
+    {
+      "path": "examples/notes-environment/.npmignore",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Exclude the example default private run-output directory from npm distribution"
+    },
+    {
+      "path": "examples/subagents-environment/.npmignore",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Exclude the example default private run-output directory from npm distribution"
+    },
+    {
+      "path": "examples/lead-helper-environment/.npmignore",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Exclude the example default private run-output directory from npm distribution"
     }
   ]
 }

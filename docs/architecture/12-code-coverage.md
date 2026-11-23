@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **184 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **187 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. Root files: `package.json`, `package-lock.json`, `.env.example`, `.gitignore`, `.gitmodules`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. Root files: `package.json`, `package-lock.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -41,6 +41,14 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
 | [src/agent/version-manifest.js](../../src/agent/version-manifest.js) | Adapter/version/prompt/runtime provenance manifest | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e107aad797eff177bbfc2c64489381f690fb8f814e4d42413ddd70abb40af5f8` |
+
+### Configuration and build (3)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [examples/lead-helper-environment/.npmignore](../../examples/lead-helper-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `d77bab7a6074d13ff59bdfa02e5ab933fc36e61d46b08a03856d989352faf678` |
+| [examples/notes-environment/.npmignore](../../examples/notes-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `d77186f09046a602cca36239b026d494de43b6af3598e359385fa14f7c73d463` |
+| [examples/subagents-environment/.npmignore](../../examples/subagents-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `fb35e517dca8537bd1c9a7e26e31c288e97e95649604eca6e6ee671ae6330f46` |
 
 ### Environment composition (3)
 
