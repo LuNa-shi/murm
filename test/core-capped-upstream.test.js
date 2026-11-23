@@ -99,3 +99,17 @@ test('invalid credentials and provider failures produce sanitized proxy errors',
   await assert.rejects(createCappedUpstream({ upstreamUrl: 'not a url secret', deadlineAt: Date.now() + 2000,
     filename: 'check.txt', marker: 'EXPECTED' }), { message: 'LIVE_UPSTREAM_CONFIGURATION_INVALID' });
 });
+
+test('selection-only capped upstream forces no tools for its single paid request', async t => {
+  let actual;
+  const upstreamUrl = await localUpstream(t, async (request, response) => {
+    const chunks = []; for await (const chunk of request) chunks.push(chunk);
+    actual = JSON.parse(Buffer.concat(chunks));
+    response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end('data: [DONE]\n\n');
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 1, maxOutputTokens: 512,
+    filename: 'unused', marker: 'FLAT_SELECTION_OK', disableTools: true });
+  t.after(() => cap.close());
+  await (await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [], tool_choice: 'auto' }) })).text();
+  assert.equal(actual.tool_choice, 'none');
+});

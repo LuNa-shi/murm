@@ -9,7 +9,7 @@ function json(response, status, code) {
 }
 
 export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, deadlineAt,
-  maxRequests = 8, maxOutputTokens = 4096, filename, marker }) {
+  maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false }) {
   let target;
   try { target = new URL(upstreamUrl); } catch { throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID'); }
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.hash ||
@@ -17,7 +17,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 8 ||
       !Number.isInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 4096 ||
       !upstreamHeaders || typeof upstreamHeaders !== 'object' || Array.isArray(upstreamHeaders) ||
-      typeof filename !== 'string' || !filename || typeof marker !== 'string' || !marker) {
+      typeof disableTools !== 'boolean' || typeof filename !== 'string' || !filename || typeof marker !== 'string' || !marker) {
     throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID');
   }
   const headers = { ...upstreamHeaders };
@@ -84,9 +84,10 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     if (forwarded >= maxRequests) { json(response, 429, 'LIVE_REQUEST_CAP'); return; }
     observeToolResults(body.input);
     body.max_output_tokens = Math.min(body.max_output_tokens ?? maxOutputTokens, maxOutputTokens);
+    if (disableTools) body.tool_choice = 'none';
     const data = Buffer.from(JSON.stringify(body));
     const number = ++forwarded;
-    const record = { number, status: 'dispatched', maxOutputTokens: body.max_output_tokens };
+    const record = { number, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true } : {}) };
     records.push(record);
     const outgoingHeaders = { ...headers, 'content-type': 'application/json', accept: 'text/event-stream', 'content-length': data.length };
     for (const name of ['x-swarmenv-request-id', 'x-request-id', 'idempotency-key']) {

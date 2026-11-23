@@ -477,21 +477,21 @@ export class ResponsesBudgetGateway {
     const originalLease = leaseFor(authority);
     const arm = current => {
       const lease = leaseFor(current);
-      const nextCheck = originalLease
-        ? Math.min(hardDeadline, lease.expiresAt, Date.now() + executionAuthorityCheckMs)
-        : hardDeadline;
+      const nextCheck = Math.min(hardDeadline, lease?.expiresAt ?? Infinity, Date.now() + executionAuthorityCheckMs);
       timer = setTimeout(check, Math.max(0, nextCheck - Date.now()));
     };
     const check = () => {
       if (controller.signal.aborted) return;
       try {
         const binding = this.#tokens.get(token);
-        if (Date.now() < hardDeadline && binding && originalLease) {
+        if (Date.now() < hardDeadline && binding) {
           const current = this.validateBot(binding);
           const lease = leaseFor(current);
           const at = Date.now();
-          if (lease?.key === originalLease.key && lease.version === originalLease.version &&
-              at < lease.expiresAt && at < current.deadline) {
+          const sameLease = originalLease
+            ? lease?.key === originalLease.key && lease.version === originalLease.version && at < lease.expiresAt
+            : !lease;
+          if (current && sameLease && at < current.deadline) {
             hardDeadline = Math.min(hardDeadline, current.deadline);
             if (at < hardDeadline) {
               arm(current);
