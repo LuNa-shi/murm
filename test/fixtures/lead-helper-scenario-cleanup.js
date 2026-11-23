@@ -4,14 +4,18 @@ import { setImmediate } from 'node:timers/promises';
 export async function drainLeadHelperFixture({ stopWork, guests, work }) {
   stopWork();
   const exits = [...guests].map(guest => {
-    if (guest.exitCode !== null || guest.signalCode !== null) return Promise.resolve();
-    return new Promise(resolve => { guest.once('close', resolve); guest.kill(); });
+    // Every simulated guest is spawned detached, owning its process group.
+    // Killing only Node abandons its execFile Bash tree and its vanished timer.
+    if (!Number.isSafeInteger(guest.pid) || guest.pid <= 1) throw new Error('Simulated guest has no safe owned process group');
+    const closed = guest.exitCode !== null || guest.signalCode !== null ? Promise.resolve() : new Promise(resolve => guest.once('close', resolve));
+    try { process.kill(-guest.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; }
+    return closed;
   });
   let timer;
   try {
     await Promise.race([
       (async () => {
-        await Promise.all([...exits, ...work].map(promise => Promise.resolve(promise).catch(() => {})));
+        await Promise.all([...exits, ...[...work].map(promise => Promise.resolve(promise).catch(() => {}))]);
         // The transport callback is awaited by backend.send and then Core.send.
         // Let those resumed owners enqueue their evidence before Core.close's
         // final flush; waiting for the callback alone is not that boundary.

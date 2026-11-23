@@ -88,12 +88,20 @@ async function scenario(t, failure, fixturePrograms = false) {
         const start = transport.spawns.get(input.botId);
         if (!guests.has(role)) {
           const program = `process.title='pi';const {execFile}=require('node:child_process');require('node:readline').createInterface({input:process.stdin}).on('line',line=>{const command=JSON.parse(line);execFile('bash',['-c',command],{timeout:15000,maxBuffer:4194304},(error,stdout,stderr)=>process.stdout.write(JSON.stringify({ok:!error,stdout,stderr})+'\\n'))});`;
-          guests.set(role, spawn(process.execPath, ['-e', program], { cwd: privateDirectories[role], env: { ...process.env, ...start.profile.env, ...start.credentials.environment, ...start.credentials.secretEnvironment, RUN_REPOSITORY: repository, PATH: bin + ':' + process.env.PATH }, stdio: ['pipe', 'pipe', 'pipe'] }));
+          guests.set(role, spawn(process.execPath, ['-e', program], { detached: true, cwd: privateDirectories[role], env: { ...process.env, ...start.profile.env, ...start.credentials.environment, ...start.credentials.secretEnvironment, RUN_REPOSITORY: repository, PATH: bin + ':' + process.env.PATH }, stdio: ['pipe', 'pipe', 'pipe'] }));
         }
         const sessionDirectory = join(privateDirectories[role], '.sessions');
         if (payload.type === 'user-and-feedback' || payload.type === 'helper-followup') { await mkdir(sessionDirectory); await writeFile(join(sessionDirectory, role + '.jsonl'), ''); }
         const guest = guests.get(role);
-        const result = await new Promise((resolve, reject) => { let line = ''; const timer = setTimeout(() => reject(new Error('Guest test deadline')), 18000); const receive = data => { line += data; if (line.includes('\n')) { clearTimeout(timer); guest.stdout.off('data', receive); resolve(JSON.parse(line.trim())); } }; guest.stdout.on('data', receive); guest.stdin.write(JSON.stringify(leadHelperCommand(payload.type, { sessionDirectory })) + '\n'); });
+        const result = await new Promise((resolve, reject) => {
+          let line = '';
+          const finish = (error, value) => { clearTimeout(timer); guest.stdout.off('data', receive); guest.off('close', ended); if (error) reject(error); else resolve(value); };
+          const ended = () => finish(new Error('Simulated guest stopped'));
+          const receive = data => { line += data; if (line.includes('\n')) { try { finish(null, JSON.parse(line.trim())); } catch (error) { finish(error); } } };
+          const timer = setTimeout(() => finish(new Error('Guest test deadline')), 18000);
+          guest.stdout.on('data', receive); guest.once('close', ended);
+          guest.stdin.write(JSON.stringify(leadHelperCommand(payload.type, { sessionDirectory })) + '\n');
+        });
         assert.equal(result.ok, true, result.stderr);
         const row = JSON.parse(result.stdout); assert.equal(row.role, role); assert.equal(row.botId, input.botId);
         transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'completed', output: 'PUBLIC_OK' });
