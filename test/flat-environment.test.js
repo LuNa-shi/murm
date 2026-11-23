@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
@@ -298,4 +298,180 @@ test('fatal Core revocation prevents a held flat capture from publishing before 
       await Promise.allSettled([feedback, save]);
     }
   });
+});
+
+test('flat rejects a configured Workspace from another Mission before allocating Core resources', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'flat-read-authority-'));
+  const stores = await createFlatTaskStores(root);
+  t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
+  const foreign = await stores.workspace.create({ missionId: 'mission:foreign', workspaceId: 'foreign-workspace',
+    initialFiles: { 'secret.txt': 'PRIVATE_FOREIGN_CONTENT' } });
+  transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
+  const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
+  transport.next = accept;
+  let entered = false;
+  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+    missionWorkspace: stores.workspace, workspaceManager: stores.manager, workspaceId: foreign.workspace_id,
+    outputDir: root, deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    snapshotProject: async () => { throw new Error('No capture is needed for a public read'); },
+    async drive(controller) { entered = true; controller.halt('unexpected-admission'); },
+  });
+  assert.equal(report.businessFailure?.code, 'NOT_ALLOWED');
+  assert.equal(report.result, null);
+  assert.equal(report.cleanup, null);
+  assert.equal(report.cleanupFailure, null);
+  assert.equal(report.reportSaveFailure, null);
+  assert.equal(entered, false);
+  assert.equal(controls.credentials.size, 0);
+  assert.equal(stores.tasks.listExecutions(stores.task.task_id).length, 0);
+  const saved = JSON.parse(await readFile(report.reportPath, 'utf8'));
+  assert.deepEqual(saved.businessFailure, report.businessFailure);
+  assert.doesNotMatch(JSON.stringify(saved), /PRIVATE_FOREIGN_CONTENT/);
+});
+
+for (const [operation, method, payload] of [
+  ['workspace_public_view', 'get', {}],
+  ['workspace_public_read', 'read', { path: 'input.txt' }],
+  ['workspace_public_files', 'files', {}],
+]) test(`flat ${operation} Core revocation cancels its actual queued read while another Bot and a write retain lock order`, {
+  timeout: 20_000,
+}, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'flat-read-cancellation-'));
+  const stores = await createFlatTaskStores(root);
+  t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
+  transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
+  const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
+  transport.next = accept;
+  let probeFailure;
+  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+    missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
+    deadlineAt: Date.now() + 15_000, backend: {}, model: 'default', image: 'fixture', capacity: 2,
+    snapshotProject: async () => { throw new Error('No capture is needed for a public read'); },
+    async drive(controller, runtime) {
+      controller.halt('public-read-probe');
+      const [first, second] = controller.snapshot().bots;
+      const call = async (bot, requestId) => {
+        const credentials = controls.credentials.get(bot.botId);
+        const url = new URL(credentials.environment.SWARMENV_BRIDGE_URL);
+        url.hostname = '127.0.0.1';
+        const response = await fetch(`${url.origin}/call`, { method: 'POST',
+          headers: { authorization: `Bearer ${credentials.secretEnvironment.SWARMENV_BRIDGE_TOKEN}`,
+            'content-type': 'application/json' },
+          body: JSON.stringify({ service_id: 'workspace', operation, operation_id: requestId, payload }),
+          signal: AbortSignal.timeout(5000) });
+        return { status: response.status, body: await response.json() };
+      };
+      const original = stores.workspace[method].bind(stores.workspace);
+      const lockEntered = Promise.withResolvers();
+      const release = Promise.withResolvers();
+      const queued = Promise.withResolvers();
+      const actualRead = Promise.withResolvers();
+      let holding, canceled, surviving, writing;
+      stores.workspace[method] = async options => {
+        if (!holding) {
+          holding = stores.workspace.repository.locked(stores.workspace.workspacePath(stores.workspaceId), async () => {
+            lockEntered.resolve();
+            await release.promise;
+          });
+          await lockEntered.promise;
+          const result = original(options);
+          result.then(() => actualRead.resolve({ completed: true }), () => actualRead.resolve({ completed: false }));
+          queued.resolve(options.signal);
+          return result;
+        }
+        return original(options);
+      };
+      try {
+        canceled = call(first, 'canceled-reader');
+        const trustedSignal = await queued.promise;
+        let survivorFinished = false, writeFinished = false;
+        surviving = call(second, 'surviving-reader').then(result => { survivorFinished = true; return result; });
+        writing = stores.workspace.save({ workspaceId: stores.workspaceId, baseRevision: '0.1',
+          files: { 'input.txt': 'retained write' } }).then(result => { writeFinished = true; return result; });
+        transport.listeners.get(first.botId)({ type: 'error', fatal: true,
+          error: { code: 'CONTROLLED_READ_FENCE', message: 'Controlled caller revocation' } });
+        const stopped = await runtime.stop(first.botId, { timeoutMs: 1000 });
+        assert.equal(stopped.execution, 'stopped');
+        const result = await canceled;
+        assert.equal(result.status, 503);
+        assert.equal(result.body.error.code, 'SERVICE_UNAVAILABLE');
+        const settled = await Promise.race([actualRead.promise, wait(250).then(() => null)]);
+        assert.deepEqual(settled, { completed: false }, 'the actual Workspace read must cancel before its predecessor lock releases');
+        assert.ok(trustedSignal instanceof AbortSignal);
+        assert.equal(trustedSignal.aborted, true);
+        assert.equal(survivorFinished, false);
+        assert.equal(writeFinished, false);
+        release.resolve();
+        await holding;
+        const survivor = await surviving;
+        assert.equal(survivor.status, 200);
+        if (method === 'read') assert.equal(survivor.body.result.content, 'fixed λ\n');
+        if (method === 'files') assert.equal(survivor.body.result.files[0].path, 'input.txt');
+        if (method === 'get') assert.equal(survivor.body.result.mission_id, stores.missionId);
+        const saved = await writing;
+        assert.equal((await stores.workspace.read({ workspaceId: stores.workspaceId,
+          revision: saved.revision, path: 'input.txt' })).content, 'retained write');
+        assert.equal(stores.tasks.getBot(second.botId).execution_id, null);
+      } catch (error) { probeFailure = error; }
+      finally {
+        release.resolve();
+        await Promise.allSettled([holding, canceled, surviving, writing]);
+        stores.workspace[method] = original;
+      }
+    },
+  });
+  if (probeFailure) throw probeFailure;
+  assert.equal(report.businessFailure?.code, 'FLAT_BUSINESS_FAILED');
+  assert.equal(report.cleanupFailure, null);
+  assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(report.cleanup.bots.length, 2);
+});
+
+
+test('flat metadata admission preserves host cancellation when an already admitted read drains', {
+  timeout: 15_000,
+}, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'flat-read-admission-cancel-'));
+  const stores = await createFlatTaskStores(root);
+  t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
+  transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const locked = stores.workspace.repository.locked.bind(stores.workspace.repository);
+  let held = false;
+  stores.workspace.repository.locked = (path, operation, options) => {
+    if (held) return locked(path, operation, options);
+    held = true;
+    return locked(path, async () => {
+      const metadata = await operation();
+      entered.resolve();
+      await release.promise;
+      return metadata;
+    }, options);
+  };
+  const controller = new AbortController();
+  const pending = runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+    missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
+    deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    signal: controller.signal,
+    snapshotProject: async () => { throw new Error('No capture is needed during admission'); },
+  });
+  try {
+    await Promise.race([entered.promise, pending.then(() => { throw new Error('Metadata admission did not start'); })]);
+    controller.abort(Object.assign(new Error('Controlled host cancellation during metadata admission'), {
+      code: 'CONTROLLED_METADATA_CANCELLED',
+    }));
+  } finally { release.resolve(); }
+  const report = await pending;
+  assert.equal(report.businessFailure?.code, 'CONTROLLED_METADATA_CANCELLED');
+  assert.equal(report.cleanup, null);
+  assert.equal(report.result, null);
+  assert.equal(report.cleanupFailure, null);
+  assert.equal(report.reportSaveFailure, null);
+  assert.equal(controls.credentials.size, 0);
+  assert.equal(stores.tasks.listExecutions(stores.task.task_id).length, 0);
+  assert.deepEqual((await readdir(root)).filter(name => /^[a-f0-9-]{36}$/.test(name)), [report.runtimeId]);
+  assert.deepEqual(await readdir(join(root, report.runtimeId)), ['environment-report.json']);
+  const saved = JSON.parse(await readFile(report.reportPath, 'utf8'));
+  assert.deepEqual(saved.businessFailure, report.businessFailure);
 });
