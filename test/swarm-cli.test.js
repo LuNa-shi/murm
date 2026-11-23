@@ -169,8 +169,17 @@ test('Mission CLI submits an explicit empty Material selection', async t => {
   const before = keys.map(key => [key, process.env[key]]);
   t.after(() => { for (const [key, value] of before) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
   Object.assign(process.env, { SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'local-test' });
+  await assert.rejects(runSwarmCli(['mission', 'submit', '--request-id', 'implicit-materials'], { stdout: { write() {} } }), /explicit/);
+  assert.equal(invocations.length, 0);
   await runSwarmCli(['mission', 'submit', '--materials', '[]', '--request-id', 'stable-final'], { stdout: { write() {} } });
   assert.deepEqual(invocations[0], { operation: 'mission_submit', operation_id: 'stable-final', payload: { material_ids: [] } });
+  for (const [args, payload] of [[[], {}], [['submission:fixed'], { submission_id: 'submission:fixed' }]]) {
+    const output = [];
+    await runSwarmCli(['mission', 'submission', 'view', ...args, '--request-id', 'read-submission'],
+      { stdout: { write: value => output.push(value) } });
+    assert.deepEqual(invocations.at(-1), { operation: 'mission_submission_get', operation_id: 'read-submission', payload });
+    assert.deepEqual(JSON.parse(output.join('')), { submitted: true });
+  }
 });
 
 test('deployment check HTTP allowance is scoped and explicit timeout still wins', async t => {
