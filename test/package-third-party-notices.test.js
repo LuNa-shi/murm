@@ -10,7 +10,7 @@ import { createHash } from 'node:crypto';
 const execute = promisify(execFile);
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-test('actual candidate archive carries the pinned Lean license and scoped source notice', { timeout: 30_000 }, async t => {
+test('actual candidate archive carries pinned third-party sources, licenses and scoped notices', { timeout: 30_000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'package-third-party-notices-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const packed = await execute('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', directory], {
@@ -33,4 +33,14 @@ test('actual candidate archive carries the pinned Lean license and scoped source
   assert.ok(driver.includes('Copyright (c) 2023 Kim Morrison. All rights reserved.'));
   assert.ok(driver.includes('Authors: Kim Morrison, Sebastian Ullrich'));
   assert.ok(driver.includes('Modified in SwarmEnv'));
+
+  const boardSchema = await readEntry('test/fixtures/agensh-board-schema.sql');
+  assert.equal(sha256(boardSchema), 'baa0ce607371751d6e7a526179512f2ff3a59ede88749059bed1a2522b3f3bb2');
+  const boardLicense = await readEntry('test/fixtures/agensh-board-schema.LICENSE.txt');
+  assert.equal(sha256(boardLicense), 'a933571159c8bd878114a7b7206964c2ae9b7ff45fd80e3021e0c699d38412da');
+  const boardNotice = boardLicense.toString();
+  assert.ok(boardNotice.includes('Source: third_party/agensh/mini-router/sql/03_board_schema.sql'));
+  assert.ok(boardNotice.includes('Revision: 2dae4e14a653da48549fd9aa093f834841475d6c'));
+  assert.ok(boardNotice.includes('MIT License'));
+  assert.ok(boardNotice.includes('Copyright (c) Microsoft Corporation.'));
 });
