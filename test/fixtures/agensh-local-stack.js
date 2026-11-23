@@ -20,7 +20,7 @@ export const boardSchema = Object.freeze({
 });
 
 /** No side effects until explicitly called inside the opt-in actual test. */
-export async function createLocalAgenshStack({ directory, advertiseHost = '172.17.0.1', setupMs = 180_000, executeCommand = execute }) {
+export async function createLocalAgenshStack({ directory, advertiseHost = '172.17.0.1', setupMs = 180_000, giteaOnly = false, executeCommand = execute }) {
   const owner = `t13-${randomBytes(8).toString('hex')}`;
   const network = `${owner}-network`; const names = []; const receipts = []; const commands = []; const readiness = {};
   const dbPassword = randomBytes(24).toString('hex'); const adminPassword = randomBytes(24).toString('hex');
@@ -105,15 +105,17 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
       if (started) throw sanitized('LOCAL_STACK_ALREADY_STARTED'); started = true;
       setup = createDeadline(setupMs, 'LOCAL_FACILITY_SETUP_EXPIRED');
       // All images must already be cached; no implicit download or install.
-      for (const image of Object.values(facilityImages)) await docker(['image', 'inspect', '--format', '{{.Id}}', image], undefined, 'image.cached');
+      for (const image of giteaOnly ? [facilityImages.gitea] : Object.values(facilityImages)) await docker(['image', 'inspect', '--format', '{{.Id}}', image], undefined, 'image.cached');
       await setupStep(() => mkdir(directory, { recursive: true, mode: 0o700 }));
       const data = {};
-      for (const key of ['mysql', 'gitea', 'mm-data', 'mm-config', 'mm-logs', 'mm-plugins', 'mm-client-plugins']) {
+      for (const key of giteaOnly ? ['gitea'] : ['mysql', 'gitea', 'mm-data', 'mm-config', 'mm-logs', 'mm-plugins', 'mm-client-plugins']) {
         data[key] = join(directory, key); await setupStep(() => mkdir(data[key], { mode: 0o700 }));
         if (key.startsWith('mm-')) await setupStep(() => chmod(data[key], 0o777)); // parent directory remains private
       }
       setup.remaining(); networkOwned = true; networkCreationUnknown = true; await docker(['network', 'create', '--label', `swarmenv.t13.owner=${owner}`, network], undefined, 'network.create'); networkCreationUnknown = false;
-      const database = await run('mysql', { cpu: 1, memory: '1g', env: { MYSQL_ROOT_PASSWORD: dbPassword, MYSQL_DATABASE: 'board', MYSQL_USER: 'agensh', MYSQL_PASSWORD: dbPassword },
+      let database;
+      if (!giteaOnly) {
+      database = await run('mysql', { cpu: 1, memory: '1g', env: { MYSQL_ROOT_PASSWORD: dbPassword, MYSQL_DATABASE: 'board', MYSQL_USER: 'agensh', MYSQL_PASSWORD: dbPassword },
         volumes: [`${data.mysql}:/var/lib/mysql`], args: ['--innodb-use-native-aio=0', '--innodb-buffer-pool-size=134217728', '--max-connections=100'] });
       const sql = (stage, user, statement, extra = []) => docker(['exec', '--env', `MYSQL_PWD=${dbPassword}`, database, 'mysql',
         '--protocol=TCP', '--host=127.0.0.1', '--port=3306', '--connect-timeout=2', '--batch', '--skip-column-names', `--user=${user}`, ...extra, '-e', statement], undefined, stage);
@@ -138,6 +140,7 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
         "SELECT id,board_id,thread_id,type,content,ts_epoch,expires_at,delegation_id,detail FROM board_gists LIMIT 0; SELECT IF(SUBSTRING_INDEX(CURRENT_USER(),'@',1)='agensh' AND DATABASE()='board',1,0)", ['--database=board']);
       if (schemaReady !== '1') throw sanitized('LOCAL_BOARD_SCHEMA_NOT_READY');
       readiness.boardSchema = { ...boardSchema, table: 'board_gists', applicationAuthenticated: true, columnsVerified: true };
+      }
       const gitea = await run('gitea', { cpu: 1, memory: '512m', ports: ['0.0.0.0::3000'], volumes: [`${data.gitea}:/data`], env: {
         GITEA__security__INSTALL_LOCK: 'true', GITEA__database__DB_TYPE: 'sqlite3', GITEA__service__DISABLE_REGISTRATION: 'true', GITEA__server__HTTP_PORT: '3000',
         GITEA__server__ROOT_URL: 'http://localhost:3000/', GITEA__actions__ENABLED: 'false', GITEA__log__LEVEL: 'Error' } });
@@ -146,6 +149,12 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
       const gitArgs = ['exec', '--user', 'git', '--env', 'GITEA_WORK_DIR=/data/gitea', '--env', 'GITEA_CUSTOM=/data/gitea', gitea, 'gitea', '--config', '/data/gitea/conf/app.ini', 'admin', 'user'];
       await docker([...gitArgs, 'create', '--username', 'run-owner', '--password', adminPassword, '--email', 'owner@swarmenv.invalid', '--admin', '--must-change-password=false'], undefined, 'gitea.admin-create');
       const gitToken = await docker([...gitArgs, 'generate-access-token', '--username', 'run-owner', '--token-name', owner, '--scopes', 'all', '--raw'], undefined, 'gitea.admin-token'); secrets.push(gitToken);
+      if (giteaOnly) {
+        stack.configuration = { gitea: { origin: gitOrigin, adminToken: gitToken, owner: 'run-owner' } };
+        readiness.gitea = { state: 'ready', onlyFacility: true };
+        setup.dispose(); setup.remaining();
+        return stack.configuration;
+      }
       const mattermost = await run('mattermost', { cpu: 1, memory: '2g', ports: ['127.0.0.1::8065'], volumes: Object.entries(data).filter(([key]) => key.startsWith('mm-')).map(([key, path]) => `${path}:/mattermost/${key.slice(3).replace('client-plugins', 'client/plugins')}`), env: {
         MM_SQLSETTINGS_DRIVERNAME: 'mysql', MM_SQLSETTINGS_DATASOURCE: `agensh:${dbPassword}@tcp(${database}:3306)/mattermost?charset=utf8mb4,utf8&readTimeout=10s&writeTimeout=10s`,
         MM_SERVICESETTINGS_SITEURL: 'http://localhost:8065', MM_SERVICESETTINGS_ENABLEUSERACCESSTOKENS: 'true', MM_TEAMSETTINGS_ENABLEOPENSERVER: 'true',

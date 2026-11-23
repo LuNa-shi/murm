@@ -18866,6 +18866,55 @@
         "docs/architecture/18-agensh-environment.md"
       ],
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
+    },
+    {
+      "path": "src/environments/lead-helper/board.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/20-lead-helper-environment.md"
+      ],
+      "role": "Transactional durable Board, trusted caller ownership and proof acceptance"
+    },
+    {
+      "path": "src/environments/lead-helper/git.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/20-lead-helper-environment.md"
+      ],
+      "role": "Run-scoped three-account Git provisioning, PR authorization and byte verification"
+    },
+    {
+      "path": "src/environments/lead-helper/index.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/20-lead-helper-environment.md"
+      ],
+      "role": "Public Core fixed-team Environment, exclusive workflow and pending cleanup ownership"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/20-lead-helper-environment.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Lead/helper role and finite continuation instructions"
+    },
+    {
+      "path": "examples/lead-helper-environment/main.mjs",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/20-lead-helper-environment.md"
+      ],
+      "role": "Editable lead-helper CLI with public backend assembly and report output"
+    },
+    {
+      "path": "examples/lead-helper-environment/config.mjs",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/20-lead-helper-environment.md"
+      ],
+      "role": "Kimi K3 fixed-team sample configuration and finite resource bounds"
     }
   ]
 }

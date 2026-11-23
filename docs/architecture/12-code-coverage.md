@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2087 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2093 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -44,10 +44,12 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/environments/scalemas/index.js](../../src/environments/scalemas/index.js) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `98ae79c781c99a8ea0cca3d3102ecd48c05dd4332edcddd0897e5487d2b19be0` |
 | [src/environments/scalemas/substrate.js](../../src/environments/scalemas/substrate.js) | Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `89500b4bc744235ee85bb8b363600e79a173b5b3a5bc49c3a872955d5e47f248` |
 
-### Environment integration (10)
+### Environment integration (16)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
+| [examples/lead-helper-environment/config.mjs](../../examples/lead-helper-environment/config.mjs) | Kimi K3 fixed-team sample configuration and finite resource bounds | [20-lead-helper-environment](20-lead-helper-environment.md) | `bc3cf45ce53168f78942c070482b8f5b55eb602c6bfcb71670b7f18905eb360a` |
+| [examples/lead-helper-environment/main.mjs](../../examples/lead-helper-environment/main.mjs) | Editable lead-helper CLI with public backend assembly and report output | [20-lead-helper-environment](20-lead-helper-environment.md) | `f02a60f9837df07d510d6d96b5a84fa494041ae2eb044ba4127874bcfabd50fa` |
 | [scripts/git-credential-agensh.mjs](../../scripts/git-credential-agensh.mjs) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `573bc136bf3b793711bfb4d6d841f72ad5a2263a537fefd537177abeef80c1f3` |
 | [src/environments/agensh/board-process.js](../../src/environments/agensh/board-process.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `691876ddff3d5ccd8e1b01ecacc80997663282db1269dc572b3b85d2d397859d` |
 | [src/environments/agensh/event-source.js](../../src/environments/agensh/event-source.js) | Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle | [18-agensh-environment](18-agensh-environment.md) | `de399e65633fece267eb7bcba6b374db519cce7545a264a89c8f0ce3782797a8` |
@@ -58,6 +60,10 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/environments/agensh/routed.js](../../src/environments/agensh/routed.js) | Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md) | `f69b54ff563430a31c39a937d837e2abf2a3af9cd35ee947a9698a9f79cf7aec` |
 | [src/environments/agensh/router.js](../../src/environments/agensh/router.js) | Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md) | `f28788702c628b0d6e301e9c716d75798ab030198a7dd9f573f0820f1a407ba4` |
 | [src/environments/agensh/services.js](../../src/environments/agensh/services.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `7095fec48ff2499ff4ba5176c802f3b36fe095963e83eeb4901ca9147faccba9` |
+| [src/environments/lead-helper/board.js](../../src/environments/lead-helper/board.js) | Transactional durable Board, trusted caller ownership and proof acceptance | [20-lead-helper-environment](20-lead-helper-environment.md) | `66b3cefd95fc97743170c65bc582c1e7b7d5999c6fd9571cd75249af3f3a87f2` |
+| [src/environments/lead-helper/git.js](../../src/environments/lead-helper/git.js) | Run-scoped three-account Git provisioning, PR authorization and byte verification | [20-lead-helper-environment](20-lead-helper-environment.md) | `4bf788897811c824b7b309312e493d11e0caeb49a536834d54fe471f2cd9e711` |
+| [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `a475e66b3fb1cc33f4e76472f36258314697df35cfd4970498b7905fb6d3a49a` |
+| [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [20-lead-helper-environment](20-lead-helper-environment.md), [08-prompts](08-prompts.md) | `a9b680e62aafe7bbd5883d3d5d3255d1cd964771a0711d862e283e2f12b897ab` |
 
 ### Execution and control (20)
 
@@ -2050,7 +2056,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `452ee5db7e6ecdf992532572a58f08a3117f5809d0443eb323b18b16bbea9bd8` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `f186f9226ce1c2dd6f9b0a213ee12f3513832b4bb4642c41ba0990a241d2fa5c` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `10a689a4e8aba03a9565c47e418ab1ae315c115a1e34bb5ce6778507909ee088` |
 
 ### durable storage (3)
 

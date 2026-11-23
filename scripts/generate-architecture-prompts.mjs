@@ -27,6 +27,7 @@ const sourcePaths = [
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
   'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
   'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js',
+  'src/environments/lead-helper/prompts.js', 'src/environments/lead-helper/index.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
@@ -132,7 +133,7 @@ async function listSourceFiles(directory) {
 const sendSites = [];
 const instructionFields = [];
 const nonInstructionActions = new Set(['integration', 'continue_until_boundary', 'execute', 'queue_status']);
-const cleanupActions = new Set(['close', 'save']);
+const cleanupActions = new Set(['close', 'save', 'persist-failure']);
 const instructionActions = new Set([
   'modify_task_contract_or_register_capability', 'call_the_capability_or_block_on_a_real_dependency',
   'call_list_tools_or_get_service_metadata', 'retry_with_the_registered_input_schema',
@@ -154,7 +155,7 @@ for (const path of await listSourceFiles('src')) {
     const value = evaluate(match[2]);
     assert.equal(typeof value, 'string', `non-static instruction field requires explicit documentation: ${path}`);
     if (key === 'action' && nonInstructionActions.has(value)) continue;
-    if (key === 'action' && ['src/core/index.js', 'src/core/model-access.js'].includes(path) && cleanupActions.has(value)) continue;
+    if (key === 'action' && ['src/core/index.js', 'src/core/model-access.js', 'src/environments/lead-helper/index.js'].includes(path) && cleanupActions.has(value)) continue;
     if (key === 'action') assert.ok(instructionActions.has(value), `review new literal action field for prompt delivery: ${path}: ${value}`);
     assert.ok(sourcePaths.includes(path), `new instruction-field source requires documented ownership: ${path}`);
     const line = source.slice(0, match.index).split('\n').length;
@@ -194,6 +195,16 @@ output('08-agensh-environment.md', header('Agensh peer and serial router prompts
   + block('Peer Profile prompt', between('src/environments/agensh/index.js', 'export const peerPrompt = `', '`;'))
   + block('Serial batch instruction', between('src/environments/agensh/router.js', "export const routerInstruction = '", "';"))
   + block('Configured idle nudge', between('src/environments/agensh/router.js', "export const idleNudgeInput = '", "';")));
+const leadHelperPath = 'src/environments/lead-helper/prompts.js';
+let leadHelperDoc = header('Fixed lead-helper role and turn instructions', 'Profiles stage lead/helper roles. The Environment serializes each round instruction with trusted host fields before exclusive followUp delivery; these are source templates, not a native transcript.');
+for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'helperInitialInstruction', 'leadAdjustmentInstruction', 'helperFollowupInstruction']) {
+  const source = sources.get(leadHelperPath);
+  const start = `export const ${name} = `;
+  const from = source.indexOf(start);
+  const delimiter = source[from + start.length];
+  leadHelperDoc += block(name, between(leadHelperPath, start + delimiter, delimiter + ';'));
+}
+output('08-lead-helper-environment.md', leadHelperDoc);
 const manifest = {
   description: 'Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.',
   bot_protocol_version: BOT_PROTOCOL_VERSION,
