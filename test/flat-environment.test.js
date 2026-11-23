@@ -41,10 +41,10 @@ test('flat host composes public Bash publication and controller finish with dura
   const files={'input.txt':Buffer.from('fixed λ\n'),'result.txt':Buffer.from('Fixed public result\n')};
   const hash=value=>createHash('sha256').update(value).digest('hex');
   const manifest=Object.fromEntries(Object.entries(files).map(([path,bytes])=>[path,{bytes:bytes.length,content_hash:hash(bytes)}]));
-  let materialId,revision;
+  let materialId,revision,captures=0;
   const report=await runFlatEnvironment({...stores,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
     outputDir:root,deadlineAt:Date.now()+10000,backend:{},model:'default',image:'fixture',capacity:1,
-    async snapshotProject({executionId,fencingVersion}) {return {execution_id:executionId,binding_version:fencingVersion,state:'ACTIVE',files:Object.fromEntries(Object.entries(files).map(([path,bytes])=>[path,bytes.toString('base64')])),manifest,content_hash:hash(stableStringify(manifest))};},
+    async snapshotProject({executionId,fencingVersion}) {captures++;return {execution_id:executionId,binding_version:fencingVersion,state:'ACTIVE',files:Object.fromEntries(Object.entries(files).map(([path,bytes])=>[path,bytes.toString('base64')])),manifest,content_hash:hash(stableStringify(manifest))};},
     async drive(controller) {
       const bot=controller.snapshot().bots[0];
       const credentials=controls.credentials.get(bot.botId);
@@ -55,6 +55,12 @@ test('flat host composes public Bash publication and controller finish with dura
       const material=await cli(['material','publish','--content','Fixed public result','--request-id','publish']);materialId=material.material.material_id;
       await cli(['task','link','--task-id',stores.task.task_id,'--material-id',materialId,'--role','experience','--request-id','link']);
       const save=await cli(['workspace','save','--request-id','save']);revision=save.revision;
+      assert.deepEqual(await cli(['workspace','save','--request-id','save']),save);
+      assert.equal(captures,1,'Replaying a public CLI save must recover the original capture');
+      await assert.rejects(cli(['workspace','save','--files','{}','--request-id','forged-save']),error=>
+        JSON.parse(error.stderr).code==='SERVICE_INPUT_INVALID');
+      assert.equal(captures,1,'Model-supplied files must fail before trusted capture');
+      assert.equal((await stores.workspace.listRevisions({workspaceId:stores.workspaceId})).length,2);
       try {await cli(['task','finish','--outcome','done','--material-ids',JSON.stringify([materialId]),'--request-id','finish']);}
       catch(error) {assert.ok(stores.tasks.listExecutions(stores.task.task_id)[0].finish,'A lost reply must still have a durable accepted finish');}
       await controller.tick();
