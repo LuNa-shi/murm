@@ -1,6 +1,12 @@
 # Prompts and model-visible instructions
 
-The current execution path has two immutable contracts: registered Swarm Bot and independent solver. Both use Pi's native `read`, `write`, `edit`, and `bash` tools. Swarm operations are typed CLI calls made through Bash. No Service-specific Pi tools, extension registration, SDK composition or Runtime bind-time prompt wrapper is loaded.
+## Phase 0005 Core
+
+The generic backend uses the host's complete `Profile.prompt` verbatim. The trusted Worker writes it to `/workspace/runtime/profile-prompt.txt` and starts native Pi with `--append-system-prompt` pointing to that file. Pi provides the original tool instructions for `read`, `write`, `edit`, and `bash`. This path disables ambient extensions, skills, prompt templates and context files. Bot creation performs startup and readiness calls. A subsequent host `send` passes the entire supplied input string as the Pi RPC `prompt` message with the selected `steer` or `followUp` behavior. Core adds no template text to the Profile prompt or input. [Core Runtime](15-core-runtime.md) explains host assembly and [Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) explains the actual launch and send paths.
+
+## Existing flat and solver paths
+
+The existing registered Swarm Bot and independent solver contracts use Pi's native `read`, `write`, `edit`, and `bash` tools. Swarm operations are typed CLI calls made through Bash. Pi starts with the configured native tools and versioned prompt resources.
 
 ## Resources and startup
 

@@ -1,9 +1,23 @@
 {
-  "name": "swarmenv",
+  "name": "@swarmenv/core",
   "version": "0.2.0",
   "private": true,
   "type": "module",
   "description": "A local-first runtime for durable, checkable agent swarm tasks.",
+  "exports": {
+    ".": {
+      "types": "./src/core/index.d.ts",
+      "default": "./src/core/index.js"
+    },
+    "./services": {
+      "types": "./src/core/services.d.ts",
+      "default": "./src/core/services.js"
+    },
+    "./backends/pi-opensandbox": {
+      "types": "./src/core/backends/pi-opensandbox.d.ts",
+      "default": "./src/core/backends/pi-opensandbox.js"
+    }
+  },
   "engines": {
     "node": ">=22.19.0"
   },

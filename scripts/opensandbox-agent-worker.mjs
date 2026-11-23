@@ -3,7 +3,7 @@
 import { createServer } from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { readFile, writeFile, mkdir, chown, readdir, lstat, realpath, statfs } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chown, chmod, readdir, lstat, realpath, statfs } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
 
@@ -142,9 +142,11 @@ async function startAgent(input) {
     initialized = true;
     projectQuota = { bytes, inodes };
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
+  const core = input.contract_version === 'swarmenv-core-v1';
+  if (core && (input.command !== 'pi' || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt`)) throw startupContractError('Core startup requires direct Pi and an explicit role prompt');
   const solver = input.contract_version === 'swarm-solver-v1';
-  const expectedNames = solver ? ['solver-system.txt'] : ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
-  if ((!solver && input.contract_version !== 'swarm-bot-v1-draft.3') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
+  const expectedNames = core ? [] : solver ? ['solver-system.txt'] : ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
+  if ((!core && !solver && input.contract_version !== 'swarm-bot-v1-draft.3') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
       new Set(input.resources.map(resource => resource?.path)).size !== expectedNames.length ||
       !expectedNames.every(name => input.resources.some(resource => resource?.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw startupContractError('complete versioned Bot contract resources are required');
   for (const resource of input.resources) {
@@ -168,6 +170,10 @@ async function startAgent(input) {
     await mkdir(dirname(input.system_prompt_path), { recursive: true });
     await writeFile(input.system_prompt_path, input.system_prompt, { mode: 0o600 });
     await chown(input.system_prompt_path, BOT_UID, BOT_UID);
+  }
+  if (core && input.writable === true) {
+    await chown(PROJECT_DIR, BOT_UID, BOT_UID);
+    await chmod(PROJECT_DIR, 0o755);
   }
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;

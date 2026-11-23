@@ -138,7 +138,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Model budget gateway
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `ec5f264aedaccd2d2e86a542bb0e5b5d69c757ce7d7075c194343c48baabb76b`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `818049e138f689add29e6612d80bd035b189e763a97b568007f113c129ae53b7`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS responses_budget_policies (
@@ -166,6 +166,26 @@ CREATE TABLE IF NOT EXISTS responses_budget_policies (
       );
       CREATE INDEX IF NOT EXISTS responses_budget_scope
         ON responses_budget_attempts (mission_id, bot_id, phase);
+```
+
+### Core Runtime model attempts
+
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `818049e138f689add29e6612d80bd035b189e763a97b568007f113c129ae53b7`.
+
+```sql
+CREATE TABLE IF NOT EXISTS runtime_model_policies (
+        runtime_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS runtime_model_attempts (
+        runtime_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
+        output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL, reason TEXT, receipt BLOB,
+        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
+        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
+        PRIMARY KEY (runtime_id, bot_id, request_id)
+      );
 ```
 
 ### Mission submission coordinator

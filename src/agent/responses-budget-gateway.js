@@ -31,6 +31,22 @@ export const RESPONSES_BUDGET_SCHEMA_SQL = `
         ON responses_budget_attempts (mission_id, bot_id, phase);
     `;
 
+export const CORE_MODEL_SCHEMA_SQL = `
+      CREATE TABLE IF NOT EXISTS runtime_model_policies (
+        runtime_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS runtime_model_attempts (
+        runtime_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
+        output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
+        state TEXT NOT NULL, reason TEXT, receipt BLOB,
+        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
+        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
+        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
+        PRIMARY KEY (runtime_id, bot_id, request_id)
+      );
+    `;
+
 const metrics = ['requests', 'inputTokens', 'outputTokens', 'cost'];
 const phases = ['selection', 'work', 'closeout'];
 const maximumBodyBytes = 8 * 1024 * 1024;
@@ -277,11 +293,20 @@ export class ResponsesBudgetGateway {
   #controllers = new Map();
   #stopPromise;
   #attempts;
+  #policies;
+  #scopeColumn;
+  #scopeProperty;
 
-  constructor({ db, upstream, limits, timeBounds, validateBot, withLifecycleWrite = commit => commit(), fetchImpl = globalThis.fetch } = {}) {
+  constructor({ db, upstream, limits, timeBounds, validateBot, withLifecycleWrite = commit => commit(), fetchImpl = globalThis.fetch, scope = 'mission' } = {}) {
     if (!db?.prepare || typeof validateBot !== 'function' || typeof fetchImpl !== 'function') {
       throw new TypeError('Database, synchronous Bot authority, and fetch are required');
     }
+    if (!['mission', 'runtime'].includes(scope) || (scope === 'runtime' && timeBounds === undefined)) {
+      throw new TypeError('Runtime Responses access requires a time-bounded policy');
+    }
+    this.#scopeColumn = scope === 'runtime' ? 'runtime_id' : 'mission_id';
+    this.#scopeProperty = scope === 'runtime' ? 'runtimeId' : 'missionId';
+    this.#policies = scope === 'runtime' ? 'runtime_model_policies' : 'responses_budget_policies';
     this.db = db;
     if (typeof withLifecycleWrite !== 'function') throw new TypeError('Lifecycle write boundary must be synchronous');
     this.validateBot = validateBot;
@@ -292,7 +317,8 @@ export class ResponsesBudgetGateway {
       throw new TypeError('Timed and financial Responses policies are mutually exclusive');
     }
     this.policy = Object.freeze(timed ? timedPolicy(upstream, timeBounds) : contractFor(upstream));
-    this.#attempts = timed ? 'responses_timed_attempts' : 'responses_budget_attempts';
+    this.#attempts = scope === 'runtime' ? 'runtime_model_attempts'
+      : timed ? 'responses_timed_attempts' : 'responses_budget_attempts';
     this.headers = new Headers(upstream.headers);
     this.headers.set('accept', 'text/event-stream');
     this.headers.set('content-type', 'application/json');
@@ -308,7 +334,7 @@ export class ResponsesBudgetGateway {
       throw new TypeError('Responses closeout reserve exceeds the Mission limit');
     }
     this.pin = createHash('sha256').update(JSON.stringify([this.policy, this.limits])).digest('hex');
-    db.exec(RESPONSES_BUDGET_SCHEMA_SQL);
+    db.exec(scope === 'runtime' ? CORE_MODEL_SCHEMA_SQL : RESPONSES_BUDGET_SCHEMA_SQL);
   }
 
   async start({ host = '127.0.0.1', port = 0 } = {}) {
@@ -346,12 +372,14 @@ export class ResponsesBudgetGateway {
     return { port: address.port, baseUrl: `http://${hostname}:${address.port}/v1` };
   }
 
-  issueToken({ missionId, botId }) {
-    if (this.#closing || typeof missionId !== 'string' || !missionId || typeof botId !== 'string' || !botId) {
-      throw new Error('A live gateway and a trusted Mission/Bot binding are required');
+  issueToken(binding) {
+    const scopeId = binding?.[this.#scopeProperty];
+    const botId = binding?.botId;
+    if (this.#closing || typeof scopeId !== 'string' || !scopeId || typeof botId !== 'string' || !botId) {
+      throw new Error('A live gateway and a trusted scope/Bot binding are required');
     }
     const token = randomBytes(32).toString('base64url');
-    this.#tokens.set(token, { missionId, botId });
+    this.#tokens.set(token, { [this.#scopeProperty]: scopeId, botId });
     return token;
   }
 
@@ -363,12 +391,13 @@ export class ResponsesBudgetGateway {
     return revoked;
   }
 
-  observedUsage(missionId) {
+  observedUsage(scopeId) {
+    const attempts = this.#scopeColumn === 'runtime_id' ? this.#attempts : 'responses_timed_attempts';
     return this.db.prepare(`SELECT COUNT(*) AS requests, COUNT(input_tokens) AS requests_with_usage,
       COUNT(*) FILTER (WHERE state = 'unknown') AS unknown_requests,
       COUNT(*) FILTER (WHERE state = 'pending') AS pending_requests,
       SUM(input_tokens) AS observed_input_tokens, SUM(output_tokens) AS observed_output_tokens
-      FROM responses_timed_attempts WHERE mission_id = ?`).get(missionId);
+      FROM ${attempts} WHERE ${this.#scopeColumn} = ?`).get(scopeId);
   }
 
   totals({ missionId, botId = null, phase = null }) {
@@ -400,19 +429,20 @@ export class ResponsesBudgetGateway {
     try {
       const binding = !this.#closing && this.#tokens.get(token);
       if (!binding) throw new GatewayError(401, 'invalid_bot_credential');
-      const { missionId, botId } = binding;
+      const { botId } = binding;
+      const scopeId = binding[this.#scopeProperty];
       let authority;
-      try { authority = this.validateBot({ missionId, botId }); }
+      try { authority = this.validateBot(binding); }
       catch { throw new GatewayError(403, 'bot_not_admitted'); }
       const phase = authority?.phase;
       const authorityDeadline = authority?.deadline ?? Date.now() + this.policy.requestTimeoutMs;
       if (!Number.isFinite(authorityDeadline) || authorityDeadline <= Date.now()) throw new GatewayError(403, 'bot_deadline_elapsed');
       if (!phases.includes(phase)) throw new GatewayError(403, 'bot_not_admitted');
-      this.db.prepare('INSERT OR IGNORE INTO responses_budget_policies VALUES (?, ?)').run(missionId, this.pin);
-      if (this.db.prepare('SELECT policy_digest FROM responses_budget_policies WHERE mission_id = ?')
-        .get(missionId).policy_digest !== this.pin) throw new GatewayError(409, 'budget_policy_changed');
+      this.db.prepare(`INSERT OR IGNORE INTO ${this.#policies} VALUES (?, ?)`).run(scopeId, this.pin);
+      if (this.db.prepare(`SELECT policy_digest FROM ${this.#policies} WHERE ${this.#scopeColumn} = ?`)
+        .get(scopeId).policy_digest !== this.pin) throw new GatewayError(409, 'budget_policy_changed');
       const prior = this.db.prepare(`SELECT fingerprint, state, receipt, deadline_ms FROM ${this.#attempts}
-        WHERE mission_id = ? AND bot_id = ? AND request_id = ?`).get(missionId, botId, requestId);
+        WHERE ${this.#scopeColumn} = ? AND bot_id = ? AND request_id = ?`).get(scopeId, botId, requestId);
       if (prior) {
         if (prior.fingerprint !== fingerprint) throw new GatewayError(409, 'request_payload_conflict');
         if (!prior.receipt) {
@@ -420,41 +450,48 @@ export class ResponsesBudgetGateway {
           throw new GatewayError(409, `request_${state}`);
         }
         this.db.exec('COMMIT');
-        return { ...binding, receipt: prior.receipt };
+        return { ...binding, scopeId, receipt: prior.receipt };
       }
-      if (budget) this.#assertBudget(missionId, botId, phase, budget);
+      if (budget) this.#assertBudget(scopeId, botId, phase, budget);
       const startedAt = Date.now();
       const deadline = Math.min(authorityDeadline, startedAt + this.policy.requestTimeoutMs);
       this.db.prepare(`INSERT INTO ${this.#attempts}
-        (mission_id, bot_id, request_id, phase, fingerprint, input_tokens, output_tokens, cost, state, started_at_ms, deadline_ms)
+        (${this.#scopeColumn}, bot_id, request_id, phase, fingerprint, input_tokens, output_tokens, cost, state, started_at_ms, deadline_ms)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
-        .run(missionId, botId, requestId, phase, fingerprint, budget?.inputTokens ?? null, budget?.outputTokens ?? null, budget?.cost ?? null,
+        .run(scopeId, botId, requestId, phase, fingerprint, budget?.inputTokens ?? null, budget?.outputTokens ?? null, budget?.cost ?? null,
           startedAt, deadline);
       this.db.exec('COMMIT');
-      return { ...binding, deadline, authority };
+      return { ...binding, scopeId, deadline, authority };
     } catch (error) {
       this.db.exec('ROLLBACK');
       throw error;
     }
   }
 
-  #watchAuthority({ token, missionId, botId, deadline, authority, controller }) {
+  #watchAuthority({ token, deadline, authority, controller }) {
     let hardDeadline = deadline;
     let timer;
+    const leaseFor = value => value?.lease ?? (value?.executionId ? {
+      key: value.executionId, version: value.fencingVersion, expiresAt: value.leaseDeadline,
+    } : null);
+    const originalLease = leaseFor(authority);
     const arm = current => {
-      const nextCheck = authority.executionId
-        ? Math.min(hardDeadline, current.leaseDeadline, Date.now() + executionAuthorityCheckMs)
+      const lease = leaseFor(current);
+      const nextCheck = originalLease
+        ? Math.min(hardDeadline, lease.expiresAt, Date.now() + executionAuthorityCheckMs)
         : hardDeadline;
       timer = setTimeout(check, Math.max(0, nextCheck - Date.now()));
     };
     const check = () => {
       if (controller.signal.aborted) return;
       try {
-        if (Date.now() < hardDeadline && this.#tokens.has(token) && authority.executionId) {
-          const current = this.validateBot({ missionId, botId });
+        const binding = this.#tokens.get(token);
+        if (Date.now() < hardDeadline && binding && originalLease) {
+          const current = this.validateBot(binding);
+          const lease = leaseFor(current);
           const at = Date.now();
-          if (current?.executionId === authority.executionId && current.fencingVersion === authority.fencingVersion &&
-              at < current.leaseDeadline && at < current.deadline) {
+          if (lease?.key === originalLease.key && lease.version === originalLease.version &&
+              at < lease.expiresAt && at < current.deadline) {
             hardDeadline = Math.min(hardDeadline, current.deadline);
             if (at < hardDeadline) {
               arm(current);
@@ -463,7 +500,7 @@ export class ResponsesBudgetGateway {
           }
         }
       } catch {
-        // Unavailable Task authority cannot keep an admitted request alive.
+        // Unavailable authority cannot keep an admitted request alive.
       }
       controller.abort();
     };
@@ -525,7 +562,7 @@ export class ResponsesBudgetGateway {
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
     };
     const fingerprint = createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex');
-    let missionId, botId, receipt, cancelWatch, upstreamWork;
+    let scopeId, botId, receipt, cancelWatch, upstreamWork;
     const controller = new AbortController();
     const disconnect = () => controller.abort();
     let usageRecorded = false;
@@ -534,11 +571,11 @@ export class ResponsesBudgetGateway {
     const receiptChunks = [];
     try {
       // Admission, its durable budget reservation and synchronous upstream
-      // dispatch share the Task lifecycle writer window. Settlement never
+      // dispatch share the synchronous lifecycle writer window. Settlement never
       // holds that lock while waiting on external IO.
       this.withLifecycleWrite(() => {
         const admission = this.#admit(token, requestId, fingerprint, budget);
-        ({ missionId, botId, receipt } = admission);
+        ({ scopeId, botId, receipt } = admission);
         if (receipt) return;
         this.#controllers.set(controller, token);
         cancelWatch = this.#watchAuthority({ ...admission, token, controller });
@@ -559,7 +596,7 @@ export class ResponsesBudgetGateway {
       const upstreamId = upstream.headers.get('x-request-id');
       if (upstreamId && /^[A-Za-z0-9_.:-]{1,256}$/.test(upstreamId)) {
         this.db.prepare(`UPDATE ${this.#attempts} SET upstream_request_id = ?
-          WHERE mission_id = ? AND bot_id = ? AND request_id = ?`).run(upstreamId, missionId, botId, requestId);
+          WHERE ${this.#scopeColumn} = ? AND bot_id = ? AND request_id = ?`).run(upstreamId, scopeId, botId, requestId);
       }
       const contentTypeValid = /^text\/event-stream(?:;|$)/i.test(upstream.headers.get('content-type') ?? '');
       const rejectionKind = !upstream.ok ? 'non_2xx' : !upstream.body ? 'missing_body'
@@ -569,9 +606,9 @@ export class ResponsesBudgetGateway {
       const retryAfterSeconds = /^\d{1,5}$/.test(retryAfter) && Number(retryAfter) <= 86400 ? Number(retryAfter) : null;
       this.db.prepare(`UPDATE ${this.#attempts} SET upstream_status = ?, upstream_content_type_valid = ?,
         upstream_body_present = ?, upstream_rejection_kind = ?, upstream_retry_after_seconds = ?
-        WHERE mission_id = ? AND bot_id = ? AND request_id = ?`)
+        WHERE ${this.#scopeColumn} = ? AND bot_id = ? AND request_id = ?`)
         .run(upstream.status, Number(contentTypeValid), Number(Boolean(upstream.body)), rejectionKind,
-          retryAfterSeconds, missionId, botId, requestId);
+          retryAfterSeconds, scopeId, botId, requestId);
       if (rejectionKind) {
         reason = 'upstream_http_error';
         await upstream.body?.cancel();
@@ -580,8 +617,8 @@ export class ResponsesBudgetGateway {
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
       const meter = terminalMeter(this.policy, budget, maxOutputTokens, usage => {
         this.db.prepare(`UPDATE ${this.#attempts} SET input_tokens = ?, output_tokens = ?, cost = ?, settled = 1
-          WHERE mission_id = ? AND bot_id = ? AND request_id = ? AND settled = 0`)
-          .run(usage.inputTokens, usage.outputTokens, usage.cost, missionId, botId, requestId);
+          WHERE ${this.#scopeColumn} = ? AND bot_id = ? AND request_id = ? AND settled = 0`)
+          .run(usage.inputTokens, usage.outputTokens, usage.cost, scopeId, botId, requestId);
         usageRecorded = true;
       });
       const capture = new Transform({
@@ -596,8 +633,8 @@ export class ResponsesBudgetGateway {
       reason = usageRecorded ? (stableId ? 'receipt_too_large' : null) : 'no_trusted_terminal_usage';
       if (usageRecorded && receiptChunks.length) {
         this.db.prepare(`UPDATE ${this.#attempts} SET state = 'completed', receipt = ?
-          WHERE mission_id = ? AND bot_id = ? AND request_id = ?`)
-          .run(Buffer.concat(receiptChunks), missionId, botId, requestId);
+          WHERE ${this.#scopeColumn} = ? AND bot_id = ? AND request_id = ?`)
+          .run(Buffer.concat(receiptChunks), scopeId, botId, requestId);
       }
     } finally {
       cancelWatch?.();
@@ -608,9 +645,9 @@ export class ResponsesBudgetGateway {
         const started = await Promise.resolve(upstreamWork).catch(() => undefined);
         if (started?.body && !started.bodyUsed) await started.body.cancel().catch(() => undefined);
       }
-      if (missionId && !receipt) this.db.prepare(`UPDATE ${this.#attempts} SET state = ?, reason = ?
-        WHERE mission_id = ? AND bot_id = ? AND request_id = ? AND state = 'pending'`)
-        .run(usageRecorded ? 'completed' : 'unknown', reason, missionId, botId, requestId);
+      if (scopeId && !receipt) this.db.prepare(`UPDATE ${this.#attempts} SET state = ?, reason = ?
+        WHERE ${this.#scopeColumn} = ? AND bot_id = ? AND request_id = ? AND state = 'pending'`)
+        .run(usageRecorded ? 'completed' : 'unknown', reason, scopeId, botId, requestId);
     }
   }
 }

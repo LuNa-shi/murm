@@ -16894,7 +16894,8 @@
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/15-core-runtime.md"
       ],
       "role": "Exact dependency resolution, including external Pi/frontend packages"
     },
@@ -16903,7 +16904,8 @@
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/15-core-runtime.md"
       ],
       "role": "Node support, dependency requirements and executable package scripts"
     },
@@ -17050,7 +17052,8 @@
       "chapters": [
         "docs/architecture/01-agent-core.md",
         "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Sandbox-resident Pi worker and authenticated RPC/event HTTP surface"
     },
@@ -17271,7 +17274,8 @@
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/01-agent-core.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
     },
@@ -17366,7 +17370,8 @@
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/15-core-runtime.md"
       ],
       "role": "Trusted Bot lifecycle and model credential composition"
     },
@@ -17406,7 +17411,8 @@
       "chapters": [
         "docs/architecture/04-services.md",
         "docs/architecture/07-run-configuration.md",
-        "docs/architecture/11-storage-reference.md"
+        "docs/architecture/11-storage-reference.md",
+        "docs/architecture/15-core-runtime.md"
       ],
       "role": "Bounded Responses forwarding with durable observed attempts or explicit financial reservations"
     },
@@ -17909,7 +17915,8 @@
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Docker Bot identity validation and bounded filesystem preparation"
     },
@@ -17918,7 +17925,8 @@
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Pinned local Docker namespace egress enforcement"
     },
@@ -17989,7 +17997,8 @@
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "OpenSandbox lifecycle and Execd provider boundary for one Execution"
     },
@@ -17997,7 +18006,8 @@
       "path": "src/runtime/opensandbox-metadata.js",
       "category": "runtime and execution",
       "chapters": [
-        "docs/architecture/02-execution.md"
+        "docs/architecture/02-execution.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Provider-compatible Mission, Bot and Execution identity labels"
     },
@@ -18501,6 +18511,94 @@
         "docs/architecture/14-agensh-lean.md"
       ],
       "role": "Freeze and revalidate the effective profile, authority, inputs, service and worker images"
+    },
+    {
+      "path": "src/core/index.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Runtime assembly, Bot admission, input and bounded lifecycle"
+    },
+    {
+      "path": "src/core/index.d.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Public Runtime, Bot and model policy declarations"
+    },
+    {
+      "path": "src/core/config.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Profile snapshot, spawn request and environment validation"
+    },
+    {
+      "path": "src/core/services.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Service v2 registration and immutable manifest snapshots"
+    },
+    {
+      "path": "src/core/services.d.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Public Service registry, manifest and adapter declarations"
+    },
+    {
+      "path": "src/core/bridge.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Runtime-owned Bridge listener and trusted Bot credentials"
+    },
+    {
+      "path": "src/core/model-access.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
+    },
+    {
+      "path": "src/core/pi-opensandbox-backend.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Core backend lifecycle, Worker transport and confirmed cleanup"
+    },
+    {
+      "path": "src/core/backends/pi-opensandbox.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Public opaque Pi/OpenSandbox backend factory export"
+    },
+    {
+      "path": "src/core/backends/pi-opensandbox.d.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Public Pi/OpenSandbox deployment and model configuration declarations"
+    },
+    {
+      "path": "src/agent/model-catalog.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared pinned Pi Responses model and image catalog validation"
     }
   ]
 }

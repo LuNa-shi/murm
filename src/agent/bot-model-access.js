@@ -1,6 +1,5 @@
-import { createHash } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
 import { ResponsesBudgetGateway } from './responses-budget-gateway.js';
+import { assertShippedModelPair } from './model-catalog.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 
 export const DEFAULT_BENCHMARK_MODEL = Object.freeze({ provider: 'kimi_proxy', model: 'k3' });
@@ -9,16 +8,7 @@ export async function assertBenchmarkModelPair({ provider, model, command }) {
   if (typeof command !== 'string' || (command !== 'pi' && !command.endsWith('/pi'))) {
     throw new TypeError('Timed benchmarks require direct Pi');
   }
-  const catalogBytes = await readFile(new URL('../../services/opensandbox-agent/pi-models.json', import.meta.url));
-  const catalog = JSON.parse(catalogBytes.toString('utf8'));
-  const name = typeof provider === 'string' && /^[a-zA-Z0-9_-]+$/.test(provider) ? provider : null;
-  const entry = name && Object.hasOwn(catalog.providers, name) ? catalog.providers[name] : null;
-  const prefix = name ? `PI_${name.toUpperCase().replaceAll('-', '_')}` : null;
-  if (entry?.api !== 'openai-responses' || entry.baseUrl !== `$${prefix}_BASE_URL` ||
-      entry.apiKey !== `$${prefix}_API_KEY` || entry.authHeader !== true || !entry.models?.some(item => item.id === model)) {
-    throw new TypeError('Configured provider and model do not match the Responses catalog shipped in the Agent image');
-  }
-  return { path: '/opt/swarmenv/pi-agent/models.json', sha256: createHash('sha256').update(catalogBytes).digest('hex') };
+  return assertShippedModelPair({ provider, model });
 }
 
 // Trusted composition seam. Research code receives only a random, revocable
