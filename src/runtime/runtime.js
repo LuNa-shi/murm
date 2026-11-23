@@ -126,7 +126,7 @@ export class Runtime {
     // identity rotation resets it.
     this.identityCompactionCounts = new Map();
     // Reusable identity Sessions remain owned by Runtime even while no
-    // Execution is bound. Shutdown/restart must stop them too.
+    // Execution is bound. Shutdown must stop them too.
     this.identitySessions = new Set();
     const configuredCoreIds = Array.isArray(coreIds)
       ? coreIds
@@ -1182,41 +1182,6 @@ export class Runtime {
     return expired;
   }
 
-  async restart() {
-    this.runtimeGeneration += 1;
-    // Capture reusable identity Sessions before fenceExecution detaches them;
-    // an explicit Runtime restart must actually replace the processes.
-    const ownedSessions = new Set([...this.activeProcesses.values()].map((active) => active.session).filter(Boolean));
-    for (const session of this.identitySessions) ownedSessions.add(session);
-    for (const botId of this.botBindings.keys()) {
-      const bot = this.taskService.getBot(botId);
-      if (bot.execution_id) continue;
-      this.taskService.requestBotStop(botId, 'runtime_restart');
-      this.botBindings.get(botId)?.cancelStartup?.();
-      await this.releaseBot(botId);
-    }
-    for (const id of this.activeProcesses.keys()) {
-      if (!['CREATED', 'RUNNING'].includes(this.#getExecution(id).state)) await this.releaseExecution(id);
-    }
-    for (const execution of this.taskService.listActiveExecutions()) {
-      if (execution.state === 'RUNNING' || execution.state === 'CREATED') {
-        const bot = this.taskService.getBot(execution.owner_ref);
-        if (!bot || !this.botBindings.has(bot.bot_id)) continue;
-        await this.fenceExecution(execution.execution_id, { reason: 'runtime_restart' });
-      }
-    }
-    for (const session of ownedSessions) {
-      this.identitySessions.add(session);
-      await session.stop?.();
-      if (session.closed === false) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot process stop was not confirmed');
-      this.identitySessions.delete(session);
-    }
-    const provider_recovery = [];
-    const missions = new Set(this.taskService.listRecoverableBots?.().map(bot => bot.mission_id));
-    for (const missionId of missions) provider_recovery.push(await this.reconcileProviderExecutions({ missionId }));
-    return { runtime_generation: this.runtimeGeneration, active_executions: this.taskService.listActiveExecutions(), provider_recovery };
-  }
-
   #getExecution(executionId) {
     const execution = this.taskService.getExecution(requireString(executionId, 'execution_id'));
     if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
@@ -1616,7 +1581,7 @@ export class Runtime {
       // solver retains the same sample/Session until its existing hard deadline.
       // For Swarm the fourth compaction is prohibited at the adapter boundary.  A
       // start record is the earliest portable signal before Pi mutates its
-      // context; fence/restart the identity immediately instead of waiting
+      // context; close and fence the identity immediately instead of waiting
       // for a later report to discover that the limit was crossed.
       if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions) {
         await this.#rotateIdentity(executionId, {

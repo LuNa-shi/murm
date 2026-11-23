@@ -116,7 +116,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "5c97a8ff436b86e21a8b55b5dd8860100b085aba5b896147766b99241be77fe6"
+      "sha256": "9a95baaf04f63d42ae0905824a93c036d45256e84c0217bd58b6dbb7c6ab314a"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -332,12 +332,12 @@
   "prompt_send_sites": [
     {
       "path": "src/runtime/runtime.js",
-      "line": 1384,
+      "line": 1349,
       "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : buildBotNotification(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1713,
+      "line": 1678,
       "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     },
     {
