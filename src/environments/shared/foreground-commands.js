@@ -1,41 +1,65 @@
 import { createInterface } from 'node:readline';
 
 const failureCode = error => typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code) ? error.code : 'HOST_COMMAND_FAILED';
+const fail = code => Object.assign(new Error(code), { code });
 
-/** Commands belong to this foreground process and use the active mode handle. */
+/** Ordinary commands are serial; stop seals admission even during an active command. */
 export async function runForegroundCommands(host, { input = process.stdin, output = process.stdout } = {}) {
   const lines = createInterface({ input, crlfDelay: Infinity });
   const write = value => output.write(`${JSON.stringify(value)}\n`);
-  const abort = () => lines.close();
-  host.signal.addEventListener('abort', abort, { once: true });
-  if (host.signal.aborted) lines.close();
-  try {
-    if (host.signal.aborted) return { reason: 'host-stop' };
-    write({ type: 'ready', status: host.status() });
-    for await (const line of lines) {
-      if (host.signal.aborted) break;
-      let command;
-      try {
-        if (Buffer.byteLength(line) > 65536) throw Object.assign(new Error(), { code: 'HOST_COMMAND_INVALID' });
-        command = JSON.parse(line);
-        if (!command || typeof command !== 'object' || Array.isArray(command) ||
-            typeof command.id !== 'string' || !command.id || command.id.length > 128 ||
-            !['status', 'kickoff', 'input', 'wait', 'stop'].includes(command.operation)) throw Object.assign(new Error(), { code: 'HOST_COMMAND_INVALID' });
-        let result;
-        if (command.operation === 'status') result = host.status();
-        else if (command.operation === 'stop') result = host.stop();
-        else {
-          if (typeof host[command.operation] !== 'function') throw Object.assign(new Error(), { code: 'HOST_OPERATION_UNAVAILABLE' });
-          result = await host[command.operation](command.input ?? {});
-        }
-        if (host.signal.aborted && command.operation !== 'stop') break;
-        write({ type: 'reply', id: command.id, result });
-        if (command.operation === 'stop') break;
-      } catch (error) {
-        if (host.signal.aborted) break;
-        write({ type: 'error', ...(typeof command?.id === 'string' && command.id.length <= 128 ? { id: command.id } : {}), code: failureCode(error) });
+  const done = Promise.withResolvers();
+  const queue = [];
+  let sealed = false, ended = false, active = false, queuedBytes = 0;
+  const finish = reason => { sealed = true; queue.length = 0; queuedBytes = 0; lines.close(); input.pause(); done.resolve({ reason }); };
+  const abort = () => finish('host-stop');
+  const reportError = (command, error) => write({ type: 'error', ...(typeof command?.id === 'string' && command.id.length <= 128 ? { id: command.id } : {}), code: failureCode(error) });
+  async function pump() {
+    if (active || sealed) return;
+    active = true;
+    try {
+      while (!sealed && queue.length) {
+        const { command, bytes } = queue.shift(); queuedBytes -= bytes;
+        try {
+          let result;
+          if (command.operation === 'status') result = host.status();
+          else {
+            if (typeof host[command.operation] !== 'function') throw fail('HOST_OPERATION_UNAVAILABLE');
+            result = await host[command.operation](command.input ?? {});
+          }
+          if (!sealed && !host.signal.aborted) write({ type: 'reply', id: command.id, result });
+        } catch (error) { if (!sealed && !host.signal.aborted) reportError(command, error); }
       }
-    }
-    return { reason: host.signal.aborted ? 'host-stop' : 'input-ended' };
-  } finally { host.signal.removeEventListener('abort', abort); lines.close(); host.stop(); }
+    } finally { active = false; if (ended && !sealed) finish('input-ended'); }
+  }
+  const admit = line => {
+    if (sealed || host.signal.aborted) return;
+    let command;
+    try {
+      const bytes = Buffer.byteLength(line);
+      if (bytes > 65536) throw fail('HOST_COMMAND_INVALID');
+      command = JSON.parse(line);
+      if (!command || typeof command !== 'object' || Array.isArray(command) ||
+          typeof command.id !== 'string' || !command.id || command.id.length > 128 ||
+          !['status', 'kickoff', 'input', 'wait', 'stop'].includes(command.operation)) throw fail('HOST_COMMAND_INVALID');
+      if (command.operation === 'stop') {
+        // Seal first, then acknowledge synchronously before abort can complete the host.
+        sealed = true; queue.length = 0; queuedBytes = 0;
+        const result = host.stop();
+        write({ type: 'reply', id: command.id, result });
+        finish('host-stop');
+        return;
+      }
+      if (queue.length >= 64 || queuedBytes + bytes > 262144) throw fail('HOST_COMMAND_LIMIT');
+      queue.push({ command, bytes }); queuedBytes += bytes;
+      void pump().catch(done.reject);
+    } catch (error) { if (!sealed && !host.signal.aborted) reportError(command, error); }
+  };
+  lines.on('line', admit);
+  lines.on('close', () => { ended = true; if (!active && !sealed) finish('input-ended'); });
+  host.signal.addEventListener('abort', abort, { once: true });
+  try {
+    if (host.signal.aborted) abort();
+    else write({ type: 'ready', status: host.status() });
+    return await done.promise;
+  } finally { sealed = true; host.signal.removeEventListener('abort', abort); lines.removeListener('line', admit); lines.close(); host.stop(); }
 }

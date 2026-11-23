@@ -10,14 +10,20 @@ export async function runForegroundEnvironment({ mode, options, timeoutMs = 120_
   if (!['flat', 'agensh'].includes(mode) || !options || typeof options !== 'object' || typeof interact !== 'function' ||
       !finite(timeoutMs) || (options.signal !== undefined && !(options.signal instanceof AbortSignal)) || (signal !== undefined && !(signal instanceof AbortSignal))) throw new TypeError('Foreground host requires a mode, options, interaction and finite timeout');
   const lifetime = new AbortController();
-  const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(timeoutMs), ...(signal ? [signal] : []), ...(options.signal ? [options.signal] : [])]);
+  const deadline = AbortSignal.timeout(timeoutMs);
+  const workSignal = AbortSignal.any([lifetime.signal, deadline, ...(signal ? [signal] : []), ...(options.signal ? [options.signal] : [])]);
   let closing = false;
   const stop = () => { closing = true; lifetime.abort(); return { status: 'stopping' }; };
   const check = () => { if (closing || workSignal.aborted) throw fail('HOST_STOPPING'); };
   async function drive(handle) {
     let abort;
-    const stopped = new Promise(resolve => {
-      abort = () => { closing = true; resolve({ reason: 'host-stop' }); };
+    const stopped = new Promise((resolve, reject) => {
+      abort = () => {
+        closing = true;
+        if (workSignal.reason?.code === 'AGENSH_TEAM_FENCED') reject(workSignal.reason);
+        else if (workSignal.reason === deadline.reason && deadline.aborted) reject(fail('HOST_WORK_TIMEOUT'));
+        else resolve({ reason: 'host-stop' });
+      };
       workSignal.addEventListener('abort', abort, { once: true });
       if (workSignal.aborted) abort();
     });
@@ -39,8 +45,9 @@ export async function runForegroundEnvironment({ mode, options, timeoutMs = 120_
         if (!peer) throw fail('UNKNOWN_RECIPIENT');
         return peer;
       };
-      team.signal.addEventListener('abort', stop, { once: true });
-      if (team.signal.aborted) stop();
+      const teamStopped = () => { closing = true; lifetime.abort(team.signal.reason); };
+      team.signal.addEventListener('abort', teamStopped, { once: true });
+      if (team.signal.aborted) teamStopped();
       try { return await drive({ status,
         async kickoff({ recipient: key, input }) { recipient(key); return team.redact(receipt(team.kickoff(key, input))); },
         async input({ recipient: key, input, requestId }) {
@@ -52,7 +59,7 @@ export async function runForegroundEnvironment({ mode, options, timeoutMs = 120_
           if (!finite(waitMs)) throw fail('HOST_WAIT_INVALID');
           return team.redact(receipt(await team.wait(key, batchId, { timeoutMs: Math.min(timeoutMs, waitMs), signal: workSignal })));
         },
-      }); } finally { team.signal.removeEventListener('abort', stop); }
+      }); } finally { team.signal.removeEventListener('abort', teamStopped); }
     });
     return await runFlatEnvironment({ ...options, signal: workSignal, async drive(controller) {
       const ended = controller.wait().then(() => stop());

@@ -100,7 +100,7 @@
     },
     {
       "path": "src/environments/agensh/router.js",
-      "sha256": "f28788702c628b0d6e301e9c716d75798ab030198a7dd9f573f0820f1a407ba4"
+      "sha256": "4fcd994645da9cc31643f7bdaa8da1e5d7011dd9ff3efc7fc8b9c34cb3f260fd"
     },
     {
       "path": "src/environments/agensh/routed.js",
@@ -108,7 +108,7 @@
     },
     {
       "path": "src/environments/agensh/team.js",
-      "sha256": "abcfc9e9df24a89beb25d2e308c09b1b0fa7eaf83f9574ed19c60c57fa149571"
+      "sha256": "f6c719f8296c5035eccef846820de6658305d32cfc9c6edef0d7674fec491b8a"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",

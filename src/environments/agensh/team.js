@@ -34,7 +34,13 @@ export async function createAgenshTeam(options) {
   const check = () => { if (signal.aborted) throw fail('ENVIRONMENT_START_ABORTED'); };
   const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), resources: resources.snapshot(),
     peers: [...peers].map(([key, bot]) => ({ key, botId: bot.id, profile: bot.profile, router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() })) });
-  function stop() { closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(); }
+  function stop(reason) { closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
+  function fence(reason) {
+    if (closing || signal.aborted) return;
+    const code = typeof reason === 'string' ? reason : reason?.code;
+    const detail = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'AGENSH_SOURCE_FAILED';
+    stop(Object.assign(fail('AGENSH_TEAM_FENCED'), { details: [{ code: detail }] }));
+  }
   async function close({ timeoutMs = 60_000 } = {}) {
     if (!finite(timeoutMs)) throw new TypeError('Agensh close requires a finite wait');
     stop(); if (completed) return structuredClone(completed);
@@ -74,12 +80,12 @@ export async function createAgenshTeam(options) {
     for (const peer of facilities.peers) {
       const bot = peers.get(peer.key); const mapping = { botId: bot.id, workerId: peer.board.workerId };
       const board = httpClient(facilities.endpoints.board);
-      const router = createAgenshRouter({ ...options.router, mapping, onFence: stop,
+      const router = createAgenshRouter({ ...options.router, mapping, onFence: fence,
         runInput: (text, wait) => runInput(runtime, bot.id, text, { ...wait, signal: AbortSignal.any([signal, wait.signal]) }),
         readContext: options.router?.readContext ?? (async ({ signal }) => (await board('GET', `/board/${encodeURIComponent(facilities.boardId)}/read?viewer=${encodeURIComponent(peer.board.workerId)}`, undefined, { signal })).rendered) });
       routers.set(peer.key, router); unsubscriptions.push(runtime.onEvent(router.observe));
       const subscribe = options.router?.subscribe ?? createAgenshEventSubscription;
-      const creation = Promise.resolve().then(() => subscribe({ ...options.router?.events, facilities: { ...facilities, peer }, mapping, ingest: router.ingest, signal, onFailure: stop })).then(async source => {
+      const creation = Promise.resolve().then(() => subscribe({ ...options.router?.events, facilities: { ...facilities, peer }, mapping, ingest: router.ingest, signal, onFailure: fence })).then(async source => {
         if (typeof source?.stop !== 'function') throw fail('TEAM_SOURCE_NOT_READY');
         subscriptions.set(peer.key, source);
         if (closing) await source.stop();

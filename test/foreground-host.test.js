@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
@@ -163,5 +163,83 @@ test('an agensh router deadline ends foreground interaction before a longer host
   const started = performance.now();
   const report = await runForegroundEnvironment(config, async () => new Promise(() => {}));
   assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(report.businessFailure?.code, 'AGENSH_TEAM_FENCED');
+  assert.equal(report.businessFailure?.details?.[0]?.code, 'ROUTER_WORK_EXPIRED');
   assert.ok(performance.now() - started < 1000);
+});
+
+test('JSON-line stop overtakes an active wait, seals queued input and precedes the final CLI result', { timeout: 15_000 }, async t => {
+  const { spawn } = await import('node:child_process');
+  const { once } = await import('node:events');
+  const { createInterface } = await import('node:readline');
+  const root = await mkdtemp(join(tmpdir(), 'foreground-command-stop-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const child = spawn(process.execPath, ['scripts/run-environment.mjs', '--config', 'test/fixtures/foreground-host-configuration.mjs'],
+    { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root, FOREGROUND_TEST_HOLD: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
+  t.after(() => child.kill('SIGKILL'));
+  const records = [], stderr = []; child.stderr.on('data', value => stderr.push(value));
+  const send = (id, operation, input) => child.stdin.write(`${JSON.stringify({ id, operation, input })}\n`);
+  let stoppedAt;
+  createInterface({ input: child.stdout }).on('line', line => {
+    const record = JSON.parse(line); records.push(record);
+    if (record.type === 'ready') send('start', 'kickoff', { recipient: 'a', input: 'hold this turn' });
+    if (record.id === 'start') {
+      send('waiting', 'wait', { recipient: 'a', batchId: record.result.batchId, timeoutMs: 4000 });
+      setTimeout(() => {
+        stoppedAt = performance.now();
+        for (let index = 0; index < 70; index++) send(`overflow-${index}`, 'status');
+        send('queued', 'input', { recipient: 'b', requestId: 'queued', input: 'never admitted' });
+        send('end', 'stop');
+        send('late', 'input', { recipient: 'b', requestId: 'late', input: 'never admitted' });
+      }, 30);
+    }
+  });
+  const [exit] = await once(child, 'exit');
+  assert.equal(exit, 0, Buffer.concat(stderr).toString());
+  assert.ok(performance.now() - stoppedAt < 1000);
+  assert.deepEqual(records.slice(-2).map(row => row.type === 'reply' ? row.id : row.type), ['end', 'result']);
+  assert.ok(!records.some(row => row.type === 'reply' && ['waiting', 'queued', 'late'].includes(row.id)));
+  assert.ok(!records.some(row => row.id === 'late'));
+  assert.ok(records.some(row => row.type === 'error' && row.code === 'HOST_COMMAND_LIMIT'));
+  assert.ok(!records.some(row => row.type === 'reply' && row.id?.startsWith('overflow-')));
+  assert.equal(records.at(-1).cleanup, 'complete');
+  const saved = JSON.parse(await readFile(records.at(-1).reportPath, 'utf8'));
+  assert.equal(saved.environment.peers[1].router.batches.length, 0);
+});
+
+test('source failure stays a safe team failure and host deadline stays a distinct failure', async t => {
+  const config = await configuration(t);
+  let failSource;
+  config.options.router.subscribe = async ({ onFailure }) => { failSource = onFailure; return { ready: true, stop: async () => {} }; };
+  const source = await runForegroundEnvironment(config, async () => {
+    failSource({ code: 'PRIVATE_source_failure', message: 'private-git-a' });
+    await new Promise(() => {});
+  });
+  assert.equal(source.businessFailure.code, 'AGENSH_TEAM_FENCED');
+  assert.deepEqual(source.businessFailure.details, [{ code: 'AGENSH_SOURCE_FAILED' }]);
+  assert.equal(source.cleanup.cleanup, 'complete');
+  const deadline = await runForegroundEnvironment({ ...config, timeoutMs: 200 }, async () => new Promise(() => {}));
+  assert.equal(deadline.businessFailure.code, 'HOST_WORK_TIMEOUT');
+  assert.equal(deadline.cleanup.cleanup, 'complete');
+});
+
+test('CLI self-fence exits unsuccessfully and a configuration throwing null emits a safe startup error', { timeout: 15_000 }, async t => {
+  const { spawn } = await import('node:child_process');
+  const { once } = await import('node:events');
+  const { writeFile } = await import('node:fs/promises');
+  const root = await mkdtemp(join(tmpdir(), 'foreground-safe-failures-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const fixture = new URL('./fixtures/foreground-host-configuration.mjs', import.meta.url).href;
+  const fenced = join(root, 'fenced.mjs');
+  await writeFile(fenced, `import config from ${JSON.stringify(fixture)};\nconfig.options.router.workTimeoutMs = 100;\nexport default config;\n`);
+  for (const [path, expected, stream] of [[fenced, 'AGENSH_TEAM_FENCED', 'stdout'], [join(root, 'null.mjs'), 'HOST_START_FAILED', 'stderr']]) {
+    if (stream === 'stderr') await writeFile(path, 'throw null;\n');
+    const child = spawn(process.execPath, ['scripts/run-environment.mjs', '--config', path],
+      { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root }, stdio: ['pipe', 'pipe', 'pipe'] });
+    t.after(() => child.kill('SIGKILL'));
+    const stdout = [], stderr = []; child.stdout.on('data', bytes => stdout.push(bytes)); child.stderr.on('data', bytes => stderr.push(bytes));
+    const [exit] = await once(child, 'exit'); assert.equal(exit, 1);
+    const records = Buffer.concat(stream === 'stdout' ? stdout : stderr).toString().trim().split('\n').map(JSON.parse);
+    assert.equal(stream === 'stdout' ? records.at(-1).businessFailureCode : records.at(-1).code, expected);
+    if (stream === 'stdout') assert.equal(records.at(-1).cleanup, 'complete');
+    else assert.deepEqual(records, [{ code: 'HOST_START_FAILED' }]);
+  }
 });

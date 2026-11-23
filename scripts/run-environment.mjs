@@ -26,9 +26,10 @@ try {
     process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;
   }
 } catch (error) {
-  const invalid = error.code === 'HOST_ARGUMENTS_INVALID';
+  const invalid = error?.code === 'HOST_ARGUMENTS_INVALID';
   process.stderr.write(`${JSON.stringify({ code: typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code) ? error.code : 'HOST_START_FAILED', ...(invalid ? { usage } : {}) })}\n`);
   process.exitCode = invalid ? 2 : 1;
 } finally {
+  process.stdin.pause(); process.stdin.unref?.();
   process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);
 }

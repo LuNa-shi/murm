@@ -26,7 +26,7 @@ export function createAgenshRouter({ mapping, runInput, readContext, workTimeout
     notify();
   }
   const timer = setTimeout(() => { fence('ROUTER_WORK_EXPIRED'); lifetime.abort(); }, workTimeoutMs);
-  function fence(code) { fenced = true; stop(code); onFence(); }
+  function fence(code) { fenced = true; stop(code); onFence(code); }
   async function pump() {
     if (pumping || !ready || !started || !accepting) return;
     pumping = true;
