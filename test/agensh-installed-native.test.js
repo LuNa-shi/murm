@@ -11,6 +11,7 @@ import { createDeadline, createCleanupBudget } from './fixtures/agensh-deadline.
 import { httpClient } from '../src/environments/agensh/http.js';
 import { createAgenshDelivery } from '../src/environments/agensh/delivery.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
+import { closeInstalledForeground } from './fixtures/agensh-installed-cleanup.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
 
 test('installed foreground Agensh CLI preserves native fixed collaboration and archives', {
@@ -103,6 +104,8 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     work.remaining(); work.dispose(); cleanup.start();
     child.stdin.write(JSON.stringify({ id: 'stop', operation: 'stop' }) + '\n');
     terminal = await waitFor(rows, row => row.type === 'result', cleanup);
+    assert.equal(terminal.runtimeId, ready.runtimeId);
+    assert.deepEqual(terminal.bots.map(bot => bot.botId).sort(), ready.peers.map(peer => peer.botId).sort());
     assert.equal(terminal.cleanup, 'complete'); assert.equal(terminal.businessFailureCode, null); assert.equal(terminal.cleanupFailureCode, null); assert.equal(terminal.reportSaveFailureCode, null); assert.equal(terminal.pendingCount, 0);
     assert.ok(terminal.bots.length === 2 && terminal.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
     assert.deepEqual(await cleanup.step(({ timeoutMs, signal }) => ownedContainers(ready.runtimeId, { timeoutMs, signal })), []);
@@ -111,7 +114,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     assert.equal(saved.environment.peers[1].subscription.records.some(row => row.eventId === `comment:${comment.id}`), false);
     for (const peer of saved.environment.peers) {
       const files = saved.cleanup.bots.find(bot => bot.botId === peer.botId).artifacts.find(path => path.endsWith('/artifacts/files')); assert.ok(files);
-      const initial = JSON.parse(await cleanup.step(() => readFile(join(files, '.team-state.json'), 'utf8'))); assert.deepEqual(initial, upstream.receipt().evidence.find(row => row.stage === `${peer.key}-initial`));
+      const initial = JSON.parse(await cleanup.step(() => readFile(join(files, '.team-state.json'), 'utf8'))); assert.deepEqual(initial, upstream.receipt().evidence.find(row => row.stage === `${peer.key}-initial`)); assert.equal(initial.branch, `peer-${runId}-${peer.key}`);
       if (peer.key === 'a') {
         assert.deepEqual(await cleanup.step(() => readFile(join(files, 'untracked.bin'))), Buffer.from([0, 255, 65, 10]));
         assert.equal(await cleanup.step(() => readFile(join(files, 'left.txt'), 'utf8')), 'T15_DIRTY_PRIVATE\n');
@@ -123,6 +126,12 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     }
     const read = JSON.parse((await shell(process.execPath, [join(root, 'scripts/read-environment-result.mjs'), '--run-directory', ready.runDirectory, '--runtime-id', ready.runtimeId])).stdout);
     assert.equal(read.environment.state, 'read'); assert.equal(read.core.state, 'read'); assert.equal(read.environment.cleanup, 'complete'); assert.equal(read.core.cleanup, 'complete');
+    child.send({ type: 'verify-facilities', deadlineAt: Date.now() + cleanup.remaining() });
+    const verification = await waitFor(messages, row => row.type === 'facilities-verified' || row.type === 'facilities-verification-failed', cleanup);
+    assert.deepEqual(verification.proof, { boardFact: true, negotiation: true, confirmation: true });
+    const postStopMain = await cleanup.step(({ signal }) => delivery.readMainFile('right.txt', { signal }));
+    assert.equal(postStopMain.data.toString(), `T15_RIGHT_ADOPTED ${teamFact}\n`);
+    report.postStopFacilities = verification.proof;
     report.reader = read; report.delivery = delivery.snapshot(); report.upstream = upstream.receipt();
     assert.equal(report.upstream.arrivals, 10); assert.equal(report.upstream.accepted, 10); assert.equal(report.upstream.failure, undefined);
     report.failure = false;
@@ -130,13 +139,10 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
   finally {
     work?.dispose(); cleanup.start();
     try {
-      if (child && !terminal && !exited) { child.kill('SIGTERM'); terminal = await waitFor(rows, row => row.type === 'result', cleanup); }
-      // Never remove shared dependencies while execution/creation ownership is unknown.
-      if (child?.connected && (terminal?.cleanup === 'complete' || messages.some(row => row.type === 'setup-failed'))) {
-        child.send({ type: 'close-facilities', deadlineAt: Date.now() + cleanup.remaining() });
-        const closed = await waitFor(messages, row => row.type === 'facilities-closed', cleanup); facilityCleanup = closed.receipt; report.facilities = closed.resources;
-      } else facilityCleanup = { cleanup: 'pending', dependenciesRetained: true };
-      if (child) await cleanup.step(async () => { while (!exited) await new Promise(resolve => setTimeout(resolve, 20)); });
+      if (child) {
+        const closed = await closeInstalledForeground({ child, rows, messages, cleanup, terminal, isExited: () => exited });
+        terminal = closed.terminal; facilityCleanup = closed.facilityCleanup; report.facilities = closed.facilities;
+      }
     } catch { facilityCleanup ??= { cleanup: 'pending', dependenciesRetained: true }; }
     if (child && !exited) { if (child.connected) child.disconnect(); child.stdin.destroy(); child.stdout.destroy(); child.stderr.destroy(); child.unref(); }
     try { await cleanup.step(() => upstream?.close()); } catch { report.upstreamCleanup = 'pending'; }

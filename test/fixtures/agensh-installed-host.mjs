@@ -1,10 +1,23 @@
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { createLocalAgenshStack } from './node_modules/@swarmenv/core/test/fixtures/agensh-local-stack.js';
 import { createCleanupBudget } from './node_modules/@swarmenv/core/test/fixtures/agensh-deadline.js';
+import { httpClient } from './node_modules/@swarmenv/core/src/environments/agensh/http.js';
+import { teamFact, teamInputs } from './node_modules/@swarmenv/core/test/fixtures/agensh-team-upstream.js';
 import { readFile } from 'node:fs/promises';
 const input=JSON.parse(await readFile(process.env.SWARMENV_AGENSH_HOST_INPUT,'utf8'));
 const stack=await createLocalAgenshStack({directory:input.directory,advertiseHost:input.host});
 process.on('message',async message=>{
+ if(message.type==='verify-facilities') {
+  try {
+   const signal=AbortSignal.timeout(Math.max(1,Math.min(10000,message.deadlineAt-Date.now())));
+   const board=await httpClient(stack.boardOrigin)('GET',`/board/board-${input.runId}/read?viewer=worker-${input.runId}-b`,undefined,{signal});
+   const mm=httpClient(configuration.mattermost.origin,`Bearer ${configuration.mattermost.adminToken}`);
+   const channel=await mm('GET',`/api/v4/teams/${configuration.mattermost.teamId}/channels/name/run-${input.runId}`,undefined,{signal});
+   const posts=await mm('GET',`/api/v4/channels/${channel.id}/posts?page=0&per_page=50`,undefined,{signal});
+   process.send({type:'facilities-verified',proof:{boardFact:board.rendered.includes(teamFact),negotiation:Object.values(posts.posts).some(row=>row.message.includes(teamInputs[2])),confirmation:Object.values(posts.posts).some(row=>row.message.includes(teamInputs[3]))}});
+  } catch {process.send({type:'facilities-verification-failed'});}
+  return;
+ }
  if(message.type!=='close-facilities')return;
  const budget=createCleanupBudget(Math.max(1,message.deadlineAt-Date.now())).start();
  try { const receipt=await stack.close(budget); process.send({type:'facilities-closed',receipt,resources:stack.receipt()}); }
