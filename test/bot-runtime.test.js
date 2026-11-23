@@ -9,7 +9,6 @@ import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
-import { IdentityTaskLoop } from '../src/runtime/identity-task-loop.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION, BOT_COMPACTION_MESSAGE } from '../src/agent/bot-contract.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
@@ -79,7 +78,7 @@ test('Runtime starts and cleans an unbound Bot without inventing an Execution', 
   assert.equal(manager.snapshot().executions.length, 0);
 });
 
-test('a quiet unfinished Mission discovers a new responsibility after all Tasks are done and final validation times out', async t => {
+test('Mission timeout preserves a fresh Bot proposal after earlier Tasks finish and the previous Bot closes', async t => {
   const identity = { checker_ref: 'controlled', checker_version: '1', environment_ref: 'test' };
   const { service, runtime, startSession } = await fixture(t, { coordinationPermissions: ['mission_submit'] },
     { acceptanceConditions: { required_check: identity } });
@@ -114,32 +113,16 @@ test('a quiet unfinished Mission discovers a new responsibility after all Tasks 
     actorRef: first.bot.bot_id, materialIds: [], requestId: 'same-snapshot' });
   assert.equal(retry.result.code, 'MISSION_RETRY_EXHAUSTED');
 
-  let discoveries = 0, closedAt, proposed;
-  const loop = new IdentityTaskLoop({ coreId, taskService: service, discoveryRetryMs: 50, idleBackoffMs: 10,
-    takeTask: async ({ candidates }) => {
-      assert.deepEqual(candidates, []);
-      discoveries += 1;
-      if (discoveries === 1) {
-        // Model discovery ends by the trusted selector timeout. Do not emit or
-        // inject any public-change notification to the Identity loop.
-        service.requestBotStop(first.bot.bot_id, 'selection-budget');
-        await runtime.releaseBot(first.bot.bot_id);
-        closedAt = Date.now();
-        return { no_work: true };
-      }
-      assert.ok(Date.now() - closedAt >= 45);
-      assert.equal(first.session.closed, true);
-      assert.equal(service.getBot(first.bot.bot_id).state, 'CLOSED');
-      const second = await starter();
-      assert.notEqual(second.bot.bot_id, first.bot.bot_id);
-      assert.equal(second.bot.core_id, first.bot.core_id);
-      proposed = create('Find a smaller proof that fits the final check budget', second.bot.bot_id);
-      loop.stop();
-      return { take_deferred: true };
-    },
-  });
-  await loop.run({ maxTurns: 5 });
-  assert.equal(discoveries, 2);
+  // Mission timeout and exhausted same-snapshot retry do not imply Mission
+  // acceptance or prevent an authorized host from starting a fresh Bot.
+  service.requestBotStop(first.bot.bot_id, 'selection-budget');
+  await runtime.releaseBot(first.bot.bot_id);
+  assert.equal(first.session.closed, true);
+  assert.equal(service.getBot(first.bot.bot_id).state, 'CLOSED');
+  const second = await starter();
+  assert.notEqual(second.bot.bot_id, first.bot.bot_id);
+  assert.equal(second.bot.core_id, first.bot.core_id);
+  const proposed = create('Find a smaller proof that fits the final check budget', second.bot.bot_id);
   assert.ok(proposed);
   assert.equal(service.getTask(former.task_id).state, 'DONE');
   assert.equal(service.listActiveExecutions().length, 0);

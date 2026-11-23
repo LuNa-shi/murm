@@ -1,6 +1,6 @@
 # 02. Execution, Core scheduling and failure recovery
 
-> This chapter covers the Task-bound Runtime, IdentityTaskLoop and provider primitives. [Core Runtime](15-core-runtime.md) describes the separate public Bot lifetime and [foreground Environment control](17-environment-reporting.md#foreground-environment-control) covers the new flat host responsibilities.
+> This chapter covers the Task-bound Runtime and provider primitives. [Core Runtime](15-core-runtime.md) describes the separate public Bot lifetime and [foreground Environment control](17-environment-reporting.md#foreground-environment-control) covers the new flat host responsibilities.
 
 An Execution is a durable authorization for a Bot to work on a Task. Runtime binds that authorization to a Core, a Workspace and a model Session. Runtime always removes the Session from Runtime's reusable set and stops it with the Sandbox when the Execution releases. A later Execution then requires a fresh Bot/Session. Neither a model reply nor the end of a turn automatically completes an Execution or Task.
 
@@ -11,13 +11,12 @@ Read [07 Run configuration](07-run-configuration.md) for current host entry poin
 | Component | What it owns | What it does not decide |
 |---|---|---|
 | Task Service | Durable admission, take, transition validation, dependency facts, version checks and replay | Research-value ranking |
-| IdentityTaskLoop | One Core's bounded discover/select/take/Runtime-handoff loop | It cannot bypass service-side admission |
 | Flat controller | Reconcile dependency state, submit discovery and continuation, and stop its Bots | TaskService owns claim admission; public Core owns resources |
 | Runtime | Process binding, Workspace preparation, Session events, deadlines, recovery and release/fencing | Research decomposition and value ranking |
 
-The flat controller reconciles dependency readiness through TaskService. The retained legacy IdentityTaskLoop passes each reservation to its caller through `runExecution`. Runtime binds it to the registered Bot’s original Session.
+The flat controller reconciles dependency readiness through TaskService and sends discovery through public Core. The legacy domain Runtime still binds a reservation to its registered Bot’s original Session when a host uses that direct API.
 
-## 2. Three different state spaces
+## 2. Durable Execution and legacy Runtime occupancy
 
 ### 2.1 Durable Execution state
 
@@ -43,29 +42,13 @@ Runtime's in-memory `coreStates` map holds `core_id`, `state` (`IDLE`, `RUNNING`
 
 Task Service independently persists `core_id`. A non-null binding is immutable for an Execution's lifetime. Take/start reject another `CREATED`, `RUNNING` or `CLOSING` Execution on the Core.
 
-### 2.3 Identity-loop state
+## 3. How flat work reaches a Bot
 
-The normal loop is `IDLE → DISCOVERING → TAKING → RUNNING → IDLE`. `STOPPING` is explicit shutdown. `FAILED` remains in the exported vocabulary. There is no semantic `BLOCKED` Core state: blocking research work releases capacity.
+### 3.1 Current discovery policy
 
-Snapshots include discovery/take-turn/accepted-take counts, conflicts/rescans, selector failures/retry deadline, `waiting_for_work`, `discovery_retry_at`, `first_discovery_at`, idle generation, last error/timestamp and state history. These counters describe coordination activity, not useful research progress.
+The flat controller owns discovery, continuation, deadlines and replacement through the public Core. Every free Slot can start a read-only UNBOUND Bot even when the Mission has no Tasks. A completed UNBOUND turn permits another same-Bot discovery, subject to discovery/selection/hard/stall bounds. A failed turn is not Task completion. An ambiguous input retains its original request and owner instead of automatically resending. Ordinary Task admission and conflicts remain TaskService authority, and confirmed resource cleanup precedes replacement.
 
-## 3. How work reaches a Core
-
-### 3.1 IdentityTaskLoop
-
-One `runOnce` is serialized; concurrent calls share its promise.
-
-1. Wait for the first discovery time, even if the Controller signals earlier. After a Bot exits without an Execution, wait for a public-state signal or the discovery retry time. Re-arm an exhausted selector only after its own cooldown, or return `take_exhausted`.
-2. Read eligible work and bound the supplied page to `shortlistLimit` (default 8; accepted 1–100). An empty page still enters discovery on every Core. There is no one-time bootstrap privilege or Core-1 exception.
-3. Give `takeTask` the frozen page, Core ID, prompt, reason and rescan count. The Bot can inspect other public work, prefer a suitable existing Task or propose a local responsibility. The page is context, not an admission allowlist.
-4. The callback returns an already accepted `{task, execution}` from the Bot transport, `take_deferred`, a structured `take_failed`, or explicit `no_work`. A bare Task ID or selection object is invalid and consumes the bounded failure budget; the supervisor has no `takeSelectedTask`, default owner or generated take-key fallback. Task Service and the authenticated Bot Bridge own take identity and request idempotency.
-5. Deferred binding does not consume a failed selection attempt. Conflict codes cause a bounded rescan; infrastructure/invalid results consume the retry budget. The Bridge preserves its actual take error code even when Pi handles the error as an ordinary tool result.
-6. An accepted take is handed to Runtime even when its Task was proposed after the page was read. The supervisor does not issue a second take. If Runtime supplies `waitForExecutionRelease`, wait for process ownership and durable active state to end; cleanup ordering is described below.
-7. Clear local pointers and return idle. A Runtime handoff error triggers an injected release or fence attempt and records its result; failed cleanup remains subject to Runtime's ownership retention rules.
-
-Defaults remain one conflict rescan, three selector failures before a 30-second cooldown, a 5-second ordinary idle backoff, a 30-second discovery retry after an unbound Bot exits, 25-ms release polling and an infinite handoff wait deadline. An embedding can configure a finite deadline. Signals interrupt waits, and a signal version prevents a public change during discovery from being lost when a callback returns no work. `notifyPublicChange` accepts public Task transitions and Material/Workspace mutations, while filtering local Workspace revision and feedback bookkeeping. A host can route event hints to Controller reconciliation and use persisted public state to rearm discovery. A retry timer allows quiet, unfinished Missions to resume discovery without depending on new public records. Stop aborts handoff waits, requests a fence for an owned Execution and wakes sleepers. A custom `waitForSignal` receives a signal owned by that single wait. Timer, public notification, external completion, parent cancellation or loop stop all remove the parent abort listener and cancel the unfinished external wait; recurring discovery must not accumulate listeners or outstanding subscriptions.
-
-The loop takes `no_work` only as an explicit bounded callback result. A settled response, backend error or incomplete callback does not establish `no_work`. The host supplies the discovery callback and its decision policy. Runtime can open a successor only after it confirms cleanup and releases the previous Bot’s Core.
+The removed IdentityTaskLoop's shortlist, rescan, no-work cooldown, initial stagger and handoff wait algorithms have no active Environment callers. They are not options on the flat controller. Public Core flat tests cover empty-Mission discovery on four distinct Bots, no eligible work, public changes during discovery, bounds and stop races. Domain tests retain Mission final-check timeout, thaw and retry receipts plus authorized fresh Bot proposal after predecessor cleanup. That test makes no automatic timer or flat restart claim: the current flat policy completes when a nonempty Mission Task set is entirely terminal, and a timeout by itself does not restart that Environment.
 
 ### 3.2 Flat dependency repair and discovery
 
@@ -75,7 +58,7 @@ This sweep reads the full Mission Task set through scanAll rather than a bounded
 
 All flat inputs share one serialized controller. Its public Core lookup is followed by closing, deadline and live-state guards, so halt during that await suppresses the late send. Queued events and subsequent ticks cannot refill after halt. Unknown admission retains the original owner and blocks automatic resubmission. The public Core owns physical resource stop; flat reconciles the original domain owner only from the resulting stop receipt.
 
-The old TaskController has no remaining Environment caller and has been removed. IdentityTaskLoop remains a directly callable compatibility component with legacy Runtime regressions, including quiet-Mission retry. Removing that separate component still requires migrating its remaining required behavior and tests. [Flat controller tests](../../test/flat-controller.test.js) exercise actual public Core discovery, dependency repair, original identity and stop races with controlled provider transport. [Material authority tests](../../test/material-authority.test.js) retain durable Task/Material/Workspace token semantics independently of the removed scheduler.
+The old TaskController and IdentityTaskLoop have no remaining Environment callers and have been removed. Their former benchmark composition is preserved in the fixed research revision. [Flat controller tests](../../test/flat-controller.test.js) exercise actual public Core discovery, dependency repair, original identity and stop races with controlled provider transport. [Material authority tests](../../test/material-authority.test.js) retain durable Task/Material/Workspace token semantics independently of the removed scheduler.
 
 ## 4. Durable Execution record
 
@@ -186,7 +169,6 @@ Registered cleanup distinguishes acceptance from completion: finish first persis
 
 | Source | Covered behavior | Existing tests |
 |---|---|---|
-| [identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Discover/propose/take, cooldown, signal races and failed handoff | [orchestration-roles.test.js](../../test/orchestration-roles.test.js) |
 | [flat/controller.js](../../src/environments/flat/controller.js) | Dependency repair, discovery, continuation, directed feedback and domain cleanup | [flat-controller.test.js](../../test/flat-controller.test.js) |
 | [runtime.js](../../src/runtime/runtime.js) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.js), [cleanup integration](../../test/runtime-cleanup.test.js) |
 | [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.js) | Durable state/version/Core/lease transitions and replay | [Task behavior](../../test/task-contract.test.js), [finish lifecycle](../../test/task-finish-lifecycle.test.js) |

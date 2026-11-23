@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **202 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **201 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -74,7 +74,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `a475e66b3fb1cc33f4e76472f36258314697df35cfd4970498b7905fb6d3a49a` |
 | [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [20-lead-helper-environment](20-lead-helper-environment.md), [08-prompts](08-prompts.md) | `a9b680e62aafe7bbd5883d3d5d3255d1cd964771a0711d862e283e2f12b897ab` |
 
-### Execution and control (21)
+### Execution and control (20)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -97,7 +97,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/shared/run-input.js](../../src/environments/shared/run-input.js) | Environment-owned exclusive idle Bot input wait and uncertain submission guard | [15-core-runtime](15-core-runtime.md) | `f88873c40ab74a4a673e2de07216770d1b442b229f1635548b7622d41de37f78` |
 | [src/environments/shared/run-report.js](../../src/environments/shared/run-report.js) | Environment host reporting with independent business, cleanup and save failures | [17-environment-reporting](17-environment-reporting.md) | `8486471eacc2ba2a602ca81c553b459739d0a3d470bebcc3e96bb4c28585d12c` |
 | [src/runtime/docker-bot-network.js](../../src/runtime/docker-bot-network.js) | Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `fece9e1daeaf52f57ac4d821abd0be86fdd94738995507a9412817eb1b268096` |
-| [src/runtime/identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Per-Core discovery/take supervisor, rescans, waiting and wake events | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `dbaf8e0b032a77d4b1ab7510837f138ee07cf5769725efc932c7945dea90fcd9` |
 | [src/runtime/runtime.js](../../src/runtime/runtime.js) | Registered Bot binding, physical resource ownership, failure cleanup, fencing and rotation | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `5c97a8ff436b86e21a8b55b5dd8860100b085aba5b896147766b99241be77fe6` |
 
 ### Mission acceptance and checker (7)
@@ -186,7 +185,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `f62d1e265a20fe3245ca1e6442f6cb4c182db09b71c8167b11cf11c95570d25c` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `fe3d888d8e1feb43e78edb0e6153768048372af336414de0a4f0a7082e691b1a` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `fc169bbe144684a23eb611d2461fcf3a868ab521cf408b79fcb962bfbc176564` |
 
 ### durable storage (3)
 
@@ -232,7 +231,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/shared/foreground-commands.js](../../src/environments/shared/foreground-commands.js) | Serial JSON-line host commands and bounded status/input receipt projection | [17-environment-reporting](17-environment-reporting.md) | `6337e1674cfaf158e0b7e07d8b72af40ffc5c864b03382a3542b955c1a688760` |
 | [src/environments/shared/foreground-host.js](../../src/environments/shared/foreground-host.js) | Shared foreground Environment driver using existing mode controllers and lifecycle reports | [17-environment-reporting](17-environment-reporting.md) | `7f11f2854de935e5f13c516d2aee4b3fee96b76a613d43d3b350c0316a25b318` |
 | [src/environments/shared/read-result.js](../../src/environments/shared/read-result.js) | Read saved Environment and Core receipts with expected identity and bounded normal-output projection | [17-environment-reporting](17-environment-reporting.md) | `99640d0f1709ff0777bc44c6c2f4edd48c4ad43c4791e88dfda5aa3bda17d06e` |
-| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `18a67a55c10bff7042ba2357fbc16baf0def3a9dd9820ef7cbd22ff8969bf39f` |
+| [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `24d375ef901e62eb71b27609f6a5f35e0bb68dd69a93604979fb011a9f9adc52` |
 
 ### observation and analysis (7)
 
