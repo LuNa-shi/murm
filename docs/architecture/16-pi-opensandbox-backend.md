@@ -28,8 +28,15 @@ Only backend destruction calls provider resource deletion for this Core path. Pr
 
 The manager records uncertain creates and can reconcile them using Runtime labels without a Mission. Foreign Runtime labels prevent resource deletion. A failed or unconfirmed deletion leaves the resource registered for retry. The Runtime owns the user-visible timeout, receipts, model-token revocation and saved Bot state.
 
-File seeds, additional Profile network origins and artifact collection are rejected in this initial lifecycle slice. Their controlled preparation, grants and export-before-destruction behavior require #170 and #171. Real backend validation and actual model invocation are recorded separately in #166.
+File seeds and artifact collection remain rejected pending their lifecycle slices. Additional frozen Profile origins are installed before any model work. Controlled file preparation, grants and export-before-destruction require #170 and #171. Real backend validation and actual model invocation are recorded separately in #166.
 
 ## Transitional callers
 
 The existing flat runner continues to use the old adapter and manager contracts during migration. Its Mission labels, versioned swarm/solver prompt resources and deletion callbacks remain executable. A newly created Core Bot uses the generic backend owner exclusively. Both paths reuse the provider manager, network/disk protection and Worker implementation. #183 removes superseded lifecycle entrances after callers have moved.
+
+
+## Per-Bot resource and network configuration
+
+A manager is constructed separately for each admitted Bot with the backend sandbox settings and that Bot's frozen Profile.image. Its create request sends the selected image and configured CPU/memory limits; a sibling manager cannot substitute its image. The backend generates a fresh Pi session ID and uses a session directory inside the Bot's sandbox. Each Bot has a separate workDir mount whose byte/inode limits are mounted and attested before the Worker launches Pi. Read-only startup leaves that directory protected even though Pi can use its private runtime/session locations.
+
+Network isolation consumes the Bot's frozen origin list per spawn. It validates each destination, deduplicates IP/port pairs with the Bridge/model destinations, sorts them and includes the complete list in the firewall policy digest. The existing Docker label, process/cgroup, namespace and UID-map checks fence the privileged namespace operation; installation and exact firewall readback occur before the Bot can execute work. Rules allow those TCP destinations for the Bot UID and reject every other destination, including IPv6. Runtime-owned Bot labels remain distinct from the Mission labels used by executable legacy callers. The legacy constructor continues rejecting arbitrary global additionalEndpoints; only Core's per-Bot Profile list is supplied on the isolation call.

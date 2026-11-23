@@ -88,5 +88,9 @@ export function createInProcessAdapter(implementation) {
 
 export function snapshotServiceRegistry(services) {
   if (!registryEntries.has(services)) invalid('services must be a ServiceRegistry');
-  return new Map(registryEntries.get(services));
+  return new Map([...registryEntries.get(services)].map(([id, registration]) => {
+    const { manifest, adapter } = registration;
+    if (typeof adapter.invoke !== 'function') invalid('Service adapter requires invoke(request)');
+    return [id, Object.freeze({ manifest, adapter: Object.freeze({ invoke: adapter.invoke.bind(adapter) }) })];
+  }));
 }

@@ -102,7 +102,6 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
     async spawn({ botId, profile, options = {}, signal, onEvent }) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       if (options.files || options.collect || profile.collect) throw invalid('File seeding and collection require the file lifecycle implementation');
-      if (profile.network?.allow?.length) throw invalid('Additional network origins require the Profile isolation implementation');
       const manager = new OpenSandboxManager({ ...config.sandbox, image: profile.image });
       const bot = { id: botId, manager, onEvent, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
       bots.set(botId, bot);
@@ -115,7 +114,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       const identity = { bot_id: botId, runtime_id: runtimeId, resource_key: botId };
       const credentials = modelAccess.credentialsForBot(botId, profile.model);
       const bridgeCredentials = bridge.credentialsForBot(botId);
-      await network.isolate({ sandboxId: sandbox.sandbox_id, bot: identity, bridgeUrl: bridge.publicUrl, modelUrl: credentials.baseUrl });
+      await network.isolate({ sandboxId: sandbox.sandbox_id, bot: identity, bridgeUrl: bridge.publicUrl, modelUrl: credentials.baseUrl, additionalEndpoints: profile.network?.allow ?? [] });
       assertOpen();
       const quota = await disk.isolate({ sandboxId: sandbox.sandbox_id, bot: identity });
       const versions = await manager.agentVersions({ executionId: botId });
