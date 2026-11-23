@@ -15,7 +15,15 @@ test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a 
   const image = process.env.SWARMENV_CORE_TEST_IMAGE;
   assert.ok(image, 'SWARMENV_CORE_TEST_IMAGE must identify a verified Pi/OpenSandbox image');
   const upstream = await createControlledUpstream();
-  t.after(() => upstream.close());
+  let runtime;
+  let close;
+  t.after(async () => {
+    try {
+      if (runtime) close ??= await runtime.close({ timeoutMs: 30_000 });
+    } finally {
+      await upstream.close();
+    }
+  });
   const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-smoke-'));
   const backend = createPiOpenSandboxBackend({
     sandbox: {
@@ -30,12 +38,10 @@ test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a 
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
   });
-  const runtime = await createRuntime({ backend, profiles: {
+  runtime = await createRuntime({ backend, profiles: {
     worker: { prompt: 'Perform the requested local file operation and return its verified result.', model: 'default', image,
       writable: true, services: {} },
   }, services: new ServiceRegistry(), maxBots: 1, outputDir });
-  let close;
-  t.after(async () => { close ??= await runtime.close({ timeoutMs: 30_000 }); });
   const bot = await runtime.spawn({ requestId: 'smoke-spawn', profile: 'worker' });
   assert.equal(bot.status, 'idle');
   assert.equal(upstream.requests.length, 0, 'spawn must not submit model work');
