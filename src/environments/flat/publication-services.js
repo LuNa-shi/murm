@@ -13,7 +13,7 @@ const capability = (name, operation, input_schema, side_effect='write') => ({nam
   help:{when:'Use the current Bot Task binding; reuse the same request ID after an unknown response'}, errors:[]});
 // Preserve the published domain input contracts while Core supplies trusted identity.
 const catalogSchemas = new Map(listTools().map(tool => [tool.operation, tool.parameters]));
-const catalogCapability = (name, operation) => capability(name, operation, catalogSchemas.get(operation));
+const catalogCapability = (name, operation, sideEffect='write') => capability(name, operation, catalogSchemas.get(operation), sideEffect);
 const definitions = {
   workspace:[
     capability('save','workspace_save',object({resolved:{type:'boolean'},material_ids:ids})),
@@ -25,8 +25,8 @@ const definitions = {
   ],
   context:[
     catalogCapability('publish','context_publish_material'),
-    capability('view','context_get_material',object({material_id:text},['material_id']),'read'),
-    capability('list','read_materials',object({query:text,limit:{type:'integer',minimum:1,maximum:100},cursor:text,task_id:text}),'read'),
+    catalogCapability('view','context_get_material','read'),
+    catalogCapability('list','read_materials','read'),
     capability('consume','consume_materials',object({material_ids:ids,action:{enum:['route','task','workspace','integration']},impact:text},['material_ids','action','impact'])),
   ],
   task:[

@@ -64,6 +64,11 @@ test('flat host composes public Bash publication and controller finish with dura
       assert.equal(correction.active_successors[0].replacement_material_id,corrected.material.material_id);
       assert.equal(stores.context.getMaterial(corrected.material.material_id,{verifyIntegrity:true}).supersedes,seed.material.material_id);
       assert.deepEqual(corrected.material.attachments,[{name:'copied.bin',media_type:'application/octet-stream',content_hash:hash(attachment),size_bytes:4}]);
+      const received=await cli(['material','view',corrected.material.material_id,'--attachment-name','copied.bin']);
+      assert.equal(received.attachment.content_base64,attachment.toString('base64'));
+      const discovered=await cli(['material','list','--producer-task-id',stores.task.task_id,'--include-history','true']);
+      assert.ok(JSON.stringify(discovered).includes(corrected.material.material_id));
+      await assert.rejects(cli(['material','view',corrected.material.material_id,'--attachment-name','missing.bin']),error=>JSON.parse(error.stderr).code==='INVALID_CONTRACT');
       const publicBefore=stores.context.publicChangeToken(stores.missionId);
       const rejectsInput=async args=>assert.rejects(cli(args),error=>JSON.parse(error.stderr).code==='SERVICE_INPUT_INVALID');
       for(const [option,value] of [['--title','t'.repeat(121)],['--summary','s'.repeat(501)],['--producer-task-id','forged'],

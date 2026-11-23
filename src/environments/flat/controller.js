@@ -31,7 +31,9 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
   const record=(reason,row,extra={})=>{
     const owner=row&&taskService.getBot(row.botId),execution=owner?.execution_id&&taskService.getExecution(owner.execution_id);
     decisions.push({reason,at:Date.now(),remainingMs:remaining(),...(row?{botId:row.botId}:{}),
-      ...(execution?{taskId:execution.task_id,taskState:taskService.getTask(execution.task_id)?.state,executionId:execution.execution_id,executionState:execution.state,fence:execution.fencing_version}:{}),...extra});
+      ...(owner?{ownerState:owner.state,selectionDeadline:owner.selection_deadline,hardDeadline:owner.hard_deadline}:{}),
+      ...(execution?{taskId:execution.task_id,taskState:taskService.getTask(execution.task_id)?.state,executionId:execution.execution_id,executionState:execution.state,fence:execution.fencing_version,executionDeadline:execution.execution_deadline,leaseExpiresAt:execution.lease_expires_at}:{}),
+      ...(row?{stallRemainingMs:Math.max(0,stallMs-(Date.now()-row.lastActivityAt)),continuations:row.continuations,continuationLimit,discoveries:row.discoveries,discoveryLimit}:{}),...extra});
   };
   const enqueue=work=>{
     const result=chain.then(work);
@@ -48,6 +50,10 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
     const owner=taskService.getBot(row.botId);
     return {owner,execution:owner?.execution_id?taskService.getExecution(owner.execution_id):null};
   }
+  function expired(owner,execution) {
+    const at=Date.now();
+    return at>=Date.parse(owner?.hard_deadline) || (owner?.state==='UNBOUND'&&at>=Date.parse(owner.selection_deadline)) || (execution&&at>=Date.parse(execution.execution_deadline));
+  }
   async function applyStop(row,receipt) {
     row.lastStop=receipt;
     const {owner,execution}=current(row);
@@ -63,7 +69,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
     record(row.released?'slot-released':'cleanup-pending-retains-slot',row);
   }
   async function stop(row,reason) {
-    row.stopReason??=reason;
+    if(!row.stopReason) {record(reason,row);row.stopReason=reason;}
     try {
       taskService.requestBotStop(row.botId,reason,{terminalState:'FAILED'});
       await applyStop(row,await runtime.stop(row.botId,{timeoutMs:stopTimeoutMs}));
@@ -78,6 +84,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
     if(taskId) {
       const {owner,execution}=current(row);
       if(owner?.state!=='ACTIVE' || execution?.state!=='RUNNING' || execution.execution_id!==executionId || execution.task_id!==taskId || execution.fencing_version!==fence || execution.owner_ref!==row.botId || taskService.getTask(taskId)?.state!=='RUNNING' || Date.now()>=Math.min(Date.parse(owner.hard_deadline),Date.parse(execution.execution_deadline),Date.parse(execution.lease_expires_at))) {
+        Object.assign(input,{taskState:taskService.getTask(taskId)?.state??null,executionState:execution?.state??null,ownerState:owner?.state??null});
         input.reason='task-binding-changed';record('input-not-delivered',row,{source,requestId,reason:input.reason});return input;
       }
     }
@@ -117,8 +124,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       if(row.released) continue;
       const {owner,execution}=current(row),at=Date.now();
       if(owner?.state==='CLOSING' || execution?.state==='CLOSING' || row.stopReason) {await stop(row,row.stopReason??'task-finish');continue;}
-      if(row.uncertain) continue;
-      if(at>=Date.parse(owner?.hard_deadline) || (owner?.state==='UNBOUND'&&at>=Date.parse(owner.selection_deadline)) || (execution&&at>=Date.parse(execution.execution_deadline))) {await stop(row,'domain-deadline');continue;}
+      if(expired(owner,execution)) {await stop(row,'domain-deadline');continue;}
       if(at-row.lastActivityAt>=stallMs) {await stop(row,'stall-budget');continue;}
       if(owner?.state==='ACTIVE' && execution?.state==='RUNNING') {
         try {taskService.dispatch('heartbeat',{},executionEnvelope(execution,`flat:heartbeat:${randomUUID()}`));}
@@ -129,6 +135,9 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
   }
   async function event(event) {
     const row=bots.get(event.botId);if(!row || closing) return;
+    if(event.type==='exit'||(event.type==='error'&&event.fatal)) {record('fatal-or-exit',row);await stop(row,'worker-failed');await refill();return;}
+    const binding=current(row);
+    if(expired(binding.owner,binding.execution)) {await stop(row,'domain-deadline');await refill();return;}
     if(row.uncertain) {record('input-unknown-awaits-reconciliation',row);return;}
     row.lastActivityAt=Date.now();
     if(event.type==='settled') {
@@ -144,7 +153,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
         row.discoveries++;record('selection-still-open',row);
         await submit(row,discoveryPrompt,{source:'discovery',requestId:`flat:discovery:${row.generation}:${row.discoveries}`});
       } else {await stop(row,'domain-binding-ended');await refill();}
-    } else if(event.type==='exit'||(event.type==='error'&&event.fatal)) {record('fatal-or-exit',row);await stop(row,'worker-failed');await refill();}
+    }
   }
   const unsubscribe=runtime.onEvent(value=>{
     if(closing || !Number.isSafeInteger(value.seq) || value.seq<=(events.get(value.botId)??0)) return;

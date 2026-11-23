@@ -19,7 +19,8 @@ async function fixture(t,options={}) {
   const stores=await createFlatTaskStores(root); transport.reset();controls.stopError=null;controls.destroyError=null;
   const runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:{}}},services:new ServiceRegistry(),maxBots:2,outputDir:root});
   const accepted=id=>{transport.confirm(id,'started');transport.next=accepted;}; transport.next=accepted;
-  const controller=createFlatController({runtime,taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
+  const reads={beforeGet:null};
+  const controller=createFlatController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
   t.after(async()=>{controls.stopError=null;controls.destroyError=null;await controller.close();await runtime.close();stores.close();await rm(root,{recursive:true,force:true});});
   await controller.start();
   const bot=controller.snapshot().bots[0];
@@ -28,7 +29,7 @@ async function fixture(t,options={}) {
     execution=stores.tasks.dispatch('start_execution',{core_id:bot.legacySlotId},makeEnvelope({actorRef:bot.botId,taskId:execution.task_id,executionId:execution.execution_id,specVersion:execution.spec_version,stateVersion:execution.state_version,fencingVersion:execution.fencing_version})).execution;
     return execution;
   }
-  return {...stores,root,runtime,controller,bot,take,settle(outcome='completed'){transport.listeners.get(bot.botId)({type:'settled',outcome});}};
+  return {...stores,root,runtime,controller,bot,take,reads,settle(outcome='completed'){transport.listeners.get(bot.botId)({type:'settled',outcome});}};
 }
 
 test('flat settled continues an unfinished owned Execution without declaring Task success',async t=>{
@@ -114,4 +115,87 @@ test('feedback selected before a close race is recorded without dispatch or reta
   const result=await pending;
   assert.equal(result.status,'not_submitted');
   assert.equal([...transport.submissions.values()].some(row=>row.input==='Must not arrive after finish'),false);
+});
+
+test('settled discovery after selection deadline stops the old Bot before any further discovery',async t=>{
+  const f=await fixture(t,{selectionMs:30});
+  await new Promise(resolve=>setTimeout(resolve,45));
+  f.settle();await f.controller.flush();
+  const snapshot=f.controller.snapshot();
+  assert.equal(snapshot.bots[0].stopReason,'domain-deadline');
+  assert.equal(snapshot.bots[0].released,true);
+  assert.equal(snapshot.inputs.filter(row=>row.botId===f.bot.botId).length,1);
+  assert.equal(snapshot.bots.length,2);
+});
+
+test('unknown input prevents resend but does not suppress the original Bot hard deadline',async t=>{
+  const f=await fixture(t,{hardBudgetMs:60});const execution=f.take();transport.next=undefined;
+  const result=await f.controller.feedback({taskId:f.task.task_id,input:'Uncertain bounded feedback',requestId:'bounded-unknown'});
+  assert.equal(result.status,'unknown');
+  await new Promise(resolve=>setTimeout(resolve,75));
+  await f.controller.tick();
+  const snapshot=f.controller.snapshot();
+  assert.equal(snapshot.bots[0].stopReason,'domain-deadline');
+  assert.equal(f.tasks.getExecution(execution.execution_id).state,'FAILED');
+  assert.equal(snapshot.bots[0].released,true);
+  assert.equal(snapshot.inputs.filter(row=>row.requestId==='bounded-unknown').length,1);
+});
+
+for(const budget of ['discovery','continuation']) test(`${budget} limit stops the old Bot and replacement uses a new identity`,async t=>{
+  const f=await fixture(t,{discoveryLimit:1,continuationLimit:1});
+  const execution=budget==='continuation'?f.take():null;
+  f.settle();await f.controller.flush();
+  if(execution) {f.settle();await f.controller.flush();}
+  const snapshot=f.controller.snapshot();
+  assert.equal(snapshot.bots[0].stopReason,`${budget}-budget`);
+  assert.equal(snapshot.bots[0].released,true);
+  assert.notEqual(snapshot.bots[1].botId,f.bot.botId);
+  assert.equal(snapshot.inputs.filter(row=>row.botId===f.bot.botId).length,execution?2:1);
+  if(execution) assert.equal(f.tasks.getExecution(execution.execution_id).state,'FAILED');
+});
+
+test('stall stops an unfinished Execution and records actual domain and budget evidence',async t=>{
+  const f=await fixture(t,{stallMs:30});const execution=f.take();
+  await new Promise(resolve=>setTimeout(resolve,45));await f.controller.tick();
+  const snapshot=f.controller.snapshot();
+  assert.equal(snapshot.bots[0].stopReason,'stall-budget');
+  assert.equal(f.tasks.getExecution(execution.execution_id).state,'FAILED');
+  const decision=snapshot.decisions.find(row=>row.reason==='slot-released');
+  assert.equal(decision.executionId,execution.execution_id);
+  assert.ok(decision.hardDeadline);assert.equal(decision.stallRemainingMs,0);
+  const premise=snapshot.decisions.find(row=>row.reason==='stall-budget');
+  assert.equal(premise.executionState,'RUNNING');assert.equal(premise.taskState,'RUNNING');
+});
+
+test('fatal Worker failure still stops an uncertain input without resubmitting it',async t=>{
+  const f=await fixture(t);const execution=f.take();transport.next=undefined;
+  const original=await f.controller.feedback({taskId:f.task.task_id,input:'Uncertain fatal feedback',requestId:'fatal-unknown'});
+  transport.listeners.get(f.bot.botId)({type:'error',fatal:true,error:{code:'WORKER_FAILED'}});
+  await f.controller.flush();
+  const snapshot=f.controller.snapshot();
+  assert.equal(original.status,'unknown');assert.equal(snapshot.bots[0].stopReason,'worker-failed');
+  assert.equal(f.tasks.getExecution(execution.execution_id).state,'FAILED');
+  assert.equal(snapshot.inputs.filter(row=>row.requestId==='fatal-unknown').length,1);
+});
+
+test('feedback rechecks domain ownership after the final asynchronous public Core lookup',async t=>{
+  const f=await fixture(t);const execution=f.take();
+  f.reads.beforeGet=()=>{
+    f.reads.beforeGet=null;
+    f.tasks.dispatch('task_finish',{outcome:'done'},makeEnvelope({actorRef:f.bot.botId,taskId:execution.task_id,executionId:execution.execution_id,specVersion:execution.spec_version,stateVersion:execution.state_version,fencingVersion:execution.fencing_version}));
+  };
+  const receipt=await f.controller.feedback({taskId:f.task.task_id,input:'Must not cross lookup race',requestId:'lookup-race'});
+  assert.equal(receipt.status,'not_submitted');assert.equal(receipt.reason,'task-binding-changed');
+  assert.equal(receipt.executionState,'CLOSING');assert.equal(receipt.ownerState,'CLOSING');
+  assert.equal([...transport.submissions.values()].some(row=>row.input==='Must not cross lookup race'),false);
+});
+
+test('unknown input retains its original lease heartbeat without allowing another input',async t=>{
+  const f=await fixture(t);const execution=f.take();transport.next=undefined;
+  await f.controller.feedback({taskId:f.task.task_id,input:'Unknown receipt with owned live work',requestId:'lease-unknown'});
+  const before=f.tasks.getExecution(execution.execution_id),count=transport.submissions.size;
+  await f.controller.tick();
+  const after=f.tasks.getExecution(execution.execution_id);
+  assert.ok(after.state_version>before.state_version,'Original owned Execution must retain its heartbeat while admission is unknown');
+  assert.equal(after.state,'RUNNING');assert.equal(transport.submissions.size,count);
 });
