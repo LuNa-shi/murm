@@ -15,7 +15,49 @@ import assert from 'node:assert/strict';
 import { createRuntime } from '@swarmenv/core';
 import { ServiceRegistry } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import {runNotesEnvironment} from './main.mjs';
+import {runNotesEnvironment,createNotes,fixedFact} from './main.mjs';
+import {createCoreBridge} from './node_modules/@swarmenv/core/src/core/bridge.js';
+import {snapshotServiceRegistry} from './node_modules/@swarmenv/core/src/core/services.js';
+import {execFile} from 'node:child_process';
+import {promisify} from 'node:util';
+import {writeFile} from 'node:fs/promises';
+const notes=createNotes();
+const bots={writer:{profile:'writer',status:'idle',services:{notes:['put']}},reader:{profile:'reader',status:'idle',services:{notes:['get']}}};
+const bridge=await createCoreBridge({runtimeId:'notes-package',configuration:{host:'127.0.0.1',publicUrl:'http://127.0.0.1:{port}'},getBot:id=>bots[id]??null,registrations:snapshotServiceRegistry(notes.services)});
+try {
+ const run=promisify(execFile);
+ const cli=async(bot,...args)=>{
+  const credentials=bridge.credentialsForBot(bot);
+  return run(process.execPath,['./node_modules/@swarmenv/core/scripts/swarm.mjs',...args],{env:{...process.env,...credentials.environment,...credentials.secretEnvironment},timeout:5000});
+ };
+ const rejected=async(code,...args)=>assert.rejects(cli(...args),error=>{assert.equal(JSON.parse(error.stderr).code,code);return true});
+ const key='core-service-boundary'; const original=JSON.stringify(fixedFact);
+ // The original flag path really coerces JSON text to an object and is rejected before the adapter.
+ await rejected('SERVICE_INPUT_INVALID','writer','notes','put','--key',key,'--text',original,'--request-id','old-flags');
+ assert.equal(notes.records.size,0);
+ await writeFile('note-request.json',JSON.stringify({key,text:original}));
+ await writeFile('review-input.json',original);
+ const credentials=bridge.credentialsForBot('writer');
+ process.title='pi-rpc';
+ const native=JSON.parse((await run('bash',['-c',${JSON.stringify(notesEnvironmentCommand('writer'))}],{env:{...process.env,...credentials.environment,...credentials.secretEnvironment,PATH:process.cwd()+'/node_modules/.bin:'+process.env.PATH},timeout:15000})).stdout);
+ assert.equal(native.author,'writer'); assert.ok(native.replay&&native.conflict&&native.forged&&native.permission);
+ assert.equal(native.process.pid,process.pid);
+ const put=async id=>JSON.parse((await cli('writer','notes','put','--input','note-request.json','--request-id',id)).stdout);
+ const record=await put('notes-put');
+ assert.deepEqual(record,{key,text:original,author:'writer'});
+ assert.deepEqual(await put('notes-put'),record); assert.deepEqual(await put('notes-put-replay'),record);
+ assert.equal(notes.records.size,1); assert.deepEqual(notes.records.get(key),record);
+ await writeFile('conflict-request.json',JSON.stringify({key,text:'different'}));
+ await rejected('CONFLICT','writer','notes','put','--input','conflict-request.json','--request-id','conflict');
+ await writeFile('forged-request.json',JSON.stringify({key:'forged',text:original,author:'fake'}));
+ await rejected('SERVICE_INPUT_INVALID','writer','notes','put','--input','forged-request.json','--request-id','forged');
+ const read=JSON.parse((await cli('reader','notes','get','--key',key,'--request-id','read')).stdout);
+ assert.deepEqual(read,record); assert.deepEqual(notes.reads,[{botId:'reader',key,found:true}]);
+ await rejected('CLI_ERROR','reader','notes','put','--input','note-request.json','--request-id','reader-write');
+ await rejected('CLI_ERROR','writer','notes','get','--key',key,'--request-id','writer-read');
+ assert.deepEqual(notes.records.get(key),record); assert.equal(notes.records.size,1); assert.equal(notes.reads.length,1);
+} finally {await bridge.close()}
+
 for (const specifier of ['@swarmenv/core','@swarmenv/core/services','@swarmenv/core/backends/pi-opensandbox']) {
  assert.ok(import.meta.resolve(specifier).startsWith(new URL('./node_modules/',import.meta.url).href));
 }
@@ -28,7 +70,7 @@ const report=await runNotesEnvironment({backend,image:'unused',outputDir:'./canc
 assert.ok(report.businessFailure); assert.equal(report.cleanup,null); assert.ok(report.reportPath);
 console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
 `);
-  const result = await execute(process.execPath, ['smoke.mjs'], { cwd: installed.directory, env: installed.env, timeout: 15_000 });
+  const result = await execute(process.execPath, ['smoke.mjs'], { cwd: installed.directory, env: installed.env, timeout: 25_000 });
   assert.deepEqual(JSON.parse(result.stdout), { resolved: true, closed: true, cancelled: true });
   assert.equal(upstream.receipt().arrivals, 0);
   assert.match(installed.metadata.sha256, /^[a-f0-9]{64}$/);

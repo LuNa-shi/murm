@@ -32,16 +32,20 @@ for _ in range(12):
  assert pid>1
 else: raise AssertionError('Native Pi process was not found in the ancestry')
 evidence={'role':${JSON.stringify(role)},'cwd':os.getcwd(),'process':identity}
-${role === 'writer' ? `record=cli('notes','put','--key',key,'--text',raw,'--request-id','notes-put')
+${role === 'writer' ? `assert json.loads(pathlib.Path('note-request.json').read_text())=={'key':key,'text':raw}
+record=cli('notes','put','--input','note-request.json','--request-id','notes-put')
 assert record['text']==raw and record['key']==key
-assert cli('notes','put','--key',key,'--text',raw,'--request-id','notes-put')==record
-assert cli('notes','put','--key',key,'--text',raw,'--request-id','notes-put-replay')==record
-evidence.update(author=record['author'],replay=True,conflict=denied(['CONFLICT'],'notes','put','--key',key,'--text','different','--request-id','notes-conflict'),forged=denied(['SERVICE_INPUT_INVALID'],'notes','put','--key','forged','--text',raw,'--author','fake','--request-id','notes-forged'),permission=denied(['CLI_ERROR','NOT_ALLOWED'],'notes','get','--key',key,'--request-id','writer-denied'))` : role === 'reader' ? `record=cli('notes','get','--key',key,'--request-id','notes-get')
+assert cli('notes','put','--input','note-request.json','--request-id','notes-put')==record
+assert cli('notes','put','--input','note-request.json','--request-id','notes-put-replay')==record
+pathlib.Path('conflict-request.json').write_text(json.dumps({'key':key,'text':'different'}))
+pathlib.Path('forged-request.json').write_text(json.dumps({'key':'forged','text':raw,'author':'fake'}))
+evidence.update(author=record['author'],replay=True,conflict=denied(['CONFLICT'],'notes','put','--input','conflict-request.json','--request-id','notes-conflict'),forged=denied(['SERVICE_INPUT_INVALID'],'notes','put','--input','forged-request.json','--request-id','notes-forged'),permission=denied(['CLI_ERROR','NOT_ALLOWED'],'notes','get','--key',key,'--request-id','writer-denied'))` : role === 'reader' ? `record=cli('notes','get','--key',key,'--request-id','notes-get')
 assert record['text']==raw
 expected='# Source review\\n\\nBaseline: '+fact['baseline']+'\\nSource: '+fact['source']+'\\nFinding: '+fact['finding']+'\\n'
 pathlib.Path('review.md').write_text(expected)
 pathlib.Path('continuity.json').write_text(json.dumps({'process':identity,'cwd':os.getcwd()}))
-evidence.update(author=record['author'],read=True,permission=denied(['CLI_ERROR','NOT_ALLOWED'],'notes','put','--key',key,'--text',raw,'--request-id','reader-denied'))` : `before=json.loads(pathlib.Path('continuity.json').read_text())
+pathlib.Path('denied-request.json').write_text(json.dumps({'key':key,'text':raw}))
+evidence.update(author=record['author'],read=True,permission=denied(['CLI_ERROR','NOT_ALLOWED'],'notes','put','--input','denied-request.json','--request-id','reader-denied'))` : `before=json.loads(pathlib.Path('continuity.json').read_text())
 assert before=={'process':identity,'cwd':os.getcwd()}
 sessions=list(pathlib.Path('/workspace/runtime/pi-session').rglob('*.jsonl'))
 assert len(sessions)==1

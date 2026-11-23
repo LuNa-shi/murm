@@ -64,7 +64,7 @@
     },
     {
       "path": "examples/notes-environment/main.mjs",
-      "sha256": "d5c5adc3d8ca0d10ad7ccc061f5c1b711688ae5fdfb54f0d8d030ff7197e4ea2"
+      "sha256": "fb99a2610c76e10c7de30f4785a7ff43640bf27689cf1219b5221ce184a05a9f"
     },
     {
       "path": "src/environments/shared/run-input.js",
@@ -152,7 +152,7 @@
       "path": "examples/notes-environment/main.mjs",
       "anchor": "const inputText = Object.freeze(",
       "line": 73,
-      "sha256": "0bbf0e870d7d6809c906eb5413c61f58bf58513c7b861b4780c94f200bf4470c"
+      "sha256": "6773660d227007f580e938b67335d3b93619e2253c501904ab14235c89534687"
     },
     {
       "path": "examples/notes-environment/main.mjs",
@@ -313,7 +313,7 @@
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
-      "sha256": "7a8eaeebde7e124bb8deaa8deb9cd116a892a4063917e02e12b4520607f589d4"
+      "sha256": "c3ceddc88245817507b0aa32c3de66771ea59e24dd9ad001ac333121beda56ca"
     }
   ]
 }

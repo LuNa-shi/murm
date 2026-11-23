@@ -34,7 +34,7 @@ const notesManifest = {
   }],
 };
 
-function createNotes() {
+export function createNotes() {
   const records = new Map();
   const reads = [];
   const services = new ServiceRegistry();
@@ -71,7 +71,7 @@ function reportRedactor(backend) {
 }
 
 const inputText = Object.freeze({
-  put: `Read review-input.json in this work directory. Use Bash and \`swarm notes put --key ${key} --text "$(cat review-input.json)" --request-id notes-put\` to publish its exact text.`,
+  put: 'Read review-input.json and note-request.json in this work directory. Use Bash and `swarm notes put --input note-request.json --request-id notes-put` to publish the seeded request. Its text field contains the exact review-input.json string.',
   get: `Use Bash and \`swarm notes get --key ${key} --request-id notes-get\`. Compare the note text with review-input.json. If they match, write review.md with a heading '# Source review', one blank line, then 'Baseline: ', 'Source: ' and 'Finding: ' followed by their exact values, one line each, ending with a newline.`,
   follow: 'Use Bash to read the existing review.md from the previous turn and copy it unchanged to followup.md.',
 });
@@ -112,7 +112,8 @@ export async function runNotesEnvironment({ backend, model = 'default', image, o
       original = JSON.stringify({ baseline: fact.baseline, source: fact.source, finding: fact.finding });
       if (original.length > 2048) throw new TypeError('The fixed source fact exceeds the Notes field limit');
       const files = { 'review-input.json': { data: original, encoding: 'utf8' } };
-      const writer = await runtime.spawn({ requestId: 'writer', profile: 'writer', files });
+      const writer = await runtime.spawn({ requestId: 'writer', profile: 'writer', files: { ...files,
+        'note-request.json': { data: JSON.stringify({ key, text: original }), encoding: 'utf8' } } });
       await turn(writer, 'writer-input', inputText.put);
       const sent = notes.records.get(key);
       if (sent?.author !== writer.id || sent.text !== original) throw new Error('The writer did not publish the exact source fact');

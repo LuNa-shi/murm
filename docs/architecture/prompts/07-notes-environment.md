@@ -21,10 +21,10 @@ Verify the shared fact and save evidence in your private work directory.
 ````
 ## Writer publication
 
-Body SHA-256: `0dee85ae2e2c1634b3436e953761b2152c1396aa79043deb8f2098f601cc0cfd`
+Body SHA-256: `d80c2bc87d7aaca928a5e009eeee792bd1682970709813e15a73d9cb2a817c90`
 
 ````text
-Read review-input.json in this work directory. Use Bash and `swarm notes put --key core-service-boundary --text "$(cat review-input.json)" --request-id notes-put` to publish its exact text.
+Read review-input.json and note-request.json in this work directory. Use Bash and `swarm notes put --input note-request.json --request-id notes-put` to publish the seeded request. Its text field contains the exact review-input.json string.
 ````
 ## Reader retrieval
 
