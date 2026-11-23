@@ -139,16 +139,34 @@ export async function runNotesEnvironment({ backend, model = 'default', image, o
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  if (!process.argv[2]) throw new Error('Supply a host configuration module as the sole argument');
+  const usage = 'node main.mjs <config.mjs>\nnode main.mjs --result <run-directory> --runtime-id <expected-id>';
+  const args = process.argv.slice(2);
   const controller = new AbortController();
   const abort = () => controller.abort();
   process.once('SIGINT', abort);
   process.once('SIGTERM', abort);
   try {
-    const config = (await import(pathToFileURL(resolve(process.argv[2])).href)).default;
-    const report = await runNotesEnvironment(config, controller.signal);
-    process.stdout.write(`${JSON.stringify(report)}\n`);
-    process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;
+    if (args.length === 1 && args[0] === '--help') {
+      process.stdout.write(`${usage}\nThe fixed Notes handoff stops on completion, Ctrl+C or SIGTERM. Result inspection reads saved reports.\n`);
+    } else if (args.length === 4 && args[0] === '--result' && args[1] && !args[1].startsWith('--') &&
+        args[2] === '--runtime-id' && args[3] && !args[3].startsWith('--')) {
+      const { readEnvironmentResult } = await import('./read-result.mjs');
+      const result = await readEnvironmentResult({ runDirectory: args[1], runtimeId: args[3] });
+      process.stdout.write(`${JSON.stringify(result)}\n`);
+      process.exitCode = result.environment.state === 'read' && result.core.state === 'read' ? 0 : 1;
+    } else {
+      if (args.length !== 1 || !args[0] || args[0].startsWith('--')) {
+        throw Object.assign(new Error(), { code: 'NOTES_ARGUMENTS_INVALID' });
+      }
+      const config = (await import(pathToFileURL(resolve(args[0])).href)).default;
+      const report = await runNotesEnvironment(config, controller.signal);
+      process.stdout.write(`${JSON.stringify(report)}\n`);
+      process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;
+    }
+  } catch (error) {
+    const invalid = error?.code === 'NOTES_ARGUMENTS_INVALID' || error?.code === 'INVALID_RESULT_ARGUMENTS';
+    process.stderr.write(`${JSON.stringify({ code: invalid ? 'NOTES_ARGUMENTS_INVALID' : 'NOTES_START_FAILED', ...(invalid ? { usage } : {}) })}\n`);
+    process.exitCode = invalid ? 2 : 1;
   } finally {
     process.off('SIGINT', abort);
     process.off('SIGTERM', abort);

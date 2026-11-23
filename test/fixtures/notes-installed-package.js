@@ -46,7 +46,7 @@ export async function installNotesExample({ archive: frozenArchive, expectedSha2
     const installed = join(directory, 'node_modules', '@swarmenv', 'core');
     const metadata = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'));
     await copyFile(join(installed, 'examples/notes-environment/main.mjs'), join(directory, 'main.mjs'));
-    for (const name of ['run-input', 'run-report']) {
+    for (const name of ['run-input', 'run-report', 'read-result']) {
       await copyFile(join(installed, `src/environments/shared/${name}.js`), join(directory, `${name}.mjs`));
     }
     const env = { ...process.env }; delete env.NODE_PATH; delete env.NODE_OPTIONS;

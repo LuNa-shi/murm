@@ -64,7 +64,7 @@
     },
     {
       "path": "examples/notes-environment/main.mjs",
-      "sha256": "03361e6b1f10257fb58a1d755651e61a974bdf29715bccd7841b7c41ee80c87d"
+      "sha256": "b66b97a021344dec9c30cf9bf10fc1c9fa61f176d65ed20feaffc386416c6d45"
     },
     {
       "path": "src/environments/shared/run-input.js",
