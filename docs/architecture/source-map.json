@@ -763,15 +763,6 @@
       "role": "Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers"
     },
     {
-      "path": "src/observability/benchmark-report-importer.js",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Import exported reports into observation projections"
-    },
-    {
       "path": "src/observability/client/App.jsx",
       "category": "dashboard and build",
       "chapters": [
