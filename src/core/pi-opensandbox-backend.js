@@ -23,6 +23,15 @@ function httpUrl(value, label) {
   return url;
 }
 
+function sandboxExpiry(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+  const instant = Date.parse(value);
+  const day = value.slice(0, 10);
+  const calendar = Date.parse(day);
+  if (!Number.isFinite(instant) || !Number.isFinite(calendar) || new Date(calendar).toISOString().slice(0, 10) !== day) return null;
+  return new Date(instant).toISOString();
+}
+
 export function createPiOpenSandboxBackend(config) {
   if (config?.isolation?.network !== 'local-docker') throw invalid('Pi/OpenSandbox requires local-docker isolation');
   httpUrl(config.sandbox?.lifecycleBaseUrl, 'sandbox.lifecycleBaseUrl');
@@ -117,7 +126,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
   }
 
   return {
-    async spawn({ botId, profile, options = {}, signal, onEvent, onExecutionStart }) {
+    async spawn({ botId, profile, options = {}, signal, onEvent, onExecutionStart, recordAllocation }) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
       const manager = new OpenSandboxManager({ ...config.sandbox, image: profile.image });
       const bot = { id: botId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
@@ -127,7 +136,11 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       };
       assertOpen();
       const sandbox = await manager.ensureExecution({ executionId: botId, botId, projectQuotaRequired: true, cleanupOnFailure: false,
-        metadata: { runtime_id: runtimeId }, onWorkerToken: token => registerPrivateValues([token]) });
+        metadata: { runtime_id: runtimeId }, onWorkerToken: token => registerPrivateValues([token]),
+        onCreateDispatch: entry => recordAllocation({ state: 'allocation-dispatched', timeoutSeconds: entry.timeout_seconds }),
+        onCreated: entry => recordAllocation({ state: 'allocation-observed', sandboxId: entry.sandbox_id,
+          observation: Object.hasOwn(entry, 'expires_at') ? 'create-response' : 'cleanup-lookup', expiresAt: sandboxExpiry(entry.expires_at) }),
+      });
       assertOpen();
       const identity = { bot_id: botId, runtime_id: runtimeId, resource_key: botId };
       const credentials = modelAccess.credentialsForBot(botId, profile.model);

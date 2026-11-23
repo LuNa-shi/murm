@@ -182,6 +182,65 @@ test('Runtime report joins a rejected Service write to its trusted caller and ef
   ]);
 });
 
+test('Core records provider lifetime observations before readiness and after partial startup', async t => {
+  const requests = [];
+  let starts = 0;
+  const badExpiry = '2099-02-30T11:00:00Z';
+  const { makeRuntime } = await fixture(t, {
+    onCreate(id, body) { requests.push({ id, timeoutSeconds: body.timeout }); },
+    createExpiresAt: id => id === 'fixture-1' ? '2099-01-03T10:59:17.420+02:00' : badExpiry,
+    onStart(_body, result) { if (++starts === 2) result.project_files.version += 1; },
+  });
+  const runtime = await makeRuntime();
+  t.after(() => runtime.close());
+  const healthy = await runtime.spawn({ requestId: 'ready', profile: 'worker' });
+  let failedBot;
+  await assert.rejects(runtime.spawn({ requestId: 'partial', profile: 'worker' }), error => {
+    assert.equal(error.operation, 'spawn');
+    failedBot = error.botId;
+    return true;
+  });
+  const close = await runtime.close();
+  assert.equal(close.cleanup, 'complete');
+  const evidence = await readFile(close.evidence.path, 'utf8');
+  assert.ok(!evidence.includes(badExpiry));
+  const spawn = evidence.trim().split('\n').map(JSON.parse).filter(row => row.type === 'spawn');
+  assert.deepEqual(spawn.filter(row => row.botId === healthy.id).map(row => row.state),
+    ['registered', 'allocation-dispatched', 'allocation-observed', 'ready']);
+  assert.deepEqual(spawn.filter(row => row.botId === failedBot).map(row => row.state),
+    ['registered', 'allocation-dispatched', 'allocation-observed']);
+  const observed = spawn.filter(row => row.state === 'allocation-observed');
+  assert.deepEqual(observed.map(row => [row.requestId, row.sandboxId, row.observation, row.expiresAt]), [
+    ['ready', requests[0].id, 'create-response', '2099-01-03T08:59:17.420Z'],
+    ['partial', requests[1].id, 'create-response', null],
+  ]);
+  assert.deepEqual(spawn.filter(row => row.state === 'allocation-dispatched').map(row => row.timeoutSeconds),
+    requests.map(row => row.timeoutSeconds));
+  assert.ok(requests.every(row => row.timeoutSeconds === 3600));
+});
+
+test('Core distinguishes a sandbox found by cleanup when the creation response was lost', async t => {
+  const { provider, makeRuntime } = await fixture(t, { onCreate: () => false });
+  const runtime = await makeRuntime();
+  t.after(() => runtime.close());
+  let botId;
+  await assert.rejects(runtime.spawn({ requestId: 'lost', profile: 'worker' }), error => {
+    assert.equal(error.cleanup, 'pending');
+    botId = error.botId;
+    return true;
+  });
+  const close = await runtime.close();
+  assert.equal(close.cleanup, 'complete');
+  assert.equal(provider.allocations(), 1);
+  assert.equal((await fetch(`${provider.url}/sandboxes/fixture-1`)).status, 404);
+  const evidence = await readFile(close.evidence.path, 'utf8');
+  const spawn = evidence.trim().split('\n').map(JSON.parse).filter(row => row.type === 'spawn');
+  assert.deepEqual(spawn.map(row => row.state), ['registered', 'allocation-dispatched', 'allocation-observed']);
+  const observation = spawn.at(-1);
+  assert.deepEqual([observation.botId, observation.requestId, observation.sandboxId, observation.observation, observation.expiresAt],
+    [botId, 'lost', 'fixture-1', 'cleanup-lookup', null]);
+});
+
 test('evidence write failure stays visible after resources close and an invalid output directory has no report path', async t => {
   const { outputDir, makeRuntime } = await fixture(t, {});
   const blocked = join(outputDir, 'blocked');

@@ -368,6 +368,8 @@ export async function createRuntime(options) {
         bot.controller.signal.throwIfAborted();
         const resource = await backend.spawn({ botId: info.id, profile: bot.profile, options: parameters,
           signal: bot.controller.signal, onEvent: event => emit(bot, event),
+          recordAllocation: allocation => records.record('spawn', { ...allocation, botId: info.id,
+            requestId: redactor.text(requestId), sandboxId: redactor.text(allocation.sandboxId) }),
           onExecutionStart: () => {
             bot.nativeExecuting = true;
             refreshActivity(bot);
