@@ -122,18 +122,6 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   }
 
   function observeEvent(value, record) {
-    const items = value.type === 'response.output_item.done' ? [value.item] : value.response?.output ?? [];
-    for (const item of items) {
-      if (item?.type !== 'function_call' || typeof item.call_id !== 'string') continue;
-      let args;
-      try { args = JSON.parse(item.arguments); } catch { continue; }
-      if (item.name === 'bash' && typeof args.command === 'string' && args.command.includes(filename) && args.command.includes(marker)) {
-        tools.set(item.call_id, 'bash');
-      }
-      if (item.name === 'read' && typeof args.path === 'string' && (args.path === filename || args.path.endsWith(`/${filename}`))) {
-        tools.set(item.call_id, 'read');
-      }
-    }
     if (['response.completed', 'response.failed', 'response.incomplete'].includes(value.type)) {
       const usage = value.response?.usage;
       const validUsage = Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens) && usage.input_tokens >= 0 && usage.output_tokens >= 0;
@@ -169,6 +157,20 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
         transport(record, 'terminal_usage_invalid', true);
         failRun({ code: 'LIVE_TERMINAL_USAGE_INVALID', number: record.number }, 'terminal_usage_abort');
         return true;
+      }
+    }
+    // Account for terminal usage before inspecting optional tool observations.
+    const items = value.type === 'response.output_item.done' ? [value.item] : value.response?.output;
+    if (!Array.isArray(items)) return;
+    for (const item of items) {
+      if (item?.type !== 'function_call' || typeof item.call_id !== 'string') continue;
+      let args;
+      try { args = JSON.parse(item.arguments); } catch { continue; }
+      if (item.name === 'bash' && typeof args?.command === 'string' && args.command.includes(filename) && args.command.includes(marker)) {
+        tools.set(item.call_id, 'bash');
+      }
+      if (item.name === 'read' && typeof args?.path === 'string' && (args.path === filename || args.path.endsWith(`/${filename}`))) {
+        tools.set(item.call_id, 'read');
       }
     }
   }
