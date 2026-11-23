@@ -9,6 +9,30 @@ function invalid(message) {
   return Object.assign(new Error(message), { code: 'INVALID_CONFIG' });
 }
 
+function isEmptyPiToolMessage(item, index, input) {
+  if (item?.type !== 'message' || item.role !== 'assistant' || item.status !== 'completed' ||
+      Object.keys(item).sort().join(',') !== 'content,id,role,status,type' ||
+      typeof item.id !== 'string' || !/^msg_[a-zA-Z0-9_-]{1,60}$/.test(item.id) ||
+      !Array.isArray(item.content) || item.content.length !== 1) return false;
+  const [part] = item.content;
+  if (part?.type !== 'output_text' || part.text !== '' || !Array.isArray(part.annotations) || part.annotations.length !== 0 ||
+      Object.keys(part).sort().join(',') !== 'annotations,text,type') return false;
+  const call = input[index - 1], result = input[index + 1];
+  return call?.type === 'function_call' && result?.type === 'function_call_output' &&
+    typeof call.call_id === 'string' && call.call_id.length > 0 && call.call_id === result.call_id;
+}
+
+function kimiResponsesTransport(fetch) {
+  return (url, options) => {
+    const payload = JSON.parse(options.body);
+    if (Array.isArray(payload.input)) {
+      const input = payload.input.filter((item, index, items) => !isEmptyPiToolMessage(item, index, items));
+      if (input.length !== payload.input.length) return fetch(url, { ...options, body: JSON.stringify({ ...payload, input }) });
+    }
+    return fetch(url, options);
+  };
+}
+
 function synchronousPolicy(policy) {
   if (policy === undefined) return commit => commit();
   if (!policy || typeof policy.authorize !== 'function' || typeof policy.withCommit !== 'function' ||
@@ -106,6 +130,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
       await chmod(path, 0o600);
       entry.gateway = new ResponsesBudgetGateway({ db: entry.db, scope: 'runtime',
         upstream: { ...entry.model.upstream, model: entry.model.model }, timeBounds: gatewayConfig,
+        ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { fetchImpl: kimiResponsesTransport(globalThis.fetch) } : {}),
         withLifecycleWrite,
         validateBot: ({ runtimeId: callerRuntimeId, botId }) => {
           if (callerRuntimeId !== runtimeId) return null;
