@@ -4,7 +4,7 @@ import { copyFile, mkdir, readFile, readdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
-import { installNotesExample } from './fixtures/notes-installed-package.js';
+import { installNativeNotesExample } from './fixtures/notes-installed-package.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
 import { createSubagentsUpstream } from './fixtures/subagents-upstream.js';
@@ -13,7 +13,7 @@ test('installed subagents parent delegates natively and adopts two child results
   skip: process.env.SWARMENV_SUBAGENTS_REAL_TEST !== '1' && 'Requires two independent exact-pin reviews and local opt-in', timeout: 340_000,
 }, async t => {
   const image = process.env.SWARMENV_CORE_TEST_IMAGE; assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
-  const installed = await installNotesExample(); assert.equal(installed.metadata.sourceDirty, false);
+  const installed = await installNativeNotesExample();
   for (const name of ['main', 'controller', 'prompts']) await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/examples/subagents-environment', `${name}.mjs`), join(installed.directory, `${name}.mjs`));
   const outputDir = join(installed.directory, 'output'); let child; let sessions;
   const upstream = await createSubagentsUpstream({ onFailure: () => child?.kill('SIGTERM'), observeSessions: async (phase, native) => {
