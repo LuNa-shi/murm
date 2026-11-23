@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2093 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2070 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -18,9 +18,15 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | experiments/ and reports/ | Historical/private run data; belongs to version-bound evidence, not current executable architecture. |
 | node_modules/ and externally supplied service bundles | External dependency/provider implementations; versions and integration boundaries are documented, internal code and private context are not vendored. |
 | docs/ and .codex/ | Development governance and generated reference artifacts; reviewed by documentation/link checks, not part of research-Agent runtime except explicitly listed provider documents. |
-| third_party/agensh | Pinned external Agensh submodule. Integration entry points, prompt composition and library boundaries are mapped under integrations/agensh. |
+| third_party/agensh | Pinned external Agensh source. The public-Core Environment documents the native board protocol and schema provenance at its local integration boundary. |
 
 ## File-by-file ownership
+
+### Agensh Environment (1)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [.gitmodules](../../.gitmodules) | Pinned external Agensh source location and board schema attribution | [18-agensh-environment](18-agensh-environment.md) | `6160616b42057b75949236480e7505e9500561fd4d11194bb07bd5933b4d7a6c` |
 
 ### Agent and prompts (10)
 
@@ -2080,7 +2086,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and read-only historical reconstruction | [13-historical-resume](13-historical-resume.md) | `3ae15de790367396c5890c2ba97e2e2607e4bf1d3d9467cae3116158332bf67a` |
 | [src/replay/workspace-history.js](../../src/replay/workspace-history.js) | Reconstruct past public main and reachable Git objects without modifying the source | [13-historical-resume](13-historical-resume.md) | `63b83b4bf2ff3a17d8b8983507c33b299df3348778a652f18a0eea5f1df4e29a` |
 
-### launch and composition (15)
+### launch and composition (14)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -2094,39 +2100,10 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/service-host-entrypoint.sh](../../scripts/service-host-entrypoint.sh) | Explicit Judge checker prebuild gate and persistent volume marker | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `4c067092da38e68214149badb57dfcdb662523787dc3fbdae9740a93f25f9b75` |
 | [scripts/service-host.mjs](../../scripts/service-host.mjs) | Built-in HTTP service process composition and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `a200b2298271615806568085abe4b8253938e7c06ae8ecd6b75226ccb1d0ddf0` |
 | [services/opensandbox-agent/Dockerfile](../../services/opensandbox-agent/Dockerfile) | OpenSandbox agent image recipe containing the worker, Pi package and native shell tools | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md), [18-agensh-environment](18-agensh-environment.md) | `5cbed5e9b45a6291bc0fc3734ec5e1fa6ad8f9468c0a2d3f8a52e06edc1cb85a` |
-| [services/opensandbox-agent/Dockerfile.seymour](../../services/opensandbox-agent/Dockerfile.seymour) | Optional Seymour image layer with the matched public Lean diagnostic tool and Mathlib inputs | [07-run-configuration](07-run-configuration.md) | `057584fe14a90956c8b4a0feabeaa470a68fd742608fa199323ce13cc03fb499` |
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `2495571b7ce4d3193fc851fc143f277e850bf184fbade4c614b1b3225de6f20a` |
 | [src/benchmark/pass-k.js](../../src/benchmark/pass-k.js) | Compose K independent one-Core Mission runs with a fixed observation window and trusted acceptance aggregation | [07-run-configuration](07-run-configuration.md), [06-observability-experiments](06-observability-experiments.md) | `3a9530594867be357f91c226c77f1a4738d570cac9039a49bdd4b97b4beaaa75` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `47466a0abf9fa13e69f4802bcd70ca02c2e3f69546b5e989235c85a83a2f7660` |
-
-### native Agensh experiment (23)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [.gitmodules](../../.gitmodules) | Pinned third-party checkout location | [14-agensh-lean](14-agensh-lean.md) | `6160616b42057b75949236480e7505e9500561fd4d11194bb07bd5933b4d7a6c` |
-| [integrations/agensh/domain.mjs](../../integrations/agensh/domain.mjs) | Seed, export and check fixed Git trees | [14-agensh-lean](14-agensh-lean.md) | `ed793fd7eae169cf2877fb2bdfc5508df3ebde5934ef5847458c4a7fac5f8a5d` |
-| [integrations/agensh/lean-check](../../integrations/agensh/lean-check) | Local Lean elaboration command | [14-agensh-lean](14-agensh-lean.md) | `6f4beebf2107063b76ce9383990ca3a52d22296ad3af1c3bb934e3f1ee36a4af` |
-| [integrations/agensh/lean-proof/hooks/evaluate.sh](../../integrations/agensh/lean-proof/hooks/evaluate.sh) | Native pack evaluate hook | [14-agensh-lean](14-agensh-lean.md) | `7d287f931481ad46e589f823770c7ec348011c6e380e75a617575c3cd7e67458` |
-| [integrations/agensh/lean-proof/hooks/export.sh](../../integrations/agensh/lean-proof/hooks/export.sh) | Native pack export hook | [14-agensh-lean](14-agensh-lean.md) | `db56fb29f495e68517d730c2eed90fde0406f9aaea6e397103702a09883bf6f1` |
-| [integrations/agensh/lean-proof/hooks/prepare.sh](../../integrations/agensh/lean-proof/hooks/prepare.sh) | Native pack prepare hook | [14-agensh-lean](14-agensh-lean.md) | `10792c169c73cfc21eee54a630bcddb1fb050f1b268b18de1c50bf46d23ebc0f` |
-| [integrations/agensh/lean-proof/pack.toml](../../integrations/agensh/lean-proof/pack.toml) | Native team driver math pack | [14-agensh-lean](14-agensh-lean.md) | `429bd6f57f71ec56be759079a56ec08b98592c6eb271783be4f2bd60bd13b283` |
-| [integrations/agensh/lean-proof/prompts/deadline_45m.txt](../../integrations/agensh/lean-proof/prompts/deadline_45m.txt) | Math deadline_45m prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `f1ea9bc217d3dde645271674e17185316c85745991c1e66fa7b98b11ea0e928f` |
-| [integrations/agensh/lean-proof/prompts/deadline_5m.txt](../../integrations/agensh/lean-proof/prompts/deadline_5m.txt) | Math deadline_5m prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `6d10cb9ab01a8e2c4e8e9413553c9d302e526adfd153ea4a5db2bc62fa7781d1` |
-| [integrations/agensh/lean-proof/prompts/delivery.txt](../../integrations/agensh/lean-proof/prompts/delivery.txt) | Math delivery prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `e73f07937e267d22657109d06cf90e7beb048219c62fda34e04c02f12e4b207b` |
-| [integrations/agensh/lean-proof/prompts/focus.txt](../../integrations/agensh/lean-proof/prompts/focus.txt) | Math focus prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `a40baf132252773a434f9f36780d8745f976532952a8d65f59cb3e0eeb15837e` |
-| [integrations/agensh/lean-proof/prompts/idle_delivery.txt](../../integrations/agensh/lean-proof/prompts/idle_delivery.txt) | Math idle_delivery prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `e154a27ae05737530235936b17102f6a54f2160797591f8cc88917bbf46dd89e` |
-| [integrations/agensh/lean-proof/prompts/idle.txt](../../integrations/agensh/lean-proof/prompts/idle.txt) | Math idle prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `a33dda3fb2a678e3d317189ae4b86b140e2fa0a71acb389865c2888d738b6d12` |
-| [integrations/agensh/lean-proof/prompts/objective.txt](../../integrations/agensh/lean-proof/prompts/objective.txt) | Math objective prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `7ac24696a94ed1bb29fb6aa7ef7c14f644df8b724835f6d599045eaf16cb69c8` |
-| [integrations/agensh/lean-proof/prompts/task_brief.txt](../../integrations/agensh/lean-proof/prompts/task_brief.txt) | Math task_brief prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `e508a0dec25841fac3f6ac3b4b676cbae6c4e1e23c0cf47324b4ce7ed43aad3f` |
-| [integrations/agensh/lean-proof/prompts/work_cycle.txt](../../integrations/agensh/lean-proof/prompts/work_cycle.txt) | Math work_cycle prompt fragment | [14-agensh-lean](14-agensh-lean.md), [08-prompts](08-prompts.md) | `a08c5b2585ba53ca2c9879878fe094e11243df211c4bfa85c70dd15fdb266ca5` |
-| [integrations/agensh/manifest.py](../../integrations/agensh/manifest.py) | Freeze and revalidate the effective profile, authority, inputs, service and worker images | [14-agensh-lean](14-agensh-lean.md) | `4c40ba6f8455ff39fd568beda896f5e4f25afd5368b0a1a49b8e7bcae31571f1` |
-| [integrations/agensh/observe.mjs](../../integrations/agensh/observe.mjs) | Read-only public Git observer and checker queue | [14-agensh-lean](14-agensh-lean.md) | `5c441f487288064feb62179abf69c942075ba8cb6e2e60e462882c10c8a06dbd` |
-| [integrations/agensh/provider_transport.py](../../integrations/agensh/provider_transport.py) | Trusted egress credential and model binding | [14-agensh-lean](14-agensh-lean.md) | `96838c79b6d5ae630e5ac67fcb3c9321a14e3454b5389a99923787adbe23ba9e` |
-| [integrations/agensh/seymour_inputs.py](../../integrations/agensh/seymour_inputs.py) | EXP-02 challenge, artifact lock and public Mathlib source projection | [14-agensh-lean](14-agensh-lean.md) | `3be66b0e45bbcdac409cacbe2b598b36912501188e86a3cea72ae0fe8277e22b` |
-| [integrations/agensh/seymour-lean-check](../../integrations/agensh/seymour-lean-check) | Source-only fixed-root local Lean module check for Seymour | [14-agensh-lean](14-agensh-lean.md) | `92a0dbf11e79629257250039217cc7ab6880f5addfa08accd9057e05c9b51811` |
-| [integrations/agensh/stage.py](../../integrations/agensh/stage.py) | Generate private profiles and worker mounts | [14-agensh-lean](14-agensh-lean.md) | `377f06d69dc12631ed3c60dfc525c5c2c0463aa25e95b3e97d6bd7242c329ee4` |
-| [integrations/agensh/start.py](../../integrations/agensh/start.py) | Start and time-fence the native team | [14-agensh-lean](14-agensh-lean.md) | `5b58da4834c7adde26e1cb85605735f1a00c94e9195886e99a25ea8d0842e2f0` |
 
 ### observation and analysis (9)
 

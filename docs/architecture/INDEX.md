@@ -28,7 +28,6 @@ Read 00 first, then 07 for the actual launch and outer loop. Read 01–06 for th
 | [11 Storage reference](11-storage-reference.md) | Complete database definitions, keys, indexes, ownership and persistence boundaries |
 | [12 Source coverage](12-code-coverage.md) | Runtime/configuration/build source files, their role, chapter ownership and fingerprints; explicit generated/test/data classifications |
 | [13 Historical continuation](13-historical-resume.md) | How does a time selected after an experiment ends reconstruct service and Workspace data, then start four fresh Cores? |
-| [14 Native Agensh on Lean](14-agensh-lean.md) | How does a native Pi team receive a clean fixture, share work, enforce its time window and submit to the external checker? |
 | [15 Programmable Core Runtime](15-core-runtime.md) | How does a host assemble and run a Task-free Bot, subscribe to input results and close the run? |
 | [16 Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) | How does Core connect its identity, a guest, a Pi Session and separately confirmed stop and destruction? |
 | [17 Runtime evidence and Environment reports](17-environment-reporting.md) | How are input, events, Service operations and cleanup traced? How do Environment reports preserve independent failures? |

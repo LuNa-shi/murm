@@ -46,40 +46,7 @@ preflight is a separate lifecycle API listing request. It verifies provider
 reachability and access. The live Bot startup then validates the deployed
 worker and verifies per-Bot isolation before discovery.
 
-### Seymour worker with the native Agensh Lean tools
-
-Use the verified public artifacts from the matched Agensh arm. Set
-`base_worker_image` to the checked SwarmEnv worker image, `lean_root` to the
-locked toolchain, `public_libraries` to the numbered public library snapshot
-and `public_mathlib` to its exported Mathlib source. Set `worker_image` to a
-new tag for the derivative. From the clean worktree at the approved commit:
-
-~~~bash
-set -euo pipefail
-image_inputs="$(mktemp -d)"
-trap 'rm -rf "$image_inputs"' EXIT
-mkdir "$image_inputs/empty" "$image_inputs/agensh"
-git show HEAD:integrations/agensh/seymour-lean-check > "$image_inputs/agensh/seymour-lean-check"
-docker buildx build --network none --pull=false --load \
-  --build-arg "BASE_IMAGE=$base_worker_image" \
-  --build-context "lean_bin=$lean_root/bin" \
-  --build-context "lean_lib=$lean_root/lib" \
-  --build-context "lean_libraries=$public_libraries" \
-  --build-context "mathlib_source=$public_mathlib" \
-  --build-context "agensh_tools=$image_inputs/agensh" \
-  -f services/opensandbox-agent/Dockerfile.seymour -t "$worker_image" "$image_inputs/empty"
-~~~
-
-Use that derivative for the image contract and disk probes. A host library
-composition can supply tool instructions through `localLeanTools` when using
-this image. A Bot can search
-`/opt/mathlib-source/Mathlib` with `rg` and call
-`lean-check --swarmenv-workspace PATH.lean` on its current Seymour worktree.
-Before model calls, verify that a probe imports
-Mathlib and checks a known declaration under the Bot UID, with the experiment's
-CPU, memory and writable scratch limits. The experiment still uses the
-host-owned artifact lock for final acceptance. Use the revised verifier with a
-fresh lock.
+The original native Agensh math experiment, Seymour image layer and matched operator procedure are preserved at the fixed research revision. [Research procedure](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/docs/architecture/14-agensh-lean.md)
 
 ## Launch an approved run
 

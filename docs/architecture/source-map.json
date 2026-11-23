@@ -38,7 +38,7 @@
     },
     {
       "path": "third_party/agensh",
-      "reason": "Pinned external Agensh submodule. Integration entry points, prompt composition and library boundaries are mapped under integrations/agensh."
+      "reason": "Pinned external Agensh source. The public-Core Environment documents the native board protocol and schema provenance at its local integration boundary."
     }
   ],
   "files": [
@@ -17220,14 +17220,6 @@
       "role": "OpenSandbox agent image recipe containing the worker, Pi package and native shell tools"
     },
     {
-      "path": "services/opensandbox-agent/Dockerfile.seymour",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Optional Seymour image layer with the matched public Lean diagnostic tool and Mathlib inputs"
-    },
-    {
       "path": "services/opensandbox-agent/pi-models.json",
       "category": "launch and composition",
       "chapters": [
@@ -18253,196 +18245,11 @@
     },
     {
       "path": ".gitmodules",
-      "category": "native Agensh experiment",
+      "category": "Agensh Environment",
       "chapters": [
-        "docs/architecture/14-agensh-lean.md"
+        "docs/architecture/18-agensh-environment.md"
       ],
-      "role": "Pinned third-party checkout location"
-    },
-    {
-      "path": "integrations/agensh/domain.mjs",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Seed, export and check fixed Git trees"
-    },
-    {
-      "path": "integrations/agensh/lean-check",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Local Lean elaboration command"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/hooks/evaluate.sh",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Native pack evaluate hook"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/hooks/export.sh",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Native pack export hook"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/hooks/prepare.sh",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Native pack prepare hook"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/pack.toml",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Native team driver math pack"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/deadline_45m.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math deadline_45m prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/deadline_5m.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math deadline_5m prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/delivery.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math delivery prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/focus.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math focus prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/idle.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math idle prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/idle_delivery.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math idle_delivery prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/objective.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math objective prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/task_brief.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math task_brief prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/lean-proof/prompts/work_cycle.txt",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Math work_cycle prompt fragment"
-    },
-    {
-      "path": "integrations/agensh/observe.mjs",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Read-only public Git observer and checker queue"
-    },
-    {
-      "path": "integrations/agensh/provider_transport.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Trusted egress credential and model binding"
-    },
-    {
-      "path": "integrations/agensh/seymour-lean-check",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Source-only fixed-root local Lean module check for Seymour"
-    },
-    {
-      "path": "integrations/agensh/seymour_inputs.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "EXP-02 challenge, artifact lock and public Mathlib source projection"
-    },
-    {
-      "path": "integrations/agensh/stage.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Generate private profiles and worker mounts"
-    },
-    {
-      "path": "integrations/agensh/start.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Start and time-fence the native team"
-    },
-    {
-      "path": "integrations/agensh/manifest.py",
-      "category": "native Agensh experiment",
-      "chapters": [
-        "docs/architecture/14-agensh-lean.md"
-      ],
-      "role": "Freeze and revalidate the effective profile, authority, inputs, service and worker images"
+      "role": "Pinned external Agensh source location and board schema attribution"
     },
     {
       "path": "src/core/bot-service.js",
