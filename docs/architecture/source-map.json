@@ -18727,6 +18727,22 @@
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Flat host composition and independent business/resource reporting with explicit live snapshot readiness gate"
+    },
+    {
+      "path": "scripts/read-environment-result.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Host CLI for saved result inspection using the shared reader"
+    },
+    {
+      "path": "src/environments/shared/read-result.js",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Read saved Environment and Core receipts with expected identity and bounded normal-output projection"
     }
   ]
 }

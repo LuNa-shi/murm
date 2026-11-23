@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2070 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2072 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -2086,7 +2086,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and read-only historical reconstruction | [13-historical-resume](13-historical-resume.md) | `3ae15de790367396c5890c2ba97e2e2607e4bf1d3d9467cae3116158332bf67a` |
 | [src/replay/workspace-history.js](../../src/replay/workspace-history.js) | Reconstruct past public main and reachable Git objects without modifying the source | [13-historical-resume](13-historical-resume.md) | `63b83b4bf2ff3a17d8b8983507c33b299df3348778a652f18a0eea5f1df4e29a` |
 
-### launch and composition (14)
+### launch and composition (16)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -2096,6 +2096,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [package-lock.json](../../package-lock.json) | Exact dependency resolution, including external Pi/frontend packages | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `54b1f8039f50bf28112291679724e08963a4c2e079b9184d9b59d38638acc8e8` |
 | [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `a6cfab390eb1c5e245f60be2b0a210198f2dda5e1c3c039254e0429cd8f65300` |
 | [scripts/mathlib-search-service.mjs](../../scripts/mathlib-search-service.mjs) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |
+| [scripts/read-environment-result.mjs](../../scripts/read-environment-result.mjs) | Host CLI for saved result inspection using the shared reader | [17-environment-reporting](17-environment-reporting.md) | `085216b0cbf70458a42add00b1c430c4e582e72fa51497b55edee5ff5152930d` |
 | [scripts/run-putnambench-benchmark.mjs](../../scripts/run-putnambench-benchmark.mjs) | CLI options, locked input, opt-in persistent observer, batch and aggregate outputs | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `1057813137305b46695ad12210375310ede4b4d566a095dc4ef4b4daee5e455a` |
 | [scripts/service-host-entrypoint.sh](../../scripts/service-host-entrypoint.sh) | Explicit Judge checker prebuild gate and persistent volume marker | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `4c067092da38e68214149badb57dfcdb662523787dc3fbdae9740a93f25f9b75` |
 | [scripts/service-host.mjs](../../scripts/service-host.mjs) | Built-in HTTP service process composition and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `a200b2298271615806568085abe4b8253938e7c06ae8ecd6b75226ccb1d0ddf0` |
@@ -2103,6 +2104,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [services/opensandbox-agent/pi-models.json](../../services/opensandbox-agent/pi-models.json) | Native Pi compatible-provider catalog with runtime environment interpolation | [01-agent-core](01-agent-core.md), [07-run-configuration](07-run-configuration.md) | `2495571b7ce4d3193fc851fc143f277e850bf184fbade4c614b1b3225de6f20a` |
 | [src/benchmark/pass-k.js](../../src/benchmark/pass-k.js) | Compose K independent one-Core Mission runs with a fixed observation window and trusted acceptance aggregation | [07-run-configuration](07-run-configuration.md), [06-observability-experiments](06-observability-experiments.md) | `3a9530594867be357f91c226c77f1a4738d570cac9039a49bdd4b97b4beaaa75` |
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | Project composition, Agent take loop, Judge orchestration, stop and reports | [00-overview](00-overview.md), [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md), [13-historical-resume](13-historical-resume.md) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
+| [src/environments/shared/read-result.js](../../src/environments/shared/read-result.js) | Read saved Environment and Core receipts with expected identity and bounded normal-output projection | [17-environment-reporting](17-environment-reporting.md) | `99640d0f1709ff0777bc44c6c2f4edd48c4ad43c4791e88dfda5aa3bda17d06e` |
 | [src/index.js](../../src/index.js) | Public exports for domain services, Runtime, SDK, benchmark and fixtures | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `47466a0abf9fa13e69f4802bcd70ca02c2e3f69546b5e989235c85a83a2f7660` |
 
 ### observation and analysis (9)
