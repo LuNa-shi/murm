@@ -1,7 +1,19 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { streamResponse } from './core-controlled-upstream.js';
+
+export function botControlBackend(upstream, sandbox, { host = '172.17.0.1', listen = '0.0.0.0' } = {}) {
+  const model = url => ({ provider: 'kimi_proxy', model: 'k3', upstream: { url, headers: {} } });
+  return createPiOpenSandboxBackend({
+    sandbox: { ...sandbox, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
+    bridge: { host: listen, publicUrl: `http://${host}:{port}` },
+    modelGateway: { host: listen, advertiseHost: host, requestTimeoutMs: 80_000, maxOutputTokens: 128 },
+    models: { default: model(upstream.parentUrl), child: model(upstream.childUrl) },
+    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  });
+}
 
 export function parentCommand(parentId) {
   return `node --input-type=module <<'BOT_CONTROL'
@@ -27,16 +39,14 @@ BOT_CONTROL`;
 }
 
 export async function createBotControlUpstream(plan) {
-  const paths = new Map([['/parent/v1/responses', 'parent'], ['/child/v1/responses', 'child']]);
   let arrivals = 0; let accepted = 0; let failure; let evidence; let deadlineExceeded = false;
   const counts = { parent: 0, child: 0 }; const deadlineAt = Date.now() + 120000;
-  const server = createServer(async (request, response) => {
+  const handle = role => async (request, response) => {
     arrivals++;
     deadlineExceeded ||= Date.now() >= deadlineAt;
     try {
       assert.ok(arrivals <= 6 && !deadlineExceeded);
-      assert.equal(request.method, 'POST');
-      const role = paths.get(request.url); assert.ok(role);
+      assert.equal(request.method, 'POST'); assert.equal(request.url, '/v1/responses');
       const chunks = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; assert.ok(bytes <= 2 * 1024 ** 2); chunks.push(chunk); }
       const body = JSON.parse(Buffer.concat(chunks).toString()); assert.equal(body.model, 'k3'); assert.ok(Array.isArray(body.input));
@@ -60,9 +70,17 @@ export async function createBotControlUpstream(plan) {
       }
       accepted++; response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', arrivals, item));
     } catch { failure = 'CONTROLLED_BOT_SERVICE_FAILED'; response.writeHead(400); response.end(JSON.stringify({ error: { code: failure, message: failure } })); }
-  });
-  server.requestTimeout = 10000; server.headersTimeout = 10000;
-  server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  const base = `http://127.0.0.1:${server.address().port}`;
-  return { parentUrl: base + '/parent/v1/responses', childUrl: base + '/child/v1/responses', receipt: () => ({ arrivals, accepted, counts: { ...counts }, failure, evidence, deadlineExceeded }), close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
+  };
+  const servers = ['parent', 'child'].map(role => createServer(handle(role)));
+  const close = () => Promise.all(servers.map(server => new Promise(resolve => {
+    server.close(() => resolve()); server.closeAllConnections();
+  })));
+  try {
+    for (const server of servers) {
+      server.requestTimeout = 10_000; server.headersTimeout = 10_000;
+      server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    }
+  } catch (error) { await close(); throw error; }
+  const [parentUrl, childUrl] = servers.map(server => `http://127.0.0.1:${server.address().port}/v1/responses`);
+  return { parentUrl, childUrl, receipt: () => ({ arrivals, accepted, counts: { ...counts }, failure, evidence, deadlineExceeded }), close };
 }
