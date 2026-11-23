@@ -189,3 +189,5 @@ Prove the original Lean theorem in ${TARGET_FILE} in ${REPO}.${PAPER_BRIEF} The 
 5. Push, open a PR and merge to main. If refused, merge latest main into your branch, re-check and push again.
 6. Share a PATCH_SUMMARY with files, idea and evidence on the board, then choose the next area.
 ```
+
+The built-in Core Bot Service adds no child startup prompt or business result template. Its manifest help describes child admission, initialInput and pending cleanup; the Bridge exposes only permitted capabilities and the CLI renders the discovered text and schemas. Parent-supplied `input` goes unchanged through the shared Core input ledger with default steer or explicit followUp, after child identity/parentId and backend events are installed. The target Profile supplies the child's existing system prompt composition. Core does not copy the parent conversation, bindings or secretEnv, and does not automatically send child output back to a parent. See [built-in Bot control](15-core-runtime.md#built-in-bot-control).

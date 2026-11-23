@@ -46,8 +46,8 @@ function freeze(value) {
   return value;
 }
 
-function validateManifest(input) {
-  if (!record(input) || !isJson(input) || typeof input.id !== 'string' || !IDENTIFIER.test(input.id) || input.id === 'bot') {
+function validateManifest(input, builtin = false) {
+  if (!record(input) || !isJson(input) || typeof input.id !== 'string' || !IDENTIFIER.test(input.id) || (input.id === 'bot' && !builtin)) {
     invalid('Service id must be a valid identifier and bot is reserved');
   }
   if (![input.title, input.purpose, input.provider_version].every(nonempty) || input.contract_version !== '2') {
@@ -103,6 +103,14 @@ export class ServiceRegistry {
     registryEntries.get(this).set(snapshot.id, Object.freeze({ manifest: snapshot, adapter }));
   }
 
+}
+
+// Internal Core assembly only; the public registry continues to reject bot.
+export function builtinBotRegistration(manifest, adapter) {
+  if (manifest.id !== 'bot') invalid('Built-in registration must be bot');
+  const snapshot = validateManifest(manifest, true);
+  validators.set(snapshot, compile(snapshot));
+  return Object.freeze({ manifest: snapshot, adapter: Object.freeze(adapter) });
 }
 
 export function createInProcessAdapter(implementation) {
