@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { test } from 'node:test';
+import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { createBotControlUpstream, parentCommand } from './fixtures/core-bot-service-upstream.js';
 
 const request = (url, input = []) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'k3', input }) });
@@ -11,6 +12,14 @@ test('fixed parent script parses without execution and controlled fixture requir
   const program = command.split("<<'BOT_CONTROL'\n")[1].split('\nBOT_CONTROL')[0];
   execFileSync(process.execPath, ['--check', '--input-type=module'], { input: program });
   const upstream = await createBotControlUpstream({ parentId: 'parent-fixed', command }); t.after(() => upstream.close());
+  const model = url => ({ provider: 'kimi_proxy', model: 'k3', upstream: { url, headers: {} } });
+  assert.doesNotThrow(() => createPiOpenSandboxBackend({
+    sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' },
+    bridge: { host: '0.0.0.0', publicUrl: 'http://172.17.0.1:{port}' },
+    modelGateway: { host: '0.0.0.0', advertiseHost: '172.17.0.1', requestTimeoutMs: 80_000, maxOutputTokens: 128 },
+    models: { default: model(upstream.parentUrl), child: model(upstream.childUrl) },
+    isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+  }));
   assert.equal((await request(upstream.parentUrl)).status, 200);
   assert.equal((await request(upstream.childUrl)).status, 200);
   assert.equal((await request(upstream.childUrl, [tool('child_1', 'CHILD_BYTES_ONE\n')])).status, 200);

@@ -27,6 +27,7 @@ BOT_CONTROL`;
 }
 
 export async function createBotControlUpstream(plan) {
+  const paths = new Map([['/parent/v1/responses', 'parent'], ['/child/v1/responses', 'child']]);
   let arrivals = 0; let accepted = 0; let failure; let evidence; let deadlineExceeded = false;
   const counts = { parent: 0, child: 0 }; const deadlineAt = Date.now() + 120000;
   const server = createServer(async (request, response) => {
@@ -35,7 +36,7 @@ export async function createBotControlUpstream(plan) {
     try {
       assert.ok(arrivals <= 6 && !deadlineExceeded);
       assert.equal(request.method, 'POST');
-      const role = request.url === '/parent' ? 'parent' : request.url === '/child' ? 'child' : null; assert.ok(role);
+      const role = paths.get(request.url); assert.ok(role);
       const chunks = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; assert.ok(bytes <= 2 * 1024 ** 2); chunks.push(chunk); }
       const body = JSON.parse(Buffer.concat(chunks).toString()); assert.equal(body.model, 'k3'); assert.ok(Array.isArray(body.input));
@@ -63,5 +64,5 @@ export async function createBotControlUpstream(plan) {
   server.requestTimeout = 10000; server.headersTimeout = 10000;
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   const base = `http://127.0.0.1:${server.address().port}`;
-  return { parentUrl: base + '/parent', childUrl: base + '/child', receipt: () => ({ arrivals, accepted, counts: { ...counts }, failure, evidence, deadlineExceeded }), close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
+  return { parentUrl: base + '/parent/v1/responses', childUrl: base + '/child/v1/responses', receipt: () => ({ arrivals, accepted, counts: { ...counts }, failure, evidence, deadlineExceeded }), close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }
