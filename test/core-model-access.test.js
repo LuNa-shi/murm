@@ -14,7 +14,7 @@ function completion(model = 'k3') {
     response: { status: 'completed', model, usage: { input_tokens: 3, output_tokens: 2 } } })}\n\n`;
 }
 
-async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, models } = {}) {
+async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'core-model-'));
   const requests = [];
   const upstream = createServer(async (request, response) => {
@@ -39,15 +39,15 @@ async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, m
   });
   const config = {
     modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens: 64 },
-    models: models ?? { default: { provider: 'kimi_proxy', model: 'k3',
+    models: models ?? { default: { provider, model,
       upstream: { url: upstreamUrl, headers: { authorization: 'Bearer upstream-private' } } } },
   };
   access = await createCoreModelAccess({ runtimeId: 'runtime-a', outputDir, config,
     getBot: botId => bots.get(botId) ?? null, modelAccessPolicy });
   const credentials = access.credentialsForBot('bot-a', 'default');
-  const call = async (requestId = 'request-a', body = { model: 'k3', input: 'Return a small result.' }) => {
+  const call = async (requestId = 'request-a', body = { model, input: 'Return a small result.' }) => {
     const response = await fetch(`${credentials.baseUrl}/responses`, {
-      method: 'POST', headers: { authorization: `Bearer ${credentials.secretEnvironment.PI_KIMI_PROXY_API_KEY}`,
+      method: 'POST', headers: { authorization: `Bearer ${Object.values(credentials.secretEnvironment)[0]}`,
         'content-type': 'application/json', 'x-swarmenv-request-id': requestId }, body: JSON.stringify(body),
     });
     return { status: response.status, body: await response.text() };
@@ -74,6 +74,60 @@ test('a generic Runtime Bot calls the shipped model with private upstream creden
   assert.deepEqual({ ...ledger.prepare('SELECT runtime_id, bot_id, request_id, phase, state, input_tokens, output_tokens FROM runtime_model_attempts').get() },
     { runtime_id: 'runtime-a', bot_id: 'bot-a', request_id: 'request-a', phase: 'work', state: 'completed', input_tokens: 3, output_tokens: 2 });
   assert.equal(ledger.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name LIKE '%mission%' OR name LIKE '%task%' OR name LIKE '%execution%'").get().count, 0);
+});
+
+test('K3 tool continuation omits only the exact empty completed Pi message and preserves original request identity', async t => {
+  // Structural provider stand-in, not evidence of native Pi execution or the
+  // hosted rejection's cause. Shape matches Pi 1.3's Responses conversion.
+  const empty = { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '', annotations: [] }], status: 'completed', id: 'msg_tool_continuation' };
+  const history = () => [
+    { role: 'user', content: [{ type: 'input_text', text: 'Run the fixed tool and report its result.' }] },
+    { type: 'reasoning', id: 'rs_retained', summary: [{ type: 'summary_text', text: 'Retain this summary.' }], encrypted_content: 'opaque-retained-signature' },
+    { type: 'function_call', id: 'fc_retained', call_id: 'call_retained', name: 'bash', arguments: '{"command":"printf fixed"}', status: 'completed' },
+    structuredClone(empty),
+    { type: 'function_call_output', call_id: 'call_retained', output: 'fixed' },
+    { type: 'message', role: 'assistant', id: 'msg_retained', status: 'completed', phase: 'final_answer',
+      content: [{ type: 'output_text', text: 'A nonempty prior answer.', annotations: [] }] },
+  ];
+  const cases = [
+    { name: 'only the empty item is omitted', remove: true },
+    { name: 'a nonempty assistant item is retained', change: input => { input[3].content[0].text = 'Retain me.'; } },
+    { name: 'unsupported annotations are not laundered by removal', deny: true, change: input => { input[3].content[0].annotations = [{ type: 'url_citation', url: 'https://example.invalid/retained' }]; } },
+    { name: 'unsupported metadata is not laundered by removal', deny: true, change: input => { input[3].metadata = { source: 'retained' }; } },
+    { name: 'phase is retained', change: input => { input[3].phase = 'commentary'; } },
+    { name: 'missing call identity still fails schema admission', deny: true, change: input => { delete input[2].call_id; } },
+    { name: 'mismatched call identity is retained', reject: true, change: input => { input[4].call_id = 'different_call'; } },
+    { name: 'the shipped GPT route retains the same empty item', provider: 'gpt_proxy', model: 'gpt-6.1-sol' },
+  ];
+  for (const scenario of cases) await t.test(scenario.name, async t => {
+    const input = history(); scenario.change?.(input);
+    const original = structuredClone(input);
+    const f = await fixture(t, { provider: scenario.provider, model: scenario.model, reply: (_request, response, body) => {
+      // The local strict K3 stand-in rejects precisely the observed item. Its
+      // predicate intentionally makes no claim about other history variants.
+      if (body.model === 'k3' && body.input.some(item => JSON.stringify(item) === JSON.stringify(empty))) {
+        response.writeHead(400, { 'content-type': 'application/json' });
+        response.end(JSON.stringify({ error: { code: 'invalid_request_error' } }));
+      } else response.end(completion(body.model));
+    } });
+    const payload = { model: scenario.model ?? 'k3', input };
+    const result = await f.call('native-tool-history', payload);
+    if (scenario.deny) {
+      assert.equal(result.status, 400); assert.equal(f.requests.length, 0);
+      assert.deepEqual(input, original, 'Invalid history remains rejected, never stripped into an admissible request');
+      return;
+    }
+    assert.deepEqual(f.requests[0].body.input, scenario.remove ? original.filter((_, index) => index !== 3) : original);
+    assert.deepEqual(input, original, 'Client history must not be mutated');
+    assert.equal(result.status, scenario.reject ? 502 : 200);
+    if (scenario.remove) {
+      assert.deepEqual(await f.call('native-tool-history', payload), result, 'The same original request replays its receipt');
+      assert.equal(f.requests.length, 1);
+      assert.equal((await f.call('native-tool-history', { ...payload, input: original.filter((_, index) => index !== 3) })).status, 409,
+        'Original client history, including the empty item, owns the stable request fingerprint');
+      assert.equal(f.requests.length, 1);
+    }
+  });
 });
 
 test('model credentials reject unknown identities and requests fail before effects after identity or profile changes', async t => {
