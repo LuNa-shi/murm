@@ -466,16 +466,17 @@ test('Bridge stop cancels a public read queued after Registry authorization', as
 
 test('Mission Bridge supplies trusted scope, rejects checker selection and returns the observed submission projection', async t => {
   const calls = [];
+  const reads = [];
   const observed = { submission_id: 'submission:fixed', state: 'pending', main_revision: '0.1', materials: [],
     current: { active_submission_id: 'submission:fixed', merge_allowed: false }, notice: 'Fixed public submission observation' };
   const { bridge, start } = await fixture(t, { runtime: { missionWorkspaceId: 'workspace:trusted',
     async submitMission(input) { calls.push(input); return { submission_id: observed.submission_id }; },
     async describeMissionSubmission(input) {
-      assert.deepEqual(input, { missionId: 'mission:auth', submissionId: observed.submission_id });
-      return observed;
+      reads.push(input);
+      return input.submissionId ? observed : { state: 'open', submissions: [observed] };
     },
   } });
-  start('bot:coordinator', ['mission_submit']);
+  const env = start('bot:coordinator', ['mission_submit']);
   await assert.rejects(bridge.call({ operation: 'mission_submit', payload: {} }), { code: 'INVALID_CONTRACT' });
   await assert.rejects(bridge.call({ operation: 'mission_submit', payload: { material_ids: [], checker: 'caller-selected' } }), { code: 'INVALID_CONTRACT' });
   assert.equal(calls.length, 0);
@@ -484,4 +485,24 @@ test('Mission Bridge supplies trusted scope, rejects checker selection and retur
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0], { missionId: 'mission:auth', workspaceId: 'workspace:trusted', actorRef: 'bot:coordinator',
     taskId: null, executionId: null, materialIds: [], requestId: 'fixed-submit', fencingVersion: null });
+  assert.deepEqual(reads, [{ missionId: 'mission:auth', submissionId: observed.submission_id }]);
+  const read = async payload => {
+    const response = await fetch(`${env.SWARMENV_BRIDGE_URL}/call`, { method: 'POST',
+      headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ operation: 'mission_submission_get', payload }) });
+    return { status: response.status, body: await response.json() };
+  };
+  assert.deepEqual((await read({})).body, { ok: true, result: { state: 'open', submissions: [observed] } });
+  assert.deepEqual((await read({ submission_id: observed.submission_id })).body, { ok: true, result: observed });
+  assert.deepEqual(reads.slice(1), [
+    { missionId: 'mission:auth', submissionId: null },
+    { missionId: 'mission:auth', submissionId: observed.submission_id },
+  ]);
+  for (const payload of [{ mission_id: 'mission:foreign' },
+    { mission_id: 'mission:foreign', submission_id: observed.submission_id }]) {
+    const rejected = await read(payload);
+    assert.equal(rejected.status, 400);
+    assert.equal(rejected.body.error.code, 'NOT_ALLOWED');
+  }
+  assert.equal(reads.length, 3, 'Forged Mission scope must reject before any submission read');
 });

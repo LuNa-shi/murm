@@ -158,7 +158,9 @@ test('independent public contributions merge before a failed Mission check and a
   assert.equal(discovery.state, 'open');
   assert.equal(discovery.current.main_revision, merge.main_revision);
   assert.equal(discovery.active_submission_id, null);
-  assert.equal(discovery.submissions.find(row => row.submission_id === submit.submission_id).state, 'failed');
+  const observed = discovery.submissions.find(row => row.submission_id === submit.submission_id);
+  assert.equal(observed.state, 'failed');
+  assert.equal(observed.main_revision, merge.main_revision);
   assert.equal((await workspace.get({ workspaceId })).frozen_submission_id, null);
   const next = await workspace.merge({ workspaceId, fromRevision: followup.revision, requestId: 'merge-after-unfreeze' });
   assert.notEqual(next.main_revision, merge.main_revision);

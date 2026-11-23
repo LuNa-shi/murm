@@ -173,6 +173,13 @@ test('Mission CLI submits an explicit empty Material selection', async t => {
   assert.equal(invocations.length, 0);
   await runSwarmCli(['mission', 'submit', '--materials', '[]', '--request-id', 'stable-final'], { stdout: { write() {} } });
   assert.deepEqual(invocations[0], { operation: 'mission_submit', operation_id: 'stable-final', payload: { material_ids: [] } });
+  for (const [args, payload] of [[[], {}], [['submission:fixed'], { submission_id: 'submission:fixed' }]]) {
+    const output = [];
+    await runSwarmCli(['mission', 'submission', 'view', ...args, '--request-id', 'read-submission'],
+      { stdout: { write: value => output.push(value) } });
+    assert.deepEqual(invocations.at(-1), { operation: 'mission_submission_get', operation_id: 'read-submission', payload });
+    assert.deepEqual(JSON.parse(output.join('')), { submitted: true });
+  }
 });
 
 test('deployment check HTTP allowance is scoped and explicit timeout still wins', async t => {
