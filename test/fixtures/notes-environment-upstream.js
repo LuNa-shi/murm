@@ -20,7 +20,7 @@ fact=json.loads(pathlib.Path('review-input.json').read_text())
 raw=pathlib.Path('review-input.json').read_text()
 pid=os.getppid()
 for _ in range(12):
- args=pathlib.Path(f'/proc/{pid}/cmdline').read_bytes().decode().split('\x00')
+ args=pathlib.Path(f'/proc/{pid}/cmdline').read_bytes().decode().split(chr(0))
  if '--session-id' in args:
   session_id=args[args.index('--session-id')+1]
   assert re.fullmatch(r'[a-f0-9-]{36}',session_id)
