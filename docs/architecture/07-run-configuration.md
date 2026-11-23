@@ -2,6 +2,12 @@
 
 The host selects an Environment and supplies its model, image, Service and resource configuration. The programmable Core owns Bot identity, input delivery, private resources, artifact collection and close. Domain state transitions are described in [Execution](02-execution.md), [Mission and Task](03-mission-task.md) and [Services](04-services.md). The full prompt composition is in [Prompts](08-prompts.md).
 
+## Distribution file boundary
+
+`package.json` declares the distribution roots explicitly: `src`, `scripts`, `services`, `fixtures`, `examples`, `docs`, `test` and `test-support`, plus the tracked root glossary, Agent instructions, environment example and submodule declaration. npm also includes its mandatory package metadata and README. Runtime code, Worker/image preparation inputs, model catalog, prompts/skills, foreground/result scripts and editable example resources remain in the tarball. Test fixtures remain available for the installed-candidate verification paths; their inclusion does not imply native tests ran.
+
+This allowlist excludes undeclared root configuration, run-output and artifact directories independently of `.gitignore`; private experiment/report/worktree trees remain excluded. It is a file-selection boundary, not a credential scanner: files deliberately placed inside an admitted distribution root still require the candidate review in #184/#187. The Notes and subagents examples intentionally require the documented extraction of their adjacent editable host helpers; an in-place invocation of only their packaged `main.mjs` is not the declared example workflow. The package remains private and no publishing or licensing decision follows from this inventory.
+
 ## Entry points
 
 | Entry | Configuration and behavior |

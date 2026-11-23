@@ -113,3 +113,33 @@ test('npm pack excludes private experiment and report trees before traversing un
   assert.ok(files.includes('package.json'));
   assert.equal(files.some(path => /^(experiments|reports)\//.test(path)), false);
 });
+
+test('candidate package admits only declared distribution roots and retains executable resources', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'package-declared-boundary-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'package.json'), await readFile(new URL('../package.json', import.meta.url)));
+  await writeFile(join(root, '.gitignore'), await readFile(new URL('../.gitignore', import.meta.url)));
+  const resources = [
+    'src/core/index.js', 'src/core/index.d.ts', 'src/core/services.js', 'src/core/services.d.ts',
+    'src/core/backends/pi-opensandbox.js', 'src/core/backends/pi-opensandbox.d.ts',
+    'scripts/swarm.mjs', 'scripts/opensandbox-agent-worker.mjs',
+    'services/opensandbox-agent/pi-models.json', 'src/agent/bot-contract/system.txt',
+    'src/agent/bot-contract/use-workspace.md', 'src/environments/shared/run-report.js',
+    'examples/notes-environment/main.mjs', 'examples/subagents-environment/controller.mjs',
+    'docs/architecture/source-map.json', 'test/fixtures/foreground-host-configuration.mjs',
+  ];
+  const privatePaths = ['.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',
+    'local-artifacts/run/private.bin', 'experiments/run/private.bin', 'reports/run/private.bin', '.worktree/other/private.txt'];
+  for (const path of [...resources, ...privatePaths]) {
+    await mkdir(join(root, path, '..'), { recursive: true });
+    await writeFile(join(root, path), resources.includes(path) ? 'distribution fixture\n' : 'PRIVATE_PACKAGE_PROBE\n');
+  }
+  const packed = await execute('npm', ['pack', '--json', '--ignore-scripts'], { cwd: root, timeout: 15_000 });
+  const manifest = JSON.parse(packed.stdout)[0];
+  const files = manifest.files.map(file => file.path);
+  for (const path of resources) assert.ok(files.includes(path), `Missing distribution resource: ${path}`);
+  for (const path of privatePaths) assert.equal(files.includes(path), false, `Undeclared private path admitted: ${path}`);
+  const archive = join(root, manifest.filename);
+  const contents = await execute('tar', ['-xOf', archive], { timeout: 15_000 });
+  assert.ok(!contents.stdout.includes('PRIVATE_PACKAGE_PROBE'));
+});
