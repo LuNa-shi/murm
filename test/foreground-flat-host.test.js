@@ -28,7 +28,10 @@ test('flat foreground input uses the current controller Task binding and stops w
     // Trusted fixture only. Production live Workspace capture remains unavailable.
     snapshotProject: async () => { throw new Error('No capture is needed for this feedback check'); },
   } }, async host => {
-    const bot = host.status().bots[0];
+    const initial = await host.status();
+    const bot = initial.bots[0];
+    assert.equal(bot.status, 'running');
+    assert.equal(initial.runDirectory, join(root, initial.runtimeId));
     const credentials = controls.credentials.get(bot.botId);
     const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
     const bridge = new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.SWARMENV_BRIDGE_URL = bridge.origin;
@@ -38,7 +41,7 @@ test('flat foreground input uses the current controller Task binding and stops w
     assert.equal(accepted.status, 'accepted'); assert.equal(accepted.requestId, 'host-direction');
     assert.deepEqual(await host.input(input), accepted);
     await assert.rejects(host.input({ ...input, input: 'changed' }), { code: 'CONFLICT' });
-    snapshot = host.status(); assert.equal(snapshot.inputs.filter(row => row.requestId === 'host-direction').length, 1);
+    snapshot = await host.status(); assert.equal(snapshot.inputs.filter(row => row.requestId === 'host-direction').length, 1);
     assert.ok(!JSON.stringify(snapshot).includes('fixed host direction'));
     host.stop();
   });

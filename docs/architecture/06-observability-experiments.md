@@ -161,7 +161,7 @@ Sources: [runner report construction](../../src/benchmark/putnam-runner.js), [pa
 
 ## 7. Historical research tooling
 
-The research tree at `dc011003fa0354a881b7a3ba9ba901fe36cbcac9` preserves the offline evidence reconstruction engine, process observer and their tests. Historical reports retain the tested versions and results recorded with each run. The current observation server, report importer and benchmark report builder expose the storage and projections described in this chapter. Inspect authoritative service records, immutable Workspace revisions and request receipts when assessing those projections.
+The research tree at `dc011003fa0354a881b7a3ba9ba901fe36cbcac9` preserves the offline evidence reconstruction engine, process observer and their tests. Historical reports retain the tested versions and results recorded with each run. The current observation server and remaining legacy report builder expose the storage and projections described in this chapter. The retired benchmark report importer remains available in the research tree. Inspect authoritative service records, immutable Workspace revisions and request receipts when assessing those projections.
 
 Historical implementation details and operating instructions are available in the [research analysis and observer manual](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/docs/architecture/06-observability-experiments.md). Formal evidence structure follows the [experiment workflow](../workflows/experiment.md) and [report template](../experiments/TEMPLATE.md).
 

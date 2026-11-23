@@ -62,7 +62,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
     },
     async run() {
       await controller.start();
-      if(drive) await drive(controller);
+      if(drive) await drive(controller,runtime);
       await controller.wait();
       Object.assign(result,controller.snapshot());
       if(result.completion!=='all-tasks-terminal' || result.failures.length) {

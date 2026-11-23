@@ -32,10 +32,14 @@ function settle(id) {
 
 test('foreground host targets the existing agensh router and preserves request replay and shutdown', async t => {
   const config = await configuration(t); transport.next = settle;
+  config.options.secretValues = ['worker-a'];
   let saved;
   const report = await runForegroundEnvironment(config, async host => {
     saved = host;
-    const before = host.status(); assert.equal(before.mode, 'agensh'); assert.equal(before.peers.length, 2);
+    const before = await host.status();
+    assert.equal(before.mode, 'agensh');
+    assert.deepEqual(before.peers.map(peer => peer.status), ['idle', 'idle']);
+    assert.equal(before.runDirectory, join(config.options.outputDir, before.runtimeId));
     const kickoff = await host.kickoff({ recipient: 'a', input: 'initial' });
     assert.equal((await host.wait({ recipient: 'a', batchId: kickoff.batchId, timeoutMs: 1000 })).state, 'completed');
     const input = { recipient: 'a', input: 'directed feedback', requestId: 'user-event-1' };
@@ -43,15 +47,22 @@ test('foreground host targets the existing agensh router and preserves request r
     assert.equal((await host.wait({ recipient: 'a', batchId: first.batchId, timeoutMs: 1000 })).state, 'completed');
     assert.equal((await host.input(input)).batchId, first.batchId);
     assert.equal(transport.submissions.size, 2);
-    assert.equal(host.status().peers[1].batches.length, 0);
+    const view = await host.status();
+    assert.equal(view.peers[1].batches.length, 0);
+    assert.ok(view.peers[0].cursor > before.peers[0].cursor);
     assert.ok([...transport.submissions.values()].every(row => row.mode === 'followUp'));
-    assert.ok(!JSON.stringify(host.status()).includes('private'));
+    assert.ok(!JSON.stringify(view).includes('private'));
     assert.deepEqual(host.stop(), { status: 'stopping' });
     await assert.rejects(host.input({ ...input, requestId: 'after-stop' }), { code: 'HOST_STOPPING' });
   });
   assert.equal(report.businessFailure, null, JSON.stringify(report));
   assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanup.bots.length, 2);
-  assert.equal(saved.status().closing, true);
+  const closed = await saved.status();
+  assert.equal(closed.closing, true);
+  assert.deepEqual(closed.peers.map(peer => [peer.status, peer.lastStop]), [
+    ['closed', { execution: 'stopped', cleanup: 'complete' }],
+    ['closed', { execution: 'stopped', cleanup: 'complete' }],
+  ]);
   assert.equal(transport.submissions.size, 2);
 });
 
@@ -64,6 +75,33 @@ test('host abort bounds an interaction that never returns and retains actual cle
   const report = await pending;
   assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanup.bots.length, 2);
   assert.equal(transport.submissions.size, 0);
+});
+
+test('foreground status follows Core activity and exposes only the latest error code', async t => {
+  const config = await configuration(t);
+  const sent = Promise.withResolvers();
+  transport.next = sent.resolve;
+  const report = await runForegroundEnvironment(config, async host => {
+    const kickoff = await host.kickoff({ recipient: 'a', input: 'held work' });
+    const { botId } = transport.submissions.get(await sent.promise);
+    const backendBot = transport.spawns.get(botId);
+    backendBot.onEvent({ type: 'error', error: { code: 'TRANSIENT_FAILURE', message: 'private operator detail' }, fatal: false });
+    const active = await host.status();
+    assert.deepEqual(active.peers.map(peer => [peer.status, peer.lastErrorCode]), [
+      ['running', 'TRANSIENT_FAILURE'], ['idle', undefined],
+    ]);
+    assert.ok(!JSON.stringify(active).includes('private operator detail'));
+    backendBot.onEvent({ type: 'settled', outcome: 'completed', output: 'private model output' });
+    assert.equal((await host.wait({ recipient: 'a', batchId: kickoff.batchId, timeoutMs: 1000 })).state, 'completed');
+    const idle = await host.status();
+    assert.equal(idle.peers[0].status, 'idle');
+    assert.ok(idle.peers[0].cursor > active.peers[0].cursor);
+    assert.equal(idle.peers[0].lastErrorCode, undefined);
+    assert.ok(!JSON.stringify(idle).includes('private model output'));
+    host.stop();
+  });
+  assert.equal(report.businessFailure, null);
+  assert.equal(report.cleanup.cleanup, 'complete');
 });
 
 test('flat host without production capture saves its readiness failure and admits zero Bots', async t => {
@@ -105,6 +143,9 @@ test('actual foreground CLI routes explicit peer commands and emits bounded save
   assert.ok(records.some(record => record.id === 'missing' && record.code === 'UNKNOWN_RECIPIENT'));
   assert.ok(records.some(record => record.id === 'second-done' && record.result.state === 'completed'));
   const view = records.find(record => record.id === 'view').result;
+  assert.equal(view.runDirectory, join(root, view.runtimeId));
+  assert.deepEqual(view.peers.map(peer => peer.status), ['idle', 'idle']);
+  assert.ok(view.peers[0].cursor > 0);
   assert.equal(view.peers[0].batches.length, 2); assert.equal(view.peers[1].batches.length, 0);
   const result = records.find(record => record.type === 'result'); assert.equal(result.cleanup, 'complete'); assert.equal(result.bots.length, 2);
   assert.ok(result.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));

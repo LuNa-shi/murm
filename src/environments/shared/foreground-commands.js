@@ -5,6 +5,8 @@ const fail = code => Object.assign(new Error(code), { code });
 
 /** Ordinary commands are serial; stop seals admission even during an active command. */
 export async function runForegroundCommands(host, { input = process.stdin, output = process.stdout } = {}) {
+  const status = await host.status();
+  if (host.signal.aborted) return { reason: 'host-stop' };
   const lines = createInterface({ input, crlfDelay: Infinity });
   const write = value => output.write(`${JSON.stringify(value)}\n`);
   const done = Promise.withResolvers();
@@ -21,7 +23,7 @@ export async function runForegroundCommands(host, { input = process.stdin, outpu
         const { command, bytes } = queue.shift(); queuedBytes -= bytes;
         try {
           let result;
-          if (command.operation === 'status') result = host.status();
+          if (command.operation === 'status') result = await host.status();
           else {
             if (typeof host[command.operation] !== 'function') throw fail('HOST_OPERATION_UNAVAILABLE');
             result = await host[command.operation](command.input ?? {});
@@ -59,7 +61,7 @@ export async function runForegroundCommands(host, { input = process.stdin, outpu
   host.signal.addEventListener('abort', abort, { once: true });
   try {
     if (host.signal.aborted) abort();
-    else write({ type: 'ready', status: host.status() });
+    else write({ type: 'ready', status });
     return await done.promise;
   } finally { sealed = true; host.signal.removeEventListener('abort', abort); lines.removeListener('line', admit); lines.close(); host.stop(); }
 }

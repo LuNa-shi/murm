@@ -80,7 +80,7 @@
     },
     {
       "path": "src/environments/flat/environment.js",
-      "sha256": "e2a704a52eb42efcc879586f6329efdf95999d5dc5ee38e4e567b838dd464894"
+      "sha256": "9dd9e7533034935876d16df0450dcb4efcb4981d87d673eca11a7982423a0cd8"
     },
     {
       "path": "examples/subagents-environment/main.mjs",
@@ -108,7 +108,7 @@
     },
     {
       "path": "src/environments/agensh/team.js",
-      "sha256": "d62b7d43220616e7e47b8e49b28dd92a3334c0837a93073710a506bfba6bb8a9"
+      "sha256": "343293e9979c63e7e778813caaa4132a7758c7495012e85a28d3fe3a1ee8a6b5"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
