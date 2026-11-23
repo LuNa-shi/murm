@@ -1,4 +1,4 @@
-import { openSandboxBotKey, openSandboxMissionKey } from '../src/runtime/opensandbox-metadata.js';
+import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from '../src/runtime/opensandbox-metadata.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -558,4 +558,52 @@ test('OpenSandbox refuses resource creation without a Bot before provider dispat
   const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'image:test',
     fetchImpl: async () => assert.fail('Unregistered creation must not reach the provider') });
   await assert.rejects(manager.ensureExecution({ executionId: 'unregistered' }), /bot_id is required/);
+});
+
+
+test('Runtime-owned sandbox creation needs no Mission and leaves failure cleanup to its owner', async () => {
+  const calls = [];
+  const manager = createOpenSandboxManager({
+    lifecycleBaseUrl: 'http://provider.test', image: 'image:test',
+    fetchImpl: async (url, options) => {
+      calls.push(options.method);
+      const path = new URL(url).pathname;
+      if (path === '/sandboxes') {
+        const metadata = JSON.parse(options.body).metadata;
+        assert.deepEqual(metadata, { runtime_key: openSandboxRuntimeKey('runtime-1'),
+          bot_key: openSandboxBotKey('bot-1'), resource_key: openSandboxBotKey('bot-1') });
+        return response({ id: 'owned' });
+      }
+      if (path.includes('/endpoints/')) return response({}, { status: 404 });
+      return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
+    },
+  });
+  await assert.rejects(manager.ensureExecution({ executionId: 'bot-1', botId: 'bot-1',
+    metadata: { runtime_id: 'runtime-1' }, cleanupOnFailure: false }));
+  assert.equal(calls.includes('DELETE'), false);
+  assert.equal(manager.ownsBotResource('bot-1'), true);
+  assert.equal(await manager.stopExecution('bot-1'), true);
+  assert.equal(manager.ownsBotResource('bot-1'), false);
+});
+
+test('unknown Runtime-owned sandbox create is reconciled without a Mission identity', async () => {
+  let metadata;
+  let deleted = false;
+  const manager = createOpenSandboxManager({
+    lifecycleBaseUrl: 'http://provider.test', image: 'image:test',
+    fetchImpl: async (url, options) => {
+      const path = new URL(url).pathname;
+      if (path === '/sandboxes' && options.method === 'POST') {
+        metadata = JSON.parse(options.body).metadata;
+        return response({}, { status: 502 });
+      }
+      if (path === '/sandboxes') return response({ items: [{ id: 'late-runtime', metadata }] });
+      assert.equal(path, '/sandboxes/late-runtime');
+      if (options.method === 'DELETE') { deleted = true; return response({}, { status: 204 }); }
+      return response({}, { status: deleted ? 404 : 200 });
+    },
+  });
+  await assert.rejects(manager.ensureExecution({ executionId: 'bot-1', botId: 'bot-1', metadata: { runtime_id: 'runtime-1' } }));
+  assert.equal(await manager.stopExecution('bot-1'), true);
+  assert.equal(deleted, true);
 });
