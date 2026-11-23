@@ -607,7 +607,7 @@ export class OpenSandboxManager {
         command: required(agentCommand, 'agent_command'),
         args,
         cwd,
-        env: envs(env),
+        env: envs(env, { allowSecrets: agentMode === 'core' }),
         // Explicitly supplied secret values travel only over the authenticated
         // worker channel and are never included in a manager snapshot/log.
         secret_env: envs(secretEnvironment, { allowSecrets: true }),

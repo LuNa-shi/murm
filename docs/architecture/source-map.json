@@ -17901,7 +17901,7 @@
         "docs/architecture/07-run-configuration.md",
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Pinned local Docker namespace egress enforcement"
+      "role": "Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins"
     },
     {
       "path": "src/runtime/execution-workspace.js",
@@ -18515,7 +18515,7 @@
       "chapters": [
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Service v2 registration and immutable manifest snapshots"
+      "role": "Service v2 registration, immutable manifest and callable snapshots"
     },
     {
       "path": "src/core/services.d.ts",
