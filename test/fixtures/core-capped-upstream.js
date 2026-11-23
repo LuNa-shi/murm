@@ -21,13 +21,18 @@ function rejectionClassification(bytes) {
 }
 
 export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, deadlineAt,
-  maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false }) {
+  maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false,
+  maxConcurrent = maxRequests, maxAggregateOutputTokens = maxRequests * maxOutputTokens, maxInputBytes = 2 * 1024 ** 2, maxAggregateInputBytes = maxRequests * maxInputBytes }) {
   let target;
   try { target = new URL(upstreamUrl); } catch { throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID'); }
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.hash ||
-      !Number.isFinite(deadlineAt) || deadlineAt <= Date.now() || deadlineAt > Date.now() + 120_000 ||
-      !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 8 ||
+      !Number.isFinite(deadlineAt) || deadlineAt <= Date.now() || deadlineAt > Date.now() + 180_000 ||
+      !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 20 ||
       !Number.isInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 4096 ||
+      !Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > maxRequests ||
+      !Number.isInteger(maxAggregateOutputTokens) || maxAggregateOutputTokens < 1 || maxAggregateOutputTokens > maxRequests * maxOutputTokens ||
+      !Number.isInteger(maxInputBytes) || maxInputBytes < 1 || maxInputBytes > 2 * 1024 ** 2 ||
+      !Number.isInteger(maxAggregateInputBytes) || maxAggregateInputBytes < 1 || maxAggregateInputBytes > maxRequests * maxInputBytes ||
       !upstreamHeaders || typeof upstreamHeaders !== 'object' || Array.isArray(upstreamHeaders) ||
       typeof disableTools !== 'boolean' || typeof filename !== 'string' || !filename || typeof marker !== 'string' || !marker) {
     throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID');
@@ -36,7 +41,8 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   const records = [];
   const active = new Set();
   const tools = new Map();
-  let forwarded = 0;
+  let forwarded = 0, reservedOutputTokens = 0, peakConcurrent = 0, reservedInputBytes = 0, rejectedArrivals = 0;
+  function rejectAdmission(...args) { rejectedArrivals++; json(...args); }
   let arrivals = 0;
   let closing = false;
   let deadlineReached = false;
@@ -61,7 +67,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       record.terminal = value.type;
       if (typeof value.response?.id === 'string') record.responseId = value.response.id.slice(0, 256);
       const usage = value.response?.usage;
-      if (Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens)) {
+      if (Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens) && usage.input_tokens >= 0 && usage.output_tokens >= 0) {
         record.usage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
       }
     }
@@ -77,15 +83,15 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
 
   const server = createServer(async (request, response) => {
     arrivals++;
-    if (closing || Date.now() >= deadlineAt) { json(response, 429, 'LIVE_WORK_DEADLINE'); return; }
-    if (request.method !== 'POST' || request.url !== '/v1/responses') { json(response, 404, 'LIVE_ROUTE_REJECTED'); return; }
+    if (closing || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
+    if (request.method !== 'POST' || request.url !== '/v1/responses') { rejectAdmission(response, 404, 'LIVE_ROUTE_REJECTED'); return; }
     let body;
     try {
       const chunks = [];
       let size = 0;
       for await (const chunk of request) {
         size += chunk.length;
-        if (size > 2 * 1024 * 1024) throw new Error('size');
+        if (size > maxInputBytes) throw new Error('size');
         chunks.push(chunk);
       }
       body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
@@ -93,15 +99,19 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
           (body.max_output_tokens !== undefined && (!Number.isInteger(body.max_output_tokens) || body.max_output_tokens < 1))) {
         throw new Error('shape');
       }
-    } catch { json(response, 400, 'LIVE_REQUEST_REJECTED'); return; }
-    if (closing || Date.now() >= deadlineAt) { json(response, 429, 'LIVE_WORK_DEADLINE'); return; }
-    if (forwarded >= maxRequests) { json(response, 429, 'LIVE_REQUEST_CAP'); return; }
+    } catch { rejectAdmission(response, 400, 'LIVE_REQUEST_REJECTED'); return; }
+    if (closing || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
+    if (forwarded >= maxRequests) { rejectAdmission(response, 429, 'LIVE_REQUEST_CAP'); return; }
+    if (active.size >= maxConcurrent) { rejectAdmission(response, 429, 'LIVE_CONCURRENCY_CAP'); return; }
     observeToolResults(body.input);
     body.max_output_tokens = Math.min(body.max_output_tokens ?? maxOutputTokens, maxOutputTokens);
+    if (reservedOutputTokens + body.max_output_tokens > maxAggregateOutputTokens) { rejectAdmission(response, 429, 'LIVE_OUTPUT_BUDGET'); return; }
     if (disableTools) { delete body.tools; delete body.tool_choice; }
     const data = Buffer.from(JSON.stringify(body));
-    const number = ++forwarded;
-    const record = { number, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
+    if (data.length > maxInputBytes || reservedInputBytes + data.length > maxAggregateInputBytes) { rejectAdmission(response, 429, 'LIVE_INPUT_BUDGET'); return; }
+    reservedInputBytes += data.length;
+    const number = ++forwarded; reservedOutputTokens += body.max_output_tokens;
+    const record = { number, inputBytes: data.length, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
     records.push(record);
     const outgoingHeaders = { ...headers, 'content-type': 'application/json', accept: 'text/event-stream', 'content-length': data.length };
     for (const name of ['x-swarmenv-request-id', 'x-request-id', 'idempotency-key']) {
@@ -145,7 +155,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
         incoming.on('end', () => { record.status = 'complete'; active.delete(upstream); response.end(); });
         incoming.on('error', () => { record.status = 'stream_failed'; active.delete(upstream); response.destroy(); });
       });
-      active.add(upstream);
+      active.add(upstream); peakConcurrent = Math.max(peakConcurrent, active.size);
       upstream.on('error', () => {
         record.status = deadlineReached ? 'deadline_aborted' : 'transport_failed';
         active.delete(upstream);
@@ -169,7 +179,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   try { await once(server, 'listening'); } catch { clearTimeout(deadline); throw new Error('LIVE_PROXY_START_FAILED'); }
   return {
     url: `http://127.0.0.1:${server.address().port}/v1/responses`,
-    receipt() { return structuredClone({ arrivals, forwarded, maxRequests, maxOutputTokens, deadlineReached, bashReturned, readVerified, requests: records }); },
+    receipt() { return structuredClone({ arrivals, forwarded, maxRequests, maxOutputTokens, maxConcurrent, peakConcurrent, maxAggregateOutputTokens, reservedOutputTokens, maxInputBytes, maxAggregateInputBytes, reservedInputBytes, rejectedArrivals, deadlineReached, bashReturned, readVerified, requests: records }); },
     close() {
       if (closePromise) return closePromise;
       closing = true;

@@ -26,3 +26,46 @@ Body SHA-256: `4434a9725ae7dfe349ef64dbbacf6d10b80cc11e06828ee222e0c76f4eb33b0f`
 ````text
 Review the shared context and perform one bounded useful work cycle; report actual progress or blockers.
 ````
+## Opt-in hosted acceptance common instructions
+
+Body SHA-256: `5cf6f3ee4f9e8a3fe02158515b181dab43de53bc14bc322d56abc86c2b3f3f1a`
+
+````text
+This is a small real cooperation acceptance. Use actual Bash and swarm tools, not statements of intended actions. You may perform a coherent batch of Bash operations per turn to save model requests. Keep the final text brief. Never print credentials, environment dumps or raw configuration. Never merge, change main, create other Bots or send extra messages.
+Use your persistent project root and own WORK_BRANCH. Clone RUN_REPOSITORY into the empty root on the first turn, then create WORK_BRANCH; preserve that checkout. All environment names RUN_OWNER, RUN_REPO, RUN_ISSUE, RUN_BOARD, RUN_CHANNEL and WORK_BRANCH are provided. Git author and credential helper are already configured. Read the issue if useful; its original seed is background, the precise task here governs.
+CLI syntax: swarm <service> <operation> --input <temporary-json-file> --request-id <fresh-operation-id>. Write JSON to a tiny temporary file, invoke the CLI, parse its JSON stdout and remove the file. Bash is the actual tool for executing these commands. Use a unique request ID for every write; do not retry an uncertain write.
+Allowed operations and input fields: agensh-context board_write {board_id,type,content,detail?}, board_read {board_id}, board_grep {board_id,words?,types?,limit?}; message post_message {channel_id,message}; gitea pull_request_write {owner,repo,method:"create",title,head:WORK_BRANCH,base:"main"}. Peer identity/viewer/thread is host-assigned, never include it. A successful board_write must return status admitted. FACT/CLAIM content must fit 100 characters. A PATCH_SUMMARY must fit 300 and include files=... | idea=... | evidence=... with real completed checks.
+Both peers deliberately publish CLAIM content LIVE_T15_SHARED_COMPONENT on the first turn. These soft CLAIMs may overlap. Resolve the overlap with a real targeted message and agreement before contributions. A owns left.txt; B owns right.txt. Only commit your contribution file and push your own branch, then create one real PR. Check its actual returned head matches your actual Git HEAD. Publish one admitted PATCH_SUMMARY of the checked result; its evidence= field must contain the full verified 40-character Git head SHA and actual PR number. Keep all other helper/evidence files untracked and tiny.
+The required left.txt bytes are LIVE_T15_LEFT_ACCEPTED followed by one newline. The required right.txt bytes are LIVE_T15_RIGHT_ADOPTED followed by a space, the exact unique seed from A's Board FACT, and one newline. B must obtain the seed via an actual board_read or board_grep tool call. Do not put the seed in channel messages. Check the exact written bytes before committing. A's FACT content is LIVE_T15_SEED=<seed>. Initial turn: do not create files/PRs yet. Later negotiated turns: create the assigned contribution and PR in this same checkout. After A's contribution, A sends exactly one agreement to B containing LIVE_T15_CONFIRM; B then creates the right contribution and sends no further message. Stop after completing the current turn; future events arrive only after settlement.
+````
+## Opt-in hosted A initial instructions
+
+Body SHA-256: `2d293715da8c629fbc692a8eddca410c8ef858404fb8703f184b2e1dd0a9cf98`
+
+````text
+LIVE_T15_A: You are A. Publish the overlapping CLAIM and your private seed as an admitted FACT. Do not send a message yet. Wait for B's targeted LIVE_T15_NEGOTIATE proposal. In that later turn, read both shared CLAIMs, agree to the left/right split, create/check/commit/push left.txt and its PR, publish its PATCH_SUMMARY, then send B the single LIVE_T15_CONFIRM agreement. Never reveal the seed outside the Board. Return briefly after the initial CLAIM+FACT.
+````
+## Opt-in hosted B initial instructions
+
+Body SHA-256: `ec5faf4e733b85fbd321281acaaf5a8a6ffef816dde49629763a48e5c1f06927`
+
+````text
+LIVE_T15_B: You are B. Publish the overlapping CLAIM. Send exactly one targeted message to A containing LIVE_T15_NEGOTIATE, acknowledging the overlap and proposing A take left.txt while you take right.txt. Do not create a file/PR until A's LIVE_T15_CONFIRM agreement arrives in a later turn. In that turn, read actual Board data to obtain A's unique FACT and both CLAIMs; create/check/commit/push right.txt using that seed, create its PR and publish its PATCH_SUMMARY. Send no final channel message.
+````
+## Opt-in hosted A external comment instructions
+
+Body SHA-256: `35a0637d118ea25745abb2b3395077d1cdc618edf6a92b91e348cdec2c945e3b`
+
+````text
+LIVE_T15_USER: This external comment targets only A. In your original checkout and Session, create checkpoint.txt with LIVE_T15_PRIVATE plus one newline and make one private unpushed commit of it. Then change left.txt to LIVE_T15_DIRTY plus one newline without committing, and create untracked.bin with the four bytes 0,255,65,10. Do not push, create another PR, send a message or modify right.txt. Return briefly.
+````
+## Exact hosted initial composition
+
+The host supplies two distinct provisioned peer usernames and a fresh 24-character seed. Only A receives the seed. The user comment names only A and appends liveAUser. Negotiation and agreement text are actual model-authored Mattermost posts, delivered by the normal authenticated subscription. The fixture injects no model tool program or terminal response.
+
+Body SHA-256: `8f943ea32b0291bed1fdbb8ecd6c55761fd81fb047587040bff06c185d1e063c`
+
+````text
+${liveCommon}\n${liveAInitial}\nB username: @${peerNames.b}. Private starting seed for A only: ${seed}`,
+    `${liveCommon}\n${liveBInitial}\nA username: @${peerNames.a}.`, liveAUser
+````

@@ -2058,7 +2058,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `452ee5db7e6ecdf992532572a58f08a3117f5809d0443eb323b18b16bbea9bd8` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `27e869aa4b4d54a8b053de56321425196805b0fec2b3a0328db74c9b03e10e26` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `b8493cb18a30831511e6ee8922f5b03b30d9767030bae7f570b8cb3edb9a554c` |
 
 ### durable storage (3)
 

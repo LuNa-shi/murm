@@ -12,6 +12,62 @@ async function localUpstream(t, handler) {
   return `http://127.0.0.1:${server.address().port}/v1/responses`;
 }
 
+test('live peer allowance forwards at most twenty capped requests with recorded usage and cumulative input', async t => {
+  let calls = 0;
+  const upstreamUrl = await localUpstream(t, async (request, response) => {
+    const chunks = []; for await (const chunk of request) chunks.push(chunk);
+    const body = JSON.parse(Buffer.concat(chunks)); assert.equal(body.max_output_tokens, 768); calls++;
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.end('data: ' + JSON.stringify({ type: 'response.completed', response: { id: `live-${calls}`, usage: { input_tokens: 10, output_tokens: 5 }, output: [] } }) + '\n\n');
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 180_000, maxRequests: 20, maxConcurrent: 2,
+    maxOutputTokens: 768, maxAggregateOutputTokens: 15360, maxInputBytes: 128 * 1024, maxAggregateInputBytes: 512 * 1024, filename: 'unused', marker: 'unused' });
+  t.after(() => cap.close());
+  for (let index = 0; index < 20; index++) {
+    const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [], max_output_tokens: 9999 }) });
+    assert.equal(response.status, 200); await response.text();
+  }
+  assert.equal((await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) })).status, 429);
+  const receipt = cap.receipt(); assert.equal(calls, 20); assert.equal(receipt.forwarded, 20); assert.equal(receipt.reservedOutputTokens, 15360);
+  assert.equal(receipt.rejectedArrivals, 1); assert.equal(receipt.arrivals, 21);
+  assert.equal(receipt.reservedInputBytes, receipt.requests.reduce((sum, row) => sum + row.inputBytes, 0));
+  assert.ok(receipt.requests.every(row => row.usage.inputTokens === 10 && row.usage.outputTokens === 5));
+});
+
+test('two held peer requests exhaust concurrency without forwarding a third', async t => {
+  const held = [];
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':held\n\n'); held.push(response);
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, maxRequests: 20, maxConcurrent: 2,
+    maxOutputTokens: 768, maxAggregateOutputTokens: 15360, filename: 'unused', marker: 'unused' });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const first = await send(), second = await send(); assert.equal((await send()).status, 429);
+  assert.equal(held.length, 2); assert.equal(cap.receipt().forwarded, 2); assert.equal(cap.receipt().peakConcurrent, 2);
+  held.forEach(response => response.end()); await Promise.all([first.text(), second.text()]);
+});
+
+test('aggregate input and output budgets reject before forwarding and malformed envelopes spend no allowance', async t => {
+  let calls = 0;
+  const upstreamUrl = await localUpstream(t, (request, response) => { request.resume(); calls++; response.end(); });
+  for (const limit of ['input', 'output']) {
+    const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, maxRequests: 20, maxConcurrent: 2,
+      maxOutputTokens: 768, maxAggregateOutputTokens: limit === 'output' ? 768 : 15360, maxInputBytes: 512,
+      maxAggregateInputBytes: limit === 'input' ? 100 : 10240, filename: 'unused', marker: 'unused' });
+    t.after(() => cap.close());
+    const before = calls, send = body => fetch(cap.url, { method: 'POST', body: JSON.stringify(body) });
+    assert.equal((await send({ model: 'other', input: [] })).status, 400);
+    assert.equal((await send({ model: 'k3', input: {} })).status, 400);
+    assert.equal((await send({ model: 'k3', input: ['x'.repeat(600)] })).status, 400);
+    assert.equal(cap.receipt().forwarded, 0);
+    const body = { model: 'k3', input: ['first'] };
+    const first = await send(body); assert.equal(first.status, 200); await first.text();
+    assert.equal((await send(body)).status, 429); assert.equal(calls - before, 1);
+    assert.equal(cap.receipt().forwarded, 1); assert.equal(cap.receipt().rejectedArrivals, 4);
+  }
+});
+
 test('capped upstream limits actual forwarding and preserves SSE IDs with capped output', async t => {
   const received = [];
   const sse = 'event: response.completed\ndata: {"type":"response.completed","response":{"id":"resp_preserved","status":"completed","output":[]}}\n\n';

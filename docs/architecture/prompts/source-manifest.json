@@ -103,6 +103,14 @@
       "sha256": "0771a7cbbadf95d4ebffb6997329d8acfac99309aa07bfb749d8b9f9cfc159ea"
     },
     {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "sha256": "bba586d8f44a917562652a0e957330d8ef7668e5fe710746aef8259b6aae13f1"
+    },
+    {
+      "path": "test/agensh-team-kimi-real.test.js",
+      "sha256": "244b78dbe9b0e9b5977d822302e2480aa79223ce353ca73bcd206864c56cd6e5"
+    },
+    {
       "path": "src/environments/lead-helper/prompts.js",
       "sha256": "a9b680e62aafe7bbd5883d3d5d3255d1cd964771a0711d862e283e2f12b897ab"
     },
@@ -259,6 +267,36 @@
       "anchor": "export const idleNudgeInput = '",
       "line": 6,
       "sha256": "4434a9725ae7dfe349ef64dbbacf6d10b80cc11e06828ee222e0c76f4eb33b0f"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "export const liveCommon = `",
+      "line": 8,
+      "sha256": "5cf6f3ee4f9e8a3fe02158515b181dab43de53bc14bc322d56abc86c2b3f3f1a"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "export const liveAInitial = `",
+      "line": 14,
+      "sha256": "2d293715da8c629fbc692a8eddca410c8ef858404fb8703f184b2e1dd0a9cf98"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "export const liveBInitial = `",
+      "line": 15,
+      "sha256": "ec5faf4e733b85fbd321281acaaf5a8a6ffef816dde49629763a48e5c1f06927"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "export const liveAUser = `",
+      "line": 16,
+      "sha256": "35a0637d118ea25745abb2b3395077d1cdc618edf6a92b91e348cdec2c945e3b"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "  return [`",
+      "line": 21,
+      "sha256": "8f943ea32b0291bed1fdbb8ecd6c55761fd81fb047587040bff06c185d1e063c"
     },
     {
       "path": "src/environments/lead-helper/prompts.js",
@@ -460,7 +498,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",
-      "sha256": "6171a6982ebafc49e8261e08cde3bfb6035f0aed68bf449848ea2ce38db9c23a"
+      "sha256": "fd0c5a5247a571d4eaee89dae5d65dfa51deba5e801a74b14a18730af94cecfd"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",
