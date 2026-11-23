@@ -126,6 +126,10 @@ const runtime = await createRuntime({
 | models | 别名 → provider、model、upstream.url/headers | upstream 凭据仅在宿主持有；Profile 只引用别名 |
 | isolation | network=`local-docker`、disk.bytes/inodes | 声明当前网络与磁盘执行前提 |
 
+> **OPEN — 配合多 Agent 长时验收的本地设计增量，待审查决定。** 拟在冻结的 backend 宿主配置中增加可选 `sandbox.timeoutSeconds`，省略时为 3,600 秒。值为至少 60 的有限安全整数，创建 backend 时校验并保存不可变配置，分配每个 Bot 时明确传给现有 `OpenSandboxManager.ensureExecution`，由其发送为创建请求的 `timeout`。服务端配置仍决定创建请求的寿命上限。该值控制从各 sandbox 创建起算的 provider 寿命，宿主工作窗口继续由 Environment 决定。
+
+OPEN 提案中，backend 使用现有创建回调保存受信的 Runtime/Bot/resource/sandbox 对应、所请求寿命和 provider 返回的 `expiresAt`，进入宿主私有生命周期证据。创建后才发生的准备失败也保留该资源身份。该信息供宿主在长时验收前按范围回读 provider 状态并核对实际到期时间，不能用 `ready` 的时刻加请求寿命推算。缺失或无效到期时间不能作为足够寿命的证据，宿主可通过原资源的受信 lifecycle 查询核对。此增量不增加 Bot Service 能力或 Profile 覆盖，不自动续期。Q6 的 execution/cleanup 与 required 成果保留继续适用，具体期限核对与故障门槛见[长时验收的寿命准备](03-delivery-and-validation.md#open-长时验收的沙箱寿命与收尾期限)。
+
 这些分组是对现有装配参数的包装。当前 backend 首版范围是 Pi 1.3.0、OpenSandbox 的本地 Docker 部署、现有 HTTP(S) `/v1/responses` 模型路径和时间上限模式。它依赖宿主对本地 sandbox 网络/磁盘的受控操作，不承诺任意远程 OpenSandbox、任意 Pi 协议或所有 provider 已可直接使用。模型别名必须与镜像内经过校验的 catalog 匹配；额外模型和其他预算策略按明确合同扩展。
 
 createRuntime 内部建立 Bridge、模型入口和记录目录，spawn 才分配 sandbox。模型 gateway 的 upstream headers、provider 管理凭据、内部 token 不进入 Profile.env 或 Bot 的 secretEnv。当前 manager 将 image 固定在构造器；迁移时需按 Profile 选择资源配置，不能静默让所有角色使用同一镜像。
@@ -527,6 +531,8 @@ export interface PiOpenSandboxBackendConfig {
     endpointHost?: string;
     resourceLimits?: { cpu: string; memory: string };
     commandTimeoutMs?: number;
+    // OPEN proposal, default 3600; finite safe integer >= 60.
+    timeoutSeconds?: number;
   };
   bridge: { host: string; publicUrl: string };
   modelGateway: {
