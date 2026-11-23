@@ -112,7 +112,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "503b8607ae2a09463d1edcb43d8086ba0804c5d9a099d9194eee0a9ef7d9fe57"
+      "sha256": "a89abd9e289066bca4e2b8307e57c7776640f9d940ae318c250fa2d972fadfc1"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -328,12 +328,12 @@
   "prompt_send_sites": [
     {
       "path": "src/runtime/runtime.js",
-      "line": 1327,
+      "line": 1297,
       "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1655,
+      "line": 1625,
       "expression": "await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     },
     {
