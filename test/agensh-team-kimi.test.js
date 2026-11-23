@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { liveTeamInputs, verifyLiveBudget, verifyLiveCooperation, checkLiveFile, createLiveIngress } from './fixtures/agensh-team-kimi.js';
+import { liveTeamInputs, liveCommon, liveAInitial, liveBInitial, liveAUser, liveTeamLimits, verifyLiveBudget, verifyLiveCooperation, checkLiveFile, createLiveIngress } from './fixtures/agensh-team-kimi.js';
 
 const seed = 'a'.repeat(24);
 function evidence() {
@@ -23,6 +23,18 @@ test('live inputs disclose the unique seed only to A and leave actual Bash progr
   assert.ok(inputs[0].includes(seed)); assert.ok(!inputs[1].includes(seed)); assert.ok(!inputs[2].includes(seed));
   assert.ok(inputs.slice(0, 2).every(text => text.includes('actual Bash') && text.includes('--input <temporary-json-file>')));
   assert.ok(inputs.every(text => !text.includes('node --input-type=module') && !text.includes('TEAM_CHECK')));
+});
+
+test('live phase instructions batch required work while preserving actual Board adoption and the fixed allowance', () => {
+  assert.ok(liveCommon.includes('one coherent Bash call'));
+  assert.ok(liveCommon.includes('one actual Board read'));
+  assert.ok(liveCommon.includes('concrete error'));
+  assert.ok(!liveCommon.includes('Read the issue if useful'));
+  assert.ok(liveAInitial.includes('initial batch') && liveAInitial.includes('CLAIM') && liveAInitial.includes('FACT'));
+  assert.ok(liveBInitial.includes('initial batch') && liveBInitial.includes('proposal') && liveBInitial.includes('Board read belongs in your negotiated turn'));
+  assert.ok(liveAUser.includes('one coherent Bash call'));
+  assert.deepEqual({ inputs: liveTeamLimits.inputs, requests: liveTeamLimits.maxRequests, output: liveTeamLimits.maxOutputTokens },
+    { inputs: 5, requests: 20, output: 768 });
 });
 
 test('host checks exact immutable PR bytes before any merge, rejecting model claims and malformed content', () => {
