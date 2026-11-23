@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2067 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2068 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -2112,7 +2112,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/observability/private-audit-retention.js](../../src/observability/private-audit-retention.js) | Exclusive private audit roots, run ownership markers, and retention sweep | [06-observability-experiments](06-observability-experiments.md) | `bc3dce43b3f33f3beca429759653bd3f76f3421ae83c66400a5404eca36cb645` |
 | [src/observability/workspace-provider.js](../../src/observability/workspace-provider.js) | Workspace inspection adapter for observation routes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5d315a97b03ceb2aad34df6229ef443290b69e91cc47c776c723b678c96ac56a` |
 
-### programmable Core (16)
+### programmable Core (17)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -2121,17 +2121,18 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/core/artifact-collection.js](../../src/core/artifact-collection.js) | Host artifact stream validation, private staging and manifest publication | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `677733f16b082c8d956943b4352b4d14b1ebad02c8f9bfcd4183fe38d1bbd2bc` |
 | [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | Public Pi/OpenSandbox deployment and model configuration declarations | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `166e51de1b45cf32e17b0b62fdafecfe913521122450a125f3ece1c87cd267ed` |
 | [src/core/backends/pi-opensandbox.js](../../src/core/backends/pi-opensandbox.js) | Public opaque Pi/OpenSandbox backend factory export | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `0e21b37ac9ab1bae86b64bb7f0d9e0dd109904156e9867268733e6715658ae24` |
+| [src/core/bot-service.js](../../src/core/bot-service.js) | Built-in Bot Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger | [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `d0eb94fee4cb7657e4dcdb13cabd3f0c0392585aabc4f0778f1f57b0fe66f9fa` |
 | [src/core/bridge.js](../../src/core/bridge.js) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `ae02982385458eaa040a2d288f109b8a9451bee7f73101d1314c2f9db400b525` |
 | [src/core/config.js](../../src/core/config.js) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `99887324d52f828d38e40148c5011c420560ce06f16badd95bf4dc1e307e3198` |
 | [src/core/file-controls.js](../../src/core/file-controls.js) | Bot file-operation identity, preparation receipts, write authority and pending grant fences | [15-core-runtime](15-core-runtime.md) | `5266f3d42a7d2c952c1c420160cad0252d1d1a7654c51df23c4fc782585bca20` |
-| [src/core/index.d.ts](../../src/core/index.d.ts) | Public Runtime, Bot and model policy declarations | [15-core-runtime](15-core-runtime.md) | `897a8c319b905ffb61f8e57dda3fdd711ffca421261dc578696d73828323bfae` |
-| [src/core/index.js](../../src/core/index.js) | Runtime assembly, Bot admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `ca11688b0967cdb6baea5fde3cd91304551c7429ca8475a23ce462c56e347e0a` |
+| [src/core/index.d.ts](../../src/core/index.d.ts) | Public Runtime, Bot and model policy declarations | [15-core-runtime](15-core-runtime.md) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
+| [src/core/index.js](../../src/core/index.js) | Runtime assembly, Bot admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `e576049271f1454ffc468cb7b2a42c5710bbab0a18198d64f71af8e795fc8b72` |
 | [src/core/input-ledger.js](../../src/core/input-ledger.js) | Runtime/caller/operation/target/request input identity and parameter conflict ledger | [15-core-runtime](15-core-runtime.md) | `f89e88e88b670628017c665bd0141694689d11e7fd93443b1618a09d5c1923ce` |
 | [src/core/model-access.js](../../src/core/model-access.js) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `4928ecc746f7756c63ca2712d82ee4b5d69864ea41f9edf49a64d6d751ba3187` |
 | [src/core/pi-opensandbox-backend.js](../../src/core/pi-opensandbox-backend.js) | Core backend lifecycle, Worker transport and confirmed cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6a353c6688086803d4956fb1917efe0f965d87c2f203f1be5c92febec48617ae` |
 | [src/core/run-records.js](../../src/core/run-records.js) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `bfc1d587ee1a2b0013083f8061dfe2654da8c37672e1ef8c42de4b21aeb43705` |
 | [src/core/services.d.ts](../../src/core/services.d.ts) | Public Service registry, manifest and adapter declarations | [15-core-runtime](15-core-runtime.md) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
-| [src/core/services.js](../../src/core/services.js) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `4c616042de5b5c9041e5ef836ca04e9f6335e75f376dd4920fbb60563a5ce4d6` |
+| [src/core/services.js](../../src/core/services.js) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `d7fb913c99aaebadf86bd2af68af68400beb4a9d66398ddf4e5164f76770f8ab` |
 
 ### provider deployment and instructions (8)
 
@@ -2167,7 +2168,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/swarm.mjs](../../scripts/swarm.mjs) | Executable swarm CLI entry point and exit-code boundary | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `9a53b8652a48c036d30df006304e7da8befb5f3547d469f17c9363450a359d8c` |
-| [src/cli/swarm-cli.js](../../src/cli/swarm-cli.js) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `c28e0e2e25557e4d87cf1af79a61823979ff153b2f38fd08b64a1100ac059c04` |
+| [src/cli/swarm-cli.js](../../src/cli/swarm-cli.js) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `59b1c1be12895e35956c804f77e580997be4339f6dfa22606ceac26cc234d782` |
 | [src/protocol/http-request.js](../../src/protocol/http-request.js) | Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `21fe10eeb0069c743f1f9a0c7c4a359c41ea200c8915b627c036ec22c14fb56b` |
 
 ### service deployment (15)
