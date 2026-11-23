@@ -3,7 +3,6 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
-import { agentContract } from '../src/agent/bot-contract.js';
 
 test('native Worker HTTP joins in-flight RPC and queries delayed evidence without a second process input', {
   skip: process.env.SWARMENV_CORE_WORKER_RPC_TEST !== '1' && 'Native Worker container probe requires independent review and explicit opt-in',
@@ -19,7 +18,6 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
     const remaining = await run('docker', ['ps', '--all', '--quiet', '--filter', `label=swarmenv.core-input-probe=${probeId}`], { timeout: 5000 });
     assert.equal(remaining.stdout.trim(), '', 'Native Worker probe must leave no owned container');
   });
-  const contract = agentContract('solver');
   const fakePi = `
     const fs = require('node:fs');
     const readline = require('node:readline');
@@ -42,11 +40,15 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
   const probe = `
     import assert from 'node:assert/strict';
     import { spawn } from 'node:child_process';
-    import { readFile, writeFile } from 'node:fs/promises';
+    import { mkdir, readFile, writeFile } from 'node:fs/promises';
     import { setTimeout as delay } from 'node:timers/promises';
     const input = JSON.parse(process.argv[1]);
     const origin = 'http://127.0.0.1:44100';
-    const worker = spawn(process.execPath, ['/opt/swarmenv/agent-worker.mjs','--token','controlled-rpc-test'], {stdio:'ignore'});
+    // A controlled executable occupies the Core command seam; no model is used.
+    await mkdir('/tmp/rpc-bin', {mode:0o755});
+    await writeFile('/tmp/rpc-bin/pi', '#!/usr/bin/env node'+String.fromCharCode(10)+${JSON.stringify(fakePi)}, {mode:0o755});
+    const worker = spawn(process.execPath, ['/opt/swarmenv/agent-worker.mjs','--token','controlled-rpc-test'],
+      {stdio:'ignore',env:{...process.env,PATH:'/tmp/rpc-bin:'+process.env.PATH}});
     const post = async (path, body) => {
       const response = await fetch(origin+path,{method:'POST',headers:{authorization:'Bearer controlled-rpc-test','content-type':'application/json'},
         body:JSON.stringify(body), signal:AbortSignal.timeout(3000)});
@@ -94,8 +96,9 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
       console.log(JSON.stringify({receivedInputs:1,sideEffects:1,queryState:'complete',conflict:true}));
     } finally { worker.kill('SIGKILL'); }
   `;
-  const input = { contract_version: contract.protocolVersion, resources: contract.resources,
-    env: { SWARMENV_AGENT_MODE: 'solver' }, command: 'node', args: ['-e', fakePi] };
+  const input = { contract_version: 'swarmenv-core-v1', resources: [],
+    system_prompt: 'Controlled Worker RPC receipt probe', system_prompt_path: '/workspace/runtime/profile-prompt.txt',
+    command: 'pi', args: ['--mode', 'rpc', '--system-prompt', '/workspace/runtime/profile-prompt.txt'] };
   const result = await run('docker', ['run', '--rm', '--name', name, '--label', `swarmenv.core-input-probe=${probeId}`,
     '--cpus', '1', '--memory', '512m', '--pids-limit', '64', '--network', 'none', '--entrypoint', 'node', image,
     '--input-type=module', '-e', probe, JSON.stringify(input)], { timeout: 30_000, maxBuffer: 1024 * 1024 });

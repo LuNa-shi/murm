@@ -10,15 +10,15 @@ The installed Notes Environment gives the writer and reader their role prompts a
 
 The fixed scaleMAS Environment stages the same peer prompt for all three Bots and sends a peer/cycle header, the host question and the cycle instruction through the exclusive `runInput` helper. Its complete text and dynamic field provenance are in [scaleMAS prompts](prompts/09-scalemas-environment.md); [the Environment chapter](19-scalemas-environment.md) describes ordering and failure gates.
 
-## Existing flat and solver paths
+## Existing flat and registered Bot paths
 
-The existing registered Swarm Bot and independent solver contracts use Pi's native `read`, `write`, `edit`, and `bash` tools. Swarm operations are typed CLI calls made through Bash. Pi starts with the configured native tools and versioned prompt resources.
+The existing registered Swarm Bot contract uses Pi's native `read`, `write`, `edit`, and `bash` tools. Swarm operations are typed CLI calls made through Bash. Pi starts with the configured native tools and versioned prompt resources.
 
 ## Resources and startup
 
-`agentContract` in [bot-contract.js](../../src/agent/bot-contract.js) chooses the system addendum, protocol version and pinned resource hashes. Normal Bot mode includes `system.txt` and the four `plan-task`, `use-material`, `use-workspace`, and `finish-task` skill resources. Solver mode includes `solver-system.txt` and no Swarm skills. The OpenSandbox worker validates resource bytes and permissions, disables ambient resource discovery, and launches Pi with explicit native tools, system and skill paths. The system addenda append to Pi's own system input; repository files cannot reconstruct Pi/provider-owned rendering.
+`agentContract` in [bot-contract.js](../../src/agent/bot-contract.js) returns the registered Bot system addendum, protocol version and pinned resource hashes: `system.txt` and the four `plan-task`, `use-material`, `use-workspace`, and `finish-task` skill resources. The OpenSandbox Worker validates resource bytes and permissions. The authenticated trusted caller supplies the command and string arguments, including native tool selection, ambient-discovery flags and system/skill paths. Current Core constructs its own flags and supplies its frozen Profile prompt under the separate Core contract. The system addendum appends to Pi's own system input; repository files cannot reconstruct Pi/provider-owned rendering.
 
-The legacy adapter accepts immutable Bot and solver resource sets. Its host owns startup messages and any repeated inputs. The former benchmark discovery builder and paper/local-tools message branches have been retired. The public-Core flat controller's actual discovery and continuation composition is documented below.
+The manager and Worker retain the immutable registered Bot resource set for trusted direct callers. The caller owns startup messages and any repeated inputs; the bundled legacy adapter has been retired. The former benchmark discovery builder and paper/local-tools message branches have been retired. The public-Core flat controller's actual discovery and continuation composition is documented below.
 
 ## Continuations, notifications and lifecycle feedback
 
@@ -30,7 +30,7 @@ Bridge command responses include structured results/errors and lifecycle notices
 
 | Reference | Contents |
 |---|---|
-| [System addenda](prompts/01-system-identity.md) | Complete Bot and solver resource text |
+| [System addenda](prompts/01-system-identity.md) | Complete registered Bot resource text |
 | [CLI directory and provider documents](prompts/02-task-loop-and-tools.md) | Actual startup directory fixtures and available optional bundle documents |
 | [Runtime turns](prompts/03-runtime-turns.md) | Complete retained continuation and compaction bodies |
 | [Runtime notifications](prompts/04-runtime-messages.md) | Exact current notification builder output |
@@ -58,10 +58,6 @@ The registered Bot Bridge sends Chinese `notice` fields on the same CLI response
 | Soft closeout and finish | The soft-closeout body names the E and the milliseconds remaining against its persisted deadline at composition. It is available in an already scheduled continuation or handoff notification. A finish response identifies the durable request and E admitted to closing before physical release. |
 
 The `use-workspace` skill directs ordinary local-proposition iteration to save a fixed revision and select `--check-mode lean-module --path P`. It explains that P selects a complete module and its dependencies, rather than an individual declaration within a multi-declaration file, and permits independently useful lemmas/definitions to be organized in imported modules. A revision-only call still requests full-project diagnostics; a full-mode path binds Task delivery evidence. Local receipts do not satisfy a full delivery requirement. It explains imports under the locked source directory, actual module coverage, warnings and the separate Mission proof check. The skill remains an image resource discovered through the existing manifest and sent through the existing skill-read path; it does not grant new authority or require a particular research decomposition. The command help distinguishes deployments with project checking from compatibility source-only deployments.
-
-## Retained solver prompt delivery
-
-A trusted legacy adapter caller can select solver resource mode, which loads the pinned independent solver addendum with no collaboration skills. Runtime compaction retains its solver continuation/soft-closeout branch. The retired benchmark's initial solver prompt and attempt scheduler have been removed. The generated [system reference](prompts/01-system-identity.md) and [runtime turns](prompts/03-runtime-turns.md) contain the retained text and delivery conditions.
 
 ### Flat take preview notice
 

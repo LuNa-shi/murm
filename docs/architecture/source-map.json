@@ -409,15 +409,6 @@
       "role": "Versioned registered Bot contract, immutable skill resources and dynamic message composition"
     },
     {
-      "path": "src/agent/bot-contract/solver-system.txt",
-      "category": "agent prompts and tools",
-      "chapters": [
-        "docs/architecture/01-agent-core.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Immutable independent solver system addendum without collaboration skills"
-    },
-    {
       "path": "src/agent/bot-contract/system.txt",
       "category": "Agent and prompts",
       "chapters": [

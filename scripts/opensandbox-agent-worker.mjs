@@ -153,13 +153,12 @@ async function startAgent(input) {
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
   const core = input.contract_version === 'swarmenv-core-v1';
   if (core && (input.command !== 'pi' || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt`)) throw startupContractError('Core startup requires direct Pi and an explicit role prompt');
-  const solver = input.contract_version === 'swarm-solver-v1';
-  const expectedNames = core ? [] : solver ? ['solver-system.txt'] : ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
-  if ((!core && !solver && input.contract_version !== 'swarm-bot-v1-draft.3') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
+  const expectedNames = core ? [] : ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
+  if ((!core && input.contract_version !== 'swarm-bot-v1-draft.3') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
       new Set(input.resources.map(resource => resource?.path)).size !== expectedNames.length ||
       !expectedNames.every(name => input.resources.some(resource => resource?.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw startupContractError('complete versioned Bot contract resources are required');
   for (const resource of input.resources) {
-    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(solver-system\.txt|system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw startupContractError('unsupported Bot contract resource');
+    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw startupContractError('unsupported Bot contract resource');
     const info = await readPinnedStartupPath(lstat, resource.path);
     if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) || !(info.mode & 0o004) || await readPinnedStartupPath(realpath, resource.path) !== resource.path) throw startupContractError('Bot contract resource must be immutable to the Bot');
     for (let parent = dirname(resource.path); parent !== '/'; parent = dirname(parent)) {

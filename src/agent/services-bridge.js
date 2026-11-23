@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { createBuiltinServiceRegistry, MISSION_WORKSPACE_READS } from '../sdk/builtin-registry.js';
@@ -7,11 +7,6 @@ import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
 import { agentCheckResult } from '../judge/check-result.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
-
-const SOLVER_OPERATIONS = new Set(['workspace_status', 'workspace_current_diff', 'workspace_save', 'workspace_merge', 'workspace_public_view', 'workspace_public_history', 'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_check', 'get_check_result', 'mission_submit', 'mission_submission_get']);
-function solverCapability(capability) {
-  return SOLVER_OPERATIONS.has(capability.operation) || capability.service_id === 'mathlib-search';
-}
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
 // A Bot may inspect Mission-scoped public state and propose work before it
@@ -132,10 +127,8 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ agentMode = 'swarm', taskService, contextService, runtime, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
+  constructor({ taskService, contextService, runtime, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
-    if (!['swarm', 'solver'].includes(agentMode)) throw new TypeError('Unknown agent mode');
-    this.agentMode = agentMode;
     this.pendingCalls = new Set();
     this.pendingHandlers = new Set();
     this.publicReadAbortController = new AbortController();
@@ -302,7 +295,7 @@ export class ServicesBridge {
     };
   }
 
-  getCapabilityProfile({ control = false } = {}) {
+  getCapabilityProfile() {
     const registryRevision = typeof this.registry?.getRevision === 'function' ? this.registry.getRevision() : null;
     if (this.capabilityProfile?.role !== this.role || this.capabilityProfileRegistryRevision !== registryRevision) {
       this.capabilityProfile = null;
@@ -316,12 +309,6 @@ export class ServicesBridge {
       this.capabilityProfileRegistryRevision = registryRevision;
     }
     const profile = structuredClone(this.capabilityProfile);
-    if (this.agentMode === 'solver' && !control) {
-      profile.capabilities = profile.capabilities.filter(solverCapability);
-      // Do not return full Task/Context manifests through profile metadata.
-      profile.services = [];
-      profile.profile_hash = createHash('sha256').update(stableStringify({ ...profile, profile_hash: null })).digest('hex');
-    }
     return profile;
   }
 
@@ -507,18 +494,12 @@ export class ServicesBridge {
     return this.#track(this.pendingCalls, () => this.#admittedCall(request));
   }
 
-  // Host-only lifecycle seam. The HTTP handler only invokes call(), never this method.
-  async controlCall(request) {
-    if (this.agentMode !== 'solver' || !['task_take', 'task_finish'].includes(request.operation)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unsupported control operation');
-    return this.#track(this.pendingCalls, () => this.#admittedCall(request, true));
-  }
-
-  async #admittedCall(request, control = false) {
+  async #admittedCall(request) {
     if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping');
     // Coalesce only an explicit take request, for this live credential. A lost
     // CLI response must not turn in-flight preparation into a second take.
     const key = request.operation === 'task_take' && request.operation_id;
-    const capability = key ? this.#profileCapability(this.getCapabilityProfile({ control }), request.operation, { serviceId: request.service_id, capabilityId: request.capability_id }) : null;
+    const capability = key ? this.#profileCapability(this.getCapabilityProfile(), request.operation, { serviceId: request.service_id, capabilityId: request.capability_id }) : null;
     if (key && !capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task take capability is not available for this request');
     const fingerprint = key ? stableStringify({ capability: capability.id, payload: request.payload ?? {} }) : null;
     if (key && this.pendingTake?.operation_id === key) {
@@ -530,7 +511,7 @@ export class ServicesBridge {
       if (pending.token !== this.token) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot credentials changed before retry completed');
       return structuredClone(result);
     }
-    const promise = this.#call(request, control);
+    const promise = this.#call(request);
     if (!key || this.pendingTake) return promise;
     const pending = { operation_id: key, token: this.token, fingerprint, promise };
     this.pendingTake = pending;
@@ -538,7 +519,7 @@ export class ServicesBridge {
     finally { if (this.pendingTake === pending) this.pendingTake = null; }
   }
 
-  async #call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}, control = false) {
+  async #call({ operation, payload = {}, operation_id: operationId = null, service_id: serviceId = null, capability_id: capabilityId = null } = {}) {
     if (this.bindingPending) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task contribution binding is still being prepared');
     const identityToken = this.token;
     const assertIdentity = (beforeDispatch = false) => {
@@ -554,9 +535,9 @@ export class ServicesBridge {
     const bridgeOperationId = operationId ?? `bridge:${operation}:${randomUUID()}`;
     const bridgeCallId = randomUUID();
     const log = (event) => this.logger?.append({ ...event, operation_id: bridgeOperationId, bridge_call_id: bridgeCallId });
-    log({ event: 'bridge.start', operation, ...(control ? { caller: 'host-control' } : {}), operation_id: bridgeOperationId, task_id: this.taskId, execution_id: this.executionId, payload });
+    log({ event: 'bridge.start', operation, operation_id: bridgeOperationId, task_id: this.taskId, execution_id: this.executionId, payload });
     try {
-      const profile = this.getCapabilityProfile({ control });
+      const profile = this.getCapabilityProfile();
       const capability = this.#profileCapability(profile, operation, { serviceId, capabilityId });
       if (!capability) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Agent capability is not available for this Session: ${operation}`, {
         operation,

@@ -4,15 +4,11 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "a038025c22d974b360fcc309076f48a72d5d40daeab1a740ce3b9381f60c119d"
+      "sha256": "4021b6516df200be9ee7bac53713f41135b0461bdaa1327fc0d1785f8c9e3ebb"
     },
     {
       "path": "src/agent/bot-contract/system.txt",
       "sha256": "b812832173ad5efd0fce7d36f13001a0a2f1db3efd137906ae58ad0f36a2c343"
-    },
-    {
-      "path": "src/agent/bot-contract/solver-system.txt",
-      "sha256": "33ea49d9c46fc7402dac07ec040aed24da56dd4d92cb3b7e8fe7d1cdae0c445d"
     },
     {
       "path": "src/agent/bot-contract/plan-task.md",
@@ -36,7 +32,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "177627d58eedec716a000a2dea7657cefb6bbc1eb2395c3aa601ba91cbaddcf6"
+      "sha256": "41974bc75084edca42e4188a71b91d48c94faa4689865ad26d0585a430216231"
     },
     {
       "path": "src/core/index.js",
@@ -48,7 +44,7 @@
     },
     {
       "path": "scripts/opensandbox-agent-worker.mjs",
-      "sha256": "4658d7f339a55ef531e1573dede1f06b8e7baf908abbaa2c94099e73a3cf6126"
+      "sha256": "566d9984ac879112a83450fde893bb52f44b4d103cf7778492a9b1ad87d837f6"
     },
     {
       "path": "examples/notes-environment/main.mjs",
@@ -116,7 +112,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "9a95baaf04f63d42ae0905824a93c036d45256e84c0217bd58b6dbb7c6ab314a"
+      "sha256": "3847c9e33ac4a103cebba1bbb9b0078e4c1f3b157c0c34f33d4417dee75e3c45"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -332,13 +328,13 @@
   "prompt_send_sites": [
     {
       "path": "src/runtime/runtime.js",
-      "line": 1349,
-      "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : buildBotNotification(notification), {"
+      "line": 1348,
+      "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 1678,
-      "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
+      "line": 1676,
+      "expression": "await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     },
     {
       "path": "examples/subagents-environment/controller.mjs",
@@ -354,25 +350,25 @@
   "fixed_instruction_fields": [
     {
       "path": "src/agent/services-bridge.js",
-      "line": 95,
+      "line": 90,
       "field": "action",
       "sha256": "a5e4874eff88bd459015734cb36e2d7e5cbb7a9312337c2df58750686d29a4f3"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 96,
+      "line": 91,
       "field": "hint",
       "sha256": "78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 565,
+      "line": 546,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 572,
+      "line": 553,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -446,7 +442,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "aeb04f977ad6b2524557ddf1182f503c08ec7c0958f55ceb8fe521b8de5258bf"
+      "sha256": "60a68620147357a43492aabac06ecfea2de323b5197b3d57cc7ffb28ff8ef323"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
@@ -454,7 +450,7 @@
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
-      "sha256": "9cb7e5803d73353958c66102b7f7f33a47161bed9cd32fb779b02685fadb31e0"
+      "sha256": "960ca2668ac3f69fce486383dfd6f47cc6ed8903758a902b18c7af302257abbd"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
@@ -466,7 +462,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "36bd351d0a7a8afa47071bcca6d09e7a7152032d9e358b43f22f1dbd0dc87c26"
+      "sha256": "ef554ab645f3bcad055b1804a0211dc0afcf37a7bd088dc091ab2f86f4bcd176"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",

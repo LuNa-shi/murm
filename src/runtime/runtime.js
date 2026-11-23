@@ -2,7 +2,7 @@ import { randomUUID, createHash } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { assertNewExecutionWork } from '../task/execution-budget.js';
-import { buildSolverContinuationMessage, BOT_COMPACTION_MESSAGE, buildBotNotification, buildBotContinuationMessage } from '../agent/bot-contract.js';
+import { BOT_COMPACTION_MESSAGE, buildBotNotification, buildBotContinuationMessage } from '../agent/bot-contract.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
 import { publishWorkspace } from './workspace-publication.js';
 
@@ -65,7 +65,7 @@ function contextWindowRatio(record, session) {
 }
 
 export class Runtime {
-  constructor({ agentMode = 'swarm', taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now(), onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now(), onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -74,7 +74,6 @@ export class Runtime {
     this.missionWorkspaceId = missionWorkspaceId;
     this.workspaceProjectCheck = workspaceProjectCheck;
     this.missionSubmissionStore = missionSubmissionStore;
-    this.agentMode = agentMode;
     this.coordinationPermissions = Object.freeze([...coordinationPermissions]);
     if (workspaceMergeChecker && (typeof workspaceMergeChecker.check !== 'function' ||
         !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof workspaceMergeChecker.identity?.[key] === 'string' && workspaceMergeChecker.identity[key]) ||
@@ -1346,7 +1345,7 @@ export class Runtime {
       }
       this.taskService.recordNotificationAttempt?.(notification.notification_id);
       try {
-        await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : buildBotNotification(notification), {
+        await active.session.prompt?.(buildBotNotification(notification), {
           timeoutMs: 30_000,
           streamingBehavior: 'followUp',
         });
@@ -1573,17 +1572,16 @@ export class Runtime {
     if (record.type === 'compaction_start') {
       this.logger?.append({
         event: 'runtime.compaction_started', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.agentMode === 'solver' ? null : this.maxCompactions,
+        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
         context_window: usage?.context_window ?? active.session.contextWindow ?? null,
         window_ratio: usage?.ratio ?? null, usage_source: usage ? 'event' : 'unknown',
       });
-      // Swarm bounds compactions before replacing an identity. An independent
-      // solver retains the same sample/Session until its existing hard deadline.
+      // Bound compactions before closing the identity.
       // For Swarm the fourth compaction is prohibited at the adapter boundary.  A
       // start record is the earliest portable signal before Pi mutates its
       // context; close and fence the identity immediately instead of waiting
       // for a later report to discover that the limit was crossed.
-      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions) {
+      if (active.compactionCount >= this.maxCompactions) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_limit',
           windowRatio: usage?.ratio ?? null,
@@ -1620,27 +1618,27 @@ export class Runtime {
         : usage ?? contextWindowRatio(record.result, active.session);
       this.logger?.append({
         event: 'runtime.compaction_completed', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.agentMode === 'solver' ? null : this.maxCompactions,
+        compaction_count: active.compactionCount, max_compactions: this.maxCompactions,
         context_window: postCompactionUsage?.context_window ?? active.session.contextWindow ?? null,
         window_ratio: postCompactionUsage?.ratio ?? null,
         usage_source: postCompactionUsage ? 'event' : 'unknown',
       });
       // Queue one follow-up after each successful compaction and the current turn.
       this.#queueCompactionFollowup(active);
-      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
+      if (active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_window_unknown', usageSource: 'unknown', windowRatio: null,
         });
         return;
       }
-      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
+      if (active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
         await this.#rotateIdentity(executionId, {
           reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: postCompactionUsage.ratio,
         });
         return;
       }
     }
-    if (this.agentMode !== 'solver' && record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
+    if (record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
       if (!usage) {
         this.logger?.append({ event: 'runtime.compaction_window_unknown', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, action: 'continue_until_boundary' });
       } else if (usage.ratio >= this.handoffWindowRatio) {
@@ -1675,7 +1673,7 @@ export class Runtime {
           // Pi's private compaction is not a public Workspace save. In the
           // Bot path, only the explicit stable-snapshot API can publish files.
           if (!active.closing && !active.rotationPromise) {
-            await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });
+            await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });
           }
           this.logger?.append({ event: 'runtime.bot_compaction_recorded', execution_id: executionId, compaction_count: active.compactionCount, public_save: false });
           return { status: 'not_saved', execution: current };

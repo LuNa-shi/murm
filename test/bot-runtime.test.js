@@ -2231,20 +2231,20 @@ test('binding cannot revive an already expired preparation lease', async t => {
   assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
 });
 
-for (const deployment of ['in-process', 'independent']) test(`host solver control takes and finishes the real lifecycle with ${deployment} services`, async t => {
-  const { root, service, runtime, startSession } = await fixture(t, { agentMode: 'solver' });
+for (const deployment of ['in-process', 'independent']) test(`authenticated Bridge takes and finishes the real lifecycle with ${deployment} services`, async t => {
+  const { root, service, runtime, startSession } = await fixture(t);
   const peers = deployment === 'independent' ? await startIndependentServices({
     taskService: service, projectDir: root, logRoot: join(root, 'logs'),
-    fixtureManifest: { fixture_id: 'solver-integration', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
+    fixtureManifest: { fixture_id: 'lifecycle-integration', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
       problem_file_hash: 'b'.repeat(64), lean_toolchain: 'controlled', mathlib_version: 'controlled',
       checker_ref: 'controlled', checker_version: '1', environment_ref: 'controlled' }, checkerTimeoutMs: 1000,
   }) : null;
   try {
     const context = peers?.context ?? new ContextService(service.db, { taskService: service });
     runtime.contextService = context;
-    const task = service.createTask({ mission_id: 'mission:bots', summary: 'Solve the entire original problem independently', expected_output: 'Verified solution', acceptance_conditions: ['Original theorem verified'], workspace: { enabled: true } }, makeEnvelope({ actorRef: 'operator:passk' })).task;
+    const task = service.createTask({ mission_id: 'mission:bots', summary: 'Complete the fixed lifecycle responsibility', expected_output: 'Reviewed artifact', acceptance_conditions: ['Artifact reviewed'], workspace: { enabled: true } }, makeEnvelope({ actorRef: 'operator:test' })).task;
     let session;
-    const bridge = new ServicesBridge({ agentMode: 'solver', taskService: service, contextService: context, runtime, coreId: 'core-1',
+    const bridge = new ServicesBridge({ taskService: service, contextService: context, runtime, coreId: 'core-1',
       registry: createBuiltinServiceRegistry({ taskService: service, contextService: context, judgeService: peers?.judge }),
       onTake: async take => {
         const bound = await runtime.bindAgentExecution(take.execution.execution_id, session, { sendInitialPrompt: false });
@@ -2257,13 +2257,11 @@ for (const deployment of ['in-process', 'independent']) test(`host solver contro
       startSession: async options => { bridge.startBotIdentity(options.bot.bot_id); return startSession(options); },
     });
     session = started.session;
-    const take = { operation: 'task_take', operation_id: 'solver-control-take', payload: { task_id: task.task_id } };
-    await assert.rejects(bridge.call(take), error => error.code === 'NOT_ALLOWED');
-    const result = await bridge.controlCall(take);
+    const take = { operation: 'task_take', operation_id: 'lifecycle-take', payload: { task_id: task.task_id } };
+    const result = await bridge.call(take);
     assert.equal(service.getExecution(result.execution.execution_id).state, 'RUNNING');
     assert.equal(service.getBot(started.bot.bot_id).execution_id, result.execution.execution_id);
     assert.equal(service.getExecution(result.execution.execution_id).owner_ref, started.bot.bot_id);
-    await assert.rejects(bridge.call({ operation: 'context_get_material', payload: { material_id: 'private' } }), error => error.code === 'NOT_ALLOWED');
     if (peers) {
       const budget = peers.judge.getMissionCheckBudget('mission:bots');
       assert.equal(budget.max_requests, null);
@@ -2272,9 +2270,8 @@ for (const deployment of ['in-process', 'independent']) test(`host solver contro
       assert.equal(budget.queue_wait_ms, 120_000);
       assert.equal(budget.admitted_requests, 0);
     }
-    const finish = { operation: 'task_finish', operation_id: 'solver-control-finish', payload: { outcome: 'incomplete', summary: 'Controlled completion' } };
-    await assert.rejects(bridge.call(finish), error => error.code === 'NOT_ALLOWED');
-    await bridge.controlCall(finish);
+    const finish = { operation: 'task_finish', operation_id: 'lifecycle-finish', payload: { outcome: 'incomplete', summary: 'Controlled completion' } };
+    await bridge.call(finish);
     assert.equal(service.getBot(started.bot.bot_id).state, 'CLOSED');
     assert.equal(session.closed, true);
   } finally {
@@ -2284,28 +2281,6 @@ for (const deployment of ['in-process', 'independent']) test(`host solver contro
       await peers?.close();
     }
   }
-});
-
-test('solver compaction preserves the same Bot and Execution beyond the Swarm rotation limit', async t => {
-  const { service, runtime, startSession } = await fixture(t, { agentMode: 'solver' });
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', maxLifetimeMs: 60_000, startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, summary: 'Continue one independent solution through context compaction', expected_output: 'Proof', acceptance_conditions: ['Verified proof'] }, makeEnvelope({ actorRef: 'operator:passk' })).task;
-  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'solver-compaction' });
-  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id });
-  const messages = [];
-  session.prompt = async message => { messages.push(message); };
-  for (let index = 0; index < 5; index++) {
-    session.emit('rpc', { type: 'compaction_start' });
-    await new Promise(resolve => setImmediate(resolve));
-    session.emit('rpc', { type: 'compaction_end', result: { tokensBefore: 1000, estimatedTokensAfter: 100 } });
-    await new Promise(resolve => setImmediate(resolve));
-    await runtime.activeProcesses.get(execution.execution_id)?.compactionFollowupPromise;
-    assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
-    assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
-    assert.equal(session.closed, false);
-  }
-  assert.equal(messages.length, 5);
-  assert.ok(messages.every(message => !/swarm task|swarm material/.test(message)));
 });
 
 test('slow Bot preparation keeps its reservation lease live before activation', async t => {

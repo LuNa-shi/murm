@@ -135,7 +135,7 @@ Runtime records phase, last event/heartbeat/completed turn and last productive t
 
 Exhausted provider retries, context overflow, compaction failure, process error/exit and watchdog stall enter the same registered stop path. A per-binding failure promise coalesces simultaneous events and remains tracked through shutdown. Runtime records the failure class, persists the Bot’s stop intent, starts bounded cleanup retries and joins `stopExecution`. There is no same-Execution Session replacement, recovery-attempt budget or recovery prompt.
 
-Provider/process-loss reconciliation remains necessary: durable Bot IDs, provider labels and confirmed deletion resolve orphan resources before fresh Bots can start. This recovers resource ownership, not private conversation state. Core occupancy remains CLOSING while isolation is uncertain. Explicit solver compaction preserves the original attempt; solver failures are not replaced by new samples.
+Provider/process-loss reconciliation remains necessary: durable Bot IDs, provider labels and confirmed deletion resolve orphan resources before fresh Bots can start. This recovers resource ownership, not private conversation state. Core occupancy remains CLOSING while isolation is uncertain.
 
 ## 8. Release, switch and shutdown
 
@@ -259,14 +259,6 @@ Provider metadata uses canonical `mission_key`, `bot_key`, and `resource_key` la
 ### Bot filesystem budget
 
 For timed local-Docker runs, OpenSandbox starts the worker in quota-enforcement mode with an empty, uninitialized `/workspace`. The host checks the container's full identity and Mission/Bot/resource labels. A privileged host helper pins the container process, mount namespace and root through open descriptors, verifies that the container owns the process and the root mount is private, rejects an existing or populated Workspace, and mounts a byte- and inode-limited `tmpfs` at `/workspace`. The host then checks the container identity again. The worker checks the real filesystem, exact block and inode limits, mount flags and absence of nested mounts before preparing its directories. It probes Landlock under the Bot UID, then uses that restriction for Pi and its descendants. Writable project, scratch, home, cache and session files use the same quota. Outside that tree, the filesystem policy permits writes only to `/dev/null`. Container deletion discards the tmpfs. Invalid identity, mount or policy blocks startup and uses normal provider cleanup; quota exhaustion surfaces as an application filesystem error. The operator session-start event records the verified quota and pinned model-catalog identity.
-
-## Solver lifecycle specialization
-
-The Task-bound Runtime still accepts the solver role for a host-provided Task. The host selects work through the real Bridge take operation after the registered Bot becomes ready. The original Bot, Session and Runtime then own Execution activation, lease, fencing and cleanup. Bridge restricts solver Task and Material capabilities and permits host-controlled take and finish under the durable Task authorization.
-
-Solver compaction events retain their actual counts and use solver continuation guidance, but do not trigger the Swarm count/window-based identity rotation. Five successive compactions are covered through real Runtime event handling while checking the same Bot and Execution remain active. The existing Swarm rotation regression remains applicable to the default mode. Provider failures, operator stop and hard deadlines still terminate the solver attempt normally.
-
-A caller may bound its own host-controlled finish and cleanup waits. The Task-bound Runtime and Bridge provide the solver controls described above; they do not supply the retired benchmark runner's run-deadline wrapper, pending-operation tracker or shared cleanup grace. A caller timeout does not establish physical resource release.
 
 ## Core-backed flat identity compatibility
 

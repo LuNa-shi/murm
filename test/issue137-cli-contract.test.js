@@ -31,7 +31,7 @@ async function fixture(t) {
     tasks.markBotReady(id);
     return async (...args) => {
       const { stdout } = await exec(process.execPath, ['scripts/swarm.mjs', ...args], {
-        cwd: process.cwd(), env: { ...process.env, ...env, SWARMENV_AGENT_MODE: 'swarm' }, timeout: 10_000,
+        cwd: process.cwd(), env: { ...process.env, ...env }, timeout: 10_000,
       });
       return JSON.parse(stdout);
     };
@@ -94,7 +94,7 @@ test('CLI process preserves service retryability and request diagnostic fields',
   await once(server, 'listening');
   t.after(() => server.close());
   await assert.rejects(exec(process.execPath, ['scripts/swarm.mjs', 'workspace', 'save', '--request-id', 'save-original'], {
-    env: { ...process.env, SWARMENV_AGENT_MODE: 'swarm', SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'fixture' },
+    env: { ...process.env, SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'fixture' },
   }), error => {
     const result = JSON.parse(error.stderr.trim());
     assert.equal(result.retryable, false);

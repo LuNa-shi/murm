@@ -109,7 +109,7 @@ Runtime reads the private directory's recorded owner and fence during cleanup. A
 
 ## 7. Compaction and identity rotation
 
-Compaction accounting is in Runtime memory, associated with the current Bot/Core binding. A new Bot resets its count. The count is not restored across a host crash. Explicit solver mode retains the same Bot/Session across successful compactions, subject to its existing hard deadline.
+Compaction accounting is in Runtime memory, associated with the current Bot/Core binding. A new Bot resets its count. The count is not restored across a host crash.
 
 Defaults are `maxCompactions = 3` and `handoffWindowRatio = 0.8`. The ratio is a fraction of context
 window capacity. Event usage accepts the supported snake/camel-case window and

@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { parentPromptFor, initialGoalFor } from '../examples/subagents-environment/prompts.mjs';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
-import { SOLVER_SYSTEM_PROMPT, SOLVER_CONTINUATION_MESSAGE, SOLVER_CLOSEOUT_MESSAGE, BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
+import { BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_COMPACTION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
 
@@ -19,7 +19,7 @@ assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Us
 const check = args[0] === '--check';
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
-  'src/agent/bot-contract.js', 'src/agent/bot-contract/system.txt', 'src/agent/bot-contract/solver-system.txt',
+  'src/agent/bot-contract.js', 'src/agent/bot-contract/system.txt',
   ...BOT_SKILLS.map(skill => `src/agent/bot-contract/${skill.name}.md`),
   'src/agent/capability-profile.js',
   'src/agent/services-bridge.js',
@@ -75,17 +75,14 @@ const extendedRegistry = createBuiltinServiceRegistry();
 extendedRegistry.registerService({ manifest: mathlibBundle.manifest, bundle: mathlibBundle, adapter: { invoke() { throw new Error('documentation never invokes services'); } } });
 const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, role: AGENT_ROLES.BOUND });
 
-output('01-system-identity.md', header('Complete stable identity instructions', 'The immutable Bot and independent solver resources are the fixed repository system addenda. Phase 0005 Core stages the host-provided Profile.prompt verbatim. Pi supplies its own native tool instructions.')
-  + block('Independent solver system addendum (swarm-solver-v1)', SOLVER_SYSTEM_PROMPT)
+output('01-system-identity.md', header('Complete stable identity instructions', 'The immutable Bot resources are the fixed repository system addendum. Phase 0005 Core stages the host-provided Profile.prompt verbatim. Pi supplies its own native tool instructions.')
   + block(`Registered Bot system addendum (${BOT_PROTOCOL_VERSION})`, BOT_SYSTEM_PROMPT));
 let toolsDoc = header('CLI directory and optional Service documentation', 'Bots receive the four native tools read/write/edit/bash. Startup contains the namespace directory below. Schemas and documentation are fetched through swarm service commands, not registered as separate Pi tools.');
 for (const [title, p] of [['Built-in Services', profile], ['With optional Mathlib Search', extendedProfile]]) toolsDoc += block(title, JSON.stringify(botServiceDirectory(p), null, 2));
 for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource; the startup message carries metadata and hashes, not this full body.');
 output('02-task-loop-and-tools.md', toolsDoc);
 
-let turnsDoc = header('Complete retained Runtime turn messages', 'The Flat controller and compatibility Runtime retain these repository-owned texts. The retired benchmark coordinator no longer composes or sends discovery or solver startup messages. Runtime selects the compaction follow-up from durable Execution phase; host Profile and initial input composition are described in the Environment references.');
-turnsDoc += block('Independent solver compaction follow-up', SOLVER_CONTINUATION_MESSAGE);
-turnsDoc += block('Independent solver soft-closeout follow-up', SOLVER_CLOSEOUT_MESSAGE);
+let turnsDoc = header('Complete retained Runtime turn messages', 'The Flat controller and compatibility Runtime retain these repository-owned texts. The retired benchmark coordinator no longer composes or sends benchmark startup messages. Runtime selects the compaction follow-up from durable Execution phase; host Profile and initial input composition are described in the Environment references.');
 turnsDoc += block('Flat bound continuation', BOT_CONTINUATION_MESSAGE);
 turnsDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
 turnsDoc += block('Registered Bot compaction follow-up', BOT_COMPACTION_MESSAGE);

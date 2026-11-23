@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **181 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **180 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -32,14 +32,14 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/agent/bot-contract.js](../../src/agent/bot-contract.js) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `a038025c22d974b360fcc309076f48a72d5d40daeab1a740ce3b9381f60c119d` |
+| [src/agent/bot-contract.js](../../src/agent/bot-contract.js) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `4021b6516df200be9ee7bac53713f41135b0461bdaa1327fc0d1785f8c9e3ebb` |
 | [src/agent/bot-contract/finish-task.md](../../src/agent/bot-contract/finish-task.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `cc3748aa4502013072a030fa84fe13f8cfaa82d6e1ea642661a5b6eeaeeb32a4` |
 | [src/agent/bot-contract/plan-task.md](../../src/agent/bot-contract/plan-task.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `3cfae26c7423640d02b00402bd9dcbf6c6242935382ba1b889a0b7c3eae78ef6` |
 | [src/agent/bot-contract/system.txt](../../src/agent/bot-contract/system.txt) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `b812832173ad5efd0fce7d36f13001a0a2f1db3efd137906ae58ad0f36a2c343` |
 | [src/agent/bot-contract/use-material.md](../../src/agent/bot-contract/use-material.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `53ff58a3a35baee7f03bd08e65334b6195ab94463ceafc3e9a2faa5bc08ccf80` |
 | [src/agent/bot-contract/use-workspace.md](../../src/agent/bot-contract/use-workspace.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `9f7c8fed6b1f4b1607a0328ffca09a67a2e83b547552a0bf276f48ae8631dcae` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `177627d58eedec716a000a2dea7657cefb6bbc1eb2395c3aa601ba91cbaddcf6` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `41974bc75084edca42e4188a71b91d48c94faa4689865ad26d0585a430216231` |
 
 ### Configuration and build (5)
 
@@ -105,7 +105,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/environments/shared/run-input.js](../../src/environments/shared/run-input.js) | Environment-owned exclusive idle Bot input wait and uncertain submission guard | [15-core-runtime](15-core-runtime.md) | `f88873c40ab74a4a673e2de07216770d1b442b229f1635548b7622d41de37f78` |
 | [src/environments/shared/run-report.js](../../src/environments/shared/run-report.js) | Environment host reporting with independent business, cleanup and save failures | [17-environment-reporting](17-environment-reporting.md) | `8486471eacc2ba2a602ca81c553b459739d0a3d470bebcc3e96bb4c28585d12c` |
 | [src/runtime/docker-bot-network.js](../../src/runtime/docker-bot-network.js) | Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `fece9e1daeaf52f57ac4d821abd0be86fdd94738995507a9412817eb1b268096` |
-| [src/runtime/runtime.js](../../src/runtime/runtime.js) | Registered Bot binding, physical resource ownership, failure cleanup, fencing and rotation | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `9a95baaf04f63d42ae0905824a93c036d45256e84c0217bd58b6dbb7c6ab314a` |
+| [src/runtime/runtime.js](../../src/runtime/runtime.js) | Registered Bot binding, physical resource ownership, failure cleanup, fencing and rotation | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3847c9e33ac4a103cebba1bbb9b0078e4c1f3b157c0c34f33d4417dee75e3c45` |
 
 ### Mission acceptance and checker (7)
 
@@ -146,12 +146,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/runtime/workspace-contract.js](../../src/runtime/workspace-contract.js) | Workspace path normalization, input/output contracts and required-input validation | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `8d602261f4d1dd30963050e4367004afd4a93205ac3cce79090af37f76d3cddf` |
 | [src/runtime/workspace-manager.js](../../src/runtime/workspace-manager.js) | Execution-owned filesystem, manifests, revisions, local Git and snapshots | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `6b15d11d8478f63dbc40dc7f32d0e9dc080a560ef2f00ee28419d1532416d853` |
 
-### agent prompts and tools (1)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [src/agent/bot-contract/solver-system.txt](../../src/agent/bot-contract/solver-system.txt) | Immutable independent solver system addendum without collaboration skills | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md) | `33ea49d9c46fc7402dac07ec040aed24da56dd4d92cb3b7e8fe7d1cdae0c445d` |
-
 ### documentation tooling (4)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -159,7 +153,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `4df59886439e8e59ece335acfad45a528f5484c5de2d70a148e88d588dd38f6e` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `3bf363ac3ce1e8f3f4853b362fb41709d4f256fa9423dd528e20a8c406b9af35` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `86bbea33a991abfbc8fa0a2c1274fade905e03d698e8d9d4784505e1d54d6deb` |
 
 ### durable storage (3)
 
@@ -256,7 +250,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [scripts/bot-filesystem-policy.c](../../scripts/bot-filesystem-policy.c) | UID-restricted Landlock policy inherited by Pi and its descendants | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `a32412848bb8e52565b5de06330bf5b2be1ded5b37ddc8c275895b05d0b774bc` |
 | [scripts/mount-bot-workspace.py](../../scripts/mount-bot-workspace.py) | Pin and mount a bounded tmpfs in a verified Docker namespace | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md) | `13a94b8ad0499835395d4b6e3e93f2dc8966b744e4fef2179c4b940c09339778` |
-| [scripts/opensandbox-agent-worker.mjs](../../scripts/opensandbox-agent-worker.mjs) | Sandbox-resident Pi worker and authenticated RPC/event HTTP surface | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `4658d7f339a55ef531e1573dede1f06b8e7baf908abbaa2c94099e73a3cf6126` |
+| [scripts/opensandbox-agent-worker.mjs](../../scripts/opensandbox-agent-worker.mjs) | Sandbox-resident Pi worker and authenticated RPC/event HTTP surface | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `566d9984ac879112a83450fde893bb52f44b4d103cf7778492a9b1ad87d837f6` |
 | [scripts/project-install.mjs](../../scripts/project-install.mjs) | Worker private write-ahead install receipts, exact rollback and held acknowledgement | [05-workspace-continuity](05-workspace-continuity.md) | `7b4346952b4115b14acffb6c6b0f7677c0236c7020344d6a0bba553429c3bb54` |
 | [scripts/project-processes.mjs](../../scripts/project-processes.mjs) | Immutable same-UID process inspection before changing paused project paths | [05-workspace-continuity](05-workspace-continuity.md) | `cb05890d4fe2183285040d8be6c800c95ba024c851e56c8a521f2491b7ca784d` |
 | [scripts/sandbox-project.mjs](../../scripts/sandbox-project.mjs) | Trusted worker-owned project directory preparation, manifest validation, grant and revocation | [01-agent-core](01-agent-core.md), [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md) | `881b1e0aaac59dd12690f3fbd00d8fd34c1a826832307244dbdc345ee181ea36` |
@@ -271,7 +265,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/swarm.mjs](../../scripts/swarm.mjs) | Executable swarm CLI entry point and exit-code boundary | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `9a53b8652a48c036d30df006304e7da8befb5f3547d469f17c9363450a359d8c` |
-| [src/cli/swarm-cli.js](../../src/cli/swarm-cli.js) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `69384cde546b9db6a9e63090db291cdaba5540dd82f7708a525730b3cd559a14` |
+| [src/cli/swarm-cli.js](../../src/cli/swarm-cli.js) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `f322acb74af89f13b880dd19a953aaeb808da691813f9e8715c3e95cea704e85` |
 | [src/protocol/http-request.js](../../src/protocol/http-request.js) | Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `21fe10eeb0069c743f1f9a0c7c4a359c41ea200c8915b627c036ec22c14fb56b` |
 
 ### service deployment (15)
