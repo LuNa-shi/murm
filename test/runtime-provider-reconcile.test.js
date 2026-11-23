@@ -14,7 +14,7 @@ test('provider reconciliation requires Mission-scoped Bot authority', async () =
   await assert.rejects(runtime.reconcileProviderExecutions(), /mission_id is required/);
 });
 
-test('restart persists a discovered Bot resource before delete and only frees a confirmed Core', async t => {
+test('provider reconciliation persists a discovered Bot resource before delete and only frees a confirmed Core', async t => {
   const root = await mkdtemp(join(tmpdir(), 'runtime-provider-restart-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const database = join(root, 'task.sqlite');
@@ -107,7 +107,7 @@ test('sibling reconciliation leaves live in-process ownership alone and keeps an
   await assert.rejects(recovering.startBot({ missionId: 'M', coreId: 'two', startSession: async () => assert.fail('unconfirmed Core started a new Bot') }), { code: 'CONFLICT' });
 });
 
-test('restart frees Bots with proven absence without treating an empty list as proof of an unknown create', async t => {
+test('provider reconciliation frees Bots with proven absence without treating an empty list as proof of an unknown create', async t => {
   const tasks = new TaskService(':memory:');
   tasks.createMission({ mission_id: 'M', goal: 'Investigate' });
   t.after(() => tasks.close());
