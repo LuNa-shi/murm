@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createFinalTreeArtifactLock, createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS, OPENAI_MATH_SOURCE_PINS } from '../src/judge/final-tree-deployment.js';
+import { createFinalTreeArtifactLock, createLockedFinalTreeVerifier, fingerprintFinalTreeArtifact, FINAL_TREE_SOURCE_PINS } from '../src/judge/final-tree-deployment.js';
 import { stableStringify } from '../src/protocol/envelope.js';
 
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -14,31 +14,11 @@ const configuration = {
   comparatorLibraryRoots: ['/nominal-comparator', '/nominal-export-lib'], exporterPath: '/nominal-export',
 };
 
-test('checker lock rejects unknown benchmark profiles before tool invocation', async () => {
-  await assert.rejects(createFinalTreeArtifactLock({ configuration: { ...configuration, benchmarkProfile: 'arbitrary' } }), /benchmark profile/);
-});
-
-test('OpenAI Math profile selects its Lean 4.34.1 source pins and still requires a trusted lock', async () => {
-  assert.equal(OPENAI_MATH_SOURCE_PINS.lean, '4.34.1');
-  assert.equal(OPENAI_MATH_SOURCE_PINS.mathlib, 'd13f23b723b8a846827a245b89c10fc7d3f11612');
-  await assert.rejects(createLockedFinalTreeVerifier({
-    configuration: { ...configuration, benchmarkProfile: 'openai-math-v1' },
-    problem: { problem_file: 'lean/ComparatorChallenges/PlaneColoring.lean', source_hash: 'a'.repeat(64), declaration_name: 'OAI.Problem160.properColoring_seven' },
-  }), /artifact lock is required/);
-});
-
-test('root-only deployment binds the target and declaration to its foundation manifest', async t => {
-  const root = await mkdtemp(join(tmpdir(), 'swarmenv-foundation-target-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const bytes = JSON.stringify({ target_sha256: 'a'.repeat(64), declaration_name: 'Target.goal' });
-  await writeFile(join(root, 'foundation-manifest.json'), bytes);
-  const deployment = { ...configuration, benchmarkProfile: 'flt10-subtree-v1', checkpoint: 20,
-    projectionRoot: root, foundationSha256: sha256(bytes) };
-  const problem = { checkpoint: 20, source_hash: 'a'.repeat(64), declaration_name: 'Target.goal' };
-  for (const altered of [{ ...problem, source_hash: 'b'.repeat(64) }, { ...problem, declaration_name: 'Helper.goal' }]) {
-    await assert.rejects(createLockedFinalTreeVerifier({ configuration: deployment, problem: altered }), /locked foundation target/);
+test('checker deployment rejects retired benchmark profiles before invoking tools or reading fixtures', async () => {
+  for (const benchmarkProfile of ['arbitrary', 'openai-math-v1', 'flt10-dag-v1', 'flt10-subtree-v1']) {
+    await assert.rejects(createFinalTreeArtifactLock({ configuration: { ...configuration, benchmarkProfile } }), /benchmark profile/i);
+    await assert.rejects(createLockedFinalTreeVerifier({ configuration: { ...configuration, benchmarkProfile } }), /benchmark profile/i);
   }
-  await assert.rejects(createLockedFinalTreeVerifier({ configuration: deployment, problem }), /artifact lock is required/);
 });
 
 test('deployment gate requires the lock and rejects altered content or selection before invoking tools', async () => {

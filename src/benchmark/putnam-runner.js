@@ -22,7 +22,7 @@ import { requirePrivateAudit } from '../observability/private-audit-retention.js
 import { ServicesBridge } from '../agent/services-bridge.js';
 import { TaskService, fixedExecutionInputHash } from '../task/task-service.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
-import { verifyBenchmarkFixtureCheckout, readBenchmarkFixture, verifyBenchmarkRunFixture, assertTimedServiceComposition } from './benchmark-fixture.js';
+import { verifyBenchmarkRunFixture, assertTimedServiceComposition } from './benchmark-fixture.js';
 import { assertBenchmarkReady, readBenchmarkContext } from './benchmark-context.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { DurableEventLog } from '../observability/durable-event-log.js';
@@ -48,7 +48,6 @@ const execFileAsync = (command, args) => new Promise((resolvePromise, reject) =>
 });
 
 const SAFE_PROJECT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const SAFE_LEAN_PROJECT_SUBDIR = /^[A-Za-z0-9][A-Za-z0-9._/-]*$/;
 
 async function validateResumeOutputPaths(options, problem, { freshProject = false } = {}) {
   if (!options.resumeFrom) return;
@@ -355,56 +354,6 @@ function observationLogger(observationStore, experimentId, source) {
       });
     },
   };
-}
-
-export async function loadBenchmarkConfig(configPath, { putnamBenchRoot, verifyPinnedCheckout = false } = {}) {
-  const config = JSON.parse(await readFile(resolve(configPath), 'utf8'));
-  required(putnamBenchRoot, 'putnamBenchRoot');
-  if (config.benchmark != null && !SAFE_PROJECT_ID.test(config.benchmark)) {
-    throw new TypeError('invalid benchmark name');
-  }
-  if (!Array.isArray(config.problems) || !config.problems.length || config.problems.length > 1000) {
-    throw new TypeError('benchmark config requires between 1 and 1000 problems');
-  }
-  if (config.instructions_path != null && (typeof config.instructions_path !== 'string' ||
-      !/^benchmark\/[A-Za-z0-9_./-]+$/.test(config.instructions_path) || config.instructions_path.split('/').includes('..'))) {
-    throw new TypeError('invalid benchmark instructions path');
-  }
-  const commit = config.fixture_commit ?? config.putnambench_commit;
-  const root = resolve(putnamBenchRoot);
-  if (verifyPinnedCheckout) await verifyBenchmarkFixtureCheckout({ root, commit,
-    allowDescendant: config.fixture_checkout_mode === 'repository-descendant' });
-  const configuredSubdir = config.lean_project_subdir ?? 'lean4';
-  if (typeof configuredSubdir !== 'string' || !SAFE_LEAN_PROJECT_SUBDIR.test(configuredSubdir) ||
-      configuredSubdir.split('/').some(part => !part || part === '.' || part === '..')) {
-    throw new TypeError('invalid Lean project subdirectory');
-  }
-  const leanProjectRoot = resolve(root, configuredSubdir);
-  if (relative(root, leanProjectRoot).startsWith(`..${sep}`) || relative(root, leanProjectRoot) === '..') {
-    throw new TypeError('Lean project subdirectory escapes the benchmark root');
-  }
-  const projectRoot = await readFile(join(leanProjectRoot, 'lean-toolchain'), 'utf8')
-    .then(() => leanProjectRoot)
-    .catch(() => root);
-  const seen = new Set();
-  const problems = [];
-  for (const problem of config.problems) {
-    if (seen.has(problem.id)) throw new TypeError(`duplicate problem id: ${problem.id}`);
-    seen.add(problem.id);
-    const { sourcePath, source, sourceHash } = await readBenchmarkFixture({ root, path: problem.problem_file, commit: verifyPinnedCheckout ? commit : null });
-    validateProblemInput(problem, source);
-    if (problem.source_sha256 != null && sourceHash !== problem.source_sha256) throw new TypeError(`benchmark source digest mismatch: ${problem.id}`);
-    if (problem.declaration_name != null && !/^[A-Za-z_][A-Za-z0-9_']*(?:\.[A-Za-z_][A-Za-z0-9_']*)*$/.test(problem.declaration_name)) {
-      throw new TypeError('invalid Lean declaration name');
-    }
-    problems.push({
-      ...problem,
-      source_path: sourcePath,
-      source_hash: sourceHash,
-      source,
-    });
-  }
-  return { ...config, putnam_bench_root: root, lean_project_root: projectRoot, problems };
 }
 
 function beginOwnedAgentTurn(core, session, details, at = Date.now()) {

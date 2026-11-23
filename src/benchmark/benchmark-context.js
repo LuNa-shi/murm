@@ -20,24 +20,6 @@ async function readPinned(root, path, expectedHash, limit) {
   return bytes;
 }
 
-/** Resolve the selected OpenAI Math arm before creating services or contacting a model. */
-export async function selectOpenAiMathContext(config, selected, mode) {
-  if (mode === 'none') return { config, problems: selected };
-  if (mode !== 'paper') throw new TypeError('OpenAI Math paper mode must be none or paper');
-  const paperConfig = { ...config, benchmark_context_root: join(config.putnam_bench_root, config.embedded_fixture_root, 'papers') };
-  const problems = [];
-  for (const problem of selected) {
-    if (!problem.paper) throw new TypeError(`no pinned paper for ${problem.id}`);
-    const entry = { ...problem, context_manifest: problem.paper.manifest, context_sha256: problem.paper.sha256 };
-    const files = await readBenchmarkContext(entry, paperConfig);
-    if (Object.keys(files).length !== 2 || !files['benchmark/paper.pdf'] || !files['benchmark/paper.txt']) {
-      throw new TypeError(`invalid paper package for ${problem.id}`);
-    }
-    problems.push(entry);
-  }
-  return { config: paperConfig, problems };
-}
-
 /** Host-provided public benchmark references, verified before Workspace creation. */
 export async function readBenchmarkContext(problem, config) {
   if (config.benchmark !== 'flt10' && problem.context_manifest == null) return {};

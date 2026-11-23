@@ -149,7 +149,7 @@ The benchmark's `core.prompt` hash is a hash of a base SOP field, not the evolvi
 
 ## 7. Validation and known limits
 
-Existing checks include [Pi adapter](../../test/pi-adapter.test.js), [capability profile](../../test/capability-profile.test.js), [profile/Bridge](../../test/capability-profile-bridge.test.js), [Task behavior](../../test/task-contract.test.js), [Judge boundary](../../test/bot-runtime.test.js) and [benchmark CLI](../../test/benchmark-cli.test.js). These identify tested seams; execution results belong in the linked GitHub Issue/PR and experiment reports.
+Existing checks include [Pi adapter](../../test/pi-adapter.test.js), [capability profile](../../test/capability-profile.test.js), [profile/Bridge](../../test/capability-profile-bridge.test.js), [Task behavior](../../test/task-contract.test.js), [Judge boundary](../../test/bot-runtime.test.js). These identify tested seams; execution results belong in the linked GitHub Issue/PR and experiment reports.
 
 Registered Bots use native Bash and the protected CLI; the old whole-proof Task instructions prohibiting shell were removed. Startup sends the live service directory and skill manifest, while full skill text enters context when read. Actual send paths and complete repository-owned instructions are documented in [Prompts](08-prompts.md).
 

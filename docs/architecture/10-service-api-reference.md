@@ -36,7 +36,7 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
+| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `0fc7c588549940b5b378f352e2abb6633cf4fd0cd9d043ad854594725ef1fea6` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 | [src/core/index.d.ts](../../src/core/index.d.ts) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
