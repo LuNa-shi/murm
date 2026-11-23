@@ -21,7 +21,9 @@ export function createPeerProfile({ image, model = 'default', facilities }) {
 /** A single input owner. Core owns the Bot; Environment owns facilities. */
 export async function createAgenshEnvironment(options) {
   const { runId, image, model = 'default', exportLimit, outputDir, backend } = options;
-  if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof image !== 'string' || !image || !Number.isSafeInteger(exportLimit) || exportLimit < 1) throw new TypeError('Agensh Environment requires run, image and actual export limit');
+  if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof image !== 'string' || !image || !Number.isSafeInteger(exportLimit) || exportLimit < 1) throw new TypeError('Agensh Environment requires run, image and actual export limit');
+  if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) throw new TypeError('Agensh startup signal must be an AbortSignal');
+  const checkStartup = () => { if (options.signal?.aborted) throw Object.assign(new Error('Agensh startup aborted'), { code: 'ENVIRONMENT_START_ABORTED' }); };
   const resources = createOwnedResources();
   const lifetime = new AbortController();
   const secrets = [options.gitea?.adminToken, options.mattermost?.adminToken, ...(options.secretValues ?? [])].filter(value => typeof value === 'string' && value);
@@ -51,21 +53,29 @@ export async function createAgenshEnvironment(options) {
     })().finally(() => { closeWork = undefined; });
     return structuredClone(await closeWork);
   }
+  const abortStartup = () => { if (runtime) void runtime.close({ timeoutMs: 1 }).catch(() => {}); };
+  options.signal?.addEventListener('abort', abortStartup, { once: true });
   try {
+    checkStartup();
     const facilities = await (options.prepare ?? prepareAgenshFacilities)({ ...options, resources });
+    checkStartup();
     secrets.push(facilities.peer.gitea.token, facilities.peer.message.token);
     if (facilities.runId !== runId) throw new TypeError('Facilities belong to a different run');
     service = createAgenshServices(facilities);
     const repository = new URL(facilities.repositoryUrl);
     if (repository.origin !== new URL(facilities.endpoints.gitea).origin || repository.username || repository.password || repository.search || repository.hash) throw new TypeError('Git repository must use the configured credential-free Gitea origin');
+    checkStartup();
     runtime = await createRuntime({ backend, services: service.services, maxBots: 1, outputDir,
       profiles: { peer: createPeerProfile({ image, model, facilities }) } });
+    checkStartup();
     unsubscribe = runtime.onEvent(event => {
       // Core owns raw execution evidence. The Environment report keeps indexes.
       events.push({ botId: event.botId, seq: event.seq, type: event.type, ...(event.outcome ? { outcome: event.outcome } : {}) });
     });
+    checkStartup();
     peer = await runtime.spawn({ requestId: `spawn-${runId}`, profile: 'peer', bindings: service.bindings,
       secretEnv: { GITEA_TOKEN: facilities.peer.gitea.token }, collect: { paths: ['.'], includeGit: true, maxBytes: exportLimit, required: true } });
+    checkStartup();
     service.bindBot({ runtimeId: runtime.id, botId: peer.id });
     return Object.freeze({ id: runtime.id, peer: Object.freeze({ ...peer }), snapshot, close, redact,
       async runInput(input, wait) {
@@ -79,6 +89,7 @@ export async function createAgenshEnvironment(options) {
       },
     });
   } catch (error) {
+    const code = options.signal?.aborted ? 'ENVIRONMENT_START_ABORTED' : error.code ?? 'ENVIRONMENT_START_FAILED';
     let cleanup;
     // A failed Core factory with unknown owned cleanup has no public handle.
     // Preserve facility dependencies and its authoritative recovery receipt.
@@ -86,9 +97,9 @@ export async function createAgenshEnvironment(options) {
     else {
       try { cleanup = await close(); } catch { cleanup = { cleanup: 'pending', pending: resources.snapshot() }; }
     }
-    throw Object.assign(new Error('Agensh Environment initialization failed'), { code: error.code ?? 'ENVIRONMENT_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId,
-      cleanup: cleanup.cleanup, ...(error.reportPath ? { reportPath: error.reportPath } : {}), details: [{ code: error.code ?? 'FACILITY_START_FAILED', cleanup }, snapshot()] });
-  }
+    throw Object.assign(new Error('Agensh Environment initialization failed'), { code, runtimeId: runtime?.id ?? error.runtimeId,
+      cleanup: cleanup.cleanup, ...(error.reportPath ? { reportPath: error.reportPath } : {}), details: [{ code, cleanup }, snapshot()] });
+  } finally { options.signal?.removeEventListener('abort', abortStartup); }
 }
 
 /** Business and cleanup failures remain independent in the shared host report. */

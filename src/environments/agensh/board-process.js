@@ -9,12 +9,14 @@ export function createBoardLauncher({ sourceDirectory, mysqlDsn, origin, python 
   const address = new URL(origin);
   if (!['127.0.0.1', '0.0.0.0'].includes(address.hostname) || address.protocol !== 'http:' || !address.port || address.username || address.password || address.pathname !== '/' || address.search || address.hash ||
       typeof mysqlDsn !== 'string' || !mysqlDsn || typeof sourceDirectory !== 'string' || !sourceDirectory || !Number.isSafeInteger(startupTimeoutMs) || startupTimeoutMs < 1 || startupTimeoutMs > 30_000) throw new TypeError('Board launcher requires explicit local origin, source, MySQL DSN and bounded startup');
-  return async function startBoard({ boardId, workerId, own }) {
+  return async function startBoard({ boardId, workerId, own, signal }) {
+    signal?.throwIfAborted();
     await new Promise((resolve, reject) => {
       const reservation = createServer();
       reservation.once('error', () => reject(Object.assign(new Error('Board port is already in use'), { code: 'BOARD_PORT_UNAVAILABLE' })));
       reservation.listen(Number(address.port), address.hostname, () => reservation.close(resolve));
     });
+    signal?.throwIfAborted();
     const child = spawn(python, ['-m', 'uvicorn', 'main:app', '--host', address.hostname, '--port', address.port, '--no-access-log', '--log-level', 'error'], {
       cwd: sourceDirectory, stdio: 'ignore', env: { PATH: process.env.PATH, LANG: process.env.LANG ?? 'C.UTF-8', MYSQL_DSN: mysqlDsn,
         BOARD_MEMBERS_JSON: JSON.stringify({ [boardId]: [workerId] }), BOARD_OPERATOR: `operator-${boardId}` },
@@ -37,10 +39,12 @@ export function createBoardLauncher({ sourceDirectory, mysqlDsn, origin, python 
     const request = httpClient(origin);
     const deadline = performance.now() + startupTimeoutMs;
     while (performance.now() < deadline && !ended) {
+      signal?.throwIfAborted();
       try {
         await request('GET', `/board/${encodeURIComponent(boardId)}/read?viewer=${encodeURIComponent(workerId)}`, undefined,
-          { signal: AbortSignal.timeout(Math.max(1, Math.ceil(deadline - performance.now()))) });
+          { signal: AbortSignal.any([AbortSignal.timeout(Math.max(1, Math.ceil(deadline - performance.now()))), ...(signal ? [signal] : [])]) });
         await new Promise(resolve => setTimeout(resolve, 100));
+        signal?.throwIfAborted();
         if (!ended) return { origin, processId: child.pid };
       } catch { /* Startup is bounded; request failures carry no upstream text. */ }
       await new Promise(resolve => setTimeout(resolve, 100));

@@ -25,29 +25,31 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
   let setup;
   const setupStep = operation => setup.step(operation);
   const request = (origin, authorization) => (method, path, body) => setupStep(({ signal }) => httpClient(origin, authorization)(method, path, body, { signal }));
-  const docker = async (args, cleanup = false) => {
-    try { const invoke = timeout => executeCommand('docker', args, { timeout, maxBuffer: 1024 ** 2 });
+  const docker = async (args, cleanup = false, signal) => {
+    try { signal?.throwIfAborted();
+      const invoke = timeout => executeCommand('docker', args, { timeout, maxBuffer: 1024 ** 2, ...(signal ? { signal } : {}) });
       return (cleanup ? await invoke(15_000) : await setup.step(({ timeoutMs }) => invoke(timeoutMs), 15_000)).stdout.trim(); }
     catch { if (!cleanup) setup.remaining(); throw sanitized('LOCAL_FACILITY_DOCKER_FAILED'); }
   };
-  async function wait(check) {
+  async function wait(check, signal) {
     while (true) {
-      setup.remaining();
-      try { return await check(); } catch { await new Promise(resolve => setTimeout(resolve, setup.remaining(500))); }
+      signal?.throwIfAborted(); setup.remaining();
+      try { return await check(); } catch { signal?.throwIfAborted(); await new Promise(resolve => setTimeout(resolve, setup.remaining(500))); }
     }
   }
-  async function run(kind, { env = {}, ports = [], volumes = [], args = [], cpu, memory }) {
-    setup.remaining();
+  async function run(kind, { env = {}, ports = [], volumes = [], args = [], cpu, memory, signal }) {
+    signal?.throwIfAborted(); setup.remaining();
     const name = `${owner}-${kind}`; names.push(name);
     await docker(['run', '--detach', '--pull=never', '--name', name, '--network', network, '--label', `swarmenv.t13.owner=${owner}`, '--cpus', String(cpu), '--memory', memory,
       '--pids-limit', '512', ...Object.entries(env).flatMap(([key, value]) => ['--env', `${key}=${value}`]), ...ports.flatMap(value => ['--publish', value]),
-      ...volumes.flatMap(value => ['--volume', value]), facilityImages[kind], ...args]);
-    const evidence = JSON.parse(await docker(['inspect', '--format', '{{json .Id}}', name]));
+      ...volumes.flatMap(value => ['--volume', value]), facilityImages[kind], ...args], false, signal);
+    const evidence = JSON.parse(await docker(['inspect', '--format', '{{json .Id}}', name], false, signal));
+    signal?.throwIfAborted();
     receipts.push({ kind, name, containerId: evidence, image: facilityImages[kind], cpu, memory });
     return name;
   }
-  async function published(name, port, host = '127.0.0.1') {
-    const ports = JSON.parse(await docker(['inspect', '--format', '{{json .NetworkSettings.Ports}}', name]));
+  async function published(name, port, host = '127.0.0.1', signal) {
+    const ports = JSON.parse(await docker(['inspect', '--format', '{{json .NetworkSettings.Ports}}', name], false, signal));
     return `http://${host}:${ports[`${port}/tcp`][0].HostPort}`;
   }
   async function close() {
@@ -112,13 +114,16 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
       secrets.push(mmToken);
       const team = await request(mmOrigin, `Bearer ${mmToken}`)('POST', '/api/v4/teams', { name: owner, display_name: owner, type: 'I' });
       stack.configuration = { gitea: { origin: gitOrigin, adminToken: gitToken, owner: 'run-owner' }, mattermost: { origin: mmOrigin, adminToken: mmToken, teamId: team.id },
-        startBoard: async ({ boardId, workerId, own }) => {
-          const name = await run('board', { cpu: 0.25, memory: '256m', ports: ['127.0.0.1::8660'], env: {
+        startBoard: async ({ boardId, workerId, own, signal }) => {
+          signal?.throwIfAborted();
+          const name = await run('board', { signal, cpu: 0.25, memory: '256m', ports: ['127.0.0.1::8660'], env: {
             MYSQL_DSN: `mysql://agensh:${dbPassword}@${database}:3306/board`, BOARD_MEMBERS_JSON: JSON.stringify({ [boardId]: [workerId] }) } });
-          const origin = await published(name, 8660);
+          signal?.throwIfAborted();
+          const origin = await published(name, 8660, '127.0.0.1', signal);
           stack.boardOrigin = origin;
           own({ kind: 'board-connection', id: boardId, close: async () => {} });
-          await wait(() => request(origin)('GET', `/board/${encodeURIComponent(boardId)}/read?viewer=${encodeURIComponent(workerId)}`));
+          await wait(() => { signal?.throwIfAborted(); return setupStep(({ signal: setupSignal }) => httpClient(origin)('GET', `/board/${encodeURIComponent(boardId)}/read?viewer=${encodeURIComponent(workerId)}`, undefined, { signal: AbortSignal.any([setupSignal, ...(signal ? [signal] : [])]) })); }, signal);
+          signal?.throwIfAborted();
           setup.dispose(); setup.remaining();
           return { origin };
         } };
