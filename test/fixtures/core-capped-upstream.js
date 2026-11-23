@@ -8,6 +8,18 @@ function json(response, status, code) {
   response.end(JSON.stringify({ error: { code, message: code } }));
 }
 
+// Never persist provider messages or arbitrary error strings: finite labels only.
+function rejectionClassification(bytes) {
+  let error;
+  try { error = JSON.parse(bytes.toString('utf8')).error; } catch { /* fixed fallback */ }
+  const allowed = {
+    code: ['unsupported_parameter', 'unknown_parameter', 'invalid_parameter', 'invalid_value', 'unsupported_value', 'invalid_request_error', 'model_not_found', 'context_length_exceeded', 'insufficient_quota'],
+    type: ['invalid_request_error', 'authentication_error', 'permission_error', 'rate_limit_error', 'server_error'],
+    param: ['tools', 'tool_choice', 'max_output_tokens', 'max_completion_tokens', 'model', 'input', 'stream', 'store', 'temperature', 'top_p'],
+  };
+  return Object.fromEntries(Object.entries(allowed).map(([key, values]) => [key, values.includes(error?.[key]) ? error[key] : 'other']));
+}
+
 export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, deadlineAt,
   maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false }) {
   let target;
@@ -86,10 +98,10 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     if (forwarded >= maxRequests) { json(response, 429, 'LIVE_REQUEST_CAP'); return; }
     observeToolResults(body.input);
     body.max_output_tokens = Math.min(body.max_output_tokens ?? maxOutputTokens, maxOutputTokens);
-    if (disableTools) body.tool_choice = 'none';
+    if (disableTools) { delete body.tools; delete body.tool_choice; }
     const data = Buffer.from(JSON.stringify(body));
     const number = ++forwarded;
-    const record = { number, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true } : {}) };
+    const record = { number, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
     records.push(record);
     const outgoingHeaders = { ...headers, 'content-type': 'application/json', accept: 'text/event-stream', 'content-length': data.length };
     for (const name of ['x-swarmenv-request-id', 'x-request-id', 'idempotency-key']) {
@@ -100,6 +112,22 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       upstream = (target.protocol === 'https:' ? httpsRequest : httpRequest)(target, { method: 'POST', headers: outgoingHeaders }, incoming => {
         record.status = 'responding';
         record.statusCode = incoming.statusCode;
+        if ((incoming.statusCode ?? 502) >= 400) {
+          const chunks = [];
+          let bytes = 0;
+          incoming.on('data', chunk => {
+            bytes += chunk.length;
+            if (bytes <= 64 * 1024) chunks.push(chunk);
+          });
+          incoming.on('end', () => {
+            record.status = 'rejected';
+            record.rejection = rejectionClassification(bytes <= 64 * 1024 ? Buffer.concat(chunks) : Buffer.alloc(0));
+            active.delete(upstream);
+            json(response, incoming.statusCode ?? 502, 'LIVE_PROVIDER_REJECTED');
+          });
+          incoming.on('error', () => { record.status = 'stream_failed'; active.delete(upstream); json(response, 502, 'LIVE_UPSTREAM_FAILED'); });
+          return;
+        }
         response.writeHead(incoming.statusCode ?? 502, incoming.headers);
         let pending = '';
         incoming.on('data', chunk => {

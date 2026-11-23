@@ -32,7 +32,7 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   let domainTransitionMonotonic;
   const held = new Promise(resolve => { heldResolve = resolve; });
   const report = { mode: live ? 'hosted-kimi-k3' : 'fixed-local-k3', model: { provider: 'kimi_proxy', model: 'k3' }, requestCap: live ? 1 : 2,
-    maxOutputTokens: live ? 512 : 128, deadlineMs: 120_000, resources: {}, failure: true };
+    maxOutputTokens: live ? 512 : 128, toolPolicy: 'omit-tools-and-choice', deadlineMs: 120_000, resources: {}, failure: true };
   const events = [], waiters = [];
   const settled = () => deadline.expired() ? Promise.resolve({ outcome: 'timeout' }) : new Promise(resolve => { waiters.push(resolve); });
   const deadline = createAcceptanceDeadline(deadlineAt, () => { for (const resolve of waiters.splice(0)) resolve({ outcome: 'timeout' }); void runtime?.close({ timeoutMs: 1 }).catch(() => {}); });
@@ -122,6 +122,7 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   const observed = proxy.receipt().requests[0];
   assert.equal(observed.terminal, 'response.completed');
   assert.equal(observed.toolsDisabled, true);
+  assert.equal(observed.toolsMode, 'omitted');
   assert.ok(Number.isSafeInteger(observed.usage?.inputTokens) && Number.isSafeInteger(observed.usage?.outputTokens));
   report.usageObserved = true;
   if (!live) {

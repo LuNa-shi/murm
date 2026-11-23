@@ -101,7 +101,7 @@ test('invalid credentials and provider failures produce sanitized proxy errors',
     filename: 'check.txt', marker: 'EXPECTED' }), { message: 'LIVE_UPSTREAM_CONFIGURATION_INVALID' });
 });
 
-test('selection-only capped upstream forces no tools for its single paid request', async t => {
+test('selection-only capped upstream omits tool definitions and tool_choice for its single request', async t => {
   let actual;
   const upstreamUrl = await localUpstream(t, async (request, response) => {
     const chunks = []; for await (const chunk of request) chunks.push(chunk);
@@ -111,6 +111,46 @@ test('selection-only capped upstream forces no tools for its single paid request
   const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 1, maxOutputTokens: 512,
     filename: 'unused', marker: 'FLAT_SELECTION_OK', disableTools: true });
   t.after(() => cap.close());
-  await (await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [], tool_choice: 'auto' }) })).text();
-  assert.equal(actual.tool_choice, 'none');
+  await (await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [], tools: [{ type: 'function', name: 'bash', parameters: { type: 'object' } }], tool_choice: 'auto' }) })).text();
+  assert.equal(Object.hasOwn(actual, 'tools'), false);
+  assert.equal(Object.hasOwn(actual, 'tool_choice'), false);
+  assert.equal(actual.max_output_tokens, 512);
+  assert.equal(cap.receipt().forwarded, 1);
+  assert.equal(cap.receipt().requests[0].toolsMode, 'omitted');
+});
+
+test('provider rejection records only status and finite whitelisted classification without raw secrets', async t => {
+  const upstreamUrl = await localUpstream(t, async (request, response) => {
+    for await (const _chunk of request) { /* consume */ }
+    response.writeHead(400, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: { code: 'unsupported_parameter', type: 'invalid_request_error', param: 'tool_choice', message: 'private-raw-provider-message' } }));
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 1,
+    maxOutputTokens: 512, filename: 'unused', marker: 'FLAT_SELECTION_OK', disableTools: true });
+  t.after(() => cap.close());
+  const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), { error: { code: 'LIVE_PROVIDER_REJECTED', message: 'LIVE_PROVIDER_REJECTED' } });
+  const receipt = cap.receipt();
+  assert.equal(receipt.forwarded, 1);
+  assert.deepEqual(receipt.requests[0].rejection, { code: 'unsupported_parameter', type: 'invalid_request_error', param: 'tool_choice' });
+  assert.equal(receipt.requests[0].statusCode, 400);
+  assert.equal(receipt.requests[0].status, 'rejected');
+  assert.equal(JSON.stringify(receipt).includes('private-raw'), false);
+});
+
+test('unknown provider error labels and oversized rejection bodies collapse to fixed other fields', async t => {
+  for (const body of [JSON.stringify({ error: { code: 'private-secret-code', type: 'private-secret-type', param: 'private-secret-param', message: 'private-secret-message' } }), 'private-secret-body'.repeat(5000)]) {
+    const upstreamUrl = await localUpstream(t, async (request, response) => {
+      for await (const _chunk of request) { /* consume */ }
+      response.writeHead(400); response.end(body);
+    });
+    const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 1,
+      maxOutputTokens: 512, filename: 'unused', marker: 'FLAT_SELECTION_OK', disableTools: true });
+    t.after(() => cap.close());
+    const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+    assert.deepEqual(await response.json(), { error: { code: 'LIVE_PROVIDER_REJECTED', message: 'LIVE_PROVIDER_REJECTED' } });
+    assert.deepEqual(cap.receipt().requests[0].rejection, { code: 'other', type: 'other', param: 'other' });
+    assert.equal(JSON.stringify(cap.receipt()).includes('private-secret'), false);
+  }
 });
