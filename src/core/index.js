@@ -218,8 +218,8 @@ export async function createRuntime(options) {
     return timeoutMs;
   }
 
-  function revoke(botId) {
-    bridge.revokeBot(botId);
+  function revoke(botId, { abortServices = false } = {}) {
+    bridge.revokeBot(botId, { abortActive: abortServices });
     modelAccess.revokeBot(botId);
   }
 
@@ -258,7 +258,7 @@ export async function createRuntime(options) {
         // release any owned resource. Keep original receipt lookups available.
         bot.fatal = true;
         bot.controller.abort();
-        revoke(info.id);
+        revoke(info.id, { abortServices: true });
       }
     }
     if (event.type === 'exit' && info.status !== 'closing' && info.status !== 'closed') {
