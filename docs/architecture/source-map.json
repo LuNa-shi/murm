@@ -17113,15 +17113,6 @@
       "role": "Executable swarm CLI entry point and exit-code boundary"
     },
     {
-      "path": "scripts/validate-benchmark-witness.mjs",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Private complete-witness validation and launch receipt generation"
-    },
-    {
       "path": "services/builtin/compose.yaml",
       "category": "provider deployment and instructions",
       "chapters": [

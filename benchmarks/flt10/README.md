@@ -58,10 +58,10 @@ preparation uses the research scripts linked above.
 A successful preparation means the initial `sorry` project compiles and preserves
 the elaborated target. It does **not** establish solvability. Configure a
 `flt10-subtree-v1` checker with that checkpoint, foundation manifest digest and
-compiled foundation, then create its artifact lock. A complete private witness
-must pass `scripts/validate-benchmark-witness.mjs` under that deployment, with a
-separate actual visibility audit, before attaching the private receipt to the
-benchmark config. Missing or stale validation prevents timed startup. See
+compiled foundation, then create its artifact lock. The retained legacy loader requires a complete private witness receipt from
+that exact deployment, with a separate actual visibility audit. The original
+[research witness procedure](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/scripts/validate-benchmark-witness.mjs)
+creates that receipt. Missing or stale validation prevents timed startup. See
 [run configuration](../../docs/architecture/07-run-configuration.md) for the
 receipt contract. Agent proofs may add modules, definitions and lemmas; the
 final checker still verifies the original mathematical target and proof axioms.
