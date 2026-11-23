@@ -167,69 +167,11 @@ existing model/time budget arguments govern the new run. Private Bot sessions ar
 not restored. `resume.json` records which historical evidence was used and the
 fresh-run handoff; see [the implementation and old-data limits](../architecture/13-historical-resume.md).
 
-### Long-run supervision
+### Historical long-run supervision
 
-Keep the research runner and its observer in separate service units or
-containers. The observer attaches to an already-running runner PID and performs
-read-only SQLite polling; it must not be the runner's parent process. A failed
-observer must not stop the runner, and a runner stop must not be inferred from
-an observer logging or database-read error. Use
-`scripts/experiment-supervisor.py` for the observer and start it only after the
-runner service is healthy. The observer's `--self-test` is a fast regression
-probe for descriptor leaks before a formal run.
+The research tree preserves the process observer and its separate-service deployment instructions at the [fixed research revision](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/docs/operations/benchmark.md#long-run-supervision). Its published observations retain their original code identity and evidence limits.
 
-The observer is deliberately not a second experiment engine. It records status
-snapshots and observation-error events, while the benchmark runner owns Bot,
-Judge, Workspace and Mission lifecycle. Do not use a shared `KillMode=mixed`
-service whose main process is the observer: systemd would kill the research
-runner when the observer exits.
-
-For a systemd user deployment, launch the runner unit first and obtain its
-main PID, then launch the observer as a second unit. For example (replace the
-paths and unit names with the run's pinned values):
-
-```bash
-systemd-run --user --unit=swarmenv-q20-runner \
-  --property=KillMode=control-group \
-  /usr/bin/node /absolute/SwarmEnv/scripts/run-putnambench-benchmark.mjs ...
-for attempt in $(seq 1 40); do
-  candidate_pid="$(systemctl --user show swarmenv-q20-runner --value --property=MainPID)"
-  if systemctl --user is-active --quiet swarmenv-q20-runner && [ "${candidate_pid:-0}" -gt 0 ]; then
-    candidate_starttime="$(/usr/bin/python3 /absolute/SwarmEnv/scripts/experiment-supervisor.py --print-starttime "$candidate_pid")" || true
-    current_pid="$(systemctl --user show swarmenv-q20-runner --value --property=MainPID)"
-    if systemctl --user is-active --quiet swarmenv-q20-runner && [ "$current_pid" = "$candidate_pid" ] && [ -n "${candidate_starttime:-}" ]; then
-      runner_pid="$candidate_pid"
-      runner_starttime="$candidate_starttime"
-      break
-    fi
-  fi
-  sleep 0.25
-done
-test "${runner_pid:-0}" -gt 0
-test -n "${runner_starttime:-}"
-systemd-run --user --unit=swarmenv-q20-observer --collect \
-  --property=KillMode=process \
-  /usr/bin/python3 /absolute/SwarmEnv/scripts/experiment-supervisor.py \
-  --pid "$runner_pid" --pid-starttime "$runner_starttime" \
-  --project-dir /absolute/experiment/project \
-  --log /absolute/experiment/supervision.ndjson
-```
-
-The bounded readiness loop rejects a zero `MainPID`, and the captured process
-start time is checked again at observer attach and on every poll. The observer
-unit is allowed to finish when the runner PID disappears or its timebox is
-reached. Inspect the runner unit's result independently; an
-`observer_log_error`, `observation_error` or observer exit is not a runner
-failure. If the observer is killed, the runner unit must remain active. The
-operator must not wrap both commands in one `KillMode=mixed` service or use a
-parent script that starts the runner and waits for it.
-
-This observer is a health and lifecycle projection only. It is deliberately
-not the authoritative progress report: Mission submission/acceptance,
-Workspace revisions, complete Task/Execution/Material lineage, checker
-receipts and terminal cleanup remain in the runner's stores and the existing
-observability/audit analysis. A status snapshot therefore cannot be counted as
-Mission progress or acceptance.
+### Startup failure and deadline checks
 
 A typed `BOT_STARTUP_CONTRACT` during Bot startup stops that project, closes
 its resources and saves an invalid report with `stop_reason=bot_startup_contract`

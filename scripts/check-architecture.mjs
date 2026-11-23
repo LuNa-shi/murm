@@ -53,7 +53,10 @@ const files = [
   ...['AGENTS.md', 'README.md', 'GLOSSARY.md'].map((path) => resolve(root, path)),
   ...await markdownFiles(resolve(root, 'docs')),
   ...await markdownFiles(resolve(root, 'services')),
-  ...await markdownFiles(resolve(root, '.codex/skills')),
+  ...await markdownFiles(resolve(root, '.codex/skills')).catch(error => {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }),
 ];
 const contents = new Map(await Promise.all(files.map(async (path) => [path, await readFile(path, 'utf8')])));
 const failures = [];

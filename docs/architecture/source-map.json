@@ -16910,15 +16910,6 @@
       "role": "Node support, dependency requirements and executable package scripts"
     },
     {
-      "path": "scripts/analyze-experiment.mjs",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Offline analysis CLI arguments and failure reporting"
-    },
-    {
       "path": "scripts/benchmarks/build_flt10_statement_graph.py",
       "category": "benchmark inputs",
       "chapters": [
@@ -16972,15 +16963,6 @@
         "docs/architecture/11-storage-reference.md"
       ],
       "role": "Independent service transport, authorization, lifecycle and deployment"
-    },
-    {
-      "path": "scripts/experiment-supervisor.py",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Failure-isolated read-only long-run observer with bounded SQLite polling"
     },
     {
       "path": "scripts/generate-architecture-api.mjs",
@@ -17435,15 +17417,6 @@
         "docs/architecture/10-service-api-reference.md"
       ],
       "role": "Adapter/version/prompt/runtime provenance manifest"
-    },
-    {
-      "path": "src/analysis/experiment-analysis.js",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Offline evidence inventory, timeline reconstruction, metrics and report rendering"
     },
     {
       "path": "src/benchmark/benchmark-context.js",

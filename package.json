@@ -25,7 +25,6 @@
     "swarm": "node scripts/swarm.mjs",
     "test": "node --test --test-concurrency=1 'test/**/*.test.js'",
     "pretest": "npm run docs:check && npm run build:observability",
-    "analyze:experiment": "node scripts/analyze-experiment.mjs",
     "service:mathlib-search": "node scripts/mathlib-search-service.mjs",
     "service:builtin": "node scripts/service-host.mjs",
     "build:observability": "vite build --config src/observability/vite.config.js",
