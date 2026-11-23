@@ -13,11 +13,13 @@ import { createFlatModelAccessPolicy } from './model-access-policy.js';
 export async function runFlatEnvironment({backend,model,image,prompt='Use the flat Services to discover, execute and truthfully finish Mission work.',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
   capacity=2,snapshotProject,controller:controllerOptions={},handoff:handoffOptions={},drive,
-  closeTimeoutMs=30_000,redact=value=>value}) {
+  closeTimeoutMs=30_000,redact=value=>value,signal}) {
+  if(signal!==undefined && !(signal instanceof AbortSignal)) throw new TypeError('Flat host signal must be an AbortSignal');
   let runtime,controller,discovery,publication;
   const result={};
   return runWithReport({outputDir,closeTimeoutMs,redact,
     async createRuntime() {
+      signal?.throwIfAborted();
       // Do not allocate a partly functional team and claim Workspace publication.
       if(typeof snapshotProject!=='function') throw new SwarmEnvError('SERVICE_NOT_READY','Flat live Workspace publication has no supported trusted Core snapshot binding');
       if(contextService?.taskService!==taskService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Context and Task authority must match');
@@ -45,7 +47,11 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
         } catch(cleanupError) {error.cleanup='pending';error.details=[{code:cleanupError.code??'CLOSE_FAILED',message:'Runtime cleanup after controller admission failed'}];}
         throw error;
       }
+      const aborted=()=>controller.halt('host-stop');
+      signal?.addEventListener('abort',aborted,{once:true});
+      if(signal?.aborted) aborted();
       return {id:runtime.id,async close(options) {
+        signal?.removeEventListener('abort',aborted);
         controller.halt();publication.close();
         await discovery.close({timeoutMs:Math.min(closeTimeoutMs,options.timeoutMs)});
         const receipt=await runtime.close(options);

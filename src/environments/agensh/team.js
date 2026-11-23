@@ -92,7 +92,7 @@ export async function createAgenshTeam(options) {
       check();
     }
     for (const router of routers.values()) router.markReady();
-    return Object.freeze({ id: runtime.id, snapshot, redact, close,
+    return Object.freeze({ id: runtime.id, snapshot, redact, close, signal,
       kickoff(key, text) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).kickoff(text); },
       ingest(key, event) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).ingest(event); },
       wait(key, batchId, wait) { if (!routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).wait(batchId, wait); },
