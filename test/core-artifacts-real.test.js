@@ -174,6 +174,25 @@ test('required artifacts survive a recoverable host save failure and remain read
   report.actions.push({ action: 'verify-host-artifacts-after-deletion', outcome: 'complete' });
   const replay = await runtime.stop(bot.id, { timeoutMs: 5000 }); assert.deepEqual(replay, stopped);
   report.repeatedStopStable = true;
+  const close = await runtime.close({ timeoutMs: 20_000 });
+  assert.equal(close.cleanup, 'complete');
+  assert.equal(close.evidence.lost, 0); assert.equal(close.evidence.pending, 0);
+  const summary = JSON.parse(await readFile(close.reportPath, 'utf8'));
+  const lines = (await readFile(close.evidence.path, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(summary.runtimeId, runtime.id);
+  assert.equal(summary.config.models.default.maxOutputTokens, 128);
+  assert.equal(summary.config.models.default.requestTimeoutMs, 30_000);
+  assert.deepEqual(summary.bots, [stopped]);
+  assert.equal(close.evidence.recorded, lines.length);
+  assert.ok(lines.every((row, index) => row.runtimeId === runtime.id && row.seq === index + 1));
+  assert.ok(lines.some(row => row.type === 'spawn' && row.botId === bot.id && row.requestId === 'artifact-spawn'));
+  assert.ok(lines.some(row => row.type === 'input' && row.botId === bot.id && row.requestId === 'artifact-input' &&
+    row.inputId === report.input.inputId && row.state === 'accepted'));
+  assert.ok(lines.some(row => row.type === 'event' && row.botId === bot.id && row.event.type === 'settled' && row.event.outcome === 'completed'));
+  const stops = lines.filter(row => row.type === 'stop' && row.botId === bot.id && row.state === 'observed');
+  assert.deepEqual(stops.map(row => row.receipt), [pending, stopped]);
+  report.coreEvidence = { rows: lines.length, modelLimits: summary.config.models.default,
+    stopStates: stops.map(row => row.receipt.cleanup), matchingNativeSandbox: stops[0].receipt.pending.sandboxId === sandboxId };
   assert.equal(deadlineExpired, false);
   report.failure = false;
 });

@@ -151,6 +151,7 @@ export interface CloseReceipt {
   pending: readonly PendingCleanup[];
   outputDir: string;
   reportPath?: string;
+  evidence: { path?: string; recorded: number; lost: number; pending: number };
 }
 
 export interface Runtime {

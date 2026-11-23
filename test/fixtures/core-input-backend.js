@@ -1,4 +1,6 @@
 export const configuration = {
+  sandbox: {},
+  isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
   bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
   modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
   models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
@@ -11,7 +13,10 @@ export const transport = {
 export const claimPiOpenSandboxBackend = () => configuration;
 export async function openPiOpenSandboxBackend() {
   return {
-    async spawn({ botId, onEvent }) { transport.listeners.set(botId, onEvent); },
+    async spawn({ botId, onEvent }) {
+      transport.listeners.set(botId, onEvent);
+      return { sandboxId: `fixture-${botId}`, versions: { piVersion: '1.3.0' } };
+    },
     async send(botId, input, { mode, inputId }) {
       if (!transport.submissions.has(inputId)) {
         transport.submissions.set(inputId, { botId, input, mode, receipt: { status: 'unknown' } });

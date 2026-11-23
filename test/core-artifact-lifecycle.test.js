@@ -91,6 +91,7 @@ test('required artifacts block deletion and retain the Slot until verified host 
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     assert.deepEqual(manifest.files, [{ path: 'nested/file.bin', bytes: 4, sha256, mode: 0o644 }]);
     assert.deepEqual(await readFile(join(treePath, 'nested/file.bin')), content);
+    assert.equal((await runtime.close()).cleanup, 'pending');
     provider.allowDeletion();
     const closed = await runtime.close();
     assert.equal(closed.cleanup, 'complete');

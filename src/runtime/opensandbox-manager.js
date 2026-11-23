@@ -384,7 +384,7 @@ export class OpenSandboxManager {
     }
   }
 
-  async ensureExecution({ executionId, botId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null,
+  async ensureExecution({ executionId, botId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null, onWorkerToken,
     timeoutSeconds = 3600, projectQuotaRequired = false, cleanupOnFailure = true, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} } = {}) {
     const id = required(executionId, 'execution_id');
     required(botId, 'bot_id');
@@ -406,6 +406,7 @@ export class OpenSandboxManager {
     const workerToken = randomUUID();
     const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort), ...(projectQuotaRequired ? ['--require-project-quota'] : [])];
     try {
+      onWorkerToken?.(workerToken);
       const admission = onCreateDispatch?.({ provider: 'opensandbox', timeout_seconds: timeoutSeconds });
       if (typeof admission?.then === 'function') await admission;
     } catch (error) {

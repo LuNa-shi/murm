@@ -60,6 +60,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
   let closePromise;
   const tokens = new Map();
   const closeFailures = new Map();
+  const ledgerPaths = () => [...aliases].flatMap(([alias, entry]) => entry.ledgerPath ? [{ alias, path: entry.ledgerPath }] : []);
   const pendingCleanup = () => [...aliases].flatMap(([alias, entry]) => entry.gateway || entry.db ? [{
     kind: 'model', id: `${runtimeId}:${alias}`, action: 'close',
     ...(closeFailures.has(alias) ? { error: closeFailures.get(alias) } : {}),
@@ -95,12 +96,14 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
     }).finally(() => { closePromise = undefined; });
     return closePromise;
   };
-  onOwned?.({ close, pendingCleanup });
+  onOwned?.({ close, pendingCleanup, ledgerPaths });
   try {
     for (const [alias, entry] of aliases) {
       const filename = `${createHash('sha256').update(alias).digest('hex')}.sqlite`;
-      entry.db = new DatabaseSync(join(directory, filename));
-      await chmod(join(directory, filename), 0o600);
+      const path = join(directory, filename);
+      entry.db = new DatabaseSync(path);
+      entry.ledgerPath = path;
+      await chmod(path, 0o600);
       entry.gateway = new ResponsesBudgetGateway({ db: entry.db, scope: 'runtime',
         upstream: { ...entry.model.upstream, model: entry.model.model }, timeBounds: gatewayConfig,
         withLifecycleWrite,
@@ -150,5 +153,6 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
     },
     close,
     pendingCleanup,
+    ledgerPaths,
   };
 }
