@@ -8,8 +8,8 @@ const installed = new WeakMap();
 const quote = value => `"${String(value).replaceAll('"', '""')}"`;
 const literal = value => `'${String(value).replaceAll("'", "''")}'`;
 const ROWID = '__replay_rowid__';
-// These tables describe live ownership/delivery, not public research facts.
-// The resume handoff discards their old runtime state before starting cores.
+// Historical capture omits these live ownership and delivery tables.
+// A host establishes fresh authority separately from this journal.
 const RUNTIME_TABLES = new Set(['experiments', 'observation_events', 'execution_workspace_state',
   'execution_workspace_requests', 'service_commit_gate', 'service_commit_events',
   'context_peer_receipts', 'judge_peer_phases']);

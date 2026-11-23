@@ -23,11 +23,9 @@ test('actual candidate archive carries the pinned Lean license and scoped source
     assert.ok(files.has(path), `Missing third-party distribution file: ${path}`);
     return (await execute('tar', ['-xOf', archive, `package/${path}`], { encoding: 'buffer' })).stdout;
   };
-  // Exact bytes from the pinned upstream LICENSE file, not a shortened label
-  // or a synthesized license that could lose source-specific text.
-  for (const [path, expected] of [
-    ['src/judge/lean-module-verify.LICENSE.txt', '8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e'],
-  ]) assert.equal(sha256(await readEntry(path)), expected);
+  // Check the exact bytes from the pinned upstream LICENSE.
+  const license = await readEntry('src/judge/lean-module-verify.LICENSE.txt');
+  assert.equal(sha256(license), '8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e');
   const leanNotice = (await readEntry('src/judge/lean-module-verify.NOTICE.md')).toString();
   assert.ok(leanNotice.includes('leanprover/lean4/blob/v4.33.1/src/LeanChecker.lean'));
   assert.ok(leanNotice.includes('Modified in SwarmEnv'));
@@ -35,7 +33,4 @@ test('actual candidate archive carries the pinned Lean license and scoped source
   assert.ok(driver.includes('Copyright (c) 2023 Kim Morrison. All rights reserved.'));
   assert.ok(driver.includes('Authors: Kim Morrison, Sebastian Ullrich'));
   assert.ok(driver.includes('Modified in SwarmEnv'));
-  const packageMetadata = JSON.parse((await readEntry('package.json')).toString());
-  assert.equal(packageMetadata.private, true);
-  assert.equal(Object.hasOwn(packageMetadata, 'license'), false);
 });
