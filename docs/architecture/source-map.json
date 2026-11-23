@@ -18515,7 +18515,7 @@
       "chapters": [
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Service v2 registration, immutable manifest and callable snapshots"
+      "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
     },
     {
       "path": "src/core/services.d.ts",
@@ -18531,7 +18531,7 @@
       "chapters": [
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Runtime-owned Bridge listener and trusted Bot credentials"
+      "role": "Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch"
     },
     {
       "path": "src/core/model-access.js",
