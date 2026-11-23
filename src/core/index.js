@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { createCoreBridge } from './bridge.js';
 import { snapshotProfiles, snapshotSpawn, validId } from './config.js';
 import { createCoreModelAccess } from './model-access.js';
+import { createInputLedger } from './input-ledger.js';
 import { claimPiOpenSandboxBackend, openPiOpenSandboxBackend } from './pi-opensandbox-backend.js';
 import { snapshotServiceRegistry } from './services.js';
 
@@ -123,6 +124,7 @@ export async function createRuntime(options) {
 
   const handlers = new Set();
   const spawnRequests = new Map();
+  const inputRequests = createInputLedger(runtimeId);
   const handlerErrors = [];
   let closeWork;
   let finalClose;
@@ -153,12 +155,22 @@ export async function createRuntime(options) {
     modelAccess.revokeBot(botId);
   }
 
+  function refreshActivity(bot) {
+    if (liveStates.has(bot.info.status)) {
+      bot.info.status = bot.nativeExecuting || bot.activityClaims.size ? 'running' : 'idle';
+    }
+  }
+
   function emit(bot, payload) {
     const { info } = bot;
     const event = structuredClone({ ...payload, botId: info.id, seq: ++info.cursor });
     if (event.type === 'output') info.latestOutput = event.text;
     if (event.type === 'settled') {
-      if (info.status === 'running') info.status = 'idle';
+      bot.nativeExecuting = false;
+      // This execution no longer owns running. Input receipts remain intact:
+      // a settled event does not establish which queued inputs were consumed.
+      bot.activityClaims.clear();
+      refreshActivity(bot);
       info.latestOutput = event.output;
       info.lastError = event.error;
     }
@@ -235,7 +247,7 @@ export async function createRuntime(options) {
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       const bot = {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
-        inputs: new Map(), inputVersion: 0, executionStopped: false,
+        activityClaims: new Set(), nativeExecuting: false, executionStopped: false,
       };
       request = { fingerprint, bot };
       bots.set(info.id, bot);
@@ -243,7 +255,11 @@ export async function createRuntime(options) {
       bot.start = Promise.resolve().then(async () => {
         bot.controller.signal.throwIfAborted();
         await backend.spawn({ botId: info.id, profile: bot.profile, options: parameters,
-          signal: bot.controller.signal, onEvent: event => emit(bot, event) });
+          signal: bot.controller.signal, onEvent: event => emit(bot, event),
+          onExecutionStart: () => {
+            bot.nativeExecuting = true;
+            refreshActivity(bot);
+          } });
         if (info.status !== 'starting') throw new Error('Bot stopped before becoming idle');
         info.status = 'idle';
         return structuredClone(info);
@@ -273,42 +289,46 @@ export async function createRuntime(options) {
       throw problem('INVALID_CONTRACT', 'send needs text, a requestId and a supported mode', 'send', botId, requestId);
     }
     const bot = findBot(botId, 'send', requestId);
-    let request = bot.inputs.get(requestId);
-    if (request) {
-      if (request.input !== input || request.mode !== mode) {
-        throw problem('CONFLICT', 'send requestId already has different parameters', 'send', botId, requestId);
-      }
-    } else {
+    let request;
+    try { request = inputRequests.get('host', botId, requestId, { input, mode }); }
+    catch (error) { throw problem(error.code, error.message, 'send', botId, requestId); }
+    if (!request) {
       if (closing || !liveStates.has(bot.info.status)) {
         throw problem('NOT_ALLOWED', 'Bot is not accepting input', 'send', botId, requestId);
       }
       const inputId = randomUUID();
-      const wasIdle = bot.info.status === 'idle';
-      const cursor = bot.info.cursor;
-      const version = ++bot.inputVersion;
-      bot.info.status = 'running';
-      const restoreIdle = () => {
-        if (wasIdle && bot.inputVersion === version && bot.info.status === 'running' && bot.info.cursor === cursor) {
-          bot.info.status = 'idle';
-        }
+      const releaseActivity = () => {
+        bot.activityClaims.delete(request);
+        refreshActivity(bot);
       };
-      request = { inputId, input, mode, result: Promise.resolve().then(async () => {
-        if (closing || !liveStates.has(bot.info.status)) {
+      request = { inputId, input, mode, run: async () => {
+        if (request.dispatched && bot.info.status === 'closed') return { inputId, status: 'unknown' };
+        if (!request.dispatched && (closing || !liveStates.has(bot.info.status))) {
           throw problem('NOT_ALLOWED', 'Bot stopped before input dispatch', 'send', botId, requestId);
         }
+        const querying = request.dispatched === true;
         try {
+          request.dispatched = true;
           const receipt = await backend.send(botId, input, { mode, inputId });
-          if (receipt.disposition === 'handled') restoreIdle();
+          if (receipt.status === 'accepted' && receipt.disposition === 'handled') releaseActivity();
           return { ...receipt, inputId };
         } catch (error) {
-          if (knownInputRejections.has(error.code)) {
-            restoreIdle();
+          if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
+            releaseActivity();
             throw problem(error.code, error.message, 'send', botId, requestId);
           }
           return { inputId, status: 'unknown' };
         }
-      }) };
-      bot.inputs.set(requestId, request);
+      } };
+      bot.activityClaims.add(request);
+      refreshActivity(bot);
+      inputRequests.reserve('host', botId, requestId, { input, mode }, () => request);
+    }
+    if (!request.result) {
+      request.result = Promise.resolve().then(request.run).then(result => {
+        if (result.status === 'unknown') request.result = undefined;
+        return result;
+      });
     }
     const result = await observe(request.result);
     return result === timedOut ? { inputId: request.inputId, status: 'unknown' } : structuredClone(result);

@@ -87,7 +87,7 @@ export async function createLifecycleProvider(t) {
     }
     if (path === '/worker/start') return send({ result: { contract: { version: 'swarmenv-core-v1', resources: [] },
       project_quota: body.project_quota, model_catalog_resource: body.model_catalog_resource } });
-    if (path === '/worker/rpc') return send({ result: { response: { success: true, command: body.message.type,
+    if (path === '/worker/rpc') return send({ result: { response: { id: body.message.id, success: true, command: body.message.type,
       ...(body.message.type === 'prompt' ? { data: { disposition: 'started' } } : {}) },
       records: records.filter(row => row.worker_sequence > (body.message.since ?? 0)) } });
     if (path === '/worker/stop') return send({ result: { stopped: true } });
