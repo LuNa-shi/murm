@@ -54,7 +54,7 @@ export function claimPiOpenSandboxBackend(handle) {
   return entry.config;
 }
 
-export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, modelAccess }) {
+export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, modelAccess, registerPrivateValues = () => {} }) {
   const bots = new Map();
   let closing = false;
   const network = new DockerBotNetwork();
@@ -126,11 +126,13 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
         if (closing || bot.stopping || signal?.aborted) throw Object.assign(new Error('Bot startup is closing'), { code: 'NOT_ALLOWED' });
       };
       assertOpen();
-      const sandbox = await manager.ensureExecution({ executionId: botId, botId, projectQuotaRequired: true, cleanupOnFailure: false, metadata: { runtime_id: runtimeId } });
+      const sandbox = await manager.ensureExecution({ executionId: botId, botId, projectQuotaRequired: true, cleanupOnFailure: false,
+        metadata: { runtime_id: runtimeId }, onWorkerToken: token => registerPrivateValues([token]) });
       assertOpen();
       const identity = { bot_id: botId, runtime_id: runtimeId, resource_key: botId };
       const credentials = modelAccess.credentialsForBot(botId, profile.model);
       const bridgeCredentials = bridge.credentialsForBot(botId);
+      registerPrivateValues([...Object.values(credentials.secretEnvironment), ...Object.values(bridgeCredentials.secretEnvironment)]);
       await network.isolate({ sandboxId: sandbox.sandbox_id, bot: identity, bridgeUrl: bridge.publicUrl, modelUrl: credentials.baseUrl, additionalEndpoints: profile.network?.allow ?? [] });
       assertOpen();
       const quota = await disk.isolate({ sandboxId: sandbox.sandbox_id, bot: identity });
@@ -186,16 +188,18 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
           } catch {
             // Transport status codes also cover Worker-side failures after
             // writing stdin. Only a correlated Pi response proves rejection.
-            return { status: 'unknown' };
+            return { status: 'unknown', reason: 'worker-transport' };
           }
           consume(bot, result.records ?? []);
-          if (result.response?.id !== inputId || result.response?.command !== 'prompt') return { status: 'unknown' };
+          if (result.response?.id !== inputId || result.response?.command !== 'prompt') return {
+            status: 'unknown', reason: result.status === 'pending' ? 'worker-pending' : 'worker-uncorrelated-reply',
+          };
           if (result.response?.success !== true) {
             if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), { code: 'INVALID_CONTRACT', inputRejected: true });
-            return { status: 'unknown' };
+            return { status: 'unknown', reason: 'worker-prompt-status-missing' };
           }
           const disposition = result.response.data?.disposition;
-          if (!['started', 'queued', 'handled'].includes(disposition)) return { status: 'unknown' };
+          if (!['started', 'queued', 'handled'].includes(disposition)) return { status: 'unknown', reason: 'worker-disposition-missing' };
           submission.receipt = { status: 'accepted', disposition };
           return submission.receipt;
         })().finally(() => { submission.work = undefined; });

@@ -180,7 +180,10 @@ function upstreamPolicy(upstream) {
   return policy;
 }
 
-function timedPolicy(upstream, { maxOutputTokens = 32_768, requestTimeoutMs = 120_000 } = {}) {
+export const defaultTimedResponsesLimits = Object.freeze({ maxOutputTokens: 32_768, requestTimeoutMs: 120_000 });
+
+function timedPolicy(upstream, { maxOutputTokens = defaultTimedResponsesLimits.maxOutputTokens,
+  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs } = {}) {
   if (!integer(maxOutputTokens, 16) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
     throw new TypeError('Timed Responses gateway requires a finite request timeout and output-token cap');
   }

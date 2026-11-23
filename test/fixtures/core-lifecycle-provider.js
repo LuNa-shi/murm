@@ -14,7 +14,7 @@ execute[promisify.custom] = (...args) => runCommand(...args);
 
 // Simulate only external infrastructure: provider/Worker HTTP and host OS commands.
 // Core, its backend, manager, admission state and cleanup are the actual modules.
-export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate } = {}) {
+export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate, onRpc } = {}) {
   const resources = new Map();
   const records = [];
   const tables = new Map();
@@ -80,7 +80,7 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
       const id = `fixture-${++allocations}`;
       records.length = 0;
       resources.set(id, { id, container: createHash('sha256').update(id).digest('hex'), labels: { ...body.metadata, 'opensandbox.io/id': id } });
-      await onCreate?.(id);
+      await onCreate?.(id, body);
       return send({ id, execd_endpoint: { url: `${base}/execd` } });
     }
     if (path.includes('/endpoints/')) return send({ url: `${base}/worker` });
@@ -109,9 +109,13 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
       if (reply.disconnect) return response.destroy();
       return send(reply.body, reply.status ?? 200);
     }
-    if (path === '/worker/rpc') return send({ result: { response: { id: body.message.id, success: true, command: body.message.type,
-      ...(body.message.type === 'prompt' ? { data: { disposition: 'started' } } : {}) },
-      records: records.filter(row => row.worker_sequence > (body.message.since ?? 0)) } });
+    if (path === '/worker/rpc') {
+      const result = await onRpc?.(body.message);
+      if (result === false) return response.destroy();
+      return send({ result: result ?? { response: { id: body.message.id, success: true, command: body.message.type,
+        ...(body.message.type === 'prompt' ? { data: { disposition: 'started' } } : {}) },
+        records: records.filter(row => row.worker_sequence > (body.message.since ?? 0)) } });
+    }
     if (path === '/worker/stop') return send({ result: await onStop?.() ?? { stopped: true } });
     if (path.startsWith('/sandboxes/') && request.method === 'DELETE') {
       deletion();
@@ -130,6 +134,7 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
   return {
     url: base, deletionStarted,
     allocations: () => allocations,
+    publish(row) { records.push({ ...row, worker_sequence: records.length + 1 }); },
     unexpectedExit() { records.push({ type: 'worker_exit', code: 1, worker_sequence: records.length + 1 }); },
     releaseDeletion() { holdDelete = false; releaseDelete(); },
     allowDeletion() { holdDelete = false; rejectDelete = false; releaseDelete(); },

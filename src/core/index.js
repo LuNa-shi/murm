@@ -7,6 +7,7 @@ import { createCoreModelAccess } from './model-access.js';
 import { createInputLedger } from './input-ledger.js';
 import { createFileControls } from './file-controls.js';
 import { saveBotArtifacts } from './artifact-collection.js';
+import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
 import { claimPiOpenSandboxBackend, openPiOpenSandboxBackend } from './pi-opensandbox-backend.js';
 import { snapshotServiceRegistry } from './services.js';
 
@@ -14,14 +15,6 @@ const defaultTimeoutMs = 60_000;
 const timedOut = Symbol('timed out');
 const liveStates = new Set(['idle', 'running']);
 const knownInputRejections = new Set(['INVALID_CONTRACT', 'NOT_ALLOWED', 'CONFLICT', 'NOT_FOUND']);
-
-function errorInfo(error, fallback = 'SERVICE_UNAVAILABLE') {
-  return {
-    code: error?.code ?? fallback,
-    message: error?.message ?? 'Operation failed',
-    retryable: error?.retryable ?? false,
-  };
-}
 
 function resourceError(code, message, context, { cleanup = 'complete', details = [] } = {}) {
   return Object.assign(new Error(message), { name: 'ResourceError', code, ...context, cleanup, details });
@@ -52,6 +45,8 @@ async function writeRecord(path, value) {
 export async function createRuntime(options) {
   const runtimeId = randomUUID();
   const context = { operation: 'createRuntime', runtimeId };
+  const redactor = createRedactor([process.env.OPEN_SANDBOX_API_KEY, process.env.SWARMENV_EXECD_ACCESS_TOKEN]);
+  const errorInfo = redactor.error;
   let config, registrations, profiles, modelAccessPolicy, outputDir;
   try {
     if (!Number.isSafeInteger(options?.maxBots) || options.maxBots < 1 ||
@@ -63,18 +58,25 @@ export async function createRuntime(options) {
       throw new TypeError('modelAccessPolicy must provide synchronous authorize and withCommit');
     }
     config = claimPiOpenSandboxBackend(options.backend);
+    redactor.add([config.sandbox.apiKey, config.sandbox.execdToken,
+      ...Object.values(config.models).flatMap(model => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
     modelAccessPolicy = options.modelAccessPolicy;
     outputDir = join(resolve(options.outputDir), runtimeId);
   } catch (error) {
-    throw resourceError('INVALID_CONTRACT', error.message, context);
+    throw resourceError('INVALID_CONTRACT', redactor.text(error.message), context, { details: [errorInfo(error, 'INVALID_CONTRACT')] });
   }
 
   const maxBots = options.maxBots;
   const assemblyDeadline = performance.now() + defaultTimeoutMs;
   const bots = new Map();
   const reportPath = join(outputDir, 'runtime.json');
+  const records = createRunRecords(outputDir, runtimeId);
+  const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxBots, modelAccessPolicy, defaultTimeoutMs }, redactor.text);
+  const saveSummary = (status, data = {}) => writeRecord(reportPath, {
+    runtimeId, status, maxBots, config: effectiveConfig, evidence: records.snapshot(), ...data,
+  });
   const getBot = botId => {
     const bot = bots.get(botId);
     return bot && {
@@ -118,28 +120,35 @@ export async function createRuntime(options) {
   const assembly = (async () => {
     await mkdir(outputDir, { recursive: true, mode: 0o700 });
     recordsReady = true;
-    await writeRecord(reportPath, { runtimeId, status: 'starting', maxBots });
+    await records.initialize();
+    await saveSummary('starting');
     reportSaved = true;
     assertAssembling();
     modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy,
       onOwned: owner => { modelAccess = owner; } });
     assertAssembling();
     bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getBot, registrations,
+      recordService: entry => records.record('service', { ...entry,
+        operationId: redactor.text(entry.operationId),
+        ...(entry.error ? { error: { ...entry.error, code: redactor.text(entry.error.code) } } : {}),
+      }),
       onOwned: owner => { bridge = owner; } });
     assertAssembling();
-    backend = await openPiOpenSandboxBackend(config, { runtimeId, outputDir, bridge, modelAccess });
-    await writeRecord(reportPath, { runtimeId, status: 'open', maxBots });
+    backend = await openPiOpenSandboxBackend(config, { runtimeId, outputDir, bridge, modelAccess,
+      registerPrivateValues: redactor.add });
+    await saveSummary('open');
   })();
   const closeEndpoints = () => Promise.all([closeEndpoint('bridge', bridge), closeEndpoint('model', modelAccess)]);
   const rollbackAssembly = async () => {
-    await assembly.catch(() => {});
+    const failure = await assembly.then(() => undefined, error => errorInfo(error));
     await Promise.all([closeEndpoints(), closeEndpoint('backend', backend)]);
     const pending = pendingEndpoints();
     const errors = pending.flatMap(item => item.error ? [item.error] : []);
     if (recordsReady) {
       try {
-        await writeRecord(reportPath, { runtimeId, status: 'initialization-failed',
-          cleanup: pending.length ? 'pending' : 'complete', errors, pending });
+        if (failure) records.record('runtime', { state: 'initialization-failed', error: failure });
+        await records.flush();
+        await saveSummary('initialization-failed', { cleanup: pending.length ? 'pending' : 'complete', errors, pending, failure });
         reportSaved = true;
       } catch (error) {
         const failure = { ...errorInfo(error), code: 'REPORT_WRITE_FAILED' };
@@ -161,7 +170,7 @@ export async function createRuntime(options) {
     if (error.name === 'ResourceError') throw error;
     const rollback = await observe(rollbackAssembly(), Math.max(1, assemblyDeadline - performance.now()));
     const code = error.code === 'INVALID_CONFIG' ? 'INVALID_CONTRACT' : error.code ?? 'SERVICE_UNAVAILABLE';
-    throw resourceError(code, error.message, {
+    throw resourceError(code, redactor.text(error.message), {
       ...context, ...(reportSaved ? { reportPath } : {}),
     }, {
       cleanup: rollback === timedOut || rollback.pending.length ? 'pending' : 'complete',
@@ -175,14 +184,18 @@ export async function createRuntime(options) {
   const fileControls = createFileControls({ backend, findBot, problem, observe, timedOut,
     isLive: bot => !closing && liveStates.has(bot.info.status) });
   const handlerErrors = [];
+  let handlerErrorCount = 0;
   let closeWork;
   let finalClose;
 
   function problem(code, message, operation, botId, requestId, cleanup = 'complete', details = []) {
-    return resourceError(code, message, {
+    const error = resourceError(redactor.text(code), redactor.text(message), {
       operation, runtimeId, ...(botId === undefined ? {} : { botId }),
-      ...(requestId === undefined ? {} : { requestId }), reportPath,
+      ...(typeof requestId === 'string' ? { requestId: redactor.text(requestId) } : {}), ...(reportSaved ? { reportPath } : {}),
     }, { cleanup, details });
+    records.record('resource-error', { operation, botId: redactor.text(botId), requestId: error.requestId,
+      error: errorInfo(error), cleanup, details });
+    return error;
   }
 
   function findBot(botId, operation, requestId) {
@@ -212,7 +225,12 @@ export async function createRuntime(options) {
 
   function emit(bot, payload) {
     const { info } = bot;
-    const event = structuredClone({ ...payload, botId: info.id, seq: ++info.cursor });
+    const { type, ...values } = payload;
+    const event = structuredClone({ ...values, type, botId: info.id, seq: ++info.cursor });
+    if (event.text !== undefined) event.text = redactor.text(event.text);
+    if (event.output !== undefined) event.output = redactor.text(event.output);
+    if (event.reason !== undefined) event.reason = redactor.text(event.reason);
+    if (event.error !== undefined) event.error = errorInfo(event.error);
     if (event.type === 'output') info.latestOutput = event.text;
     if (event.type === 'settled') {
       bot.nativeExecuting = false;
@@ -228,11 +246,13 @@ export async function createRuntime(options) {
       info.status = 'exited';
       revoke(info.id);
     }
+    records.record('event', { botId: info.id, event });
     for (const handler of [...handlers]) {
       const recordFailure = error => {
-        if (handlerErrors.length < 32) handlerErrors.push({
-          botId: info.id, seq: event.seq, name: error?.name ?? 'Error',
-        });
+        const entry = { botId: info.id, eventSeq: event.seq, name: redactor.text(error?.name ?? 'Error') };
+        handlerErrorCount++;
+        if (handlerErrors.length < 32) handlerErrors.push(entry);
+        records.record('subscriber-error', entry);
       };
       try { Promise.resolve(handler(structuredClone(event))).catch(recordFailure); }
       catch (error) { recordFailure(error); }
@@ -266,6 +286,7 @@ export async function createRuntime(options) {
     bot.controller.abort();
     revoke(info.id);
     bot.cleanupAction = 'await-startup';
+    records.record('stop', { botId: info.id, state: 'started', collect: bot.collect });
     bot.stopWork = (async () => {
       await bot.start?.catch(() => {});
       try {
@@ -293,6 +314,7 @@ export async function createRuntime(options) {
         bot.cleanupError = errorInfo(error);
       }
       info.lastStop = stopReceipt(bot);
+      records.record('stop', { botId: info.id, state: 'observed', receipt: info.lastStop });
       return info.lastStop;
     })().finally(() => { bot.stopWork = undefined; });
     return bot.stopWork;
@@ -319,6 +341,7 @@ export async function createRuntime(options) {
       }
       const info = { id: randomUUID(), profile: parameters.profile, status: 'starting', cursor: 0,
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
+      redactor.add(Object.values(parameters.secretEnv ?? {}));
       const bot = {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
         activityClaims: new Set(), nativeExecuting: false, executionStopped: false, bindings: parameters.bindings, collect: parameters.collect,
@@ -328,9 +351,11 @@ export async function createRuntime(options) {
       request = { fingerprint, bot };
       bots.set(info.id, bot);
       spawnRequests.set(requestId, request);
+      records.record('spawn', { state: 'registered', botId: info.id, parentId: info.parentId, profile: info.profile,
+        requestId: redactor.text(requestId), collect: parameters.collect, writable: parameters.writable ?? bot.profile.writable });
       bot.start = Promise.resolve().then(async () => {
         bot.controller.signal.throwIfAborted();
-        await backend.spawn({ botId: info.id, profile: bot.profile, options: parameters,
+        const resource = await backend.spawn({ botId: info.id, profile: bot.profile, options: parameters,
           signal: bot.controller.signal, onEvent: event => emit(bot, event),
           onExecutionStart: () => {
             bot.nativeExecuting = true;
@@ -338,6 +363,8 @@ export async function createRuntime(options) {
           } });
         if (info.status !== 'starting') throw new Error('Bot stopped before becoming idle');
         info.status = 'idle';
+        records.record('spawn', { state: 'ready', botId: info.id, requestId: redactor.text(requestId),
+          sandboxId: resource.sandboxId, versions: resource.versions });
         return structuredClone(info);
       });
       request.result = bot.start.catch(error => {
@@ -374,6 +401,8 @@ export async function createRuntime(options) {
         throw problem('NOT_ALLOWED', 'Bot is not accepting input', 'send', botId, requestId);
       }
       const inputId = randomUUID();
+      const identity = { botId, requestId: redactor.text(requestId), inputId, source: 'host', mode };
+      records.record('input', { ...identity, state: 'registered' });
       const releaseActivity = () => {
         bot.activityClaims.delete(request);
         refreshActivity(bot);
@@ -387,14 +416,19 @@ export async function createRuntime(options) {
         const querying = request.dispatched === true;
         try {
           request.dispatched = true;
+          records.record('input', { ...identity, state: querying ? 'receipt-query' : 'dispatched' });
           const receipt = await backend.send(botId, input, { mode, inputId });
           if (receipt.status === 'accepted' && receipt.disposition === 'handled') releaseActivity();
-          return { ...receipt, inputId };
+          records.record('input', { ...identity, state: receipt.status, disposition: receipt.disposition,
+            reason: receipt.reason, cursor: bot.info.cursor });
+          return receipt.status === 'accepted' ? { inputId, status: 'accepted', disposition: receipt.disposition } : { inputId, status: 'unknown' };
         } catch (error) {
           if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
             releaseActivity();
+            records.record('input', { ...identity, state: 'rejected', error: errorInfo(error) });
             throw problem(error.code, error.message, 'send', botId, requestId);
           }
+          records.record('input', { ...identity, state: 'unknown', error: errorInfo(error) });
           return { inputId, status: 'unknown' };
         }
       } };
@@ -409,6 +443,8 @@ export async function createRuntime(options) {
       });
     }
     const result = await observe(request.result);
+    if (result === timedOut) records.record('input', { botId, requestId: redactor.text(requestId), inputId: request.inputId,
+      source: 'host', mode, state: 'unknown', reason: 'host-wait-expired' });
     return result === timedOut ? { inputId: request.inputId, status: 'unknown' } : structuredClone(result);
   }
 
@@ -422,6 +458,7 @@ export async function createRuntime(options) {
     const timeoutMs = bound(options, 'stop', botId);
     const bot = findBot(botId, 'stop');
     const result = await observe(beginStop(bot), timeoutMs);
+    if (result === timedOut) records.record('stop', { botId, state: 'host-wait-expired', receipt: currentStop(bot) });
     return structuredClone(result === timedOut ? currentStop(bot) : result);
   }
 
@@ -429,8 +466,11 @@ export async function createRuntime(options) {
   function closeReceipt(botReceipts, errors, reportError) {
     const pending = [...botReceipts.flatMap(bot => bot.pending ? [bot.pending] : []), ...pendingEndpoints()];
     if (reportError || savingClose) pending.push({ kind: 'report', id: runtimeId, action: 'save', ...(reportError ? { error: reportError } : {}) });
+    const evidence = records.snapshot();
+    if (evidence.lost) pending.push({ kind: 'report', id: runtimeId, action: 'save',
+      error: { code: 'EVIDENCE_INCOMPLETE', message: 'Some Runtime evidence could not be saved', retryable: false } });
     return { bots: botReceipts, cleanup: errors.length || pending.length ? 'pending' : 'complete',
-      errors, pending, outputDir, ...(reportSaved ? { reportPath } : {}) };
+      errors, pending, outputDir, evidence, ...(reportSaved ? { reportPath } : {}) };
   }
 
   async function close(options) {
@@ -439,6 +479,7 @@ export async function createRuntime(options) {
     closing = true;
     if (!closeWork) {
       closeWork = (async () => {
+        records.record('runtime', { state: 'closing', timeoutMs });
         const stopping = Promise.all([...bots.values()].map(beginStop));
         await closeEndpoints();
         const botReceipts = await stopping;
@@ -446,12 +487,16 @@ export async function createRuntime(options) {
           await closeEndpoint('backend', backend);
         }
         const errors = pendingEndpoints().flatMap(subject => subject.error ? [subject.error] : []);
+        savingClose = true;
+        await records.flush();
+        savingClose = false;
         let receipt = closeReceipt(botReceipts, errors);
         savingClose = true;
         try {
           receipt.reportPath = reportPath;
-          await writeRecord(reportPath, { runtimeId, status: receipt.cleanup === 'complete' ? 'closed' : 'closing',
-            ...receipt, handlerErrors });
+          await saveSummary(receipt.cleanup === 'complete' ? 'closed' : 'closing', {
+            ...receipt, handlerErrors, handlerErrorCount,
+          });
           reportSaved = true;
         } catch (error) {
           const failure = { ...errorInfo(error), code: 'REPORT_WRITE_FAILED' };
