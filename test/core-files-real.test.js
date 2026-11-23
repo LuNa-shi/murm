@@ -32,10 +32,10 @@ test('actual no-Task Bots verify initial seeds and readonly prepare/grant with n
   t.after(async () => {
     report.cleanup = await cleanupRuntimes(runtimes, { inspect: ownedContainers, resources });
     Object.assign(report, { resources, upstream: upstream.receipt(), deadlineExpired });
-    report.failure ||= deadlineExpired || report.cleanup.some(row => row.cleanup !== 'complete') || Object.values(resources).some(row => !row.empty);
+    report.failure ||= deadlineExpired || report.upstream.failure !== undefined || report.upstream.arrivals !== 10 ||
+      report.cleanup.some(row => row.cleanup !== 'complete') || Object.values(resources).some(row => !row.empty);
     await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify(report, null, 2), { mode: 0o600 });
-    assert.ok(report.cleanup.every(row => row.cleanup === 'complete'));
-    assert.ok(Object.values(resources).every(row => row.empty));
+    assert.equal(report.failure, false, 'Acceptance receipt must confirm workload bounds and complete cleanup');
   });
   const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
@@ -119,6 +119,7 @@ test('actual no-Task Bots verify initial seeds and readonly prepare/grant with n
   await turn(a, 'F06_A2');
   assert.equal((await docker('cat', '/workspace/core-files-outside-probe')).stdout, 'OUTSIDE_UNCHANGED\n');
   assert.deepEqual(await ownedContainers(runtime.id), containers);
+  assert.equal(upstream.receipt().arrivals, 10);
   assert.equal(upstream.receipt().receipts.length, 10); assert.equal(upstream.receipt().failure, undefined);
   assert.equal(Object.keys(upstream.receipt().evidence).length, 5);
   report.failure = false;

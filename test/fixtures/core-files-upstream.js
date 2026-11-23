@@ -65,11 +65,13 @@ export async function createFilesUpstream() {
   const receipts = [];
   const turns = new Map();
   const evidence = {};
+  let arrivals = 0;
   let failure;
   const deadlineAt = Date.now() + 180_000;
   const server = createServer(async (request, response) => {
+    const arrival = ++arrivals;
     try {
-      assert.ok(Date.now() < deadlineAt && receipts.length < 10, 'Fixed workload bound');
+      assert.ok(Date.now() < deadlineAt && arrival <= 10 && !failure, 'Fixed workload bound');
       assert.equal(request.method, 'POST'); assert.equal(request.url, '/v1/responses');
       let bytes = 0; const chunks = [];
       for await (const chunk of request) { bytes += chunk.length; assert.ok(bytes <= 2 * 1024 ** 2); chunks.push(chunk); }
@@ -90,12 +92,13 @@ export async function createFilesUpstream() {
         evidence[id] = checks;
         item = { type: 'message', id: `msg_${id}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: `${id}_OK`, annotations: [] }] };
       }
+      assert.ok(!failure && Date.now() < deadlineAt, 'Fixed workload bound');
       receipts.push({ id, ordinal, verified: ordinal === 2 });
       response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', receipts.length, item));
     } catch { failure = 'CONTROLLED_FILES_FAILED'; response.writeHead(400); response.end(JSON.stringify({ error: { message: failure } })); }
   });
   server.requestTimeout = 10_000; server.headersTimeout = 10_000;
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  return { url: `http://127.0.0.1:${server.address().port}/v1/responses`, receipt: () => ({ receipts, evidence, failure }),
+  return { url: `http://127.0.0.1:${server.address().port}/v1/responses`, receipt: () => ({ arrivals, receipts, evidence, failure }),
     close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }

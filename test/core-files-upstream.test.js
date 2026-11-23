@@ -23,6 +23,11 @@ test('file handoff fixture rejects absent or false physical evidence with saniti
     assert.equal(result.status, 400);
     assert.deepEqual(await result.json(), { error: { message: 'CONTROLLED_FILES_FAILED' } });
     assert.deepEqual(upstream.receipt().evidence, {});
+    const afterFailure = await send([{ role: 'user', content: 'F06_B2' }]);
+    assert.equal(afterFailure.status, 400);
+    await afterFailure.text();
+    assert.equal(upstream.receipt().arrivals, 3);
+    assert.equal(upstream.receipt().receipts.length, 1);
   }
 });
 
