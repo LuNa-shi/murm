@@ -39,7 +39,7 @@ This section is generated from executable exports and checked against the source
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
-| [src/core/index.d.ts](../../src/core/index.d.ts) | `e82a0c0ff5a84116c9c446176eda31295c961dbf6450adaba45142f9ab02e426` |
+| [src/core/index.d.ts](../../src/core/index.d.ts) | `897a8c319b905ffb61f8e57dda3fdd711ffca421261dc578696d73828323bfae` |
 | [src/core/services.d.ts](../../src/core/services.d.ts) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
 | [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `166e51de1b45cf32e17b0b62fdafecfe913521122450a125f3ece1c87cd267ed` |
 
@@ -3321,6 +3321,7 @@ export interface CloseReceipt {
   pending: readonly PendingCleanup[];
   outputDir: string;
   reportPath?: string;
+  evidence: { path?: string; recorded: number; lost: number; pending: number };
 }
 
 export interface Runtime {

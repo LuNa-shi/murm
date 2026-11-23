@@ -18653,6 +18653,15 @@
       "role": "Trusted Core-returned flat Bot identity registration and readiness"
     },
     {
+      "path": "src/core/run-records.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Private Runtime summary configuration, ordered evidence writing and credential redaction"
+    },
+    {
       "path": "src/environments/shared/run-report.js",
       "category": "Execution and control",
       "chapters": [

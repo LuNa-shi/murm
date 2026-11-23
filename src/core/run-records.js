@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { defaultTimedResponsesLimits } from '../agent/responses-budget-gateway.js';
+import { getAdapterMetadata } from './services.js';
 import packageInfo from '../../package.json' with { type: 'json' };
 
 const queueLimit = 4096;
@@ -67,8 +68,8 @@ export function runtimeConfiguration({ config, profiles, registrations, maxBots,
       environmentKeys: Object.keys(profile.env ?? {}).sort(), network: profile.network, collect: profile.collect,
       spawnProfiles: profile.spawnProfiles, promptSha256: createHash('sha256').update(profile.prompt).digest('hex'),
     }])),
-    services: [...registrations.values()].map(({ manifest, metadata }) => ({
-      id: manifest.id, transport: manifest.endpoint.transport, ...(metadata ?? {}),
+    services: [...registrations.values()].map(({ manifest, adapter }) => ({
+      id: manifest.id, transport: manifest.endpoint.transport, ...getAdapterMetadata(adapter),
     })),
   };
 }

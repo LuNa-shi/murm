@@ -4,12 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
+import { notesManifest } from './fixtures/core-notes-service.js';
 
 const explicitSecret = 'explicit-test-secret\$[]';
 const upstreamSecret = 'test-upstream-bearer';
 const profileValue = 'configured-profile-value';
 
-async function fixture(t, hooks) {
+async function fixture(t, hooks, { registrations = [], grants = {} } = {}) {
   const provider = await createLifecycleProvider(t, hooks);
   provider.allowDeletion();
   const { createRuntime } = await import('@swarmenv/core');
@@ -18,6 +19,8 @@ async function fixture(t, hooks) {
   const outputDir = await mkdtemp(join(tmpdir(), 'core-report-evidence-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   function makeOptions(directory = outputDir) {
+    const services = new ServiceRegistry();
+    for (const registration of registrations) services.registerService(registration);
     return {
       backend: createPiOpenSandboxBackend({
         sandbox: { lifecycleBaseUrl: provider.url, resourceLimits: { cpu: '1', memory: '1Gi' } },
@@ -27,9 +30,9 @@ async function fixture(t, hooks) {
           headers: { authorization: `Bearer ${upstreamSecret}` } } } },
         isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
       }),
-      profiles: { worker: { image: 'fixture', model: 'default', prompt: 'fixture', writable: true, services: {},
+      profiles: { worker: { image: 'fixture', model: 'default', prompt: 'fixture', writable: true, services: grants,
         env: { CORE_REPORT_DATA: profileValue } } },
-      services: new ServiceRegistry(), maxBots: 2, outputDir: directory,
+      services, maxBots: 2, outputDir: directory,
     };
   }
   return { provider, outputDir, makeRuntime: directory => createRuntime(makeOptions(directory)) };
@@ -108,6 +111,9 @@ test('Runtime records identity, unknown input reconciliation, sanitised settled 
     assert.equal(report.config.waiting.hostDefaultMs, 60_000);
     assert.deepEqual(report.config.models.default, { provider: 'kimi_proxy', model: 'k3', requestTimeoutMs: 8000, maxOutputTokens: 256 });
     assert.deepEqual(report.config.profiles.worker.environmentKeys, ['CORE_REPORT_DATA']);
+    assert.equal(report.modelLedgers.length, 1);
+    assert.equal(report.modelLedgers[0].alias, 'default');
+    assert.equal((await stat(report.modelLedgers[0].path)).mode & 0o777, 0o600);
     assert.ok(report.handlerErrorCount >= 2);
     assert.equal(report.evidence.lost, 0);
     assert.equal((await stat(receipt.evidence.path)).mode & 0o777, 0o600);
@@ -122,6 +128,49 @@ test('Runtime records identity, unknown input reconciliation, sanitised settled 
     assert.ok(rows.some(row => row.type === 'subscriber-error' && row.name === '[redacted]'));
     assert.equal((await readFile(other.evidence.path, 'utf8')).includes(bot.id), false);
   } finally { await Promise.all([runtime.close(), siblingRun.close()]); }
+});
+
+test('Runtime report joins a rejected Service write to its trusted caller and effective adapter timeout', async t => {
+  const { createHttpJsonAdapter } = await import('@swarmenv/core/services');
+  const manifest = notesManifest();
+  manifest.endpoint = { transport: 'http-json', url: 'https://example.invalid' };
+  const serviceToken = 'fixture-adapter-credential';
+  const writes = [];
+  const adapter = createHttpJsonAdapter({ token: serviceToken, timeoutMs: 1234, fetchImpl(_url, options) {
+    assert.equal(options.headers.authorization, `Bearer ${serviceToken}`);
+    writes.push(JSON.parse(options.body));
+    return Response.json({ ok: true, result: { invalid: 'invalid-adapter-output' } });
+  } });
+  let credentials;
+  const { makeRuntime } = await fixture(t, { onStart(body) { credentials = body; } },
+    { registrations: [{ manifest, adapter }], grants: { notes: ['put'] } });
+  const runtime = await makeRuntime();
+  t.after(() => runtime.close({ timeoutMs: 100 }));
+  const bot = await runtime.spawn({ requestId: 'service-reporter', profile: 'worker' });
+  const url = new URL(credentials.env.SWARMENV_BRIDGE_URL);
+  url.hostname = '127.0.0.1';
+  url.pathname = '/call';
+  const response = await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${credentials.secret_env.SWARMENV_BRIDGE_TOKEN}` },
+    body: JSON.stringify({ service_id: 'notes', operation: 'put', operation_id: 'fixed-write',
+      payload: { key: 'one', text: 'omitted-service-input' }, caller: { botId: 'forged' } }) });
+  assert.equal((await response.json()).error.code, 'SERVICE_OUTPUT_INVALID');
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0].caller.botId, bot.id);
+  const close = await runtime.close();
+  assert.equal(close.cleanup, 'complete');
+  const raw = await readFile(close.evidence.path, 'utf8');
+  const report = await readFile(close.reportPath, 'utf8');
+  for (const marker of [serviceToken, 'omitted-service-input', 'invalid-adapter-output', 'forged']) {
+    assert.equal(raw.includes(marker) || report.includes(marker), false);
+  }
+  assert.deepEqual(JSON.parse(report).config.services, [{ id: 'notes', transport: 'http-json', timeoutMs: 1234 }]);
+  const service = raw.trim().split('\n').map(line => JSON.parse(line)).filter(row => row.type === 'service');
+  assert.equal(service.length, 4);
+  assert.ok(service.every(row => row.runtimeId === runtime.id && row.botId === bot.id && row.profile === 'worker' &&
+    row.operationId === 'fixed-write' && row.operation === 'put'));
+  assert.deepEqual(service.map(row => [row.state, row.outcome]), [
+    ['validation', 'pending'], ['validation', 'passed'], ['invocation', 'pending'], ['settled', 'unknown'],
+  ]);
 });
 
 test('evidence write failure stays visible after resources close and an invalid output directory has no report path', async t => {

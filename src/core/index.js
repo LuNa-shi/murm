@@ -75,7 +75,8 @@ export async function createRuntime(options) {
   const records = createRunRecords(outputDir, runtimeId);
   const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxBots, modelAccessPolicy, defaultTimeoutMs }, redactor.text);
   const saveSummary = (status, data = {}) => writeRecord(reportPath, {
-    runtimeId, status, maxBots, config: effectiveConfig, evidence: records.snapshot(), ...data,
+    runtimeId, status, maxBots, config: effectiveConfig, evidence: records.snapshot(),
+    modelLedgers: modelAccess?.ledgerPaths?.() ?? [], ...data,
   });
   const getBot = botId => {
     const bot = bots.get(botId);
