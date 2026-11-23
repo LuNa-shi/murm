@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **187 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **184 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -151,14 +151,11 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 |---|---|---|---|
 | [src/agent/bot-contract/solver-system.txt](../../src/agent/bot-contract/solver-system.txt) | Immutable independent solver system addendum without collaboration skills | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md) | `33ea49d9c46fc7402dac07ec040aed24da56dd4d92cb3b7e8fe7d1cdae0c445d` |
 
-### controlled verification data (4)
+### controlled verification data (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [fixtures/putnam-1966-a1/fixture-manifest.json](../../fixtures/putnam-1966-a1/fixture-manifest.json) | Controlled fixture input/checker identity | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `39bfa3a2d25e3ce2ba1a377186a67a3ce55029015cf4d067a3aae6a1521d6279` |
-| [fixtures/putnam-1966-a1/invalid-candidate.lean](../../fixtures/putnam-1966-a1/invalid-candidate.lean) | Intentionally invalid deterministic fixture input; not benchmark input | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `747f42c7b5c759a9a1ecafa292bb38d976f88ca5e790854243aa18a4dd2a07b3` |
 | [fixtures/putnam-1966-a1/putnam_1966_a1.lean](../../fixtures/putnam-1966-a1/putnam_1966_a1.lean) | Locked formalization used by controlled fixture | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `4b1bd530669e71e5909398d54caddeb65eb33a708850e25ba4f1d7fc88ba0cad` |
-| [fixtures/putnam-1966-a1/valid-candidate.lean](../../fixtures/putnam-1966-a1/valid-candidate.lean) | Known controlled repair fixture; not benchmark solution input | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `0f7dd8813d2f4cee8d30cc74d8d7a890a1c7e632c01f58372e58126ed1f95c1d` |
 
 ### documentation tooling (4)
 
@@ -254,7 +251,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 |---|---|---|---|
 | [services/builtin/compose.yaml](../../services/builtin/compose.yaml) | Four-process isolated service deployment with independent persistent volumes | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `a48e8789abf64c2b0660fa3dbb1e9a2cbc0747d227bda4a82c6021cbf9543238` |
 | [services/builtin/Dockerfile](../../services/builtin/Dockerfile) | Built-in service image recipe and persisted database mount | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `2e4c0fec089b80f72ac4a9f52a2fca81d5a332a88b7e3bd5630ecc98ece7347a` |
-| [services/builtin/README.md](../../services/builtin/README.md) | Built-in provider deployment configuration | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `a83a4e0a8b3bf017eec9cdd90d5983e95278c3b5b239919730b45157263eba91` |
+| [services/builtin/README.md](../../services/builtin/README.md) | Built-in provider deployment configuration | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `8b22c11664ce5dd6e8806090fb80f6312caff8750256c87247717f960e278c6d` |
 | [services/mathlib-search/Dockerfile](../../services/mathlib-search/Dockerfile) | Mathlib provider image recipe | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `1142ae8a0decfc5ab82594826a0446f2af4b4ea36dde33ae7ff33428d3948f60` |
 | [services/mathlib-search/README.md](../../services/mathlib-search/README.md) | Mathlib provider configuration and operation notes | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `17a48afa57edfc4993508a6fe125bd8901e98f67ed6868c8a8536f35f58d8804` |
 | [services/mathlib-search/references/loogle.md](../../services/mathlib-search/references/loogle.md) | Repository-owned query guidance loaded by bundle | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3aff1ebba86327de5465c0b44b37cb5ec57f5bac6b07c90ed211a0b2f02376bd` |

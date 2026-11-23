@@ -1,6 +1,6 @@
 # 15. Programmable Core Runtime
 
-The Phase 0005 entry points are `@swarmenv/core`, `@swarmenv/core/services`, and `@swarmenv/core/backends/pi-opensandbox`. The private repository package exposes these imports within a checkout. The first lifecycle slice runs an independent Pi Bot through the [Pi/OpenSandbox backend](16-pi-opensandbox-backend.md). The existing flat and benchmark entry points described in earlier chapters use their original Runtime during migration. The [Phase 0005 design](../phases/0005-core-environment/README.md) defines the remaining interfaces and acceptance gates.
+The Phase 0005 entry points are `@swarmenv/core`, `@swarmenv/core/services`, and `@swarmenv/core/backends/pi-opensandbox`. The private repository package exposes these imports within a checkout. The first lifecycle slice runs an independent Pi Bot through the [Pi/OpenSandbox backend](16-pi-opensandbox-backend.md). The current flat Environment uses this Core for Bot creation, input and cleanup; its controller and Services retain Task and Execution policy. Direct domain Runtime callers supply their own Session factory. The dedicated benchmark entry points have been retired. The [Phase 0005 design](../phases/0005-core-environment/README.md) defines the remaining interfaces and acceptance gates.
 
 ## Assembly
 
