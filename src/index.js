@@ -1,7 +1,6 @@
 export * from './errors.js';
 export * from './protocol/envelope.js';
 export * from './agent/services-bridge.js';
-export * from './agent/version-manifest.js';
 export * from './agent/capability-profile.js';
 export * from './task/task-types.js';
 export * from './task/task-service.js';

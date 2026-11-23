@@ -479,16 +479,6 @@
       "role": "Authenticated per-Core tool endpoint, binding and lifecycle orchestration"
     },
     {
-      "path": "src/agent/version-manifest.js",
-      "category": "Agent and prompts",
-      "chapters": [
-        "docs/architecture/01-agent-core.md",
-        "docs/architecture/08-prompts.md",
-        "docs/architecture/10-service-api-reference.md"
-      ],
-      "role": "Adapter/version/prompt/runtime provenance manifest"
-    },
-    {
       "path": "src/cli/swarm-cli.js",
       "category": "service and Agent integration",
       "chapters": [
