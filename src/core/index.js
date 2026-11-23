@@ -133,6 +133,7 @@ export async function createRuntime(options) {
     assertAssembling();
     bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getBot, registrations,
       recordService: entry => records.record('service', { ...entry,
+        serviceId: redactor.text(entry.serviceId), operation: redactor.text(entry.operation),
         operationId: redactor.text(entry.operationId),
         ...(entry.error ? { error: { ...entry.error, code: redactor.text(entry.error.code) } } : {}),
       }),
@@ -253,7 +254,12 @@ export async function createRuntime(options) {
     records.record('event', { botId: info.id, event });
     for (const handler of [...handlers]) {
       const recordFailure = error => {
-        const entry = { botId: info.id, eventSeq: event.seq, name: redactor.text(error?.name ?? 'Error') };
+        let name = 'Error';
+        try {
+          const candidate = error?.name;
+          if (typeof candidate === 'string') name = redactor.text(candidate);
+        } catch { /* Uninspectable subscriber rejection */ }
+        const entry = { botId: info.id, eventSeq: event.seq, name };
         handlerErrorCount++;
         if (handlerErrors.length < 32) handlerErrors.push(entry);
         records.record('subscriber-error', entry);

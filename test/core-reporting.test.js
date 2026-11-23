@@ -74,6 +74,7 @@ test('Runtime records identity, unknown input reconciliation, sanitised settled 
     const observed = [];
     const unsubscribe = runtime.onEvent(event => { if (event.botId === bot.id) observed.push(event); });
     const unsubFailure = runtime.onEvent(() => { throw Object.assign(new Error('local callback assertion'), { name: explicitSecret }); });
+    const unsubObjectFailure = runtime.onEvent(() => Promise.reject({ name: { explicitSecret } }));
     try {
       provider.publish({ type: 'agent_start' });
       provider.publish({ type: 'message_end', message: {
@@ -94,7 +95,7 @@ test('Runtime records identity, unknown input reconciliation, sanitised settled 
         assert.equal(JSON.stringify(observed).includes(secret), false);
         assert.equal(JSON.stringify(info).includes(secret), false);
       }
-    } finally { unsubscribe(); unsubFailure(); }
+    } finally { unsubscribe(); unsubFailure(); unsubObjectFailure(); }
 
     const receipt = await runtime.close();
     const other = await siblingRun.close();
@@ -146,7 +147,8 @@ test('Runtime report joins a rejected Service write to its trusted caller and ef
     { registrations: [{ manifest, adapter }], grants: { notes: ['put'] } });
   const runtime = await makeRuntime();
   t.after(() => runtime.close({ timeoutMs: 100 }));
-  const bot = await runtime.spawn({ requestId: 'service-reporter', profile: 'worker' });
+  const privateMarker = 'private-bot-marker';
+  const bot = await runtime.spawn({ requestId: 'service-reporter', profile: 'worker', secretEnv: { PRIVATE_MARKER: privateMarker } });
   const url = new URL(credentials.env.SWARMENV_BRIDGE_URL);
   url.hostname = '127.0.0.1';
   url.pathname = '/call';
@@ -154,23 +156,28 @@ test('Runtime report joins a rejected Service write to its trusted caller and ef
     body: JSON.stringify({ service_id: 'notes', operation: 'put', operation_id: 'fixed-write',
       payload: { key: 'one', text: 'omitted-service-input' }, caller: { botId: 'forged' } }) });
   assert.equal((await response.json()).error.code, 'SERVICE_OUTPUT_INVALID');
+  const denied = await fetch(url, { method: 'POST', headers: { authorization: `Bearer ${credentials.secret_env.SWARMENV_BRIDGE_TOKEN}` },
+    body: JSON.stringify({ service_id: privateMarker, operation: privateMarker, operation_id: privateMarker }) });
+  assert.equal(denied.status, 403);
   assert.equal(writes.length, 1);
   assert.equal(writes[0].caller.botId, bot.id);
   const close = await runtime.close();
   assert.equal(close.cleanup, 'complete');
   const raw = await readFile(close.evidence.path, 'utf8');
   const report = await readFile(close.reportPath, 'utf8');
-  for (const marker of [serviceToken, 'omitted-service-input', 'invalid-adapter-output', 'forged']) {
+  for (const marker of [privateMarker, serviceToken, 'omitted-service-input', 'invalid-adapter-output', 'forged']) {
     assert.equal(raw.includes(marker) || report.includes(marker), false);
   }
   assert.deepEqual(JSON.parse(report).config.services, [
     { id: 'notes', transport: 'http-json', timeoutMs: 1234 }, { id: 'bot', transport: 'in-process' },
   ]);
   const service = raw.trim().split('\n').map(line => JSON.parse(line)).filter(row => row.type === 'service');
-  assert.equal(service.length, 4);
-  assert.ok(service.every(row => row.runtimeId === runtime.id && row.botId === bot.id && row.profile === 'worker' &&
+  assert.equal(service.length, 5);
+  const deniedRow = service.at(-1);
+  assert.deepEqual([deniedRow.serviceId, deniedRow.operation, deniedRow.operationId], Array(3).fill('[redacted]'));
+  assert.ok(service.slice(0, 4).every(row => row.runtimeId === runtime.id && row.botId === bot.id && row.profile === 'worker' &&
     row.operationId === 'fixed-write' && row.operation === 'put'));
-  assert.deepEqual(service.map(row => [row.state, row.outcome]), [
+  assert.deepEqual(service.slice(0, 4).map(row => [row.state, row.outcome]), [
     ['validation', 'pending'], ['validation', 'passed'], ['invocation', 'pending'], ['settled', 'unknown'],
   ]);
 });
@@ -197,4 +204,27 @@ test('evidence write failure stays visible after resources close and an invalid 
   assert.equal(receipt.pending[0].error.code, 'EVIDENCE_INCOMPLETE');
   assert.deepEqual(receipt.bots, []);
   assert.equal(JSON.parse(await readFile(receipt.reportPath)).evidence.lost, receipt.evidence.lost);
+});
+
+test('a failed Runtime summary write reports its pending save and a retry publishes the closed receipt', async t => {
+  const { outputDir, makeRuntime } = await fixture(t, {});
+  const runtime = await makeRuntime();
+  const path = join(outputDir, runtime.id, 'runtime.json');
+  await rm(path);
+  await mkdir(path);
+  const pending = await runtime.close();
+  assert.equal(pending.cleanup, 'pending');
+  assert.equal(pending.reportPath, undefined);
+  assert.equal(pending.evidence.lost, 0);
+  assert.deepEqual(pending.pending.map(item => [item.kind, item.id, item.action, item.error?.code]), [
+    ['report', runtime.id, 'save', 'REPORT_WRITE_FAILED'],
+  ]);
+  await rm(path, { recursive: true });
+  const closed = await runtime.close();
+  assert.equal(closed.cleanup, 'complete');
+  assert.equal(closed.reportPath, path);
+  const summary = JSON.parse(await readFile(path, 'utf8'));
+  assert.equal(summary.status, 'closed');
+  assert.equal(summary.config.models.default.maxOutputTokens, 256);
+  assert.equal(summary.config.waiting.hostDefaultMs, 60_000);
 });
