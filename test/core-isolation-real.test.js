@@ -12,6 +12,7 @@ import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandb
 import { createIsolationUpstream } from './fixtures/core-isolation-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
+import { sessionEvidence } from './fixtures/core-session-evidence.js';
 import { openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
 
 const execute = promisify(execFile);
@@ -83,11 +84,8 @@ print(json.dumps(checks))
 async function containerEvidence(container) {
   const identity = JSON.parse((await execute('docker', ['inspect', '--format',
     '{"requestedImage":{{json .Config.Image}},"imageId":{{json .Image}},"labels":{{json .Config.Labels}},"memory":{{json .HostConfig.Memory}},"nanoCpus":{{json .HostConfig.NanoCpus}},"cpuQuota":{{json .HostConfig.CpuQuota}},"cpuPeriod":{{json .HostConfig.CpuPeriod}}}', container], { timeout: 5000 })).stdout);
-  const sessionScript = "const f=require('fs');for(const p of f.readdirSync('/proc')){try{const a=f.readFileSync('/proc/'+p+'/cmdline','utf8').split('\\0');const i=a.indexOf('--session-id');if(i>=0){process.stdout.write(a[i+1]);break}}catch{}}";
-  const session = (await execute('docker', ['exec', container, 'node', '-e', sessionScript], { timeout: 5000 })).stdout.trim();
-  assert.match(session, /^[a-f0-9-]{36}$/);
   return { containerId: container, requestedImage: identity.requestedImage, imageId: identity.imageId,
-    sessionId: session, botKey: identity.labels.bot_key, memory: identity.memory,
+    botKey: identity.labels.bot_key, memory: identity.memory,
     nanoCpus: identity.nanoCpus, cpuQuota: identity.cpuQuota, cpuPeriod: identity.cpuPeriod };
 }
 
@@ -168,7 +166,6 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
   Object.assign(reports.resources[runtime.id], { afterSpawnCount: 2, idleCapacityRejected: true });
   const initial = await Promise.all(containers.map(containerEvidence));
   assert.deepEqual(new Set(initial.map(row => row.requestedImage)), new Set([imageA, imageB]));
-  assert.notEqual(initial[0].sessionId, initial[1].sessionId);
   for (const bot of [a, b]) {
     const observed = initial.find(row => row.botKey === openSandboxBotKey(bot.id));
     assert.ok(observed);
@@ -177,7 +174,6 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
     assert.ok(observed.nanoCpus === 1_000_000_000 || observed.cpuQuota > 0 && observed.cpuQuota === observed.cpuPeriod);
     reports.bots.push({ runtimeId: runtime.id, botId: bot.id, profile: bot.profile, initialStatus: bot.status, ...observed });
   }
-  reports.distinctSessions = true;
   const other = await createRuntime({ backend: configuration(), profiles: {
     observer: { prompt: 'FROZEN_PROFILE_C', model: 'alpha', image: imageB, writable: false, services: {}, env: { CORE_ROLE: 'B' } },
   }, services: new ServiceRegistry(), maxBots: 1, outputDir, modelAccessPolicy });
@@ -190,7 +186,6 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
   const cObserved = await containerEvidence(otherContainers[0]);
   assert.equal(cObserved.requestedImage, imageB);
   assert.equal(cObserved.botKey, openSandboxBotKey(c.id));
-  assert.ok(initial.every(row => row.sessionId !== cObserved.sessionId));
   reports.bots.push({ runtimeId: other.id, botId: c.id, profile: c.profile, initialStatus: c.status, ...cObserved });
   Object.assign(reports.resources[other.id], { afterSpawnCount: 1 });
   await assert.rejects(other.get(a.id), { code: 'NOT_FOUND' });
@@ -214,14 +209,27 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
       reports.turns[id] = plan.get(id).evidence;
     } finally { clearTimeout(timer); unsubscribe(); }
   }
+  const botEvidence = bot => reports.bots.find(row => row.botId === bot.id);
+  const observeSession = bot => sessionEvidence(botEvidence(bot).containerId, execute);
   await turn(runtime, a, 'T03_A1', 'A', true, false, true);
+  const aSession = await observeSession(a);
+  Object.assign(botEvidence(a), aSession);
   await turn(runtime, b, 'T03_B1', 'B', true, false, false);
+  const bSession = await observeSession(b);
+  Object.assign(botEvidence(b), bSession);
+  assert.notEqual(aSession.sessionId, bSession.sessionId);
   await turn(runtime, a, 'T03_A2', 'A', true, true, false);
+  assert.deepEqual(await observeSession(a), aSession);
+  botEvidence(a).sessionRetained = true;
   assert.deepEqual(await ownedContainers(runtime.id), containers);
   assert.deepEqual(await Promise.all(containers.map(containerEvidence)), initial);
   reports.resources[runtime.id].idleRetained = true;
   await assert.rejects(runtime.spawn({ requestId: 'still-no-slot', profile: 'writer' }), { code: 'CONFLICT' });
   await turn(other, c, 'T03_C1', 'B', false, false, false);
+  const cSession = await observeSession(c);
+  Object.assign(botEvidence(c), cSession);
+  assert.ok([aSession.sessionId, bSession.sessionId].every(id => id !== cSession.sessionId));
+  reports.distinctSessions = true;
   const firstClose = await runtime.close({ timeoutMs: 30_000 });
   assert.equal(firstClose.cleanup, 'complete');
   assert.deepEqual(await ownedContainers(runtime.id), []);
@@ -229,6 +237,10 @@ test('Core isolates concurrent Bots, frozen roles and independent Runtimes on ac
   reports.resources[runtime.id].emptyAfterExplicitClose = true;
   reports.resources[other.id].retainedAfterSiblingClose = true;
   await turn(other, c, 'T03_C2', 'B', false, true, false);
+  assert.deepEqual(await ownedContainers(other.id), otherContainers);
+  assert.deepEqual(await observeSession(c), cSession);
+  botEvidence(c).sessionRetained = true;
+  reports.resources[other.id].idleRetained = true;
   assert.ok(callers.some(caller => caller.botId === a.id && caller.model === 'alpha'));
   assert.ok(callers.some(caller => caller.botId === b.id && caller.model === 'beta'));
   assert.equal(upstream.failure, undefined);
