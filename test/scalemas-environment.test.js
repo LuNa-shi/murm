@@ -56,7 +56,8 @@ test('scaleMAS fixed three-peer pool uses serial fresh inputs on each same Core 
 });
 
 test('a six-peer scaleMAS pool is fully ready before work and each peer completes two rounds', async t => {
-  const f = await fixture(t, ({ starts }) => { assert.equal(starts.length, 6); });
+  const readyCounts = [];
+  const f = await fixture(t, ({ starts }) => { readyCounts.push(starts.length); });
   const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
   const report = await runScaleMAS({ backend: f.backend, runId: 'six-peers', image: 'fixture', outputDir: f.directory,
     question: 'Fixed source question', poolSize: 6, workTimeoutMs: 10_000, turnTimeoutMs: 2000, closeTimeoutMs: 2000 });
@@ -64,6 +65,7 @@ test('a six-peer scaleMAS pool is fully ready before work and each peer complete
   assert.equal(report.policy.poolSize, 6);
   assert.equal(f.provider.allocations(), 6);
   assert.equal(f.prompts.length, 12);
+  assert.deepEqual(readyCounts, Array(12).fill(6));
   assert.deepEqual(report.peers.map(peer => peer.index), [0, 1, 2, 3, 4, 5]);
   const peers = new Set(report.peers.map(peer => peer.botId));
   assert.equal(peers.size, 6);
