@@ -14,7 +14,7 @@ import { createFlatBotCoordinator } from '../src/environments/flat/bot-coordinat
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
-import { parsePrivateUpstreamHeaders, createAcceptanceDeadline, acceptanceFailed } from './fixtures/flat-model-acceptance.js';
+import { parsePrivateUpstreamHeaders, createAcceptanceDeadline, acceptanceFailed, promptRevocationVerified } from './fixtures/flat-model-acceptance.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
 for (const live of [false, true]) test(`flat readonly selection ${live ? 'live Kimi K3' : 'controlled native Pi'} model authority`, {
@@ -27,7 +27,9 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   const tasks = new TaskService();
   tasks.createMission({ mission_id: 'flat:model-acceptance', goal: 'Verify flat selection model authority' }, makeEnvelope({ actorRef: 'trusted-host' }));
   let runtime, proxy, upstream, bot, unsubscribe;
-  let localArrivals = 0, localAccepted = 0, heldResolve;
+  let localArrivals = 0, localAccepted = 0, heldResolve, heldSocket, heldClosedResolve;
+  const heldSocketClosed = new Promise(resolve => { heldClosedResolve = resolve; });
+  let domainTransitionMonotonic;
   const held = new Promise(resolve => { heldResolve = resolve; });
   const report = { mode: live ? 'hosted-kimi-k3' : 'fixed-local-k3', model: { provider: 'kimi_proxy', model: 'k3' }, requestCap: live ? 1 : 2,
     maxOutputTokens: live ? 512 : 128, deadlineMs: 120_000, resources: {}, failure: true };
@@ -74,7 +76,16 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
       localAccepted++;
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       if (localAccepted === 1) response.end(streamResponse('k3', 1, { type: 'message', id: 'flat_fixed', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'FLAT_SELECTION_OK' }] }));
-      else { response.write(': bounded held response\n\n'); heldResolve(); }
+      else {
+        heldSocket = response.socket;
+        heldSocket.once('close', () => {
+          const evidence = report.revocation ??= {};
+          evidence.upstreamSocketClosedAt = Date.now();
+          evidence.socketCloseElapsedMs = performance.now() - domainTransitionMonotonic;
+          heldClosedResolve();
+        });
+        response.write(': bounded held response\n\n'); heldResolve();
+      }
     });
     upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening');
   }
@@ -115,11 +126,29 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   report.usageObserved = true;
   if (!live) {
     const interrupted = settled();
+    const heldInputStartedMonotonic = performance.now();
+    report.revocation = { heldInputAt: Date.now(), requestTimeoutMs: 60_000 };
     await runtime.send(bot.id, 'Reply with exactly FLAT_SELECTION_OK. Do not call tools.', { requestId: 'flat-held-selection', mode: 'followUp' });
     await Promise.race([held, new Promise((_, reject) => { const timeout = setTimeout(() => reject(new Error('Held upstream not observed')), 20_000); timeout.unref(); held.finally(() => clearTimeout(timeout)); })]);
+    Object.assign(report.revocation, { heldBeforeTransition: Boolean(heldSocket && !heldSocket.destroyed), maxElapsedMs: 5000 });
+    if (!report.revocation.heldBeforeTransition) throw new Error('FLAT_HELD_SOCKET_CLOSED_BEFORE_REVOKE');
     tasks.requestBotStop(bot.id, 'controlled-domain-revoke');
-    const revoked = await interrupted;
-    assert.ok(['failed', 'aborted'].includes(revoked.outcome)); report.streamRevoked = true;
+    report.revocation.domainTransitionAt = Date.now();
+    domainTransitionMonotonic = performance.now();
+    report.revocation.requestAgeAtTransitionMs = domainTransitionMonotonic - heldInputStartedMonotonic;
+    let revocationTimer;
+    try {
+      await Promise.race([
+        Promise.all([heldSocketClosed, interrupted.then(revoked => {
+          report.revocation.settledAt = Date.now();
+          report.revocation.settledElapsedMs = performance.now() - domainTransitionMonotonic;
+          report.revocation.outcome = revoked.outcome;
+        })]),
+        new Promise((_, reject) => { revocationTimer = setTimeout(() => reject(new Error('FLAT_DOMAIN_REVOCATION_NOT_PROMPT')), 5000); }),
+      ]);
+    } finally { clearTimeout(revocationTimer); }
+    if (!promptRevocationVerified(report.revocation)) throw new Error('FLAT_DOMAIN_REVOCATION_EVIDENCE_INVALID');
+    report.streamRevoked = true;
     const denied = settled();
     await runtime.send(bot.id, 'Reply with exactly FLAT_SELECTION_OK.', { requestId: 'flat-denied-selection', mode: 'followUp' });
     assert.equal((await denied).outcome, 'failed');
