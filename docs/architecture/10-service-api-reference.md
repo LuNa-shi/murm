@@ -39,6 +39,9 @@ This section is generated from executable exports and checked against the source
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
+| [src/core/index.d.ts](../../src/core/index.d.ts) | `dcc6ccb8356029ab236b6e7a2a970e45af7a2929bae25fa76f770d04197aefcb` |
+| [src/core/services.d.ts](../../src/core/services.d.ts) | `cb0527f065caaaaad0ae178e65789261772a19054a1c58cfbdfe635320433238` |
+| [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `166e51de1b45cf32e17b0b62fdafecfe913521122450a125f3ece1c87cd267ed` |
 
 ### Exact built-in command operation surface
 
@@ -3156,6 +3159,228 @@ This section records catalog declarations used by trusted service composition bu
   "SERVICE_VERSION_MISMATCH": "SERVICE_VERSION_MISMATCH",
   "SERVICE_TIMEOUT": "SERVICE_TIMEOUT"
 }
+```
+
+### Phase 0005 Core public declarations
+
+These are the declarations exposed by the private checkout package. [Core Runtime](15-core-runtime.md) describes the executable contracts and limits.
+
+#### src/core/index.d.ts
+
+```ts
+import type { ServiceRegistry } from './services.js';
+
+declare const backendBrand: unique symbol;
+
+export interface Backend {
+  readonly [backendBrand]: true;
+}
+
+export interface Profile {
+  prompt: string;
+  model: string;
+  image: string;
+  writable: boolean;
+  services: Readonly<Record<string, readonly string[]>>;
+  spawnProfiles?: readonly string[];
+  env?: Readonly<Record<string, string>>;
+  network?: { allow: readonly string[] };
+}
+
+export interface ModelCaller {
+  readonly runtimeId: string;
+  readonly botId: string;
+  readonly profile: string;
+  readonly model: string;
+}
+
+export interface ModelPermit {
+  phase: 'selection' | 'work' | 'closeout';
+  deadlineAt: number;
+  lease?: { key: string; version: number; expiresAt: number };
+}
+
+export interface ModelAccessPolicy {
+  authorize(caller: ModelCaller): ModelPermit | null;
+  withCommit<T>(commit: () => T): T;
+}
+
+export interface CreateRuntimeOptions {
+  backend: Backend;
+  profiles: Readonly<Record<string, Profile>>;
+  services: ServiceRegistry;
+  maxBots: number;
+  outputDir: string;
+  modelAccessPolicy?: ModelAccessPolicy;
+}
+
+export interface SpawnOptions {
+  requestId: string;
+  profile: string;
+  parentId?: string;
+  writable?: boolean;
+  bindings?: Readonly<Record<string, string>>;
+  secretEnv?: Readonly<Record<string, string>>;
+}
+
+export interface ErrorInfo {
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface ResourceError extends Error {
+  code: string;
+  operation: string;
+  runtimeId?: string;
+  botId?: string;
+  requestId?: string;
+  cleanup: 'complete' | 'pending';
+  reportPath?: string;
+  details: readonly ErrorInfo[];
+}
+
+export interface BotInfo {
+  id: string;
+  profile: string;
+  parentId?: string;
+  status: 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+  cursor: number;
+  latestOutput?: string;
+  lastError?: ErrorInfo;
+  lastStop?: StopReceipt;
+}
+
+export type InputMode = 'steer' | 'followUp';
+
+export type InputReceipt =
+  | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
+  | { inputId: string; status: 'unknown' };
+
+export type BotEvent = { botId: string; seq: number } & (
+  | { type: 'output'; text: string }
+  | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
+  | { type: 'error'; error: ErrorInfo; fatal: boolean }
+  | { type: 'exit'; reason: string; expected: boolean }
+);
+
+export interface StopReceipt {
+  botId: string;
+  execution: 'stopped' | 'unknown';
+  cleanup: 'complete' | 'pending';
+  artifacts: readonly string[];
+  errors: readonly ErrorInfo[];
+}
+
+export interface CloseReceipt {
+  bots: readonly StopReceipt[];
+  cleanup: 'complete' | 'pending';
+  errors: readonly ErrorInfo[];
+  outputDir: string;
+  reportPath?: string;
+}
+
+export interface Runtime {
+  readonly id: string;
+  spawn(options: SpawnOptions): Promise<BotInfo>;
+  get(botId: string): Promise<BotInfo>;
+  send(botId: string, input: string, options: { requestId: string; mode?: InputMode }): Promise<InputReceipt>;
+  onEvent(handler: (event: BotEvent) => void): () => void;
+  stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
+  close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
+}
+
+export function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
+```
+
+#### src/core/services.d.ts
+
+```ts
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+export interface ServiceManifest {
+  id: string;
+  title: string;
+  purpose: string;
+  provider_version: string;
+  contract_version: '2';
+  endpoint: { transport: 'in-process' } | { transport: 'http-json'; url: string };
+  capabilities: readonly ServiceCapability[];
+}
+
+export interface ServiceCapability {
+  name: string;
+  operation: string;
+  description: string;
+  side_effect: 'read' | 'write';
+  idempotent: boolean;
+  help: { when: string; ref?: string };
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  errors: readonly { code: string; retryable: boolean }[];
+  path?: string;
+}
+
+export interface ServiceCaller {
+  runtimeId: string;
+  botId: string;
+  profile: string;
+  binding?: string;
+}
+
+export interface ServiceRequest {
+  manifest: ServiceManifest;
+  capability: ServiceCapability;
+  input: JsonValue;
+  envelope: { operation_id: string; [key: string]: unknown };
+  caller: ServiceCaller;
+  signal: AbortSignal;
+}
+
+export interface ServiceAdapter {
+  invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
+}
+
+export class ServiceRegistry {
+  registerService(registration: { manifest: ServiceManifest; adapter: ServiceAdapter }): void;
+}
+
+export function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
+```
+
+#### src/core/backends/pi-opensandbox.d.ts
+
+```ts
+import type { Backend } from '../index.js';
+
+export interface PiOpenSandboxBackendConfig {
+  sandbox: {
+    lifecycleBaseUrl: string;
+    apiKey?: string;
+    execdToken?: string;
+    endpointHost?: string;
+    resourceLimits?: { cpu: string; memory: string };
+    commandTimeoutMs?: number;
+  };
+  bridge: { host: string; publicUrl: string };
+  modelGateway: {
+    host: string;
+    advertiseHost: string;
+    requestTimeoutMs?: number;
+    maxOutputTokens?: number;
+  };
+  models: Readonly<Record<string, {
+    provider: string;
+    model: string;
+    upstream: { url: string; headers: Readonly<Record<string, string>> };
+  }>>;
+  isolation: {
+    network: 'local-docker';
+    disk: { bytes: number; inodes: number };
+  };
+}
+
+export function createPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig): Backend;
 ```
 
 <!-- END GENERATED REFERENCE -->

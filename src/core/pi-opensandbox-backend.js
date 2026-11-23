@@ -131,6 +131,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
         projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
+      bot.started = true;
       const ready = await manager.agentRpc(botId, { type: 'get_state', id: `ready-${randomUUID()}` }, { timeoutMs: 10000 });
       if (ready.response?.success !== true || ready.response.command !== 'get_state') throw invalid('Pi readiness response was not confirmed');
       consume(bot, ready.records ?? []);
@@ -155,15 +156,21 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
         if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), { code: 'INVALID_CONTRACT' });
         return { status: 'unknown' };
       }
-      return { status: 'accepted', disposition: result.response?.data?.queued ? 'queued' : 'started' };
+      const disposition = result.response.data?.disposition;
+      if (!['started', 'queued', 'handled'].includes(disposition)) return { status: 'unknown' };
+      return { status: 'accepted', disposition };
     },
     async stopExecution(botId) {
       const bot = bots.get(botId);
       if (!bot) return;
       bot.stopping = true;
-      await bot.manager.stopAgent(botId);
+      const stopped = await bot.manager.stopAgent(botId);
       bot.pollController.abort();
       await bot.polling;
+      if (stopped && bot.started && !bot.exited) {
+        bot.exited = true;
+        bot.onEvent({ type: 'exit', reason: 'Worker confirmed Pi stopped', expected: true });
+      }
     },
     async destroy(botId) {
       const bot = bots.get(botId);

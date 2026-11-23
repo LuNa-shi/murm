@@ -112,7 +112,8 @@ export async function createRuntime(options) {
   } catch (error) {
     if (error.name === 'ResourceError') throw error;
     const errors = await observe(rollbackAssembly(), Math.max(1, assemblyDeadline - performance.now()));
-    throw resourceError(error.code ?? 'SERVICE_UNAVAILABLE', error.message, {
+    const code = error.code === 'INVALID_CONFIG' ? 'INVALID_CONTRACT' : error.code ?? 'SERVICE_UNAVAILABLE';
+    throw resourceError(code, error.message, {
       ...context, ...(recordsReady ? { reportPath } : {}),
     }, {
       cleanup: errors === timedOut || errors.length ? 'pending' : 'complete',

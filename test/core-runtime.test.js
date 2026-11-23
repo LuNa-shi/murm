@@ -7,7 +7,7 @@ import { createRuntime } from '@swarmenv/core';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { ServiceRegistry } from '@swarmenv/core/services';
 
-function options(outputDir) {
+function options(outputDir, model = 'k3') {
   return {
     backend: createPiOpenSandboxBackend({
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
@@ -16,7 +16,7 @@ function options(outputDir) {
       models: {
         default: {
           provider: 'kimi_proxy',
-          model: 'k3',
+          model,
           upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} },
         },
       },
@@ -51,6 +51,17 @@ test('Runtime rejects an unknown Profile model before creating a Bot', async t =
     assert.equal(error.cleanup, 'complete');
     assert.match(error.message, /missing-model/);
     return true;
+  });
+});
+
+test('Runtime rejects a configured model absent from the shipped Pi catalog', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const config = options(outputDir, 'unknown-pi-model');
+  config.profiles.writer.model = 'default';
+
+  await assert.rejects(createRuntime(config), {
+    code: 'INVALID_CONTRACT', operation: 'createRuntime', cleanup: 'complete',
   });
 });
 

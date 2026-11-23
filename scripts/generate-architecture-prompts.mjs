@@ -23,6 +23,7 @@ const sourcePaths = [
   ...BOT_SKILLS.map(skill => `src/agent/bot-contract/${skill.name}.md`),
   'src/agent/capability-profile.js', 'src/agent/pi-adapter.js',
   'src/agent/services-bridge.js', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
+  'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
@@ -68,7 +69,7 @@ const extendedRegistry = createBuiltinServiceRegistry();
 extendedRegistry.registerService({ manifest: mathlibBundle.manifest, bundle: mathlibBundle, adapter: { invoke() { throw new Error('documentation never invokes services'); } } });
 const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, role: AGENT_ROLES.BOUND });
 
-output('01-system-identity.md', header('Complete stable identity instructions', 'The immutable Bot and independent solver resources are the only repository system addenda. Pi supplies its own native tool instructions.')
+output('01-system-identity.md', header('Complete stable identity instructions', 'The immutable Bot and independent solver resources are the fixed repository system addenda. Phase 0005 Core stages the host-provided Profile.prompt verbatim. Pi supplies its own native tool instructions.')
   + block('Independent solver system addendum (swarm-solver-v1)', SOLVER_SYSTEM_PROMPT)
   + block(`Registered Bot system addendum (${BOT_PROTOCOL_VERSION})`, BOT_SYSTEM_PROMPT));
 let toolsDoc = header('CLI directory and optional Service documentation', 'Bots receive the four native tools read/write/edit/bash. Startup contains the namespace directory below. Schemas and documentation are fetched through swarm service commands, not registered as separate Pi tools.');
@@ -138,7 +139,7 @@ guidanceDoc += '\n## Delivery conditions\n\n| Source | When the fixed field can 
 for (const path of await listSourceFiles('src')) {
   const source = await readFile(resolve(root, path), 'utf8');
   for (const [i, line] of source.split('\n').entries()) {
-    if (/\.prompt\s*(?:\?\.)?\(/.test(line)) {
+    if (/\.prompt\s*(?:\?\.)?\(|\.agentRpc\([^,]+,\s*\{\s*type:\s*'prompt'/.test(line)) {
       assert.ok(sourcePaths.includes(path), `new prompt sender requires documented ownership: ${path}:${i + 1}`);
       sendSites.push({ path, line: i + 1, expression: line.trim() });
     }

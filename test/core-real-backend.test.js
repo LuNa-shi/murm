@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import { promisify } from 'node:util';
 import { createControlledUpstream } from './fixtures/core-controlled-upstream.js';
+
+async function ownedContainers(runtimeId) {
+  const hash = createHash('sha256').update(runtimeId).digest('hex').slice(0, 48);
+  const result = await promisify(execFile)('docker', ['ps', '--all', '--quiet', '--no-trunc',
+    '--filter', `label=runtime_key=r-${hash}`], { timeout: 5000 });
+  return result.stdout.trim().split('\n').filter(Boolean);
+}
 
 test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a Bash file effect', {
   skip: process.env.SWARMENV_CORE_REAL_TEST !== '1' && 'Set SWARMENV_CORE_REAL_TEST=1 with a verified local OpenSandbox image',
@@ -42,9 +52,12 @@ test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a 
     worker: { prompt: 'Perform the requested local file operation and return its verified result.', model: 'default', image,
       writable: true, services: {} },
   }, services: new ServiceRegistry(), maxBots: 1, outputDir });
+  assert.deepEqual(await ownedContainers(runtime.id), []);
   const bot = await runtime.spawn({ requestId: 'smoke-spawn', profile: 'worker' });
   assert.equal(bot.status, 'idle');
   assert.equal(upstream.requests.length, 0, 'spawn must not submit model work');
+  const active = await ownedContainers(runtime.id);
+  assert.equal(active.length, 1);
   const events = [];
   let resolveSettled;
   const settled = new Promise(resolve => { resolveSettled = resolve; });
@@ -67,13 +80,24 @@ test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a 
   const idle = await runtime.get(bot.id);
   assert.equal(idle.status, 'idle');
   assert.equal(idle.latestOutput?.trim(), 'FILE_OK');
+  assert.deepEqual(await ownedContainers(runtime.id), active);
+  await assert.rejects(runtime.spawn({ requestId: 'capacity-check', profile: 'worker' }), { code: 'CONFLICT' });
   const stop = await runtime.stop(bot.id, { timeoutMs: 30_000 });
   assert.equal(stop.execution, 'stopped');
   assert.equal(stop.cleanup, 'complete');
+  assert.deepEqual(await ownedContainers(runtime.id), []);
+  assert.equal(events.filter(event => event.type === 'exit' && event.expected).length, 1);
   assert.equal((await runtime.get(bot.id)).status, 'closed');
-  await assert.rejects(runtime.send(bot.id, 'rejected after close', { requestId: 'closed-input' }));
+  await assert.rejects(runtime.send(bot.id, 'rejected after close', { requestId: 'closed-input' }), {
+    code: 'NOT_ALLOWED', botId: bot.id, runtimeId: runtime.id, requestId: 'closed-input',
+  });
+  const replacement = await runtime.spawn({ requestId: 'capacity-check', profile: 'worker' });
+  assert.notEqual(replacement.id, bot.id);
+  assert.equal(replacement.status, 'idle');
   close = await runtime.close({ timeoutMs: 30_000 });
   assert.equal(close.cleanup, 'complete');
   assert.ok(close.bots.some(value => value.botId === bot.id && value.cleanup === 'complete'));
+  assert.deepEqual(await ownedContainers(runtime.id), []);
+  assert.equal(upstream.requests.length, 3);
   t.diagnostic(`Controlled local Responses upstream, real Pi/OpenSandbox, output directory ${outputDir}`);
 });
