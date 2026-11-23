@@ -33,6 +33,8 @@ Read 00 first, then 07 for the actual launch and outer loop. Read 01–06 for th
 | [16 Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) | How does Core connect its identity, a guest, a Pi Session and separately confirmed stop and destruction? |
 | [17 Runtime evidence and Environment reports](17-environment-reporting.md) | How are input, events, Service operations and cleanup traced? How do Environment reports preserve independent failures? |
 
+| [19 Fixed scaleMAS peer pool](19-scalemas-environment.md) | How do three equal peers publish immutable content, adopt ranked references and continue their own Sessions without Tasks? |
+
 ## What complete means here
 
 For every running subsystem the manual must describe its entry point, callers, inputs/defaults, guards, mutation order, durable and in-memory state, outputs, error/retry/timeout paths, cleanup and observation. Successful paths alone are insufficient. Compatibility behavior still executable in the reviewed tree must be labeled and covered until removed.

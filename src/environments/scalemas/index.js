@@ -18,6 +18,11 @@ function waitFor(promise, signal) {
   })]).finally(() => signal.removeEventListener('abort', abort));
 }
 
+export function scaleMASPeerProfile({ image, model = 'default' }) {
+  return { image, model, prompt: peerPrompt, writable: true, services: { substrate: ['publish', 'search', 'visit'] },
+    collect: { paths: ['.'], includeGit: false, maxBytes: 2 * 1024 ** 2, required: true } };
+}
+
 /** Fixed no-Task pool. Environment owns content and drivers; Core owns all Bots. */
 export async function runScaleMAS({ backend, runId, image, outputDir, question, model = 'default', maxRounds = 2,
   workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000 }, signal) {
@@ -47,8 +52,7 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
       createRuntime: async () => {
         remaining();
         runtime = await createRuntime({ backend, outputDir, services: substrate.services, maxBots: 3, profiles: {
-          peer: { image, model, prompt: peerPrompt, writable: true, services: { substrate: ['publish', 'search', 'visit'] },
-            collect: { paths: ['.'], includeGit: false, maxBytes: 2 * 1024 ** 2, required: true } },
+          peer: scaleMASPeerProfile({ image, model }),
         } });
         return runtime;
       },

@@ -116,3 +116,14 @@ test('required artifact failure reports pending ownership independently from suc
   assert.equal(report.substrate.runId, 'pending'); assert.ok(report.databasePath);
   assert.ok(report.reportPath); assert.equal(f.provider.allocations(), 3);
 });
+
+test('host cancellation fences further inputs and uses an independent cleanup window', async t => {
+  const controller = new AbortController();
+  const f = await fixture(t, () => { controller.abort(); });
+  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  const report = await runScaleMAS({ backend: f.backend, runId: 'cancelled', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 }, controller.signal);
+  assert.equal(report.businessFailure.code, 'SCALEMAS_WORK_ABORTED');
+  assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanupFailure, null);
+  assert.ok(f.prompts.length <= 3); assert.ok(report.peers.every(peer => peer.turns.length === 1));
+  assert.equal(f.provider.allocations(), 3);
+});

@@ -21,3 +21,26 @@ test('controlled native harness rejects bad correlation with one nonretryable te
   assert.match(failed.errorMessage, /FIXED_SCALEMAS_FAILED/);
   assert.equal(upstream.receipt().arrivals, 1); assert.equal(upstream.receipt().accepted, 0);
 });
+
+test('all twelve fixed exchanges admit each peer/cycle once and enforce the global arrival cap', async t => {
+  const phases = [];
+  const upstream = await createScaleMASUpstream({ deadlineAt: Date.now() + 5000, observe: async value => phases.push([value.phase, value.peer]) }); t.after(() => upstream.close());
+  const send = (peer, cycle, row) => fetch(upstream.url, { method: 'POST', body: JSON.stringify({ model: 'k3', max_output_tokens: 128, input: [
+    { role: 'user', content: `scaleMAS peer=${peer} cycle=${cycle}\nfixed` },
+    ...(row ? [{ type: 'function_call_output', call_id: `scale_${peer}_${cycle}`, output: JSON.stringify(row) }] : []),
+  ] }) });
+  let original;
+  for (let peer = 0; peer < 3; peer++) for (let cycle = 0; cycle < 2; cycle++) {
+    const content = peer === 0 && cycle === 0 ? 'ARITHMETIC_SEED: 7+5=12.\n' : peer === 1 ? 'Adopted exact: ARITHMETIC_SEED: 7+5=12.\n' : 'fixed';
+    const published = { address: `content:${String(peer * 2 + cycle).repeat(64)}`, author: `peer-${peer}`, version: 1, content, references: peer === 1 ? [original.address] : [] };
+    const row = { peer, cycle, process: { pid: peer + 10, starttime: String(peer + 20) }, cwd: '/workspace/project', published,
+      adopted: peer === 1 ? original : null, sessionId: cycle ? `${peer}`.repeat(36) : null };
+    if (peer === 0 && cycle === 0) original = published;
+    assert.equal((await send(peer, cycle)).status, 200);
+    const response = await send(peer, cycle, row); assert.match(await response.text(), /FIXED_CYCLE_OK/);
+  }
+  assert.equal(upstream.receipt().arrivals, 12); assert.equal(upstream.receipt().accepted, 12); assert.equal(upstream.receipt().failure, undefined);
+  assert.equal(upstream.receipt().evidence.length, 6); assert.equal(phases.length, 6);
+  assert.match(await (await send(0, 0)).text(), /response.failed/);
+  assert.equal(upstream.receipt().arrivals, 13); assert.equal(upstream.receipt().accepted, 12);
+});

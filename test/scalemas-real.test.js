@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 import { runScaleMAS } from '../src/environments/scalemas/index.js';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { createScaleMASUpstream, sourceContent } from './fixtures/scalemas-upstream.js';
-import { ownedContainers } from './fixtures/core-runtime-containers.js';
+import { scaleMASBackendConfiguration } from './fixtures/scalemas-configuration.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
 
 const execute = promisify(execFile);
@@ -55,12 +55,9 @@ test('native fixed three-peer substrate adopts immutable producer content after 
       }
     } });
     const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-    const backend = createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
-      endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY,
-      resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
-      bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 128 },
-      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
-      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } });
+    const backend = createPiOpenSandboxBackend(scaleMASBackendConfiguration({ host, upstreamUrl: upstream.url,
+      lifecycleUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY }));
     report = await runScaleMAS({ backend, runId: `native-${Date.now()}`, image, outputDir: directory, question: 'Verify the fixed ARITHMETIC_SEED contribution through publish, search, visit and adoption.', maxRounds: 2,
       workTimeoutMs: Math.max(1, deadlineAt - Date.now()), turnTimeoutMs: 40_000, closeTimeoutMs: 30_000 }, controller.signal);
     clearTimeout(timer);
@@ -86,7 +83,14 @@ test('native fixed three-peer substrate adopts immutable producer content after 
     proof.report = report; proof.sessions = sessions; proof.upstream = upstream?.receipt();
     const ids = (await readdir(directory)).filter(id => /^[a-f0-9-]{36}$/.test(id));
     proof.resources = {};
-    for (const id of ids) proof.resources[id] = { empty: (await ownedContainers(id)).length === 0 };
+    for (const id of ids) {
+      try {
+        const timeout = Math.min(5000, deadlineAt + 30_000 - Date.now()); assert.ok(timeout > 0);
+        const key = createHash('sha256').update(id).digest('hex').slice(0, 48);
+        const result = await execute('docker', ['ps', '--all', '--quiet', '--no-trunc', '--filter', `label=runtime_key=r-${key}`], { timeout });
+        proof.resources[id] = { empty: result.stdout.trim() === '' };
+      } catch { proof.resources[id] = { empty: false, state: 'unknown' }; }
+    }
     proof.failure ||= !report || ids.length !== 1 || Object.values(proof.resources).some(row => !row.empty);
     await upstream?.close();
     await writeFile(join(directory, 'acceptance.json'), JSON.stringify(proof, null, 2), { mode: 0o600 });

@@ -71,6 +71,10 @@
       "sha256": "393b251d8ba49902f7b9d2270796a264ec05f44ddc8e9c47e460563f0c79d015"
     },
     {
+      "path": "src/environments/scalemas/index.js",
+      "sha256": "98ae79c781c99a8ea0cca3d3102ecd48c05dd4332edcddd0897e5487d2b19be0"
+    },
+    {
       "path": "src/benchmark/putnam-runner.js",
       "sha256": "7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63"
     },
@@ -165,6 +169,24 @@
       "anchor": "reader: { ...common, prompt: '",
       "line": 97,
       "sha256": "c0f2900930e9feb73c9524e5ffb86c4b5dd6fe750b3cccf4948fabdbd413095a"
+    },
+    {
+      "path": "src/environments/scalemas/index.js",
+      "anchor": "export const peerPrompt = '",
+      "line": 7,
+      "sha256": "7eec8ce7af8b62f501a2dd61909ba695955a3840e266d5a92734d2a92ab90d89"
+    },
+    {
+      "path": "src/environments/scalemas/index.js",
+      "anchor": "export const cyclePrompt = '",
+      "line": 8,
+      "sha256": "c783b6377a748f73ae5b941513f362f67a9ef7155f6da56671047e8af5182df4"
+    },
+    {
+      "path": "src/environments/scalemas/index.js",
+      "anchor": "runInput(core, peer.botId, `",
+      "line": 76,
+      "sha256": "413fbd1df277be812f95fca1f943dd1a3581827a19fd8df79834d4a7e7acd2f0"
     }
   ],
   "prompt_send_sites": [
@@ -314,6 +336,10 @@
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
       "sha256": "c3ceddc88245817507b0aa32c3de66771ea59e24dd9ad001ac333121beda56ca"
+    },
+    {
+      "path": "docs/architecture/prompts/09-scalemas-environment.md",
+      "sha256": "1e9a2c43161642ddcb5437471c97ee40623b1b183ab17b9fdb1324cfcfc2e109"
     }
   ]
 }
