@@ -18450,7 +18450,7 @@
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
       ],
-      "role": "Installed-package Notes Environment Service, role prompts, input order and archive verification"
+      "role": "Installed-package Notes Environment Service, role prompts, input order, archive verification and saved-report CLI"
     },
     {
       "path": "examples/notes-environment/config.mjs",
