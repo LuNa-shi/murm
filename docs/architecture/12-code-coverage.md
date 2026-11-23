@@ -41,7 +41,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/environments/scalemas/index.js](../../src/environments/scalemas/index.js) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `d3b4881b7589521a9016d0564b631b23e44ec2854b6c3cd369eefd95ba31454c` |
+| [src/environments/scalemas/index.js](../../src/environments/scalemas/index.js) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `b68afc97dcbaf5b81c42a84454355cf02d1e444f5cde40cb8c5998f06bcbeb62` |
 | [src/environments/scalemas/substrate.js](../../src/environments/scalemas/substrate.js) | Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `bb76c986c99d57d4e14f6cc0ff9c121076ef7f374879c76be66df1813831686d` |
 
 ### Environment integration (18)

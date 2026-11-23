@@ -88,9 +88,89 @@ test('scaleMAS rejects unsupported pool sizes before allocating Bots', async t =
   assert.equal(f.provider.allocations(), 0);
 });
 
+test('host cycle scheduling delays one peer while other peers complete their serial rounds', { timeout: 20_000 }, async t => {
+  const held = Promise.withResolvers(), release = Promise.withResolvers(), othersDone = Promise.withResolvers();
+  const completedPeers = new Set();
+  const f = await fixture(t, ({ peer, cycle }) => {
+    if (peer !== 0 && cycle === 1) completedPeers.add(peer);
+    if (completedPeers.size === 2) othersDone.resolve();
+  });
+  const scheduled = [];
+  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  const work = runScaleMAS({ backend: f.backend, runId: 'scheduled', image: 'fixture', outputDir: f.directory,
+    question: 'Fixed source question', workTimeoutMs: 8000, turnTimeoutMs: 1000, closeTimeoutMs: 1000,
+    async beforeCycle(context) {
+      scheduled.push(context);
+      if (context.peerIndex === 0 && context.round === 1) { held.resolve(); await release.promise; }
+    } });
+  let report;
+  try {
+    await Promise.race([Promise.all([held.promise, othersDone.promise]), work.then(() => assert.fail('Run ended before host scheduling held the next cycle'))]);
+    assert.equal(f.prompts.filter(row => /^scaleMAS peer=0 cycle=1\n/.test(row.message)).length, 0);
+    assert.equal(f.prompts.length, 5);
+  } finally { release.resolve(); report = await work; }
+  assert.equal(report.businessFailure, null); assert.equal(report.cleanupFailure, null);
+  assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(scheduled.length, 6);
+  for (const peer of report.peers) {
+    assert.deepEqual(scheduled.filter(row => row.peerIndex === peer.index).map(row => row.round), [0, 1]);
+    assert.ok(scheduled.filter(row => row.peerIndex === peer.index).every(row => row.botId === peer.botId && row.signal instanceof AbortSignal));
+    assert.deepEqual(peer.turns.map(turn => turn.round), [0, 1]);
+  }
+});
+
+test('cancellation during host cycle waiting cleans every peer without admitting an input', { timeout: 20_000 }, async t => {
+  const entered = Promise.withResolvers(), never = new Promise(() => {});
+  const controller = new AbortController(), signals = [];
+  const f = await fixture(t);
+  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  const work = runScaleMAS({ backend: f.backend, runId: 'cancel-schedule', image: 'fixture', outputDir: f.directory,
+    question: 'Fixed source question', workTimeoutMs: 8000, turnTimeoutMs: 1000, closeTimeoutMs: 1000,
+    beforeCycle({ signal }) {
+      signals.push(signal);
+      if (signals.length === 3) entered.resolve();
+      return never;
+    } }, controller.signal);
+  let report;
+  try {
+    await Promise.race([entered.promise, work.then(() => assert.fail('Run ended before host cycle waiting'))]);
+    assert.equal(f.prompts.length, 0);
+  } finally { controller.abort(); report = await work; }
+  assert.equal(report.businessFailure.code, 'SCALEMAS_WORK_ABORTED');
+  assert.equal(report.cleanupFailure, null); assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(f.provider.allocations(), 3); assert.equal(f.prompts.length, 0);
+  assert.ok(signals.every(signal => signal.aborted));
+  assert.ok(report.peers.every(peer => peer.turns.length === 0 && peer.failure.code === 'SCALEMAS_WORK_ABORTED' && peer.stop.execution === 'stopped'));
+});
+
+test('a rejected host cycle schedule stops its peer while other peers finish', async t => {
+  const f = await fixture(t);
+  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  const report = await runScaleMAS({ backend: f.backend, runId: 'bad-schedule', image: 'fixture', outputDir: f.directory,
+    question: 'Fixed source question', workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000,
+    beforeCycle({ peerIndex }) { if (peerIndex === 0) throw Object.assign(new Error('Fixed schedule rejection'), { code: 'HOST_SCHEDULE_REJECTED' }); } });
+  assert.equal(report.businessFailure.code, 'SCALEMAS_PEERS_FAILED');
+  assert.equal(report.peers[0].failure.code, 'HOST_SCHEDULE_REJECTED'); assert.equal(report.peers[0].turns.length, 0);
+  assert.ok(report.peers.slice(1).every(peer => peer.failure === null && peer.turns.length === 2));
+  assert.equal(f.provider.allocations(), 3); assert.equal(f.prompts.length, 4);
+  assert.equal(report.cleanupFailure, null); assert.equal(report.cleanup.cleanup, 'complete');
+});
+
+test('invalid host cycle scheduling is rejected before allocating Bots or creating content data', async t => {
+  const f = await fixture(t);
+  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  const { readdir } = await import('node:fs/promises');
+  for (const beforeCycle of [null, false, 1, 'wait', {}]) {
+    await assert.rejects(runScaleMAS({ backend: f.backend, runId: 'invalid-schedule', image: 'fixture', outputDir: f.directory,
+      question: 'Fixed source question', beforeCycle }), { name: 'TypeError' });
+  }
+  assert.deepEqual(await readdir(f.directory), []);
+  assert.equal(f.provider.allocations(), 0);
+});
+
 test('actual CLI handoff adopts immutable producer content after producer stop; a failed peer is stopped without replacement', async t => {
   const published = Promise.withResolvers(), stopped = Promise.withResolvers();
-  let publication; let adopted; let followup; const rows = [];
+  let publication; let adopted; let followup; let producerStopped = false; const rows = [];
   async function cli(start, operation, input, requestId) {
     const path = join(f.directory, `input-${requestId}.json`);
     const { writeFile } = await import('node:fs/promises'); await writeFile(path, JSON.stringify(input));
@@ -105,7 +185,7 @@ test('actual CLI handoff adopts immutable producer content after producer stop; 
       if (cycle === 0) { publication = await cli(starts[0], 'publish', { content: 'A fixed algebra contribution\n', references: [] }, 'producer'); published.resolve(); }
     } else if (peer === 1) {
       await published.promise;
-      await stopped.promise;
+      assert.equal(producerStopped, true);
       const result = await cli(starts[1], 'search', { query: 'algebra', limit: 1 }, `search-${cycle}`);
       const original = await cli(starts[1], 'visit', { address: publication.address }, `visit-${cycle}`);
       assert.deepEqual(original, publication); assert.equal(result.results[0].address, publication.address);
@@ -115,9 +195,10 @@ test('actual CLI handoff adopts immutable producer content after producer stop; 
       if (cycle === 0) await cli(starts[2], 'publish', { content: 'Failed peer contribution survives', references: [] }, 'before-failure');
       else { await stopped.promise; return 'failed'; }
     }
-  }, { onStop() { stopped.resolve(); return { stopped: true }; } });
+  }, { onStop() { producerStopped = true; stopped.resolve(); return { stopped: true }; } });
   const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const report = await runScaleMAS({ backend: f.backend, runId: 'handoff', image: 'fixture', outputDir: f.directory, question: 'Fixed algebra source', maxRounds: 2, workTimeoutMs: 8000, turnTimeoutMs: 5000, closeTimeoutMs: 1000 });
+  const report = await runScaleMAS({ backend: f.backend, runId: 'handoff', image: 'fixture', outputDir: f.directory, question: 'Fixed algebra source', maxRounds: 2, workTimeoutMs: 8000, turnTimeoutMs: 5000, closeTimeoutMs: 1000,
+    beforeCycle: ({ peerIndex }) => peerIndex === 1 ? stopped.promise : undefined });
   assert.equal(report.businessFailure.code, 'SCALEMAS_PEERS_FAILED'); assert.equal(report.cleanupFailure, null);
   assert.equal(report.peers[2].failure.code, 'input_failed'); assert.equal(report.peers[2].stop.execution, 'stopped');
   assert.ok(report.peers.slice(0, 2).every(peer => peer.failure === null && peer.turns.length === 2));
