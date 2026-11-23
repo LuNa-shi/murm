@@ -1,8 +1,9 @@
 .env
 node_modules/
 
-# Private experiment evidence remains local. Historical tracked runs are on research.
+# Private experiment evidence and reports remain local. Historical runs are on research.
 /experiments/
+/reports/
 
 # Linked development checkouts live inside the primary repository.
 /.worktree/
