@@ -12,6 +12,44 @@ async function localUpstream(t, handler) {
   return `http://127.0.0.1:${server.address().port}/v1/responses`;
 }
 
+test('hosted output overage fences forwarding and cancels the active peer before exposing that terminal chunk', { timeout: 3000 }, async t => {
+  const requested = [], held = [], failures = [];
+  const upstreamUrl = await localUpstream(t, async (request, response) => {
+    const chunks = []; for await (const chunk of request) chunks.push(chunk);
+    requested.push(JSON.parse(Buffer.concat(chunks)).max_output_tokens);
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.write(':held\n\n'); held.push(response);
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 20,
+    maxOutputTokens: 768, maxConcurrent: 2, maxAggregateOutputTokens: 15360, filename: 'unused', marker: 'unused',
+    failFast: true, onFailure: failure => failures.push(failure) });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [], max_output_tokens: 9999 }) });
+  async function collect(response) {
+    let body = '';
+    try { for await (const chunk of response.body) body += Buffer.from(chunk).toString(); } catch { return body; }
+    return body;
+  }
+  const peer = await send(), peerBody = collect(peer);
+  const offender = await send(), offenderBody = collect(offender);
+  held[1].end('data: ' + JSON.stringify({ type: 'response.completed', response: {
+    id: 'local-overage', usage: { input_tokens: 10, output_tokens: 865 }, output: [] } }) + '\n\n');
+  // One overage terminal must abort both readers without waiting for work expiry.
+  const bodies = await Promise.all([peerBody, offenderBody]);
+  assert.ok(bodies.every(body => !body.includes('response.completed')));
+  assert.equal((await send()).status, 400);
+  const before = cap.receipt();
+  assert.deepEqual(requested, [768, 768]); assert.equal(before.forwarded, 2);
+  assert.equal(before.deadlineReached, false); assert.equal(before.rejectedArrivals, 1);
+  assert.deepEqual(before.failure, { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 2, maxOutputTokens: 768, outputTokens: 865 });
+  assert.deepEqual(failures, [before.failure]);
+  assert.deepEqual(before.requests[1].usage, { inputTokens: 10, outputTokens: 865 });
+  assert.equal(before.requests[1].transport.firstTermination.kind, 'output_limit_exceeded');
+  assert.equal(before.requests[0].transport.firstTermination.kind, 'output_limit_abort');
+  await cap.close();
+  assert.deepEqual(cap.receipt().failure, before.failure); assert.equal(failures.length, 1);
+});
+
 test('closing a held HTTP200 stream records host cancellation before its resulting transport error', { timeout: 3000 }, async t => {
   const upstreamUrl = await localUpstream(t, (request, response) => {
     request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':held\n\n');
