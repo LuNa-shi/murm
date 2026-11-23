@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { runWithReport } from '../src/environments/shared/run-report.js';
 import { leadHelperCommand, adjustedDirection } from './fixtures/lead-helper-upstream.js';
 import { transport } from './fixtures/core-bot-service-backend.js';
-import { closeLeadHelperFixture } from './fixtures/lead-helper-scenario-cleanup.js';
+import { closeLeadHelperFixture, drainLeadHelperFixture } from './fixtures/lead-helper-scenario-cleanup.js';
 const execute = promisify(execFile);
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/lead-helper-backend.js', import.meta.url).href, shortCircuit: true };
@@ -24,20 +24,26 @@ const { createLeadHelperEnvironment } = await import('../src/environments/lead-h
 async function scenario(t, failure, fixturePrograms = false) {
   transport.reset(); transport.collectable = true; let environment; let lock; let server;
   const work = new Set(), guests = new Map(), commands = new AbortController(); let stopping = false;
+  let drain;
+  const drainWork = () => drain ??= drainLeadHelperFixture({ guests: guests.values(), work,
+    stopWork() { stopping = true; commands.abort(); },
+  });
   const run = (command, args, options = {}) => {
     if (stopping) return Promise.reject(new Error('Fixture is stopping'));
     return execute(command, args, { timeout: 15000, ...options, signal: commands.signal });
   };
   const directory = await mkdtemp(join(tmpdir(), 'lead-helper-public-'));
-  t.after(() => closeLeadHelperFixture({ directory, server, guests: guests.values(), work,
-    stopWork() { stopping = true; commands.abort(); },
+  t.after(() => closeLeadHelperFixture({ directory, server, drain: drainWork,
     async reconcile() {
       if (lock) { lock.exec('ROLLBACK'); lock.close(); }
       transport.onStop = undefined;
       await environment?.close({ timeoutMs: 2000 });
       const reconciled = await environment?.close({ timeoutMs: 2000 });
+      if (environment) {
+        assert.equal(reconciled.cleanup, 'complete');
+        assert.ok(reconciled.bots.every(row => row.execution === 'stopped' && row.cleanup === 'complete'));
+      }
       if (failure === 'locked-failed') {
-        assert.equal(reconciled.cleanup, 'complete'); assert.ok(reconciled.bots.every(row => row.execution === 'stopped'));
         assert.equal(environment.snapshot().board.subtasks.find(row => row.id === 'helper1').failure.code, 'input_failed');
       }
     },
@@ -132,7 +138,13 @@ async function scenario(t, failure, fixturePrograms = false) {
   if (failure === 'unknown') transport.onStop = botId => { if (botId === team.helper1) throw new Error('Controlled stop uncertainty'); };
   const configuration = { runId: 'test', outputDir: directory, image: 'test', backend: {}, turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
     prepare: async () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors }) };
-  const report = await runWithReport({ outputDir: directory, closeTimeoutMs: 1000, createRuntime: async () => { environment = await createLeadHelperEnvironment(configuration); return environment; }, run: owned => owned.runWorkflow({ goal: 'Implement both checks', supplement: fixturePrograms ? adjustedDirection : 'Add explicit evidence' }), redact: value => environment ? environment.redact(value) : value });
+  const report = await runWithReport({ outputDir: directory, closeTimeoutMs: 1000, createRuntime: async () => {
+    const owned = await createLeadHelperEnvironment(configuration);
+    // The simulator cannot outlive the first Core close: a complete receipt is
+    // cached, so a later close cannot flush evidence from an unfinished send.
+    environment = { ...owned, async close(options) { await drainWork(); return owned.close(options); } };
+    return environment;
+  }, run: owned => owned.runWorkflow({ goal: 'Implement both checks', supplement: fixturePrograms ? adjustedDirection : 'Add explicit evidence' }), redact: value => environment ? environment.redact(value) : value });
   if (!failure) assert.equal(backgroundFailure, undefined, backgroundFailure?.stderr ?? String(backgroundFailure));
   assert.equal(transport.spawns.size, 3, JSON.stringify(report.businessFailure)); assert.equal(JSON.stringify(report).includes('private-helper'), false);
   if (failure) {
