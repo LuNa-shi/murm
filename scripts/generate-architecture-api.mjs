@@ -15,7 +15,7 @@ import { ERROR_CODES } from '../src/errors.js';
 import { DatabaseSync } from 'node:sqlite';
 import { EXECUTION_WORKSPACE_SCHEMA_SQL } from '../src/runtime/execution-workspace.js';
 import { TaskService } from '../src/task/task-service.js';
-import { CORE_MODEL_SCHEMA_SQL, RESPONSES_BUDGET_SCHEMA_SQL } from '../src/agent/responses-budget-gateway.js';
+import { CORE_MODEL_SCHEMA_SQL } from '../src/agent/responses-budget-gateway.js';
 import { MANUAL_MISSION_REVIEW_SCHEMA_SQL } from '../src/runtime/manual-mission-review.js';
 import { MISSION_SUBMISSION_SCHEMA_SQL } from '../src/runtime/mission-submission.js';
 import { SERVICE_HISTORY_SCHEMA_SQL } from '../src/replay/service-history.js';
@@ -63,7 +63,6 @@ const schemas = [
   ['Task-owned independent service commit gates', 'src/storage/service-peer-schema.js', SERVICE_COMMIT_SCHEMA_SQL],
   ['Context peer receipts', 'src/storage/service-peer-schema.js', CONTEXT_PEER_SCHEMA_SQL],
   ['Judge peer launch phases', 'src/storage/service-peer-schema.js', JUDGE_PEER_SCHEMA_SQL],
-  ['Model budget gateway', 'src/agent/responses-budget-gateway.js', RESPONSES_BUDGET_SCHEMA_SQL],
   ['Core Runtime model attempts', 'src/agent/responses-budget-gateway.js', CORE_MODEL_SCHEMA_SQL],
   ['Mission submission coordinator', 'src/runtime/mission-submission.js', MISSION_SUBMISSION_SCHEMA_SQL],
   ['Owner-local manual Mission review', 'src/runtime/manual-mission-review.js', MANUAL_MISSION_REVIEW_SCHEMA_SQL],

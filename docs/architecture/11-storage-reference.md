@@ -12,10 +12,11 @@ This chapter lists the exported SQLite schemas for this tree. A restarted proces
 | MissionWorkspace | Public Mission Git repository, immutable numeric revisions, main, merge/freeze receipts and index | Unsaved guest edits and live checker work |
 | Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
 | Observation Store | Experiment registry, ordered events, operator payload, redacted Agent payload and payload hash | SSE connections, event-emitter subscriptions, server caches and client projection |
+| Core model gateway | Runtime policy pin, Bot request attempts, observed usage, bounded HTTP diagnostics and eligible replay receipts | Bot credentials and live HTTP transport |
 | Registry/Bridge | Manifest/profile hashes can be recorded in run metadata; source/bundle files define defaults | Registered adapters, readiness cache, Bridge token, current binding, deferred lifecycle callback |
 | Sandbox | Registered Bots publish files through explicit public save; compatibility paths retain checkpoint/progress | Container/process state, background job handles; cleanup and saving are separate steps |
 
-Production uses `project.sqlite` for Task/Mission/Workspace coordination, `context.sqlite` for Material state, `judge.sqlite` for diagnostic checking and `model-budget.sqlite` for model admission. The formal CLI injects a separate persistent observation database; only the library fallback colocates observations with Task. Each service owns its connection/schema. Independent peers exchange explicit HTTP commands and receipts. The Task-owned durable gate orders revocation against Context commit and actual Judge spawn; unknown outcomes remain fenced until exact reconciliation. Resource-unit ownership survives Judge crashes independently of the in-memory checker promise. Current service compositions use the configured local or independent service boundaries. See [Services](04-services.md#independent-contextjudge-deployment) for order, bounds and cleanup.
+Production uses `project.sqlite` for Task/Mission/Workspace coordination, `context.sqlite` for Material state, and `judge.sqlite` for diagnostic checking. Core creates one owner-private SQLite ledger per configured model alias under the Runtime's `model-access` directory. The alias's SHA-256 determines its filename. Each service owns its connection and schema. Independent peers exchange explicit HTTP commands and receipts. The Task-owned durable gate orders revocation against Context commit and actual Judge spawn. Unknown outcomes remain fenced until exact reconciliation. Resource-unit ownership survives Judge crashes independently of the in-memory checker promise. Current service compositions use the configured local or independent service boundaries. See [Services](04-services.md#independent-contextjudge-deployment) for order, bounds and cleanup.
 
 The Task-owned `service_commit_gate` holds one unresolved exact command and digest; `service_commit_events` retains notification delivery work. Context owns `context_peer_receipts` for terminal gate outcomes. Judge owns `judge_peer_phases` for one-shot phase/generation receipts. The private `judge-checker-resources.ndjson` ledger names only allocated/settled systemd resources and is fsynced before launch. These are recovery records, not new research entities.
 
@@ -136,41 +137,9 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 );
 ```
 
-### Model budget gateway
-
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `46daab2e9cae5d644dc2b84e52881bea67d6b5e8c91e92f22d8d94a5c03fd175`.
-
-```sql
-CREATE TABLE IF NOT EXISTS responses_budget_policies (
-        mission_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
-      );
-      CREATE TABLE IF NOT EXISTS responses_budget_attempts (
-        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
-        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
-        cost INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0,
-        state TEXT NOT NULL, reason TEXT, receipt BLOB,
-        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
-        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
-        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
-        PRIMARY KEY (mission_id, bot_id, request_id)
-      );
-      CREATE TABLE IF NOT EXISTS responses_timed_attempts (
-        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
-        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
-        output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
-        state TEXT NOT NULL, reason TEXT, receipt BLOB,
-        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
-        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
-        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
-        PRIMARY KEY (mission_id, bot_id, request_id)
-      );
-      CREATE INDEX IF NOT EXISTS responses_budget_scope
-        ON responses_budget_attempts (mission_id, bot_id, phase);
-```
-
 ### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `46daab2e9cae5d644dc2b84e52881bea67d6b5e8c91e92f22d8d94a5c03fd175`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `15a01f2835dc2fcbaa0d3d65266fa4a00ae5b535afe5b80e719683d022e75920`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (

@@ -7,24 +7,13 @@ import { test } from 'node:test';
 import { ResponsesBudgetGateway } from '../src/agent/responses-budget-gateway.js';
 
 const model = 'gpt-6.1-sol';
-const limits = {
-  mission: { requests: 4, inputTokens: 800, outputTokens: 160, cost: 3000 },
-  bot: { requests: 4, inputTokens: 800, outputTokens: 160, cost: 3000 },
-  selection: { requests: 1, inputTokens: 200, outputTokens: 40, cost: 600 },
-  closeout: { requests: 1, inputTokens: 200, outputTokens: 40, cost: 600 },
-};
-const contract = {
-  maxInputTokens: 100, maxOutputTokens: 20, maxFanout: 2, costUnit: 'fixture-units',
-  inputCostPerToken: 2, outputCostPerToken: 3, fixedAttemptCost: 5,
-  requestTimeoutMs: 2000, boundEvidence: 'fixture enforces an independent processed token bound',
-};
 
 function completion(usage = { input_tokens: 4, output_tokens: 3 }) {
   return 'event: response.completed\ndata: ' +
     JSON.stringify({ type: 'response.completed', response: { id: 'resp_fixture', status: 'completed', model, usage } }) + '\n\n';
 }
 
-async function fixture(t, fn, { timeBounds } = {}) {
+async function fixture(t, fn, { timeBounds = { requestTimeoutMs: 2000, maxOutputTokens: 20 } } = {}) {
   const requests = [];
   const upstream = createServer(async (req, res) => {
     const chunks = [];
@@ -36,13 +25,12 @@ async function fixture(t, fn, { timeBounds } = {}) {
   upstream.listen(0, '127.0.0.1');
   await once(upstream, 'listening');
   const db = new DatabaseSync(':memory:');
-  const phases = new Map([['b', 'selection'], ['c', 'work']]);
   const upstreamOptions = {
-    url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, model, contract: timeBounds ? undefined : contract,
+    url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, model,
     headers: { authorization: 'Bearer host-secret', 'x-openai-actor-authorization': 'host-actor' },
   };
-  const options = { db, upstream: upstreamOptions, limits: timeBounds ? undefined : limits, timeBounds,
-    validateBot: ({ botId }) => ({ phase: phases.get(botId) }) };
+  const options = { db, upstream: upstreamOptions, timeBounds,
+    validateBot: () => ({ phase: 'work', deadline: Date.now() + timeBounds.requestTimeoutMs }) };
   const gateway = new ResponsesBudgetGateway(options);
   const { baseUrl } = await gateway.start();
   t.after(async () => {
@@ -60,14 +48,15 @@ async function fixture(t, fn, { timeBounds } = {}) {
     body: JSON.stringify(body),
     ...request,
   });
-  return { db, gateway, baseUrl, requests, phases, options, call };
+  return { db, gateway, baseUrl, requests, options, call };
 }
 
-test('time-bounded Responses uses real usage only, and preserves scope and replay without financial configuration', async t => {
+test('time-bounded Responses uses Runtime credentials and replays only observed usage', async t => {
   const { db, gateway, call, requests } = await fixture(t, (_, response) => {
     response.end(requests.length === 1 ? completion() : 'event: unrecognized\ndata: {}\n\n');
   }, { timeBounds: { requestTimeoutMs: 1000, maxOutputTokens: 64 } });
-  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
+  assert.throws(() => gateway.issueToken({ missionId: 'm', botId: 'b' }), /trusted Runtime\/Bot binding/);
   const body = { model, input: 'prove', max_output_tokens: 100 };
   assert.equal((await call(token, 'one', body)).status, 200);
   assert.equal(await (await call(token, 'one', body)).text(), completion());
@@ -78,9 +67,9 @@ test('time-bounded Responses uses real usage only, and preserves scope and repla
   assert.equal(requests.length, 2);
   assert.equal(requests[0].body.max_output_tokens, 64);
   assert.equal(requests[0].headers.authorization, 'Bearer host-secret');
-  assert.deepEqual({ ...gateway.observedUsage('m') }, { requests: 2, requests_with_usage: 1, unknown_requests: 1,
+  assert.deepEqual({ ...gateway.observedUsage('r') }, { requests: 2, requests_with_usage: 1, unknown_requests: 1,
     pending_requests: 0, observed_input_tokens: 4, observed_output_tokens: 3 });
-  const rows = db.prepare('SELECT cost, input_tokens, output_tokens FROM responses_timed_attempts ORDER BY request_id').all();
+  const rows = db.prepare('SELECT cost, input_tokens, output_tokens FROM runtime_model_attempts ORDER BY request_id').all();
   assert.deepEqual(rows.map(row => ({ ...row })), [{ cost: null, input_tokens: 4, output_tokens: 3 },
     { cost: null, input_tokens: null, output_tokens: null }]);
   gateway.revokeToken(token);
@@ -89,7 +78,7 @@ test('time-bounded Responses uses real usage only, and preserves scope and repla
 
 test('validates actual Pi Responses item shapes, forwards only configured credentials, and replays receipt', async t => {
   const { gateway, call, requests } = await fixture(t);
-  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
   const body = {
     model, stream: true, store: false, max_output_tokens: 30, prompt_cache_key: 'pi-session',
     input: [
@@ -116,17 +105,15 @@ test('validates actual Pi Responses item shapes, forwards only configured creden
   assert.equal(requests[0].body.max_output_tokens, 20);
   assert.equal(requests[0].headers.authorization, 'Bearer host-secret');
   assert.equal(requests[0].headers['x-openai-actor-authorization'], 'host-actor');
-  assert.deepEqual({ ...gateway.totals({ missionId: 'm' }) }, {
-    requests: 1, inputTokens: 104, outputTokens: 23, cost: 287,
-  });
-  assert.equal((await call(token, 'two')).status, 429);
+  assert.deepEqual({ ...gateway.observedUsage('r') }, { requests: 1, requests_with_usage: 1, unknown_requests: 0,
+    pending_requests: 0, observed_input_tokens: 4, observed_output_tokens: 3 });
   assert.equal(gateway.revokeToken(token), true);
   assert.equal((await call(token, 'one', body)).status, 401);
 });
 
 test('rejects alternate routes, tools, remote inputs, tier and stateful Responses modes', async t => {
   const { gateway, call, requests } = await fixture(t);
-  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
   for (const patch of [
     { model: 'other' }, { background: true }, { conversation: 'conv_1' }, { previous_response_id: 'resp_1' },
     { service_tier: 'priority' }, { tools: [{ type: 'web_search' }] },
@@ -140,41 +127,39 @@ test('rejects alternate routes, tools, remote inputs, tier and stateful Response
   assert.equal(requests.length, 0);
 });
 
-test('concurrent reservations preserve closeout capacity and keep ambiguous usage after restart', async t => {
-  const { db, gateway, call, phases, requests, options } = await fixture(t, (_req, res) => res.end('data: {}\n\n'));
-  const token = gateway.issueToken({ missionId: 'm', botId: 'c' });
+test('concurrent requests retain unknown usage and reject replay after gateway restart', async t => {
+  const { db, gateway, call, requests, options } = await fixture(t, (_req, res) => res.end('data: {}\n\n'));
+  const token = gateway.issueToken({ runtimeId: 'r', botId: 'c' });
   const work = await Promise.all(['1', '2', '3', '4'].map(id => call(token, id)));
-  assert.deepEqual(work.map(r => r.status).sort(), [200, 200, 200, 429]);
+  assert.deepEqual(work.map(r => r.status), [200, 200, 200, 200]);
   await Promise.all(work.map(r => r.text()));
-  assert.equal(gateway.totals({ missionId: 'm' }).inputTokens, 600);
-  phases.set('c', 'closeout');
-  assert.equal((await call(token, '5')).status, 200);
   await gateway.stop();
   const next = new ResponsesBudgetGateway(options);
   const { baseUrl } = await next.start();
   t.after(() => next.stop());
-  const nextToken = next.issueToken({ missionId: 'm', botId: 'c' });
+  const nextToken = next.issueToken({ runtimeId: 'r', botId: 'c' });
   const replay = await fetch(`${baseUrl}/responses`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${nextToken}`, 'x-swarmenv-request-id': '5' },
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${nextToken}`, 'x-swarmenv-request-id': '4' },
     body: JSON.stringify({ model, input: 'prove' }),
   });
   assert.equal(replay.status, 409);
   assert.equal((await replay.json()).error.code, 'request_unknown');
   assert.equal(requests.length, 4);
-  assert.equal(next.totals({ missionId: 'm' }).outputTokens, 160);
-  assert.equal(db.prepare("SELECT count(*) AS n FROM responses_budget_attempts WHERE reason = 'no_trusted_terminal_usage'").get().n, 4);
+  assert.deepEqual({ ...next.observedUsage('r') }, { requests: 4, requests_with_usage: 0, unknown_requests: 4,
+    pending_requests: 0, observed_input_tokens: null, observed_output_tokens: null });
+  assert.equal(db.prepare("SELECT count(*) AS n FROM runtime_model_attempts WHERE reason = 'no_trusted_terminal_usage'").get().n, 4);
   await next.stop();
 });
 
-test('stop terminates actual upstream stream and preserves reservation on disconnect', async t => {
+test('stop terminates actual upstream stream and preserves unknown usage on disconnect', async t => {
   let confirmClosed;
   const closed = new Promise(resolve => { confirmClosed = resolve; });
   const { gateway, call, db } = await fixture(t, (_req, res) => {
     res.once('close', confirmClosed);
     res.write('data: {}\n\n');
   });
-  const token = gateway.issueToken({ missionId: 'm', botId: 'c' });
+  const token = gateway.issueToken({ runtimeId: 'r', botId: 'c' });
   const result = await call(token, 'one');
   assert.equal(result.status, 200);
   const replayWhilePending = await call(token, 'one');
@@ -182,14 +167,16 @@ test('stop terminates actual upstream stream and preserves reservation on discon
   assert.equal((await replayWhilePending.json()).error.code, 'request_pending');
   await gateway.stop();
   await closed;
-  const row = db.prepare('SELECT state, reason, cost FROM responses_budget_attempts').get();
-  assert.deepEqual({ ...row }, { state: 'unknown', reason: 'transport_interrupted', cost: 530 });
+  const row = db.prepare('SELECT state, reason, input_tokens, output_tokens, cost FROM runtime_model_attempts').get();
+  assert.deepEqual({ ...row }, { state: 'unknown', reason: 'transport_interrupted', input_tokens: null,
+    output_tokens: null, cost: null });
 });
 
-test('rejects missing contract evidence and burns no quota', async t => {
+test('requires time bounds and rejects the retired upstream financial contract', async t => {
   const { options } = await fixture(t);
-  const missing = { ...options, upstream: { ...options.upstream, contract: { ...contract, boundEvidence: '' } } };
-  assert.throws(() => new ResponsesBudgetGateway(missing), /complete trusted/);
+  assert.throws(() => new ResponsesBudgetGateway({ ...options, timeBounds: undefined }), /time bounds/);
+  const financial = { ...options, upstream: { ...options.upstream, contract: {} } };
+  assert.throws(() => new ResponsesBudgetGateway(financial), /contract/);
 });
 
 test('locally installed Pi replays provider reasoning with empty content through the gateway over real SSE', async t => {
@@ -202,7 +189,7 @@ test('locally installed Pi replays provider reasoning with empty content through
     response.end('event: response.output_item.done\ndata: ' +
       JSON.stringify({ type: 'response.output_item.done', output_index: 0, item: reasoning }) + '\n\n' + completion());
   });
-  const token = gateway.issueToken({ missionId: 'm', botId: 'c' });
+  const token = gateway.issueToken({ runtimeId: 'r', botId: 'c' });
   const provider = {
     id: model, name: model, api: 'openai-responses', provider: 'gpt_proxy', baseUrl,
     input: ['text'], reasoning: true, contextWindow: 500000, maxTokens: 128000,
@@ -234,7 +221,7 @@ test('rejected upstream HTTP responses retain safe diagnostics without changing 
       'retry-after': '12', 'x-private-header': 'sensitive-header' });
     response.end('{"private":"sensitive-body"}');
   }, { timeBounds: { requestTimeoutMs: 1000, maxOutputTokens: 64 } });
-  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
   const response = await call(token, 'http-rejected');
   assert.equal(response.status, 502);
   const error = await response.text();
@@ -242,12 +229,12 @@ test('rejected upstream HTTP responses retain safe diagnostics without changing 
   assert.doesNotMatch(error, /sensitive|503|req_provider_fixture/);
   const row = db.prepare(`SELECT state, reason, settled, input_tokens, output_tokens, cost, upstream_request_id,
     upstream_status, upstream_content_type_valid, upstream_body_present, upstream_rejection_kind,
-    upstream_retry_after_seconds FROM responses_timed_attempts`).get();
+    upstream_retry_after_seconds FROM runtime_model_attempts`).get();
   assert.deepEqual({ ...row }, { state: 'unknown', reason: 'upstream_http_error', settled: 0,
     input_tokens: null, output_tokens: null, cost: null, upstream_request_id: 'req_provider_fixture',
     upstream_status: 503, upstream_content_type_valid: 0, upstream_body_present: 1,
     upstream_rejection_kind: 'non_2xx', upstream_retry_after_seconds: 12 });
-  assert.equal(gateway.observedUsage('m').unknown_requests, 1);
+  assert.equal(gateway.observedUsage('r').unknown_requests, 1);
   assert.equal((await call(token, 'http-rejected')).status, 409);
 });
 
@@ -258,12 +245,12 @@ test('successful HTTP with non-SSE content retains a distinct rejection and disc
       'retry-after': 'sensitive-header' });
     response.end('{"private":"sensitive-body"}');
   }, { timeBounds: { requestTimeoutMs: 1000, maxOutputTokens: 64 } });
-  const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
+  const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
   const response = await call(token, 'wrong-content-type');
   assert.equal(response.status, 502);
   assert.doesNotMatch(await response.text(), /sensitive|content.type/);
   assert.deepEqual({ ...db.prepare(`SELECT upstream_status, upstream_content_type_valid, upstream_body_present,
-    upstream_rejection_kind, upstream_retry_after_seconds, state, reason FROM responses_timed_attempts`).get() },
+    upstream_rejection_kind, upstream_retry_after_seconds, state, reason FROM runtime_model_attempts`).get() },
   { upstream_status: 200, upstream_content_type_valid: 0, upstream_body_present: 1,
     upstream_rejection_kind: 'invalid_content_type', upstream_retry_after_seconds: null,
     state: 'unknown', reason: 'upstream_http_error' });
@@ -275,19 +262,19 @@ for (const scenario of [
   { name: 'missing response body', status: 204, contentTypeValid: 1, bodyPresent: 0, kind: 'missing_body',
     retry: 'Wed, 21 Oct 2030 07:28:00 GMT', clientStatus: 502 },
 ]) {
-  test(`financial gateway records ${scenario.name} without releasing its reservation`, async t => {
+  test(`records upstream ${scenario.name} and leaves usage unknown`, async t => {
     const { db, gateway, call } = await fixture(t, (_, response) => {
       response.writeHead(scenario.status, { 'retry-after': scenario.retry });
       response.end();
     });
-    const token = gateway.issueToken({ missionId: 'm', botId: 'b' });
-    const response = await call(token, 'financial-rejected');
+    const token = gateway.issueToken({ runtimeId: 'r', botId: 'b' });
+    const response = await call(token, 'rejected');
     assert.equal(response.status, scenario.clientStatus);
     await response.text();
     const row = db.prepare(`SELECT upstream_status, upstream_content_type_valid, upstream_body_present,
-      upstream_rejection_kind, upstream_retry_after_seconds, state, reason, settled, cost FROM responses_budget_attempts`).get();
+      upstream_rejection_kind, upstream_retry_after_seconds, state, reason, settled, cost FROM runtime_model_attempts`).get();
     assert.deepEqual({ ...row }, { upstream_status: scenario.status, upstream_content_type_valid: scenario.contentTypeValid,
       upstream_body_present: scenario.bodyPresent, upstream_rejection_kind: scenario.kind, upstream_retry_after_seconds: null,
-      state: 'unknown', reason: 'upstream_http_error', settled: 0, cost: 530 });
+      state: 'unknown', reason: 'upstream_http_error', settled: 0, cost: null });
   });
 }

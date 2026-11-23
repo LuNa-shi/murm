@@ -128,7 +128,7 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
       entry.db = new DatabaseSync(path);
       entry.ledgerPath = path;
       await chmod(path, 0o600);
-      entry.gateway = new ResponsesBudgetGateway({ db: entry.db, scope: 'runtime',
+      entry.gateway = new ResponsesBudgetGateway({ db: entry.db,
         upstream: { ...entry.model.upstream, model: entry.model.model }, timeBounds: gatewayConfig,
         ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { fetchImpl: kimiResponsesTransport(globalThis.fetch) } : {}),
         withLifecycleWrite,

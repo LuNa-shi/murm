@@ -466,7 +466,7 @@
         "docs/architecture/11-storage-reference.md",
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Bounded Responses forwarding with durable observed attempts or explicit financial reservations"
+      "role": "Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage"
     },
     {
       "path": "src/agent/services-bridge.js",
