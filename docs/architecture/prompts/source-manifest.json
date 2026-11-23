@@ -52,7 +52,7 @@
     },
     {
       "path": "src/core/index.js",
-      "sha256": "e558bb2c1b25928c71451a0d28b2773aa04822628eebae997350417f7d1ae6ca"
+      "sha256": "b3476158105c28f44622f330a9cc962de3850da1297ed446ef63d084b47fa612"
     },
     {
       "path": "src/core/pi-opensandbox-backend.js",

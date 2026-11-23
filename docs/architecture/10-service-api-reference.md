@@ -40,7 +40,7 @@ This section is generated from executable exports and checked against the source
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 | [src/core/index.d.ts](../../src/core/index.d.ts) | `dcc6ccb8356029ab236b6e7a2a970e45af7a2929bae25fa76f770d04197aefcb` |
-| [src/core/services.d.ts](../../src/core/services.d.ts) | `cb0527f065caaaaad0ae178e65789261772a19054a1c58cfbdfe635320433238` |
+| [src/core/services.d.ts](../../src/core/services.d.ts) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
 | [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `166e51de1b45cf32e17b0b62fdafecfe913521122450a125f3ece1c87cd267ed` |
 
 ### Exact built-in command operation surface
@@ -3346,6 +3346,9 @@ export class ServiceRegistry {
 }
 
 export function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
+
+/** Host-only Service credential; HTTP Service must authenticate this connection before trusting caller. */
+export function createHttpJsonAdapter(options?: { token?: string; timeoutMs?: number; fetchImpl?: typeof fetch }): ServiceAdapter;
 ```
 
 #### src/core/backends/pi-opensandbox.d.ts
