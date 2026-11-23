@@ -6,6 +6,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { readFile, writeFile, mkdir, chown, chmod, readdir, lstat, realpath, statfs } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
+import { CoreWorkDir } from './core-work-dir.mjs';
 import { createPiRpcSubmissions } from './pi-rpc-submissions.mjs';
 
 const argv = process.argv.slice(2);
@@ -18,6 +19,7 @@ const token = option('--token', process.env.SWARMENV_WORKER_TOKEN) ?? randomUUID
 if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('worker port must be an integer from 1 to 65535');
 
 const project = new SandboxProject();
+let coreWorkDir;
 const quotaRequired = argv.includes('--require-project-quota');
 const catalogPath = '/opt/swarmenv/pi-agent/models.json';
 const filesystemPolicy = '/opt/swarmenv/bot-filesystem-policy';
@@ -102,6 +104,10 @@ function startupContractError(message) {
   return Object.assign(new Error(message), { code: 'BOT_STARTUP_CONTRACT' });
 }
 
+function requireOpenWorkDir() {
+  if (project.closing) throw Object.assign(new Error('Bot workDir is closing'), { code: 'NOT_ALLOWED' });
+}
+
 async function readPinnedStartupPath(operation, path) {
   try {
     return await operation(path);
@@ -169,9 +175,10 @@ async function startAgent(input) {
     await writeFile(input.system_prompt_path, input.system_prompt, { mode: 0o600 });
     await chown(input.system_prompt_path, BOT_UID, BOT_UID);
   }
-  if (core && input.writable === true) {
-    await chown(PROJECT_DIR, BOT_UID, BOT_UID);
-    await chmod(PROJECT_DIR, 0o755);
+  let projectFiles;
+  if (core) {
+    coreWorkDir = new CoreWorkDir({ path: PROJECT_DIR, uid: BOT_UID, gid: BOT_UID, assertOpen: requireOpenWorkDir });
+    projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true });
   }
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;
@@ -201,6 +208,7 @@ async function startAgent(input) {
   });
   return { pid: child.pid, contract: { version: input.contract_version, resources: input.resources },
     ...(projectQuota ? { project_quota: projectQuota } : {}),
+    ...(projectFiles ? { project_files: projectFiles } : {}),
     ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}) };
 }
 
@@ -306,10 +314,23 @@ function stopBot() {
       await new Promise(resolve => setTimeout(resolve, 10));
     }
     if (!initialized) return { stopped: true, project_installs: [] };
+    await coreWorkDir?.drain();
     await project.close();
     return { stopped: true, project_installs: await project.installReceipts() };
   })().catch(error => { stopping = null; throw error; });
   return stopping;
+}
+
+function controlCoreFiles(action, input) {
+  requireOpenWorkDir();
+  if (!coreWorkDir || !child?.pid) throw Object.assign(new Error('Core file control requires a live Core Bot'), { code: 'NOT_ALLOWED' });
+  return withBotPaused(async () => {
+    try { return await coreWorkDir[action](input); }
+    catch (error) {
+      if (error.code === 'OPERATION_UNKNOWN') project.beginClose();
+      throw error;
+    }
+  });
 }
 
 const server = createServer(async (request, response) => {
@@ -317,7 +338,15 @@ const server = createServer(async (request, response) => {
   try {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
-    if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request, 32 * 1024 ** 2)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/core/files/prepare') {
+      send(response, 200, { ok: true, result: await controlCoreFiles('prepare', await body(request, 32 * 1024 ** 2)) });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/core/files/grant') {
+      send(response, 200, { ok: true, result: await controlCoreFiles('grant', await body(request)) });
+      return;
+    }
     if (url.pathname.startsWith('/project/') && !initialized) throw new Error('Bot workspace is not initialized');
     if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request, 32 * 1024 * 1024)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.grant(input)) }); return; }
@@ -341,7 +370,7 @@ const server = createServer(async (request, response) => {
     }
     send(response, 404, { ok: false, error: 'unknown worker route' });
   } catch (error) {
-    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'BOT_STARTUP_CONTRACT', 'CONFLICT', 'NOT_ALLOWED'].includes(error.code) ? { code: error.code } : {}),
+    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'BOT_STARTUP_CONTRACT', 'CONFLICT', 'NOT_ALLOWED', 'OPERATION_UNKNOWN'].includes(error.code) ? { code: error.code } : {}),
       ...(['dirty', 'active_writer'].includes(error.applyBlocker) ? { apply_blocker: error.applyBlocker } : {}) });
   }
 });

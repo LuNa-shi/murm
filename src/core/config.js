@@ -1,4 +1,5 @@
 import { isIPv4 } from 'node:net';
+import { snapshotFileSeed } from '../../scripts/core-file-seed.mjs';
 
 export function validId(value) {
   return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
@@ -68,7 +69,7 @@ export function snapshotProfiles(profiles, models, registrations) {
 
 export function snapshotSpawn(input, profiles, registrations) {
   if (!record(input) || !validId(input.requestId) || !profiles.has(input.profile) ||
-      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'bindings', 'secretEnv'].includes(key)) ||
+      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv'].includes(key)) ||
       (input.writable !== undefined && typeof input.writable !== 'boolean') ||
       (input.parentId !== undefined && !validId(input.parentId))) {
     throw new TypeError('Invalid spawn request or unsupported spawn options');
@@ -79,6 +80,7 @@ export function snapshotSpawn(input, profiles, registrations) {
     throw new TypeError('Invalid Service bindings');
   }
   const snapshot = structuredClone(input);
+  if (input.files !== undefined) snapshot.files = snapshotFileSeed(input.files).files;
   if (snapshot.secretEnv) snapshot.secretEnv = Object.fromEntries(Object.entries(snapshot.secretEnv).sort());
   if (snapshot.bindings) snapshot.bindings = Object.fromEntries(Object.entries(snapshot.bindings).sort());
   return snapshot;

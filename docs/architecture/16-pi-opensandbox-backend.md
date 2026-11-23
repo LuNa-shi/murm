@@ -8,9 +8,17 @@ The Runtime opens the backend with its own identity, Bridge and model access. Th
 
 Spawn creates the sandbox, verifies local Docker identity and installs network isolation, mounts the bounded workspace filesystem, and checks guest Pi version 1.3.0. Credentials come from the host Bridge and model-access objects. The upstream model credential remains behind the host gateway. Root Worker credentials remain outside the Pi environment.
 
-The Worker receives the authenticated `swarmenv-core-v1` startup contract. This contract uses the Profile prompt staged under `/workspace/runtime/profile-prompt.txt` and the existing native `read`, `write`, `edit` and `bash` tools. Extensions, skills, prompt templates and context files are disabled. The empty workDir becomes Bot-owned only when the host requests writable startup. Read-only startup retains the root-owned protected directory. This startup path creates no domain binding or synthetic Task.
+The Worker receives the authenticated `swarmenv-core-v1` startup contract. This contract uses the Profile prompt staged under `/workspace/runtime/profile-prompt.txt` and the existing native `read`, `write`, `edit` and `bash` tools. Extensions, skills, prompt templates and context files are disabled. Before Pi starts, the Worker installs any initial FileSeed and applies the requested write setting. Read-only startup retains the root-owned protected directory. This startup path creates no domain binding or synthetic Task.
 
 After starting Pi, spawn sends a bounded `get_state` request as the readiness check. It supplies no work prompt. It then starts authenticated Worker-history polling. The public Runtime can return an idle Bot and establish application routing before its first send.
+
+## Trusted workDir preparation and grant
+
+The root Worker initially requires a root-owned, empty workDir with mode 0555. It validates the FileSeed again inside the sandbox, creates each ordinary file exclusively, and verifies the resulting bytes, modes and root-controlled ancestor directories. It seals the directory after installation. The startup response supplies a `project_files` attestation with version, digest when prepared, and write state. The manager compares this information with the requested snapshot before the backend reports readiness.
+
+Live preparation and grant are authenticated Worker management requests under `/core/files/`, with a 30-second manager request bound. The Worker serializes them and pauses the Bot's guest processes for the protected mutation window. A running turn can be waiting for a Service call while the host prepares its read-only workDir. The Worker rejects the operation as busy if it cannot establish the pause within two seconds. Prepare verifies an empty read-only root and records each confirmed version. Grant requires the version and digest of the current preparation, rechecks the installed files and their ancestors, and changes ownership and permissions to give the Bot write access. Repeating a confirmed version returns its recorded result. Changed arguments conflict. Partial work that cannot be safely confirmed reports uncertainty, and an uncertain permission change stops the Worker-managed Bot. Stop marks the file area closing and waits for pending mutations before confirming process termination.
+
+The opt-in `test/core-files-real.test.js` exercises initial UTF-8 and binary data, native Pi reads and writes, a denied write before grant, a successful write after grant, and a second Bot's private data. It uses two sandboxes, five fixed inputs and at most ten scripted local Responses replies. The Issue records the independently reviewed commit, actual image, cleanup evidence and result.
 
 ## Input and events
 
@@ -32,7 +40,7 @@ Only backend destruction calls provider resource deletion for this Core path. Pr
 
 The manager records uncertain creates and can reconcile them using Runtime labels without a Mission. Foreign Runtime labels prevent resource deletion. A failed or unconfirmed deletion leaves the resource registered for retry. The Runtime owns the user-visible timeout, receipts, model-token revocation and saved Bot state.
 
-File seeds and artifact collection remain rejected pending their lifecycle slices. Additional frozen Profile origins are installed before any model work. Controlled file preparation, grants and export-before-destruction require #170 and #171. Real backend validation and actual model invocation are recorded separately in #166.
+Artifact collection remains assigned to #171. Additional frozen Profile origins are installed before any model work. The actual hosted model acceptance is recorded in #166.
 
 ## Transitional callers
 

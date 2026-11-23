@@ -4,6 +4,7 @@ import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
+import { decodeFileSeed } from '../../scripts/core-file-seed.mjs';
 
 const DEFAULT_EXECd_PORT = 44772;
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -580,11 +581,13 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ agentMode = 'swarm', writable = false, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
+  async startAgent({ agentMode = 'swarm', writable = false, files, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
     const record = this.#record(executionId);
     const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }) => ({ path, sha256 })).sort((a, b) => a.path.localeCompare(b.path))) : null;
     const contract = agentMode === 'core' ? { protocolVersion: 'swarmenv-core-v1', resources: [] } : agentContract(agentMode);
+    const expectedVersion = files !== undefined || writable ? 1 : 0;
+    const expectedDigest = agentMode === 'core' && expectedVersion === 1 ? decodeFileSeed(files ?? {}).digest : undefined;
     if (signature(resources) !== signature(contract.resources)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
     if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
     if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
@@ -617,6 +620,7 @@ export class OpenSandboxManager {
         resources,
         contract_version: contract.protocolVersion,
         writable,
+        ...(files === undefined ? {} : { files }),
         ...(projectQuota ? { project_quota: projectQuota } : {}),
         ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}),
       },
@@ -633,6 +637,10 @@ export class OpenSandboxManager {
     }
     if (modelCatalogResource && signature([catalogReceipt]) !== signature([modelCatalogResource])) {
       throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
+    }
+    const fileReceipt = startup.body?.result?.project_files;
+    if (agentMode === 'core' && (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest)) {
+      throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
     record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
@@ -715,6 +723,25 @@ export class OpenSandboxManager {
 
   prepareBotProject({ executionId, manifest }) { return this.#projectCall(executionId, 'prepare', manifest); }
   grantBotProject({ executionId }) { return this.#projectCall(executionId, 'grant'); }
+
+  async coreFileOperation(executionId, action, input) {
+    const record = this.#record(executionId);
+    if (record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Bot Worker');
+    }
+    const response = await this.#request(`${record.agent.endpoint}/core/files/${action}`, {
+      absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
+      body: input, timeoutMs: 30_000, allowStatuses: [400],
+    });
+    if (response.status === 400) {
+      const { code, error } = response.body ?? {};
+      const recognized = ['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY', 'OPERATION_UNKNOWN'];
+      throw new SwarmEnvError(recognized.includes(code) ? code : 'OPERATION_UNKNOWN',
+        typeof error === 'string' ? error : 'Worker could not confirm the Core file operation');
+    }
+    return responseValue(response.body);
+  }
+
   snapshotBotProject({ executionId }) { return this.#projectCall(executionId, 'snapshot'); }
   installBotProject({ executionId, ...input }) { return this.#projectCall(executionId, 'install', undefined, input); }
   queryBotProjectInstall({ executionId, request_id }) {

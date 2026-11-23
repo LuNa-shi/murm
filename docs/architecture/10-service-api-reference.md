@@ -39,7 +39,7 @@ This section is generated from executable exports and checked against the source
 | [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
-| [src/core/index.d.ts](../../src/core/index.d.ts) | `dcc6ccb8356029ab236b6e7a2a970e45af7a2929bae25fa76f770d04197aefcb` |
+| [src/core/index.d.ts](../../src/core/index.d.ts) | `5d38de5a6209510e16a2861af018d72b9ef250b9461a7cccce4829a60e7e6dd3` |
 | [src/core/services.d.ts](../../src/core/services.d.ts) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
 | [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `166e51de1b45cf32e17b0b62fdafecfe913521122450a125f3ece1c87cd267ed` |
 
@@ -3214,11 +3214,32 @@ export interface CreateRuntimeOptions {
   modelAccessPolicy?: ModelAccessPolicy;
 }
 
+export interface FileEntry {
+  encoding: 'utf8' | 'base64';
+  data: string;
+  mode?: 0o644 | 0o755;
+}
+
+export type FileSeed = Readonly<Record<string, FileEntry>>;
+
+export interface PreparedFiles {
+  readonly botId: string;
+  readonly version: number;
+  readonly digest: string;
+}
+
+export interface GrantReceipt {
+  readonly botId: string;
+  readonly version: number;
+  readonly writable: true;
+}
+
 export interface SpawnOptions {
   requestId: string;
   profile: string;
   parentId?: string;
   writable?: boolean;
+  files?: FileSeed;
   bindings?: Readonly<Record<string, string>>;
   secretEnv?: Readonly<Record<string, string>>;
 }
@@ -3288,6 +3309,10 @@ export interface Runtime {
   onEvent(handler: (event: BotEvent) => void): () => void;
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
+  readonly files: {
+    prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
+    grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
+  };
 }
 
 export function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;

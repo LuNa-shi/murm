@@ -108,10 +108,18 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
     }
   }
 
+  function fileOperation(botId, action, input) {
+    const bot = bots.get(botId);
+    if (!bot || bot.stopping || bot.exited || bot.historyLost || closing) {
+      throw Object.assign(new Error('Core Bot is unavailable for file control'), { code: 'NOT_ALLOWED' });
+    }
+    return bot.manager.coreFileOperation(botId, action, input);
+  }
+
   return {
     async spawn({ botId, profile, options = {}, signal, onEvent, onExecutionStart }) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
-      if (options.files || options.collect || profile.collect) throw invalid('File seeding and collection require the file lifecycle implementation');
+      if (options.collect || profile.collect) throw invalid('Artifact collection requires the collection implementation');
       const manager = new OpenSandboxManager({ ...config.sandbox, image: profile.image });
       const bot = { id: botId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
       bots.set(botId, bot);
@@ -137,6 +145,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
           '--append-system-prompt', '/workspace/runtime/profile-prompt.txt', '--provider', model.provider, '--model', model.model],
         systemPrompt: profile.prompt, systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
+        files: options.files,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
         projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
@@ -148,6 +157,8 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       bot.polling = poll(bot);
       return { sandboxId: sandbox.sandbox_id, versions };
     },
+    prepareFiles(botId, input) { return fileOperation(botId, 'prepare', input); },
+    grantFiles(botId, input) { return fileOperation(botId, 'grant', input); },
     async send(botId, input, { mode, inputId }) {
       const bot = bots.get(botId);
       if (!bot) throw Object.assign(new Error('Bot is unavailable'), { code: 'NOT_ALLOWED' });

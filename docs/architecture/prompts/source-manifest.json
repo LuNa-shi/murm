@@ -52,15 +52,15 @@
     },
     {
       "path": "src/core/index.js",
-      "sha256": "b3476158105c28f44622f330a9cc962de3850da1297ed446ef63d084b47fa612"
+      "sha256": "f5b01edc9b448e835d6f8470bd3d190431e03cfd7861026361e1b4af24a49a52"
     },
     {
       "path": "src/core/pi-opensandbox-backend.js",
-      "sha256": "cf9afe06334fbac761806161860b31826a85dc12c691bd21e737778e56b191d5"
+      "sha256": "aeb9bbd1ada7c99b58e2e599df4bbe105bd4e86022e463bfad8a1c0ff3d74a54"
     },
     {
       "path": "scripts/opensandbox-agent-worker.mjs",
-      "sha256": "e1bfaf5430d4d116563117768908a703960b833af35011c92fb198e4b69bc309"
+      "sha256": "f0104e95e43703b9dfcb0ee4ed3c10bdaa6f952a5ab1d3fe77c668b6dc644d2a"
     },
     {
       "path": "src/benchmark/putnam-runner.js",

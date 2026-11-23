@@ -44,11 +44,32 @@ export interface CreateRuntimeOptions {
   modelAccessPolicy?: ModelAccessPolicy;
 }
 
+export interface FileEntry {
+  encoding: 'utf8' | 'base64';
+  data: string;
+  mode?: 0o644 | 0o755;
+}
+
+export type FileSeed = Readonly<Record<string, FileEntry>>;
+
+export interface PreparedFiles {
+  readonly botId: string;
+  readonly version: number;
+  readonly digest: string;
+}
+
+export interface GrantReceipt {
+  readonly botId: string;
+  readonly version: number;
+  readonly writable: true;
+}
+
 export interface SpawnOptions {
   requestId: string;
   profile: string;
   parentId?: string;
   writable?: boolean;
+  files?: FileSeed;
   bindings?: Readonly<Record<string, string>>;
   secretEnv?: Readonly<Record<string, string>>;
 }
@@ -118,6 +139,10 @@ export interface Runtime {
   onEvent(handler: (event: BotEvent) => void): () => void;
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
+  readonly files: {
+    prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
+    grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
+  };
 }
 
 export function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
