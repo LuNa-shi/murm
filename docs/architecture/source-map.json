@@ -18631,6 +18631,24 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Host artifact stream validation, private staging and manifest publication"
+    },
+    {
+      "path": "src/environments/flat/model-access-policy.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Flat Task/Mission model authority and Core synchronous policy adapter"
+    },
+    {
+      "path": "src/environments/flat/bot-coordinator.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Trusted Core-returned flat Bot identity registration and readiness"
     }
   ]
 }

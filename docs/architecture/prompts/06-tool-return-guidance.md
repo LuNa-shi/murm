@@ -129,7 +129,7 @@ Body SHA-256: `f54f33ecfd41745a310aa5c249667ade5e1fb31f77528b4b0bb1843188745631`
 ````text
 Refresh the locked input or update the Task contract to the intended fixture hash.
 ````
-## guidance — src/task/task-service.js:1465
+## guidance — src/task/task-service.js:1483
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
 
@@ -138,7 +138,7 @@ Body SHA-256: `2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e`
 ````text
 Read relevant continuation pages and Task detail before proposing or taking. New Tasks after this scan began require a fresh query.
 ````
-## action — src/task/task-service.js:1583
+## action — src/task/task-service.js:1601
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -147,7 +147,7 @@ Body SHA-256: `70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f`
 ````text
 inspect_material_and_record_task_feedback
 ````
-## guidance — src/task/task-service.js:1733
+## guidance — src/task/task-service.js:1751
 
 Source: [src/task/task-service.js](../../../src/task/task-service.js). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
 
