@@ -103,7 +103,6 @@ async function listSourceFiles(directory) {
   const files = [];
   for (const entry of await readdir(resolve(root, directory), { withFileTypes: true })) {
     const path = `${directory}/${entry.name}`;
-    if (path.startsWith('src/observability/public/')) continue;
     if (entry.isDirectory()) files.push(...await listSourceFiles(path));
     else if (/\.(?:js|mjs)$/.test(path)) files.push(path);
   }

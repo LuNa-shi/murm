@@ -28,7 +28,7 @@ For the Core / Environment stage, the [Phase 0005 design on main](docs/phases/00
 - `src/agent/` — legacy Pi adapter, prompts, capability profiles and Services Bridge
 - `src/task/`, `src/context/`, `src/judge/` — authoritative domain state
 - `src/runtime/` — Execution processes, resources and Workspaces
-- `src/observability/` — event/state inspection
+- `src/observability/` — read-only JSON/SSE event and state inspection; [terminal and Observer migration](docs/architecture/07-run-configuration.md#optional-services-and-observer-migration)
 - `scripts/`, `config/`, `services/`, `test/` — operation, configuration, integrations and tests
 
 Operational references: [built-in services](services/builtin/README.md), and [Mathlib Search](services/mathlib-search/README.md).

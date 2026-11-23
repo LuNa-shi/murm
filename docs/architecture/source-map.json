@@ -12,7 +12,6 @@
   "scope_root_files": [
     "package.json",
     "package-lock.json",
-    "components.json",
     ".env.example",
     ".gitignore",
     ".gitmodules"
@@ -57,15 +56,6 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Raw evidence and credential retention boundary in the working tree and npm packlist"
-    },
-    {
-      "path": "components.json",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "UI component generator aliases/theme configuration"
     },
     {
       "path": "fixtures/putnam-1966-a1/fixture-manifest.json",
@@ -726,71 +716,8 @@
       "role": "Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers"
     },
     {
-      "path": "src/observability/client/App.jsx",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Dashboard navigation, experiment/Core/Task/Material/Check/Workspace views"
-    },
-    {
-      "path": "src/observability/client/components/ui/badge.jsx",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "State/status badge rendering"
-    },
-    {
-      "path": "src/observability/client/components/ui/button.jsx",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Shared button presentation"
-    },
-    {
-      "path": "src/observability/client/components/ui/card.jsx",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Shared card presentation"
-    },
-    {
-      "path": "src/observability/client/components/ui/trace.jsx",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Activity trace and timeline rendering"
-    },
-    {
-      "path": "src/observability/client/hooks/use-observation.js",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Fetch, polling, SSE batching and client reconciliation"
-    },
-    {
-      "path": "src/observability/client/index.html",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Maintained dashboard HTML entry"
-    },
-    {
       "path": "src/observability/format.js",
-      "category": "dashboard and build",
+      "category": "observability and reporting",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
         "docs/architecture/07-run-configuration.md"
@@ -799,39 +726,12 @@
     },
     {
       "path": "src/observability/observation-projection.js",
-      "category": "dashboard and build",
+      "category": "observability and reporting",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Shared observation projection for events, timelines and derived views"
-    },
-    {
-      "path": "src/observability/client/lib/utils.js",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Class-name composition for UI components"
-    },
-    {
-      "path": "src/observability/client/main.jsx",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "React mount entry point"
-    },
-    {
-      "path": "src/observability/client/styles.css",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Maintained dashboard theme, layout and animations"
     },
     {
       "path": "src/observability/durable-event-log.js",
@@ -867,42 +767,6 @@
         "docs/architecture/06-observability-experiments.md"
       ],
       "role": "Exclusive private audit roots, run ownership markers, and retention sweep"
-    },
-    {
-      "path": "src/observability/public/app.js",
-      "category": "generated served asset",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Generated dashboard JavaScript served by the observation server"
-    },
-    {
-      "path": "src/observability/public/index.html",
-      "category": "generated served asset",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Generated dashboard HTML served by the observation server"
-    },
-    {
-      "path": "src/observability/public/styles.css",
-      "category": "generated served asset",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Generated dashboard CSS served by the observation server"
-    },
-    {
-      "path": "src/observability/vite.config.js",
-      "category": "dashboard and build",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Dashboard build paths, asset naming and development API proxy"
     },
     {
       "path": "src/observability/workspace-provider.js",

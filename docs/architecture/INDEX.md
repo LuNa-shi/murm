@@ -20,7 +20,7 @@ Read 00 first, then 07 for current entry points. Read 15–20 for the programmab
 | [03 Mission and Task](03-mission-task.md) | What fields are persisted? How are independent Mission Tasks proposed, taken, completed, blocked and closed, and which historical paths remain executable? |
 | [04 Services](04-services.md) | What happens inside a named call? How do Context, Judge, Registry, remote services and Mathlib search work? |
 | [05 Workspace and continuity](05-workspace-continuity.md) | How do files, revisions, Git, snapshots, Sandbox, compaction, recovery and handoff preserve work? |
-| [06 Observability and evidence](06-observability-experiments.md) | What do the database, logs, HTTP/SSE API, dashboard, projections and retained evidence actually record? What cannot be inferred? |
+| [06 Observability and evidence](06-observability-experiments.md) | What do the database, logs, HTTP/SSE API, pure projections and retained evidence actually record? What cannot be inferred? |
 | [07 Launch, configuration and finalization](07-run-configuration.md) | Current host entries, configuration, startup/stop, optional service deployment and checker resources |
 | [08 Prompt reference and delivery](08-prompts.md) | Full prompt bodies and tool guidance, repository send sites, dynamic values, complete synthetic examples and actual-delivery evidence |
 | [09 Known implementation boundaries](09-known-boundaries.md) | Current discrepancies and limits that would otherwise make the manual misleading |
