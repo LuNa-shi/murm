@@ -829,7 +829,7 @@
         "docs/architecture/08-prompts.md",
         "docs/architecture/10-service-api-reference.md"
       ],
-      "role": "Registered Bot binding, physical resource ownership, failure cleanup, fencing and rotation"
+      "role": "Registered Bot binding, physical resource ownership, process failure cleanup and fencing"
     },
     {
       "path": "src/runtime/workspace-contract.js",

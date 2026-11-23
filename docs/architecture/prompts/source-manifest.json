@@ -4,7 +4,7 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "4021b6516df200be9ee7bac53713f41135b0461bdaa1327fc0d1785f8c9e3ebb"
+      "sha256": "894cabfee9c85c8f2b27beac0ca021a1b8e872f4bbadfc9278b17296e8a74c7d"
     },
     {
       "path": "src/agent/bot-contract/system.txt",
@@ -112,7 +112,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "d82f80d2204313cbeeb91a05ddb3983baaf4d294d0d39ecc222b188211a217cc"
+      "sha256": "33260177d6eea2994f306da86dd8024848d6812f046ba6327e7410e819ab29dd"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -328,13 +328,8 @@
   "prompt_send_sites": [
     {
       "path": "src/runtime/runtime.js",
-      "line": 1178,
+      "line": 1094,
       "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
-    },
-    {
-      "path": "src/runtime/runtime.js",
-      "line": 1506,
-      "expression": "await active.session.prompt?.(buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
     },
     {
       "path": "examples/subagents-environment/controller.mjs",
@@ -450,7 +445,7 @@
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
-      "sha256": "960ca2668ac3f69fce486383dfd6f47cc6ed8903758a902b18c7af302257abbd"
+      "sha256": "dc41101cbd854afaa6b403a0cc8648201e1ec6b76a21155fad41169bc165a457"
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",

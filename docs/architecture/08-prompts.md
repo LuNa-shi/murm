@@ -32,7 +32,7 @@ Bridge command responses include structured results/errors and lifecycle notices
 |---|---|
 | [System addenda](prompts/01-system-identity.md) | Complete registered Bot resource text |
 | [CLI directory and provider documents](prompts/02-task-loop-and-tools.md) | Actual startup directory fixtures and available optional bundle documents |
-| [Runtime turns](prompts/03-runtime-turns.md) | Complete retained continuation and compaction bodies |
+| [Runtime turns](prompts/03-runtime-turns.md) | Complete flat continuation and soft-closeout bodies |
 | [Runtime notifications](prompts/04-runtime-messages.md) | Exact current notification builder output |
 | [Tool-result guidance](prompts/06-tool-return-guidance.md) | Fixed executable hint/remediation/guidance fields and delivery conditions |
 | [Bot skills](prompts/08-bot-skills.md) | Complete immutable skill resources |
@@ -42,7 +42,7 @@ Bridge command responses include structured results/errors and lifecycle notices
 
 ## Phase-sensitive bound follow-up
 
-The legacy Runtime compaction path calls `buildBotContinuationMessage` using the Execution's durable handoff deadline and reminder state. It selects ordinary compaction follow-up or the fixed soft-closeout body before dispatch. The public-Core flat controller calls the same builder for an unfinished active Execution after a settled turn. Its identity, lease, fence, deadline and stop guards remain controller/domain responsibilities. The generated runtime-turn reference contains the complete fixed body. Closeout instructions direct save, publish and finish, and domain guards enforce which new contributions remain allowed.
+The public-Core flat controller calls `buildBotContinuationMessage` using the Execution's durable handoff deadline and reminder state for an unfinished active Execution after a settled turn. Its identity, lease, fence, deadline and stop guards remain controller/domain responsibilities. The generated runtime-turn reference contains the complete fixed body. Closeout instructions direct save, publish and finish, and domain guards enforce which new contributions remain allowed.
 
 ## Lifecycle and result feedback
 
