@@ -36,7 +36,8 @@ test('exclusive waits accept a new settlement before or after receipt, ignore ol
     else setImmediate(() => publish({ seq: 12, output: 'two' }));
     return started;
   });
-  assert.equal((await runInput(runtime, botId, 'fixed', options)).settled.output, 'one');
+  const first = await runInput(runtime, botId, 'fixed', options);
+  assert.equal(first.settled.output, 'one'); assert.equal(first.receipt, started);
   await assert.rejects(runInput(runtime, botId, 'fixed', options), { code: 'wait_request_id_reused' });
   assert.equal((await runInput(runtime, botId, 'again', { ...options, requestId: 'two' })).settled.output, 'two');
   assert.deepEqual(calls.map(({ requestId, mode }) => [requestId, mode]), [['one', 'followUp'], ['two', 'followUp']]);

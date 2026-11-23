@@ -68,7 +68,7 @@
     },
     {
       "path": "src/environments/shared/run-input.js",
-      "sha256": "393b251d8ba49902f7b9d2270796a264ec05f44ddc8e9c47e460563f0c79d015"
+      "sha256": "f88873c40ab74a4a673e2de07216770d1b442b229f1635548b7622d41de37f78"
     },
     {
       "path": "src/environments/scalemas/index.js",
@@ -85,6 +85,18 @@
     {
       "path": "examples/subagents-environment/prompts.mjs",
       "sha256": "417dcf1192ecd6795fc916895d78dda5ad4d5fc9b282960eb82be2b0d3ac36ba"
+    },
+    {
+      "path": "src/environments/agensh/index.js",
+      "sha256": "257be6bcf9e058ca5a697d8850f58a8dd5c04a2c886f6bbb2297cddc85675141"
+    },
+    {
+      "path": "src/environments/agensh/router.js",
+      "sha256": "f28788702c628b0d6e301e9c716d75798ab030198a7dd9f573f0820f1a407ba4"
+    },
+    {
+      "path": "src/environments/agensh/routed.js",
+      "sha256": "f69b54ff563430a31c39a937d837e2abf2a3af9cd35ee947a9698a9f79cf7aec"
     },
     {
       "path": "src/benchmark/putnam-runner.js",
@@ -217,6 +229,24 @@
       "anchor": "runInput(core, peer.botId, `",
       "line": 76,
       "sha256": "413fbd1df277be812f95fca1f943dd1a3581827a19fd8df79834d4a7e7acd2f0"
+    },
+    {
+      "path": "src/environments/agensh/index.js",
+      "anchor": "export const peerPrompt = `",
+      "line": 8,
+      "sha256": "06c1eff12e00ec7944444e731069139aa9dc237f1bc6a5132f8d7d9f390699de"
+    },
+    {
+      "path": "src/environments/agensh/router.js",
+      "anchor": "export const routerInstruction = '",
+      "line": 7,
+      "sha256": "ebb4197c01fd6d34a6e1250d52a9ad95a47f84e5324e9eadb9ca58d8747a9eb3"
+    },
+    {
+      "path": "src/environments/agensh/router.js",
+      "anchor": "export const idleNudgeInput = '",
+      "line": 6,
+      "sha256": "4434a9725ae7dfe349ef64dbbacf6d10b80cc11e06828ee222e0c76f4eb33b0f"
     }
   ],
   "prompt_send_sites": [
@@ -379,6 +409,10 @@
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
       "sha256": "1e9a2c43161642ddcb5437471c97ee40623b1b183ab17b9fdb1324cfcfc2e109"
+    },
+    {
+      "path": "docs/architecture/prompts/08-agensh-environment.md",
+      "sha256": "6171a6982ebafc49e8261e08cde3bfb6035f0aed68bf449848ea2ce38db9c23a"
     }
   ]
 }

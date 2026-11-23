@@ -18840,6 +18840,32 @@
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Local subagents host model, resource and deadline configuration"
+    },
+    {
+      "path": "src/environments/agensh/router.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
+    },
+    {
+      "path": "src/environments/agensh/routed.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
+    },
+    {
+      "path": "src/environments/agensh/event-source.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     }
   ]
 }

@@ -32,7 +32,7 @@ export async function runInput(runtime, botId, input, { requestId, timeoutMs, si
       guard.active = false;
       guard.unresolved ||= uncertain && submitted;
       if (error) reject(error);
-      else resolve({ inputId: receipt.inputId, settled });
+      else resolve({ inputId: receipt.inputId, receipt, settled });
     }
     function onAbort() {
       finish(failure('wait_aborted', diagnostic()), true);
