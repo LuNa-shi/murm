@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **202 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **203 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -43,10 +43,11 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
 | [src/agent/version-manifest.js](../../src/agent/version-manifest.js) | Adapter/version/prompt/runtime provenance manifest | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e107aad797eff177bbfc2c64489381f690fb8f814e4d42413ddd70abb40af5f8` |
 
-### Environment composition (2)
+### Environment composition (3)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
+| [src/environments/scalemas/collaboration-evidence.js](../../src/environments/scalemas/collaboration-evidence.js) | Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence | [19-scalemas-environment](19-scalemas-environment.md) | `b40aea5a53ff59c65ceaf4d95f1987a9c2af6b12988906276a34299cb89cda17` |
 | [src/environments/scalemas/index.js](../../src/environments/scalemas/index.js) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `b68afc97dcbaf5b81c42a84454355cf02d1e444f5cde40cb8c5998f06bcbeb62` |
 | [src/environments/scalemas/substrate.js](../../src/environments/scalemas/substrate.js) | Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `bb76c986c99d57d4e14f6cc0ff9c121076ef7f374879c76be66df1813831686d` |
 
