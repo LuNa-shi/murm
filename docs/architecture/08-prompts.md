@@ -32,7 +32,7 @@ Bridge command responses include structured results/errors and lifecycle notices
 |---|---|
 | [System addenda](prompts/01-system-identity.md) | Complete Bot and solver resource text |
 | [CLI directory and provider documents](prompts/02-task-loop-and-tools.md) | Actual startup directory fixtures and available optional bundle documents |
-| [Runtime turns](prompts/03-runtime-turns.md) | Complete retained continuation, compaction and notification bodies |
+| [Runtime turns](prompts/03-runtime-turns.md) | Complete retained continuation and compaction bodies |
 | [Runtime notifications](prompts/04-runtime-messages.md) | Exact current notification builder output |
 | [Tool-result guidance](prompts/06-tool-return-guidance.md) | Fixed executable hint/remediation/guidance fields and delivery conditions |
 | [Bot skills](prompts/08-bot-skills.md) | Complete immutable skill resources |
