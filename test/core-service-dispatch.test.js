@@ -101,3 +101,12 @@ test('explicit null is validated as supplied, while an omitted payload defaults 
   assert.equal((await nullable.call('get', undefined)).error.code, 'SERVICE_INPUT_INVALID');
   assert.equal(calls, 1);
 });
+
+test('an authorized Service named constructor receives no inherited binding', async t => {
+  let caller;
+  const { bot, call } = await setup(t, { invoke(request) { caller = request.caller; return null; } }, { manifest: notesManifest('constructor') });
+  bot.services = { constructor: ['get'] };
+  bot.bindings = {};
+  assert.equal((await call('get', { key: 'one' }, { service_id: 'constructor' })).ok, true);
+  assert.deepEqual(caller, { runtimeId: 'run-one', botId: 'bot-one', profile: 'writer' });
+});

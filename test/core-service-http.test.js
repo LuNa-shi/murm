@@ -53,3 +53,20 @@ test('HTTP Service transport failures, timeout and bad output remain distinct wi
     assert.equal(count, before + 1);
   }
 });
+
+test('authorized HTTP Service named constructor receives the same absent binding as in-process', async t => {
+  let caller;
+  const server = createServer(async (request, response) => {
+    const chunks = []; for await (const chunk of request) chunks.push(chunk);
+    caller = JSON.parse(Buffer.concat(chunks).toString()).caller;
+    response.end(JSON.stringify({ ok: true, result: null }));
+  });
+  server.listen(0, '127.0.0.1'); await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const manifest = notesManifest('constructor');
+  manifest.endpoint = { transport: 'http-json', url: `http://127.0.0.1:${server.address().port}` };
+  const { bot, call } = await setup(t, createHttpJsonAdapter(), { manifest });
+  bot.services = { constructor: ['get'] }; bot.bindings = {};
+  assert.equal((await call('get', { key: 'one' }, { service_id: 'constructor' })).ok, true);
+  assert.deepEqual(caller, { runtimeId: 'run-one', botId: 'bot-one', profile: 'writer' });
+});

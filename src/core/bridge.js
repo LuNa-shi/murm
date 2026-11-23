@@ -84,8 +84,9 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       }
       const registration = registrations.get(body.service_id);
       if (!registration || !allows(body.service_id, body.operation)) throw new SwarmEnvError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
-      const caller = { runtimeId, botId, profile: current.profile,
-        ...(current.bindings?.[body.service_id] === undefined ? {} : { binding: current.bindings[body.service_id] }) };
+      const binding = Object.hasOwn(current.bindings ?? {}, body.service_id) && typeof current.bindings[body.service_id] === 'string'
+        ? current.bindings[body.service_id] : undefined;
+      const caller = { runtimeId, botId, profile: current.profile, ...(binding === undefined ? {} : { binding }) };
       controller = new AbortController();
       active.add(controller);
       const result = await invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
