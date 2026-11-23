@@ -132,7 +132,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ agentMode = 'swarm', taskService, contextService, runtime, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onWorkUnit = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
+  constructor({ agentMode = 'swarm', taskService, contextService, runtime, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     if (!['swarm', 'solver'].includes(agentMode)) throw new TypeError('Unknown agent mode');
     this.agentMode = agentMode;
@@ -159,7 +159,6 @@ export class ServicesBridge {
     this.onTake = onTake;
     this.onTakeAccepted = onTakeAccepted;
     this.onRelease = onRelease;
-    this.onWorkUnit = onWorkUnit;
     this.onTaskCreate = onTaskCreate;
     this.onError = onError;
     this.agentPrompt = agentPrompt;
@@ -372,14 +371,9 @@ export class ServicesBridge {
     });
   }
 
-  async #afterAcceptedFinish(result, payload) {
+  async #afterAcceptedFinish(result) {
     const executionId = result.execution.execution_id;
     const taskId = result.execution.task_id;
-    try {
-      await this.onWorkUnit?.({ operation: 'task_finish', taskId, executionId, payload, result });
-    } catch (error) {
-      this.logger?.append({ event: 'bridge.finish_observer_error', execution_id: executionId, error_class: error?.code ?? error?.name });
-    }
     let released;
     try {
       if (typeof this.runtime.releaseExecution !== 'function') throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'finish cleanup Runtime is unavailable');
@@ -603,10 +597,6 @@ export class ServicesBridge {
           if (!execution) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace operation requires an active E');
           const result = await this.runtime.dispatchExecutionWorkspace(({ workspace_save: 'save', workspace_status: 'status', workspace_current_diff: 'diff', workspace_public_apply: 'apply' })[operation], payload,
             { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution.fencing_version, requestId: bridgeOperationId });
-          if (operation === 'workspace_save') {
-            try { await this.onWorkUnit?.({ operation, taskId: execution.task_id, executionId: execution.execution_id, payload, result }); }
-            catch (error) { log({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
-          }
           log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return { ...result, request_id: bridgeOperationId };
         }
@@ -614,8 +604,6 @@ export class ServicesBridge {
           const execution = this.executionId && this.taskService.getExecution(this.executionId);
           const result = await this.runtime.mergeExecutionWorkspace(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution?.fencing_version, requestId: bridgeOperationId });
           assertIdentity();
-          try { await this.onWorkUnit?.({ operation, taskId: execution.task_id, executionId: execution.execution_id, payload, result }); }
-          catch (error) { log({ event: 'bridge.observation_failed', operation, code: error.code ?? 'OBSERVATION_ERROR' }); }
           log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return { ...result, request_id: bridgeOperationId };
         }
@@ -742,19 +730,6 @@ export class ServicesBridge {
       let result = operation === 'task_create' && this.taskCreateMutex
         ? await this.taskCreateMutex.run(invoke)
         : await invoke();
-      // Judge can settle an admitted check after the Bot closes. Observe the
-      // receipt under its original binding before fencing the tool response.
-      if (bot && operation === 'workspace_check' && this.onWorkUnit &&
-          ['lean-project', 'lean-module'].includes((result?.workspace_input ?? result?.evidence?.workspace_input)?.check_mode) &&
-          result.target_task_id === currentExecution?.task_id && result.execution_id === currentExecution?.execution_id &&
-          result.check_result_id && ['RECEIVED', 'APPLIED'].includes(result.status)) {
-        try {
-          await this.onWorkUnit({ operation, taskId: result.target_task_id, executionId: result.execution_id,
-            payload, result: agentCheckResult(result) });
-        } catch (error) {
-          log({ event: 'bridge.observation_failed', operation, code: error?.code ?? 'OBSERVATION_ERROR' });
-        }
-      }
       assertIdentity();
       if (bot && ['workspace_check', 'get_check_result'].includes(operation) && result) {
         const target = this.taskService.getTask(result.target_task_id);
@@ -769,13 +744,10 @@ export class ServicesBridge {
       if (operation === 'task_finish') {
         const finish = result.disposition === 'closing'
           ? { request_id: bridgeOperationId, notice: `结束请求 ${bridgeOperationId} 已持久受理，E ${result.execution.execution_id} 正在 closing。不得再 save/publish；Runtime 停止全部进程，连接可能断开。` } : {};
-        result = await this.#afterAcceptedFinish(result, payload);
+        result = await this.#afterAcceptedFinish(result);
         result = { ...result, ...finish };
         log({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
         return result;
-      }
-      if (this.onWorkUnit && ['read_materials', 'context_search_materials', 'context_get_material', 'consume_materials', 'context_publish_material', 'task_create', 'task_take', 'task_link_material', 'task_finish'].includes(operation)) {
-        await this.onWorkUnit({ operation, taskId: this.taskId, executionId: this.executionId, payload, result });
       }
       log({ event: 'bridge.complete', operation, service_id: capability.service_id, ok: true, result });
       return result;

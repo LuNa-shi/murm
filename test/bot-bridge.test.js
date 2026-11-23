@@ -335,12 +335,19 @@ test('Bridge stop drains an admitted real HTTP call after its connection is gone
   const accepted = new Promise(resolve => { entered = resolve; });
   const held = new Promise(resolve => { release = resolve; });
   let completed = false;
-  const { service, bridge, start } = await fixture(t, { onWorkUnit: async ({ operation, result }) => {
-    if (operation !== 'task_create') return;
-    entered(); await held;
-    assert.equal(service.getTask(result.task.task_id).mission_id, 'mission:auth');
-    completed = true;
-  } });
+  t.after(() => release());
+  const { service, bridge, start } = await fixture(t);
+  const entry = bridge.registry.getService('task');
+  const invoke = entry.adapter.invoke.bind(entry.adapter);
+  entry.adapter = { async invoke(request) {
+    const result = await invoke(request);
+    if (request.capability.operation === 'task_create') {
+      entered(); await held;
+      assert.equal(service.getTask(result.task.task_id).mission_id, 'mission:auth');
+      completed = true;
+    }
+    return result;
+  } };
   const env = start('bot:admitted-stop');
   const req = httpRequest(`${env.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}` } });
   const disconnected = new Promise(resolve => { req.on('error', resolve); req.on('close', resolve); });

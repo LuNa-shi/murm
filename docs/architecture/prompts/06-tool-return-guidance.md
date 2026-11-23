@@ -34,7 +34,7 @@ Body SHA-256: `78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7`
 ````text
 Use exact capability IDs or operation names from available_capabilities; do not invent conceptual names. Register and verify the required Service before creating the Task if no listed capability is suitable.
 ````
-## action — src/agent/services-bridge.js:571
+## action — src/agent/services-bridge.js:565
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -43,7 +43,7 @@ Body SHA-256: `a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd`
 ````text
 call_list_tools_or_get_service_metadata
 ````
-## action — src/agent/services-bridge.js:578
+## action — src/agent/services-bridge.js:572
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
