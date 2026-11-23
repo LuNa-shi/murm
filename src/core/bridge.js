@@ -88,7 +88,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
         ...(current.bindings?.[body.service_id] === undefined ? {} : { binding: current.bindings[body.service_id] }) };
       controller = new AbortController();
       active.add(controller);
-      const result = await invokeService(registration, { operation: body.operation, input: body.payload ?? {},
+      const result = await invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
         envelope: { operation_id: body.operation_id }, caller, signal: controller.signal }, serviceTimeoutMs);
       reply(response, 200, { ok: true, result });
     } catch (error) {

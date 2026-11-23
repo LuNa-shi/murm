@@ -86,3 +86,18 @@ test('Service names that match Object prototype keys never create implicit Profi
   assert.equal((await call('get', { key: 'one' }, { service_id: 'constructor' })).error.code, 'NOT_ALLOWED');
   assert.equal(calls, 0);
 });
+
+test('explicit null is validated as supplied, while an omitted payload defaults to an object', async t => {
+  let calls = 0;
+  const objectManifest = notesManifest();
+  objectManifest.capabilities[1].input_schema = { type: 'object', properties: {}, additionalProperties: false };
+  const object = await setup(t, { invoke() { calls++; return null; } }, { manifest: objectManifest });
+  assert.equal((await object.call('get', null)).error.code, 'SERVICE_INPUT_INVALID');
+  assert.equal(calls, 0);
+  const manifest = notesManifest();
+  manifest.capabilities[1].input_schema = { type: 'null' };
+  const nullable = await setup(t, { invoke({ input }) { assert.equal(input, null); calls++; return null; } }, { manifest });
+  assert.equal((await nullable.call('get', null)).ok, true);
+  assert.equal((await nullable.call('get', undefined)).error.code, 'SERVICE_INPUT_INVALID');
+  assert.equal(calls, 1);
+});
