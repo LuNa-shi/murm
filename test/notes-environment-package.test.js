@@ -4,6 +4,7 @@ import { fork } from 'node:child_process';
 import { once } from 'node:events';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { completeSimple, isRetryableAssistantError } from '@earendil-works/pi-ai/compat';
 import { test } from 'node:test';
 import { installNotesExample, execute } from './fixtures/notes-installed-package.js';
@@ -45,7 +46,7 @@ export default {backend:{},image:'unused',outputDir:${JSON.stringify(outputDir)}
   }
 });
 
-test('external installed archive resolves public exports and runs the copied Environment without a checkout import', { timeout: 210_000 }, async t => {
+test('external installed archive resolves and typechecks public exports and runs its Environment outside checkout', { timeout: 210_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
   const upstream = await createNotesEnvironmentUpstream(); t.after(() => upstream.close());
   await writeFile(join(installed.directory, 'smoke.mjs'), `
@@ -112,6 +113,55 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
   assert.deepEqual(JSON.parse(result.stdout), { resolved: true, closed: true, cancelled: true });
   assert.equal(upstream.receipt().arrivals, 0);
   assert.match(installed.metadata.sha256, /^[a-f0-9]{64}$/);
+  await writeFile(join(installed.directory, 'tsconfig.json'), JSON.stringify({
+    compilerOptions: { strict: true, noEmit: true, target: 'ES2022', module: 'NodeNext',
+      moduleResolution: 'NodeNext', types: [], lib: ['ES2022', 'DOM'] },
+    files: ['consumer.mts'],
+  }));
+  const consumer = `
+import { createRuntime, type Runtime } from '@swarmenv/core';
+import { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '@swarmenv/core/services';
+import { createPiOpenSandboxBackend, type PiOpenSandboxBackendConfig } from '@swarmenv/core/backends/pi-opensandbox';
+const config: PiOpenSandboxBackendConfig = {
+  sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' },
+  bridge: { host: '127.0.0.1', publicUrl: 'http://127.0.0.1:{port}' },
+  modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1' },
+  models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1/responses', headers: {} } } },
+  isolation: { network: 'local-docker', disk: { bytes: 67108864, inodes: 4096 } },
+};
+const registry = new ServiceRegistry();
+const adapter = createInProcessAdapter({ invoke: request => ({ author: request.caller.botId }) });
+registry.registerService({ manifest: { id: 'notes', title: 'Notes', purpose: 'Store notes', provider_version: '1',
+  contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [] }, adapter });
+createHttpJsonAdapter({ token: 'host-only', timeoutMs: 1000 });
+const runtime: Runtime = await createRuntime({ backend: createPiOpenSandboxBackend(config),
+  profiles: { reader: { prompt: 'Read', model: 'default', image: 'image', writable: false, services: {} } },
+  services: registry, maxBots: 2, outputDir: './output' });
+const bot = await runtime.spawn({ requestId: 'spawn', profile: 'reader' });
+await runtime.send(bot.id, 'Read a note', { requestId: 'input', mode: 'followUp' });
+// @ts-expect-error Core accepts only documented input modes.
+await runtime.send(bot.id, 'Read a note', { requestId: 'invalid', mode: 'later' });
+// @ts-expect-error Services require their complete manifest.
+registry.registerService({ manifest: {}, adapter });
+// @ts-expect-error Pi/OpenSandbox requires its explicit configuration.
+createPiOpenSandboxBackend({});
+await runtime.close();
+`;
+  await writeFile(join(installed.directory, 'consumer.mts'), consumer);
+  const compiler = fileURLToPath(new URL('./bin/tsc', import.meta.resolve('typescript/package.json')));
+  const compilerOptions = { cwd: installed.directory, env: installed.env, timeout: 30_000 };
+  const typed = await execute(process.execPath, [compiler, '--project', 'tsconfig.json', '--pretty', 'false', '--listFiles'], compilerOptions);
+  for (const declaration of ['index.d.ts', 'services.d.ts', 'backends/pi-opensandbox.d.ts']) {
+    assert.ok(typed.stdout.split('\n').includes(join(installed.directory, 'node_modules/@swarmenv/core/src/core', declaration)));
+  }
+  await writeFile(join(installed.directory, 'consumer.mts'), consumer.replaceAll(/\/\/ @ts-expect-error[^\n]*\n/g, ''));
+  await assert.rejects(execute(process.execPath, [compiler, '--project', 'tsconfig.json', '--pretty', 'false'], compilerOptions), error => {
+    assert.equal(error.code, 1);
+    assert.match(error.stdout, /InputMode/);
+    assert.match(error.stdout, /ServiceManifest/);
+    assert.match(error.stdout, /PiOpenSandboxBackendConfig/);
+    return true;
+  });
 });
 
 test('fixed Notes scripts parse and response budget is sticky across malformed arrivals', async t => {
