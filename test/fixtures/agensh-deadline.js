@@ -49,7 +49,10 @@ export function createCleanupBudget(milliseconds = 80_000) {
 export function createWorkGate(milliseconds, code = 'ACTUAL_PEER_WORK_EXPIRED', cleanup = createCleanupBudget()) {
   const deadline = createDeadline(milliseconds, code);
   let environment, creation, creationError, state = 'not-started', finished = false, expiredOnFinish = false;
-  deadline.signal.addEventListener('abort', () => cleanup.start(Date.now() >= deadline.deadlineAt ? deadline.deadlineAt : Date.now()), { once: true });
+  deadline.signal.addEventListener('abort', () => {
+    const now = Date.now();
+    cleanup.start(deadline.expired() ? deadline.deadlineAt : Math.min(now, deadline.deadlineAt));
+  }, { once: true });
   return {
     ...deadline, cleanup,
     expired: () => finished ? expiredOnFinish : deadline.expired(),
