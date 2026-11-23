@@ -84,22 +84,24 @@ test('native package gate rejects a dirty checkout before npm and removes its in
   assert.deepEqual(await readdir(root), ['commands']);
 });
 
-test('npm pack excludes the whole private experiment tree before traversing unreadable facility data', async t => {
+test('npm pack excludes private experiment and report trees before traversing unreadable facility data', async t => {
   const root = await mkdtemp(join(tmpdir(), 'package-private-evidence-'));
-  const volume = join(root, 'experiments/run/private-mysql');
+  const volumes = ['experiments/run/private-mysql', 'reports/local-run/private-output'].map(path => join(root, path));
   t.after(async () => {
-    await chmod(volume, 0o700).catch(() => {});
+    await Promise.all(volumes.map(volume => chmod(volume, 0o700).catch(() => {})));
     await rm(root, { recursive: true, force: true });
   });
-  await mkdir(volume, { recursive: true });
+  await Promise.all(volumes.map(volume => mkdir(volume, { recursive: true })));
   await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'private-evidence-boundary', version: '1.0.0' }));
   await writeFile(join(root, 'index.js'), 'export const included = true;\n');
   await writeFile(join(root, '.gitignore'), await readFile(new URL('../.gitignore', import.meta.url)));
-  await writeFile(join(volume, 'private.bin'), 'PRIVATE_PACKAGE_PROBE\n');
-  await chmod(volume, 0);
+  for (const volume of volumes) {
+    await writeFile(join(volume, 'private.bin'), 'PRIVATE_PACKAGE_PROBE\n');
+    await chmod(volume, 0);
+  }
   const result = await execute('npm', ['pack', '--dry-run', '--json', '--ignore-scripts'], { cwd: root, timeout: 15_000 });
   const files = JSON.parse(result.stdout)[0].files.map(file => file.path);
   assert.ok(files.includes('index.js'));
   assert.ok(files.includes('package.json'));
-  assert.equal(files.some(path => path.startsWith('experiments/')), false);
+  assert.equal(files.some(path => /^(experiments|reports)\//.test(path)), false);
 });
