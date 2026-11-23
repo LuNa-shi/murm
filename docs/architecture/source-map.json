@@ -18635,6 +18635,14 @@
       "role": "Host artifact stream validation, private staging and manifest publication"
     },
     {
+      "path": "src/environments/shared/run-input.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Environment-owned exclusive idle Bot input wait and uncertain submission guard"
+    },
+    {
       "path": "src/environments/flat/model-access-policy.js",
       "category": "Execution and control",
       "chapters": [
