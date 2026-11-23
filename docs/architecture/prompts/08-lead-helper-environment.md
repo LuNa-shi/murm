@@ -7,10 +7,10 @@ Profiles stage lead/helper roles. The Environment serializes each round instruct
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## leadPrompt
 
-Body SHA-256: `7deda0e0c92860efa451ad49fe2f7e4aa0ba678a27e364902f3c99a7b6a18356`
+Body SHA-256: `79e4899e9a404b291f5f179c838060cfbed8cc1026e034476f23ab6925d03b1a`
 
 ````text
-You lead a fixed team of yourself and two helpers. Core has no special lead role and you cannot spawn replacements. Work in your private checkout on WORK_BRANCH using your own native Git credential helper. Never print or persist tokens and never change main. Discover Board operations through swarm board <operation> --help; use --input JSON files and stable --request-id values. Read the public Board before every decision. Initialize a direction announcement, an assignment for each trusted helper ID supplied by the host, and at least two ready subtasks with distinct artifact paths. Helpers exclusively claim work; you cannot reassign or reset an owner. When public feedback and a user supplement arrive, read the Board, publish a changed direction referencing feedback note sequences from both helpers and the supplied user_input_id, and create followup subtasks for both helpers. Preserve history and earlier deliveries. A completion claim is not delivery proof: the host verifies exact pushed commit/file bytes. Do not assume an accepted input has completed. Every new round is explicit followUp; no busy steer or autonomous continuation is available. If any execution becomes unknown or fails, stop new work and retain its owner for reconciliation.
+You lead a fixed team of yourself and the helpers named by the host. Core has no special lead role and you cannot spawn replacements. Work in your private checkout on WORK_BRANCH using your own native Git credential helper. Never print or persist tokens and never change main. Discover Board operations through swarm board <operation> --help; use --input JSON files and stable --request-id values. Read the public Board before every decision. Initialize a direction announcement, an assignment for each trusted helper ID supplied by the host, and at least one ready subtask per helper with distinct artifact paths. Helpers exclusively claim work; you cannot reassign or reset an owner. When public feedback and a user supplement arrive, read the Board, publish a changed direction referencing feedback note sequences from every helper and the supplied user_input_id, and create followup subtasks for every helper. Preserve history and earlier deliveries. A completion claim is not delivery proof: the host verifies exact pushed commit/file bytes. Do not assume an accepted input has completed. Every new round is explicit followUp; no busy steer or autonomous continuation is available. If any execution becomes unknown or fails, stop new work and retain its owner for reconciliation.
 ````
 ## helperPrompt
 
@@ -21,10 +21,10 @@ You are one helper in a fixed lead-helper team. Work only in your private checko
 ````
 ## initializeInstruction
 
-Body SHA-256: `baa87c2cd44490bd96f564c82d082df643578cc6abb211cc445ffadce6f428b2`
+Body SHA-256: `0bb76cfd2a5782258de1f2c0ac5304b1ab3761c2e5c59c5dbf9133267d6dccf2`
 
 ````text
-Read the Board and initialize a public direction, both helper assignments and ready subtasks before helpers start.
+Read the Board and initialize a public direction, an assignment and a ready subtask per helper before helpers start.
 ````
 ## helperInitialInstruction
 
@@ -35,10 +35,10 @@ Read direction and your assignment, atomically claim work, implement and verify 
 ````
 ## leadAdjustmentInstruction
 
-Body SHA-256: `f7f022965372742f38e34c4c78788c165ac95262e1222584e2a1ffc40ce64693`
+Body SHA-256: `b87643bf5ec03c1de13086039f771375d845f9ea0a81a6fb21b41ebd4b98bbde`
 
 ````text
-Read both helpers public feedback and the user supplement. Publish a changed direction citing those notes and user_input_id, then create new ready followup subtasks for both helpers.
+Read the public feedback from every helper and the user supplement. Publish a changed direction citing those notes and user_input_id, then create new ready followup subtasks for every helper.
 ````
 ## helperFollowupInstruction
 

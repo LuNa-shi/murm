@@ -120,11 +120,11 @@
     },
     {
       "path": "src/environments/lead-helper/prompts.js",
-      "sha256": "a9b680e62aafe7bbd5883d3d5d3255d1cd964771a0711d862e283e2f12b897ab"
+      "sha256": "4222770edeeb1941ef6a8a38bd36ebda9fd07ce795e1dc8d3e9a485607757132"
     },
     {
       "path": "src/environments/lead-helper/index.js",
-      "sha256": "a475e66b3fb1cc33f4e76472f36258314697df35cfd4970498b7905fb6d3a49a"
+      "sha256": "85f816e057f29ea17d851426ce66a8dbf85bd6b1a0dacced1b053d50de52d382"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -300,7 +300,7 @@
       "path": "src/environments/lead-helper/prompts.js",
       "anchor": "export const leadPrompt = `",
       "line": 1,
-      "sha256": "7deda0e0c92860efa451ad49fe2f7e4aa0ba678a27e364902f3c99a7b6a18356"
+      "sha256": "79e4899e9a404b291f5f179c838060cfbed8cc1026e034476f23ab6925d03b1a"
     },
     {
       "path": "src/environments/lead-helper/prompts.js",
@@ -312,7 +312,7 @@
       "path": "src/environments/lead-helper/prompts.js",
       "anchor": "export const initializeInstruction = '",
       "line": 3,
-      "sha256": "baa87c2cd44490bd96f564c82d082df643578cc6abb211cc445ffadce6f428b2"
+      "sha256": "0bb76cfd2a5782258de1f2c0ac5304b1ab3761c2e5c59c5dbf9133267d6dccf2"
     },
     {
       "path": "src/environments/lead-helper/prompts.js",
@@ -324,7 +324,7 @@
       "path": "src/environments/lead-helper/prompts.js",
       "anchor": "export const leadAdjustmentInstruction = '",
       "line": 5,
-      "sha256": "f7f022965372742f38e34c4c78788c165ac95262e1222584e2a1ffc40ce64693"
+      "sha256": "b87643bf5ec03c1de13086039f771375d845f9ea0a81a6fb21b41ebd4b98bbde"
     },
     {
       "path": "src/environments/lead-helper/prompts.js",
@@ -507,7 +507,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",
-      "sha256": "c1420d8b42b1ccb7eb7c4dcf61a0cedb6640acbb2196f3115e44655ea3de184b"
+      "sha256": "977aaf890c1e7ec6310d2115a259075637c23fba1bf2252001ee2d6b911e9404"
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",

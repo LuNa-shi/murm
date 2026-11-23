@@ -1,5 +1,6 @@
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
+import { leadHelperRoles, matchesTeam } from './team.js';
 
 const error = code => Object.assign(new Error(code), { code });
 const text = { type: 'string', minLength: 1, maxLength: 4096 };
@@ -22,7 +23,9 @@ export const boardPermissions = Object.freeze({ lead: ['read', 'list_subtasks', 
 const canonical = value => JSON.stringify(value && typeof value === 'object' ? Array.isArray(value) ? value.map(item => JSON.parse(canonical(item))) : Object.fromEntries(Object.keys(value).sort().map(key => [key, JSON.parse(canonical(value[key]))])) : value);
 
 /** One bounded durable run. No lease expiry, reassignment or owner reclamation. */
-export function createBoard({ path: databasePath, runId, verifyDelivery }) {
+export function createBoard({ path: databasePath, runId, helperCount, verifyDelivery }) {
+  const roles = leadHelperRoles(helperCount);
+  const helperRoles = roles.slice(1);
   if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof databasePath !== 'string' || typeof verifyDelivery !== 'function') throw new TypeError('Board requires run, database and delivery verifier');
   const db = new DatabaseSync(databasePath); db.exec('PRAGMA busy_timeout=1000; PRAGMA journal_mode=WAL; CREATE TABLE IF NOT EXISTS board_state (id INTEGER PRIMARY KEY CHECK(id=1), body TEXT NOT NULL); CREATE TABLE IF NOT EXISTS receipts (actor TEXT, request TEXT, fingerprint TEXT NOT NULL, result TEXT NOT NULL, PRIMARY KEY(actor,request));');
   const initial = { runId, team: null, runtimeId: null, directions: [], assignments: [], subtasks: [], notes: [], reads: [], userInputs: [], history: [], failures: {}, fenced: false };
@@ -41,8 +44,9 @@ export function createBoard({ path: databasePath, runId, verifyDelivery }) {
   }
   const event = (state, type, actor, input) => { const row = { seq: state.history.length + 1, type, actor, ...structuredClone(input) }; state.history.push(row); return row; };
   function authorize(state, caller, operation) {
-    const role = state.team?.lead === caller.botId ? 'lead' : [state.team?.helper1, state.team?.helper2].includes(caller.botId) ? 'helper' : null;
-    if (!role || state.runtimeId !== caller.runtimeId || caller.profile !== (role === 'lead' ? 'lead' : state.team.helper1 === caller.botId ? 'helper1' : 'helper2') || caller.binding !== `${runId}:board` || !boardPermissions[role].includes(operation)) throw error('NOT_ALLOWED');
+    const profile = state.team && roles.find(name => state.team[name] === caller.botId);
+    const role = profile === 'lead' ? 'lead' : 'helper';
+    if (!profile || state.runtimeId !== caller.runtimeId || caller.profile !== profile || caller.binding !== `${runId}:board` || !boardPermissions[role].includes(operation)) throw error('NOT_ALLOWED');
     if ((memoryFenced || state.fenced) && !['read', 'list_subtasks'].includes(operation)) throw error('BOARD_FENCED');
     return role;
   }
@@ -89,7 +93,7 @@ export function createBoard({ path: databasePath, runId, verifyDelivery }) {
           if (input.user_input_id && !current.userInputs.some(row => row.requestId === input.user_input_id)) throw error('NOT_ALLOWED');
           result = event(current, 'announce', caller.botId, input); current.directions.push(result);
         } else if (operation === 'assign') {
-          if (![current.team.helper1, current.team.helper2].includes(input.helper_id)) throw error('NOT_ALLOWED');
+          if (!helperRoles.some(name => current.team[name] === input.helper_id)) throw error('NOT_ALLOWED');
           result = event(current, 'assign', caller.botId, input); current.assignments.push(result);
         } else if (operation === 'create_subtask') {
           if (current.subtasks.length >= 32) throw error('BOARD_LIMIT');
@@ -114,7 +118,7 @@ export function createBoard({ path: databasePath, runId, verifyDelivery }) {
     } } };
   return Object.freeze({
     register(services) { services.registerService(registration); },
-    bindTeam(runtimeId, team) { transaction(state => { if (state.team || typeof runtimeId !== 'string' || !runtimeId || Object.keys(team).sort().join() !== 'helper1,helper2,lead' || new Set(Object.values(team)).size !== 3 || Object.values(team).some(value => typeof value !== 'string' || !value)) throw error('NOT_ALLOWED'); state.runtimeId = runtimeId; state.team = structuredClone(team); }); },
+    bindTeam(runtimeId, team) { transaction(state => { if (state.team || typeof runtimeId !== 'string' || !runtimeId || !matchesTeam(roles, team)) throw error('NOT_ALLOWED'); state.runtimeId = runtimeId; state.team = structuredClone(team); }); },
     registerUserInput(requestId, input) { transaction(state => { if (state.fenced || typeof requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId) || typeof input !== 'string' || Buffer.byteLength(input) > 16384 || state.userInputs.length >= 5 || state.userInputs.some(row => row.requestId === requestId)) throw error('NOT_ALLOWED'); state.userInputs.push({ requestId, sha256: createHash('sha256').update(input).digest('hex') }); }); },
     fence({ botId, code, execution = 'unknown' } = {}) { memoryFenced = true; transaction(state => { state.fenced = true; if (botId) { const failure = { code: /^[A-Za-z0-9_:-]{1,80}$/.test(code ?? '') ? code : 'BOT_FAILED', execution: execution === 'stopped' ? 'stopped' : 'unknown' }; state.failures ??= {}; state.failures[botId] = failure; for (const row of state.subtasks) if (row.owner === botId && row.state !== 'complete') row.failure = failure; if (state.history.length < 512) event(state, 'failure', botId, failure); } }); },
     snapshot: () => load(),

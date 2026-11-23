@@ -1,13 +1,15 @@
 import { randomBytes, createHash } from 'node:crypto';
 import { httpClient } from '../agensh/http.js';
+import { leadHelperRoles, matchesRoles, matchesTeam } from './team.js';
 
 const e = encodeURIComponent;
 const fail = code => Object.assign(new Error(code), { code });
 const requireString = value => { if (typeof value !== 'string' || !value) throw new TypeError('Incomplete restricted Git identity'); return value; };
 
 /** Agensh's bounded HTTP, restricted accounts/token scopes and cleanup ownership;
- * one retained project with three independent account identities. */
-export async function prepareLeadHelperGit({ runId, gitea, resources, signal }) {
+ * one retained project with separate account identities for the fixed team. */
+export async function prepareLeadHelperGit({ runId, gitea, resources, signal, helperCount }) {
+  const roles = leadHelperRoles(helperCount);
   if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '')) throw new TypeError('Invalid lead-helper run');
   const raw = httpClient(gitea.origin, `token ${requireString(gitea.adminToken)}`);
   const request = (method, path, body) => raw(method, path, body, { signal });
@@ -18,7 +20,7 @@ export async function prepareLeadHelperGit({ runId, gitea, resources, signal }) 
   await request('POST', `/api/v1/admin/users/${e(owner)}/repos`, { name: repository.name, private: true, auto_init: true, default_branch: 'main' });
   resources.own({ kind: 'repository', id: `${owner}/${repository.name}`, retained: true });
   const actors = {};
-  for (const role of ['lead', 'helper1', 'helper2']) {
+  for (const role of roles) {
     if (signal?.aborted) throw fail('ENVIRONMENT_START_ABORTED');
     const username = `lh-${role}-${createHash('sha256').update(runId).digest('hex').slice(0, 16)}`; const email = `${username}-${randomBytes(8).toString('hex')}@swarmenv.invalid`;
     const password = randomBytes(32).toString('base64url'); const tokenName = `swarmenv-${runId}-${role}`;
@@ -51,12 +53,13 @@ export async function prepareLeadHelperGit({ runId, gitea, resources, signal }) 
 }
 
 /** Tokens remain in the host adapter; native Git receives only its own token. */
-export function createLeadHelperGit(facilities) {
+export function createLeadHelperGit(facilities, helperCount) {
+  const roles = leadHelperRoles(helperCount);
   const value = structuredClone(facilities); const { actors, repository, origin } = value;
   const url = new URL(value.repositoryUrl); const base = new URL(origin);
   if (url.origin !== base.origin || url.username || url.password || url.search || url.hash || url.pathname !== `/${e(repository.owner)}/${e(repository.name)}.git`) throw new TypeError('Git URL must identify the retained scoped project');
   const accounts = Object.values(actors ?? {});
-  if (Object.keys(actors ?? {}).sort().join() !== 'helper1,helper2,lead' || ['accountId', 'username', 'token', 'branch', 'binding'].some(key => accounts.some(account => typeof account[key] !== 'string' || !account[key]) || new Set(accounts.map(account => account[key])).size !== 3)) throw new TypeError('Three distinct restricted Git identities required');
+  if (!matchesRoles(roles, actors) || ['accountId', 'username', 'token', 'branch', 'binding'].some(key => accounts.some(account => typeof account?.[key] !== 'string' || !account[key]) || new Set(accounts.map(account => account[key])).size !== roles.length)) throw new TypeError('Distinct restricted Git identities required for the fixed team');
   for (const actor of accounts) httpClient(origin, `token ${actor.token}`);
   let team; let runtimeId;
   const resolve = botId => { const role = Object.keys(team ?? {}).find(role => team[role] === botId); if (!role) throw fail('NOT_ALLOWED'); return actors[role]; };
@@ -70,7 +73,7 @@ export function createLeadHelperGit(facilities) {
     } } };
   return Object.freeze({
     register(services) { services.registerService(registration); },
-    bindTeam(id, identities) { if (team || typeof id !== 'string' || Object.keys(identities).sort().join() !== 'helper1,helper2,lead' || new Set(Object.values(identities)).size !== 3) throw fail('NOT_ALLOWED'); runtimeId = id; team = structuredClone(identities); },
+    bindTeam(id, identities) { if (team || typeof id !== 'string' || !id || !matchesTeam(roles, identities)) throw fail('NOT_ALLOWED'); runtimeId = id; team = structuredClone(identities); },
     async verifyDelivery({ actor: botId, delivery, direction, requireDirectionText = false, signal }) {
       const actor = resolve(botId); const request = httpClient(origin, `token ${actor.token}`);
       const ref = await request('GET', `${scope}/branches/${e(actor.branch)}`, undefined, { signal });

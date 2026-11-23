@@ -1781,7 +1781,7 @@
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
       ],
-      "role": "Run-scoped three-account Git provisioning, PR authorization and byte verification"
+      "role": "Run-scoped fixed-team Git provisioning, PR authorization and byte verification"
     },
     {
       "path": "src/environments/lead-helper/index.js",
@@ -1799,6 +1799,14 @@
         "docs/architecture/08-prompts.md"
       ],
       "role": "Lead/helper role and finite continuation instructions"
+    },
+    {
+      "path": "src/environments/lead-helper/team.js",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/20-lead-helper-environment.md"
+      ],
+      "role": "Validates fixed lead-helper configuration and exact trusted team identity"
     },
     {
       "path": "examples/lead-helper-environment/main.mjs",
