@@ -16919,24 +16919,6 @@
       "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
     },
     {
-      "path": "scripts/benchmarks/prepare_flt_subtrees.py",
-      "category": "benchmark setup",
-      "chapters": [
-        "docs/architecture/07-run-configuration.md",
-        "docs/architecture/08-prompts.md"
-      ],
-      "role": "Root-only FLT extraction, private typed facts and public fixture generation"
-    },
-    {
-      "path": "scripts/benchmarks/prepare_flt10.py",
-      "category": "benchmark inputs",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "FLT10 pinned fixture, public context and safe Lean projection preparation"
-    },
-    {
       "path": "scripts/bot-filesystem-policy.c",
       "category": "runtime and execution",
       "chapters": [

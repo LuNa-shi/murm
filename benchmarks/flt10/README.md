@@ -14,27 +14,12 @@ it is distinct from the physical Anthropic checkout used to build the projection
 
 `LICENSE`, `NOTICE` and `ATTRIBUTION.md` come from the upstream source bundle.
 The statement graph builder in `scripts/benchmarks/` is copied from the same
-ContextSwarm commit. `prepare_flt10.py` and `read_context.py` are SwarmEnv setup
-and metadata readers. No ContextSwarm runtime, algorithm or historical solution
-is an input. The retired Foundation overlay is not used.
-
-Prepare only in ignored local storage:
-
-```sh
-python3 -B scripts/benchmarks/prepare_flt10.py \
-  --source /path/to/pinned/fermats-last-theorem \
-  --lean /path/to/lean-4.33.1/bin/lean \
-  --output experiments/flt-setup/state/new-prepared
-```
-
-The source checkout must be clean at the pinned revision with its pinned Mathlib
-packages available. The tool builds every safe frontier from source with only
-those definition modules and Mathlib on `LEAN_PATH`, never the complete FLT
-artifact directory. It writes per-checkpoint source/lib directories, compressed
-public statement graph shards, cut manifests and a context-bound benchmark config.
-`--no-build` prepares metadata only and cannot produce a runnable checker lock.
-An existing output is rejected. Build failures leave diagnostic evidence there;
-retry in a fresh output rather than mixing partial artifacts.
+ContextSwarm commit. `read_context.py` reads the retained metadata.
+The original operator preparation commands and source-building procedure are
+preserved in the [research preparation scripts](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/scripts/benchmarks).
+Existing input manifests and checker projections remain pinned to their original
+source, Mathlib and Lean revisions. This directory retains those inputs for the
+legacy loader and checker while Phase 0005 migration continues.
 
 Use SwarmEnv's artifact lock tool with `benchmarkProfile: "flt10-dag-v1"`, the
 checkpoint number, its `projectionRoot`, pinned Mathlib library roots and the
@@ -61,17 +46,14 @@ setup tests alone does not establish parallel advantage.
 ## Root-only Workspace variant
 
 Issue [#135](https://github.com/LuNa-shi/SwarmEnv/issues/135) adds the separate
-`flt10-subtree-v1` input/submission profile. Preparation defaults to **Q20 only**;
-Q100 is deferred. The original ladder above remains available for reproducibility.
+`flt10-subtree-v1` input/submission profile. Its original preparation selected
+**Q20 only** by default and deferred Q100. The original ladder above remains
+available for reproducibility.
 
-Run `scripts/benchmarks/prepare_flt_subtrees.py` with `--source`, `--lean`,
-`--extractors` and a fresh ignored `--output`. The extractor checkout is the
-operator-installed Prove2Me workspace at
-`79097e0d1fbab732ebf38ac23e7e5a700080c9c4`; tools are not vendored. Optional
-`--checkpoints 20` selects Q20 and `--jobs 4` bounds preparation concurrency.
-The output contains an independently pinned public fixture checkout with one
-root theorem, its reduced statement foundation and neutral task instructions.
-Private extraction facts and reference proofs must never be mounted to Bots.
+The existing public fixture contains one root theorem, its reduced statement
+foundation and neutral task instructions. Its private extraction facts and
+reference proofs stay outside Bot inputs. Reproducing the original source
+preparation uses the research scripts linked above.
 
 A successful preparation means the initial `sorry` project compiles and preserves
 the elaborated target. It does **not** establish solvability. Configure a

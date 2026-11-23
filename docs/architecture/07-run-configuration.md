@@ -320,22 +320,18 @@ Independent deployment additionally writes private `judge-peer-config.json` (inc
 
 ## FLT10 preparation and checker deployment
 
-`scripts/benchmarks/prepare_flt10.py` consumes a clean FLT source checkout at
-`aa2d8b34692b16c70f699536de0d8e75b9a3e9ef`, Mathlib at
-`db584cd6d46c92f209a44c0f1c829460d327499d`, and the existing Lean 4.33.1 toolchain.
-It uses the upstream statement graph builder to preserve all declaration/import
-metadata while cutting each target's transitive proof cone. Safe definition
-imports are traversed in dependency order; any proof-module import or cycle
-aborts preparation. Each checkpoint compiles its own safe sources and generated
-`FLT10.DAG_qN` with only that projection plus Mathlib dependencies on the search
-path. Compiler failure is bounded to 180 seconds per module and leaves a local
-build log. No Agent or provider is started by preparation. Source-only mode is
-explicitly non-runnable. Existing output directories are rejected.
+The current tree retains the fixed FLT inputs and checker deployment readers.
+The retired operator preparation commands and their source-building procedure
+are preserved in the [research preparation scripts](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/scripts/benchmarks).
+`scripts/benchmarks/build_flt10_statement_graph.py` remains available to the
+retained fixture regression. It indexes committed source modules and rejects
+untracked or ignored modules from the graph. Runtime loading and final checking
+consume pinned existing manifests and compiled projections.
 
 The generated source and cut identities must match the tracked
-`benchmarks/flt10/projection-contract.json`. Public context shards and manifests
-are prepared for all ten inputs; each problem is bound to its context manifest
-SHA-256. The output config is a private setup input. Supply the existing sandbox,
+`benchmarks/flt10/projection-contract.json`. Existing public context shards and manifests
+cover the ten inputs; each problem is bound to its context manifest SHA-256.
+The deployment config is a private setup input. Supply the existing sandbox,
 model gateway, Mission grant and ordinary Judge policies from the approved local
 deployment. Use one checkpoint-specific `final_tree_checker` per selected run,
 with `benchmarkProfile=flt10-dag-v1`, `checkpoint`, `projectionRoot`, and that
@@ -361,13 +357,11 @@ The existing CLI accepts `--benchmark-root` as a clearer alias of
 compatibility. Metadata records `benchmark` and `fixture_commit` in addition to
 legacy Putnam fields. Select a problem explicitly, use four Cores and project
 parallelism one for the first Q10/Q20 observations, and give each run a fresh
-EXP ID. Time limits and paid-run authorization are owned by Issue #133, not by
-this setup tool. The ordinary shutdown, peer cleanup, checker ownership and
-reporting paths remain the same as other Swarm benchmark runs.
+EXP ID. Time limits and paid-run authorization are owned by Issue #133.
+The ordinary shutdown, peer cleanup, checker ownership and reporting paths
+remain the same as other Swarm benchmark runs.
 
-FLT preparation enumerates committed Git tree paths and verifies the complete
-framework digest, so untracked or ignored local Lean files cannot enter public
-metadata. The final FLT source restriction scans all submitted `.lean` files for
+The final FLT source restriction scans all submitted `.lean` files for
 incomplete proofs, unsafe/native bypass and elaborator/diagnostic constructs
 (including `run_tac`, `trace_state`, `#eval`, `#check` and `#print`). This is a
 lexical final-delivery policy outside Lean comments, in addition to
@@ -402,36 +396,14 @@ repair's verification from the original blocked observation.
 
 ## Root-only FLT Workspace tasks
 
-`prepare_flt_subtrees.py` is an operator-side CLI for the distinct
-`flt10-subtree-v1` profile. Its required inputs are the pinned FLT source,
-Lean executable, pinned Prove2Me extraction-tool checkout, and a new output
-folder. `--checkpoints` defaults to Q20 and accepts any subset of Q10–Q100;
-`--jobs` is 1–4, default 4. It never launches a model or uploads to Prove2Me.
-The Prove2Me scripts are external pinned tooling; the repository does not vendor
-them or its collaboration harness.
-
-The command verifies source/tool revisions and hashes, compiles a private seed
-from the previously reviewed foundation sources, then obtains declaration
-facts and syntax ranges with Lean. For each selected root it follows statement
-dependencies, recursively retains actual foundation values, constructor fields
-and instances in participating modules, and preserves dependencies of lexical
-context outside declaration bodies. Source subtraction uses parser byte spans.
-Only simple validated import headers and the known target preamble are adjusted.
-It recompiles the reduced foundation and target, and compares the root's
-elaborated expression representation before/after. A mismatch or compile error
-aborts preparation. This structural identity check supports extraction; it does
-not replace the independent final theorem comparison.
-
-Outputs are separated: per-checkpoint `private/` and `private-facts/` hold the
-extraction/provenance; `source/`, `lib/` and `foundation-manifest.json` are trusted
-checker deployment inputs; `public/` contains the target, readable reduced
-foundation, neutral README, Apache license, applicable source notices and public
-context manifest. The complete upstream attribution table is not exported because
-it names hidden proof modules. Retained source copyright headers remain. A dedicated deterministic
-Git commit pins public inputs. `benchmark-config.json` points to that fixture
-checkout and public manifest. No proof graph or hidden helper source enters the
-public manifest. A failed run leaves private diagnostic artifacts and requires
-a fresh output folder for retry. Preparation does not delete unrelated state.
+The retained `flt10-subtree-v1` loader and checker consume an existing fixed
+public fixture and trusted deployment. Its public inputs comprise the root
+theorem, reduced statement foundation, neutral instructions, license, applicable
+source notices and public context manifest. The trusted deployment supplies
+`source/`, `lib/` and `foundation-manifest.json`. Private extraction facts and
+reference proofs remain operator evidence outside Bot inputs. The retired
+extraction CLI and its preparation procedure are preserved in the research
+preparation scripts linked above.
 
 The loader accepts a safe configured benchmark identifier and 1–1000 problems,
 with explicit Lean declaration names where needed. `instructions_path`, when

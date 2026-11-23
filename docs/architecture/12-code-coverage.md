@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2093 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2091 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -143,7 +143,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 |---|---|---|---|
 | [src/agent/bot-contract/solver-system.txt](../../src/agent/bot-contract/solver-system.txt) | Immutable independent solver system addendum without collaboration skills | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md) | `33ea49d9c46fc7402dac07ec040aed24da56dd4d92cb3b7e8fe7d1cdae0c445d` |
 
-### benchmark inputs (1867)
+### benchmark inputs (1866)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -182,7 +182,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [benchmarks/flt10/q90/metadata.json](../../benchmarks/flt10/q90/metadata.json) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `854d64a3df5bf7d1dc90d7b93353aeebf23264f949ceea23d062126964ac879e` |
 | [benchmarks/flt10/q90/problem.md](../../benchmarks/flt10/q90/problem.md) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `ad865cbb2351f1ff61b1e685247cacc8c78073d1f240593b78f6aee16c380bc6` |
 | [benchmarks/flt10/read_context.py](../../benchmarks/flt10/read_context.py) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `f0222f5feb2ceb70076a6ad959d5d182373030aa9a4c9b9652d42e1faa750b3d` |
-| [benchmarks/flt10/README.md](../../benchmarks/flt10/README.md) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `bb549ebe3f4e77d014364846ba9deea7a4135580b7ba4ea2a16dfb2f7f8c2a2c` |
+| [benchmarks/flt10/README.md](../../benchmarks/flt10/README.md) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `aa81792cef31a5677d3cae33293af83b37510bdd04d1cecbeef66621a73a2311` |
 | [benchmarks/flt10/subtree-instructions.md](../../benchmarks/flt10/subtree-instructions.md) | Neutral multi-file proof project instructions loaded through Workspace | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `8dd8cdfb8bd9a39e74c1dd050dcfc7b69326e7320660b58f1f2d9b75b0b13b71` |
 | [benchmarks/flt10/upstream-integrity.json](../../benchmarks/flt10/upstream-integrity.json) | Pinned FLT10 statement, metadata, provenance or public-context reader | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `f1dabecefab7f0be73f8c2b1574b76706fda0e5213b1fb695b6134ea476bb619` |
 | [benchmarks/openai-math-12/lean/ComparatorChallenges/EgyptianFractions.json](../../benchmarks/openai-math-12/lean/ComparatorChallenges/EgyptianFractions.json) | Embedded OpenAI Math challenge, dependency or local audit input | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `e437463f549509b9f7915877a19a54ec1d17d961fee02ce83d5cc3cf1a5fcf36` |
@@ -2012,14 +2012,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [config/flt10.json](../../config/flt10.json) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5addcb69f21e50738dd6d81b7fa1a6e2c691cc3dfee1a454278360dfb20a8bdd` |
 | [config/openai-math-12.json](../../config/openai-math-12.json) | Pinned OpenAI Math challenge sources, declarations and Lean/mathlib compatibility metadata | [07-run-configuration](07-run-configuration.md) | `435431c3922ff4ae44a458497a7b95eab9a974c1eaec138e64d2534389698591` |
 | [scripts/benchmarks/build_flt10_statement_graph.py](../../scripts/benchmarks/build_flt10_statement_graph.py) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5ded1d5ae02a070e63ea2643c0a0b39faac8cb3cf445b790ac12b29a4a9d38f9` |
-| [scripts/benchmarks/prepare_flt10.py](../../scripts/benchmarks/prepare_flt10.py) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7f151341138d6e3798135f454a89a327a655768b2978bf5a0b6cb4ab5cf1905e` |
 | [src/benchmark/benchmark-context.js](../../src/benchmark/benchmark-context.js) | FLT10 pinned fixture, public context and safe Lean projection preparation | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `e2f7c30c67811fc8798d59c3042cf92b64e3b20b82b0f5963079fe96cc09060a` |
-
-### benchmark setup (1)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [scripts/benchmarks/prepare_flt_subtrees.py](../../scripts/benchmarks/prepare_flt_subtrees.py) | Root-only FLT extraction, private typed facts and public fixture generation | [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `d40cab74f2ac086746abd85b901d3a3381ac1c32f9756cab4052b4b46db5e537` |
 
 ### controlled verification data (4)
 
