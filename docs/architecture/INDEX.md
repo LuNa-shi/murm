@@ -43,6 +43,8 @@ The prompt reference includes full repository-controlled text, ordering and cond
 
 Source coverage is an inventory, not a formal proof that every branch is correct. Generated references reproduce code-controlled facts; a human-readable explanation and review are still required. The [known boundaries](09-known-boundaries.md) are part of understanding this implementation.
 
+The fixed [lead-helper Environment](19-lead-helper-environment.md) explains local Board transactions, restricted Git identities, public direction adoption and failure ownership.
+
 ## Documentation responsibilities
 
 | Artifact | Owns | Update point |

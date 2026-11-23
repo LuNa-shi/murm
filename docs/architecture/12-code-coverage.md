@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2078 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2084 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -37,10 +37,12 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
 | [src/agent/version-manifest.js](../../src/agent/version-manifest.js) | Adapter/version/prompt/runtime provenance manifest | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e107aad797eff177bbfc2c64489381f690fb8f814e4d42413ddd70abb40af5f8` |
 
-### Environment integration (7)
+### Environment integration (13)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
+| [examples/lead-helper-environment/config.mjs](../../examples/lead-helper-environment/config.mjs) | Kimi K3 fixed-team sample configuration and finite resource bounds | [19-lead-helper-environment](19-lead-helper-environment.md) | `bc3cf45ce53168f78942c070482b8f5b55eb602c6bfcb71670b7f18905eb360a` |
+| [examples/lead-helper-environment/main.mjs](../../examples/lead-helper-environment/main.mjs) | Editable lead-helper CLI with public backend assembly and report output | [19-lead-helper-environment](19-lead-helper-environment.md) | `f02a60f9837df07d510d6d96b5a84fa494041ae2eb044ba4127874bcfabd50fa` |
 | [scripts/git-credential-agensh.mjs](../../scripts/git-credential-agensh.mjs) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `573bc136bf3b793711bfb4d6d841f72ad5a2263a537fefd537177abeef80c1f3` |
 | [src/environments/agensh/board-process.js](../../src/environments/agensh/board-process.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `691876ddff3d5ccd8e1b01ecacc80997663282db1269dc572b3b85d2d397859d` |
 | [src/environments/agensh/http.js](../../src/environments/agensh/http.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `28f0069c40e7fd90c7f2ef53893aaf3ff45b52ba92a7cb5fb2455619fd5b8223` |
@@ -48,6 +50,10 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/environments/agensh/provision.js](../../src/environments/agensh/provision.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `eb1445950e9e8044b48a53b009c6d05b783b8163571d6f190d7a04bfd5734788` |
 | [src/environments/agensh/resources.js](../../src/environments/agensh/resources.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `1558be3891d24e1693a792110b9a6307cc8b3b90c2833d314d5ea1f8c51eb48f` |
 | [src/environments/agensh/services.js](../../src/environments/agensh/services.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `7095fec48ff2499ff4ba5176c802f3b36fe095963e83eeb4901ca9147faccba9` |
+| [src/environments/lead-helper/board.js](../../src/environments/lead-helper/board.js) | Transactional durable Board, trusted caller ownership and proof acceptance | [19-lead-helper-environment](19-lead-helper-environment.md) | `5f200f92980e7e7fb5b9a3c9ff88d6d7ccb415d609edf8c2dd2bc1ccc369d84d` |
+| [src/environments/lead-helper/git.js](../../src/environments/lead-helper/git.js) | Run-scoped three-account Git provisioning, PR authorization and byte verification | [19-lead-helper-environment](19-lead-helper-environment.md) | `6e930ca1fcfb6edfdc2aa0ca8eb5fef8337dc832479c298207db480e61fdb900` |
+| [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive workflow and pending cleanup ownership | [19-lead-helper-environment](19-lead-helper-environment.md) | `39f74a654432db72c339981fd7d2040ec0ebb9ae4b52f92ddf68ea50d5c93d88` |
+| [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [19-lead-helper-environment](19-lead-helper-environment.md), [08-prompts](08-prompts.md) | `a9b680e62aafe7bbd5883d3d5d3255d1cd964771a0711d862e283e2f12b897ab` |
 
 ### Execution and control (16)
 
@@ -2036,7 +2042,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `452ee5db7e6ecdf992532572a58f08a3117f5809d0443eb323b18b16bbea9bd8` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `927242d469f2b2c3613ea6ed8f007bf049f4eeb57a08641dadcecd2567f9a35e` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `9684f423c7fd39633b190d8241b459535e24bdc45bb59f9eb8237b8ed4485c93` |
 
 ### durable storage (3)
 

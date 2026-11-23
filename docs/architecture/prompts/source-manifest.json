@@ -71,6 +71,14 @@
       "sha256": "393b251d8ba49902f7b9d2270796a264ec05f44ddc8e9c47e460563f0c79d015"
     },
     {
+      "path": "src/environments/lead-helper/prompts.js",
+      "sha256": "a9b680e62aafe7bbd5883d3d5d3255d1cd964771a0711d862e283e2f12b897ab"
+    },
+    {
+      "path": "src/environments/lead-helper/index.js",
+      "sha256": "39f74a654432db72c339981fd7d2040ec0ebb9ae4b52f92ddf68ea50d5c93d88"
+    },
+    {
       "path": "src/benchmark/putnam-runner.js",
       "sha256": "7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63"
     },
@@ -165,6 +173,42 @@
       "anchor": "reader: { ...common, prompt: '",
       "line": 97,
       "sha256": "c0f2900930e9feb73c9524e5ffb86c4b5dd6fe750b3cccf4948fabdbd413095a"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const leadPrompt = `",
+      "line": 1,
+      "sha256": "7deda0e0c92860efa451ad49fe2f7e4aa0ba678a27e364902f3c99a7b6a18356"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const helperPrompt = `",
+      "line": 2,
+      "sha256": "ccaadaa3e9dd80e07431a915eaa02d5f5fb3925750d40a2683b09abedf713f81"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const initializeInstruction = '",
+      "line": 3,
+      "sha256": "baa87c2cd44490bd96f564c82d082df643578cc6abb211cc445ffadce6f428b2"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const helperInitialInstruction = '",
+      "line": 4,
+      "sha256": "655a5ce3f8cca7a5a32fa0cc01c843d16df7d1f622e2a4464151c67cd162cfc3"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const leadAdjustmentInstruction = '",
+      "line": 5,
+      "sha256": "f7f022965372742f38e34c4c78788c165ac95262e1222584e2a1ffc40ce64693"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const helperFollowupInstruction = '",
+      "line": 6,
+      "sha256": "0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85"
     }
   ],
   "prompt_send_sites": [
@@ -314,6 +358,10 @@
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
       "sha256": "c3ceddc88245817507b0aa32c3de66771ea59e24dd9ad001ac333121beda56ca"
+    },
+    {
+      "path": "docs/architecture/prompts/08-lead-helper-environment.md",
+      "sha256": "c1420d8b42b1ccb7eb7c4dcf61a0cedb6640acbb2196f3115e44655ea3de184b"
     }
   ]
 }
