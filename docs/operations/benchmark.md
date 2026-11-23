@@ -4,7 +4,7 @@
 
 SwarmEnv currently uses PutnamBench, Lean/Mathlib and multi-Core runs to test collaboration mechanisms. `scripts/run-putnambench-benchmark.mjs` is the existing benchmark entry. The current CLI, `config/`, `fixtures/` and `src/benchmark/` are authoritative for supported arguments and actual behavior.
 
-Development runs that use a real Agent default to Kimi K3, identified as `kimi_proxy/k3` in the host Pi catalog. For PutnamBench, use the host catalog or set `PI_KIMI_PROXY_BASE_URL` and `PI_KIMI_PROXY_API_KEY` on the host. The OpenAI Math launchers read the same pair from the provider entry in their host catalog. Formal runs use the explicit provider and model from the approved plan.
+Development runs that use a real Agent default to Kimi K3, identified as `kimi_proxy/k3` in the host Pi catalog. For PutnamBench, use the host catalog or set `PI_KIMI_PROXY_BASE_URL` and `PI_KIMI_PROXY_API_KEY` on the host. Formal runs use the explicit provider and model from the approved plan.
 
 ## Before a formal run
 
@@ -20,8 +20,7 @@ Run the following from the clean worktree at the approved commit. Set `worker_im
 to a new explicit tag for this build. Run both probes against the same image that
 the OpenSandbox deployment will start, on the host where its Docker storage
 and project quotas are configured. Set `SWARMENV_SANDBOX_IMAGE` to that tag
-for launch. To use the OpenAI Math launchers' image fallback in a development
-test, build the current checkout under the tag `swarmenv-agent:benchmark`.
+for launch.
 
 ~~~bash
 set -euo pipefail
@@ -71,9 +70,9 @@ docker buildx build --network none --pull=false --load \
   -f services/opensandbox-agent/Dockerfile.seymour -t "$worker_image" "$image_inputs/empty"
 ~~~
 
-Use that derivative for the image contract and disk probes. Set
-`OPENAI_MATH_SEYMOUR_LOCAL_LEAN=1` on the single-project paper launcher to tell
-every Bot how to use the tools. A Bot can search
+Use that derivative for the image contract and disk probes. A host library
+composition can supply tool instructions through `localLeanTools` when using
+this image. A Bot can search
 `/opt/mathlib-source/Mathlib` with `rg` and call
 `lean-check --swarmenv-workspace PATH.lean` on its current Seymour worktree.
 Before model calls, verify that a probe imports
