@@ -52,8 +52,33 @@ test('flat host composes public Bash publication and controller finish with dura
       const bridge=new URL(env.SWARMENV_BRIDGE_URL);bridge.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=bridge.href.replace(/\/$/,'');
       const cli=async args=>{const {stdout}=await promisify(execFile)(process.execPath,['scripts/swarm.mjs',...args],{env,timeout:5000});return JSON.parse(stdout);};
       await cli(['task','take',stores.task.task_id,'--request-id','take']);
+      const attachment=Buffer.from([0,255,65,10]);
+      const seed=await cli(['material','publish','--content','Original observation','--receiving-task-id',stores.task.task_id,
+        '--title','t'.repeat(120),'--summary','s'.repeat(500),'--attachments',JSON.stringify([{name:'original.bin',content_base64:attachment.toString('base64')}]),'--request-id','seed']);
+      const correctionInput=['material','publish','--content','Corrected observation','--supersedes',seed.material.material_id,
+        '--expected-version','0','--supersede-reason','Fixed source correction','--attachments',JSON.stringify([{name:'copied.bin',content_hash:hash(attachment),
+          source:{material_id:seed.material.material_id,attachment_name:'original.bin'}}]),'--request-id','correction'];
+      const corrected=await cli(correctionInput);
+      assert.deepEqual(await cli(correctionInput),corrected);
+      const correction=await cli(['material','view',seed.material.material_id]);
+      assert.equal(correction.active_successors[0].replacement_material_id,corrected.material.material_id);
+      assert.equal(stores.context.getMaterial(corrected.material.material_id,{verifyIntegrity:true}).supersedes,seed.material.material_id);
+      assert.deepEqual(corrected.material.attachments,[{name:'copied.bin',media_type:'application/octet-stream',content_hash:hash(attachment),size_bytes:4}]);
+      const publicBefore=stores.context.publicChangeToken(stores.missionId);
+      const rejectsInput=async args=>assert.rejects(cli(args),error=>JSON.parse(error.stderr).code==='SERVICE_INPUT_INVALID');
+      for(const [option,value] of [['--title','t'.repeat(121)],['--summary','s'.repeat(501)],['--producer-task-id','forged'],
+        ['--attachments',JSON.stringify(Array.from({length:17},(_,index)=>({name:`a${index}`,content_base64:'QQ=='})))],
+        ['--attachments',JSON.stringify([{name:'copy',source:{material_id:seed.material.material_id,attachment_name:'original.bin',bot_id:'forged'},content_hash:hash(attachment)}])]]) {
+        await rejectsInput(['material','publish','--content','Invalid publication',option,value,'--request-id',`invalid-${option}`]);
+      }
+      await assert.rejects(cli(['material','publish','--content','Stale correction','--supersedes',seed.material.material_id,
+        '--expected-version','0','--supersede-reason','Stale observed relation','--request-id','stale-correction']),error=>JSON.parse(error.stderr).code==='STALE_VERSION');
+      assert.deepEqual(stores.context.publicChangeToken(stores.missionId),publicBefore);
+      await rejectsInput(['task','finish','--outcome','blocked','--blocker','invalid-string','--request-id','invalid-finish']);
+      assert.equal(stores.tasks.getTask(stores.task.task_id).state,'RUNNING');
       const material=await cli(['material','publish','--content','Fixed public result','--request-id','publish']);materialId=material.material.material_id;
-      await cli(['task','link','--task-id',stores.task.task_id,'--material-id',materialId,'--role','experience','--request-id','link']);
+      await cli(['task','link','--task-id',stores.task.task_id,'--material-id',materialId,'--role','experience',
+        '--receiving-task-id',stores.task.task_id,'--request-id','link']);
       const save=await cli(['workspace','save','--request-id','save']);revision=save.revision;
       assert.deepEqual(await cli(['workspace','save','--request-id','save']),save);
       assert.equal(captures,1,'Replaying a public CLI save must recover the original capture');

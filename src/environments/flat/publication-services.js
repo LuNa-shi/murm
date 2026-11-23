@@ -2,6 +2,7 @@ import { ExecutionWorkspace } from '../../runtime/execution-workspace.js';
 import { SwarmEnvError } from '../../errors.js';
 import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
 import { inputFingerprint, executionEnvelope } from './prepare-inputs.js';
+import { listTools } from '../../sdk/service-catalog.js';
 
 const fail = (code, message) => { throw new SwarmEnvError(code, message); };
 const text = { type:'string', minLength:1, maxLength:4000 };
@@ -10,6 +11,9 @@ const object = (properties, required=[]) => ({type:'object', properties, require
 const capability = (name, operation, input_schema, side_effect='write') => ({name, operation, input_schema,
   output_schema:{type:'object'}, side_effect, idempotent:true, description:`Flat ${name} with trusted Task provenance`,
   help:{when:'Use the current Bot Task binding; reuse the same request ID after an unknown response'}, errors:[]});
+// Preserve the published domain input contracts while Core supplies trusted identity.
+const catalogSchemas = new Map(listTools().map(tool => [tool.operation, tool.parameters]));
+const catalogCapability = (name, operation) => capability(name, operation, catalogSchemas.get(operation));
 const definitions = {
   workspace:[
     capability('save','workspace_save',object({resolved:{type:'boolean'},material_ids:ids})),
@@ -20,14 +24,14 @@ const definitions = {
     capability('files','workspace_public_files',object({path:text,revision:text,limit:{type:'integer',minimum:1,maximum:100},cursor:text}),'read'),
   ],
   context:[
-    capability('publish','context_publish_material',object({content:{},title:text,summary:text,media_type:text,attachments:{type:'array',items:{type:'object'},maxItems:100},used_material_ids:ids},['content'])),
+    catalogCapability('publish','context_publish_material'),
     capability('view','context_get_material',object({material_id:text},['material_id']),'read'),
     capability('list','read_materials',object({query:text,limit:{type:'integer',minimum:1,maximum:100},cursor:text,task_id:text}),'read'),
     capability('consume','consume_materials',object({material_ids:ids,action:{enum:['route','task','workspace','integration']},impact:text},['material_ids','action','impact'])),
   ],
   task:[
-    capability('link','task_link_material',object({task_id:text,material_id:text,role:{enum:['input','response','handoff','experience']}},['task_id','material_id','role'])),
-    capability('finish','task_finish',object({outcome:{enum:['done','incomplete','blocked','cancelled']},material_ids:ids,workspace_revision:text,check_result_id:text,reason:text,handoff_material_id:text,blocker:{},wait_for:text,replacement_task_id:text},['outcome'])),
+    catalogCapability('link','task_link_material'),
+    catalogCapability('finish','task_finish'),
   ],
 };
 
