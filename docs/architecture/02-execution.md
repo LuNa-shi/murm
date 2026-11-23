@@ -294,7 +294,7 @@ The Task-bound Runtime still accepts the solver role for a host-provided Task. T
 
 Solver compaction events retain their actual counts and use solver continuation guidance, but do not trigger the Swarm count/window-based identity rotation. Five successive compactions are covered through real Runtime event handling while checking the same Bot and Execution remain active. The existing Swarm rotation regression remains applicable to the default mode. Provider failures, operator stop and hard deadlines still terminate the solver attempt normally.
 
-The host finish await uses the existing `withinRunDeadline` boundary at the earlier of run deadline and Mission closeout deadline. A delayed finish remains tracked in `pendingRunOperations`; final cleanup joins it under the shared cleanup grace and reports pending cleanup honestly. Timeout does not fabricate physical release or discard its late settlement.
+A caller may bound its own host-controlled finish and cleanup waits. The Task-bound Runtime and Bridge provide the solver controls described above; they do not supply the retired benchmark runner's run-deadline wrapper, pending-operation tracker or shared cleanup grace. A caller timeout does not establish physical resource release.
 
 ## Core-backed flat identity compatibility
 
