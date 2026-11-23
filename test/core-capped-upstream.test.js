@@ -137,6 +137,86 @@ test('hosted stream ending without a terminal fences siblings and later arrivals
   assert.equal(receipt.requests[0].transport.firstTermination.kind, 'terminal_missing_abort');
 });
 
+test('hosted unmetered transport loss fences later dispatches exactly once', { timeout: 5000 }, async t => {
+  for (const mode of ['stream', 'request', 'client']) await t.test(mode, async t => {
+    let held, calls = 0;
+    const failures = [];
+    const upstreamUrl = await localUpstream(t, (request, response) => {
+      request.resume(); calls++;
+      if (mode === 'request') { request.socket.destroy(); return; }
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.write(':held\n\n'); held = response;
+    });
+    const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 3000,
+      filename: 'unused', marker: 'unused', failFast: true, onFailure: failure => failures.push(failure) });
+    t.after(() => cap.close());
+    const send = options => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }), ...options });
+    const controller = new AbortController();
+    const first = await send({ signal: controller.signal }).catch(() => null);
+    const body = first?.text().catch(() => 'cancelled');
+    if (mode === 'stream') held.destroy();
+    if (mode === 'client') controller.abort();
+    await body;
+    // A client abort resolves locally before the proxy receives its close event.
+    if (mode === 'client') await once(held, 'close');
+    assert.equal((await send()).status, 400);
+    const receipt = cap.receipt();
+    assert.equal(calls, 1); assert.equal(receipt.forwarded, 1);
+    assert.equal(receipt.reservedOutputTokens, receipt.maxOutputTokens);
+    assert.equal(receipt.requests[0].usage, undefined);
+    assert.equal(receipt.deadlineReached, false);
+    assert.deepEqual(receipt.failure, { code: 'LIVE_UNMETERED_TRANSPORT_LOSS', number: 1 });
+    assert.deepEqual(failures, [receipt.failure]);
+    assert.equal(receipt.requests[0].transport.firstTermination.kind,
+      mode === 'stream' ? 'upstream_error' : mode === 'request' ? 'request_error' : 'client_close');
+    await cap.close();
+    assert.deepEqual(cap.receipt().failure, receipt.failure); assert.equal(failures.length, 1);
+  });
+});
+
+test('hosted transport loss cancels an unmetered peer without replacing the first failure', { timeout: 3000 }, async t => {
+  const held = [], failures = [];
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.write(':held\n\n'); held.push(response);
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000,
+    filename: 'unused', marker: 'unused', failFast: true, onFailure: failure => failures.push(failure) });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const peer = await send(), peerBody = peer.text().catch(() => 'cancelled');
+  const offender = await send(), offenderBody = offender.text().catch(() => 'cancelled');
+  held[1].destroy();
+  await Promise.all([peerBody, offenderBody]);
+  const receipt = cap.receipt();
+  assert.deepEqual(receipt.failure, { code: 'LIVE_UNMETERED_TRANSPORT_LOSS', number: 2 });
+  assert.deepEqual(failures, [receipt.failure]);
+  assert.equal(receipt.requests[0].transport.firstTermination.kind, 'unmetered_transport_abort');
+  assert.equal(receipt.requests[1].transport.firstTermination.kind, 'upstream_error');
+  assert.equal(receipt.forwarded, 2); assert.equal(receipt.deadlineReached, false);
+  assert.equal((await send()).status, 400);
+});
+
+test('hosted transport loss after verified terminal usage retains accounting and allows another request', async t => {
+  const held = [];
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.write('data: ' + JSON.stringify({ type: 'response.completed', response: {
+      usage: { input_tokens: 2, output_tokens: 3 }, output: [] } }) + '\n\n'); held.push(response);
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000,
+    filename: 'unused', marker: 'unused', failFast: true });
+  t.after(() => cap.close());
+  for (let index = 0; index < 2; index++) {
+    const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+    const body = response.text().catch(() => 'cancelled');
+    held[index].destroy(); await body;
+  }
+  const receipt = cap.receipt();
+  assert.equal(receipt.failure, undefined); assert.equal(receipt.forwarded, 2);
+  assert.ok(receipt.requests.every(row => row.usage.inputTokens === 2 && row.usage.outputTokens === 3));
+});
+
 test('explicit hosted close preserves host cancellation without classifying a missing terminal', { timeout: 3000 }, async t => {
   const upstreamUrl = await localUpstream(t, (request, response) => {
     request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' }); response.write(':held\n\n');
@@ -284,23 +364,26 @@ test('capped upstream limits actual forwarding and preserves SSE IDs with capped
 });
 
 test('deadline aborts an active upstream and prevents any later forwarding', async t => {
-  let requests = 0;
-  const upstreamUrl = await localUpstream(t, (_request, response) => {
-    requests += 1;
-    response.writeHead(200, { 'content-type': 'text/event-stream' });
-    response.write('event: response.created\ndata: {"type":"response.created","response":{"id":"r"}}\n\n');
+  for (const failFast of [false, true]) await t.test(`failFast ${failFast}`, async t => {
+    let requests = 0;
+    const upstreamUrl = await localUpstream(t, (_request, response) => {
+      requests += 1;
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.write('event: response.created\ndata: {"type":"response.created","response":{"id":"r"}}\n\n');
+    });
+    const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 100,
+      filename: 'check.txt', marker: 'EXPECTED', failFast });
+    t.after(() => cap.close());
+    const request = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+    await assert.rejects(request.text());
+    assert.equal(cap.receipt().deadlineReached, true);
+    assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'work_expiry');
+    assert.equal((await fetch(cap.url, { method: 'POST', body: '{}' })).status, 429);
+    assert.equal(requests, 1);
+    assert.equal(cap.receipt().failure, undefined);
+    await cap.close();
+    assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'work_expiry');
   });
-  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 100,
-    filename: 'check.txt', marker: 'EXPECTED' });
-  t.after(() => cap.close());
-  const request = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
-  await assert.rejects(request.text());
-  assert.equal(cap.receipt().deadlineReached, true);
-  assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'work_expiry');
-  assert.equal((await fetch(cap.url, { method: 'POST', body: '{}' })).status, 429);
-  assert.equal(requests, 1);
-  await cap.close();
-  assert.equal(cap.receipt().requests[0].transport.firstTermination.kind, 'work_expiry');
 });
 
 test('only correlated Bash and read tool results verify the requested file effect', async t => {
