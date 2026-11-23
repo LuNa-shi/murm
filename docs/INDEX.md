@@ -14,6 +14,7 @@ This is the entry point to current maintained documentation. Historical design d
 | How is a substantial next stage designed? | [phases/INDEX.md](phases/INDEX.md) | Phase 0005 is authoritative target design; other entries are versioned Issue attachments. Progress and evidence remain in Issue/PR |
 | Which engineering workflow applies? | **Installed Matt Pocock engineering skills** + [AGENTS.md](../AGENTS.md) | `/to-spec`, optional `/to-tickets`, `/implement`, `/implement-spec`, `/tdd`, `/code-review`, `/pr` |
 | Where is Matt skills configuration? | [agents/issue-tracker.md](agents/issue-tracker.md), [agents/domain.md](agents/domain.md), [agents/triage-labels.md](agents/triage-labels.md) | Issue tracker, domain and triage setup |
+| How are Phase 0005 contracts and migration regressions verified? | [Core / Environment verification contract](workflows/core-environment-verification.md) | Pinned baseline observations, public seams and requirements-to-ticket cross-reference; execution evidence stays on Issue/PR |
 | How does the current system run in detail? | [architecture/INDEX.md](architecture/INDEX.md) | Complete implementation manual, full prompts, interfaces, state and source coverage |
 | What are the SwarmEnv-specific working rules? | [workflows/development.md](workflows/development.md), [workflows/experiment.md](workflows/experiment.md) | Repo conventions, verification and experiment boundaries |
 | Where are formal experiments? | [experiments/INDEX.md](experiments/INDEX.md) | Run IDs, evidence and report template |
