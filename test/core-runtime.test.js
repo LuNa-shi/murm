@@ -206,3 +206,20 @@ test('Runtime rejects invalid capability and network configuration before resour
     }, { code: 'INVALID_CONTRACT', operation: 'createRuntime', cleanup: 'complete' });
   }
 });
+
+
+test('spawn rejects reserved credentials and host policy overrides before dispatch', async t => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'swarmenv-core-test-'));
+  t.after(() => rm(outputDir, { recursive: true, force: true }));
+  const config = options(outputDir);
+  config.profiles.writer.model = 'default';
+  const runtime = await createRuntime(config);
+  t.after(() => runtime.close());
+  for (const override of [{ secretEnv: { SWARMENV_WORKER_TOKEN: 'test-only' } },
+    { secretEnv: { PI_KIMI_PROXY_API_KEY: 'test-only' } }, { network: { allow: [] } },
+    { image: 'other-image' }, { model: 'other-model' }, { maxBots: 99 }, { services: {} }]) {
+    await assert.rejects(runtime.spawn({ requestId: 'invalid-override', profile: 'writer', ...override }), {
+      code: 'INVALID_CONTRACT', operation: 'spawn',
+    });
+  }
+});

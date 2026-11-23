@@ -607,3 +607,22 @@ test('unknown Runtime-owned sandbox create is reconciled without a Mission ident
   assert.equal(await manager.stopExecution('bot-1'), true);
   assert.equal(deleted, true);
 });
+
+test('Core startup accepts explicitly classified nonsecret application environment names', async () => {
+  let launch;
+  const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://sandbox.test/v1', image: 'image:test',
+    fetchImpl: async (url, options) => {
+      if (url.endsWith('/sandboxes')) return response({ id: 'core-env' });
+      if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
+      if (url.endsWith('/health')) return response({ ok: true });
+      if (url.endsWith('/start')) {
+        launch = JSON.parse(options.body);
+        return response({ result: { contract: { version: 'swarmenv-core-v1', resources: [] } } });
+      }
+      throw new Error('Unexpected provider route');
+    } });
+  await manager.ensureExecution({ executionId: 'core-env', botId: 'core-env' });
+  await manager.startAgent({ executionId: 'core-env', agentMode: 'core', command: 'pi', resources: [],
+    env: { TOKENIZER: 'nonsecret-test-value' } });
+  assert.equal(launch.env.TOKENIZER, 'nonsecret-test-value');
+});

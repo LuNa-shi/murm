@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { ServiceRegistry, createInProcessAdapter } from '../src/core/services.js';
+import { ServiceRegistry, createInProcessAdapter, snapshotServiceRegistry } from '../src/core/services.js';
 
 function registration() {
   return {
@@ -37,4 +37,23 @@ test('reserved Bot Service identity and incomplete manifests fail before registr
 test('in-process adapter retains its implementation context and result', async () => {
   const adapter = createInProcessAdapter({ note: 'published note', invoke() { return this.note; } });
   assert.equal(await adapter.invoke({}), 'published note');
+});
+
+
+test('Runtime registry snapshot freezes adapter entrypoints while retaining Service business state', async () => {
+  const services = new ServiceRegistry();
+  const entry = registration();
+  const state = { note: 'initial' };
+  entry.adapter = { state, invoke() { return this.state.note; } };
+  services.registerService(entry);
+  const snapshot = snapshotServiceRegistry(services);
+  entry.manifest.capabilities[0].operation = 'mutated';
+  entry.adapter.invoke = () => 'replacement-must-not-run';
+  state.note = 'published';
+  assert.equal(snapshot.get('notes').manifest.capabilities[0].operation, 'get');
+  assert.equal(await snapshot.get('notes').adapter.invoke({}), 'published');
+  const late = registration();
+  late.manifest.id = 'late';
+  services.registerService(late);
+  assert.equal(snapshot.has('late'), false);
 });
