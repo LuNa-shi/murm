@@ -18588,6 +18588,31 @@
         "docs/architecture/15-core-runtime.md"
       ],
       "role": "Runtime/caller/operation/target/request input identity and parameter conflict ledger"
+    },
+    {
+      "path": "src/core/file-controls.js",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Bot file-operation identity, preparation receipts, write authority and pending grant fences"
+    },
+    {
+      "path": "scripts/core-file-seed.mjs",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Shared FileSeed validation, portable byte representation and canonical digest"
+    },
+    {
+      "path": "scripts/core-work-dir.mjs",
+      "category": "Pi and sandbox execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Trusted Worker FileSeed installation, readback, versioned write grant and close coordination"
     }
   ]
 }
