@@ -31,6 +31,7 @@ Read 00 first, then 07 for the actual launch and outer loop. Read 01–06 for th
 | [14 Native Agensh on Lean](14-agensh-lean.md) | How does a native Pi team receive a clean fixture, share work, enforce its time window and submit to the external checker? |
 | [15 Programmable Core Runtime](15-core-runtime.md) | How does a host assemble and run a Task-free Bot, subscribe to input results and close the run? |
 | [16 Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) | How does Core connect its identity, a guest, a Pi Session and separately confirmed stop and destruction? |
+| [17 Service evidence and Environment reports](17-environment-reporting.md) | How are Service operations traced and independent business, cleanup and report-save failures preserved? |
 
 ## What complete means here
 

@@ -4,6 +4,10 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 const IDENTIFIER = /^[a-z][a-z0-9_-]*$/;
 const registryEntries = new WeakMap();
 const validators = new WeakMap();
+const adapterMetadata = new WeakMap();
+
+/** Internal non-credential effective adapter configuration for run evidence. */
+export function getAdapterMetadata(adapter) { return adapterMetadata.get(adapter); }
 
 export function isJson(value, seen = new Set(), depth = 0) {
   if (depth > 64) return false;
@@ -115,32 +119,53 @@ export function snapshotServiceRegistry(services) {
   return new Map([...registryEntries.get(services)].map(([id, registration]) => {
     const { manifest, adapter } = registration;
     if (typeof adapter.invoke !== 'function') invalid('Service adapter requires invoke(request)');
-    return [id, Object.freeze({ manifest, adapter: Object.freeze({ invoke: adapter.invoke.bind(adapter) }) })];
+    const captured = Object.freeze({ invoke: adapter.invoke.bind(adapter) });
+    const metadata = getAdapterMetadata(adapter);
+    if (metadata) adapterMetadata.set(captured, metadata);
+    return [id, Object.freeze({ manifest, adapter: captured })];
   }));
 }
 
 // One invocation only. Service business logic owns idempotency and retries.
-export async function invokeService(registration, { operation, input, envelope, caller, signal }, timeoutMs = 30_000) {
+export async function invokeService(registration, { operation, input, envelope, caller, signal, recordService }, timeoutMs = 30_000) {
   const { manifest, adapter } = registration;
   const capability = manifest.capabilities.find(item => item.operation === operation);
   const identity = { service_id: manifest.id, operation, operation_id: envelope.operation_id };
-  if (!capability) throw new SwarmEnvError('NOT_FOUND', 'Service operation is not registered', identity);
+  const record = (state, outcome, error) => recordService?.({ runtimeId: caller.runtimeId, botId: caller.botId, profile: caller.profile,
+    serviceId: manifest.id, operation, operationId: envelope.operation_id, state, outcome, ...(error ? { error } : {}) });
+  record('validation', 'pending');
+  if (!capability) {
+    record('validation', 'not_executed', { code: 'NOT_FOUND', retryable: false });
+    throw new SwarmEnvError('NOT_FOUND', 'Service operation is not registered', identity);
+  }
   const rules = validators.get(manifest).get(operation);
-  if (!isJson(input) || !rules.input(input)) throw new SwarmEnvError('SERVICE_INPUT_INVALID', 'Service input violates its schema', { ...identity, request_outcome: 'not_executed' });
+  if (!isJson(input) || !rules.input(input)) {
+    record('validation', 'not_executed', { code: 'SERVICE_INPUT_INVALID', retryable: false });
+    throw new SwarmEnvError('SERVICE_INPUT_INVALID', 'Service input violates its schema', { ...identity, request_outcome: 'not_executed' });
+  }
+  record('validation', 'passed');
   const controller = new AbortController();
   const abort = () => controller.abort();
   if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
   let timer;
+  let invoked = false;
   try {
     if (controller.signal.aborted) throw new SwarmEnvError('NOT_ALLOWED', 'Service caller has closed', identity);
     const timeout = new Promise((_, reject) => {
       timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Service invocation timed out', { ...identity, request_outcome: 'unknown' })); controller.abort(); }, timeoutMs);
       controller.signal.addEventListener('abort', () => reject(new SwarmEnvError('SERVICE_UNAVAILABLE', 'Service invocation was aborted', { ...identity, request_outcome: 'unknown' })), { once: true });
     });
+    invoked = true;
+    record('invocation', 'pending');
     const result = await Promise.race([Promise.resolve().then(() => adapter.invoke({ manifest, capability, input: structuredClone(input), envelope: Object.freeze({ operation_id: envelope.operation_id }), caller: Object.freeze({ ...caller }), signal: controller.signal })), timeout]);
     if (!isJson(result) || !rules.output(result)) throw new SwarmEnvError('SERVICE_OUTPUT_INVALID', 'Service output violates its schema', { ...identity, request_outcome: capability.side_effect === 'write' ? 'unknown' : 'invalid_output' });
+    record('settled', 'succeeded');
     return result;
   } catch (error) {
+    const knownCode = ['NOT_ALLOWED', 'SERVICE_INPUT_INVALID', 'SERVICE_OUTPUT_INVALID', 'SERVICE_TIMEOUT', 'SERVICE_UNAVAILABLE'].includes(error?.code)
+      || capability.errors.some(item => item.code === error?.code);
+    record('settled', !invoked ? 'not_executed' : error?.details?.request_outcome === 'invalid_output' ? 'invalid_output' : 'unknown',
+      { code: knownCode ? error.code : 'SERVICE_UNAVAILABLE', retryable: capability.errors.find(item => item.code === error?.code)?.retryable ?? false });
     if (error instanceof SwarmEnvError) { error.details = { ...error.details, ...identity }; throw error; }
     const declared = capability.errors.find(item => item.code === error?.code);
     if (declared) throw new SwarmEnvError(declared.code, error.message ?? 'Service operation failed', identity, { retryable: declared.retryable });
@@ -152,7 +177,7 @@ export async function invokeService(registration, { operation, input, envelope, 
 export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = globalThis.fetch } = {}) {
   if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000 ||
       (token !== undefined && (typeof token !== 'string' || !token))) invalid('HTTP adapter requires a bounded timeout, fetch and optional host token');
-  return Object.freeze({ async invoke({ manifest, capability, input, envelope, caller, signal }) {
+  const adapter = Object.freeze({ async invoke({ manifest, capability, input, envelope, caller, signal }) {
     if (manifest.endpoint.transport !== 'http-json') invalid('HTTP adapter requires an HTTP Service endpoint');
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -186,4 +211,6 @@ export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = g
       throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'HTTP Service is unavailable', { request_outcome: 'unknown' });
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   } });
+  adapterMetadata.set(adapter, Object.freeze({ transport: 'http-json', timeoutMs }));
+  return adapter;
 }
