@@ -65,6 +65,31 @@ test('hosted terminal replay is idempotent but remapped response identity fails 
   });
 });
 
+test('hosted terminal usage fences an overage even when optional tool output is malformed', { timeout: 3000 }, async t => {
+  let upstreamResponse;
+  const upstreamUrl = await localUpstream(t, (_request, response) => {
+    upstreamResponse = response;
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.write(':started\n\n');
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
+    maxOutputTokens: 768, filename: 'unused', marker: 'unused', failFast: true });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const response = await send();
+  const terminal = (outputTokens, output) => 'data: ' + JSON.stringify({ type: 'response.completed', response: {
+    id: 'metered-response', usage: { input_tokens: 10, output_tokens: outputTokens }, output } }) + '\n\n';
+  upstreamResponse.end(terminal(865, { unexpected: true }) + terminal(3, []));
+  let stream = '';
+  try { stream = await response.text(); } catch { /* The overage terminates the stream. */ }
+  const receipt = cap.receipt();
+  assert.deepEqual(receipt.failure, { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 1, maxOutputTokens: 768, outputTokens: 865 });
+  assert.deepEqual(receipt.requests[0].usage, { inputTokens: 10, outputTokens: 865 });
+  assert.equal(stream.includes('response.completed'), false);
+  assert.equal((await send()).status, 400);
+  assert.equal(cap.receipt().forwarded, 1);
+});
+
 test('hosted output overage fences forwarding and cancels the active peer before exposing that terminal chunk', { timeout: 3000 }, async t => {
   const requested = [], held = [], failures = [];
   const upstreamUrl = await localUpstream(t, async (request, response) => {
