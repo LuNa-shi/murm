@@ -42,7 +42,7 @@ Sources: [store and collection](../../src/observability/observation-store.js), [
 
 ## 3. Server lifecycle and complete HTTP surface
 
-The benchmark CLI defaults to no observer server. It does not probe existing metadata, start a daemon, open a shared observer database or write `metadata/observability.json` unless `--observability` is supplied. Host/port/metadata options and `SWARMENV_OBSERVABILITY_METADATA` configure the explicitly enabled server; they do not enable it. `metadata/experiment.json` records `protocol.observability_enabled`. Without the server, the runner still writes project-local ObservationStore events, durable service/Agent logs and authoritative databases, so reporting and offline analysis remain available. Explicitly enabled server startup failures still fail the launch; operator-stop handling remains bounded. The standalone server command remains an explicit operator action.
+The benchmark CLI defaults to no observer server. It does not probe existing metadata, start a daemon, open a shared observer database or write `metadata/observability.json` unless `--observability` is supplied. Host/port/metadata options and `SWARMENV_OBSERVABILITY_METADATA` configure the explicitly enabled server; they do not enable it. `metadata/experiment.json` records `protocol.observability_enabled`. Without the server, the runner still writes project-local ObservationStore events, durable service/Agent logs and authoritative databases, so report construction and inspection of authoritative records remain available. Explicitly enabled server startup failures still fail the launch; operator-stop handling remains bounded. The standalone server command remains an explicit operator action.
 
 The persistent entry is `scripts/serve-observability.mjs`. It defaults to `experiments`, loopback host, port 8787, database `<root>/.observability/observability.sqlite`, and metadata `<root>/.observability/server.json`. Repeated `--root` and `--scan-root` add roots; conventional `.worktrees`/`.worktree` paths are inferred even before they exist. Discovery scans for `observability.sqlite` to depth 5, excluding `.git` and `node_modules` directories. This keeps worktree-local historical runs visible to one server.
 
@@ -98,59 +98,6 @@ Common event filters include `after_sequence`, `execution_id` on the event route
 Operator admission covers event, detail, report and owner-service routes. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
 
 Sources: [server](../../src/observability/observability-server.js), [daemon entry/discovery](../../scripts/serve-observability.mjs), [Vite configuration](../../src/observability/vite.config.js), [server tests](../../test/observability-server.test.js), [worktree discovery tests](../../test/observability-worktree-discovery.test.js).
-
-### Failure-isolated long-run process observer
-
-The operator-only `scripts/experiment-supervisor.py` is a separate process
-observer for long benchmark runs. It is not the benchmark runner, does not
-start a runner, and never sends a signal to the observed PID. The operator
-starts the runner first, records its PID, then attaches the observer in a
-different service unit or container. A bounded operator readiness check must
-confirm a nonzero active runner `MainPID`; `--print-starttime` obtains the
-identity token and `--pid-starttime` binds attach to that token. The required
-arguments are `--pid` and `--project-dir`; `--log` defaults to `supervision.ndjson`,
-`--interval-seconds` defaults to `600`, and `--max-runtime-seconds` is
-unbounded unless supplied. `--self-test` is a local regression mode and does
-not attach to a process.
-
-On attach, the observer reads `/proc/<pid>/stat` and records the Linux process
-start time. Each poll verifies the same start time before reading the stores;
-missing or changed identity ends observation without touching the new process.
-The bounded snapshot performs read-only queries against `project.sqlite`,
-`judge.sqlite` and `context.sqlite`: grouped Task/Bot/Execution states,
-the newest Mission identity, grouped checker verdict/result and diagnostic
-counts, Material count, and grouped Material-consumption actions. The Mission
-query is explicitly limited to one row. `read_rows` opens a URI `mode=ro`
-connection, fetches the rows, and closes it in `finally`, including query
-errors. No observer query writes service state.
-
-The observer emits timestamped `observer_started`, `status`,
-`observed_process_finished`, `observed_process_identity_changed`,
-`observer_attach_failed`, `observation_error`, `observer_log_error`,
-`observer_timebox_reached` and `observer_stopped` events.
-It appends each event as one NDJSON line when the log is available. A database,
-log, stderr or stdout failure is converted to an observer-side error and does
-not signal or terminate the runner; a missing runner PID is an attach failure
-with exit code 2. SIGINT/SIGTERM only stops the observer loop. There is no
-observer cleanup of the runner, project stores or checker resources; those
-remain owned by the benchmark runner and its service lifecycle. Process-group
-coupling is therefore a deployment error: a shared unit with the observer as
-its main process and `KillMode=mixed` is not a valid formal-run configuration.
-
-The tracked regression test exercises all snapshot query families 1000 times
-and asserts stable descriptors, and runs the observer against a live `sleep`
-process with missing stores and an invalid log path to verify that the target
-survives observer-side failures. It also checks an explicit start-time mismatch
-before any query. These tests establish observer isolation and resource
-handling; they do not establish a benchmark result or Mission acceptance.
-
-This process is intentionally a health/lifecycle projection rather than a
-complete progress analyzer. It does not claim Mission submission or
-acceptance, Workspace main/revision lineage, complete Task/Execution/Material
-relationships, checker receipt integrity or terminal cleanup. Those facts are
-read from the authoritative stores by the existing observability and
-experiment-analysis paths. A status event from this observer must therefore
-never be counted as mathematical or Mission progress.
 
 ## 4. Bounds, SSE and client updates
 
@@ -217,32 +164,11 @@ Current parallelism output uses `readiness_poll_ms` for the accumulated duration
 
 Sources: [runner report construction](../../src/benchmark/putnam-runner.js), [parallelism tracker](../../src/benchmark/parallelism.js), [parallelism tests](../../test/parallelism.test.js).
 
-## 7. Offline experiment-analysis pipeline
+## 7. Historical research tooling
 
-`node scripts/analyze-experiment.mjs <directory-or-id>` invokes `analyseExperiment`/`analyzeExperiment`. Default mode is `full`, with 5-minute semantic windows; CLI also accepts `sanitized` and 10-minute windows. An experiment ID resolves beneath the configured experiments root. The default output is `<experiment>/analysis/experiment-analysis.md`; callers can override it.
+The research tree at `dc011003fa0354a881b7a3ba9ba901fe36cbcac9` preserves the offline evidence reconstruction engine, process observer and their tests. Historical reports retain the tested versions and results recorded with each run. The current observation server, report importer and benchmark report builder expose the storage and projections described in this chapter. Inspect authoritative service records, immutable Workspace revisions and request receipts when assessing those projections.
 
-Its flags are `--mode full|sanitized`, `--window-minutes 5|10`, `--experiments-root <path>` (default `./experiments`), `--output <path>`, and `--help`/`-h`. This parser accepts space-separated values, not the server launcher's `--name=value` form. Unknown options and unsupported window sizes fail before analysis.
-
-The implementation follows these steps:
-
-1. Resolve the experiment and read metadata. Inventory ten evidence classes: metadata, Agent, Bridge, Runtime, Service, Judge, SQLite, observation, Workspace and summary. Record missing/unreadable/corrupt/correlation evidence instead of substituting zero.
-2. Read project databases and sanitized summaries. Full mode also reads private Workspace and raw-runtime facts; sanitized mode limits analysis to the available exported/bounded evidence. Build Execution intervals from Runtime records to correlate Core traces.
-3. Read a configured observation store matching the run/project IDs. When several candidates exist, use the first one with matching facts. Normalize raw logs and domain rows into facts with time, identities, operation, result/diagnostic and source references.
-4. De-duplicate semantic facts using kind/time/Task/Execution/Core/operation/entity/correlation keys, preferring the better-priority source and retaining the union of evidence references. This is event normalization, not proof that every producer emitted exactly once.
-5. Build per-Execution semantic windows at meaningful boundaries and configured maximum duration. A long silent gap is explicit; it is not automatically classified as useful work.
-6. Construct Material publication/consumer/downstream tables, service/tool/error analysis, candidate diagnostics, terminal/cleanup findings, aggregate metrics and recommendations. Render a sanitized Markdown report with evidence references.
-
-Material “downstream effect” inference checks that a later Workspace/candidate/check/review/rework event occurs in the same consuming Execution. It does not prove the Material caused that later operation or that its content was useful. The implementation explicitly labels this as a recorded downstream operation without inferring semantic usefulness. Similar repeated-diagnostic or route-change findings are diagnostic hypotheses, not automatically approved engineering requirements.
-
-Analysis opens each project's available Task, Context and Judge databases read-only. Historical projects can store all three domains in `project.sqlite`. Modern operation receipts provide the public Workspace revision, Material producer IDs and the Material IDs on the returned page, while the bounded Observer lifecycle event records the Task finish disposition separately from Execution termination.
-
-The analyzer caps retained source errors at 20 and bounds many displayed evidence lists. Automated recommendation text can contain compatibility-era concepts; the current approved Issue and architecture remain the review standard. Formal experiment reports should distinguish observed result, explanation and next-step decision, with source code/test/probe/real-Agent evidence identified separately.
-
-Raw Bridge attribution keeps pending starts within each input file. A completion first matches its physical `bridge_call_id`, then its `operation_id` when that ID identifies one start in the file observed so far. A supplied physical ID with no match remains unknown. Reused logical IDs require physical identity to distinguish retries. Historical completions without either ID inherit a start only when a single pending request exists, its logical ID has no recorded reuse, and no response has already been sent for it. Conflicting explicit Task, Execution or operation identities prevent inheritance. A `bridge.response_sent` fact records delivery and keeps the pending start available for an exact completion, while blocking later identity-free matches. Unmatched completions retain their own explicit identities and bounded result/error evidence, with `bridge_pairing=unknown`; they borrow no Task or Execution and generate domain mutation facts only when the completion itself supplies Task or Execution identity. Fact deduplication includes physical call identity. Consequently a corrected offline analysis may reduce historical per-Execution attribution or inferred mutation counts where old logs are ambiguous. Previously written reports remain version-bound evidence.
-
-Raw log ingestion retains every normalized fact in file order before attribution and semantic deduplication. File discovery and per-file fact collection append items iteratively, including recursively discovered log/summary files; they do not pass an entire run-sized array as function arguments. A single Core log can therefore exceed the JavaScript argument-count limit without losing records or aborting with a call-stack overflow. NDJSON inventory validation, raw fact normalization and runtime interval reconstruction read decoded UTF-8 chunks and split complete lines incrementally, preserving CRLF/LF line numbers, blank lines and a final record without a newline. They do not construct a whole-file string, so logs larger than the V8 string limit remain readable. Each JSON record is still parsed in full; a single record beyond the string limit fails rather than being truncated. An unreadable inventory source produces a bounded source warning instead of being silently treated as an empty file. Per-record normalization, Pi returned-content hashes and malformed-line diagnostics are unchanged. The analyzer retains the accumulated facts and runtime records in memory, so available memory and later aggregation costs still constrain very large runs. It does not sample or impose a new evidence cap. Window construction compares semantic phases only when the incoming fact is an eligible semantic boundary beyond the minimum interval; text deltas and heartbeats retain their facts and supporting counts without repeatedly rescanning the current window for a split they cannot trigger. Window phases, timing and report structure remain unchanged. Reanalysis can write a separate report through `--output`; preserving a failed run's original report and process log requires choosing a new output path and a separate shell log destination.
-
-Sources: [analysis entry](../../scripts/analyze-experiment.mjs), [analysis engine](../../src/analysis/experiment-analysis.js), [analysis tests](../../test/experiment-analysis.test.js), [formal workflow](../workflows/experiment.md), [report template](../experiments/TEMPLATE.md).
+Historical implementation details and operating instructions are available in the [research analysis and observer manual](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/docs/architecture/06-observability-experiments.md). Formal evidence structure follows the [experiment workflow](../workflows/experiment.md) and [report template](../experiments/TEMPLATE.md).
 
 ## 8. What must be captured to answer a runtime question
 
