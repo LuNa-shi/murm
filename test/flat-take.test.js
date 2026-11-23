@@ -19,8 +19,9 @@ async function fixture(t, hooks = {}, config = {}) {
   const { createRuntime } = await import('@swarmenv/core');
   const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
   const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { collect, ...serviceConfig } = config;
-  service = createFlatTaskService({ runtime: () => runtime, taskService: tasks, missionId, missionWorkspace: workspace,
+  const { collect, stop, ...serviceConfig } = config;
+  service = createFlatTaskService({ runtime: () => stop ? { ...runtime, stop: (...args) => stop(runtime, ...args) } : runtime,
+    taskService: tasks, missionId, missionWorkspace: workspace,
     workspaceId, workspaceManager: manager, contextService: context,
     missionDeadline: () => Date.now() + 60_000, executionTimeoutMs: 60_000, ...serviceConfig });
   const services = new ServiceRegistry(); services.registerService(service);
@@ -166,6 +167,46 @@ test('a stale Execution fence after grant cannot produce successful handoff', as
   assert.equal(row.stopped.execution, 'stopped');
   assert.equal(f.tasks.getExecution(row.executionId).state, 'FENCED');
   assert.equal(f.tasks.getBot(bot.id).state, 'CLOSED');
+});
+
+test('failure reading the preparation deadline compensates the already reserved Execution', async t => {
+  const failure = new Error('Fixed deadline reader failure');
+  const f = await fixture(t, {}, { missionDeadline() { throw failure; } });
+  const bot = await f.spawn('deadline');
+  await assert.rejects(f.call(bot, 'task_take', { task_id: f.task.task_id }, 'take'), error => error === failure);
+  const row = f.service.inspect(bot.id, 'take');
+  assert.equal(row.stage, 'failed');
+  assert.equal(row.error.message, failure.message);
+  assert.equal(row.stopped.execution, 'stopped');
+  assert.equal(f.tasks.getExecution(row.executionId).state, 'FAILED');
+  assert.equal(f.tasks.getBot(bot.id).state, 'CLOSED');
+});
+
+test('thrown Core stop preserves the preparation error and original owner until explicit reconciliation', async t => {
+  let failStop = true;
+  const failure = new Error('Fixed preparation failure');
+  const f = await fixture(t, {}, {
+    missionDeadline() { throw failure; },
+    async stop(runtime, ...args) {
+      if (failStop) throw Object.assign(new Error('Fixed Core stop error'), { code: 'STOP_UNAVAILABLE' });
+      return runtime.stop(...args);
+    },
+  });
+  const bot = await f.spawn('throwing-stop');
+  await assert.rejects(f.call(bot, 'task_take', { task_id: f.task.task_id }, 'take'), error => error === failure);
+  const pending = f.service.inspect(bot.id, 'take');
+  assert.equal(pending.stage, 'failed');
+  assert.equal(pending.error.message, failure.message);
+  assert.equal(pending.cleanupError.code, 'STOP_UNAVAILABLE');
+  assert.equal(pending.stopped, undefined);
+  assert.equal(f.tasks.getExecution(pending.executionId).owner_ref, bot.id);
+  assert.equal(f.tasks.getExecution(pending.executionId).state, 'CREATED');
+  failStop = false;
+  const closed = await f.service.reconcile(bot.id, 'take');
+  assert.equal(closed.stopped.execution, 'stopped');
+  assert.equal(closed.error.message, failure.message);
+  assert.equal(closed.cleanupError, undefined);
+  assert.equal(f.tasks.getExecution(pending.executionId).state, 'FAILED');
 });
 
 test('finite preparation timeout owns the late Core result and never grants or reports take success', async t => {

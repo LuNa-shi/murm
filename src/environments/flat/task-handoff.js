@@ -27,7 +27,7 @@ export async function runFlatHandoff({ request, runtime, taskService, missionId,
   executionTimeoutMs, handoffLeadMs, missionDeadline, heartbeatMs, stopTimeoutMs, preparationTimeoutMs, isClosing, signal, preview }) {
   const { botId, taken, id } = request;
   const executionId = taken.execution.execution_id, fence = taken.execution.fencing_version;
-  const deadlineAt = Math.min(Date.now() + preparationTimeoutMs, missionDeadline(), Date.parse(taskService.getBot(botId).hard_deadline));
+  let deadlineAt;
   const checkSignal = () => {
     signal?.throwIfAborted();
     if (isClosing() || Date.now() >= deadlineAt) throw failure('Flat preparation closed or exceeded its deadline');
@@ -49,6 +49,8 @@ export async function runFlatHandoff({ request, runtime, taskService, missionId,
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   };
   try {
+    deadlineAt = Math.min(Date.now() + preparationTimeoutMs, missionDeadline(), Date.parse(taskService.getBot(botId)?.hard_deadline));
+    if (!Number.isFinite(deadlineAt)) throw failure('No finite Flat preparation deadline');
     lease = startPreparationHeartbeat({ taskService, missionId, botId, executionId, expectedFence: fence,
       intervalMs: heartbeatMs, isClosing, checkSignal });
     request.stage = 'prepare-inputs';
@@ -89,6 +91,7 @@ export async function runFlatHandoff({ request, runtime, taskService, missionId,
     return { task: taskService.getTask(execution.task_id), execution, materials: inputs.materials,
       workspace: { ...execution.workspace_input, workDir: '/workspace/project' }, handoff };
   } catch (error) {
+    lease?.stop();
     request.stage = 'stop-after-failure';
     request.error = errorInfo(error);
     await stopFailedHandoff({ request, runtime, taskService, stopTimeoutMs });
