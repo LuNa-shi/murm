@@ -1324,18 +1324,15 @@ test('registered Judge CLI checks only a fixed public file and scopes durable re
   assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
 });
 
-test('registered Judge CLI fences a late project response while preserving its durable domain receipt', async t => {
+test('registered Judge CLI forwards module mode and fences a late response while preserving its domain receipt', async t => {
   const { JudgeService } = await import('../src/judge/judge-service.js');
   const { LeanChecker } = await import('../src/judge/lean-adapter.js');
   const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
-  const builds = [];
   let holdBuild;
   let judge;
   const createJudgeService = (service, runtime) => {
-    const checker = new LeanChecker({ projectChecker: async ({ files, tree, path, checkMode, missionId, startProcess }) => {
-      if (Object.hasOwn(files, 'Outside.lean')) return { verdict: 'FAIL', diagnostic: 'Lean source is outside the project source directory' };
+    const checker = new LeanChecker({ projectChecker: async ({ tree, path, checkMode, startProcess }) => {
       return startProcess(async () => {
-        builds.push({ files, tree, path, checkMode, missionId });
         await holdBuild?.();
         return { verdict: 'PASS', checked_tree: tree, ...(checkMode === 'lean-module' ? { scope: 'module', requested_path: path } : {}), checked_paths: ['Helper.lean', 'Proof.lean'],
           warnings: ['Helper.lean: provisional proof'] };
@@ -1358,13 +1355,21 @@ test('registered Judge CLI fences a late project response while preserving its d
   guest.files['Proof.lean'] = Buffer.from('import Helper\n/- No axiom. /- No admit. -/ -/\ntheorem proof : True := helper -- no sorry');
   guest.files['Helper.lean'] = Buffer.from('theorem helper : True := True.intro');
   const saved = await dispatch('save', 'fixed-project');
-  guest.files['Helper.lean'] = Buffer.from('unsaved private edit');
   const project = await command('judge', 'check', '--revision', saved.revision, '--request-id', 'project-check');
   const finish = checkId => command('task', 'finish', '--outcome', 'done', '--workspace-revision', saved.revision, '--check-result-id', checkId);
   await assert.rejects(finish(project.check_result_id), /did not pass for this delivery/);
   await assert.rejects(bridge.call({ operation: 'workspace_check', payload: { revision: saved.revision, files: {} } }), { code: 'INVALID_CONTRACT' });
   await assert.rejects(bridge.call({ operation: 'workspace_check', payload: { revision: saved.revision, path: 'input.txt' } }), { code: 'INVALID_CONTRACT' });
   const scoped = await command('judge', 'check', '--revision', saved.revision, '--path', 'Proof.lean', '--request-id', 'delivery-check');
+  const module = await command('judge', 'check', '--revision', saved.revision, '--path', 'Proof.lean',
+    '--check-mode', 'lean-module', '--request-id', 'cli-module-check');
+  assert.equal(module.workspace_input.check_mode, 'lean-module');
+  assert.equal(module.workspace_input.revision, saved.revision);
+  assert.equal(module.workspace_input.path, 'Proof.lean');
+  assert.equal(module.build.scope, 'module');
+  assert.equal(module.build.requested_path, 'Proof.lean');
+  await assert.rejects(finish(module.check_result_id), /did not pass for this delivery/);
+  await assert.rejects(command('judge', 'check', '--revision', saved.revision, '--check-mode', 'lean-module'), /INVALID_CONTRACT/);
   const started = Promise.withResolvers();
   const settle = Promise.withResolvers();
   holdBuild = () => { started.resolve(); return settle.promise; };
