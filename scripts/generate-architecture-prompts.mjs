@@ -25,6 +25,7 @@ const sourcePaths = [
   'src/agent/services-bridge.js', 'src/agent/version-manifest.js', 'src/agent/opensandbox-agent-adapter.js',
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js',
+  'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js',
   'src/benchmark/putnam-runner.js', 'src/runtime/runtime.js', 'src/runtime/identity-task-loop.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
   'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
@@ -171,6 +172,11 @@ output('07-notes-environment.md', header('Installed Notes Environment prompts',
   + block('Writer publication', notesInput.put)
   + block('Reader retrieval', notesInput.get)
   + block('Reader follow-up', notesInput.follow));
+output('08-agensh-environment.md', header('Agensh peer and serial router prompts',
+  'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper with explicit followUp. There are no mid-turn notices.')
+  + block('Peer Profile prompt', between('src/environments/agensh/index.js', 'export const peerPrompt = `', '`;'))
+  + block('Serial batch instruction', between('src/environments/agensh/router.js', "export const routerInstruction = '", "';"))
+  + block('Configured idle nudge', between('src/environments/agensh/router.js', "export const idleNudgeInput = '", "';")));
 const manifest = {
   description: 'Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.',
   bot_protocol_version: BOT_PROTOCOL_VERSION,

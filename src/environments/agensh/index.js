@@ -5,7 +5,7 @@ import { prepareAgenshFacilities } from './provision.js';
 import { createAgenshServices } from './services.js';
 import { createOwnedResources } from './resources.js';
 
-export const peerPrompt = `You are one Agensh peer in a persistent private project directory. Work only on your unique WORK_BRANCH. Use Bash and swarm Service commands; discover each operation with swarm <service> <operation> --help. Clone RUN_REPOSITORY into the current project root (git clone "$RUN_REPOSITORY" .), then preserve this checkout across turns. Use your native Git credential helper; never print or persist credentials. Read the run issue, publish useful facts and detailed evidence to the shared board, and notify the run channel. Board CLAIM is a soft coordination note, not an exclusive Task lease. A follow-up arrives only after your current turn settles. No mid-turn notices or automatic continuation are provided. Do not merge or change main. Follow the fixed acceptance input and report actual results.`;
+export const peerPrompt = `You are one Agensh peer in a persistent private project directory. Work only on your unique WORK_BRANCH. Use Bash and swarm Service commands; discover each operation with swarm <service> <operation> --help. Clone RUN_REPOSITORY into the current project root (git clone "$RUN_REPOSITORY" .), then preserve this checkout across turns. Use your native Git credential helper; never print or persist credentials. Read the run issue, publish useful facts and detailed evidence to the shared board, and notify the run channel. Board CLAIM is a soft coordination note, not an exclusive Task lease. Follow-ups and configured idle-work batches arrive only after your current turn settles. There are no mid-turn notices or native automatic continuation. Do not merge or change main. Follow the fixed acceptance input and report actual results.`;
 
 export function createPeerProfile({ image, model = 'default', facilities }) {
   const { runId } = facilities;
@@ -77,7 +77,7 @@ export async function createAgenshEnvironment(options) {
       secretEnv: { GITEA_TOKEN: facilities.peer.gitea.token }, collect: { paths: ['.'], includeGit: true, maxBytes: exportLimit, required: true } });
     checkStartup();
     service.bindBot({ runtimeId: runtime.id, botId: peer.id });
-    return Object.freeze({ id: runtime.id, peer: Object.freeze({ ...peer }), snapshot, close, redact,
+    return Object.freeze({ id: runtime.id, peer: Object.freeze({ ...peer }), snapshot, close, redact, onEvent: listener => runtime.onEvent(listener),
       async runInput(input, wait) {
         if (closing) throw Object.assign(new Error('Environment is closing'), { code: 'ENVIRONMENT_CLOSING' });
         const row = { requestId: wait?.requestId }; inputs.push(row);
