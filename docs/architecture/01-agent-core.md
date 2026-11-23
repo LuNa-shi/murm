@@ -23,7 +23,7 @@ An unbound registered Bot still uses role `bound`. There is no separate `idle` r
 
 ### 2.1 Adapter configuration and routing
 
-`OpenSandboxAgentAdapter` is the research-process adapter. Its configuration includes the sandbox manager, command/provider/model routing, worker environment, model access and pinned Bot or solver resources. Runtime registers a Bot first; its `resource_key` identifies the worker before any Task/Execution exists. `AgentCoreSession` supplies RPC/event/stop behavior over the remote child transport, and `validatePiProvider` validates the selected native Pi provider. These shared helpers remain in `pi-adapter.js`; there is no local-process launch adapter or direct Runtime launch alternative.
+`OpenSandboxAgentAdapter` is the research-process adapter. Its configuration includes the sandbox manager, command/provider/model routing, worker environment, model access and pinned Bot or solver resources. Runtime registers a Bot first; its `resource_key` identifies the worker before any Task/Execution exists. `AgentCoreSession` supplies RPC/event/stop behavior over the remote child transport, and `validatePiProvider` validates the selected native Pi provider. These shared helpers remain in `pi-adapter.js`. The repository provides no local-process launch adapter. The legacy domain Runtime accepts a host-supplied `startSession` callback on `startBot`; it registers the Bot before invoking that callback with its identity, abort signal and startup/resource guards, and requires the returned Session to support confirmed stop.
 
 The Agent adapter starts direct `pi`. An explicit absolute path ending in `/pi` is accepted for deployments with a different executable location. Other launcher commands fail before worker creation. Provider and model flags are passed directly to Pi.
 
@@ -35,7 +35,7 @@ The Agent adapter starts direct `pi`. An explicit absolute path ending in `/pi` 
 | `kimi_proxy` | Direct Pi with explicit provider and model. The current example configurations use this provider with model `k3`. |
 | Other value | Launch rejected with `INVALID_CONTRACT` |
 
-The registered OpenSandbox argument list, resource attestation and tool exposure are described in §2.4. Startup always uses that adapter; there is no custom local adapter factory or fallback that changes tool permissions. [OpenSandbox adapter](../../src/agent/opensandbox-agent-adapter.js).
+The registered OpenSandbox argument list, resource attestation and tool exposure are described in §2.4. Startup through `OpenSandboxAgentAdapter` enforces those resources and tool permissions. A generic host-supplied `startSession` callback owns its Session construction; that Runtime seam does not itself select an OpenSandbox adapter or attest its resources. [OpenSandbox adapter](../../src/agent/opensandbox-agent-adapter.js).
 
 ### 2.2 System instructions and version records
 
