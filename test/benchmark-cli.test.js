@@ -93,8 +93,11 @@ syncBuiltinESMExports();`);
     ...(late ? ['--initial-bot-stagger-ms', '1200'] : ['--problem', 'fixture_0',
       '--bot-max-ms', '1800000', '--selection-timeout-ms', '360000', '--checker-timeout-ms', '180000']),
     '--experiment-root', root, '--experiment-dir', experiment, '--report-dir', reports, '--observability-metadata', observer],
-  { env: { PATH: process.env.PATH, PI_PROVIDER: 'gpt_proxy', PI_MODEL: 'local-fixture',
-    PI_GPT_PROXY_BASE_URL: 'http://127.0.0.1:1/v1', PI_GPT_PROXY_API_KEY: 'local-fixture' } });
+  { cwd: fixture, env: { PATH: process.env.PATH,
+    ...(observerEnabled
+      ? { PI_PROVIDER: 'gpt_proxy', PI_MODEL: 'local-fixture',
+          PI_GPT_PROXY_BASE_URL: 'http://127.0.0.1:1/v1', PI_GPT_PROXY_API_KEY: 'local-fixture' }
+      : { PI_KIMI_PROXY_BASE_URL: 'http://127.0.0.1:1/v1', PI_KIMI_PROXY_API_KEY: 'local-fixture' }) } });
   t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });
   let stderr = '';
   child.stderr.on('data', chunk => { stderr += chunk; });
@@ -105,6 +108,8 @@ syncBuiltinESMExports();`);
   const aggregate = JSON.parse(await readFile(join(reports, 'aggregate-report.json')));
   const metadata = JSON.parse(await readFile(join(experiment, 'metadata', 'experiment.json')));
   assert.equal(metadata.protocol.observability_enabled, observerEnabled);
+  assert.equal(metadata.protocol.provider, observerEnabled ? 'gpt_proxy' : 'kimi_proxy');
+  assert.equal(metadata.protocol.model, observerEnabled ? 'local-fixture' : 'k3');
   if (!observerEnabled) {
     await assert.rejects(readFile(join(experiment, 'metadata', 'observability.json')), { code: 'ENOENT' });
     await assert.rejects(readFile(join(root, 'observer.sqlite')), { code: 'ENOENT' });

@@ -1,6 +1,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
+import { DEFAULT_BENCHMARK_MODEL } from '../src/agent/bot-model-access.js';
 import { beginPrivateAudit } from '../src/observability/private-audit-retention.js';
 import { loadBenchmarkConfig, runBenchmarkBatch } from '../src/benchmark/putnam-runner.js';
 import { selectOpenAiMathContext } from '../src/benchmark/benchmark-context.js';
@@ -17,9 +18,9 @@ const checkerTimeoutOverride = process.env.OPENAI_MATH_CHECKER_TIMEOUT_MS !== un
 const checkerTimeoutMs = Number(process.env.OPENAI_MATH_CHECKER_TIMEOUT_MS ?? 120_000);
 const checkerHttpTimeoutMs = Math.max(4 * checkerTimeoutMs, 120_000 + 2 * checkerTimeoutMs) + 30_000;
 const projectParallelism = Number(process.env.OPENAI_MATH_PROJECT_PARALLELISM ?? 1);
-const provider = process.env.PI_PROVIDER ?? 'gpt_proxy';
-const model = process.env.PI_MODEL ?? 'gpt-6.2-sol';
-const sandboxImage = process.env.SWARMENV_SANDBOX_IMAGE ?? 'swarmenv-agent:openai-math-gpt62-b4a02f5';
+const provider = process.env.PI_PROVIDER ?? DEFAULT_BENCHMARK_MODEL.provider;
+const model = process.env.PI_MODEL ?? DEFAULT_BENCHMARK_MODEL.model;
+const sandboxImage = process.env.SWARMENV_SANDBOX_IMAGE ?? 'swarmenv-agent:benchmark';
 const sandboxUrl = process.env.SWARMENV_OPENSANDBOX_URL ?? 'http://127.0.0.1:8080';
 const bridgeHost = process.env.SWARMENV_BRIDGE_HOST ?? '0.0.0.0';
 const bridgeUrl = process.env.SWARMENV_BRIDGE_PUBLIC_URL ?? 'http://172.17.0.1:{port}';

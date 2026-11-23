@@ -11,7 +11,7 @@ FROM node:22.19.0-bookworm-slim
 
 ARG PI_VERSION=1.3.0
 LABEL org.swarmenv.opensandbox.pi-version="${PI_VERSION}" \
-      org.swarmenv.opensandbox.provider="gpt_proxy"
+      org.swarmenv.opensandbox.provider="kimi_proxy"
 
 RUN apt-get update \
   && apt-get install --no-install-recommends --yes bash ca-certificates curl git jq python3 python-is-python3 ripgrep util-linux \
