@@ -133,13 +133,19 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       record.terminal = value.type;
       if (typeof value.response?.id === 'string') record.responseId = value.response.id.slice(0, 256);
       const usage = value.response?.usage;
-      if (Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens) && usage.input_tokens >= 0 && usage.output_tokens >= 0) {
+      const validUsage = Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens) && usage.input_tokens >= 0 && usage.output_tokens >= 0;
+      if (validUsage) {
         record.usage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
       }
       if (failFast && Number.isSafeInteger(usage?.output_tokens) && usage.output_tokens > record.maxOutputTokens) {
         transport(record, 'output_limit_exceeded', true);
         failRun({ code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: record.number,
           maxOutputTokens: record.maxOutputTokens, outputTokens: usage.output_tokens }, 'output_limit_abort');
+        return true;
+      }
+      if (failFast && !validUsage) {
+        transport(record, 'terminal_usage_invalid', true);
+        failRun({ code: 'LIVE_TERMINAL_USAGE_INVALID', number: record.number }, 'terminal_usage_abort');
         return true;
       }
     }
@@ -253,7 +259,13 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
           }
           if (failFast) response.write(chunk);
         });
-        incoming.on('end', () => { transport(record, 'upstream_end', true); record.status = 'complete'; active.delete(upstream); response.end(); });
+        incoming.on('end', () => {
+          transport(record, 'upstream_end', true); record.status = 'complete'; active.delete(upstream);
+          if (failFast && !failure && !closing && !deadlineReached && !record.terminal) {
+            failRun({ code: 'LIVE_TERMINAL_MISSING', number: record.number }, 'terminal_missing_abort');
+          }
+          response.end();
+        });
         incoming.on('error', () => { transport(record, 'upstream_error', true); record.status = failure ? 'failure_aborted' : 'stream_failed'; active.delete(upstream); response.destroy(); });
       });
       requestRecords.set(upstream, record);
