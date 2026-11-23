@@ -104,7 +104,7 @@
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
-      "sha256": "28b68b3af24bd8d5242734dda2a42a26125634b29be11b0971381fb0bafa6a27"
+      "sha256": "c6dfd943871d4f3b43061bd7129ec0d62f7cc0ba1d15a11a1c2364a8472c1911"
     },
     {
       "path": "test/agensh-team-kimi-real.test.js",
@@ -272,30 +272,30 @@
       "path": "test/fixtures/agensh-team-kimi.js",
       "anchor": "export const liveCommon = `",
       "line": 8,
-      "sha256": "a1c8d91a077f1d0a7df2eb685ce6cf5e61cc7b3694d6cf58fab0137f7e419a0d"
+      "sha256": "7612cdea42edeeb3f5e2f93996ba92ee614670d65729768f62e0d62211670d84"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
       "anchor": "export const liveAInitial = `",
-      "line": 15,
+      "line": 16,
       "sha256": "6685c4f6bf8fc5a3134d068a66c1ceb61a21e96ff926350c6f34a659e6ee1eb2"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
       "anchor": "export const liveBInitial = `",
-      "line": 16,
+      "line": 17,
       "sha256": "f3609ef2c289c8cfc29e10b64d21ee10bb4d710154650a94229db3aa37fe4f4e"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
       "anchor": "export const liveAUser = `",
-      "line": 17,
+      "line": 18,
       "sha256": "849d20d51be7ea6591acceb7924326df64a3becd9b2b9d0f498b06a359e8e9d8"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
       "anchor": "  return [`",
-      "line": 22,
+      "line": 23,
       "sha256": "8f943ea32b0291bed1fdbb8ecd6c55761fd81fb047587040bff06c185d1e063c"
     },
     {
@@ -498,7 +498,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",
-      "sha256": "1d5dc4fd8279aaaadd7569c701c01a8a75be7cf41bcd94646b7086eb25e3cf0e"
+      "sha256": "85df612341d87eaaa44d13f658909226cccb08d332c34aecfe4fc591e642f055"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",
