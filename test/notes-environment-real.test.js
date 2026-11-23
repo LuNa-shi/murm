@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
-import { installNotesExample } from './fixtures/notes-installed-package.js';
+import { installNativeNotesExample } from './fixtures/notes-installed-package.js';
 import { createNotesEnvironmentUpstream } from './fixtures/notes-environment-upstream.js';
 
 test('installed Notes Environment exchanges a native fact and retains the reader Session through its second turn', {
@@ -15,8 +15,7 @@ test('installed Notes Environment exchanges a native fact and retains the reader
 }, async t => {
   const image = process.env.SWARMENV_CORE_TEST_IMAGE;
   assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
-  const installed = await installNotesExample();
-  assert.equal(installed.metadata.sourceDirty, false, 'Native acceptance requires a clean package source pin');
+  const installed = await installNativeNotesExample();
   // Keep the external installation and receipts after a real attempt: they own
   // reconciliation if cleanup is pending. The deterministic preflight removes its own directory.
   let child;

@@ -6,7 +6,7 @@ import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { installNotesExample } from './fixtures/notes-installed-package.js';
+import { installNativeNotesExample } from './fixtures/notes-installed-package.js';
 import { createLocalAgenshStack } from './fixtures/agensh-local-stack.js';
 import { createCleanupBudget } from './fixtures/agensh-deadline.js';
 import { createLeadHelperUpstream, adjustedDirection } from './fixtures/lead-helper-upstream.js';
@@ -19,7 +19,7 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
   skip: process.env.SWARMENV_LEAD_HELPER_REAL_TEST !== '1' && 'Two independent exact-pin reviews required before any facilities, sandbox or model start', timeout: 600_000,
 }, async () => {
   const image = process.env.SWARMENV_CORE_TEST_IMAGE; assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
-  const installed = await installNotesExample(); assert.equal(installed.metadata.sourceDirty, false);
+  const installed = await installNativeNotesExample();
   const runId = `lead-${randomBytes(6).toString('hex')}`; const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const directory = join(process.cwd(), 'experiments', `lead-helper-${runId}`); await mkdir(directory, { recursive: true, mode: 0o700 });
   const outputDir = join(installed.directory, 'output'); await mkdir(outputDir);

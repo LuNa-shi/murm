@@ -12,7 +12,7 @@ const repository = resolve(import.meta.dirname, '../..');
 export async function installNotesExample({ archive: frozenArchive, expectedSha256 } = {
   archive: process.env.SWARMENV_TEST_PACKAGE_ARCHIVE,
   expectedSha256: process.env.SWARMENV_TEST_PACKAGE_SHA256,
-}) {
+}, { requireCleanCheckout = false } = {}) {
   const frozen = frozenArchive !== undefined || expectedSha256 !== undefined;
   if (frozen && (typeof frozenArchive !== 'string' || !frozenArchive || typeof expectedSha256 !== 'string' || !/^[a-f0-9]{64}$/.test(expectedSha256))) {
     throw Object.assign(new Error('Frozen package requires an archive and expected SHA-256'), { code: 'INVALID_FROZEN_PACKAGE' });
@@ -33,6 +33,9 @@ export async function installNotesExample({ archive: frozenArchive, expectedSha2
       const revision = await execute('git', ['rev-parse', 'HEAD'], { cwd: repository });
       const status = await execute('git', ['status', '--porcelain'], { cwd: repository });
       sourceCommit = revision.stdout.trim(); sourceDirty = Boolean(status.stdout.trim());
+      if (requireCleanCheckout && sourceDirty) {
+        throw Object.assign(new Error('Native acceptance requires a clean package source pin'), { code: 'DIRTY_PACKAGE_SOURCE' });
+      }
       const packed = await execute('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', directory],
         { cwd: repository, timeout: 60_000, maxBuffer: 4 * 1024 ** 2 });
       archive = join(directory, JSON.parse(packed.stdout)[0].filename);
@@ -52,4 +55,9 @@ export async function installNotesExample({ archive: frozenArchive, expectedSha2
       sha256: createHash('sha256').update(await readFile(archive)).digest('hex') },
     close: () => rm(directory, { recursive: true, force: true }) };
   } catch (error) { await rm(directory, { recursive: true, force: true }); throw error; }
+}
+
+// Native gates may consume an explicitly verified frozen archive or a clean checkout.
+export function installNativeNotesExample() {
+  return installNotesExample(undefined, { requireCleanCheckout: true });
 }
