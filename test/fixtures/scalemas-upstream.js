@@ -4,7 +4,9 @@ import { once } from 'node:events';
 import { streamResponse } from './core-controlled-upstream.js';
 
 export const sourceContent = 'ARITHMETIC_SEED: 7+5=12.\n';
-export function scaleMASCommand(peer, cycle) {
+export function scaleMASCommand(peer, cycle, { poolSize = 3 } = {}) {
+  assert.ok([3, 6].includes(poolSize));
+  assert.ok(Number.isSafeInteger(peer) && peer >= 0 && peer < poolSize && [0, 1].includes(cycle));
   return `python3 - <<'SCALEMAS_FIXED'
 import json,os,pathlib,re,subprocess,time
 peer=${peer}
@@ -45,6 +47,9 @@ elif peer==1:
   assert search['results']
   adopted=cli('visit',{'address':search['results'][0]['address']},'visit-original')
  else:
+  if ${poolSize}==6:
+   search=cli('search',{'query':'ARITHMETIC_SEED','limit':1},'search-after-producer-stop')
+   assert len(search['results'])==1 and search['results'][0]['address']==previous['adopted']['address']
   adopted=cli('visit',{'address':previous['adopted']['address']},'visit-after-producer-stop')
   assert adopted==previous['adopted']
  assert adopted['content']==source and adopted['version']==1
@@ -63,13 +68,15 @@ print(json.dumps(row))
 SCALEMAS_FIXED`;
 }
 
-export async function createScaleMASUpstream({ deadlineAt, observe = async () => {}, onFailure = () => {} }) {
+export async function createScaleMASUpstream({ deadlineAt, poolSize = 3, observe = async () => {}, onFailure = () => {} }) {
+  assert.ok([3, 6].includes(poolSize));
+  const maxRequests = poolSize * 4;
   let arrivals = 0, accepted = 0, failure;
   const stages = new Map(), evidence = [];
   const server = createServer(async (request, response) => {
     const arrival = ++arrivals; let stage = 'bounds';
     try {
-      assert.ok(!failure && arrival <= 12 && Date.now() < deadlineAt);
+      assert.ok(!failure && arrival <= maxRequests && Date.now() < deadlineAt);
       assert.equal(request.method, 'POST'); assert.equal(request.url, '/v1/responses');
       const chunks = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; assert.ok(bytes <= 2 * 1024 ** 2); chunks.push(chunk); }
@@ -78,8 +85,9 @@ export async function createScaleMASUpstream({ deadlineAt, observe = async () =>
       stage = 'fixed-input';
       const user = body.input.filter(row => row.role === 'user').at(-1);
       const text = typeof user?.content === 'string' ? user.content : user?.content?.map(row => row.text ?? '').join('');
-      const match = /^scaleMAS peer=([0-2]) cycle=([01])\n/.exec(text); assert.ok(match);
+      const match = /^scaleMAS peer=([0-9]+) cycle=([01])\n/.exec(text); assert.ok(match);
       const peer = Number(match[1]), cycle = Number(match[2]), key = `${peer}:${cycle}`;
+      assert.ok(Number.isSafeInteger(peer) && peer < poolSize);
       const turn = (stages.get(key) ?? 0) + 1; assert.ok(turn <= 2); stages.set(key, turn);
       const callId = `scale_${peer}_${cycle}`; let item;
       if (turn === 1) {
@@ -90,7 +98,7 @@ export async function createScaleMASUpstream({ deadlineAt, observe = async () =>
           }
         }
         if (cycle === 1) await observe({ phase: 'before', peer, previous: evidence.find(row => row.peer === peer && row.cycle === 0) });
-        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash', arguments: JSON.stringify({ command: scaleMASCommand(peer, cycle), timeout: 40 }) };
+        item = { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash', arguments: JSON.stringify({ command: scaleMASCommand(peer, cycle, { poolSize }), timeout: 40 }) };
       } else {
         stage = 'tool-result';
         const outputs = body.input.filter(row => row.type === 'function_call_output' && row.call_id === callId); assert.equal(outputs.length, 1);
@@ -124,6 +132,6 @@ export async function createScaleMASUpstream({ deadlineAt, observe = async () =>
   });
   server.requestTimeout = 10_000; server.headersTimeout = 10_000;
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  return { url: `http://127.0.0.1:${server.address().port}/v1/responses`, receipt: () => ({ arrivals, accepted, failure, evidence }),
+  return { url: `http://127.0.0.1:${server.address().port}/v1/responses`, receipt: () => ({ poolSize, maxRequests, arrivals, accepted, failure, evidence }),
     close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }
