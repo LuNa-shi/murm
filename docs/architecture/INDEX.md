@@ -6,7 +6,7 @@ This directory is written for the owner who wants to understand the implementati
 
 The programmable [Core Runtime](15-core-runtime.md) and [Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) implement the Phase 0005 resource and input boundaries. Environment modules own collaboration and domain policies. The [foreground host](17-environment-reporting.md#foreground-environment-control) reuses flat and agensh assembly for input, status and stop. The standalone Notes example uses installed public exports. Their actual verification and remaining acceptance conditions belong to the linked implementation Issues.
 
-The flat domain services retain the Mission/Task/Execution/Material/Workspace contract described by chapters 01–05. Whole-project diagnostics, checked merges and trusted Mission acceptance have separate authorities. Legacy domain Runtime and offline state reconstruction remain directly callable components. The benchmark runner, fixed mathematical datasets and historical report importer have been removed and are preserved in the fixed research revision. Historical experiment evidence retains its recorded implementation baseline.
+The flat domain services retain the Mission/Task/Execution/Material/Workspace contract described by chapters 01–05. Whole-project diagnostics, checked merges and trusted Mission acceptance have separate authorities. Legacy domain Runtime and per-domain private history readers remain directly callable components; experiment reconstruction and archived service-schema conversion have been removed. The benchmark runner, fixed mathematical datasets and historical report importer have been removed and are preserved in the fixed research revision. Historical experiment evidence retains its recorded implementation baseline.
 
 ## Reading map
 
@@ -27,7 +27,7 @@ Read 00 first, then 07 for current entry points. Read 15–20 for the programmab
 | [10 Service and tool reference](10-service-api-reference.md) | Complete advertised capabilities, schemas, audience, binding, help and compatibility catalog entries |
 | [11 Storage reference](11-storage-reference.md) | Complete database definitions, keys, indexes, ownership and persistence boundaries |
 | [12 Source coverage](12-code-coverage.md) | Runtime/configuration/build source files, their role, chapter ownership and fingerprints; explicit generated/test/data classifications |
-| [13 Historical continuation](13-historical-resume.md) | How does an explicit historical cutoff reconstruct service and Workspace state for a consuming host? |
+| [13 Private history](13-historical-resume.md) | How do automatic service journals and standalone Workspace history support an explicit offline cutoff? |
 | [15 Programmable Core Runtime](15-core-runtime.md) | How does a host assemble and run a Task-free Bot, subscribe to input results and close the run? |
 | [16 Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) | How does Core connect its identity, a guest, a Pi Session and separately confirmed stop and destruction? |
 | [17 Runtime evidence and Environment reports](17-environment-reporting.md) | How do the foreground host, Notes and subagents run? How do reports record input, events, Service operations and cleanup failures? |

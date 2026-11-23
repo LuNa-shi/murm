@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { TaskService } from '../src/task/task-service.js';
 import { ContextService } from '../src/context/context-service.js';
 import { JudgeService } from '../src/judge/judge-service.js';
-import { installServiceHistory, parseReplayTime, restoreServiceDatabaseAt } from '../src/replay/service-history.js';
+import { dropReplayHistory, installServiceHistory, parseReplayTime, restoreServiceDatabaseAt } from '../src/replay/service-history.js';
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-history-'));
@@ -279,4 +279,21 @@ test('replay rejects ambiguous timezones, missing sources and existing output wi
   await assert.rejects(restoreServiceDatabaseAt({ sourcePath: source, destinationPath: destination, domain: 'task', at: new Date().toISOString() }), { code: 'EEXIST' });
   assert.equal(await readFile(destination, 'utf8'), 'keep');
   await assert.rejects(restoreServiceDatabaseAt({ sourcePath: join(root, 'absent.sqlite'), destinationPath: join(root, 'absent-output.sqlite'), domain: 'task', at: new Date().toISOString() }), { code: 'ENOENT' });
+});
+
+test('a service database without automatic history cannot be reconstructed or leave output behind', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarm-unjournaled-history-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const source = join(root, 'source.sqlite');
+  const tasks = new TaskService(source);
+  dropReplayHistory(tasks.db);
+  tasks.createMission({ mission_id: 'mission', goal: 'An original task history boundary' });
+  tasks.close();
+  const original = await readFile(source);
+  const at = new Date().toISOString();
+  await assert.rejects(restoreServiceDatabaseAt({ sourcePath: source,
+    destinationPath: join(root, 'copy.sqlite'), domain: 'task', at }),
+  error => error.code === 'REPLAY_HISTORY_MISSING' && error.details.domain === 'task');
+  assert.deepEqual(await readFile(source), original);
+  assert.deepEqual(await readdir(root), ['source.sqlite']);
 });

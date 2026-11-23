@@ -1,22 +1,22 @@
-# 13. Offline historical state reconstruction
+# 13. Private service and Workspace history
 
-The retained replay modules reconstruct public Task, Context, Judge and Workspace data at an explicit time in a completed source run. They accept the original source directory, a fresh destination, fixed problem/configuration and a timestamp with timezone. The former benchmark resume CLI, four-lane continuation and its report accounting have been removed. A host that uses the reconstructed state owns any later Environment assembly and authorization.
+The retained history modules record and reconstruct individual domain databases and public Workspace state. They are internal file-level utilities, not exports of the public Core package. The experiment importer, archived service-schema conversion and composed fresh-run handoff have been removed. These readers do not start Bots, issue model/checker requests, allocate resources or restore a running Environment.
 
-## Entry and reconstruction order
+## Service reader entry and failure boundary
 
-`prepareExperimentResume({sourceExperimentDir, destinationProjectDir, problem, config, at})` checks completion metadata and the source interval. If the source has a managed audit marker, its confirmed closure is required. Missing research start/end or an out-of-range timestamp fails before reconstruction. The fixed problem, file/input identity, Mission and supplied checker/environment pins must match the source.
+`restoreServiceDatabaseAt({sourcePath, destinationPath, domain, at})` accepts one quiescent SQLite source, a new destination, a domain (`task`, `context` or `judge`) and an explicit timestamp with timezone. `parseReplayTime` normalizes the timestamp to UTC; ambiguous local times and invalid domains are rejected. The source is resolved to a real file, source and destination must differ, and exclusive destination creation rejects an existing output without changing it. The function creates destination parent directories as needed.
 
-`assertResumeOutputPaths` resolves physical paths and rejects a destination within or above the source, dangling links and linked output files that could mutate source data. Preparation requires a new destination. It builds a temporary adjacent directory containing restored `project.sqlite`, `context.sqlite`, `judge.sqlite` and `mission-workspace/`, verifies public cross-service references, normalizes ownership for a potential fresh caller, writes private `resume.json` provenance, and publishes by rename. Failure removes the temporary output.
+The reader reserves the new destination and stages the source files beside it. It compares source file identities, sizes and timestamps before and after copying and rejects a source that changes during capture. SQLite backup then creates the destination from that staged copy. The caller must keep the source quiescent; this check does not lock another service process. The reader validates and rewinds only current automatic history. Missing domain history, an unsupported history format or a cutoff before the recorded compatible interval returns `REPLAY_HISTORY_MISSING`, rather than projecting receipts or converting an archived schema. Incomplete capture, table schemas or transaction boundaries also fail with that code and relevant details.
 
-The returned result identifies the restored Mission/Workspace, inherited identities and reconstruction metadata. Historical provider resources and private Pi conversations are not adopted. The replay modules perform no model request, provider allocation or active-loop start.
+Success returns the domain, normalized cutoff, `mode: journal`, covered interval, reverted-event count and warnings. On failure it closes opened connections, removes the reserved destination and SQLite WAL/shared-memory sidecars, and removes temporary staging. Source files remain untouched. The reader does not coordinate multiple service copies, check cross-domain references, retire historical ownership, write `resume.json` or provide an active-run continuation contract. A caller owns any later use of the copied data.
 
 ## Automatic database history
 
 Persistent Task, Context and Judge constructors enable recording after their schema
 setup. The `replay_*` tables live in the same private SQLite database as the service.
 In-memory fixtures can opt in explicitly. Observation projections and live
-ownership/delivery tables are excluded; the fresh-run handoff resets those runtime
-records. Adding a runtime-only table does not move the public history boundary.
+ownership/delivery tables are excluded. Reconstruction does not normalize runtime
+ownership or assemble a new Environment. Adding a runtime-only table does not move the public history boundary.
 Task initializes the manual-review table before enabling capture. The separate
 `review-mission.mjs decide` writer also installs transaction tracking; `show` stays
 read-only. A public table without capture makes journal reconstruction fail with
@@ -47,82 +47,21 @@ by an inner savepoint resolves to that inner scope on release or rollback. If a
 commit fails while SQLite keeps the transaction open, a later repair and successful
 retry retain the original transaction marker.
 
-The offline reader copies the finished source's database, WAL and rollback-journal
+The offline reader copies the quiescent source's database, WAL and rollback-journal
 files into temporary storage before opening SQLite. Source files must stay stable
 during this copy. SQLite recovery and backup operate only on the temporary copy, so
 even the original shared-memory sidecar remains untouched. For a covered time,
 it undoes later row changes in reverse
 sequence. It verifies table shapes, capture coverage and transaction boundaries.
-Capture is removed before the offline rewrite; the new live service starts its own
-recording interval. A schema change begins a new exact-history interval rather than
+Capture is removed before the offline rewrite. If a caller later opens the copy
+with a persistent service constructor, it installs a new recording interval. A schema change begins a new exact-history interval rather than
 silently interpreting older row images using different columns.
 
 This history is private run data, not a sanitized observation log. Keep the source
-databases and referenced file objects while historical continuation is needed; the
+databases and referenced file objects while offline historical reads are needed; the
 existing raw-evidence retention rules still apply.
 
-## Existing experiments without the new history tables
-
-The importer also understands the existing service receipts and immutable records.
-It does not reject an old experiment solely because `replay_*` is absent.
-
-- Task operation receipts retain command inputs and results, including original IDs.
-  Contract revisions and finish intents supplement them. A finish becomes a completed
-  Task fact at `closed_at`, not merely when its request was accepted. Historical
-  dependency facts determine blocked/open status. A post-cutoff mutation receipt
-  excludes the corresponding new Task contract even when its row timestamp
-  precedes T.
-- Context retains immutable Material bodies and attachment bytes. Relation events
-  and operation receipts restore supersession, dispute and revocation at the selected
-  time. Successful publication, consumption or correction receipts establish when
-  the Material (including a replacement) was known to exist. An earlier recorded
-  use remains sufficient when the original publication receipt is missing and only
-  a later repeat survives. The importer reports an ambiguous receipt-less reference
-  with its table and ID. Corrections and consumption also use their own operation
-  receipts as a lower bound on visibility.
-- Judge result receipts identify when a verdict existed. A check requested before
-  the cutoff but completed afterwards cannot bring its later PASS into the restored
-  state.
-- Mission submission records retain creation and completion times. Acceptance after
-  the cutoff must not stop an earlier continuation; acceptance already present at
-  the cutoff remains a completed Mission. Without an independently recorded preparation
-  time, an old request completed after the cutoff retains only its initial request
-  metadata; its final Workspace/Material selection and result are not imported.
-
-The importer projects recorded facts; it never resends old commands to live services
-or reruns model/checker calls to recreate their outcomes. It checks required evidence
-and fails with an entity/table-specific history error when it cannot support a
-historical value. Final database values are not substitutes for missing old values.
-
-### Current service schema in reconstructed data
-
-The importer first projects or rewinds each service at T, then examines the schema
-in the staging copy. Current `task_records` and current Material tables can be used
-directly. The supported pre-cleanup format identifies Task records with
-`modern_task_records` and Materials with `source_task` and `source_execution`.
-The converter rebuilds the affected tables using the current schema in one local
-transaction and verifies foreign keys before commit. The archived Judge schema is
-compatible. `services.<domain>.schema_conversion` in `resume.json` records whether
-conversion occurred and any adjustments.
-
-Task IDs, specification hashes and bound checker identities survive conversion.
-The importer recomputes the duplicate-proposal key from the restored contract,
-using the historical summary as the trusted-owner default for a missing gap.
-Task prerequisites become `depends_on` relations. An old proposal-origin relation
-is omitted from the new dependency set. The importer records state mappings,
-including archived Task `CANCELLED` to current `CANCELED` and `SATISFIED` to
-`DONE`. Unfinished ownership then goes through handoff. An unsupported Task state,
-active structural dependency on a Material or CheckResult, or retired completion
-requirement fails with `REPLAY_SCHEMA_INCOMPATIBLE` and the affected entity.
-
-Material content, hashes, attachment bytes and correction history survive. The
-converter maps archived producer fields to `producer_task_id` and
-`producer_execution_id`. Archived classification and evidence fields are stored
-under `provenance.historical_metadata` in the converted database. Current public
-views expose the current Material contract. Where an archived value has no
-recoverable history, the projector returns the table and entity in its error.
-Legacy receipts use their recorded times. They have no independent SQLite commit
-timestamp for the interval between the final receipt and commit.
+An unjournaled database remains usable through its ordinary service API. Installing capture records a new compatible interval; it does not establish earlier history. The manual-review CLI's `show` command leaves an unjournaled database unchanged, while `decide` starts capture before its transaction. A cutoff before that capture boundary is rejected, and a covered later cutoff restores the committed decision through the journal.
 
 ## Workspace history and main selection
 
@@ -132,7 +71,7 @@ The existing `.swarm-journal.json` remains the interrupted-write intent. Finishi
 that intent durably writes the event and history head; recovery preserves an event
 already written before a crash instead of duplicating it.
 
-For recorded history, the importer selects the committed event prefix and its public
+For recorded history, the Workspace reader selects the committed event prefix and its public
 Workspace record. It creates a new repository containing only the then-visible
 revisions and their reachable Git objects. Past unmerged saves remain available for
 Material references; future revisions and receipts are excluded. The new repository
@@ -145,38 +84,10 @@ publication commit. Old freeze state and undated request attempts are handled as
 new-run ownership state, not guessed from the final Workspace record. Missing Git
 objects, ambiguous ancestry or missing committed history produce explicit errors.
 
-## Fresh-run handoff
-
-After reconstructing the historical facts, the importer performs a separately
-recorded handoff in the destination:
-
-- Old Bots no longer occupy Cores, and unfinished Executions no longer own Tasks.
-  Their public provenance remains. Accepted finish intents can be finalized as part
-  of this handoff; this is recorded as a new import action, not backdated to the cutoff.
-- Completed/cancelled Tasks and real dependency blocking remain. Services recompute
-  eligibility using the restored public facts before new takes.
-- In-flight checks/submissions with no historical terminal result are marked as
-  interrupted. Old peer phases, gates, notifications and observer delivery state
-  are not replayed into live provider calls. Every private Execution Workspace
-  request and state row is cleared, including previously completed save receipts.
-  Public files and their public receipts come from the restored Workspace. Checker
-  environment preflight starts fresh.
-- An already accepted Mission is rejected as a continuation starting point. Its
-  acceptance is not silently removed.
-
-The public reconstruction and operational handoff are recorded separately in private `resume.json`. It preserves source/time, service history modes, Workspace selection, inherited identities, warnings and ownership adjustments. A consuming host can inspect that record before deciding how to assemble current services.
+The standalone entry is `restoreWorkspaceAt({sourceRoot, destinationRoot, workspaceId, at})`. It requires a safe Workspace identifier, a separate new destination and a timezone-qualified timestamp. An unsettled publication intent, incomplete history, changed source or unavailable Git identity fails explicitly. It removes its partial output on failure. Workspace history is independent of SQLite capture; its immutable-revision fallback remains supported and does not revive service-schema conversion or experiment assembly.
 
 ## Verification seams
 
-The automatic-history tests cover overwritten/deleted rows, binary data, transaction
-rollback, a cutoff during a transaction, replacement, quoted savepoints, prepared
-control statements and source preservation. Legacy tests exercise real Task/Context/
-Judge APIs before reconstructing their old-format outputs. Workspace tests cover
-save versus main, missing history, crash recovery, excluded future Git objects and
-new writes after restoration. The direct replay regressions verify state and provenance without calling a model or allocating provider resources. Any subsequent active run requires its own host configuration and acceptance evidence.
+Real SQLite tests cover overwritten/deleted rows, binary data, transaction rollback, a cutoff during a transaction, replacement, quoted savepoints, prepared control statements and source preservation, including WAL sidecars. An unjournaled real Task database returns `REPLAY_HISTORY_MISSING`, leaves source bytes intact and leaves no destination or staging directory. Independent manual-review writer tests verify decisions before/after commit and the exact automatic-history boundary. Workspace tests cover save versus main, missing history, crash recovery, excluded future Git objects and new writes after restoration. These are offline deterministic checks, not evidence of active long-running collaboration.
 
-Sources: [database history](../../src/replay/service-history.js),
-[legacy projector](../../src/replay/legacy-service-state.js),
-[schema conversion](../../src/replay/resume-schema.js),
-[Workspace replay](../../src/replay/workspace-history.js),
-[resume preparation](../../src/replay/resume-experiment.js).
+Sources: [database history](../../src/replay/service-history.js), [Workspace history](../../src/replay/workspace-history.js), [database regressions](../../test/service-history.test.js), [manual-review regressions](../../test/replay-manual-review.test.js), [Workspace regressions](../../test/workspace-history.test.js).

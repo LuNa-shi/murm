@@ -734,40 +734,16 @@
       "role": "Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers"
     },
     {
-      "path": "src/replay/legacy-service-state.js",
-      "category": "historical continuation",
-      "chapters": [
-        "docs/architecture/13-historical-resume.md"
-      ],
-      "role": "Project recorded public research facts from existing service receipts at a selected time"
-    },
-    {
-      "path": "src/replay/resume-experiment.js",
-      "category": "historical continuation",
-      "chapters": [
-        "docs/architecture/13-historical-resume.md"
-      ],
-      "role": "Prepare historical service data and fresh ownership before the ordinary four-Core runner"
-    },
-    {
-      "path": "src/replay/resume-schema.js",
-      "category": "historical continuation",
-      "chapters": [
-        "docs/architecture/13-historical-resume.md"
-      ],
-      "role": "Convert a reconstructed archive to the supported current service schemas before handoff"
-    },
-    {
       "path": "src/replay/service-history.js",
-      "category": "historical continuation",
+      "category": "private history",
       "chapters": [
         "docs/architecture/13-historical-resume.md"
       ],
-      "role": "Automatic transaction-aware SQLite row history and read-only historical reconstruction"
+      "role": "Automatic transaction-aware SQLite row history and source-preserving journal reconstruction"
     },
     {
       "path": "src/replay/workspace-history.js",
-      "category": "historical continuation",
+      "category": "private history",
       "chapters": [
         "docs/architecture/13-historical-resume.md"
       ],

@@ -73,7 +73,7 @@ test('manual review from a separate writer is absent before its commit and prese
   assert.deepEqual(after.reviews, [decision]);
 });
 
-test('review CLI keeps old databases usable and starts capture without claiming earlier coverage', async t => {
+test('review CLI starts capture on an unjournaled database without claiming earlier coverage', async t => {
   const { tasks, store, submitted, run, restore } = await fixture(t, { legacy: true });
   const shown = await run('show');
   assert.equal(shown.snapshot_fingerprint, submitted.snapshot_fingerprint);
@@ -85,9 +85,9 @@ test('review CLI keeps old databases usable and starts capture without claiming 
   await run('decide', submitted.snapshot_fingerprint, 'PASS', 'review', 'A later manual result');
   await store.waitForIdle();
   await store.shutdown();
-  const before = await restore('legacy-before', beforeDecision);
-  assert.equal(before.history.mode, 'legacy');
-  assert.equal(before.submission.state, 'preparing');
-  assert.equal(before.submission.result, null);
-  assert.deepEqual(before.reviews, []);
+  await assert.rejects(restore('before-capture', beforeDecision), { code: 'REPLAY_HISTORY_MISSING' });
+  const after = await restore('after-capture', new Date().toISOString());
+  assert.equal(after.history.mode, 'journal');
+  assert.equal(after.submission.state, 'accepted');
+  assert.equal(after.reviews.length, 1);
 });
