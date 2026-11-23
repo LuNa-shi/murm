@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { invokeService } from './services.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 const WAIT_TIMEOUT_MS = 60_000;
@@ -14,7 +15,7 @@ function invalid(message) {
   throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, message);
 }
 
-export async function createCoreBridge({ runtimeId, configuration, getBot, registrations }) {
+export async function createCoreBridge({ runtimeId, configuration, getBot, registrations, serviceTimeoutMs = 30_000 }) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof getBot !== 'function' || !(registrations instanceof Map)) {
     invalid('Bridge requires runtime identity, Bot lookup and Service registrations');
   }
@@ -32,25 +33,70 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
   const botTokens = new Map();
   let closing = false;
   let closePromise;
-  const server = createServer((request, response) => {
-    request.resume();
+  const active = new Set();
+  const server = createServer(async (request, response) => {
+    let body;
+    let controller;
     const authorization = request.headers.authorization;
     const token = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice(7) : null;
     const botId = tokens.get(token);
-    const bot = botId && getBot(botId);
-    if (closing || !bot || ['exited', 'closing', 'closed'].includes(bot.status)) {
-      reply(response, 403, { ok: false, error: { code: ERROR_CODES.NOT_ALLOWED, message: 'Bridge caller is unavailable' } });
-      return;
-    }
-    if (request.method === 'GET' && request.url === '/health') {
-      reply(response, 200, { ok: true, runtimeId, botId });
-      return;
-    }
-    if (request.method === 'POST' && request.url === '/call') {
-      reply(response, 503, { ok: false, error: { code: ERROR_CODES.SERVICE_UNAVAILABLE, message: 'Core Service dispatch requires the Service v2 integration' } });
-      return;
-    }
-    reply(response, 404, { ok: false, error: { code: 'NOT_FOUND', message: 'Bridge route does not exist' } });
+    const live = () => {
+      const bot = getBot(botId);
+      if (closing || !botId || tokens.get(token) !== botId || !bot || !['idle', 'running'].includes(bot.status)) {
+        throw new SwarmEnvError('NOT_ALLOWED', 'Bridge caller is unavailable');
+      }
+      return bot;
+    };
+    try {
+      // Health also supports starting Bots while the backend is assembling.
+      const bot = botId && getBot(botId);
+      if (closing || !bot || ['exited', 'closing', 'closed'].includes(bot.status)) throw new SwarmEnvError('NOT_ALLOWED', 'Bridge caller is unavailable');
+      if (request.method === 'GET' && request.url === '/health') {
+        request.resume(); reply(response, 200, { ok: true, runtimeId, botId }); return;
+      }
+      if (request.method !== 'POST' || request.url !== '/call') {
+        request.resume(); reply(response, 404, { ok: false, error: { code: 'NOT_FOUND', message: 'Bridge route does not exist' } }); return;
+      }
+      const chunks = [];
+      let bytes = 0;
+      for await (const chunk of request) {
+        bytes += chunk.length;
+        if (bytes > 2 * 1024 * 1024) invalid('Bridge request exceeds 2 MiB');
+        chunks.push(chunk);
+      }
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { invalid('Bridge request must be JSON'); }
+      if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.operation !== 'string' ||
+          typeof body.operation_id !== 'string' || !body.operation_id || body.operation_id.length > 256) invalid('Bridge request requires operation and operation_id');
+      const current = live();
+      const visible = [...registrations.values()].flatMap(({ manifest }) => {
+        const capabilities = manifest.capabilities.filter(capability => current.services?.[manifest.id]?.includes(capability.operation));
+        return capabilities.length ? [{ ...manifest, capabilities }] : [];
+      });
+      if (body.operation === 'list_services' && body.service_id === undefined) {
+        reply(response, 200, { ok: true, result: { services: visible } }); return;
+      }
+      if (body.operation === 'get_service_metadata' && body.service_id === undefined) {
+        const manifest = visible.find(item => item.id === body.payload?.service);
+        if (!manifest) throw new SwarmEnvError('NOT_ALLOWED', 'Service is unavailable to this Profile');
+        reply(response, 200, { ok: true, result: manifest }); return;
+      }
+      const registration = registrations.get(body.service_id);
+      if (!registration || !current.services?.[body.service_id]?.includes(body.operation)) throw new SwarmEnvError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
+      const caller = { runtimeId, botId, profile: current.profile,
+        ...(current.bindings?.[body.service_id] === undefined ? {} : { binding: current.bindings[body.service_id] }) };
+      controller = new AbortController();
+      active.add(controller);
+      const result = await invokeService(registration, { operation: body.operation, input: body.payload ?? {},
+        envelope: { operation_id: body.operation_id }, caller, signal: controller.signal }, serviceTimeoutMs);
+      reply(response, 200, { ok: true, result });
+    } catch (error) {
+      request.resume();
+      const code = error.code ?? 'SERVICE_UNAVAILABLE';
+      const status = code === 'NOT_ALLOWED' ? 403 : code === 'NOT_FOUND' ? 404 : code === 'SERVICE_TIMEOUT' ? 504 :
+        ['INVALID_CONTRACT', 'SERVICE_INPUT_INVALID'].includes(code) ? 400 : code === 'CONFLICT' ? 409 : 503;
+      reply(response, status, { ok: false, error: { code, message: error.message, retryable: error.retryable ?? false,
+        details: { ...error.details, ...(body?.operation_id ? { operation_id: body.operation_id, operation: body.operation, service_id: body.service_id } : {}) } } });
+    } finally { if (controller) active.delete(controller); }
   });
   server.requestTimeout = WAIT_TIMEOUT_MS;
   server.headersTimeout = Math.min(10_000, WAIT_TIMEOUT_MS);
@@ -93,6 +139,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
     close() {
       if (closePromise) return closePromise;
       closing = true;
+      for (const controller of active) controller.abort();
       tokens.clear();
       botTokens.clear();
       closePromise = new Promise((resolve, reject) => {

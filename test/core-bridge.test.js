@@ -17,8 +17,8 @@ test('Core Bridge authenticates live Bot credentials and revocation closes acces
   });
   bot.status = 'idle';
   const pending = await fetch(`${bridge.publicUrl}/call`, { method: 'POST', headers, body: '{}' });
-  assert.equal(pending.status, 503);
-  assert.equal((await pending.json()).error.code, 'SERVICE_UNAVAILABLE');
+  assert.equal(pending.status, 400);
+  assert.equal((await pending.json()).error.code, 'INVALID_CONTRACT');
   bridge.revokeBot('bot-test');
   assert.equal((await fetch(`${bridge.publicUrl}/health`, { headers })).status, 403);
   bot.status = 'closing';

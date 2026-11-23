@@ -69,6 +69,7 @@ export async function createRuntime(options) {
     const bot = bots.get(botId);
     return bot && {
       profile: bot.info.profile, model: bot.profile.model, status: bot.info.status,
+      services: bot.profile.services, bindings: bot.bindings,
     };
   };
   let bridge, modelAccess, backend;
@@ -235,7 +236,7 @@ export async function createRuntime(options) {
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       const bot = {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
-        inputs: new Map(), inputVersion: 0, executionStopped: false,
+        inputs: new Map(), inputVersion: 0, executionStopped: false, bindings: parameters.bindings,
       };
       request = { fingerprint, bot };
       bots.set(info.id, bot);

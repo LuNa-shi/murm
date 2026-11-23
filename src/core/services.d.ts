@@ -48,3 +48,6 @@ export class ServiceRegistry {
 }
 
 export function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
+
+/** Host-only Service credential; HTTP Service must authenticate this connection before trusting caller. */
+export function createHttpJsonAdapter(options?: { token?: string; timeoutMs?: number; fetchImpl?: typeof fetch }): ServiceAdapter;

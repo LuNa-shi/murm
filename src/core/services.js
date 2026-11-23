@@ -1,7 +1,30 @@
+import Ajv from 'ajv';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 
 const IDENTIFIER = /^[a-z][a-z0-9_-]*$/;
 const registryEntries = new WeakMap();
+const validators = new WeakMap();
+
+export function isJson(value, seen = new Set(), depth = 0) {
+  if (depth > 64) return false;
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (!value || typeof value !== 'object' || seen.has(value) || (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype)) return false;
+  seen.add(value);
+  const valid = Object.values(value).every(item => isJson(item, seen, depth + 1));
+  seen.delete(value);
+  return valid;
+}
+
+function compile(manifest) {
+  const ajv = new Ajv({ strict: true, coerceTypes: false, useDefaults: false, removeAdditional: false, ownProperties: true, addUsedSchema: false });
+  return new Map(manifest.capabilities.map(capability => {
+    const input = ajv.compile(capability.input_schema);
+    const output = ajv.compile(capability.output_schema);
+    if (input.$async || output.$async) invalid('Asynchronous Service schemas are unsupported');
+    return [capability.operation, { input, output }];
+  }));
+}
 
 function invalid(message) {
   throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, message);
@@ -24,7 +47,7 @@ function freeze(value) {
 }
 
 function validateManifest(input) {
-  if (!record(input) || !IDENTIFIER.test(input.id) || input.id === 'bot') {
+  if (!record(input) || !isJson(input) || typeof input.id !== 'string' || !IDENTIFIER.test(input.id) || input.id === 'bot') {
     invalid('Service id must be a valid identifier and bot is reserved');
   }
   if (![input.title, input.purpose, input.provider_version].every(nonempty) || input.contract_version !== '2') {
@@ -36,7 +59,7 @@ function validateManifest(input) {
   if (input.endpoint.transport === 'http-json') {
     let url;
     try { url = new URL(input.endpoint.url); } catch { invalid('HTTP Service endpoint requires a valid URL'); }
-    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash) {
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || url.hash || url.search) {
       invalid('HTTP Service endpoint must use HTTP(S) without embedded credentials or fragment');
     }
   }
@@ -46,7 +69,7 @@ function validateManifest(input) {
   const names = new Set();
   const operations = new Set();
   for (const capability of input.capabilities) {
-    if (!record(capability) || !IDENTIFIER.test(capability.name) || !IDENTIFIER.test(capability.operation) ||
+    if (!record(capability) || typeof capability.name !== 'string' || !IDENTIFIER.test(capability.name) || typeof capability.operation !== 'string' || !IDENTIFIER.test(capability.operation) ||
         !nonempty(capability.description) || !['read', 'write'].includes(capability.side_effect) ||
         typeof capability.idempotent !== 'boolean' || !record(capability.help) || !nonempty(capability.help.when) ||
         !record(capability.input_schema) || !record(capability.output_schema) || !Array.isArray(capability.errors)) {
@@ -54,7 +77,7 @@ function validateManifest(input) {
     }
     if (capability.help.ref !== undefined && !nonempty(capability.help.ref)) invalid('Service help ref must be nonempty');
     if (capability.path !== undefined && (typeof capability.path !== 'string' || !capability.path.startsWith('/') ||
-        capability.path.includes('..') || capability.path.startsWith('//'))) invalid('Service capability path must be a relative HTTP route');
+        capability.path.includes('..') || capability.path.startsWith('//') || /[?#\\]/.test(capability.path))) invalid('Service capability path must be a relative HTTP route');
     if (capability.errors.some(error => !record(error) || !nonempty(error.code) || typeof error.retryable !== 'boolean')) {
       invalid('Service errors require code and retryable');
     }
@@ -72,6 +95,7 @@ export class ServiceRegistry {
 
   registerService({ manifest, adapter } = {}) {
     const snapshot = validateManifest(manifest);
+    try { validators.set(snapshot, compile(snapshot)); } catch { invalid('Service schemas must compile as strict synchronous JSON Schema draft-07 without remote resolution'); }
     if (!adapter || typeof adapter.invoke !== 'function') invalid('Service adapter requires invoke(request)');
     if (registryEntries.get(this).has(snapshot.id)) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, `Service is already registered: ${snapshot.id}`);
@@ -93,4 +117,71 @@ export function snapshotServiceRegistry(services) {
     if (typeof adapter.invoke !== 'function') invalid('Service adapter requires invoke(request)');
     return [id, Object.freeze({ manifest, adapter: Object.freeze({ invoke: adapter.invoke.bind(adapter) }) })];
   }));
+}
+
+// One invocation only. Service business logic owns idempotency and retries.
+export async function invokeService(registration, { operation, input, envelope, caller, signal }, timeoutMs = 30_000) {
+  const { manifest, adapter } = registration;
+  const capability = manifest.capabilities.find(item => item.operation === operation);
+  const identity = { service_id: manifest.id, operation, operation_id: envelope.operation_id };
+  if (!capability) throw new SwarmEnvError('NOT_FOUND', 'Service operation is not registered', identity);
+  const rules = validators.get(manifest).get(operation);
+  if (!isJson(input) || !rules.input(input)) throw new SwarmEnvError('SERVICE_INPUT_INVALID', 'Service input violates its schema', { ...identity, request_outcome: 'not_executed' });
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
+  let timer;
+  try {
+    if (controller.signal.aborted) throw new SwarmEnvError('NOT_ALLOWED', 'Service caller has closed', identity);
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Service invocation timed out', { ...identity, request_outcome: 'unknown' })); controller.abort(); }, timeoutMs);
+      controller.signal.addEventListener('abort', () => reject(new SwarmEnvError('SERVICE_UNAVAILABLE', 'Service invocation was aborted', { ...identity, request_outcome: 'unknown' })), { once: true });
+    });
+    const result = await Promise.race([Promise.resolve().then(() => adapter.invoke({ manifest, capability, input: structuredClone(input), envelope: Object.freeze({ operation_id: envelope.operation_id }), caller: Object.freeze({ ...caller }), signal: controller.signal })), timeout]);
+    if (!isJson(result) || !rules.output(result)) throw new SwarmEnvError('SERVICE_OUTPUT_INVALID', 'Service output violates its schema', { ...identity, request_outcome: capability.side_effect === 'write' ? 'unknown' : 'invalid_output' });
+    return result;
+  } catch (error) {
+    if (error instanceof SwarmEnvError) { error.details = { ...error.details, ...identity }; throw error; }
+    throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'Service invocation failed', { ...identity, request_outcome: 'unknown' });
+  } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
+}
+
+/** Host-configured HTTP adapter. Its credential never enters Bot environments. */
+export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = globalThis.fetch } = {}) {
+  if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000 ||
+      (token !== undefined && (typeof token !== 'string' || !token))) invalid('HTTP adapter requires a bounded timeout, fetch and optional host token');
+  return Object.freeze({ async invoke({ manifest, capability, input, envelope, caller, signal }) {
+    if (manifest.endpoint.transport !== 'http-json') invalid('HTTP adapter requires an HTTP Service endpoint');
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(abort, timeoutMs);
+    try {
+      const base = manifest.endpoint.url.replace(/\/$/, '');
+      const response = await fetchImpl(base + (capability.path ?? `/v2/${capability.operation}`), {
+        method: 'POST', redirect: 'error', signal: controller.signal,
+        headers: { 'content-type': 'application/json', accept: 'application/json', 'idempotency-key': envelope.operation_id,
+          ...(token === undefined ? {} : { authorization: `Bearer ${token}` }) },
+        body: JSON.stringify({ input, envelope, caller }),
+      });
+      const chunks = [];
+      let bytes = 0;
+      for await (const chunk of response.body ?? []) {
+        bytes += chunk.length;
+        if (bytes > 2 * 1024 * 1024) throw new Error('Response body limit');
+        chunks.push(chunk);
+      }
+      let body;
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch { throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'HTTP Service returned invalid JSON'); }
+      if (!response.ok || body?.ok !== true) {
+        const code = response.status === 401 || response.status === 403 ? 'NOT_ALLOWED' : response.status === 504 ? 'SERVICE_TIMEOUT' : 'SERVICE_UNAVAILABLE';
+        throw new SwarmEnvError(body?.error?.code ?? code, body?.error?.message ?? 'HTTP Service invocation failed', { request_outcome: 'unknown' });
+      }
+      return body.result;
+    } catch (error) {
+      if (controller.signal.aborted) throw new SwarmEnvError('SERVICE_TIMEOUT', 'HTTP Service invocation timed out', { request_outcome: 'unknown' });
+      if (error instanceof SwarmEnvError) throw error;
+      throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'HTTP Service is unavailable', { request_outcome: 'unknown' });
+    } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
+  } });
 }

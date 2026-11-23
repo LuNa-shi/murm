@@ -346,6 +346,14 @@ export async function runSwarmCli(argv = process.argv.slice(2), { stdout = proce
     }
   }
   if (positionals[0] === 'context') throw new Error('unknown command group: context');
+  if (options.help && positionals[0] && positionals[0] !== 'service' && !COMMAND_OPERATIONS[positionals[0]] && process.env.SWARMENV_BRIDGE_URL) {
+    const provider = await manifest(positionals[0]);
+    const capabilities = positionals[1] ? provider.capabilities.filter(item => item.operation === positionals[1] || item.name === positionals[1]) : provider.capabilities;
+    if (!capabilities.length) throw new Error('Service does not advertise this operation');
+    stdout.write(`Usage: swarm ${positionals[0]} <operation> [--input file | --stdin | --field value] [--request-id id]\n${provider.purpose}\n`);
+    for (const capability of capabilities) stdout.write(`${capability.operation}: ${capability.description}\n${capability.help.when}\nside_effect=${capability.side_effect}; idempotent=${capability.idempotent}\nInput schema: ${JSON.stringify(capability.input_schema)}\nOutput schema: ${JSON.stringify(capability.output_schema)}\nErrors: ${JSON.stringify(capability.errors)}\n`);
+    return 0;
+  }
   if (options.help) {
     if (positionals[0] === 'mission' && positionals[1] === 'submission') {
       stdout.write('Usage: swarm mission submission view [id] [--json]\nWithout an ID, read current Mission state and its submissions. With an ID, read that submission and its fixed inputs.\n');
