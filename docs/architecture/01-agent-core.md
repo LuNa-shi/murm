@@ -95,7 +95,7 @@ A registered UNBOUND Bot can propose a missing responsibility and take it in the
 
 ### 5.4 Caller-owned Bridge hooks
 
-The legacy Bridge accepts optional hooks for take activation, release, work observation, errors and Task creation. Their presence and behavior depend on the host assembling that Bridge. The Bridge performs its own identity, capability and lifecycle checks before invoking them. Take activation must complete before a successful live receipt is cached. Accepted finish handling captures durable IDs before asynchronous observers and isolates observer failures from the accepted result.
+The legacy Bridge accepts optional hooks for take activation, accepted take, release, errors and Task creation. Their presence and behavior depend on the host assembling that Bridge. The Bridge performs its own identity, capability and lifecycle checks before invoking them. Take activation must complete before a successful live receipt is cached. After a durable finish, the Bridge requests Runtime resource release. Failed cleanup returns the accepted receipt with `cleanup_pending`. A successful release clears the matching local binding and invokes the release hook. A release-hook failure is logged without replacing the accepted finish result.
 
 The removed benchmark's counters and lane bookkeeping are preserved in the research revision. Current public-Core flat Services call their controller and publication adapters directly. See [Services](04-services.md) and [Environment reporting](17-environment-reporting.md).
 

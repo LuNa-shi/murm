@@ -568,26 +568,6 @@ export class Runtime {
     return { active_process_count: this.activeProcesses.size, cleanup_pending_execution_ids: [...this.activeProcesses.keys()], cleanup_pending_session_count: this.identitySessions.size, cleanup_pending_bot_ids: [...this.botBindings.keys()] };
   }
 
-  async listPublicWorkspaceFiles({ workspaceId, revision = undefined, path = '' } = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.files({ workspaceId: requireString(workspaceId, 'workspace_id'), revision, prefix: path });
-  }
-
-  async readPublicWorkspaceFile({ workspaceId, revision = undefined, path, maxBytes = 1_000_000 } = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.read({ workspaceId: requireString(workspaceId, 'workspace_id'), revision, path, maxBytes });
-  }
-
-  async searchPublicWorkspace({ workspaceId, revision = undefined, query, path = '', maxResults = 100 } = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.search({ workspaceId: requireString(workspaceId, 'workspace_id'), revision, query, prefix: path, maxResults });
-  }
-
-  async savePublicWorkspaceRevision(input = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.save(input);
-  }
-
   #guardExecutionWorkspace({ actorRef, taskId, executionId, fencingVersion }, { receiptOnly = false, newWork = false } = {}) {
     const execution = this.taskService.getExecution(executionId);
     if (newWork && execution) this.taskService.assertMissionResearchOpen(this.taskService.getTask(execution.task_id)?.mission_id);
@@ -733,11 +713,6 @@ export class Runtime {
     });
   }
 
-  async mergePublicWorkspaceRevision(input = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.merge(input);
-  }
-
   async submitMission(input = {}) {
     if (!this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
     return this.missionSubmissionStore.submit(input);
@@ -747,11 +722,6 @@ export class Runtime {
     if (!this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
     return this.missionSubmissionStore.describe({ missionId, submissionId, workspaceId: this.missionWorkspaceId,
       isStopped: () => this.stopping || this.clock() >= (this.runDeadlineAt ?? Infinity) || this.taskService.isMissionStopped(missionId) });
-  }
-
-  async finishMissionSubmission(input = {}) {
-    if (!this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
-    return this.missionSubmissionStore.finish(input);
   }
 
   async #ensureSandbox(execution, workspace) {
