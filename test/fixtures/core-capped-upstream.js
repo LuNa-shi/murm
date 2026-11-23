@@ -115,6 +115,11 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     try { onFailure(structuredClone(failure)); } catch { /* The fence remains authoritative. */ }
   }
 
+  function fenceUnmeteredTransport(record) {
+    if (!failFast || failure || closing || deadlineReached || (record.terminal && record.usage)) return;
+    failRun({ code: 'LIVE_UNMETERED_TRANSPORT_LOSS', number: record.number }, 'unmetered_transport_abort');
+  }
+
   function observeEvent(value, record) {
     const items = value.type === 'response.output_item.done' ? [value.item] : value.response?.output ?? [];
     for (const item of items) {
@@ -266,7 +271,12 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
           }
           response.end();
         });
-        incoming.on('error', () => { transport(record, 'upstream_error', true); record.status = failure ? 'failure_aborted' : 'stream_failed'; active.delete(upstream); response.destroy(); });
+        incoming.on('error', () => {
+          transport(record, 'upstream_error', true);
+          record.status = failure ? 'failure_aborted' : 'stream_failed'; active.delete(upstream);
+          fenceUnmeteredTransport(record);
+          response.destroy();
+        });
       });
       requestRecords.set(upstream, record);
       active.add(upstream); peakConcurrent = Math.max(peakConcurrent, active.size);
@@ -275,9 +285,16 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
         if (record.status === 'rejected') return;
         record.status = failure ? 'failure_aborted' : deadlineReached ? 'deadline_aborted' : 'transport_failed';
         active.delete(upstream);
+        fenceUnmeteredTransport(record);
         if (response.headersSent) response.destroy(); else json(response, 502, 'LIVE_UPSTREAM_FAILED');
       });
-      response.on('close', () => { if (!response.writableEnded && !(failFast && parsingRejection)) { transport(record, 'client_close', true); upstream.destroy(); } });
+      response.on('close', () => {
+        if (!response.writableEnded && !(failFast && parsingRejection)) {
+          transport(record, 'client_close', true);
+          fenceUnmeteredTransport(record);
+          upstream.destroy();
+        }
+      });
       upstream.end(data);
     } catch {
       transport(record, 'dispatch_error', true);
