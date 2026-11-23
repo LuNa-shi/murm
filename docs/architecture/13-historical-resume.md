@@ -1,52 +1,14 @@
-# 13. Continue an experiment from a historical time
+# 13. Offline historical state reconstruction
 
-Historical continuation takes a finished experiment and a time selected after that
-experiment ended. It reconstructs the public research data at that time, then starts
-four fresh Core loops using the ordinary runner. The input consists of the original
-experiment directory and `--at`; no operator snapshot call or preselected checkpoint
-is required. [Issue #149](https://github.com/LuNa-shi/SwarmEnv/issues/149) owns this scope.
+The retained replay modules reconstruct public Task, Context, Judge and Workspace data at an explicit time in a completed source run. They accept the original source directory, a fresh destination, fixed problem/configuration and a timestamp with timezone. The former benchmark resume CLI, four-lane continuation and its report accounting have been removed. A host that uses the reconstructed state owns any later Environment assembly and authorization.
 
-## Entry and startup order
+## Entry and reconstruction order
 
-The existing benchmark CLI accepts `--resume-from <experiment-directory>` together
-with `--at <ISO timestamp with timezone>`. Supply one existing `--problem`, the
-original compatible problem/checker deployment, and a new `--experiment-dir`.
-The source must have completion metadata and, when managed private audit was used,
-its cleanup completion record. Completed, operator-stopped and failed runs with a
-recorded research start and end can supply a historical Mission. A run that failed
-before admission has no selectable research interval. The selected time must be inside that experiment's
-recorded interval. Pass@K is not a historical continuation mode.
+`prepareExperimentResume({sourceExperimentDir, destinationProjectDir, problem, config, at})` checks completion metadata and the source interval. If the source has a managed audit marker, its confirmed closure is required. Missing research start/end or an out-of-range timestamp fails before reconstruction. The fixed problem, file/input identity, Mission and supplied checker/environment pins must match the source.
 
-The CLI resolves the output paths before reserving the run. The runner repeats this
-check before preflight and before writing an unavailable-project report. The run,
-reports and named report files must be physically separate from the source. The
-project's state, log and working directories must be fresh. Existing symlinks are
-resolved, dangling output links are rejected and existing output files with
-multiple hard links are rejected. A path conflict raises `REPLAY_DESTINATION_CONFLICT`.
-The observer's writable paths are checked when observation is enabled.
+`assertResumeOutputPaths` resolves physical paths and rejects a destination within or above the source, dangling links and linked output files that could mutate source data. Preparation requires a new destination. It builds a temporary adjacent directory containing restored `project.sqlite`, `context.sqlite`, `judge.sqlite` and `mission-workspace/`, verifies public cross-service references, normalizes ownership for a potential fresh caller, writes private `resume.json` provenance, and publishes by rename. Failure removes the temporary output.
 
-Before opening live services, `prepareExperimentResume` creates a temporary project
-directory beside the new destination. It reconstructs `project.sqlite`,
-`context.sqlite`, `judge.sqlite` and `mission-workspace/`. It checks the original
-problem identity, Mission binding, file/input hash and public cross-service
-references. The completed directory is published by rename; failures remove the
-temporary output. Source and destination must be separate and existing destinations
-are rejected.
-
-The runner then opens the reconstructed services, retains the Mission, Task,
-Material and Workspace IDs, and skips initial Mission/Workspace seeding. It checks
-the final verifier identity against the original Mission. It starts the normal four
-Core loops with new Bot/Execution/sandbox identities and credentials. Private Pi
-conversations and unfinished private computation are not loaded. New Bots read the
-public history through the existing service tools.
-
-Offline reconstruction, checker and provider preflight, service startup and Bridge
-setup run within `setup_elapsed_ms`. Successful admission sets `started_at` and
-starts a full new Mission timebox. Per-Bot provisioning and research consume that
-window. A failure before admission has no research start or elapsed research time.
-The new run has a fresh model-budget database and new checker admission budgets;
-existing proof/check results remain research data. No historical provider resource
-is adopted, stopped or deleted by this import.
+The returned result identifies the restored Mission/Workspace, inherited identities and reconstruction metadata. Historical provider resources and private Pi conversations are not adopted. The replay modules perform no model request, provider allocation or active-loop start.
 
 ## Automatic database history
 
@@ -132,7 +94,7 @@ or reruns model/checker calls to recreate their outcomes. It checks required evi
 and fails with an entity/table-specific history error when it cannot support a
 historical value. Final database values are not substitutes for missing old values.
 
-### Loading current services from reconstructed data
+### Current service schema in reconstructed data
 
 The importer first projects or rewinds each service at T, then examines the schema
 in the staging copy. Current `task_records` and current Material tables can be used
@@ -202,16 +164,7 @@ recorded handoff in the destination:
 - An already accepted Mission is rejected as a continuation starting point. Its
   acceptance is not silently removed.
 
-The public reconstruction and this operational handoff are distinct in `resume.json`.
-That private file records the source, requested time, per-service history mode,
-Workspace history selection, inherited counts, warnings and changes made for fresh
-ownership. The report includes inherited Tasks under `protocol.initial_task_count`;
-`run.dynamic_task_count` and `run.progress_evidence.proposed_task_count` count new
-proposals. `project.task_count` is the Mission total. Inherited Materials and newly
-published Materials have separate counts. Consumption by a historical Execution
-is counted in `inherited_material_consumption_count`. The current run's consumption
-list and count cover new Executions, including their use of inherited Materials. The start event is
-`mission_resumed_from_history`.
+The public reconstruction and operational handoff are recorded separately in private `resume.json`. It preserves source/time, service history modes, Workspace selection, inherited identities, warnings and ownership adjustments. A consuming host can inspect that record before deciding how to assemble current services.
 
 ## Verification seams
 
@@ -220,14 +173,10 @@ rollback, a cutoff during a transaction, replacement, quoted savepoints, prepare
 control statements and source preservation. Legacy tests exercise real Task/Context/
 Judge APIs before reconstructing their old-format outputs. Workspace tests cover
 save versus main, missing history, crash recovery, excluded future Git objects and
-new writes after restoration. Resume integration tests reconstruct a completed
-fixture and bind four distinct new Executions on the four Cores. Each Bot can read
-the inherited Material. A zero-timebox runner probe checks independent-service
-composition and new-run accounting without model calls. Paid research outcomes require a separately authorized run.
+new writes after restoration. The direct replay regressions verify state and provenance without calling a model or allocating provider resources. Any subsequent active run requires its own host configuration and acceptance evidence.
 
 Sources: [database history](../../src/replay/service-history.js),
 [legacy projector](../../src/replay/legacy-service-state.js),
 [schema conversion](../../src/replay/resume-schema.js),
 [Workspace replay](../../src/replay/workspace-history.js),
-[resume preparation](../../src/replay/resume-experiment.js),
-[runner](../../src/benchmark/putnam-runner.js).
+[resume preparation](../../src/replay/resume-experiment.js).
