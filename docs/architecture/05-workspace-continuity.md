@@ -103,9 +103,9 @@ WorkspaceManager locks the target and stages the files in a sibling directory. I
 
 During execution, Pi edits the guest project. To share changes, the Bot saves the actual guest tree to a public revision and may request a checked merge. Judge receives a fixed public revision. Project checks resolve the tree against the authenticated Mission. A configured single-file checker receives complete UTF-8 bytes, source hash and revision identity from the selected public file. Task delivery and Mission acceptance consume the resulting receipts under their respective contracts.
 
-## Fence, release and restart
+## Fencing, release and resource reconciliation
 
-Runtime reads the private directory's recorded owner and fence during cleanup. A fence advance must increase the current generation. Release verifies Execution and generation and persists the release timestamp and revision metadata. Retrying release completes both writes. The observer reads initial file and revision metadata for the recorded Execution. Startup reconciles live provider resources and pending operations before releasing the Core. A later Bot takes its own Execution, selects a published input and receives a fresh working directory. To establish continuity, join the predecessor's public save or Material identity to the successor's selected input or recorded consumption.
+Runtime reads the private directory's recorded owner and fence during cleanup. A fence advance must increase the current generation. Release verifies Execution and generation and persists the release timestamp and revision metadata. Retrying release completes both writes. The observer reads initial file and revision metadata for the recorded Execution. Live cleanup reconciles pending Workspace operations. After host process loss, [explicit Mission-scoped provider reconciliation](02-execution.md#provider-creation-intent-and-reconciliation) confirms resource isolation before releasing recovered Core occupancy. A later Bot takes its own Execution, selects a published input and receives a fresh working directory. To establish continuity, join the predecessor's public save or Material identity to the successor's selected input or recorded consumption.
 
 ## 7. Compaction and identity rotation
 
