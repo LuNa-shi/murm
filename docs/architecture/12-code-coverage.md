@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **2064 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **2067 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -37,7 +37,7 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
 | [src/agent/version-manifest.js](../../src/agent/version-manifest.js) | Adapter/version/prompt/runtime provenance manifest | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `e107aad797eff177bbfc2c64489381f690fb8f814e4d42413ddd70abb40af5f8` |
 
-### Execution and control (10)
+### Execution and control (13)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -46,6 +46,9 @@ In-scope roots: `src/`, `scripts/`, `config/`, `services/`, `fixtures/`, `benchm
 | [src/benchmark/benchmark-fixture.js](../../src/benchmark/benchmark-fixture.js) | Pinned Git blob and timed service composition gates | [07-run-configuration](07-run-configuration.md) | `bf6aafd3caab9041b0262cf4d916bb2110d1d11a14d7b3765fc6db6cfaa512c6` |
 | [src/environments/flat/bot-coordinator.js](../../src/environments/flat/bot-coordinator.js) | Trusted Core-returned flat Bot identity registration and readiness | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `fd5b51b26d181c2c2ffd12af7382ba213c6f28dfe7f9997f0068d7aa8fd66880` |
 | [src/environments/flat/model-access-policy.js](../../src/environments/flat/model-access-policy.js) | Flat Task/Mission model authority and Core synchronous policy adapter | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `a7dd147bc6d76499e764a36de5d75a3e7632969a14a5806517fd127ae4e67bf9` |
+| [src/environments/flat/prepare-inputs.js](../../src/environments/flat/prepare-inputs.js) | Fixed Workspace and Material input provenance and canonical FileSeed preparation | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `2738e0f3516277b2fa456d33e90afe6230fa88608ab2c0f67921659d324dafc3` |
+| [src/environments/flat/task-handoff.js](../../src/environments/flat/task-handoff.js) | Preparation heartbeat, Core file handoff and stop-confirmed domain compensation | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `cc03f9f26e85242d31086b822d6e40dc81a98fcff80d64f9aa2bf454b8a98f54` |
+| [src/environments/flat/task-service.js](../../src/environments/flat/task-service.js) | Flat trusted Service-v2 discovery and idempotent Task handoff entry | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `63934d3f368633d34fdb10ecba9856164b5a9a7b71dc2953591708afd11aff69` |
 | [src/environments/shared/run-report.js](../../src/environments/shared/run-report.js) | Environment host reporting with independent business, cleanup and save failures | [17-environment-reporting](17-environment-reporting.md) | `8486471eacc2ba2a602ca81c553b459739d0a3d470bebcc3e96bb4c28585d12c` |
 | [src/runtime/docker-bot-network.js](../../src/runtime/docker-bot-network.js) | Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `fece9e1daeaf52f57ac4d821abd0be86fdd94738995507a9412817eb1b268096` |
 | [src/runtime/identity-task-loop.js](../../src/runtime/identity-task-loop.js) | Per-Core discovery/take supervisor, rescans, waiting and wake events | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `dbaf8e0b032a77d4b1ab7510837f138ee07cf5769725efc932c7945dea90fcd9` |

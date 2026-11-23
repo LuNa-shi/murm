@@ -9,12 +9,16 @@ import { BOT_UID } from '../../scripts/sandbox-project.mjs';
 import { decodeFileSeed } from '../../scripts/core-file-seed.mjs';
 
 let runCommand;
-const execute = () => { throw new Error('Fixture expects promisified OS commands'); };
+let hostGit;
+const execute = (...args) => {
+  if (args[0] === 'git' && hostGit) return hostGit(...args);
+  throw new Error('Fixture expects promisified OS commands');
+};
 execute[promisify.custom] = (...args) => runCommand(...args);
 
 // Simulate only external infrastructure: provider/Worker HTTP and host OS commands.
 // Core, its backend, manager, admission state and cleanup are the actual modules.
-export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate, onRpc } = {}) {
+export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate, onRpc, allowHostGit = false } = {}) {
   const resources = new Map();
   const records = [];
   const tables = new Map();
@@ -26,7 +30,9 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
   const deletionStarted = new Promise(resolve => { deletion = resolve; });
   const deletionReleased = new Promise(resolve => { releaseDelete = resolve; });
   const originalExec = childProcess.execFile;
-  const run = async (command, args) => {
+  hostGit = allowHostGit ? originalExec : null;
+  const run = async (command, args, options) => {
+    if (command === 'git' && hostGit) return promisify(originalExec)(command, args, options);
     if (command === 'docker') {
       const id = args.at(-1);
       const resource = [...resources.values()].find(row => `sandbox-${row.id}` === id || row.container === id);
