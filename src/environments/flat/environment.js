@@ -24,6 +24,9 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       if(typeof snapshotProject!=='function') throw new SwarmEnvError('SERVICE_NOT_READY','Flat live Workspace publication has no supported trusted Core snapshot binding');
       if(contextService?.taskService!==taskService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Context and Task authority must match');
       if(taskService.contextService && taskService.contextService!==contextService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Task Material authority does not match');
+      const readinessSignal = AbortSignal.any([AbortSignal.timeout(closeTimeoutMs), ...(signal ? [signal] : [])]);
+      const workspace = await missionWorkspace.get({ workspaceId, signal: readinessSignal });
+      if (workspace.mission_id !== missionId) throw new SwarmEnvError('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       taskService.contextService=contextService;
       discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:()=>deadlineAt});
       publication=createFlatPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline:()=>deadlineAt,snapshotProject,

@@ -75,9 +75,17 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
   taskService.setWorkspaceDeliveryReader(({missionId:requestedMission,workspaceId:requestedWorkspace,revision})=>
     requestedMission===missionId && requestedWorkspace===workspaceId ? missionWorkspace.readDeliveryRevision({missionId,workspaceId,revision}):null);
   async function workspaceOperation(operation,input,current,id,signal) {
-    if(operation==='workspace_public_view') return missionWorkspace.get({workspaceId});
-    if(operation==='workspace_public_read') return missionWorkspace.read({workspaceId,path:input.path,revision:input.revision,maxBytes:input.max_bytes});
-    if(operation==='workspace_public_files') return missionWorkspace.files({workspaceId,prefix:input.path,revision:input.revision,limit:input.limit,cursor:input.cursor});
+    if (['workspace_public_view', 'workspace_public_read', 'workspace_public_files'].includes(operation)) {
+      const metadata = await missionWorkspace.get({ workspaceId, signal });
+      if (metadata.mission_id !== missionId) fail('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
+      if (operation === 'workspace_public_view') return metadata;
+      if (operation === 'workspace_public_read') {
+        return missionWorkspace.read({ workspaceId, path: input.path, revision: input.revision,
+          maxBytes: input.max_bytes, signal });
+      }
+      return missionWorkspace.files({ workspaceId, prefix: input.path, revision: input.revision,
+        limit: input.limit, cursor: input.cursor, signal });
+    }
     if(!current.execution) fail('NOT_ALLOWED','Private Workspace operation requires an active Execution');
     if(typeof snapshotProject!=='function') fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
     return workspace.dispatch(({workspace_save:'save',workspace_status:'status',workspace_current_diff:'diff'})[operation],input,
