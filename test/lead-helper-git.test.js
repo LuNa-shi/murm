@@ -43,20 +43,22 @@ test('Git proof checks own branch head and actual bytes; PR cannot forge identit
   assert.equal(JSON.stringify(git.identities()).includes('secret'), false);
 });
 
-test('provisioning creates three independent restricted accounts and retains project while disabling owned identities', async t => {
-  const users = new Map(); const seen = []; let serial = 0;
-  const origin = await server(t, (request, body) => {
-    seen.push({ method: request.method, path: request.url, body });
-    if (request.url === '/api/v1/user') return { login: 'owner' };
-    if (request.url === '/api/v1/admin/users' && request.method === 'POST') { const user = { ...body, id: ++serial }; users.set(body.username, user); return user; }
-    if (request.url.endsWith('/tokens') && request.method === 'POST') return { sha1: `token-${serial}` };
-    if (request.url.endsWith('/tokens')) return [];
-    return {};
+for (const configuration of [{ count: 3 }, { count: 8, helperCount: 7 }]) {
+  test(`provisioning creates ${configuration.count} restricted accounts and retains the project at close`, async t => {
+    const users = new Map(); const seen = []; let serial = 0;
+    const origin = await server(t, (request, body) => {
+      seen.push({ method: request.method, path: request.url, body });
+      if (request.url === '/api/v1/user') return { login: 'owner' };
+      if (request.url === '/api/v1/admin/users' && request.method === 'POST') { const user = { ...body, id: ++serial }; users.set(body.username, user); return user; }
+      if (request.url.endsWith('/tokens') && request.method === 'POST') return { sha1: `token-${serial}` };
+      if (request.url.endsWith('/tokens')) return [];
+      return {};
+    });
+    const resources = createOwnedResources(); const value = await prepareLeadHelperGit({ runId: 'a'.repeat(32), gitea: { origin, owner: 'owner', adminToken: 'admin' }, resources, helperCount: configuration.helperCount });
+    assert.equal(Object.keys(value.actors).length, configuration.count); assert.equal(new Set(Object.values(value.actors).map(row => row.token)).size, configuration.count);
+    assert.ok([...users.values()].every(row => row.restricted && row.max_repo_creation === 0 && row.allow_create_organization === false && row.username.length <= 40));
+    assert.equal((await resources.close()).cleanup, 'complete');
+    assert.equal(seen.filter(row => row.method === 'PATCH' && row.body?.prohibit_login).length, configuration.count);
+    assert.ok(!seen.some(row => row.method === 'DELETE' && row.path.includes('/repos/')));
   });
-  const resources = createOwnedResources(); const value = await prepareLeadHelperGit({ runId: 'a'.repeat(32), gitea: { origin, owner: 'owner', adminToken: 'admin' }, resources });
-  assert.equal(Object.keys(value.actors).length, 3); assert.equal(new Set(Object.values(value.actors).map(row => row.token)).size, 3);
-  assert.ok([...users.values()].every(row => row.restricted && row.max_repo_creation === 0 && row.allow_create_organization === false && row.username.length <= 40));
-  assert.equal((await resources.close()).cleanup, 'complete');
-  assert.equal(seen.filter(row => row.method === 'PATCH' && row.body?.prohibit_login).length, 3);
-  assert.ok(!seen.some(row => row.method === 'DELETE' && row.path.includes('/repos/')));
-});
+}

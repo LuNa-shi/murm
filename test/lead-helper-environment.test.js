@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { registerHooks } from 'node:module';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { mkdtemp, mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { tmpdir, networkInterfaces } from 'node:os';
 import { join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
@@ -21,7 +21,8 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
 } });
 const { createLeadHelperEnvironment } = await import('../src/environments/lead-helper/index.js'); hooks.deregister();
 
-async function scenario(t, failure, fixturePrograms = false) {
+async function scenario(t, failure, fixturePrograms = false, helperCount = 2) {
+  const helpers = Array.from({ length: helperCount }, (_, index) => `helper${index + 1}`);
   transport.reset(); transport.collectable = true; let environment; let lock; let server;
   const work = new Set(), guests = new Map(), commands = new AbortController(); let stopping = false;
   let drain;
@@ -64,7 +65,7 @@ async function scenario(t, failure, fixturePrograms = false) {
   }); server.listen(0, '0.0.0.0'); await once(server, 'listening');
   const localAddress = Object.values(networkInterfaces()).flat().find(row => row.family === 'IPv4' && !row.internal).address;
   const origin = `http://${localAddress}:${server.address().port}`;
-  const actors = Object.fromEntries(['lead', 'helper1', 'helper2'].map(role => [role, { accountId: role, username: role, token: `private-${role}`, branch: role + (fixturePrograms ? '-test' : ''), binding: `test:${role}` }]));
+  const actors = Object.fromEntries(['lead', ...helpers].map(role => [role, { accountId: role, username: role, token: `private-${role}`, branch: role + (fixturePrograms ? '-test' : ''), binding: `test:${role}` }]));
   const team = {}; const privateDirectories = {}; let backgroundFailure;
   transport.onSpawn = async start => {
     const role = start.options.profile; team[role] = start.botId; privateDirectories[role] = join(directory, role); await mkdir(privateDirectories[role]);
@@ -111,12 +112,13 @@ async function scenario(t, failure, fixturePrograms = false) {
       if (role === 'lead') {
         const state = await call(role, 'read');
         if (payload.type === 'initialize') {
+          assert.deepEqual(payload.helpers, Object.fromEntries(helpers.map(name => [name, team[name]])));
           await call(role, 'announce', { text: 'Implement basic checks', feedback_ids: [] });
-          for (const helper of ['helper1', 'helper2']) { await call(role, 'assign', { helper_id: team[helper], text: helper }); await call(role, 'create_subtask', { id: helper, title: 'Initial artifact', path: `${helper}.txt` }); }
+          for (const helper of helpers) { await call(role, 'assign', { helper_id: team[helper], text: helper }); await call(role, 'create_subtask', { id: helper, title: 'Initial artifact', path: `${helper}.txt` }); }
         } else {
           assert.equal(payload.supplement, 'Add explicit evidence');
           await call(role, 'announce', { text: 'Add explicit evidence based on public feedback', feedback_ids: state.notes.map(row => row.seq), user_input_id: payload.user_input_id });
-          for (const helper of ['helper1', 'helper2']) await call(role, 'create_subtask', { id: `${helper}-next`, title: 'Adopt evidence direction', path: `${helper}-next.txt` });
+          for (const helper of helpers) await call(role, 'create_subtask', { id: `${helper}-next`, title: 'Adopt evidence direction', path: `${helper}-next.txt` });
         }
       } else {
         const state = await call(role, 'read'); const next = payload.type === 'helper-followup'; const id = role + (next ? '-next' : '');
@@ -144,7 +146,7 @@ async function scenario(t, failure, fixturePrograms = false) {
     work.add(pending); return pending;
   }; } arm();
   if (failure === 'unknown') transport.onStop = botId => { if (botId === team.helper1) throw new Error('Controlled stop uncertainty'); };
-  const configuration = { runId: 'test', outputDir: directory, image: 'test', backend: {}, turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
+  const configuration = { runId: 'test', outputDir: directory, image: 'test', backend: {}, ...(helperCount === 2 ? {} : { helperCount }), turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
     prepare: async () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors }) };
   const report = await runWithReport({ outputDir: directory, closeTimeoutMs: 1000, createRuntime: async () => {
     const owned = await createLeadHelperEnvironment(configuration);
@@ -152,23 +154,23 @@ async function scenario(t, failure, fixturePrograms = false) {
     // cached, so a later close cannot flush evidence from an unfinished send.
     environment = { ...owned, async close(options) { await drainWork(); return owned.close(options); } };
     return environment;
-  }, run: owned => owned.runWorkflow({ goal: 'Implement both checks', supplement: fixturePrograms ? adjustedDirection : 'Add explicit evidence' }), redact: value => environment ? environment.redact(value) : value });
+  }, run: owned => owned.runWorkflow({ goal: 'Deliver one check per assigned helper', supplement: fixturePrograms ? adjustedDirection : 'Add explicit evidence' }), redact: value => environment ? environment.redact(value) : value });
   if (!failure) assert.equal(backgroundFailure, undefined, backgroundFailure?.stderr ?? String(backgroundFailure));
-  assert.equal(transport.spawns.size, 3, JSON.stringify(report.businessFailure)); assert.equal(JSON.stringify(report).includes('private-helper'), false);
+  assert.equal(transport.spawns.size, helperCount + 1, JSON.stringify(report.businessFailure)); assert.equal(JSON.stringify(report).includes('private-helper'), false);
   if (failure) {
     assert.ok(report.businessFailure);
     if (failure === 'locked-failed') assert.equal(report.businessFailure.code, 'input_failed', 'Board persistence failure cannot replace the native failure');
     const state = report.businessFailure.details.at(-1).board;
     const task = state.subtasks.find(row => row.id === 'helper1'); assert.equal(task.owner, team.helper1); if (failure === 'locked-failed') assert.ok(report.businessFailure.details.at(-1).pendingBoardFailures.some(row => row.botId === team.helper1 && row.code === 'input_failed')); else assert.ok(task.failure); assert.equal(task.state, 'claimed');
-    assert.equal(transport.submissions.size, 3, 'No adjustment, replacement or resubmission after failure');
+    assert.equal(transport.submissions.size, helperCount + 1, 'No adjustment, replacement or resubmission after failure');
     if (failure === 'unknown') { assert.ok(report.cleanupFailure); assert.equal(report.cleanup.bots.find(row => row.botId === team.helper1).execution, 'unknown'); }
   } else {
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure)); assert.equal(report.cleanupFailure, null, JSON.stringify(report.cleanup));
-    const result = report.result; assert.equal(result.environment.delivered.length, 4); assert.equal(result.environment.inputs.length, 6); assert.equal(result.environment.unfinished.length, fixturePrograms ? 1 : 0);
-    assert.deepEqual(new Set(result.environment.delivered.map(row => row.owner)), new Set([team.helper1, team.helper2]));
-    assert.equal(result.adjustedDirection.user_input_id, 'lead-adjust'); assert.equal(result.adjustedDirection.feedback_ids.length, 2);
-    assert.equal(report.cleanup.bots.length, 3); assert.equal(report.cleanup.cleanup, 'complete');
-    const saved = JSON.parse(await readFile(report.reportPath)); assert.equal(saved.result.environment.delivered.length, 4);
+    const result = report.result; assert.equal(result.environment.delivered.length, helperCount * 2); assert.equal(result.environment.inputs.length, helperCount * 2 + 2); assert.equal(result.environment.unfinished.length, fixturePrograms ? 1 : 0);
+    assert.deepEqual(new Set(result.environment.delivered.map(row => row.owner)), new Set(helpers.map(role => team[role])));
+    assert.equal(result.adjustedDirection.user_input_id, 'lead-adjust'); assert.equal(result.adjustedDirection.feedback_ids.length, helperCount);
+    assert.equal(report.cleanup.bots.length, helperCount + 1); assert.equal(report.cleanup.cleanup, 'complete');
+    const saved = JSON.parse(await readFile(report.reportPath)); assert.equal(saved.result.environment.delivered.length, helperCount * 2);
   }
 }
 
@@ -179,3 +181,28 @@ test('helper submission and stop unknown retain original owner, input identity a
 test('SQLite write lock cannot prevent Core stop or replace a failed input; pending evidence reconciles after unlock', t => scenario(t, 'locked-failed'));
 
 test('exact generated native Bash programs use actual CLI, Core Board and Git while title-mutated processes persist', t => scenario(t, undefined, true));
+
+test('four-Bot fixed lead-helper team completes both rounds with distinct authorized delivery owners', t => scenario(t, undefined, false, 3));
+test('eight-Bot fixed lead-helper team completes both rounds with distinct authorized delivery owners', t => scenario(t, undefined, false, 7));
+test('invalid helper capacity fails before provisioning', async () => {
+  for (const helperCount of [1, 8, 2.5, '3', null]) {
+    await assert.rejects(createLeadHelperEnvironment({ helperCount, prepare: assert.fail }), {
+      name: 'TypeError', message: 'Lead-helper requires between two and seven helpers',
+    });
+  }
+});
+
+test('lead-helper provisions the capacity captured before async startup', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'lead-helper-capacity-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const options = {
+    runId: 'test', image: 'test', outputDir: directory, helperCount: 3,
+    async prepare({ helperCount }) {
+      assert.equal(helperCount, 3);
+      throw Object.assign(new Error('controlled startup stop'), { code: 'CAPACITY_OBSERVED' });
+    },
+  };
+  const creating = createLeadHelperEnvironment(options);
+  options.helperCount = 7;
+  await assert.rejects(creating, { code: 'CAPACITY_OBSERVED' });
+});

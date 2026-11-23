@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **186 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **187 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -51,11 +51,11 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/scalemas/index.js](../../src/environments/scalemas/index.js) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `b68afc97dcbaf5b81c42a84454355cf02d1e444f5cde40cb8c5998f06bcbeb62` |
 | [src/environments/scalemas/substrate.js](../../src/environments/scalemas/substrate.js) | Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `bb76c986c99d57d4e14f6cc0ff9c121076ef7f374879c76be66df1813831686d` |
 
-### Environment integration (18)
+### Environment integration (19)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [examples/lead-helper-environment/config.mjs](../../examples/lead-helper-environment/config.mjs) | Kimi K3 fixed-team sample configuration and finite resource bounds | [20-lead-helper-environment](20-lead-helper-environment.md) | `bc3cf45ce53168f78942c070482b8f5b55eb602c6bfcb71670b7f18905eb360a` |
+| [examples/lead-helper-environment/config.mjs](../../examples/lead-helper-environment/config.mjs) | Kimi K3 fixed-team sample configuration and finite resource bounds | [20-lead-helper-environment](20-lead-helper-environment.md) | `e62a821d5d6a55aad9ac3f1d87806f4eb1a0a56c59fdf652badf52f1f71bf669` |
 | [examples/lead-helper-environment/main.mjs](../../examples/lead-helper-environment/main.mjs) | Editable lead-helper CLI with public backend assembly and report output | [20-lead-helper-environment](20-lead-helper-environment.md) | `f02a60f9837df07d510d6d96b5a84fa494041ae2eb044ba4127874bcfabd50fa` |
 | [scripts/git-credential-agensh.mjs](../../scripts/git-credential-agensh.mjs) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `573bc136bf3b793711bfb4d6d841f72ad5a2263a537fefd537177abeef80c1f3` |
 | [src/environments/agensh/board-process.js](../../src/environments/agensh/board-process.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `a9deb803330e05eb42dcdda2068c05ea7a803f35bf0fba83c80386d90c7db600` |
@@ -69,10 +69,11 @@ In-scope roots: `src/`, `scripts/`, `services/`, `fixtures/`, `integrations/`. R
 | [src/environments/agensh/router.js](../../src/environments/agensh/router.js) | Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md) | `4fcd994645da9cc31643f7bdaa8da1e5d7011dd9ff3efc7fc8b9c34cb3f260fd` |
 | [src/environments/agensh/services.js](../../src/environments/agensh/services.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `caa4ad5851286cb2d17c77d93280defa2d4c111ca1d5fd0dc05d3755e4ddecd1` |
 | [src/environments/agensh/team.js](../../src/environments/agensh/team.js) | One Runtime with independently bound peers, exclusive routers and shared cleanup | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md), [17-environment-reporting](17-environment-reporting.md) | `343293e9979c63e7e778813caaa4132a7758c7495012e85a28d3fe3a1ee8a6b5` |
-| [src/environments/lead-helper/board.js](../../src/environments/lead-helper/board.js) | Transactional durable Board, trusted caller ownership and proof acceptance | [20-lead-helper-environment](20-lead-helper-environment.md) | `66b3cefd95fc97743170c65bc582c1e7b7d5999c6fd9571cd75249af3f3a87f2` |
-| [src/environments/lead-helper/git.js](../../src/environments/lead-helper/git.js) | Run-scoped three-account Git provisioning, PR authorization and byte verification | [20-lead-helper-environment](20-lead-helper-environment.md) | `4bf788897811c824b7b309312e493d11e0caeb49a536834d54fe471f2cd9e711` |
-| [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `a475e66b3fb1cc33f4e76472f36258314697df35cfd4970498b7905fb6d3a49a` |
-| [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [20-lead-helper-environment](20-lead-helper-environment.md), [08-prompts](08-prompts.md) | `a9b680e62aafe7bbd5883d3d5d3255d1cd964771a0711d862e283e2f12b897ab` |
+| [src/environments/lead-helper/board.js](../../src/environments/lead-helper/board.js) | Transactional durable Board, trusted caller ownership and proof acceptance | [20-lead-helper-environment](20-lead-helper-environment.md) | `41dd812d5bb06bd26a37f952abdeff10d93cc1f7aa0f7f3a6deb64846d522c5d` |
+| [src/environments/lead-helper/git.js](../../src/environments/lead-helper/git.js) | Run-scoped fixed-team Git provisioning, PR authorization and byte verification | [20-lead-helper-environment](20-lead-helper-environment.md) | `c4fe53f1d34988311b4eb2e81ea59b53392fcb6f2e2764529ccd11df32ae2d8c` |
+| [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `2a50d4053e935e1f58fa5ea2d3afd1bd863544a2c0a960633e0816a15326131b` |
+| [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [20-lead-helper-environment](20-lead-helper-environment.md), [08-prompts](08-prompts.md) | `4222770edeeb1941ef6a8a38bd36ebda9fd07ce795e1dc8d3e9a485607757132` |
+| [src/environments/lead-helper/team.js](../../src/environments/lead-helper/team.js) | Validates fixed lead-helper configuration and exact trusted team identity | [20-lead-helper-environment](20-lead-helper-environment.md) | `57b14611591fda7fdee80f7b86d9167cd6f57990547c27dc0a9f0625c394a3a4` |
 
 ### Execution and control (20)
 
