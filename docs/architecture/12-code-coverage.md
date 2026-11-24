@@ -167,7 +167,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `5bc5f9a6013ab68a2936cfa877461691fa0b6927f37fcf6e2b5c277a443f09bf` |
+| [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `7df9e7ff42f9784b2b7544aa30adb631d5a6584e82b7baeded9b0eace264eaaf` |
 | [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree and npm packlist | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `2a44776261a1d89273680ebb27ef5b053e377b13c15be7c4a9ee835d53fc0f89` |
 | [package-lock.json](../../package-lock.json) | Exact dependency resolution, including external Pi/frontend packages | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `2d471521d4fa707f5371b0eccc8e2476397b6d76813ebece9a88131f2d9178a8` |
 | [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `bd37b62a339c4889fb7991a4d3f3d854724282093f16ec037d93c8d3ba9c90c3` |

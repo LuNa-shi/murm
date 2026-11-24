@@ -12,6 +12,8 @@ The archive includes the exact upstream Apache 2.0 license text beside the adapt
 
 ## Entry points
 
+The shipped `.env.example` lists host variables consumed by the Notes configuration, optional OpenSandbox manager credential defaults, Mathlib Search and standalone Service hosting. Core and these example commands do not automatically read `.env`; the operator exports the selected variables before loading a trusted configuration module. For the Notes example, `SWARMENV_NOTES_IMAGE` and `SWARMENV_NOTES_MODEL_URL` are mandatory and the latter is the complete Kimi K3 Responses URL including `/v1/responses`. The optional Notes token remains on the host; its lifecycle URL, endpoint host, advertise host and lifecycle token configure the corresponding explicit backend fields. Other Environments obtain model/image/backend choices from their own configuration module. The retired benchmark's provider selectors and host Pi-catalog fallback are no longer configuration entry points. [Notes configuration](../../examples/notes-environment/config.mjs) · [Environment variable example](../../.env.example)
+
 | Entry | Configuration and behavior |
 |---|---|
 | Public `createRuntime` | Frozen backend, Profiles, Services, maximum Bot capacity and output directory. The host calls spawn, send, get, stop and close. [Core Runtime](15-core-runtime.md) |
