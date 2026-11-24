@@ -27,4 +27,3 @@ Actual long-run configuration additionally requires `SWARMENV_HOUR_WORKLOAD=/abs
 Natural inputs run concurrently within a mode, including the six fixed scaleMAS peers and the Agensh routers. A's completion and stop still precede designated consumers, and Git merges still advance main in order. The older fixed quota fixture remains available to reproduce diagnostic behavior. Output reports known usage, unknown request count and verified work and cleanup separately.
 
 The optional `lead-helper` factory provisions four distinct restricted Git actors through the existing lead-helper provisioner and composes three external programming tasks per group. It requires the same Gitea settings and `WORKLOAD` module. Helpers use their original natural concurrency; the time-only model owner observes actual usage without a logical request, token or concurrency cap. This source preparation does not authorize or establish a native run.
-
