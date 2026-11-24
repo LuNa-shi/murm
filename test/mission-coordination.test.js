@@ -216,17 +216,24 @@ test('Mission coordination pins current main and explicit empty Materials and en
 
 
 test('retained Bridge uses host-owned Flat submission and observes stop changes without Runtime forwarding', async t => {
-  const { taskService, contextService, bot, store, calls } = await fixture(t);
-  bot('coordinator', ['mission_submit']);
+  const { taskService, contextService, store, calls } = await fixture(t);
+  const start = async (bridge, id) => {
+    await bridge.start();
+    t.after(() => bridge.stop());
+    taskService.registerBot({ botId: id, coreId: bridge.coreId, missionId, coordinationPermissions: ['mission_submit'],
+      selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+    bridge.startBotIdentity(id);
+    taskService.recordBotSandbox(id, { provider: 'controlled', sandboxId: id });
+    taskService.markBotReady(id);
+  };
   let stopped = false;
-  const bridge = new ServicesBridge({ taskService, contextService, runtime: {},
+  const bridge = new ServicesBridge({ taskService, contextService, runtime: {}, coreId: 'core:submission',
     missionSubmission: createMissionSubmissionAccess({ store, workspaceId, isStopped: id => {
       assert.equal(id, missionId);
       return stopped;
     } }),
   });
-  bridge.startBotIdentity('coordinator');
-  t.after(() => bridge.stop());
+  await start(bridge, 'coordinator');
   const receipt = await bridge.call({ operation: 'mission_submit', operation_id: 'flat-host-submission', payload: { material_ids: [] } });
   assert.equal(receipt.state, 'pending');
   assert.equal(receipt.workspace_id, workspaceId);
@@ -238,9 +245,8 @@ test('retained Bridge uses host-owned Flat submission and observes stop changes 
   assert.equal(observed.current.mission_state, 'stopped');
   assert.equal(observed.current.merge_allowed, false);
 
-  const disabled = new ServicesBridge({ taskService, contextService, runtime: {} });
-  disabled.startBotIdentity('coordinator');
-  t.after(() => disabled.stop());
+  const disabled = new ServicesBridge({ taskService, contextService, runtime: {}, coreId: 'core:disabled' });
+  await start(disabled, 'disabled');
   for (const operation of ['mission_submit', 'mission_submission_get']) {
     await assert.rejects(disabled.call({ operation, payload: { material_ids: [] } }),
       { code: 'SERVICE_UNAVAILABLE', message: 'Mission submission is not enabled' });
