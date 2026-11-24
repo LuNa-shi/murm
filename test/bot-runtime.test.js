@@ -443,7 +443,11 @@ test('preparing process exit retries a transient deletion failure without a bind
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
-test('late factory Session is stopped even when it arrives inside a pending provider cleanup', async (t) => {
+test('late factory Session is stopped even when it arrives inside a pending provider cleanup', { timeout: 5000 }, async (t) => {
+  // The fake Session and provider gates have no I/O handles. Keep this test
+  // alive until Runtime's unref'ed selection deadline can initiate cleanup.
+  const keepAlive = setInterval(() => {}, 1000);
+  t.after(() => clearInterval(keepAlive));
   const { service, runtime, manager, startSession } = await fixture(t);
   let allowSession;
   const sessionGate = new Promise(resolve => { allowSession = resolve; });
