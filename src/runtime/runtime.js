@@ -258,21 +258,6 @@ export class Runtime {
     return { ...state };
   }
 
-  listCoreStatus() {
-    return [...this.coreStates.values()].map((state) => ({ ...state }));
-  }
-
-  /** A Runtime capacity view that never performs Task selection. */
-  getCapacityStatus() {
-    const cores = this.listCoreStatus();
-    return {
-      core_count: this.maxWorkers,
-      active_core_count: cores.filter((core) => core.state === 'RUNNING').length,
-      idle_core_count: cores.filter((core) => core.state === 'IDLE').length,
-      cores,
-    };
-  }
-
   hasActiveExecution(executionId) {
     return this.activeProcesses.has(executionId);
   }
