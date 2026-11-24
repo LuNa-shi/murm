@@ -253,11 +253,12 @@ test('host observes real six-peer ready, started turns and owned stop receipts',
   assert.equal(report.businessFailure,null);assert.equal(seen.filter(x=>x==='turn').length,12);assert.equal(seen.filter(x=>x==='stop').length,6);
 });
 
-test('hour scaleMAS uses actual six-Bot CLI publication and post-stop adoption under a controlled clock', { timeout: 60_000 }, async t => {
+for (const failAtEnd of [false,'exit','fatal']) test(`hour scaleMAS ${failAtEnd ? `rejects a terminal survivor ${failAtEnd}` : 'uses actual six-Bot CLI publication and post-stop adoption'}`, { timeout: 60_000 }, async t => {
   const { createScaleMASArithmeticWorkload } = await import('../src/environments/endurance/scalemas-workload.js');
   const { controlledHourQuota } = await import('./fixtures/hour-quota-owner.js');
   const { writeFile } = await import('node:fs/promises');
-  let original, now = 0; const waiting = [], verifiedPrograms = [];
+  let original, now = 0, activeInputs = 0, peakInputs = 0, injectingExit = false, observeExit;
+  const exitSeen = Promise.withResolvers(); const waiting = [], verifiedPrograms = [];
   const budgets = { setupMs: 40_000, workMs: 3_900_000, turnMs: 20_000, cleanupMs: 5000, recoveryMs: 1000, marginMs: 100 };
   async function cli(start, operation, input, requestId) {
     const path = join(f.directory, `hour-${requestId}.json`); await writeFile(path, JSON.stringify(input));
@@ -267,10 +268,12 @@ test('hour scaleMAS uses actual six-Bot CLI publication and post-stop adoption u
     }); return JSON.parse(result.stdout);
   }
   const f = await fixture(t, async ({ peer, cycle, starts, message }) => {
+    activeInputs++; peakInputs = Math.max(peakInputs, activeInputs);
+    try {
     assert.ok(message.message.includes(`Controlled private CLI task ${peer}:${cycle}`));
     const n = 17 * (peer + 1) + cycle;
     const value = { peer, phase: cycle, n, square: n * n, programming: { answer: `${peer}:${cycle}` } }, references = [];
-    if (peer === 0 && cycle === 6) value.tag = 'hourproducerfinal';
+    if (peer === 0 && cycle === 5) value.tag = 'hourproducerfinal';
     if (peer !== 0 && cycle >= 4) {
       const found = await cli(starts[peer], 'search', { query: 'hourproducerfinal', limit: 1 }, `search-${peer}-${cycle}`);
       assert.ok(found.results.some(row => row.address === original.address));
@@ -279,7 +282,8 @@ test('hour scaleMAS uses actual six-Bot CLI publication and post-stop adoption u
       references.push(visited.address);
     }
     const published = await cli(starts[peer], 'publish', { content: JSON.stringify(value), references }, `publish-${peer}-${cycle}`);
-    if (peer === 0 && cycle === 6) original = published;
+    if (peer === 0 && cycle === 5) original = published;
+    } finally { activeInputs--; }
   });
   const { runScaleMASHour } = await import('../src/environments/endurance/scalemas.js');
   const report = await runScaleMASHour({ options: { backend: f.backend, runId: 'hour-controlled', image: 'fixture', outputDir: f.directory },
@@ -287,19 +291,23 @@ test('hour scaleMAS uses actual six-Bot CLI publication and post-stop adoption u
       prompt: ({peer,stage}) => `Controlled private CLI task ${peer}:${stage}`,
       verify: ({peer,stage,submission}) => { assert.equal(submission.answer, `${peer}:${stage}`); verifiedPrograms.push([peer,stage]); return true; },
     } }), clock: () => now,
-    admit: async ({ runtime, workMs }) => ({ runtimeId: runtime.id, workDeadlineAtMs: now + workMs + 100 }),
-    waitForMs(ms) {
+    admit: async ({ runtime, workMs }) => {if(!observeExit)observeExit=runtime.onEvent(event=>{if(injectingExit&&(event.type==='exit'||(event.type==='error'&&event.fatal)))exitSeen.resolve();});return { runtimeId: runtime.id, workDeadlineAtMs: now + workMs + 100 };},
+    async waitForMs(ms) {
       const target = now + ms, pending = Promise.withResolvers(); waiting.push({ target, ...pending });
       const count = target <= 2_700_000 ? 6 : 5;
-      if (waiting.length === count) { const rows = waiting.splice(0); assert.ok(rows.every(row => row.target === target)); now = target; for (const row of rows) row.resolve(); }
+      if (waiting.length === count) { const rows = waiting.splice(0); assert.ok(rows.every(row => row.target === target)); now = target;
+        if(failAtEnd&&target===3600000){injectingExit=true;if(failAtEnd==='fatal')f.provider.publish({type:'worker_error',message:'Controlled fatal'});else f.provider.unexpectedExit();let timer;try{await Promise.race([exitSeen.promise,new Promise((_,reject)=>{timer=setTimeout(()=>reject(new Error('Missing actual Core exit')),2000);})]);}finally{clearTimeout(timer);}}
+        for (const row of rows) row.resolve(); }
       return pending.promise;
     },
   });
+  observeExit?.();
+  if(failAtEnd){assert.ok(report.businessFailure);assert.equal(report.result,undefined);assert.equal(report.accepted,false);assert.equal(report.cleanup.cleanup,'complete');assert.equal(report.quota.closed,true);assert.equal(report.quota.forwarded,1);return;}
   assert.equal(report.businessFailure ?? null, null);
   assert.equal(report.accepted, false); assert.equal(report.result.state, 'controlled');
   assert.equal(report.result.durationMs, 3_600_000); assert.equal(report.result.windows.length, 4);
   assert.ok(report.result.windows.every(window => window.botIds.length >= 4));
   assert.equal(report.result.handoff.kind, 'durable-collaboration-handoff');
   assert.equal(report.cleanup.bots.length, 6); assert.equal(report.cleanup.cleanup, 'complete');
-  assert.equal(verifiedPrograms.length, 42); assert.equal(f.prompts.length, 42); assert.equal(f.provider.allocations(), 6);
+  assert.equal(peakInputs, 2); assert.equal(verifiedPrograms.length, 36); assert.equal(f.prompts.length, 36); assert.equal(f.provider.allocations(), 6);
 });

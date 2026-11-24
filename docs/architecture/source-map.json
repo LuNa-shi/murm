@@ -18,7 +18,8 @@
     "examples/subagents-environment/.npmignore",
     "examples/lead-helper-environment/.npmignore",
     "examples/scalemas-environment/.npmignore",
-    "examples/agensh-environment/.npmignore"
+    "examples/agensh-environment/.npmignore",
+    "examples/hour-matrix/.npmignore"
   ],
   "excluded": [
     {
@@ -1772,6 +1773,25 @@
         "docs/architecture/21-hour-matrix.md"
       ],
       "role": "Frozen actual Kimi/backend/resource configuration with independently supplied lifetime and quota authorities"
+    },
+    {
+      "path": "src/environments/shared/input-admission.js",
+      "category": "Environment execution",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md",
+        "docs/architecture/19-scalemas-environment.md",
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Optional bounded FIFO actual-input admission shared across peer routers; cancellation and unknown-outcome queue fence"
+    },
+    {
+      "path": "examples/hour-matrix/.npmignore",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Exclude private run evidence when the host is launched from inside the shipped hour example directory"
     }
   ]
 }

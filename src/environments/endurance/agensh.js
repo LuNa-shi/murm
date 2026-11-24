@@ -14,26 +14,28 @@ export async function runAgenshHour({ options, workload, admit, quota, budgets, 
   let team,monitor,cleanup,result,businessFailure;
   const abort=()=>controller.abort();
   const setupTimer=setTimeout(abort,budgets.setupMs);
+  const checkSurvivors = async () => {
+    const survivors = team.currentPeers().peers.filter(peer => !(peer.key === 'a' && peer.router.accepting === false));
+    const states = await Promise.all(survivors.map(peer => team.getBot(peer.botId)));
+    if (states.some(bot => !['idle', 'running'].includes(bot.status)) || team.currentPeers().peers.some(peer => peer.unavailable)) throw fail('HOUR_PEER_UNAVAILABLE');
+    checkQuota();
+  };
   const wait = async ms => {
     const end = (clock ? clock() : performance.now()) + Math.max(0, ms);
     while ((clock ? clock() : performance.now()) < end) {
       const remaining = end - (clock ? clock() : performance.now());
       await (waitForMs ? waitForMs(Math.min(30_000, remaining), life) : delay(Math.min(30_000, remaining), undefined, { signal: life }));
       life.throwIfAborted(); checkQuota();
-      if (monitor.elapsed() < HOUR_MS) for (const peer of team.currentPeers().peers) {
-        // A's explicit final-window stop is retained as a domain handoff.
-        if (peer.key === 'a' && peer.router.accepting === false) continue;
-        if (!['idle', 'running'].includes((await team.getBot(peer.botId)).status)) throw fail('HOUR_PEER_UNAVAILABLE');
-      }
+      await checkSurvivors();
     }
     life.throwIfAborted();
   };
   try {
     checkQuota();
-    team=await createAgenshTeam({...options,peerKeys:['a','b','c','d','e','f','g','h'],signal:life,
+    team=await createAgenshTeam({...options,maxConcurrentInputs:2,peerKeys:['a','b','c','d','e','f','g','h'],signal:life,
       router:{...options.router,workTimeoutMs:budgets.setupMs+HOUR_MS+budgets.cleanupMs,maxBatches:64,maxNudges:0,turnTimeoutMs:budgets.turnMs}});
     const peers=team.currentPeers().peers;
-    if(peers.length!==8 || peers.some(peer=>!peer.router.ready || !peer.subscription?.ready))throw fail('HOUR_TEAM_NOT_READY');
+    if(peers.length!==8 || peers.some(peer=>!peer.router.ready || !peer.subscription?.ready || peer.unavailable))throw fail('HOUR_TEAM_NOT_READY');
     monitor=createHourWindow({runtimeId:team.id,mode:'agensh',botIds:peers.map(peer=>peer.botId),clock});
     // getBot uses the actual public Core get. The lifetime admission port reads
     // the exact Runtime's saved creation evidence and provider observations.
@@ -67,13 +69,15 @@ export async function runAgenshHour({ options, workload, admit, quota, budgets, 
       const verified=await phase(index);
       if(index===3)monitor.handoff(verified.handoff);
     }
-    await wait(HOUR_MS-monitor.elapsed());monitor.end();result={lifetime,quota:checkQuota()};
+    await wait(HOUR_MS-monitor.elapsed());await checkSurvivors();monitor.end();result={lifetime,quota:checkQuota()};
   }catch(error){businessFailure={code:error.code ?? 'HOUR_WORK_FAILED'};}
   finally {
     clearTimeout(setupTimer);controller.abort();
     if(team)cleanup=await team.close({timeoutMs:budgets.cleanupMs}).catch(()=>({cleanup:'pending'}));
     try { await quota.close(); } catch { businessFailure ??= { code: 'HOUR_QUOTA_CLOSE_UNKNOWN' }; }
   }
+  let quotaReceipt;
+  try { quotaReceipt = quota.receipt(); } catch { businessFailure ??= { code: 'HOUR_QUOTA_RECEIPT_UNKNOWN' }; }
   if(!businessFailure){try{result={...monitor.finish(cleanup),lifetime:result.lifetime,quota:checkQuota({ final: true })};}catch(error){businessFailure={code:error.code ?? 'HOUR_EVIDENCE_FAILED'};}}
-  return {mode:'agensh',runtimeId:team?.id,accepted:false,result,businessFailure,cleanup};
+  return {mode:'agensh',runtimeId:team?.id,accepted:false,result,businessFailure,cleanup,quota:quotaReceipt};
 }

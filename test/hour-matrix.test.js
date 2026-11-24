@@ -11,11 +11,13 @@ test('a failed configured preflight closes the exact sole owner before ending th
   let closed = false, later = false;
   const report = await runHourMatrix({ modes: ['agensh', 'scaleMAS'], configurations: {
     agensh: async ({ peerCount, quotas }) => { assert.equal(peerCount, 8); assert.equal(quotas.maxRequests, 96); return {
-      options: {}, workload: {}, quota: { receipt: () => ({ closed }), close: async () => { closed = true; } },
+      options: {}, workload: {}, quota: { receipt: () => ({ closed, forwarded:7, outstandingOutputTokens:1024, requests:[{status:'transport_failed'}] }), close: async () => { closed = true; } },
     }; },
     scaleMAS: async () => { later = true; },
   } });
   assert.equal(report.accepted, false); assert.equal(closed, true); assert.equal(later, false);
   assert.equal(report.results[0].preflightFailure.code, 'HOUR_PREFLIGHT_GATE_MISSING');
   assert.equal(report.results[0].ownerClosed, true);
+  assert.equal(report.results[0].quota.forwarded,7); assert.equal(report.results[0].quota.outstandingOutputTokens,1024);
+  assert.equal(report.results[0].quota.requests[0].status,'transport_failed');
 });

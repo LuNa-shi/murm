@@ -28,3 +28,12 @@ test('real lifetime admission preserves its observation clock rather than extend
   assert.throws(() => checkHourLifetime({ ...receipt, observedAtMs: -10_000 }, { runtimeId: 'runtime', botIds, workMs: 3_900_000, now: 101, controlled: false }), { code: 'HOUR_LIFETIME_UNCONFIRMED' });
   assert.throws(() => checkHourLifetime({ ...receipt, resources: [] }, { runtimeId: 'runtime', botIds, workMs: 3_900_000, now: 101, controlled: false }), { code: 'HOUR_LIFETIME_UNCONFIRMED' });
 });
+
+
+test('planned dispatch expiry during cleanup does not erase already settled owner evidence', async () => {
+  const owner = controlledHourQuota(budgets); let expired = false;
+  const check = createHourQuotaGate({ receipt: () => ({...owner.receipt(), deadlineReached: expired}) }, budgets);
+  check(); await owner.close(); expired = true;
+  assert.equal(check({final:true}).closed,true);
+  assert.throws(() => check(), {code:'HOUR_MODEL_BUDGET_FAILED'});
+});

@@ -33,7 +33,7 @@ export function createHourQuotaGate(quota, budgets) {
         receipt.profile !== 'endurance' || receipt.model !== 'k3') throw invalid('HOUR_QUOTA_OWNER_CHANGED');
     const counters = ['forwarded', 'committedOutputTokens', 'reservedInputBytes', 'peakConcurrent', 'rejectedArrivals', 'activeRequests', 'outstandingOutputTokens'];
     if (!counters.every(key => Number.isSafeInteger(receipt[key]) && receipt[key] >= 0)) throw invalid('HOUR_QUOTA_RECEIPT_INVALID');
-    if (receipt.failure || receipt.deadlineReached || receipt.forwarded > HOUR_QUOTAS.maxRequests ||
+    if (receipt.failure || (!final && receipt.deadlineReached) || receipt.forwarded > HOUR_QUOTAS.maxRequests ||
         receipt.committedOutputTokens > HOUR_QUOTAS.maxAggregateOutputTokens ||
         receipt.reservedInputBytes > HOUR_QUOTAS.maxAggregateInputBytes || receipt.peakConcurrent > HOUR_QUOTAS.maxConcurrent ||
         receipt.rejectedArrivals !== 0 || (!final && receipt.admissionClosed)) throw invalid('HOUR_MODEL_BUDGET_FAILED');

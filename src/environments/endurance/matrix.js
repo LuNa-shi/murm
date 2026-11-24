@@ -37,7 +37,9 @@ export async function runHourMatrix({ configurations, modes = ['flat', 'agensh',
       // Environment preflight rejects; retain an explicit close observation.
       let ownerClosed = !ports?.quota;
       if (ports?.quota) try { await ports.quota.close(); ownerClosed = ports.quota.receipt().closed === true; } catch { /* unknown remains false */ }
-      results.push({ mode, accepted: false, preflightFailure: { code: /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code ?? '') ? error.code : 'HOUR_CONFIGURATION_FAILED' }, ownerClosed });
+      let quotaReceipt;
+      try { quotaReceipt = ports?.quota?.receipt(); } catch { /* preserve original preflight failure */ }
+      results.push({ mode, accepted: false, quota: quotaReceipt, preflightFailure: { code: /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code ?? '') ? error.code : 'HOUR_CONFIGURATION_FAILED' }, ownerClosed });
       break;
     }
     if (results.at(-1).businessFailure || results.at(-1).cleanup?.cleanup !== 'complete') break;
@@ -45,6 +47,6 @@ export async function runHourMatrix({ configurations, modes = ['flat', 'agensh',
   // Three real, independently reviewed mode results are the minimum matrix;
   // the current pending Flat workload deliberately prevents a blanket claim.
   const accepted = modes.length === 3 && results.length === 3 && results.every(row =>
-    !row.preflightFailure && !row.businessFailure && row.result?.state === 'work-and-cleanup-verified');
+    !row.preflightFailure && !row.businessFailure && !row.reportSaveFailure && row.result?.state === 'work-and-cleanup-verified');
   return { accepted, results };
 }

@@ -7,6 +7,7 @@ import { createAgenshRouter } from './router.js';
 import { createAgenshEventSubscription } from './event-source.js';
 import { httpClient } from './http.js';
 import { runInput } from '../shared/run-input.js';
+import { createInputAdmission } from '../shared/input-admission.js';
 import { runWithReport } from '../shared/run-report.js';
 
 const fail = code => Object.assign(new Error(code), { code });
@@ -22,24 +23,27 @@ export async function createAgenshTeam(options) {
   const { runId, image, outputDir, backend, model = 'default', exportLimit = 8 * 1024 ** 2, peerKeys = ['a', 'b'] } = options;
   const readinessTimeoutMs = options.router?.readinessTimeoutMs ?? 10_000;
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir ||
+      (options.maxConcurrentInputs !== undefined && (!Number.isSafeInteger(options.maxConcurrentInputs) || options.maxConcurrentInputs < 1 || options.maxConcurrentInputs > peerKeys.length)) ||
       !finite(exportLimit) || exportLimit > 64 * 1024 ** 2 || !finite(readinessTimeoutMs) ||
       !Array.isArray(peerKeys) || peerKeys.length < 2 || peerKeys.length > 8 || new Set(peerKeys).size !== peerKeys.length || peerKeys.some(key => typeof key !== 'string' || !/^[a-z][a-z0-9-]{0,15}$/.test(key))) throw new TypeError('Agensh team needs bounded distinct peers, image, output directory and export');
   const resources = createOwnedResources(); const lifetime = new AbortController();
   if (options.signal !== undefined && !(options.signal instanceof AbortSignal)) throw new TypeError('Team signal must be an AbortSignal');
   const signal = options.signal ? AbortSignal.any([options.signal, lifetime.signal]) : lifetime.signal;
+  const inputAdmission = options.maxConcurrentInputs === undefined ? undefined : createInputAdmission({ maxConcurrent: options.maxConcurrentInputs, maxPending: peerKeys.length, signal });
   const secrets = [options.gitea?.adminToken, options.mattermost?.adminToken, ...(options.secretValues ?? [])].filter(value => typeof value === 'string' && value);
   const redact = value => { let bytes = JSON.stringify(value); for (const secret of [...secrets].sort((a, b) => b.length - a.length)) bytes = bytes.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(bytes); };
   const peers = new Map(); const routers = new Map(); const subscriptions = new Map(); const unsubscriptions = []; const pendingSources = new Set();
-  const stoppedPeers = new Set();
+  const stoppedPeers = new Set(), unavailablePeers = new Map();
   let runtime, facilities, services, closing = false, closeWork, completed, fencedFailure;
   const hostStreamFailure = () => ['HOST_INPUT_FAILED', 'HOST_OUTPUT_FAILED'].includes(signal.reason?.code) ? signal.reason.code : undefined;
   const check = () => {
     if (signal.aborted) throw fencedFailure ?? fail(hostStreamFailure() ?? 'ENVIRONMENT_START_ABORTED');
   };
   const peerStates = () => [...peers].map(([key, bot]) => ({ key, botId: bot.id, profile: bot.profile,
+    ...(unavailablePeers.has(bot.id) ? { unavailable: unavailablePeers.get(bot.id) } : {}),
     router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() }));
   const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), resources: resources.snapshot(), peers: peerStates() });
-  function stop(reason) { closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
+  function stop(reason) { inputAdmission?.close(); closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
   function fence(reason) {
     if (closing || signal.aborted) return;
     const code = typeof reason === 'string' ? reason : reason?.code;
@@ -78,6 +82,12 @@ export async function createAgenshTeam(options) {
     services = createAgenshServices(facilities);
     const profiles = Object.fromEntries(facilities.peers.map(peer => [`peer-${peer.key}`, createPeerProfile({ image, model, facilities: { ...facilities, peer } })]));
     runtime = await createRuntime({ backend, services: services.services, profiles, maxBots: peerKeys.length, outputDir }); check();
+    unsubscriptions.push(runtime.onEvent(event => {
+      const planned = closing || [...stoppedPeers].some(key => peers.get(key)?.id === event.botId);
+      if (!planned && (event.type === 'exit' || (event.type === 'error' && event.fatal))) {
+        unavailablePeers.set(event.botId, { type: event.type, seq: event.seq });
+      }
+    }));
     for (const peer of facilities.peers) {
       const profile = `peer-${peer.key}`;
       const bot = await runtime.spawn({ requestId: `spawn-${peer.key}`, profile, bindings: services.bindingsFor(peer.key), secretEnv: { GITEA_TOKEN: peer.gitea.token }, collect: { paths: ['.'], includeGit: true, maxBytes: exportLimit, required: true } });
@@ -87,7 +97,10 @@ export async function createAgenshTeam(options) {
       const bot = peers.get(peer.key); const mapping = { botId: bot.id, workerId: peer.board.workerId };
       const board = httpClient(facilities.endpoints.board);
       const router = createAgenshRouter({ ...options.router, mapping, onFence: fence,
-        runInput: (text, wait) => runInput(runtime, bot.id, text, { ...wait, signal: AbortSignal.any([signal, wait.signal]) }),
+        runInput: (text, wait) => {
+          const send = () => runInput(runtime, bot.id, text, { ...wait, signal: AbortSignal.any([signal, wait.signal]) });
+          return inputAdmission ? inputAdmission.run(send) : send();
+        },
         readContext: options.router?.readContext ?? (async ({ signal }) => (await board('GET', `/board/${encodeURIComponent(facilities.boardId)}/read?viewer=${encodeURIComponent(peer.board.workerId)}`, undefined, { signal })).rendered) });
       routers.set(peer.key, router); unsubscriptions.push(runtime.onEvent(router.observe));
       const subscribe = options.router?.subscribe ?? createAgenshEventSubscription;

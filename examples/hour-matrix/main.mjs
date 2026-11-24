@@ -1,9 +1,10 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { resolve, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { runHourMatrix } from '../../src/environments/endurance/matrix.js';
 
+process.umask(0o077);
 const args = process.argv.slice(2);
 if (args.length !== 2 || args[0] !== '--config') {
   process.stderr.write('Usage: node examples/hour-matrix/main.mjs --config /absolute/frozen-config.mjs\n');
@@ -17,7 +18,9 @@ if (args.length !== 2 || args[0] !== '--config') {
     const directory = resolve('experiments', `hour-matrix-${randomUUID()}`);
     // Raw owner paths and private provider observations remain ignored locally.
     if (relative(resolve('experiments'), directory).startsWith('..')) throw new Error('Invalid private output');
-    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const root = resolve('experiments'); await mkdir(root, { recursive: true, mode: 0o700 });
+    if (await realpath(root) !== root) throw new Error('Private output parent must not traverse symlinks');
+    await mkdir(directory, { mode: 0o700 });
     const report = await runHourMatrix({ ...configuration, signal: controller.signal });
     await writeFile(join(directory, 'receipt.json'), `${JSON.stringify(report, null, 2)}\n`, { mode: 0o600, flag: 'wx' });
     process.stdout.write(`${JSON.stringify({ accepted: report.accepted, modes: report.results.map(row => ({ mode: row.mode,

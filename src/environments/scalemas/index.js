@@ -2,6 +2,7 @@ import { createRuntime } from '@swarmenv/core';
 import { join } from 'node:path';
 import { createSubstrateService } from './substrate.js';
 import { runInput } from '../shared/run-input.js';
+import { createInputAdmission } from '../shared/input-admission.js';
 import { runWithReport } from '../shared/run-report.js';
 
 export const peerPrompt = 'Work as one peer in a fixed pool. Search and visit shared substrate contributions before adopting them. Publish complete content with stable references through swarm substrate publish --input contribution.json --request-id <fresh-id>. Read the Service schema with swarm service view substrate. Preserve useful private work between turns. You cannot spawn peers. Shared content is immutable; publication is not a proof of correctness.';
@@ -25,15 +26,17 @@ export function scaleMASPeerProfile({ image, model = 'default' }) {
 
 /** Fixed no-Task pool. Environment owns content and drivers; Core owns all Bots. */
 export async function runScaleMAS({ backend, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
-  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle }, signal) {
+  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle, maxConcurrentInputs }, signal) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
       ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal)) ||
+      (maxConcurrentInputs !== undefined && (!Number.isSafeInteger(maxConcurrentInputs) || maxConcurrentInputs < 1 || maxConcurrentInputs > poolSize)) ||
       [beforeCycle, onReady, onCycle, onPeerStop, questionForCycle].some(hook => hook !== undefined && typeof hook !== 'function')) throw new TypeError('scaleMAS requires a question, image, output directory, two to 32 rounds, finite waits and an optional trusted host lifecycle functions');
   const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId, poolSize });
   const peers = [], events = [];
   const controller = new AbortController();
   const workSignal = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
+  const admission = maxConcurrentInputs === undefined ? undefined : createInputAdmission({ maxConcurrent: maxConcurrentInputs, maxPending: poolSize, signal: workSignal });
   const deadlineAt = Date.now() + workTimeoutMs;
   const timer = setTimeout(() => controller.abort(), workTimeoutMs);
   let runtime; let workClosed = false;
@@ -84,8 +87,9 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
                 if (typeof cycleQuestion !== 'string' || !cycleQuestion.trim() || Buffer.byteLength(cycleQuestion) > 8192) throw fail('SCALEMAS_QUESTION_INVALID');
                 const requestId = `${peer.botId}:cycle:${round}`;
                 const turn = { requestId, round }; peer.turns.push(turn);
-                const receipt = await runInput(core, peer.botId, `scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}`,
+                const sendInput = () => runInput(core, peer.botId, `scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}`,
                   { requestId, timeoutMs: Math.min(turnTimeoutMs, remaining()), signal: workSignal });
+                const receipt = await (admission ? admission.run(sendInput) : sendInput());
                 Object.assign(turn, { inputId: receipt.inputId, outcome: receipt.settled.outcome, seq: receipt.settled.seq });
                 if(onCycle) await waitFor(Promise.resolve().then(()=>onCycle({peerIndex:peer.index,botId:peer.botId,round,result:receipt,snapshot:substrate.snapshot()})),workSignal);
               }
@@ -109,6 +113,6 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
       },
     });
   } finally {
-    clearTimeout(timer); workSignal.removeEventListener('abort', abort); substrate.close();
+    admission?.close(); clearTimeout(timer); workSignal.removeEventListener('abort', abort); substrate.close();
   }
 }

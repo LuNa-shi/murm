@@ -176,7 +176,7 @@ output('13-hour-matrix.md', header('Bounded hour business and programming prompt
     'peer/index come from the actual fixed provisioned team; stage is hour phase index plus one (0 baseline, 1 through 4 window work). Stage zero omits programming to preserve request headroom. For final B, the host targets the actual peer username in a real Gitea issue comment after A stop; other inputs use sole-router kickoff/user ingress.')
   + block('scaleMAS frozen question', between('src/environments/endurance/scalemas-workload.js', "    question:'", "',\n"))
   + block('scaleMAS per-cycle composition', between('src/environments/endurance/scalemas-workload.js', '    questionForCycle(', '\n    ready('),
-    'peerIndex is actual zero-based fixed pool order; round is the actual cycle from zero through six. The validated question is sent in the ordinary Core followUp with peer/cycle header and cyclePrompt.')
+    'peerIndex is actual zero-based fixed pool order; round is the actual cycle from zero through five. The validated question is sent in the ordinary Core followUp with peer/cycle header and cyclePrompt.')
   + block('Programming instructions appended to repository workload', between('src/environments/endurance/programming.js', '      return `', '`;'),
     'peer and stage are trusted numeric host fields. text is the explicitly configured external programming prompt, validated as nonblank and at most 4096 UTF-8 bytes; the host verifier receives only the programming property read from the real committed/substrate JSON and never executes generated code.'));
 const leadHelperPath = 'src/environments/lead-helper/prompts.js';

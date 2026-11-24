@@ -20,14 +20,14 @@ Body SHA-256: `bbfde1eaeaf39ec0a940ec8d277719d2feff9fb7010435265ee8d8e1d5aeaa57`
 ````
 ## scaleMAS frozen question
 
-Body SHA-256: `f38d43e888fc8db8e9b9854bcdd168f6f74efca4f4fb7eaff13a7a1364a864c5`
+Body SHA-256: `a9823c29303715211a3e6a5fa73951abd8e9f79b5c4afbb825cca237e14d222a`
 
 ````text
-For every cycle publish exactly one self-contained JSON content record with fields peer, phase, n, square. peer and phase are the numbers in the host input. n=17*(peer+1)+phase and square=n*n. Use swarm substrate publish with a JSON input containing content as the JSON string and references as an array. Include the words square, peer and phase in the content. Peer 0 publishes normally through cycle 6 and then stops; its cycle 6 JSON must also contain tag:"hourproducerfinal". Other peers, from cycle 4 onward, search for the unique hourproducerfinal token, visit that exact original, and add adoptedSquare and sum fields: adoptedSquare=the visited original square; sum=your square+adoptedSquare. Cite its actual substrate address in references. Never fabricate an address. Batch search, visit, parse, check and publish in one coherent Bash call. Search requires an explicit limit from 1 to 8. All work is finite; preserve the original content. Read the Service schema and use actual Bash CLI calls.
+For every cycle publish exactly one self-contained JSON content record with fields peer, phase, n, square. peer and phase are the numbers in the host input. n=17*(peer+1)+phase and square=n*n. Use swarm substrate publish with a JSON input containing content as the JSON string and references as an array. Include the words square, peer and phase in the content. Peer 0 publishes normally through cycle 5 and then stops; its cycle 5 JSON must also contain tag:"hourproducerfinal". Other peers, from cycle 4 onward, search for the unique hourproducerfinal token, visit that exact original, and add adoptedSquare and sum fields: adoptedSquare=the visited original square; sum=your square+adoptedSquare. Cite its actual substrate address in references. Never fabricate an address. Use one coherent Bash call for the entire turn: write and run the requested program, parse its stdout locally, search/visit where required, independently check arithmetic, and publish the same complete JSON. Do not split this into exploratory model turns. Search requires an explicit limit from 1 to 8. All work is finite; preserve the original content. Use actual Bash CLI calls; read a schema only if needed to resolve a concrete missing field.
 ````
 ## scaleMAS per-cycle composition
 
-peerIndex is actual zero-based fixed pool order; round is the actual cycle from zero through six. The validated question is sent in the ordinary Core followUp with peer/cycle header and cyclePrompt.
+peerIndex is actual zero-based fixed pool order; round is the actual cycle from zero through five. The validated question is sent in the ordinary Core followUp with peer/cycle header and cyclePrompt.
 
 Body SHA-256: `644b629a436399869c806ccce656ebc0d5026cfec3027343ed8d1d78beb985ce`
 

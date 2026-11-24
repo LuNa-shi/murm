@@ -35,7 +35,7 @@
     },
     {
       "path": "src/environments/scalemas/index.js",
-      "sha256": "cecc5b308fb7199c8ce1267f898652db61107eab869131acaebfb3ab892ba557"
+      "sha256": "129e320e3976c8b1b46d49b7c36d596ba595455c1c4f80d6583f912ca2641367"
     },
     {
       "path": "src/environments/flat/controller.js",
@@ -71,7 +71,7 @@
     },
     {
       "path": "src/environments/agensh/team.js",
-      "sha256": "8f45caa211ddca3f0841cdd8ebd04c52ee8d6b13e7f3cb127c4c16272d495a11"
+      "sha256": "1d93f478f9d580a99b55cb60fd091679fff3f7680d13a0f41470dce030685e3f"
     },
     {
       "path": "src/environments/endurance/agensh-workload.js",
@@ -79,7 +79,7 @@
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
-      "sha256": "a64f6a63222ff73da5f7628631ab5c335776a3f5a79f29ee20bc9b172225ffab"
+      "sha256": "afd0c7743b8140cfc1b3fe76a78e9ecf5c01e9de043a43d300686b3e61f98502"
     },
     {
       "path": "src/environments/endurance/programming.js",
@@ -204,19 +204,19 @@
     {
       "path": "src/environments/scalemas/index.js",
       "anchor": "export const peerPrompt = '",
-      "line": 7,
+      "line": 8,
       "sha256": "7eec8ce7af8b62f501a2dd61909ba695955a3840e266d5a92734d2a92ab90d89"
     },
     {
       "path": "src/environments/scalemas/index.js",
       "anchor": "export const cyclePrompt = '",
-      "line": 8,
+      "line": 9,
       "sha256": "c783b6377a748f73ae5b941513f362f67a9ef7155f6da56671047e8af5182df4"
     },
     {
       "path": "src/environments/scalemas/index.js",
       "anchor": "runInput(core, peer.botId, `",
-      "line": 87,
+      "line": 90,
       "sha256": "8d397d35681b28e8057895eb650379c4c4f22b47c93cf99399f0be730e66f514"
     },
     {
@@ -277,7 +277,7 @@
       "path": "src/environments/endurance/scalemas-workload.js",
       "anchor": "    question:'",
       "line": 17,
-      "sha256": "f38d43e888fc8db8e9b9854bcdd168f6f74efca4f4fb7eaff13a7a1364a864c5"
+      "sha256": "a9823c29303715211a3e6a5fa73951abd8e9f79b5c4afbb825cca237e14d222a"
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
@@ -499,7 +499,7 @@
     },
     {
       "path": "docs/architecture/prompts/13-hour-matrix.md",
-      "sha256": "79f7f34e23d655f98ac7392de4ce4cf9b94f72136abc394e90ff0a914ea7d767"
+      "sha256": "2c3021d810cd7bcca85c006e53f2164a97882ca78f94621c79c8bdd62b30f749"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",
