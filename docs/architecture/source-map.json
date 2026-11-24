@@ -1448,7 +1448,7 @@
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
       ],
-      "role": "Run-scoped fixed-team Git provisioning, PR authorization and byte verification"
+      "role": "Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification"
     },
     {
       "path": "src/environments/lead-helper/index.js",
@@ -1456,7 +1456,7 @@
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
       ],
-      "role": "Public Core fixed-team Environment, exclusive workflow and pending cleanup ownership"
+      "role": "Public Core fixed-team Environment, exclusive short or four-stage workflow and pending cleanup ownership"
     },
     {
       "path": "src/environments/lead-helper/prompts.js",

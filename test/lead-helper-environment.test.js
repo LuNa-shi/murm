@@ -21,7 +21,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
 } });
 const { createLeadHelperEnvironment } = await import('../src/environments/lead-helper/index.js'); hooks.deregister();
 
-async function scenario(t, failure, fixturePrograms = false, helperCount = 2) {
+async function scenario(t, failure, fixturePrograms = false, helperCount = 2, staged = false) {
   const helpers = Array.from({ length: helperCount }, (_, index) => `helper${index + 1}`);
   transport.reset(); transport.collectable = true; let environment; let lock; let server;
   const work = new Set(), guests = new Map(), commands = new AbortController(); let stopping = false;
@@ -52,12 +52,15 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2) {
   const repository = join(directory, 'repo.git'); await run('git', ['init', '--bare', repository]);
   if (fixturePrograms) { const seed = join(directory, 'seed'); await run('git', ['init', '-b', 'main', seed]); await writeFile(join(seed, 'README.txt'), 'Initial project\n'); await run('git', ['-C', seed, 'add', '.']); await run('git', ['-C', seed, '-c', 'user.name=fixture', '-c', 'user.email=fixture@test.invalid', 'commit', '-m', 'Seed']); await run('git', ['-C', seed, 'push', repository, 'main']); }
   const bin = join(directory, 'bin'); await mkdir(bin); await writeFile(join(bin, 'swarm'), `#!/usr/bin/env node\nimport(${JSON.stringify(new URL('../scripts/swarm.mjs', import.meta.url).href)});\n`, { mode: 0o700 });
+  const fileReads = new Map();
   server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, 'http://localhost'); let result;
       if (url.pathname.includes('/branches/')) result = { commit: { id: (await run('git', ['--git-dir', repository, 'rev-parse', url.pathname.split('/').at(-1)])).stdout.trim() } };
       else if (url.pathname.includes('/contents/')) {
-        const path = decodeURIComponent(url.pathname.split('/contents/')[1]); const content = (await run('git', ['--git-dir', repository, 'show', `${url.searchParams.get('ref')}:${path}`])).stdout;
+        const path = decodeURIComponent(url.pathname.split('/contents/')[1]); let content = (await run('git', ['--git-dir', repository, 'show', `${url.searchParams.get('ref')}:${path}`])).stdout;
+        fileReads.set(path, (fileReads.get(path) ?? 0) + 1);
+        if (failure === 'pinned-corruption' && path === 'helper1-stage-0.txt' && fileReads.get(path) > 1) content = 'corrupt fixed object';
         result = { type: 'file', encoding: 'base64', path, size: Buffer.byteLength(content), content: Buffer.from(content).toString('base64') };
       } else throw new Error('Unexpected fixture route');
       response.setHeader('content-type', 'application/json'); response.end(JSON.stringify(result));
@@ -114,16 +117,16 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2) {
         if (payload.type === 'initialize') {
           assert.deepEqual(payload.helpers, Object.fromEntries(helpers.map(name => [name, team[name]])));
           await call(role, 'announce', { text: 'Implement basic checks', feedback_ids: [] });
-          for (const helper of helpers) { await call(role, 'assign', { helper_id: team[helper], text: helper }); await call(role, 'create_subtask', { id: helper, title: 'Initial artifact', path: `${helper}.txt` }); }
+          for (const helper of helpers) { await call(role, 'assign', { helper_id: team[helper], text: helper }); await call(role, 'create_subtask', { id: helper, title: 'Initial artifact', path: staged ? payload.paths[helper] : `${helper}.txt` }); }
         } else {
-          assert.equal(payload.supplement, 'Add explicit evidence');
-          await call(role, 'announce', { text: 'Add explicit evidence based on public feedback', feedback_ids: state.notes.map(row => row.seq), user_input_id: payload.user_input_id });
-          for (const helper of helpers) await call(role, 'create_subtask', { id: `${helper}-next`, title: 'Adopt evidence direction', path: `${helper}-next.txt` });
+          assert.equal(payload.supplement, staged ? `Evidence stage ${payload.stage}` : 'Add explicit evidence');
+          await call(role, 'announce', { text: staged ? `Evidence direction ${payload.stage}` : 'Add explicit evidence based on public feedback', feedback_ids: staged && failure !== 'stale-feedback' ? payload.feedback_ids : state.notes.map(row => row.seq), user_input_id: payload.user_input_id });
+          for (const helper of helpers) await call(role, 'create_subtask', { id: staged ? `${helper}-stage-${payload.stage}` : `${helper}-next`, title: 'Adopt evidence direction', path: staged ? payload.paths[helper] : `${helper}-next.txt` });
         }
       } else {
-        const state = await call(role, 'read'); const next = payload.type === 'helper-followup'; const id = role + (next ? '-next' : '');
+        const state = await call(role, 'read'); const next = payload.type === 'helper-followup'; const id = staged && next ? `${role}-stage-${payload.stage}` : role + (next ? '-next' : '');
         const owned = await call(role, 'claim', { subtask_id: id, expected_revision: 0 });
-        if (failure && role === 'helper1' && !next) {
+        if (failure && !['stale-feedback', 'pinned-corruption'].includes(failure) && role === 'helper1' && !next) {
           if (failure === 'unknown') { input.receipt = { status: 'unknown' }; return; }
           if (failure === 'locked-failed') { lock = new DatabaseSync(join(directory, 'lead-helper-test', 'board.sqlite')); lock.exec('BEGIN IMMEDIATE'); }
           transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXED_FAILURE', message: 'Controlled failure' } }); return;
@@ -132,7 +135,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2) {
         await assert.rejects(call(role, 'announce', { text: 'forged lead', feedback_ids: [] }));
         await assert.rejects(call(role, 'update_subtask', { subtask_id: other, expected_revision: 0, text: 'unauthorized' }));
         const text = next ? `Adopted ${state.directions.at(-1).text}\n` : `${role} actual initial delivery\n`;
-        const path = `${id}.txt`; await writeFile(join(privateDirectories[role], path), text);
+        const path = staged ? payload.paths[role] : `${id}.txt`; await writeFile(join(privateDirectories[role], path), text);
         const git = args => run('git', ['-C', privateDirectories[role], ...args], { env: { ...process.env, GIT_AUTHOR_NAME: role, GIT_COMMITTER_NAME: role, GIT_AUTHOR_EMAIL: `${role}@test.invalid`, GIT_COMMITTER_EMAIL: `${role}@test.invalid` } });
         await git(['add', path]); await git(['commit', '-m', id]); await git(['push', 'origin', role]);
         const commit = (await git(['rev-parse', 'HEAD'])).stdout.trim();
@@ -154,19 +157,59 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2) {
     // cached, so a later close cannot flush evidence from an unfinished send.
     environment = { ...owned, async close(options) { await drainWork(); return owned.close(options); } };
     return environment;
-  }, run: owned => owned.runWorkflow({ goal: 'Deliver one check per assigned helper', supplement: fixturePrograms ? adjustedDirection : 'Add explicit evidence' }), redact: value => environment ? environment.redact(value) : value });
+  }, run: async owned => {
+    if (!staged) return owned.runWorkflow({ goal: 'Deliver one check per assigned helper', supplement: fixturePrograms ? adjustedDirection : 'Add explicit evidence' });
+    const stages = [];
+    for (let stage = 0; stage < 4; stage++) {
+      for (const botId of Object.values(team)) assert.equal((await owned.get(botId)).status, 'idle');
+      const payload = { ...(stage ? { supplement: `Evidence stage ${stage}` } : { goal: 'Deliver initial evidence' }),
+        paths: Object.fromEntries(helpers.map(role => [role, `${role}-stage-${stage}.txt`])) };
+      const progressing = owned.runStage(payload);
+      await assert.rejects(owned.runStage(payload), { code: 'INVALID_STAGE' });
+      stages.push(await progressing);
+      await assert.rejects(owned.runStage({ supplement: 'Reuse old paths', paths: payload.paths }), { code: 'INVALID_STAGE' });
+    }
+    await assert.rejects(owned.runStage({ supplement: 'fifth', paths: {} }), { code: 'INVALID_STAGE' });
+    return { stages, environment: owned.snapshot() };
+  }, redact: value => environment ? environment.redact(value) : value });
   if (!failure) assert.equal(backgroundFailure, undefined, backgroundFailure?.stderr ?? String(backgroundFailure));
   assert.equal(transport.spawns.size, helperCount + 1, JSON.stringify(report.businessFailure)); assert.equal(JSON.stringify(report).includes('private-helper'), false);
   if (failure) {
     assert.ok(report.businessFailure);
     if (failure === 'locked-failed') assert.equal(report.businessFailure.code, 'input_failed', 'Board persistence failure cannot replace the native failure');
     const state = report.businessFailure.details.at(-1).board;
+    if (failure === 'pinned-corruption') {
+      assert.equal(report.businessFailure.code, 'DELIVERY_INVALID');
+      assert.equal(state.subtasks.filter(row => row.state === 'complete').length, 12);
+      assert.equal(transport.submissions.size, 16);
+      return;
+    }
+    if (failure === 'stale-feedback') {
+      assert.equal(report.businessFailure.code, 'DIRECTION_ADJUSTMENT_INVALID');
+      assert.equal(transport.submissions.size, 9, 'no helpers receive the stage with stale feedback');
+      assert.equal(state.subtasks.filter(row => row.state === 'complete').length, 6);
+      return;
+    }
     const task = state.subtasks.find(row => row.id === 'helper1'); assert.equal(task.owner, team.helper1); if (failure === 'locked-failed') assert.ok(report.businessFailure.details.at(-1).pendingBoardFailures.some(row => row.botId === team.helper1 && row.code === 'input_failed')); else assert.ok(task.failure); assert.equal(task.state, 'claimed');
     assert.equal(transport.submissions.size, helperCount + 1, 'No adjustment, replacement or resubmission after failure');
     if (failure === 'unknown') { assert.ok(report.cleanupFailure); assert.equal(report.cleanup.bots.find(row => row.botId === team.helper1).execution, 'unknown'); }
   } else {
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure)); assert.equal(report.cleanupFailure, null, JSON.stringify(report.cleanup));
-    const result = report.result; assert.equal(result.environment.delivered.length, helperCount * 2); assert.equal(result.environment.inputs.length, helperCount * 2 + 2); assert.equal(result.environment.unfinished.length, fixturePrograms ? 1 : 0);
+    const result = report.result; if (staged) {
+      assert.equal(result.stages.length, 4); assert.equal(result.environment.delivered.length, 12);
+      assert.equal(result.stages[3].pinnedDeliveries.length, 12);
+      assert.equal(new Set(result.environment.delivered.map(row => row.path)).size, 12);
+      for (let stage = 0; stage < 4; stage++) {
+        const receipt = result.stages[stage];
+        assert.equal(receipt.stage, stage); assert.equal(receipt.inputs.length, 4);
+        assert.equal(receipt.deliveries.length, 3); assert.equal(receipt.feedback.length, 3);
+        assert.deepEqual(new Set(receipt.deliveries.map(row => row.owner)), new Set(helpers.map(role => team[role])));
+        for (const input of receipt.inputs) { assert.equal(input.receipt.status, 'accepted'); assert.equal(input.settled.outcome, 'completed'); assert.equal(input.settled.botId, input.botId); }
+        if (stage) assert.deepEqual(new Set(receipt.direction.feedback_ids), new Set(result.stages[stage-1].feedback.map(row => row.seq)));
+      }
+      assert.equal(report.cleanup.cleanup, 'complete'); return;
+    }
+    assert.equal(result.environment.delivered.length, helperCount * 2); assert.equal(result.environment.inputs.length, helperCount * 2 + 2); assert.equal(result.environment.unfinished.length, fixturePrograms ? 1 : 0);
     assert.deepEqual(new Set(result.environment.delivered.map(row => row.owner)), new Set(helpers.map(role => team[role])));
     assert.equal(result.adjustedDirection.user_input_id, 'lead-adjust'); assert.equal(result.adjustedDirection.feedback_ids.length, helperCount);
     assert.equal(report.cleanup.bots.length, helperCount + 1); assert.equal(report.cleanup.cleanup, 'complete');
@@ -206,3 +249,10 @@ test('lead-helper provisions the capacity captured before async startup', async 
   options.helperCount = 7;
   await assert.rejects(creating, { code: 'CAPACITY_OBSERVED' });
 });
+
+test('four original Bots sustain four Board/Git stages with twelve new fixed deliveries and prior feedback adoption', t => scenario(t, undefined, false, 3, true));
+
+test('staged lead cannot substitute accumulated old feedback for the previous three actual results', t => scenario(t, 'stale-feedback', false, 3, true));
+test('staged helper failure fences all later stages and retains the exclusive owner', t => scenario(t, 'failed', false, 3, true));
+
+test('final staged fixed-object read rejects corrupted remote bytes despite twelve verified Board deliveries', t => scenario(t, 'pinned-corruption', false, 3, true));

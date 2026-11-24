@@ -71,20 +71,24 @@ export function createLeadHelperGit(facilities, helperCount) {
       if (caller.runtimeId !== runtimeId || caller.profile !== profile || caller.binding !== actor.binding || input.head !== actor.branch) throw fail('NOT_ALLOWED');
       return httpClient(origin, `token ${actor.token}`)('POST', `${scope}/pulls`, { title: input.title, head: actor.branch, base: 'main', ...(input.body === undefined ? {} : { body: input.body }) }, { signal });
     } } };
+  async function verifyDelivery({ actor: botId, delivery, direction, requireDirectionText = false, signal }, checkHead) {
+    const actor = resolve(botId); const request = httpClient(origin, `token ${actor.token}`);
+    if (checkHead) {
+      const ref = await request('GET', `${scope}/branches/${e(actor.branch)}`, undefined, { signal });
+      if (ref?.commit?.id !== delivery.commit) throw fail('DELIVERY_INVALID');
+    }
+    const file = await request('GET', `${scope}/contents/${delivery.path.split('/').map(e).join('/')}?ref=${delivery.commit}`, undefined, { signal });
+    if (file?.type !== 'file' || file.encoding !== 'base64' || file.path !== delivery.path || typeof file.content !== 'string' || file.content.length > 1_500_000) throw fail('DELIVERY_INVALID');
+    const bytes = Buffer.from(file.content.replace(/\s/g, ''), 'base64'); const sha256 = createHash('sha256').update(bytes).digest('hex');
+    if (bytes.length !== delivery.bytes || file.size !== bytes.length || bytes.length > 1048576 || sha256 !== delivery.sha256) throw fail('DELIVERY_INVALID');
+    if (requireDirectionText && (!direction || !bytes.toString('utf8').includes(direction.text))) throw fail('DELIVERY_INVALID');
+    return { ...delivery, ...(requireDirectionText ? { directionEvidence: { directionId: direction.seq, textSha256: createHash('sha256').update(direction.text).digest('hex') } } : {}), verified: true, accountId: actor.accountId, branch: actor.branch };
+  }
   return Object.freeze({
     register(services) { services.registerService(registration); },
     bindTeam(id, identities) { if (team || typeof id !== 'string' || !id || !matchesTeam(roles, identities)) throw fail('NOT_ALLOWED'); runtimeId = id; team = structuredClone(identities); },
-    async verifyDelivery({ actor: botId, delivery, direction, requireDirectionText = false, signal }) {
-      const actor = resolve(botId); const request = httpClient(origin, `token ${actor.token}`);
-      const ref = await request('GET', `${scope}/branches/${e(actor.branch)}`, undefined, { signal });
-      if (ref?.commit?.id !== delivery.commit) throw fail('DELIVERY_INVALID');
-      const file = await request('GET', `${scope}/contents/${delivery.path.split('/').map(e).join('/')}?ref=${delivery.commit}`, undefined, { signal });
-      if (file?.type !== 'file' || file.encoding !== 'base64' || file.path !== delivery.path || typeof file.content !== 'string' || file.content.length > 1_500_000) throw fail('DELIVERY_INVALID');
-      const bytes = Buffer.from(file.content.replace(/\s/g, ''), 'base64'); const sha256 = createHash('sha256').update(bytes).digest('hex');
-      if (bytes.length !== delivery.bytes || file.size !== bytes.length || bytes.length > 1048576 || sha256 !== delivery.sha256) throw fail('DELIVERY_INVALID');
-      if (requireDirectionText && (!direction || !bytes.toString('utf8').includes(direction.text))) throw fail('DELIVERY_INVALID');
-      return { ...delivery, ...(requireDirectionText ? { directionEvidence: { directionId: direction.seq, textSha256: createHash('sha256').update(direction.text).digest('hex') } } : {}), verified: true, accountId: actor.accountId, branch: actor.branch };
-    },
+    verifyDelivery: value => verifyDelivery(value, true),
+    verifyPinnedDelivery: value => verifyDelivery(value, false),
     identities() { return Object.fromEntries(Object.entries(actors).map(([role, { token, ...identity }]) => [role, identity])); },
   });
 }

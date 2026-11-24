@@ -27,11 +27,12 @@ export async function createLeadHelperEnvironment(options) {
   let runtime; let board; let git; let unsubscribe; let closing = false; let closeWork; let complete; let workflowUsed = false; let boardFenceFailure;
   const pendingFences = new Map(); const activeInputs = new Set();
   const team = {}; const inputs = []; const events = [];
+  const stages = []; let stageActive = false;
   const redact = value => { let body = JSON.stringify(value); for (const secret of [...secrets].sort((a, b) => b.length - a.length)) body = body.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(body); };
   const snapshot = () => {
     let publicBoard; let boardReadFailure;
     try { publicBoard = board?.snapshot(); } catch { boardReadFailure = { code: 'BOARD_READ_FAILED' }; }
-    return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, git: git?.identities(), board: publicBoard, ...(boardReadFailure ? { boardReadFailure } : {}), inputs: structuredClone(inputs), events: structuredClone(events),
+    return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, stages: structuredClone(stages), git: git?.identities(), board: publicBoard, ...(boardReadFailure ? { boardReadFailure } : {}), inputs: structuredClone(inputs), events: structuredClone(events),
       delivered: publicBoard?.subtasks.filter(row => row.delivery?.verified) ?? [], unfinished: publicBoard?.subtasks.filter(row => row.state !== 'complete') ?? [], inputUnknown: inputs.filter(row => row.uncertain).map(row => ({ botId: row.botId, requestId: row.requestId, inputId: row.inputId, code: row.code })), resources: resources.snapshot(),
       ...(boardFenceFailure ? { boardFenceFailure, pendingBoardFailures: [...pendingFences.values()] } : {}), limitations: ['Local SQLite Board and exclusive turn controller', 'Fixed preconfigured team; no replacement or claim reclamation', 'Upstream scale and performance not verified'] };
   };
@@ -65,6 +66,14 @@ export async function createLeadHelperEnvironment(options) {
     }
     return structuredClone(await closeWork);
   }
+  const dispatch = async (role, requestId, payload, workSignal) => {
+    if (workSignal.aborted || closing) throw fail('WORKFLOW_STOPPED');
+    const row = { role, botId: team[role], requestId, source: payload.type }; inputs.push(row); activeInputs.add(team[role]);
+    try {
+      const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs: turnTimeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settledSeq: result.settled.seq, settled: { botId: result.settled.botId, seq: result.settled.seq, outcome: result.settled.outcome } }); return result;
+    } catch (error) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) }); recordFence({ botId: team[role], code: row.code }); lifetime.abort(); throw error; }
+    finally { activeInputs.delete(team[role]); }
+  };
   const abortStartup = () => { if (runtime) void runtime.close({ timeoutMs: 1 }).catch(() => {}); };
   startup.addEventListener('abort', abortStartup, { once: true });
   try {
@@ -101,18 +110,66 @@ export async function createLeadHelperEnvironment(options) {
     }
     if (startup.aborted || lifetime.signal.aborted) throw fail('ENVIRONMENT_START_ABORTED');
     board.bindTeam(runtime.id, team); git.bindTeam(runtime.id, team);
-    return Object.freeze({ id: runtime.id, snapshot, redact, close,
+    return Object.freeze({ id: runtime.id, snapshot, redact, close, get: botId => runtime.get(botId),
+      async runStage({ goal, supplement, paths, signal } = {}) {
+        const stage = stages.length;
+        const text = stage === 0 ? goal : supplement;
+        if (closing || stageActive || stage >= 4 || helperCount !== 3 || workflowUsed && stage === 0 ||
+            typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 8192 ||
+            (signal !== undefined && !(signal instanceof AbortSignal)) ||
+            !paths || Object.keys(paths).length !== 3 || helperRoles.some(role => !Object.hasOwn(paths, role) || typeof paths[role] !== 'string' ||
+              paths[role].length > 256 || !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+$/.test(paths[role])) ||
+            new Set(Object.values(paths)).size !== 3 || stages.some(prior => Object.values(paths).some(path => Object.values(prior.paths).includes(path)))) throw fail('INVALID_STAGE');
+        const fixedPaths = structuredClone(paths);
+        workflowUsed = true; stageActive = true;
+        const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
+        const send = (role, payload) => dispatch(role, `stage-${stage}-${role}`, { ...payload, stage, paths: fixedPaths }, workSignal);
+        const helpers = Object.fromEntries(helperRoles.map(role => [role, team[role]]));
+        const previous = stages.at(-1); const startInput = inputs.length;
+        try {
+          const before = board.snapshot();
+          if (stage === 0) await send('lead', { type: 'initialize', instruction: initializeInstruction + ' Use exactly the supplied role-to-path map for this stage.', goal: text, helpers });
+          else {
+            const userInputId = `lead-stage-${stage}`;
+            board.registerUserInput(userInputId, text);
+            await send('lead', { type: 'user-and-feedback', instruction: leadAdjustmentInstruction + ' Cite exactly the previous stage feedback_ids and use the supplied new role-to-path map.',
+              user_input_id: userInputId, supplement: text, feedback_ids: previous.feedback.map(row => row.seq) });
+          }
+          const announced = board.snapshot(); const direction = announced.directions.at(-1);
+          if (!direction || direction.seq <= (before.directions.at(-1)?.seq ?? 0) ||
+              helperRoles.some(role => !announced.assignments.some(row => row.helper_id === team[role]) ||
+                !announced.subtasks.some(row => row.path === fixedPaths[role] && row.state === 'ready' && !row.owner && !before.subtasks.some(old => old.id === row.id)))) throw fail('STAGE_DIRECTION_INVALID');
+          if (stage && (direction.text === previous.direction.text || direction.user_input_id !== `lead-stage-${stage}` ||
+              direction.feedback_ids.length !== 3 || previous.feedback.some(note => !direction.feedback_ids.includes(note.seq)))) throw fail('DIRECTION_ADJUSTMENT_INVALID');
+          const results = await Promise.allSettled(helperRoles.map(role => send(role, { type: stage ? 'helper-followup' : 'helper-initial',
+            instruction: (stage ? helperFollowupInstruction : helperInitialInstruction) + ' Deliver only your supplied path and publish one new feedback note.' })));
+          if (results.some(row => row.status === 'rejected')) throw results.find(row => row.status === 'rejected').reason;
+          const final = board.snapshot();
+          const deliveries = helperRoles.map(role => final.subtasks.find(row => row.owner === team[role] && row.path === fixedPaths[role] &&
+            row.state === 'complete' && row.directionId === direction.seq && row.delivery?.verified && !before.subtasks.some(old => old.id === row.id || old.delivery?.commit === row.delivery.commit)));
+          if (deliveries.some(row => !row)) throw fail('DIRECTION_NOT_ADOPTED');
+          const feedback = deliveries.map(row => final.notes.find(note => note.actor === row.owner && note.subtask_id === row.id && note.seq > direction.seq && !before.notes.some(old => old.seq === note.seq)));
+          if (feedback.some(row => !row)) throw fail('HELPER_FEEDBACK_INVALID');
+          const receipt = { stage, paths: fixedPaths, direction, deliveries, feedback, boardRevision: final.history.at(-1).seq,
+            inputs: structuredClone(inputs.slice(startInput)) };
+          if (stage === 3) {
+            receipt.pinnedDeliveries = [];
+            for (const prior of [...stages, receipt]) for (const task of prior.deliveries) {
+              if (workSignal.aborted || closing) throw fail('WORKFLOW_STOPPED');
+              const proof = await git.verifyPinnedDelivery({ actor: task.owner, delivery: task.delivery, direction: prior.direction,
+                requireDirectionText: prior.stage > 0, signal: workSignal });
+              receipt.pinnedDeliveries.push({ stage: prior.stage, botId: task.owner, ...proof });
+            }
+          }
+          stages.push(receipt);
+          return structuredClone(receipt);
+        } catch (error) { stop(); error.details = [...(error.details ?? []), snapshot()]; throw error; }
+        finally { stageActive = false; }
+      },
       async runWorkflow({ goal, supplement, signal } = {}) {
         if (closing || workflowUsed || ![goal, supplement].every(value => typeof value === 'string' && value.trim() && Buffer.byteLength(value) <= 8192)) throw fail('INVALID_WORKFLOW'); workflowUsed = true;
         const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
-        const send = async (role, requestId, payload) => {
-          if (workSignal.aborted || closing) throw fail('WORKFLOW_STOPPED');
-          const row = { role, botId: team[role], requestId, source: payload.type }; inputs.push(row); activeInputs.add(team[role]);
-          try {
-            const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs: turnTimeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, state: 'completed', settledSeq: result.settled.seq }); return result;
-          } catch (error) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) }); recordFence({ botId: team[role], code: row.code }); lifetime.abort(); throw error; }
-          finally { activeInputs.delete(team[role]); }
-        };
+        const send = (role, requestId, payload) => dispatch(role, requestId, payload, workSignal);
         const helpers = Object.fromEntries(helperRoles.map(role => [role, team[role]]));
         const helperIds = Object.values(helpers);
         try {
