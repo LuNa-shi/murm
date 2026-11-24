@@ -19,7 +19,7 @@ const {runSubagentsHour}=await import('../examples/subagents-environment/hour.mj
 const hash=value=>createHash('sha256').update(value).digest('hex');
 
 async function setup(t,{changedSession=false,changedArchive=false,lateExit=false,queuedParent=false,verbatimTasks=false,
-  narratedResults=false,childTrailer=false}={}) {
+  narratedResults=false,childTrailer=false,fractionalLastWake=false,exhaustedLastWake=false}={}) {
   transport.reset();transport.collectable=true;
   const outputDir=await mkdtemp(join(tmpdir(),'subagents-hour-'));t.after(()=>rm(outputDir,{recursive:true,force:true}));
   let tick=0,parentId,stageIndex,closed=false;const deadlineAt=Date.now()+6000000;
@@ -91,7 +91,7 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
     for(const [path,text]of entries){const bytes=Buffer.from(changedArchive&&path.endsWith('hour-program-3.py')?'changed source':text);totalBytes+=bytes.length;yield {type:'file',path,bytes:bytes.length,mode:0o644};yield {type:'chunk',data:bytes.toString('base64')};yield {type:'fileEnd',sha256:hash(bytes)};}
     yield {type:'end',totalBytes,fileCount:entries.length,directoryCount:directories.size};
   };
-  return {outputDir,getTick:()=>tick,yields,options:{backend:{...configuration,sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'}},image:'test',outputDir,clock:()=>tick,waitForMs:async ms=>{tick+=ms;if(lateExit&&tick>=3600000)transport.spawns.get(parentId).onEvent({type:'exit',expected:false,reason:'controlled-last-wake'});},
+  return {outputDir,getTick:()=>tick,yields,options:{backend:{...configuration,sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'}},image:'test',outputDir,clock:()=>tick,waitForMs:async ms=>{tick+=ms;if(tick===3_300_000){if(fractionalLastWake)tick+=0.25;else if(exhaustedLastWake)tick+=299_999.75;}if(lateExit&&tick>=3600000)transport.spawns.get(parentId).onEvent({type:'exit',expected:false,reason:'controlled-last-wake'});},
     programming:{prompt:({peer,stage})=>`Implement finite stage ${stage} problem ${peer+35}.`,verify:async({peer,stage,submission})=>submission?.task===`task-${stage}-${peer}`&&submission.sourceSha256===hash(`print(${peer+stage})\n`)&&submission.answersSha256===hash(JSON.stringify([peer+stage]))},
     quota:{url:configuration.models.default.upstream.url,receipt:()=>({profile:'time_only',deadlineAt,forwarded:1,active:0,closed,unknownRequests:1}),close:async()=>{closed=true;}},
     admit:async({runtime,botIds,workMs})=>({runtimeId:runtime.id,clockId:'controlled',observedAtMs:tick,workDeadlineAtMs:tick+workMs,stopAtMs:tick+workMs+600000,resources:botIds.map(botId=>({botId,sandboxId:'fixture-'+botId,expiresAtMs:Date.now()+6000000}))}),
@@ -216,4 +216,22 @@ test('queued parent followUps require dispatch and incomplete turns to yield bef
       assert.equal(exact.quote,child.result.output);
     }
   }
+});
+
+// Native monotonic clocks need not land on integer millisecond boundaries.
+test('fractional final-stage wake floors remaining wait without extending the hour',async t=>{
+  const {options,getTick}=await setup(t,{fractionalLastWake:true});const report=await runSubagentsHour(options);
+  assert.equal(report.businessFailure,null,JSON.stringify(report.businessFailure));
+  assert.equal(report.cleanupFailure,null,JSON.stringify(report.cleanupFailure));
+  assert.equal(report.result.state,'controlled');assert.equal(report.result.durationMs,3_600_000);
+  assert.equal(getTick(),3_600_000);assert.equal(report.result.evidence.length,4);
+  assert.equal(report.result.evidence[3].atMs,3_300_000.25);
+  assert.equal(report.archives.children.length,12);assert.equal(report.archives.parents.length,4);
+});
+
+test('less than one millisecond of final-stage allowance cannot be rounded up into work',async t=>{
+ const {options}=await setup(t,{exhaustedLastWake:true});let verified=0;const verify=options.programming.verify;
+ options.programming.verify=async context=>{verified++;return verify(context);};
+ const report=await runSubagentsHour(options);assert.ok(report.businessFailure);assert.equal(report.result,null);
+ assert.equal(verified,9);assert.equal(report.cleanup.cleanup,'complete');
 });
