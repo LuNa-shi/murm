@@ -74,7 +74,9 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     if (!task || task.mission_id !== missionId) denied('Task does not belong to this Mission');
     if (operation === 'task_view') {
       if (task.workspace?.workspace_id && task.workspace.workspace_id !== workspaceId) denied('Task Workspace belongs to another Environment');
-      const snapshot = await missionWorkspace.exportRevision({ workspaceId, revision: task.workspace?.revision ?? 'main' });
+      const snapshot = await missionWorkspace.exportRevision({ workspaceId, revision: task.workspace?.revision ?? 'main', signal });
+      signal?.throwIfAborted();
+      if (closing) denied('Flat Task Service is closing');
       if (snapshot.mission_id !== missionId) denied('Preview Workspace belongs to another Mission');
       previews.set(bot.bot_id, { revision: snapshot.revision, workspace_id: workspaceId });
       return taskService.dispatch(operation, { task_id: task.task_id }, makeEnvelope({ actorRef: bot.bot_id, taskId: task.task_id }));

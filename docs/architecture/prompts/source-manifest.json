@@ -120,7 +120,7 @@
     },
     {
       "path": "src/runtime/mission-workspace.js",
-      "sha256": "007b7db892e7450b80a7727e230e3da232577333c260ebcd6070b6eed5a7556c"
+      "sha256": "9df541ce8e35cd295cc9b5af96f10982878fbec8af24fa9d983dc0012976463c"
     },
     {
       "path": "src/sdk/service-catalog.js",

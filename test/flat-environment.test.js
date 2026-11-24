@@ -333,6 +333,7 @@ for (const [operation, method, payload] of [
   ['workspace_public_view', 'get', {}],
   ['workspace_public_read', 'read', { path: 'input.txt' }],
   ['workspace_public_files', 'files', {}],
+  ['task_view', 'exportRevision', null],
 ]) test(`flat ${operation} Core revocation cancels its actual queued read while another Bot and a write retain lock order`, {
   timeout: 20_000,
 }, async t => {
@@ -357,7 +358,8 @@ for (const [operation, method, payload] of [
         const response = await fetch(`${url.origin}/call`, { method: 'POST',
           headers: { authorization: `Bearer ${credentials.secretEnvironment.SWARMENV_BRIDGE_TOKEN}`,
             'content-type': 'application/json' },
-          body: JSON.stringify({ service_id: 'workspace', operation, operation_id: requestId, payload }),
+          body: JSON.stringify({ service_id: operation === 'task_view' ? 'task' : 'workspace', operation, operation_id: requestId,
+            payload: payload ?? { task_id: stores.task.task_id } }),
           signal: AbortSignal.timeout(5000) });
         return { status: response.status, body: await response.json() };
       };
@@ -408,6 +410,7 @@ for (const [operation, method, payload] of [
         if (method === 'read') assert.equal(survivor.body.result.content, 'fixed λ\n');
         if (method === 'files') assert.equal(survivor.body.result.files[0].path, 'input.txt');
         if (method === 'get') assert.equal(survivor.body.result.mission_id, stores.missionId);
+        if (method === 'exportRevision') assert.equal(survivor.body.result.task.task_id, stores.task.task_id);
         const saved = await writing;
         assert.equal((await stores.workspace.read({ workspaceId: stores.workspaceId,
           revision: saved.revision, path: 'input.txt' })).content, 'retained write');

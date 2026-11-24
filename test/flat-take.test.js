@@ -81,6 +81,29 @@ test('actual CLI subprocess discovers and takes through the Core v2 Bridge with 
   await assert.rejects(cli('task', 'take', f.task.task_id, '--owner-ref', 'forged', '--request-id', 'forged'), /identity overrides/);
 });
 
+test('flat preview cancellation rejects an already admitted export before returning Task detail', async t => {
+  const f = await fixture(t);
+  const bot = await f.spawn('preview-cancellation');
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const original = f.workspace.exportRevision.bind(f.workspace);
+  f.workspace.exportRevision = async options => {
+    const snapshot = await original(options);
+    entered.resolve();
+    await release.promise;
+    return snapshot;
+  };
+  const controller = new AbortController();
+  const pending = f.service.adapter.invoke({ capability: { operation: 'task_view' },
+    input: { task_id: f.task.task_id }, caller: { runtimeId: f.runtime.id, botId: bot.id, profile: 'researcher' },
+    envelope: { operation_id: 'cancel-preview' }, signal: controller.signal });
+  try {
+    await entered.promise;
+    controller.abort(Object.assign(new Error('Preview caller was revoked'), { code: 'PREVIEW_CANCELLED' }));
+  } finally { release.resolve(); }
+  await assert.rejects(pending, { code: 'PREVIEW_CANCELLED' });
+});
+
 test('public Core CLI take pins verified Material and warns when main advances after a trusted preview', async t => {
   let startup, seed;
   const f = await fixture(t, { onStart(body) { startup = body; }, fileOperation(action, input) {

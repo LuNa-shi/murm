@@ -554,7 +554,7 @@ export class MissionWorkspace {
 
   // Trusted Runtime export: resolve main once and read all bytes under the
   // recovery barrier. This is not a model-supplied tree or a host-path API.
-  async exportRevision({ workspaceId, revision = 'main' }) {
+  async exportRevision({ workspaceId, revision = 'main', signal = null }) {
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
       const record = await this.#read(root);
@@ -563,7 +563,7 @@ export class MissionWorkspace {
       return { workspace_id: workspaceId, mission_id: record.mission_id, revision: selected,
         git_commit: metadata.git_commit, git_tree: metadata.git_tree, content_hash: metadata.content_hash,
         manifest: metadata.files, conflicts: metadata.conflicts ?? [], files: await this.#tree(root, selected) };
-    });
+    }, { signal });
   }
 
   async planApply({ workspaceId, baseRevision, fromRevision, requestId }) {
