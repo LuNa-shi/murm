@@ -175,5 +175,3 @@ export interface Runtime {
     grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
   };
 }
-
-

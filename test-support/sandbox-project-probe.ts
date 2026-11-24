@@ -128,7 +128,7 @@ try {
     const snapshot = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
     assert.ok(snapshot.paused_process_count >= 2, 'pause both Pi and its detached pre-opened-FD writer');
     assert.equal(snapshot.content_hash, createHash('sha256').update(stableStringify(snapshot.manifest)).digest('hex'));
-    for (const [path, bytes] of Object.entries(((snapshot.files as Record<string, any> as Record<string, any>)))) {
+    for (const [path, bytes] of Object.entries(snapshot.files as Record<string, any>)) {
       const content = Buffer.from(bytes, 'base64');
       assert.equal(snapshot.manifest[path].content_hash, createHash('sha256').update(content).digest('hex'));
       assert.equal(snapshot.manifest[path].bytes, content.length);
@@ -146,7 +146,7 @@ try {
     assert.ok((await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 })).files['2']);
     const beforeApply = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
     const targetFiles: any = { ...beforeApply.files, '2': Buffer.from('installed bytes').toString('base64'), 'installed/note': Buffer.from('incoming').toString('base64') };
-    const manifestOf = (files: any) => Object.fromEntries(Object.entries(((files as Record<string, any> as Record<string, any>))).map(([path, encoded]: any) => {
+    const manifestOf = (files: any) => Object.fromEntries(Object.entries(files as Record<string, any>).map(([path, encoded]: any) => {
       const bytes = Buffer.from(encoded, 'base64');
       return [path, { bytes: bytes.length, content_hash: createHash('sha256').update(bytes).digest('hex') }];
     }));

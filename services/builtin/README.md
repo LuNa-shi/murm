@@ -16,7 +16,7 @@ The production checker ledger supports cleanup even after Judge process loss.
 See the complete [deployment and recovery contract](../../docs/architecture/04-services.md#independent-contextjudge-deployment)
 and [host configuration](../../docs/architecture/07-run-configuration.md).
 
-`context-service-peer.mjs` and `judge-service-peer.mjs` are the peer entrypoints.
+`dist/scripts/context-service-peer.js` and `dist/scripts/judge-service-peer.js` are the peer entrypoints.
 The Judge container entrypoint `judge-peer-entrypoint.sh` supplies its mandatory
 instance lock. A separately operated deployment must provide its own process
 supervision, private endpoints, credentials, artifact mounts, and systemd/cgroup

@@ -44,7 +44,7 @@ Sources: [store and collection](../../src/observability/observation-store.ts), [
 
 ## 3. Server lifecycle and complete HTTP surface
 
-The persistent entry is `scripts/serve-observability.mjs`. It defaults to `experiments`, loopback host, port 8787, database `<root>/.observability/observability.sqlite`, and metadata `<root>/.observability/server.json`. Repeated `--root` and `--scan-root` add roots; conventional `.worktrees`/`.worktree` paths are inferred even before they exist. Discovery scans for `observability.sqlite` to depth 5, excluding `.git` and `node_modules` directories. This keeps worktree-local historical runs visible to one server.
+The persistent entry is `dist/scripts/serve-observability.js`. It defaults to `experiments`, loopback host, port 8787, database `<root>/.observability/observability.sqlite`, and metadata `<root>/.observability/server.json`. Repeated `--root` and `--scan-root` add roots; conventional `.worktrees`/`.worktree` paths are inferred even before they exist. Discovery scans for `observability.sqlite` to depth 5, excluding `.git` and `node_modules` directories. This keeps worktree-local historical runs visible to one server.
 
 A healthy existing daemon identified by metadata is reused when its host, access mode and authentication version match the requested listener. Reuse returns that daemon's metadata with `reused: true` and exits without importing files or changing its registered observations. A new server returns its listener, database and discovery roots. New daemon metadata is written through temporary-file rename. SIGINT/SIGTERM closes the server/stores and removes metadata only if it still belongs to that process.
 

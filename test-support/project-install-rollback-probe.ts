@@ -15,7 +15,7 @@ if (!process.argv.includes('--inside')) {
 } else {
   const { SandboxProject, PROJECT_DIR } = await import('/opt/swarmenv/sandbox-project.js' as string);
   const { canonical } = await import('/opt/swarmenv/project-install.js' as string);
-  const manifest = (files: any) => Object.fromEntries(Object.entries(((files as Record<string, any> as Record<string, any>))).map(([path, content]: any) => [path, { bytes: Buffer.byteLength(content), content_hash: createHash('sha256').update(content).digest('hex') }]));
+  const manifest = (files: any) => Object.fromEntries(Object.entries(files as Record<string, any>).map(([path, content]: any) => [path, { bytes: Buffer.byteLength(content), content_hash: createHash('sha256').update(content).digest('hex') }]));
   const treeState = async () => {
     const result: any = {};
     const visit = async (path: any) => {
@@ -32,7 +32,7 @@ if (!process.argv.includes('--inside')) {
     const project: any = new SandboxProject();
     await project.initialize();
     const original: any = { ...(direction === 'directory-to-file' ? { 'changed/item': 'old bytes' } : { changed: 'old bytes' }), ['__proto__']: 'original prototype file' };
-    for (const [path, bytes] of Object.entries(((original as Record<string, any> as Record<string, any>)))) { await mkdir(dirname(join(PROJECT_DIR, path)), { recursive: true }); await writeFile(join(PROJECT_DIR, path), bytes); }
+    for (const [path, bytes] of Object.entries(original as Record<string, any>)) { await mkdir(dirname(join(PROJECT_DIR, path)), { recursive: true }); await writeFile(join(PROJECT_DIR, path), bytes); }
     if (direction === 'directory-to-file') await mkdir(join(PROJECT_DIR, 'changed/empty/deep'), { recursive: true });
     await mkdir(join(PROJECT_DIR, 'retained/empty'), { recursive: true });
     await project.prepare({ execution_id: 'test', binding_version: 1, manifest: manifest(original) });
@@ -49,7 +49,7 @@ if (!process.argv.includes('--inside')) {
     project.installer.fault = (point: any) => { if (!injected && point === faultPoint) { injected = true; throw new Error('controlled partial install failure'); } };
     const result = await project.install({ execution_id: 'test', binding_version: 1, request_id: direction + faultPoint,
       expected_content_hash: snapshot.content_hash, content_hash: createHash('sha256').update(canonical(manifest(target))).digest('hex'),
-      files: Object.fromEntries(Object.entries(((target as Record<string, any> as Record<string, any>))).map(([path, content]: any) => [path, Buffer.from(content).toString('base64')])) }, []);
+      files: Object.fromEntries(Object.entries(target as Record<string, any>).map(([path, content]: any) => [path, Buffer.from(content).toString('base64')])) }, []);
     assert.equal(injected, true);
     assert.equal(result.phase, 'failed');
     assert.deepEqual(await treeState(), before);
@@ -65,7 +65,7 @@ if (!process.argv.includes('--inside')) {
     const original = variant === 'maximum-bytes'
       ? Object.fromEntries(Array.from({ length: 8 }, (_: any, i: any) => [String(i), Buffer.alloc(2 * 1024 * 1024, 65)]))
       : Object.fromEntries(Array.from({ length: 1000 }, (_: any, i: any) => [`${String(i).padStart(4, '0')}-${'p'.repeat(150)}`, 'old']));
-    for (const [path, bytes] of Object.entries(((original as Record<string, any> as Record<string, any>)))) await writeFile(join(PROJECT_DIR, path), bytes);
+    for (const [path, bytes] of Object.entries(original as Record<string, any>)) await writeFile(join(PROJECT_DIR, path), bytes);
     await project.prepare({ execution_id: 'limits', binding_version: 1, manifest: manifest(original) });
     await project.grant({ execution_id: 'limits', binding_version: 1 });
     const firstPath = Object.keys(original)[0];
@@ -74,7 +74,7 @@ if (!process.argv.includes('--inside')) {
     const target = Object.fromEntries(Object.keys(original).map((path: any) => [path, variant === 'maximum-bytes' ? Buffer.alloc(2 * 1024 * 1024, 66) : 'new']));
     const result = await project.install({ execution_id: 'limits', binding_version: 1, request_id: variant,
       expected_content_hash: snapshot.content_hash, content_hash: createHash('sha256').update(canonical(manifest(target))).digest('hex'),
-      files: Object.fromEntries(Object.entries(((target as Record<string, any> as Record<string, any>))).map(([path, content]: any) => [path, Buffer.from(content).toString('base64')])) }, []);
+      files: Object.fromEntries(Object.entries(target as Record<string, any>).map(([path, content]: any) => [path, Buffer.from(content).toString('base64')])) }, []);
     assert.equal(result.phase, 'installed');
     assert.equal((await lstat(join(PROJECT_DIR, firstPath))).mode & 0o7777, 0o751);
     const confirmation: any = { execution_id: 'limits', binding_version: 1, request_id: variant, content_hash: result.content_hash };

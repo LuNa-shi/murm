@@ -44,4 +44,3 @@ export interface ServiceRequest {
 export interface ServiceAdapter {
   invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
 }
-

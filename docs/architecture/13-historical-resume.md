@@ -10,7 +10,7 @@ In-memory fixtures can opt in explicitly. Observation projections and live
 ownership/delivery tables are excluded. Adding one of those runtime-only tables
 leaves the existing public-table recording interval intact.
 Task initializes the manual-review table before enabling capture. The separate
-`review-mission.mjs decide` writer also installs transaction tracking; `show` stays
+`node dist/scripts/review-mission.js decide` writer also installs transaction tracking; `show` stays
 read-only. A new public table enters capture when its service installs history after schema setup. The table catalog records that interval independently.
 
 | Table | Meaning |

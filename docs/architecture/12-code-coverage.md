@@ -51,9 +51,9 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | Published Pi/OpenSandbox Backend configuration contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `7244a96921edf27773870a1c870f6db597cc7cb4fccad5bdde693fec1f1cafff` |
-| [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `af6678a6087aea0367f943672e420c6f13f905d9e17356d75df1105abd1301e3` |
-| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Bot, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `207f0f02211f976b83b0bc8977d39beccb1287f7e4b74166c8c395325d970841` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | Published Pi/OpenSandbox Backend configuration contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6df9b7fd2bb6e6b704e50f3560dfbb6c6adc8d79320b19e7e4ef8a7fe73344f3` |
+| [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `7da3a31ce167260a41db03684371b2c7041a878391de614b9035a78695c12e29` |
+| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Bot, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `3dec827cbfec564603467fe9ca1aa88373b43622d5b3c9f3c2221f4581f13c8a` |
 
 ### Delivery and configuration (4)
 
@@ -269,7 +269,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [services/builtin/compose.yaml](../../services/builtin/compose.yaml) | Four-process isolated service deployment with independent persistent volumes | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `a48e8789abf64c2b0660fa3dbb1e9a2cbc0747d227bda4a82c6021cbf9543238` |
 | [services/builtin/Dockerfile](../../services/builtin/Dockerfile) | Built-in service image recipe and persisted database mount | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `16c3100eb3859b94eb0da376c5371b0692beb42e948157b929fbd8bf1668bece` |
-| [services/builtin/README.md](../../services/builtin/README.md) | Built-in provider deployment configuration | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `f8a2f38efd4b861532683a753998e5daa575211b4b861dbe282ca0d3c4101e51` |
+| [services/builtin/README.md](../../services/builtin/README.md) | Built-in provider deployment configuration | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `96803ac002335975b02d95bf73515e8755a27d0ad174156fcedc78ce2a5dc6e5` |
 | [services/mathlib-search/Dockerfile](../../services/mathlib-search/Dockerfile) | Mathlib provider image recipe | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `a430d5fcf848ee9dc4f41cfb54f55c0ec53de24402f10e7f66f6b62a39e45e37` |
 | [services/mathlib-search/README.md](../../services/mathlib-search/README.md) | Mathlib provider configuration and operation notes | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `17a48afa57edfc4993508a6fe125bd8901e98f67ed6868c8a8536f35f58d8804` |
 | [services/mathlib-search/references/loogle.md](../../services/mathlib-search/references/loogle.md) | Repository-owned query guidance loaded by bundle | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3aff1ebba86327de5465c0b44b37cb5ec57f5bac6b07c90ed211a0b2f02376bd` |

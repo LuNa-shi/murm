@@ -17,6 +17,13 @@ For the Core / Environment stage, the owner’s 2026-11-23 instruction makes the
 
 ## Implementation and review
 
+Use Node.js 22.19 or newer and install the locked development dependencies with
+`npm ci`. Run `npm run typecheck` for the strict source and tooling check and
+`npm run build` to refresh the JavaScript and declarations under `dist/`.
+`npm test` and `npm run docs:check` build before running. Local host commands run
+the compiled entry points under `dist/scripts/`. See
+[TypeScript build and installation](../architecture/07-run-configuration.md#typescript-build-and-installation).
+
 - Use `/implement` for one Issue/ticket or `/implement-spec` for a ticket graph. Follow their branch, worktree, integration and review conventions.
 - Use `/tdd` at pre-agreed public seams; for tricky defects use `/diagnosing-bugs`. Repeat tests, fixes and authorized diagnostic probes within Issue scope **without reporting after each iteration**.
 - Run relevant tests, full suite when available, and `git diff --check`. Run `/code-review` with separate **Spec** and **Standards** findings. Use `/pr` for a concise Summary, before/after Evidence and Merge Danger.
