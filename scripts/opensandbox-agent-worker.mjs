@@ -39,8 +39,15 @@ let stdoutBuffer = '';
 let sequence = 0;
 const records = [];
 const MAX_RECORDS = 2_048;
-const rpcSubmissions = createPiRpcSubmissions({ write(message) {
+let executionEpoch = 0;
+const preflights = new Set();
+const interruptions = new Map();
+let interrupting = false;
+const rpcSubmissions = createPiRpcSubmissions({ write({ steeringMode, executionEpoch: _executionEpoch, ...message }) {
   if (!child?.stdin?.writable) throw Object.assign(new Error('worker Agent is not running'), { code: 'NOT_ALLOWED' });
+  if (steeringMode !== undefined) {
+    child.stdin.write(`${JSON.stringify({ type: 'set_steering_mode', mode: steeringMode })}\n`);
+  }
   child.stdin.write(`${JSON.stringify(message)}\n`);
 } });
 
@@ -196,9 +203,58 @@ async function startAgent(input) {
     ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}) };
 }
 
+async function interruptPi({ id, executionEpoch: nextEpoch }, timeoutMs) {
+  if (typeof id !== 'string' || !id || !Number.isSafeInteger(nextEpoch)) {
+    throw Object.assign(new Error('Invalid interrupt identity'), { code: 'INVALID_CONTRACT' });
+  }
+  let entry = interruptions.get(id);
+  if (entry && entry.epoch !== nextEpoch) throw Object.assign(new Error('Interrupt identity conflict'), { code: 'CONFLICT' });
+  if (!entry) {
+    if (interrupting || nextEpoch !== executionEpoch + 1 || project.closing) {
+      throw Object.assign(new Error('Pi cannot interrupt this execution generation'), { code: 'NOT_ALLOWED' });
+    }
+    interrupting = true;
+    executionEpoch = nextEpoch;
+    const awaiting = [...preflights];
+    entry = { epoch: nextEpoch };
+    interruptions.set(id, entry);
+    const command = async type => {
+      const commandId = randomUUID();
+      await rpcSubmissions.submit({ type, id: commandId }, 10_000);
+      await rpcSubmissions.completion(commandId);
+      const { response } = rpcSubmissions.query(commandId);
+      if (response.command !== type || !response.success) throw new Error('Pi did not confirm execution control');
+    };
+    const clearAndAbort = () => Promise.all([command('clear_queue'), command('abort')]);
+    entry.done = (async () => {
+      await clearAndAbort();
+      // Prompt RPC preflight is asynchronous in Pi. If a previously written
+      // prompt passes preflight after the first abort, drain it before opening
+      // the fence to new input.
+      if (awaiting.length) {
+        await Promise.all(awaiting);
+        await clearAndAbort();
+      }
+      interrupting = false;
+      entry.response = { id, command: 'core_interrupt', success: true };
+    })().catch(() => {
+      entry.response = { id, command: 'core_interrupt', success: false };
+    });
+  }
+  let timer;
+  try {
+    await Promise.race([entry.done, new Promise(resolve => { timer = setTimeout(resolve, timeoutMs); })]);
+    return entry.response ? { state: 'complete', response: entry.response } : { state: 'pending' };
+  } finally { clearTimeout(timer); }
+}
+
 async function rpc(input) {
   const message = input?.message ?? input;
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('worker RPC message must be an object');
+  if (message.steeringMode !== undefined &&
+      (message.type !== 'prompt' || !['all', 'one-at-a-time'].includes(message.steeringMode))) {
+    throw Object.assign(new Error('Invalid prompt steering mode'), { code: 'INVALID_CONTRACT' });
+  }
   // Core polls bounded Worker history from an explicit sequence without
   // sending a synthetic command to Pi.
   if (message.type === 'get_state' && Number.isFinite(Number(message.since))) {
@@ -212,7 +268,26 @@ async function rpc(input) {
   if (input.since !== undefined && (!Number.isSafeInteger(input.since) || input.since < 0)) {
     throw Object.assign(new Error('Worker replay cursor must be a nonnegative integer'), { code: 'INVALID_CONTRACT' });
   }
-  const result = await rpcSubmissions.submit(message, Number(input.timeout_ms ?? 600_000));
+  const timeoutMs = Number(input.timeout_ms ?? 600_000);
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000) {
+    throw Object.assign(new Error('Invalid Pi RPC wait limit'), { code: 'INVALID_CONTRACT' });
+  }
+  let result;
+  if (message.type === 'core_interrupt') result = await interruptPi(message, timeoutMs);
+  else if (message.type === 'prompt' && (interrupting || (message.executionEpoch ?? 0) !== executionEpoch)) {
+    result = { state: 'complete', response: { id: message.id, command: 'prompt', success: false,
+      code: 'NOT_ALLOWED', error: 'Prompt is fenced by the current Pi execution generation' } };
+  } else {
+    const pending = rpcSubmissions.submit(message, timeoutMs);
+    if (message.type === 'prompt') {
+      const completion = rpcSubmissions.completion(message.id);
+      if (completion && !preflights.has(completion)) {
+        preflights.add(completion);
+        void completion.then(() => preflights.delete(completion));
+      }
+    }
+    result = await pending;
+  }
   return { ...result, records: records.filter(record => record.worker_sequence > (input.since ?? beforeSequence)) };
 }
 

@@ -101,7 +101,8 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
         if (bot.output) bot.onEvent({ type: 'output', text: bot.output });
       }
       if (record.type === 'agent_settled') {
-        bot.onEvent({ type: 'settled', outcome: bot.outcome ?? 'completed', output: bot.output, ...(bot.error ? { error: bot.error } : {}) });
+        const outcome = record.aborted ? 'aborted' : bot.outcome ?? 'completed';
+        bot.onEvent({ type: 'settled', outcome, output: bot.output, ...(bot.error ? { error: bot.error } : {}) });
       }
       if (record.type === 'worker_exit') {
         bot.exited = true;
@@ -179,7 +180,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
     },
     prepareFiles(botId, input) { return fileOperation(botId, 'prepare', input); },
     grantFiles(botId, input) { return fileOperation(botId, 'grant', input); },
-    async send(botId, input, { mode, inputId }) {
+    async send(botId, input, { mode, inputId, steeringMode, executionEpoch }) {
       const bot = bots.get(botId);
       if (!bot) throw Object.assign(new Error('Bot is unavailable'), { code: 'NOT_ALLOWED' });
       bot.submissions ??= new Map();
@@ -202,7 +203,9 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
             // A prior attempt, including a failed socket, can only be queried.
             // Never transparently resubmit an uncertain prompt to Pi.
             result = await bot.manager.agentRpc(botId, dispatch
-              ? { type: 'prompt', id: inputId, message: input, streamingBehavior: mode }
+              ? { type: 'prompt', id: inputId, message: input, streamingBehavior: mode,
+                ...(executionEpoch ? { executionEpoch } : {}),
+                ...(steeringMode === undefined ? {} : { steeringMode }) }
               : { type: 'get_rpc_result', id: inputId, since: bot.cursor }, { timeoutMs: 30000, since: bot.cursor });
           } catch {
             // Transport status codes also cover Worker-side failures after
@@ -214,7 +217,9 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
             status: 'unknown', reason: result.status === 'pending' ? 'worker-pending' : 'worker-uncorrelated-reply',
           };
           if (result.response?.success !== true) {
-            if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), { code: 'INVALID_CONTRACT', inputRejected: true });
+            if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), {
+              code: result.response.code === 'NOT_ALLOWED' ? 'NOT_ALLOWED' : 'INVALID_CONTRACT', inputRejected: true,
+            });
             return { status: 'unknown', reason: 'worker-prompt-status-missing' };
           }
           const disposition = result.response.data?.disposition;
@@ -224,6 +229,16 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
         })().finally(() => { submission.work = undefined; });
       }
       return submission.work;
+    },
+    async interrupt(botId, { interruptId, executionEpoch }) {
+      const bot = bots.get(botId);
+      if (!bot || bot.stopping || bot.exited || bot.historyLost || closing) return { status: 'unknown' };
+      const result = await bot.manager.agentRpc(botId, { type: 'core_interrupt', id: interruptId, executionEpoch },
+        { timeoutMs: 30_000, since: bot.cursor });
+      consume(bot, result.records ?? []);
+      const confirmed = !bot.historyLost && !bot.exited && !bot.stopping && result.response?.id === interruptId &&
+        result.response.command === 'core_interrupt' && result.response.success === true;
+      return { status: confirmed ? 'interrupted' : 'unknown' };
     },
     async stopExecution(botId) {
       const bot = bots.get(botId);
