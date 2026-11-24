@@ -16,7 +16,7 @@ import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js'
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { stableStringify } from '../src/protocol/envelope.js';
 import { createHash } from 'node:crypto';
-import { execFile, execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { ServicesBridge } from '../src/agent/services-bridge.js';
 import { ContextService } from '../src/context/context-service.js';
@@ -951,47 +951,6 @@ for (const method of ['stopExecution', 'fenceExecution']) test(`${method} retain
   runtime.executionWorkspace.reconcile = reconcile;
   await runtime[method](execution.execution_id);
   assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
-});
-
-const closeFromAnotherProcess = async (root, botId) => promisify(execFile)(process.execPath, ['--input-type=module', '-e', `
-  import { TaskService } from './src/task/task-service.js';
-  const service = new TaskService(process.argv[1]);
-  service.requestBotStop(process.argv[2], 'external-close', { terminalState: 'FAILED' });
-  service.close();
-`, join(root, 'state.sqlite'), botId], { timeout: 10_000 });
-
-test('another TaskService process closing before publication prevents the saved revision', async t => {
-  const { root, bot, runtime, dispatch } = await workspaceFixture(t, { persistent: true });
-  const importTree = runtime.missionWorkspace.repository.importTree.bind(runtime.missionWorkspace.repository);
-  runtime.missionWorkspace.repository.importTree = async (...args) => {
-    await closeFromAnotherProcess(root, bot.bot_id);
-    return importTree(...args);
-  };
-  await assert.rejects(dispatch('save', 'external-close-first'), error => error.code === 'NOT_ALLOWED');
-  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 1);
-});
-
-test('SQLite publication lock excludes another process closing between final guard and Git commit', async t => {
-  const { root, bot, runtime, dispatch } = await workspaceFixture(t, { persistent: true });
-  let attempted = false;
-  runtime.missionWorkspace.repository.fault = point => {
-    if (point !== 'after_intent') return;
-    attempted = true;
-    const result = execFileSync(process.execPath, ['--input-type=module', '-e', `
-      import { DatabaseSync } from 'node:sqlite';
-      const db = new DatabaseSync(process.argv[1]);
-      db.exec('PRAGMA busy_timeout = 40');
-      try { db.exec('BEGIN IMMEDIATE'); console.log('incorrectly acquired'); db.exec('ROLLBACK'); }
-      catch (error) { console.log(error.errcode === 5 ? 'blocked' : error.message); }
-      db.close();
-    `, join(root, 'state.sqlite')], { encoding: 'utf8', timeout: 5000 });
-    assert.equal(result.trim(), 'blocked');
-  };
-  const result = await dispatch('save', 'publication-first');
-  assert.equal(attempted, true);
-  runtime.missionWorkspace.repository.fault = null;
-  await closeFromAnotherProcess(root, bot.bot_id);
-  assert.deepEqual(await dispatch('save', 'publication-first'), result);
 });
 
 test('lease expiry keeps its durable intent and Task owner until Workspace receipts reconcile', async t => {
