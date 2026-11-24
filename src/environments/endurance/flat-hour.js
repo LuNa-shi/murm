@@ -21,7 +21,7 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
   const now = clock ?? (() => performance.now());
   let owned, monitor, original, lifetime, publisher, replacement, unsubscribe, timer, ended = false, fatal = false;
   const settled = new Map(), planned = new Set(), latest = new Map();
-  const result = {}, proofs = [];
+  const result = {}, proofs = [], admissions = [];
   timer = setTimeout(() => life.abort(), budgets.setupMs);
   const health = async () => {
     combined.throwIfAborted(); modelGate.check();
@@ -46,6 +46,7 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
     const receipt = await admit({ runtime, outputDir: options.outputDir, botIds, workMs, cleanupMs: budgets.cleanupMs,
       recoveryMs: budgets.recoveryMs, marginMs: budgets.marginMs, signal: AbortSignal.any([combined, admissionSignal]) });
     checkHourLifetime(receipt, { runtimeId: runtime.id, botIds, workMs, now: now(), controlled: clock !== undefined });
+    admissions.push(structuredClone(receipt));
     if (!original) { original = [...botIds]; lifetime = receipt; await onReady?.({ runtime, botIds: [...botIds] }); }
   };
   const binding = id => {
@@ -102,6 +103,7 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
         lifetime = await admit({ runtime: owned.runtime, outputDir: options.outputDir, botIds: original, workMs: budgets.workMs,
           cleanupMs: budgets.cleanupMs, recoveryMs: budgets.recoveryMs, marginMs: budgets.marginMs, signal: combined });
         checkHourLifetime(lifetime, { runtimeId: owned.id, botIds: original, workMs: budgets.workMs, now: now(), controlled: clock !== undefined });
+        admissions.push(structuredClone(lifetime));
         monitor.open(); clearTimeout(timer); timer = setTimeout(() => life.abort(), budgets.workMs);
         for (let phase = 0; phase < 4; phase++) {
           await pauseUntil(phase * WINDOW_MS);
@@ -120,7 +122,7 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
         monitor.handoff({ kind: 'flat-stopped-owner-public-adoption', reference: handoff.proof.reference, sha256: handoff.proof.sha256 });
         await pauseUntil(HOUR_MS); await health(); monitor.end(); ended = true;
         await Promise.all([...original.slice(1), replacement].map(finish));
-        Object.assign(result, { proofs, publisher, replacement, lifetime, source: 'host-preseeded-public-revisions', liveCapture: false });
+        Object.assign(result, { proofs, publisher, replacement, lifetime, admissions, source: 'host-preseeded-public-revisions', liveCapture: false });
         return result;
       },
       async afterClose(cleanup) {

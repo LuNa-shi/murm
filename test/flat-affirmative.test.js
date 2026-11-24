@@ -139,7 +139,7 @@ for (const badProgram of [false,true]) test(`controlled Flat hour ${badProgram?'
   if(badProgram){assert.equal(report.businessFailure?.code,'HOUR_PROGRAMMING_INVALID');assert.equal(report.result,null);assert.equal(report.cleanup.cleanup,'complete');assert.equal(owner.receipt().closed,true);return;}
   assert.equal(report.businessFailure,null,JSON.stringify(report.businessFailure));
   assert.equal(backgroundFailure,undefined,backgroundFailure?.stderr??String(backgroundFailure));assert.equal(report.cleanupFailure,null,JSON.stringify(report.cleanupFailure));
-  assert.equal(report.result.state,'controlled');assert.equal(report.result.durationMs,3_600_000);assert.equal(report.result.proofs.length,17);assert.ok(report.result.proofs.every(proof=>proof.programming?.sourceSha256&&proof.programming?.answersSha256));
+  assert.equal(report.result.state,'controlled');assert.equal(report.result.durationMs,3_600_000);assert.equal(report.result.admissions.length,3);assert.equal(report.result.proofs.length,17);assert.ok(report.result.proofs.every(proof=>proof.programming?.sourceSha256&&proof.programming?.answersSha256));
   assert.ok(report.result.windows.every(window=>window.botIds.length===4));assert.equal(programs.length,17);
   assert.notEqual(report.result.publisher,report.result.replacement);assert.equal(report.cleanup.cleanup,'complete');assert.equal(owner.receipt().closed,true);
 });

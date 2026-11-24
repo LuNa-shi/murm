@@ -51,7 +51,7 @@
     },
     {
       "path": "src/environments/endurance/flat-hour.js",
-      "sha256": "6069f6652d16c2da5461a6060b0efa33fb9a7e674684c7bce92f259215a80c6e"
+      "sha256": "ab08d292507b431985c46e0baefe02f89ada2a997dcaf4a1b0525b5a3bd4f11f"
     },
     {
       "path": "src/environments/endurance/flat-workload.js",
@@ -404,7 +404,7 @@
     {
       "path": "src/environments/endurance/flat-hour.js",
       "anchor": "input: `",
-      "line": 73,
+      "line": 74,
       "sha256": "261bdd3ae0a6284507cbc066c4c8890d362515be665ef74b6ce0b50b603f2230"
     },
     {
