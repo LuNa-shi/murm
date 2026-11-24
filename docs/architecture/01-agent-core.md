@@ -89,8 +89,6 @@ For every call, the Bridge obtains the current profile, resolves the capability,
 
 Registered unbound discovery uses scoped `task_list`, `task_view` and `task_status`, public Workspace/Material reads and explicit granted coordination. Historical `list_tasks` and `list_executions` are rejected for registered Bots. A list page is not complete history; follow its cursor and inspect relevant Task details.
 
-Task creation checks `required_capabilities` against exact current capability IDs, names, operations or tool names. Acceptance requirements for exact declarations/verified usage imply `mathlib_search`. Failure returns missing/available capabilities and an action/hint before a eligible Task is created. This checks availability, not scientific value. [Source: Bridge](../../src/agent/services-bridge.js).
-
 ### 5.3 Take failure and register-and-take
 
 The take binding records the durable take locally, invalidates its profile cache and invokes activation hooks. On failure it attempts Runtime `stopExecution(..., FAILED, task_take_bind_failed)`, a Task Service stop fallback, or a fencing fallback. It clears the local binding, calls the release hook with original IDs and rethrows the original error. Cleanup exceptions are suppressed; rollback is attempted, not guaranteed to succeed in every external component.
@@ -99,7 +97,7 @@ A registered UNBOUND Bot can inspect public Mission state and take an existing T
 
 ### 5.4 Caller-owned Bridge hooks
 
-The legacy Bridge accepts optional hooks for take activation, accepted take, release, errors and Task creation. Their presence and behavior depend on the host assembling that Bridge. The Bridge performs its own identity, capability and lifecycle checks before invoking them. Take activation must complete before a successful live receipt is cached. After a durable finish, the Bridge requests Runtime resource release. Failed cleanup returns the accepted receipt with `cleanup_pending`. A successful release clears the matching local binding and invokes the release hook. A release-hook failure is logged without replacing the accepted finish result.
+The legacy Bridge accepts optional hooks for take activation, accepted take, release and errors. Their presence and behavior depend on the host assembling that Bridge. The Bridge performs its own identity, capability and lifecycle checks before invoking them. Take activation must complete before a successful live receipt is cached. After a durable finish, the Bridge requests Runtime resource release. Failed cleanup returns the accepted receipt with `cleanup_pending`. A successful release clears the matching local binding and invokes the release hook. A release-hook failure is logged without replacing the accepted finish result.
 
 The removed benchmark's counters and lane bookkeeping are preserved in the research revision. Current public-Core flat Services call their controller and publication adapters directly. See [Services](04-services.md) and [Environment reporting](17-environment-reporting.md).
 
