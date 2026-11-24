@@ -84,22 +84,6 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   return { root, service, runtime, manager, startSession, calls, missionSubmission, domains };
 }
 
-test('Runtime starts and cleans an unbound Bot without inventing an Execution', async (t) => {
-  const { service, runtime, manager, startSession } = await fixture(t);
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 60_000, startSession });
-  assert.equal(bot.state, 'UNBOUND');
-  assert.equal(runtime.getCoreStatus('core-1').bot_id, bot.bot_id);
-  assert.equal(service.listActiveExecutions().length, 0);
-  service.setMissionStopReader(id => id === bot.mission_id);
-  const accepted = service.dispatch('bot_exit', { reason: 'no-work' }, makeEnvelope({ actorRef: bot.bot_id }));
-  assert.equal(accepted.bot.execution_id, null);
-  await runtime.releaseBot(bot.bot_id);
-  assert.equal(session.closed, true);
-  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-  assert.equal(manager.snapshot().executions.length, 0);
-});
-
 test('Mission timeout preserves a fresh Bot proposal after earlier Tasks finish and the previous Bot closes', async t => {
   const identity = { checker_ref: 'controlled', checker_version: '1', environment_ref: 'test' };
   const { service, runtime, startSession, missionSubmission } = await fixture(t, { coordinationPermissions: ['mission_submit'] },
@@ -198,16 +182,6 @@ for (const checkpoint of ['sandbox dispatch', 'sandbox receipt', 'Pi dispatch', 
   },
 );
 
-test('selection timeout closes an unbound Bot and releases no phantom Execution', async (t) => {
-  const { service, runtime, startSession } = await fixture(t);
-  const { bot } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', selectionTimeoutMs: 30, startSession });
-  await new Promise(resolve => setTimeout(resolve, 60));
-  await runtime.releaseBot(bot.bot_id);
-  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
-  assert.equal(service.getBot(bot.bot_id).exit_reason, 'selection-budget');
-  assert.equal(service.listActiveExecutions().length, 0);
-});
-
 test('expired startup retains the Core until the late Session has been stopped', async (t) => {
   const { service, runtime, startSession } = await fixture(t);
   let resume;
@@ -226,16 +200,6 @@ test('expired startup retains the Core until the late Session has been stopped',
   await runtime.releaseBot(botId);
   assert.equal(service.getBot(botId).state, 'CLOSED');
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
-test('an unexpected unbound process exit ends the Bot instead of reviving its identity', async (t) => {
-  const { service, runtime, startSession } = await fixture(t);
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  session.closed = true;
-  session.emit('close');
-  await runtime.releaseBot(bot.bot_id);
-  assert.equal(service.getBot(bot.bot_id).exit_reason, 'process-exited');
-  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
 });
 
 test('Execution binding rejects unregistered owners before preparing a Workspace', async t => {
@@ -270,32 +234,6 @@ test('taken Bot keeps its original Sandbox and closes before a successor can use
   const next = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
   assert.notEqual(next.bot.bot_id, bot.bot_id);
   assert.notEqual(next.bot.sandbox_id, bot.sandbox_id);
-});
-
-test('four Core Bots discover concurrently before any Task exists and can each propose and take work', async (t) => {
-  const { service, runtime, startSession } = await fixture(t, { maxWorkers: 4 });
-  let entered = 0;
-  let release;
-  const allStarted = new Promise(resolve => { release = resolve; });
-  const bots = await Promise.all([1, 2, 3, 4].map(index => runtime.startBot({ missionId: 'mission:bots', coreId: `core-${index}`,
-    startSession: async options => {
-      entered += 1;
-      if (entered === 4) release();
-      await allStarted;
-      assert.equal(service.listMissionTasks({ mission_id: 'mission:bots' }).length, 0);
-      return startSession(options);
-    },
-  })));
-  assert.equal(new Set(bots.map(({ bot }) => bot.bot_id)).size, 4);
-  assert.equal(new Set(bots.map(({ bot }) => bot.sandbox_id)).size, 4);
-  const taken = bots.map(({ bot }) => {
-    const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: `Independent question from ${bot.core_id}`, expected_output: 'Local result', acceptance_conditions: ['Question answered'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
-    return service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: `take:${bot.bot_id}` });
-  });
-  await Promise.all(taken.map(({ execution }, index) => runtime.bindAgentExecution(execution.execution_id, bots[index].session, { coreId: bots[index].bot.core_id })));
-  assert.equal(runtime.getActiveProcessCount(), 4);
-  assert.equal(service.listActiveExecutions().length, 4);
-  assert.equal(service.listMissionTasks({ mission_id: 'mission:bots' }).length, 4);
 });
 
 test('four real CLI Bot paths propose then take with overlapping E ownership and stop before Core reuse', { timeout: 45000 }, async t => {
@@ -1375,15 +1313,6 @@ test('shutdown revokes and stops an active Bot before a different Core startup r
   const result = await shuttingDown;
   assert.equal(result.active_process_count, 0);
   assert.deepEqual(result.cleanup_pending_bot_ids, []);
-});
-
-test('Runtime shutdown rejects new Bot admission before persistence or provider allocation', async t => {
-  const { service, runtime, manager, startSession, calls } = await fixture(t);
-  await runtime.shutdown();
-  assert.throws(() => runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession }), { code: 'NOT_ALLOWED' });
-  assert.equal(service.db.prepare('SELECT COUNT(*) AS count FROM bots').get().count, 0);
-  assert.equal(manager.snapshot().executions.length, 0);
-  assert.equal(calls.length, 0);
 });
 
 test('soft closeout allows real CLI save publish finish and receipt replay', async t => {

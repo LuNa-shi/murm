@@ -521,3 +521,91 @@ test('flat metadata admission preserves host cancellation when an already admitt
   const saved = JSON.parse(await readFile(report.reportPath, 'utf8'));
   assert.deepEqual(saved.businessFailure, report.businessFailure);
 });
+
+test('four current CLI discovery Bots take exclusive work and reuse only a physically closed Slot', { timeout: 25_000 }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'flat-cli-slot-lifecycle-'));
+  const stores = await createFlatTaskStores(root);
+  t.after(async () => { controls.destroyError = null; stores.close(); await rm(root, { recursive: true, force: true }); });
+  const missionId = 'mission:empty-slots';
+  stores.tasks.createMission({ mission_id: missionId, goal: 'Develop four independent contributions' });
+  const workspace = await stores.workspace.create({ missionId, workspaceId: 'empty-slots', initialFiles: { 'input.txt': 'fixed input' } });
+  transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
+  const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
+  transport.next = accept;
+  const cli = async (botId, ...args) => {
+    const credentials = controls.credentials.get(botId); assert.ok(credentials);
+    const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
+    const bridge = new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.SWARMENV_BRIDGE_URL = bridge.href.replace(/\/$/, '');
+    return JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], { env, timeout: 5000 })).stdout);
+  };
+  let initial, takes, replacement;
+  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+    missionWorkspace: stores.workspace, workspaceManager: stores.manager, missionId, workspaceId: workspace.workspace_id,
+    outputDir: root, deadlineAt: Date.now() + 20_000, backend: {}, model: 'default', image: 'fixture', capacity: 4,
+    controller: { heartbeatMs: 10000, stallMs: 15000 },
+    snapshotProject: async () => { throw new Error('Discovery, take and incomplete finish never capture private files'); },
+    async drive(controller, runtime) {
+      initial = controller.snapshot().bots;
+      assert.equal(initial.length, 4);
+      assert.equal(new Set(initial.map(row => row.botId)).size, 4);
+      assert.equal(new Set(initial.map(row => row.slot)).size, 4);
+      assert.ok(initial.every(row => stores.tasks.getBot(row.botId).state === 'UNBOUND'));
+      assert.ok(initial.every(row => stores.tasks.getBot(row.botId).execution_id === null));
+      assert.equal(stores.tasks.listMissionTasks({ mission_id: missionId }).length, 0);
+      const pages = await Promise.all(initial.map(row => cli(row.botId, 'task', 'list')));
+      assert.ok(pages.every(page => page.tasks.length === 0));
+      // Current Flat does not grant proposal creation. Preserve that boundary;
+      // host-supplied work exercises Slot ownership without inventing a grant.
+      await assert.rejects(cli(initial[0].botId, 'task', 'propose', '--summary', 'Unconfigured proposal',
+        '--gap', 'Unconfigured creation', '--expected-output', 'Result', '--acceptance-conditions', '["Explicit evidence"]', '--priority', 'medium',
+        '--request-id', 'no-default-propose'), error => /NOT_ALLOWED/.test(error.stderr));
+      assert.equal(stores.tasks.listMissionTasks({ mission_id: missionId }).length, 0);
+      const proposed = initial.map((row, index) => stores.tasks.createTask({ mission_id: missionId,
+        summary: `Independent responsibility ${index}`, gap: `Missing reproducible contribution ${index}`,
+        expected_output: 'A verified contribution', acceptance_conditions: ['Evidence is explicit'], priority: 'medium' }));
+      takes = await Promise.all(initial.map((row, index) => cli(row.botId, 'task', 'take', proposed[index].task.task_id, '--request-id', `take-${index}`)));
+      assert.equal(new Set(takes.map(row => row.execution.execution_id)).size, 4);
+      for (const [index, take] of takes.entries()) {
+        assert.equal(take.execution.owner_ref, initial[index].botId);
+        assert.equal(take.execution.task_id, proposed[index].task.task_id);
+        assert.equal(stores.tasks.getExecution(take.execution.execution_id).state, 'RUNNING');
+      }
+      await assert.rejects(runtime.spawn({ profile: 'researcher', requestId: 'fifth-before-close' }), { code: 'CONFLICT' });
+      const first = initial[0];
+      controls.destroyError = Object.assign(new Error('Controlled physical cleanup remains pending'), { code: 'DELETE_PENDING' });
+      try { await cli(first.botId, 'task', 'finish', '--outcome', 'incomplete', '--request-id', 'first-finish'); }
+      catch (error) { assert.ok(stores.tasks.getExecution(takes[0].execution.execution_id).finish, error.stderr); }
+      await controller.tick();
+      const pending = controller.snapshot();
+      assert.equal(pending.bots.length, 4);
+      assert.equal(pending.bots[0].released, false);
+      assert.equal(pending.bots[0].lastStop.execution, 'stopped');
+      assert.equal(pending.bots[0].lastStop.cleanup, 'pending');
+      assert.equal(stores.tasks.getBot(first.botId).state, 'CLOSING');
+      await assert.rejects(runtime.spawn({ profile: 'researcher', requestId: 'fifth-pending-cleanup' }), { code: 'CONFLICT' });
+      controls.destroyError = null;
+      await controller.tick();
+      const after = controller.snapshot();
+      replacement = after.bots.find(row => !initial.some(original => original.botId === row.botId));
+      assert.ok(replacement);
+      assert.equal(replacement.slot, first.slot);
+      assert.equal(stores.tasks.getBot(first.botId).state, 'CLOSED');
+      assert.equal(stores.tasks.getBot(replacement.botId).state, 'UNBOUND');
+      assert.equal(stores.tasks.getBot(replacement.botId).execution_id, null);
+      await assert.rejects(cli(first.botId, 'task', 'list'), error => /NOT_ALLOWED/.test(error.stderr));
+      const adopted = await cli(replacement.botId, 'task', 'take', proposed[0].task.task_id, '--request-id', 'replacement-take');
+      assert.notEqual(adopted.execution.execution_id, takes[0].execution.execution_id);
+      assert.equal(adopted.execution.owner_ref, replacement.botId);
+      assert.ok(initial.slice(1).every((row, index) => stores.tasks.getBot(row.botId).execution_id === takes[index + 1].execution.execution_id));
+      controller.halt('controlled-lifecycle-end');
+    },
+  });
+  assert.equal(report.businessFailure?.code, 'FLAT_BUSINESS_FAILED', JSON.stringify(report.businessFailure));
+  assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(report.cleanup.bots.length, 5);
+  assert.ok(report.cleanup.bots.every(row => row.execution === 'stopped' && row.cleanup === 'complete'));
+  assert.ok([...initial, replacement].every(row => stores.tasks.getBot(row.botId).state === 'CLOSED'));
+  const saved = JSON.parse(await readFile(join(root, report.runtimeId, 'runtime.json'), 'utf8'));
+  assert.equal(saved.status, 'closed');
+  assert.deepEqual(saved.bots, report.cleanup.bots);
+});
