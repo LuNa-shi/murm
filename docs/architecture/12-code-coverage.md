@@ -144,7 +144,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [src/runtime/workspace-contract.js](../../src/runtime/workspace-contract.js) | Workspace path normalization, input/output contracts and required-input validation | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `8d602261f4d1dd30963050e4367004afd4a93205ac3cce79090af37f76d3cddf` |
-| [src/runtime/workspace-manager.js](../../src/runtime/workspace-manager.js) | Execution-owned filesystem, manifests, revisions, local Git and snapshots | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `6b15d11d8478f63dbc40dc7f32d0e9dc080a560ef2f00ee28419d1532416d853` |
+| [src/runtime/workspace-manager.js](../../src/runtime/workspace-manager.js) | Execution-owned filesystem, manifests, revisions, local Git and snapshots | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `c4a1c77e4bf6b7a9fff655ccf56c3bdd719628159e41cab7c4b09a128d3bb760` |
 
 ### documentation tooling (4)
 
