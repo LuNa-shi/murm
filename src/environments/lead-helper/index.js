@@ -27,12 +27,12 @@ export async function createLeadHelperEnvironment(options) {
   let runtime; let board; let git; let unsubscribe; let closing = false; let closeWork; let complete; let workflowUsed = false; let boardFenceFailure;
   const pendingFences = new Map(); const activeInputs = new Set();
   const team = {}; const inputs = []; const events = [];
-  const stages = []; let stageActive = false; let preparedStages;
+  const stages = []; const rejections = []; let stageActive = false; let preparedStages;
   const redact = value => { let body = JSON.stringify(value); for (const secret of [...secrets].sort((a, b) => b.length - a.length)) body = body.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(body); };
   const snapshot = () => {
     let publicBoard; let boardReadFailure;
     try { publicBoard = board?.snapshot(); } catch { boardReadFailure = { code: 'BOARD_READ_FAILED' }; }
-    return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, stages: structuredClone(stages), preparation: structuredClone(preparedStages ?? null), git: git?.identities(), board: publicBoard, ...(boardReadFailure ? { boardReadFailure } : {}), inputs: structuredClone(inputs), events: structuredClone(events),
+    return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, stages: structuredClone(stages), rejections: structuredClone(rejections), preparation: structuredClone(preparedStages ?? null), git: git?.identities(), board: publicBoard, ...(boardReadFailure ? { boardReadFailure } : {}), inputs: structuredClone(inputs), events: structuredClone(events),
       delivered: publicBoard?.subtasks.filter(row => row.delivery?.verified) ?? [], unfinished: publicBoard?.subtasks.filter(row => row.state !== 'complete') ?? [], inputUnknown: inputs.filter(row => row.uncertain).map(row => ({ botId: row.botId, requestId: row.requestId, inputId: row.inputId, code: row.code })), resources: resources.snapshot(),
       ...(boardFenceFailure ? { boardFenceFailure, pendingBoardFailures: [...pendingFences.values()] } : {}), limitations: ['Local SQLite Board and exclusive turn controller', 'Fixed preconfigured team; no replacement or claim reclamation', 'Upstream scale and performance not verified'] };
   };
@@ -135,11 +135,12 @@ export async function createLeadHelperEnvironment(options) {
         } catch (error) { stop(); error.details = [...(error.details ?? []), snapshot()]; throw error; }
         finally { stageActive = false; }
       },
-      async runStage({ goal, supplement, paths, tasks, signal, deadlineAtMs } = {}) {
+      async runStage({ goal, supplement, paths, tasks, signal, deadlineAtMs, verifyCandidate } = {}) {
         const stage = stages.length;
         const text = stage === 0 ? goal : supplement;
         const remainingMs = deadlineAtMs === undefined ? workTimeoutMs : Math.ceil(deadlineAtMs - performance.now());
         if ((deadlineAtMs !== undefined && (!Number.isFinite(deadlineAtMs) || remainingMs < 1 || remainingMs > 900_000)) || closing || stageActive || stage >= 4 || helperCount !== 3 || workflowUsed && stage === 0 && !preparedStages ||
+            (verifyCandidate !== undefined && (typeof verifyCandidate !== 'function' || deadlineAtMs === undefined)) ||
             typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 8192 ||
             (signal !== undefined && !(signal instanceof AbortSignal)) ||
             (tasks !== undefined && (!tasks || Object.keys(tasks).length !== 3 || helperRoles.some(role => !Object.hasOwn(tasks, role) ||
@@ -173,14 +174,51 @@ export async function createLeadHelperEnvironment(options) {
             type: stage ? 'helper-followup' : 'helper-initial', ...(fixedTasks ? { task: fixedTasks[role] } : {}),
             instruction: (stage ? helperFollowupInstruction : helperInitialInstruction) + ' Deliver only your supplied path and publish one new feedback note.' })));
           if (results.some(row => row.status === 'rejected')) throw results.find(row => row.status === 'rejected').reason;
-          const final = board.snapshot();
+          let final = board.snapshot();
           const deliveries = helperRoles.map(role => final.subtasks.find(row => row.owner === team[role] && row.path === fixedPaths[role] &&
             row.state === 'complete' && row.directionId === direction.seq && row.delivery?.verified && !before.subtasks.some(old => old.id === row.id || old.delivery?.commit === row.delivery.commit)));
           if (deliveries.some(row => !row)) throw fail('DIRECTION_NOT_ADOPTED');
+          const rejected = [];
+          if (verifyCandidate) {
+            let candidateFailure;
+            await Promise.allSettled(helperRoles.map(async (role, index) => {
+              try {
+                let attempt = 0;
+                while (true) {
+                  workSignal.throwIfAborted();
+                  const task = deliveries[index];
+                  const decision = await verifyCandidate(structuredClone(task), { stage, direction: structuredClone(direction), environment: snapshot(), signal: workSignal });
+                  workSignal.throwIfAborted();
+                  if (decision === true) break;
+                  if (typeof decision?.correction !== 'string' || !decision.correction.trim() || decision.rejected?.code !== 'HOUR_PROGRAMMING_INVALID') throw fail('STAGE_CANDIDATE_UNCONFIRMED');
+                  const input = structuredClone(inputs.findLast(row => row.botId === team[role]));
+                  const rejection = { role, stage, attempt, task: structuredClone(task), input, ...structuredClone(decision.rejected) };
+                  rejected.push(rejection); rejections.push(structuredClone(rejection));
+                  const nextPath = fixedPaths[role].replace(/\.[^.]+$/, `-correction-${++attempt}.json`);
+                  const subtaskId = `stage-${stage}-${role}-correction-${attempt}`;
+                  if (board.snapshot().subtasks.some(row => row.path === nextPath || row.id === subtaskId)) throw fail('STAGE_CORRECTION_CONFLICT');
+                  const correctionPaths = { ...fixedPaths, [role]: nextPath };
+                  const correctionTask = (fixedTasks?.[role] ?? '').replaceAll(fixedPaths[role], nextPath);
+                  await dispatch(role, `stage-${stage}-${role}-correction-${attempt}`, {
+                    type: 'helper-correction', stage, attempt, paths: correctionPaths, subtaskId,
+                    task: correctionTask,
+                    instruction: `${decision.correction} Preserve the rejected complete Board task and Git commit. Read the unchanged current direction, create a new subtask with id ${subtaskId} and path ${nextPath}, claim it yourself, and complete it with your corrected pushed delivery and a new task-scoped feedback note. Use only the existing Board capabilities; do not alter another task or direction.`,
+                  }, workSignal, deadlineAtMs);
+                  final = board.snapshot();
+                  const replacement = final.subtasks.find(row => row.id === subtaskId && row.path === nextPath && row.owner === team[role] && row.state === 'complete' && row.directionId === direction.seq && row.delivery?.verified && row.delivery.commit !== task.delivery.commit);
+                  if (!replacement || JSON.stringify(final.subtasks.find(row => row.id === task.id)) !== JSON.stringify(task) || final.directions.at(-1)?.seq !== direction.seq) throw fail('STAGE_CORRECTION_INVALID');
+                  deliveries[index] = structuredClone(replacement);
+                }
+              } catch (error) { candidateFailure ??= error; stop(); throw error; }
+            }));
+            if (candidateFailure) throw candidateFailure;
+          }
+          final = board.snapshot();
           const feedback = deliveries.map(row => final.notes.find(note => note.actor === row.owner && note.subtask_id === row.id && note.seq > direction.seq && !before.notes.some(old => old.seq === note.seq)));
           if (feedback.some(row => !row)) throw fail('HELPER_FEEDBACK_INVALID');
+          const attemptInputs = structuredClone(inputs.slice(startInput));
           const receipt = { stage, paths: fixedPaths, direction, deliveries, feedback, boardRevision: final.history.at(-1).seq,
-            inputs: structuredClone(inputs.slice(startInput)) };
+            inputs: roles.map(role => attemptInputs.findLast(row => row.botId === team[role])), attemptInputs, rejected };
           if (stage === 3) {
             receipt.pinnedDeliveries = [];
             for (const prior of [...stages, receipt]) for (const task of prior.deliveries) {

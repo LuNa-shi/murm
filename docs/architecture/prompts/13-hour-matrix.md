@@ -60,6 +60,33 @@ Body SHA-256: `ee568724d99a2c65b73c7a6a37074baa9f769dd94fd4ab0e95810ea25d17b231`
     return { ...(stage ? { supplement: text } : { goal: text }), paths, tasks };
   }
 ````
+## Lead-helper explicit checker rejection instruction
+
+Only strict false from the frozen programming verifier creates this instruction. It contains no expected answers; original task text remains the assigned source of requirements.
+
+Body SHA-256: `cbaf3ab9b85b1fcf34d8d2ce386653151ab402e20828f7fb12d9ba647216e2fa`
+
+````text
+ `The independent checker rejected this programming result. No reference answer is supplied. Recheck the original task and every case, inspect your program and actual stdout, and fix the cause. Preserve the rejected source/stdout under distinct rejected-attempt filenames before editing; retain final corrected source/stdout at the canonical filenames. Stage only the new assigned JSON file and check it is the only staged path before committing and pushing.`,
+````
+## Lead-helper corrective input composition and send
+
+stage, role and attempt are trusted controller fields; fixedPaths/fixedTasks are the original copied host plan. nextPath and subtaskId are fresh derived addresses, and decision.correction comes from the host checker port above. The same helper receives this JSON through actual exclusive followUp only after the prior accepted input completed and its candidate was explicitly rejected. The original absolute deadline is reused. No expected answer or added Service grant is supplied.
+
+Body SHA-256: `e2197961da212a83f1efa4cbbc229c169ad3bbaaa0394466d6bd4c73959f2f4b`
+
+````text
+ fixedPaths[role].replace(/\.[^.]+$/, `-correction-${++attempt}.json`);
+                  const subtaskId = `stage-${stage}-${role}-correction-${attempt}`;
+                  if (board.snapshot().subtasks.some(row => row.path === nextPath || row.id === subtaskId)) throw fail('STAGE_CORRECTION_CONFLICT');
+                  const correctionPaths = { ...fixedPaths, [role]: nextPath };
+                  const correctionTask = (fixedTasks?.[role] ?? '').replaceAll(fixedPaths[role], nextPath);
+                  await dispatch(role, `stage-${stage}-${role}-correction-${attempt}`, {
+                    type: 'helper-correction', stage, attempt, paths: correctionPaths, subtaskId,
+                    task: correctionTask,
+                    instruction: `${decision.correction} Preserve the rejected complete Board task and Git commit. Read the unchanged current direction, create a new subtask with id ${subtaskId} and path ${nextPath}, claim it yourself, and complete it with your corrected pushed delivery and a new task-scoped feedback note. Use only the existing Board capabilities; do not alter another task or direction.`,
+                  }, workSignal, deadlineAtMs);
+````
 ## Programming instructions appended to repository workload
 
 peer and stage are trusted numeric host fields. text is the explicitly configured external programming prompt, validated as nonblank and at most 4096 UTF-8 bytes; the host verifier receives only the programming property read from the real committed/substrate JSON and never executes generated code.
