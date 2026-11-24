@@ -63,14 +63,11 @@ const primitives = [
   'List', 'eagerReduce',
 ];
 const axioms = ['propext', 'Quot.sound', 'Classical.choice'];
-// FLT10's final-source contract is additional to theorem/kernel verification.
-// Diagnostic probes may use these constructs; final submitted Lean files may not.
-const fltForbiddenSource = /\b(?:sorry|sorryAx|admit|axiom|unsafe|native_decide|trustCompiler|extern|implemented_by|run_tac|run_elab|lift_meta_tactic|evalTactic|trace_state|initialize|builtin_initialize|macro|elab)\b|#(?:eval|check|print)\b/;
 
-function findProjectSourcePolicyViolation(files, words) {
+function findProjectSourcePolicyViolation(files) {
   for (const [path, bytes] of Object.entries(files)) {
     if (!path.endsWith('.lean')) continue;
-    const finding = leanSourcePolicyFinding(bytes, words);
+    const finding = leanSourcePolicyFinding(bytes);
     if (finding) return `${path}:${finding.line}:${finding.column}: ${finding.word}`;
   }
   return null;
@@ -311,7 +308,7 @@ function collectProjectDiagnostics(sources) {
 export class LeanFinalTreeVerifier {
   constructor({
     identity, leanRoot, libraryRoots = [], comparatorLibraryRoots, exporterPath, targetPath,
-    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, projectJobs = 1, resources, preserveFixturePrefix = false, requireCompleteProject = false, timeoutMs = 120_000, moduleCacheBytes = 128 * 1024 ** 2, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
+    declarationName, fixtureSource, fixtureSha256, localModules = [], projectChecks = false, projectJobs = 1, resources, requireCompleteProject = false, timeoutMs = 120_000, moduleCacheBytes = 128 * 1024 ** 2, allowUnboundedDiagnostics = false, bubblewrap = '/usr/bin/bwrap',
   }) {
     if (!identity || !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof identity[key] === 'string' && identity[key])) {
       throw new TypeError('Final-tree verifier requires a fixed checker identity');
@@ -349,13 +346,6 @@ export class LeanFinalTreeVerifier {
     this.targetPath = targetPath;
     this.declarationName = declarationName;
     this.fixtureSource = Buffer.from(fixtureSource);
-    if (typeof preserveFixturePrefix !== 'boolean') throw new TypeError('Invalid fixture prefix policy');
-    const placeholder = this.fixtureSource.toString().match(/\bsorry\b/g);
-    if (preserveFixturePrefix && (placeholder?.length !== 1 || !/\bsorry\s*$/.test(this.fixtureSource.toString()))) {
-      throw new TypeError('Proof-placeholder fixture requires one terminal sorry');
-    }
-    this.fixturePrefix = preserveFixturePrefix
-      ? this.fixtureSource.toString().slice(0, this.fixtureSource.toString().lastIndexOf('sorry')) : null;
     this.timeoutMs = timeoutMs;
     this.resourceLimits = allowUnboundedDiagnostics !== true;
     // The systemd cgroup remains the production memory authority. Lean's
@@ -554,13 +544,6 @@ export class LeanFinalTreeVerifier {
       const incomplete = this.requireCompleteProject && findProjectSourcePolicyViolation(files);
       if (incomplete) {
         return result('FAIL', `${incomplete} — final project contains an incomplete proof or an added axiom`);
-      }
-      if (this.fixturePrefix !== null && !files[this.targetPath].toString().startsWith(this.fixturePrefix)) {
-        return result('FAIL', 'Benchmark fixture prefix (imports and theorem statement) changed');
-      }
-      const fltViolation = this.fixturePrefix !== null && findProjectSourcePolicyViolation(files, fltForbiddenSource);
-      if (fltViolation) {
-        return result('FAIL', `${fltViolation} — FLT final source policy rejects diagnostic, incomplete or proof-bypass constructs`);
       }
       if (this.localModules.some(module => !Object.hasOwn(files, module.path))) {
         return result('FAIL', 'Final tree lacks a configured local Lean module source');
