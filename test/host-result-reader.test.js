@@ -135,7 +135,7 @@ test('host result CLI returns the same projection with explicit identity and rep
   const { fileURLToPath } = await import('node:url');
   const { readEnvironmentResult } = await import('../src/environments/shared/read-result.js');
   const execute = promisify(execFile);
-  const cli = fileURLToPath(new URL('../scripts/read-environment-result.mjs', import.meta.url));
+  const cli = fileURLToPath(new URL('../scripts/read-environment-result.js', import.meta.url));
   const input = await recordedRun(t);
   const { stdout } = await execute(process.execPath, [cli, '--run-directory', input.runDirectory, '--runtime-id', input.runtimeId]);
   assert.deepEqual(JSON.parse(stdout), await readEnvironmentResult(input));

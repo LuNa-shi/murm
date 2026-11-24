@@ -12,7 +12,7 @@ import { ServiceRegistry } from '@swarmenv/core/services';
 import { createArtifactsUpstream } from './fixtures/core-artifacts-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
-import { BOT_UID } from '../scripts/sandbox-project.mjs';
+import { BOT_UID } from '../scripts/sandbox-project.js';
 
 const execute = promisify(execFile);
 const collect = { paths: ['tracked.txt', 'uncommitted.txt'], includeGit: true, maxBytes: 1024 ** 2, required: true };

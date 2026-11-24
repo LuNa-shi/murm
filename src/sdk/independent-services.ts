@@ -91,7 +91,7 @@ export async function startIndependentServices({ taskService, projectDir, logRoo
   let judge: RemoteJudgeService | undefined;
   const ownerFile = join(projectDir, 'judge-checker-resources.ndjson');
   const cleanupJudge = () => exec('flock', ['--nonblock', '--no-fork', join(projectDir, 'judge.sqlite.instance-lock'),
-    process.execPath, 'scripts/judge-service-peer.mjs', '--cleanup'], { cwd: repository, timeout: 35_000,
+    process.execPath, 'scripts/judge-service-peer.js', '--cleanup'], { cwd: repository, timeout: 35_000,
     env: { PATH: process.env.PATH, SWARMENV_JUDGE_PEER_LOCKED: 'true', SWARMENV_CHECKER_OWNER_FILE: ownerFile } });
   const stopOwned = async () => {
     const results = await Promise.allSettled(peers.map((peer: any) => peer.stop()));
@@ -101,7 +101,7 @@ export async function startIndependentServices({ taskService, projectDir, logRoo
   };
   await mkdir(join(logRoot, 'services'), { recursive: true });
   try {
-    const contextPeer = await startPeer('flock', ['--nonblock', '--no-fork', join(projectDir, 'context.sqlite.instance-lock'), process.execPath, 'scripts/context-service-peer.mjs'], {
+    const contextPeer = await startPeer('flock', ['--nonblock', '--no-fork', join(projectDir, 'context.sqlite.instance-lock'), process.execPath, 'scripts/context-service-peer.js'], {
       SWARMENV_SERVICE_DATABASE: join(projectDir, 'context.sqlite'), SWARMENV_COORDINATOR_TOKEN: token,
       SWARMENV_SERVICE_HOST: '127.0.0.1', SWARMENV_SERVICE_PORT: '0', SWARMENV_SERVICE_PUBLIC_URL: '',
     }, join(logRoot, 'services/context-peer.stderr.log'));
@@ -117,7 +117,7 @@ export async function startIndependentServices({ taskService, projectDir, logRoo
       coordinator: { url: coordinator.url, token }, checker: { command: leanCommand, timeoutMs: checkerTimeoutMs,
         workRoot: join(projectDir, 'judge-work') } }), { mode: 0o600 });
     const judgePeer = await startPeer('flock', ['--nonblock', '--no-fork', join(projectDir, 'judge.sqlite.instance-lock'),
-      process.execPath, 'scripts/judge-service-peer.mjs'], {
+      process.execPath, 'scripts/judge-service-peer.js'], {
       SWARMENV_SERVICE_DATABASE: join(projectDir, 'judge.sqlite'), SWARMENV_COORDINATOR_TOKEN: token,
       SWARMENV_JUDGE_PEER_CONFIG: configPath, SWARMENV_CHECKER_OWNER_FILE: ownerFile, SWARMENV_JUDGE_PEER_LOCKED: 'true', SWARMENV_SERVICE_PORT: '0',
     }, join(logRoot, 'services/judge-peer.stderr.log'));

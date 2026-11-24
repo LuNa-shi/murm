@@ -30,7 +30,7 @@ async function fixture(t) {
     tasks.recordBotSandbox(id, { provider: 'controlled', sandboxId: id });
     tasks.markBotReady(id);
     return async (...args) => {
-      const { stdout } = await exec(process.execPath, ['dist/scripts/swarm.mjs', ...args], {
+      const { stdout } = await exec(process.execPath, ['dist/scripts/swarm.js', ...args], {
         cwd: process.cwd(), env: { ...process.env, ...env }, timeout: 10_000,
       });
       return JSON.parse(stdout);
@@ -92,7 +92,7 @@ test('CLI process preserves service retryability and request diagnostic fields',
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => server.close());
-  await assert.rejects(exec(process.execPath, ['dist/scripts/swarm.mjs', 'workspace', 'save', '--request-id', 'save-original'], {
+  await assert.rejects(exec(process.execPath, ['dist/scripts/swarm.js', 'workspace', 'save', '--request-id', 'save-original'], {
     env: { ...process.env, SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'fixture' },
   }), error => {
     const result = JSON.parse(error.stderr.trim());

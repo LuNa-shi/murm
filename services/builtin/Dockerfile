@@ -4,6 +4,7 @@ COPY package.json npm-shrinkwrap.json tsconfig.json ./
 RUN npm ci --include=dev --ignore-scripts --no-audit --no-fund
 COPY src ./src
 COPY scripts ./scripts
+COPY examples ./examples
 COPY services ./services
 RUN npm run build
 

@@ -61,8 +61,8 @@ try {
   await docker(['run', '--detach', '--name', name, '--network', 'none', '--cpus', '1', '--memory', '256m', '--pids-limit', '128',
     '--env', `SWARMENV_WORKER_TOKEN=${token}`, '--env', 'ROOT_ONLY_TEST_SECRET=must-not-reach-agent',
     '--tmpfs', '/workspace:rw,nosuid,nodev,size=64m',
-    '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/opensandbox-agent-worker.mjs', import.meta.url))},target=/opt/swarmenv/agent-worker.mjs,readonly`,
-    '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/sandbox-project.mjs', import.meta.url))},target=/opt/swarmenv/sandbox-project.mjs,readonly`,
+    '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/opensandbox-agent-worker.js', import.meta.url))},target=/opt/swarmenv/agent-worker.mjs,readonly`,
+    '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/sandbox-project.js', import.meta.url))},target=/opt/swarmenv/sandbox-project.mjs,readonly`,
     ...['project-install.mjs', 'project-processes.mjs'].flatMap(file => ['--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/' + file, import.meta.url))},target=/opt/swarmenv/${file},readonly`]),
     '--entrypoint', 'node', 'swarmenv/agent:issue122', '/opt/swarmenv/agent-worker.mjs']);
   await docker(['exec', name, 'node', '-e', `

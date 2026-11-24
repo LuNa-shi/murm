@@ -17,4 +17,4 @@ if [ "${SWARMENV_JUDGE_PREBUILD:-false}" = "true" ]; then
   fi
 fi
 
-exec node dist/scripts/service-host.mjs
+exec node dist/scripts/service-host.js

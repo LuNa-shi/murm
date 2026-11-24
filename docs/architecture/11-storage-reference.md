@@ -55,7 +55,7 @@ Durable state can outlive a Session, but runtime recovery still has to validate 
 
 ## Updating and checking
 
-`node scripts/generate-architecture-api.mjs` refreshes the schema text from the executable exports. `--check` verifies it without writes. A newly added table, column, constraint or index therefore creates a reviewable documentation difference. Runtime state-machine and migration changes also require updates to this narrative and the relevant lifecycle chapter.
+`node dist/scripts/generate-architecture-api.js` refreshes the schema text from the executable exports. `--check` verifies it without writes. A newly added table, column, constraint or index therefore creates a reviewable documentation difference. Runtime state-machine and migration changes also require updates to this narrative and the relevant lifecycle chapter.
 
 <!-- BEGIN GENERATED REFERENCE -->
 

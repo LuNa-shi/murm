@@ -14,7 +14,7 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 
 async function startPeer(database) {
   const token = 'coordinator-test-credential-private';
-  const child = spawn(process.execPath, ['dist/scripts/context-service-peer.mjs'], {
+  const child = spawn(process.execPath, ['dist/scripts/context-service-peer.js'], {
     env: { ...process.env, SWARMENV_SERVICE_DATABASE: database, SWARMENV_COORDINATOR_TOKEN: token },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -93,7 +93,7 @@ for (const loseResponse of [false, true]) test(`independent Context preserves re
 
   try {
     await bridge.bindTake(taken);
-    const result = await promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', 'material', 'view', material.material.material_id, '--json'],
+    const result = await promisify(execFile)(process.execPath, ['dist/scripts/swarm.js', 'material', 'view', material.material.material_id, '--json'],
       { env: { ...process.env, ...credentials }, timeout: 5000 });
     assert.equal(JSON.parse(result.stdout).material.content, input.content);
     const denied = await fetch(`${credentials.SWARMENV_BRIDGE_URL}/call`, { method: 'POST',

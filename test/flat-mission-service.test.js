@@ -43,7 +43,7 @@ async function fixture(t,{permissions=['mission_submit'],registered=permissions,
   const cli=async(...args)=>{
     const credentials=controls.credentials.get(bot.id),env={...process.env,...credentials.environment,...credentials.secretEnvironment};
     const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.origin;
-    return JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.mjs',import.meta.url).pathname,...args],{env,timeout:10000})).stdout);
+    return JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:10000})).stdout);
   };
   return {...stores,root,store,mission,runtime,bot,policy,calls,cli};
 }
@@ -135,7 +135,7 @@ test('normal Flat host keeps the explicit Mission checker caller-owned after its
         assert.deepEqual(stores.tasks.getBot(botId).coordination_permissions,coordinationPermissions);
         const credentials=controls.credentials.get(botId),env={...process.env,...credentials.environment,...credentials.secretEnvironment};
         const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.origin;
-        const cli=async(...args)=>JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.mjs',import.meta.url).pathname,...args],{env,timeout:10000})).stdout);
+        const cli=async(...args)=>JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:10000})).stdout);
         if(enabled) assert.equal((await cli('mission','view')).mission_id,stores.missionId);
         else await assert.rejects(cli('mission','view'),error=>/NOT_ALLOWED/.test(error.stderr));
         const attempt=()=>cli('mission','submit','--material-ids','[]','--request-id','normal-host');

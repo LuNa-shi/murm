@@ -81,7 +81,7 @@ try {
  const run=promisify(execFile);
  const cli=async(bot,...args)=>{
   const credentials=bridge.credentialsForBot(bot);
-  return run(process.execPath,['./node_modules/@swarmenv/core/dist/scripts/swarm.mjs',...args],{env:{...process.env,...credentials.environment,...credentials.secretEnvironment},timeout:5000});
+  return run(process.execPath,['./node_modules/@swarmenv/core/dist/scripts/swarm.js',...args],{env:{...process.env,...credentials.environment,...credentials.secretEnvironment},timeout:5000});
  };
  const rejected=async(code,...args)=>assert.rejects(cli(...args),error=>{assert.equal(JSON.parse(error.stderr).code,code);return true});
  const key='core-service-boundary'; const original=JSON.stringify(fixedFact);

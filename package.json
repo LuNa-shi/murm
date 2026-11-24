@@ -42,13 +42,13 @@
     "build": "node scripts/build.ts",
     "typecheck": "tsc --noEmit",
     "prepack": "npm run build",
-    "swarm": "node dist/scripts/swarm.mjs",
+    "swarm": "node dist/scripts/swarm.js",
     "test": "node --test --test-concurrency=1 'dist/test/**/*.test.js'",
     "pretest": "npm run docs:check",
-    "service:mathlib-search": "node dist/scripts/mathlib-search-service.mjs",
-    "service:builtin": "node dist/scripts/service-host.mjs",
-    "docs:generate": "node dist/scripts/generate-architecture-prompts.mjs && node dist/scripts/generate-architecture-api.mjs && node dist/scripts/generate-architecture-coverage.mjs",
-    "docs:check": "node dist/scripts/check-architecture.mjs",
+    "service:mathlib-search": "node dist/scripts/mathlib-search-service.js",
+    "service:builtin": "node dist/scripts/service-host.js",
+    "docs:generate": "node dist/scripts/generate-architecture-prompts.js && node dist/scripts/generate-architecture-api.js && node dist/scripts/generate-architecture-coverage.js",
+    "docs:check": "node dist/scripts/check-architecture.js",
     "predocs:generate": "npm run build",
     "predocs:check": "npm run build"
   },
@@ -57,7 +57,7 @@
     "ajv": "8.20.0"
   },
   "bin": {
-    "swarm": "dist/scripts/swarm.mjs"
+    "swarm": "dist/scripts/swarm.js"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

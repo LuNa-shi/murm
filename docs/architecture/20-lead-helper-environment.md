@@ -1,6 +1,6 @@
 # Fixed lead-helper Environment
 
-The entry point is [`runLeadHelper`](../../src/environments/lead-helper/index.js), with the editable CLI in [`examples/lead-helper-environment/main.mjs`](../../examples/lead-helper-environment/main.mjs). This is a local Environment and Service implementation of Phase 0005 §9: one host-created lead and a preconfigured set of helpers, a durable public Board and a retained Git project. It imports public Core and ServiceRegistry, defines no Core role and grants no Bot control operations. It does not expand a team after startup, automatic replacement, claim expiry, recovery, arbitrary SQL, or upstream-scale operation.
+The entry point is [`runLeadHelper`](../../src/environments/lead-helper/index.ts), with the editable CLI in [`examples/lead-helper-environment/main.mjs`](../../examples/lead-helper-environment/main.mjs). This is a local Environment and Service implementation of Phase 0005 §9: one host-created lead and a preconfigured set of helpers, a durable public Board and a retained Git project. It imports public Core and ServiceRegistry, defines no Core role and grants no Bot control operations. It does not expand a team after startup, automatic replacement, claim expiry, recovery, arbitrary SQL, or upstream-scale operation.
 
 ## Configuration, identities and startup
 

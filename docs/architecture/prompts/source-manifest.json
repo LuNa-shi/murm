@@ -22,28 +22,28 @@
       "sha256": "07167c0da00688c879ec9539e1ad95db5e8bdec818b6c651b27bf1c91b722aa7"
     },
     {
-      "path": "scripts/opensandbox-agent-worker.mjs",
-      "sha256": "d6fa3cd1bf167acb2c1230c1be9ed051d156cde3abf03599ee8f14729729becf"
+      "path": "scripts/opensandbox-agent-worker.ts",
+      "sha256": "ea14cdf09fb5177e24da99adb29d5854ec64cdae5ca78cbe0e33469df8dc11a8"
     },
     {
       "path": "examples/notes-environment/main.mjs",
       "sha256": "b66b97a021344dec9c30cf9bf10fc1c9fa61f176d65ed20feaffc386416c6d45"
     },
     {
-      "path": "src/environments/shared/run-input.js",
-      "sha256": "f88873c40ab74a4a673e2de07216770d1b442b229f1635548b7622d41de37f78"
+      "path": "src/environments/shared/run-input.ts",
+      "sha256": "eef9dbf6c1ceb86b0de73bac4ceb2d3878c6a1c47b476daa1e18b4398e0630a3"
     },
     {
-      "path": "src/environments/scalemas/index.js",
-      "sha256": "cc77934afbcc6c73fae6f0c38873b8fdf0207687ecb0c57a7f99377a900db891"
+      "path": "src/environments/scalemas/index.ts",
+      "sha256": "026924cb38465352f32f9ff0f7e3ea9d96f27bcd49d41398ea0b97a461e9da5d"
     },
     {
-      "path": "src/environments/flat/controller.js",
-      "sha256": "c552fadf2e688b8d5e7b5579abd67912ee24a4351b119345990ac4ffc24e1342"
+      "path": "src/environments/flat/controller.ts",
+      "sha256": "97817d01c3ce6a34b60887d459513e8e818678c76a1d3d6f7fe6930d300aa988"
     },
     {
-      "path": "src/environments/flat/environment.js",
-      "sha256": "0e3f67ab671ba72a88f6355dd250776efbd43013611691de06aae4ecfe5df7fd"
+      "path": "src/environments/flat/environment.ts",
+      "sha256": "6123abd043dbcd014a00cdc85d755539f2686d726fe8b5b537b93a56bc4ac4ac"
     },
     {
       "path": "examples/subagents-environment/main.mjs",
@@ -58,20 +58,20 @@
       "sha256": "c061cefb7583f4431c82b5750d712bbfdb419a1305195b84adf52bc1166f7842"
     },
     {
-      "path": "src/environments/agensh/index.js",
-      "sha256": "2a100e2bf98e90689c70d64a7cdd760b02d0ce5a3e19167b81cd2cd08bad1937"
+      "path": "src/environments/agensh/index.ts",
+      "sha256": "b658fc0a6fd30cfe11ce3627f277ede386cb02a74021c07c9b60dc25fede8bdd"
     },
     {
-      "path": "src/environments/agensh/router.js",
-      "sha256": "363e245027de8681ab8a19f2b3be375e2aed3e16791bc277974087362872b8ea"
+      "path": "src/environments/agensh/router.ts",
+      "sha256": "8d9f59725e11c75174bf56ae76b466b7b67679f7df1105caf93c8ce4b0e14ec5"
     },
     {
-      "path": "src/environments/agensh/routed.js",
-      "sha256": "f69b54ff563430a31c39a937d837e2abf2a3af9cd35ee947a9698a9f79cf7aec"
+      "path": "src/environments/agensh/routed.ts",
+      "sha256": "2ddfed8ea5f7d91eabb9068dd38261c0e2e13ba759eed84134925280af2ea033"
     },
     {
-      "path": "src/environments/agensh/team.js",
-      "sha256": "1d93f478f9d580a99b55cb60fd091679fff3f7680d13a0f41470dce030685e3f"
+      "path": "src/environments/agensh/team.ts",
+      "sha256": "a45dd33b773646d90456959ee1e56d2d4ef645621a2668030dc612b59d15929d"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
@@ -82,12 +82,12 @@
       "sha256": "25c7f083078a04845aab8777fc63fb8437bfb41de4f1b3ee56b27e0276ee07d4"
     },
     {
-      "path": "src/environments/lead-helper/prompts.js",
+      "path": "src/environments/lead-helper/prompts.ts",
       "sha256": "4222770edeeb1941ef6a8a38bd36ebda9fd07ce795e1dc8d3e9a485607757132"
     },
     {
-      "path": "src/environments/lead-helper/index.js",
-      "sha256": "bcc32c4f65e0b729d47479aafacfe55c5d71b560b482d402feb1c88035f0e7da"
+      "path": "src/environments/lead-helper/index.ts",
+      "sha256": "29260394acd3004120ccfae60c5e3f7ebc94aecc3156b84473626e83c5de7331"
     },
     {
       "path": "src/runtime/runtime.ts",
@@ -190,37 +190,37 @@
       "sha256": "1e96fc7dae086fcde47e0d5648f0ab79d43e74c4b8653f574ef05f6ad03cf2f6"
     },
     {
-      "path": "src/environments/scalemas/index.js",
+      "path": "src/environments/scalemas/index.ts",
       "anchor": "export const peerPrompt = '",
       "line": 8,
       "sha256": "7eec8ce7af8b62f501a2dd61909ba695955a3840e266d5a92734d2a92ab90d89"
     },
     {
-      "path": "src/environments/scalemas/index.js",
+      "path": "src/environments/scalemas/index.ts",
       "anchor": "export const cyclePrompt = '",
       "line": 9,
       "sha256": "c783b6377a748f73ae5b941513f362f67a9ef7155f6da56671047e8af5182df4"
     },
     {
-      "path": "src/environments/scalemas/index.js",
+      "path": "src/environments/scalemas/index.ts",
       "anchor": "                  const text = ",
       "line": 99,
       "sha256": "de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926"
     },
     {
-      "path": "src/environments/agensh/index.js",
+      "path": "src/environments/agensh/index.ts",
       "anchor": "export const peerPrompt = `",
       "line": 8,
       "sha256": "06c1eff12e00ec7944444e731069139aa9dc237f1bc6a5132f8d7d9f390699de"
     },
     {
-      "path": "src/environments/agensh/router.js",
+      "path": "src/environments/agensh/router.ts",
       "anchor": "export const routerInstruction = '",
       "line": 7,
       "sha256": "ebb4197c01fd6d34a6e1250d52a9ad95a47f84e5324e9eadb9ca58d8747a9eb3"
     },
     {
-      "path": "src/environments/agensh/router.js",
+      "path": "src/environments/agensh/router.ts",
       "anchor": "export const idleNudgeInput = '",
       "line": 6,
       "sha256": "4434a9725ae7dfe349ef64dbbacf6d10b80cc11e06828ee222e0c76f4eb33b0f"
@@ -256,61 +256,61 @@
       "sha256": "8f943ea32b0291bed1fdbb8ecd6c55761fd81fb047587040bff06c185d1e063c"
     },
     {
-      "path": "src/environments/lead-helper/prompts.js",
+      "path": "src/environments/lead-helper/prompts.ts",
       "anchor": "export const leadPrompt = `",
       "line": 1,
       "sha256": "79e4899e9a404b291f5f179c838060cfbed8cc1026e034476f23ab6925d03b1a"
     },
     {
-      "path": "src/environments/lead-helper/prompts.js",
+      "path": "src/environments/lead-helper/prompts.ts",
       "anchor": "export const helperPrompt = `",
       "line": 2,
       "sha256": "ccaadaa3e9dd80e07431a915eaa02d5f5fb3925750d40a2683b09abedf713f81"
     },
     {
-      "path": "src/environments/lead-helper/prompts.js",
+      "path": "src/environments/lead-helper/prompts.ts",
       "anchor": "export const initializeInstruction = '",
       "line": 3,
       "sha256": "0bb76cfd2a5782258de1f2c0ac5304b1ab3761c2e5c59c5dbf9133267d6dccf2"
     },
     {
-      "path": "src/environments/lead-helper/prompts.js",
+      "path": "src/environments/lead-helper/prompts.ts",
       "anchor": "export const helperInitialInstruction = '",
       "line": 4,
       "sha256": "655a5ce3f8cca7a5a32fa0cc01c843d16df7d1f622e2a4464151c67cd162cfc3"
     },
     {
-      "path": "src/environments/lead-helper/prompts.js",
+      "path": "src/environments/lead-helper/prompts.ts",
       "anchor": "export const leadAdjustmentInstruction = '",
       "line": 5,
       "sha256": "b87643bf5ec03c1de13086039f771375d845f9ea0a81a6fb21b41ebd4b98bbde"
     },
     {
-      "path": "src/environments/lead-helper/prompts.js",
+      "path": "src/environments/lead-helper/prompts.ts",
       "anchor": "export const helperFollowupInstruction = '",
       "line": 6,
       "sha256": "0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85"
     },
     {
-      "path": "src/environments/lead-helper/index.js",
+      "path": "src/environments/lead-helper/index.ts",
       "anchor": "                  const nextPath =",
       "line": 197,
-      "sha256": "e2197961da212a83f1efa4cbbc229c169ad3bbaaa0394466d6bd4c73959f2f4b"
+      "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
     },
     {
-      "path": "src/environments/flat/environment.js",
+      "path": "src/environments/flat/environment.ts",
       "anchor": "prompt='",
       "line": 15,
       "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
     },
     {
-      "path": "src/environments/flat/environment.js",
+      "path": "src/environments/flat/environment.ts",
       "anchor": "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '",
       "line": 12,
       "sha256": "7ddd3c046642e46ad91153885ed29729e1d733c4c0f6420da7200f750ff28a4d"
     },
     {
-      "path": "src/environments/flat/controller.js",
+      "path": "src/environments/flat/controller.ts",
       "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
       "line": 8,
       "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
@@ -323,7 +323,7 @@
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     },
     {
-      "path": "src/environments/flat/controller.js",
+      "path": "src/environments/flat/controller.ts",
       "line": 100,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
@@ -405,43 +405,43 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "5a5089df1131ec126e0cee3dd5df8911a922c5bd4b228d085269b299b406efcc"
+      "sha256": "2211fbddbcf092874ce4e3db8214e7bb6c71e9e51e13c1b340778bce46528719"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
-      "sha256": "5ae68d01dd659c7823ea94e928dc70dd3319c54583c57e688dbb8ad48b6d961b"
+      "sha256": "27ffb05e90c46c93eb351d1776857b3f91b1e8a1bd3e379ab02b870f60b155eb"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "7fb97723ab4a56b6ccba6beb1d23a6fadda4a47ad5e2c803d17a32e3925a9d79"
+      "sha256": "6f9698c49338f73048589c12b0d1e439af07b3caa476f1a8a503a5141621bb1a"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "22c1ec9b0b70a223f7b12d5f0b27f7e337e8c413320aecb29d845b78faf5f23c"
+      "sha256": "7e4dbca89dcccfc0b0eb1863756d3f685fb02a54c4aaea970cc010d079c5e684"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
-      "sha256": "c3ceddc88245817507b0aa32c3de66771ea59e24dd9ad001ac333121beda56ca"
+      "sha256": "5482121ed898c236b9f96913329ac3ce7b1bfa3f20134982ec5d3887a7a970bb"
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "0a1dc59e762a790173b3be17550dd3ec10efb077a84c3b6584e7258ee997a3f9"
+      "sha256": "8f60d84daf88d52f74daf700276cf331e141dc28f83692123ea50a2b48756a58"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
-      "sha256": "640287f6c755629bead26a55c6543e40b32069813a490a8f907e3f57125e2d9c"
+      "sha256": "f597ea752377ae8159bac007ab20fd590726947f12e3ff6cd991134be7ac4f44"
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",
-      "sha256": "85df612341d87eaaa44d13f658909226cccb08d332c34aecfe4fc591e642f055"
+      "sha256": "2fbb33a5e52d553fa6031b635fbc8d6a10d6cff5608836cb2d188a9a37d4dd24"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",
-      "sha256": "a3c8d2e5e65d9cd0ee7b434524b32201ccd1f193c8e41b46bbbac2bab64fdfbb"
+      "sha256": "c4d2afe44fc3cbfed571c2bd36d1cf200153a348981364cb7ac8ba0a18851509"
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "3e5e07faf5ce1d1144dc026b4e47b89e277e3add8a94a432f5df8ed65ff84e9c"
+      "sha256": "71c28c18542c852e50df770029a35b58bc2cc01e3943318f7199a25e6c568bf7"
     }
   ]
 }

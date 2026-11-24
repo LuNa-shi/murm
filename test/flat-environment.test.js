@@ -32,7 +32,7 @@ test('Flat can finish with a public Material when no live Workspace capture is c
       const credentials=controls.credentials.get(botId);
       const env={...process.env,...credentials.environment,...credentials.secretEnvironment};
       const bridge=new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname='127.0.0.1'; env.SWARMENV_BRIDGE_URL=bridge.origin;
-      const cli=async (...args)=>JSON.parse((await promisify(execFile)(process.execPath,['dist/scripts/swarm.mjs',...args],{env,timeout:5000})).stdout);
+      const cli=async (...args)=>JSON.parse((await promisify(execFile)(process.execPath,['dist/scripts/swarm.js',...args],{env,timeout:5000})).stdout);
       const manifest=await cli('service','view','workspace');
       assert.deepEqual(manifest.capabilities.map(row=>row.name),['view','read','files']);
       const workspace=await cli('workspace','view');
@@ -114,7 +114,7 @@ test('flat host composes public Bash publication and controller finish with dura
       const credentials=controls.credentials.get(bot.botId);
       const env={...process.env,...credentials.environment,...credentials.secretEnvironment};
       const bridge=new URL(env.SWARMENV_BRIDGE_URL);bridge.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=bridge.href.replace(/\/$/,'');
-      const cli=async args=>{const {stdout}=await promisify(execFile)(process.execPath,['dist/scripts/swarm.mjs',...args],{env,timeout:5000});return JSON.parse(stdout);};
+      const cli=async args=>{const {stdout}=await promisify(execFile)(process.execPath,['dist/scripts/swarm.js',...args],{env,timeout:5000});return JSON.parse(stdout);};
       await cli(['task','take',stores.task.task_id,'--request-id','take']);
       const attachment=Buffer.from([0,255,65,10]);
       const seed=await cli(['material','publish','--content','Original observation','--receiving-task-id',stores.task.task_id,
@@ -188,7 +188,7 @@ async function runPublicationProbe(t, snapshotProject, probe) {
         const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
         const bridge = new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname = '127.0.0.1';
         env.SWARMENV_BRIDGE_URL = bridge.origin;
-        await promisify(execFile)(process.execPath, [new URL('../scripts/swarm.mjs', import.meta.url).pathname,
+        await promisify(execFile)(process.execPath, [new URL('../scripts/swarm.js', import.meta.url).pathname,
           'task', 'take', stores.task.task_id, '--request-id', 'probe-take'], { env, timeout: 5000 });
         const call = async (operation, operationId, payload = {}) => {
           const response = await fetch(`${bridge.origin}/call`, { method: 'POST',
@@ -556,7 +556,7 @@ test('four current CLI discovery Bots take exclusive work and reuse only a physi
     const credentials = controls.credentials.get(botId); assert.ok(credentials);
     const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
     const bridge = new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.SWARMENV_BRIDGE_URL = bridge.href.replace(/\/$/, '');
-    return JSON.parse((await promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', ...args], { env, timeout: 5000 })).stdout);
+    return JSON.parse((await promisify(execFile)(process.execPath, ['dist/scripts/swarm.js', ...args], { env, timeout: 5000 })).stdout);
   };
   let initial, takes, replacement;
   const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,

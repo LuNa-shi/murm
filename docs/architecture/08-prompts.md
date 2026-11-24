@@ -57,7 +57,7 @@ The `use-workspace` skill directs ordinary local-proposition iteration to save a
 
 ### Flat take preview notice
 
-`src/environments/flat/prepare-inputs.js` composes one additional tool-result notice only when a host-recorded Task view preview differs from the authoritative public revision selected during take:
+`src/environments/flat/prepare-inputs.ts` composes one additional tool-result notice only when a host-recorded Task view preview differs from the authoritative public revision selected during take:
 
 ```text
 Execution ${execution.execution_id} starts from ${snapshot.revision}, different from preview ${preview.revision}; reread the affected project files.
@@ -69,13 +69,13 @@ The Execution ID comes from TaskService's accepted reservation; selected revisio
 
 The [generated flat reference](prompts/08-flat-environment.md) extracts the complete defaults from the Environment/controller sources and records their fingerprints and public send site.
 
-`src/environments/flat/controller.js` owns its default discovery input, sent only after coordinator domain readiness through public `Runtime.send` with explicit `followUp`:
+`src/environments/flat/controller.ts` owns its default discovery input, sent only after coordinator domain readiness through public `Runtime.send` with explicit `followUp`:
 
 ```text
 Read public Tasks and take suitable work. Continue in this Session after take.
 ```
 
-The default researcher Profile prompt in `src/environments/flat/environment.js` supplies the base text during Core assembly.
+The default researcher Profile prompt in `src/environments/flat/environment.ts` supplies the base text during Core assembly.
 
 ```text
 Use the flat Services to discover, execute and truthfully finish Mission work.
@@ -101,7 +101,7 @@ The opt-in controlled acceptance explicitly sends these two complete turn inputs
 
 The routed entrypoint adds a separate host-owned input path; the direct T13 entrypoint still forwards only the host's explicit text. [Complete generated peer/router texts](prompts/08-agensh-environment.md) preserve the Profile prompt, serial batch instruction and optional idle nudge. `createAgenshRouter` composes each actual turn as the complete `routerInstruction`, a newline, and JSON `{batchId,source,eventId,kind,text,context}`. `batchId` derives from the host-ingested source/event/target identity. Source text is the targeted host input, a newly observed Gitea comment or Mattermost post, or the fixed configured nudge. Context is the run board's current rendered view for the trusted worker, read immediately before that batch. All dynamic fields are data; no upstream identity or credential is interpolated into the instruction. The router calls the existing Environment runInput helper, which explicitly sends followUp to the same native Session. Failed readiness or context loading sends no batch. Unknown/cancelled submission fences subsequent sends; its diagnostics stay host-side. No independent notification or busy-steer channel is added.
 
-The team entrypoint in `src/environments/agensh/team.js` composes the same complete peer Profile prompt for every `peer-<key>` Profile and the same serial instruction for each peer's exclusive router. Dynamic `WORK_BRANCH` now comes from the selected provisioned peer's branch, with the original single-peer `peer-<runId>` fallback. Repository, channel and board fields are shared; worker identity, account author fields, bindings and secret Git environment remain peer-specific. All identities and subscriptions are installed before kickoff. Targeted upstream text and current board rendering enter only the selected router's JSON batch; its call through shared runInput sends explicit followUp to that Bot's original Session. The team adds no independent prompt, continuation or failure text. The opt-in two-peer fixture supplies fixed stage markers and controlled Bash responses, described in the Environment chapter; these are verification inputs rather than ordinary production prompts or hosted model evidence.
+The team entrypoint in `src/environments/agensh/team.ts` composes the same complete peer Profile prompt for every `peer-<key>` Profile and the same serial instruction for each peer's exclusive router. Dynamic `WORK_BRANCH` now comes from the selected provisioned peer's branch, with the original single-peer `peer-<runId>` fallback. Repository, channel and board fields are shared; worker identity, account author fields, bindings and secret Git environment remain peer-specific. All identities and subscriptions are installed before kickoff. Targeted upstream text and current board rendering enter only the selected router's JSON batch; its call through shared runInput sends explicit followUp to that Bot's original Session. The team adds no independent prompt, continuation or failure text. The opt-in two-peer fixture supplies fixed stage markers and controlled Bash responses, described in the Environment chapter; these are verification inputs rather than ordinary production prompts or hosted model evidence.
 
 The T14 opt-in controlled native test uses fixed texts `T14_FIXED_KICKOFF`, `T14_FIXED_EXTERNAL`, and `T14_FIXED_USER`. The middle text is posted to the actual run PR and discovered through the HTTP subscription. The third marker is prefixed by the provisioned peer username in an actual Mattermost mention, discovered by that same subscription. Its three scripted Bash calls and outputs `ROUTER_1_OK`/`ROUTER_2_OK`/`ROUTER_3_OK` are local fixture responses, not hosted reasoning. The gate disables nudges; bounded nudge behavior is checked deterministically.
 

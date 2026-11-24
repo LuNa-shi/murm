@@ -3,8 +3,8 @@ import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
-import { decodeFileSeed } from '../../scripts/core-file-seed.mjs';
-import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../../scripts/core-collection.mjs';
+import { decodeFileSeed } from '../../scripts/core-file-seed.js';
+import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../../scripts/core-collection.js';
 
 const DEFAULT_EXECd_PORT = 44772;
 const DEFAULT_TIMEOUT_MS = 120_000;

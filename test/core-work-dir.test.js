@@ -3,7 +3,7 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from '
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { CoreWorkDir } from '../scripts/core-work-dir.mjs';
+import { CoreWorkDir } from '../scripts/core-work-dir.js';
 
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'core-files-worker-'));

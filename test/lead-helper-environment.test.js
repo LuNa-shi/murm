@@ -51,7 +51,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
   }));
   const repository = join(directory, 'repo.git'); await run('git', ['init', '--bare', repository]);
   if (fixturePrograms) { const seed = join(directory, 'seed'); await run('git', ['init', '-b', 'main', seed]); await writeFile(join(seed, 'README.txt'), 'Initial project\n'); await run('git', ['-C', seed, 'add', '.']); await run('git', ['-C', seed, '-c', 'user.name=fixture', '-c', 'user.email=fixture@test.invalid', 'commit', '-m', 'Seed']); await run('git', ['-C', seed, 'push', repository, 'main']); }
-  const bin = join(directory, 'bin'); await mkdir(bin); await writeFile(join(bin, 'swarm'), `#!/usr/bin/env node\nimport(${JSON.stringify(new URL('../scripts/swarm.mjs', import.meta.url).href)});\n`, { mode: 0o700 });
+  const bin = join(directory, 'bin'); await mkdir(bin); await writeFile(join(bin, 'swarm'), `#!/usr/bin/env node\nimport(${JSON.stringify(new URL('../scripts/swarm.js', import.meta.url).href)});\n`, { mode: 0o700 });
   const fileReads = new Map();
   server = createServer(async (request, response) => {
     try {
@@ -80,7 +80,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
   };
   const call = async (role, operation, input = {}, requestId) => {
     const start = transport.spawns.get(team[role]); const file = join(privateDirectories[role], 'request.json'); await writeFile(file, JSON.stringify(input));
-    const result = await run(process.execPath, [new URL('../scripts/swarm.mjs', import.meta.url).pathname, 'board', operation, '--input', file, '--request-id', requestId ?? `${role}-${operation}-${++serial}`], { cwd: privateDirectories[role], env: { ...process.env, ...start.credentials.environment, ...start.credentials.secretEnvironment }, timeout: 10000 });
+    const result = await run(process.execPath, [new URL('../scripts/swarm.js', import.meta.url).pathname, 'board', operation, '--input', file, '--request-id', requestId ?? `${role}-${operation}-${++serial}`], { cwd: privateDirectories[role], env: { ...process.env, ...start.credentials.environment, ...start.credentials.secretEnvironment }, timeout: 10000 });
     return JSON.parse(result.stdout);
   };
   let serial = 0;

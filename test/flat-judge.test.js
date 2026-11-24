@@ -46,7 +46,7 @@ async function fixture(t,options={}) {
     const credentials=controls.credentials.get(bot.id);assert.ok(credentials);
     const env={...process.env,...credentials.environment,...credentials.secretEnvironment};
     const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.href.replace(/\/$/,'');
-    const {stdout}=await execute(process.execPath,[new URL('../scripts/swarm.mjs',import.meta.url).pathname,...args],{env,timeout:15000});return JSON.parse(stdout);
+    const {stdout}=await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:15000});return JSON.parse(stdout);
   };
   await cli('task','take',stores.task.task_id,'--request-id','fixed-take');
   return {...stores,judge,checked,cli,bot,runtime,publication,expireMission:()=>{deadlineAt=Date.now()-1;}};
@@ -217,7 +217,7 @@ test('Environment saves owned pending Judge identities when an already started s
         const botId=controller.snapshot().bots[0].botId,credentials=controls.credentials.get(botId);
         const env={...process.env,...credentials.environment,...credentials.secretEnvironment};
         const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.href.replace(/\/$/,'');
-        const cli=(...args)=>execute(process.execPath,[new URL('../scripts/swarm.mjs',import.meta.url).pathname,...args],{env,timeout:15000});
+        const cli=(...args)=>execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:15000});
         await cli('task','take',stores.task.task_id,'--request-id','report-take');
         checking=cli('judge','check','--revision','0.1','--path','input.txt','--request-id','report-held-source').catch(error=>error);
         await entered.promise;controller.halt('host-stop');

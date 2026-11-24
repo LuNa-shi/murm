@@ -94,7 +94,7 @@ Common event filters include `after_sequence`, `execution_id` on the event route
 
 Operator admission covers event, detail, report and owner-service routes. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
 
-Sources: [server](../../src/observability/observability-server.ts), [daemon entry/discovery](../../scripts/serve-observability.mjs), [server tests](../../test/observability-server.test.js), [worktree discovery tests](../../test/observability-worktree-discovery.test.js).
+Sources: [server](../../src/observability/observability-server.ts), [daemon entry/discovery](../../scripts/serve-observability.ts), [server tests](../../test/observability-server.test.js), [worktree discovery tests](../../test/observability-worktree-discovery.test.js).
 
 ## 4. Bounds, SSE and non-UI consumers
 
@@ -113,7 +113,7 @@ The retained pure `src/observability/observation-projection.ts` folds bounded Ta
 For registered Observation Stores, the following loopback commands access the same retained query and streaming endpoints without a browser. Select an actual ID from the experiment registry before running the ID-specific commands. A remote or password-protected listener still requires its configured operator authentication.
 
 ```sh
-node scripts/serve-observability.mjs --root experiments --port 8787
+node dist/scripts/serve-observability.js --root experiments --port 8787
 curl --fail http://127.0.0.1:8787/api/experiments
 curl --fail "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/overview"
 curl --fail "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/events?after_sequence=0&limit=100"

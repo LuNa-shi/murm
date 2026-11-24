@@ -19,7 +19,7 @@ test('installed Flat CLI and headless host preserve the same directed Task bindi
   const cliOutput = join(installed.directory, 'cli-flat');
   const headlessOutput = join(installed.directory, 'headless-flat');
   await mkdir(cliOutput); await mkdir(headlessOutput);
-  const child = spawn(process.execPath, [`--redirect-warnings=${join(installed.directory, 'cli-warnings.log')}`, join(root, 'dist/scripts/run-environment.mjs'), '--config', config], {
+  const child = spawn(process.execPath, [`--redirect-warnings=${join(installed.directory, 'cli-warnings.log')}`, join(root, 'dist/scripts/run-environment.js'), '--config', config], {
     cwd: installed.directory, env: { ...installed.env, FOREGROUND_TEST_OUTPUT: cliOutput }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   t.after(() => child.kill('SIGKILL'));
@@ -103,7 +103,7 @@ console.log(JSON.stringify({records,reportPath:report.reportPath,runtimeId:repor
       assert.equal(execution.owner_ref, binding.botId); assert.equal(execution.task_id, binding.taskId);
       assert.equal(execution.state, 'FAILED');
     } finally { db.close(); }
-    const reader = JSON.parse((await execute(process.execPath, [join(root, 'dist/scripts/read-environment-result.mjs'), '--run-directory', ready.runDirectory, '--runtime-id', ready.runtimeId], { cwd: installed.directory, env: installed.env, timeout: 10_000 })).stdout);
+    const reader = JSON.parse((await execute(process.execPath, [join(root, 'dist/scripts/read-environment-result.js'), '--run-directory', ready.runDirectory, '--runtime-id', ready.runtimeId], { cwd: installed.directory, env: installed.env, timeout: 10_000 })).stdout);
     assert.equal(reader.runtimeId, ready.runtimeId);
     assert.equal(saved.businessFailure.code, 'FLAT_BUSINESS_FAILED');
     assert.equal(saved.cleanupFailure, null); assert.equal(saved.reportSaveFailure, null);

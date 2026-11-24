@@ -26,4 +26,4 @@ for (const directory of ['src', 'scripts', 'services', 'examples', 'test']) {
   });
 }
 
-await chmod(resolve(dist, 'scripts/swarm.mjs'), 0o755);
+await chmod(resolve(dist, 'scripts/swarm.js'), 0o755);

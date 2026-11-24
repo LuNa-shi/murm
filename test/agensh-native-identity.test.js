@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { spawn, execFile } from 'node:child_process';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
-import { BOT_UID, PROJECT_DIR } from '../scripts/sandbox-project.mjs';
+import { BOT_UID, PROJECT_DIR } from '../scripts/sandbox-project.js';
 import { nativeIdentityProgram, observeNativeIdentity } from './fixtures/agensh-native-identity.js';
 
 const execute = promisify(execFile);

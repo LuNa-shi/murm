@@ -55,7 +55,7 @@ for (const capacity of [2, 4]) test(`${capacity} flat Slots contribute distinct 
     const credentials = controls.credentials.get(botId); assert.ok(credentials);
     const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
     const bridge = new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.SWARMENV_BRIDGE_URL = bridge.href.replace(/\/$/, '');
-    const { stdout } = await execute(process.execPath, [new URL('../scripts/swarm.mjs', import.meta.url).pathname, ...args],
+    const { stdout } = await execute(process.execPath, [new URL('../scripts/swarm.js', import.meta.url).pathname, ...args],
       { cwd: await directoryFor(botId), env, timeout: 5000 });
     return JSON.parse(stdout);
   };

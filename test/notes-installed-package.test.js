@@ -193,7 +193,7 @@ test('candidate package admits only declared distribution roots and retains exec
   const resources = [
     'dist/src/core/index.js', 'dist/src/core/index.d.ts', 'dist/src/core/services.js', 'dist/src/core/services.d.ts',
     'dist/src/core/backends/pi-opensandbox.js', 'dist/src/core/backends/pi-opensandbox.d.ts',
-    'dist/scripts/swarm.mjs', 'dist/scripts/opensandbox-agent-worker.mjs',
+    'dist/scripts/swarm.js', 'dist/scripts/opensandbox-agent-worker.js',
     'services/opensandbox-agent/pi-models.json', 'dist/src/environments/shared/run-report.js',
     'dist/examples/scalemas-environment/main.mjs', 'dist/examples/scalemas-environment/config.mjs',
     'dist/examples/notes-environment/main.mjs', 'dist/examples/subagents-environment/controller.mjs',

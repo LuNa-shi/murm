@@ -18,7 +18,7 @@ async function freePort() {
 
 async function startService(serviceId, port, root, endpoints = {}) {
   const endpoint = `http://127.0.0.1:${port}`;
-  const child = spawn(process.execPath, ['dist/scripts/service-host.mjs'], {
+  const child = spawn(process.execPath, ['dist/scripts/service-host.js'], {
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -64,7 +64,7 @@ async function stopServiceProcess(child) {
 
 async function runCli(args, env) {
   return await new Promise((resolve) => {
-    const child = spawn(process.execPath, ['dist/scripts/swarm.mjs', ...args], { cwd: process.cwd(), env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['dist/scripts/swarm.js', ...args], { cwd: process.cwd(), env, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (chunk) => { stdout += chunk; });
@@ -92,7 +92,7 @@ test('built-in service image includes the checker git dependency and prebuild en
 test('service-host isolated mode owns one service database and HTTP manifest', async () => {
   const root = await mkdtemp(join(tmpdir(), 'swarmenv-isolated-service-'));
   const port = await freePort();
-  const child = spawn(process.execPath, ['dist/scripts/service-host.mjs'], {
+  const child = spawn(process.execPath, ['dist/scripts/service-host.js'], {
     cwd: process.cwd(),
     env: {
       ...process.env,

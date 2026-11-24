@@ -16,8 +16,8 @@ test('offline archive ships the native Agensh host configuration and declared fo
   for (const path of [
     'dist/test/fixtures/agensh-installed-host.mjs',
     'dist/test/fixtures/agensh-team-upstream.js',
-    'dist/scripts/run-environment.mjs',
-    'dist/scripts/read-environment-result.mjs'
+    'dist/scripts/run-environment.js',
+    'dist/scripts/read-environment-result.js'
   ]) {
     await execute(process.execPath, ['--check', join(root, path)], {
       cwd: installed.directory,
@@ -26,7 +26,7 @@ test('offline archive ships the native Agensh host configuration and declared fo
     });
   }
 
-  const help = await execute(process.execPath, [join(root, 'dist/scripts/run-environment.mjs'), '--help'], {
+  const help = await execute(process.execPath, [join(root, 'dist/scripts/run-environment.js'), '--help'], {
     cwd: installed.directory,
     env: installed.env,
     timeout: 10_000

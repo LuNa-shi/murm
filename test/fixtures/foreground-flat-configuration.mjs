@@ -28,7 +28,7 @@ export default { mode: 'flat', timeoutMs: 15_000, options: {
     const credentials = controls.credentials.get(botId);
     const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
     const bridge = new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.SWARMENV_BRIDGE_URL = bridge.origin;
-    const { stdout } = await promisify(execFile)(process.execPath, [new URL('../../scripts/swarm.mjs', import.meta.url).pathname,
+    const { stdout } = await promisify(execFile)(process.execPath, [new URL('../../scripts/swarm.js', import.meta.url).pathname,
       'task', 'take', stores.task.task_id, '--request-id', 'fixture-take'], { env, timeout: 5000 });
     const taken = JSON.parse(stdout);
     await writeFile(join(outputDir, 'fixture-binding.json'), JSON.stringify({ taskId: stores.task.task_id, botId, executionId: taken.execution.execution_id }));

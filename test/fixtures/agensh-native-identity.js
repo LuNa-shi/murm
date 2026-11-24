@@ -1,4 +1,4 @@
-import { BOT_UID, PROJECT_DIR } from '../../scripts/sandbox-project.mjs';
+import { BOT_UID, PROJECT_DIR } from '../../scripts/sandbox-project.js';
 
 const codes = new Set([
   'LIVE_IDENTITY_INVALID_OPTIONS', 'LIVE_IDENTITY_OBSERVER_UID',

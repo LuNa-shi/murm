@@ -13,7 +13,7 @@ import { MissionSubmissionStore } from '../src/runtime/mission-submission.js';
 import { createManualMissionChecker } from '../src/runtime/manual-mission-review.js';
 
 const exec = promisify(execFile);
-const cli = fileURLToPath(new URL('../scripts/review-mission.mjs', import.meta.url));
+const cli = fileURLToPath(new URL('../scripts/review-mission.js', import.meta.url));
 const identity = { checker_ref: 'manual-operator', checker_version: 'review-policy-1', environment_ref: 'owner-review' };
 const input = { missionId: 'mission:first', workspaceId: 'workspace-first', actorRef: 'bot:first', materialIds: [], requestId: 'manual-1' };
 

@@ -35,7 +35,7 @@ async function fixture(t, { coordinationPermissions = ['task_dependency_replace'
     const credentials=controls.credentials.get(bot.id);assert.ok(credentials);
     const env={...process.env,...credentials.environment,...credentials.secretEnvironment};
     const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.href.replace(/\/$/,'');
-    const {stdout}=await execute(process.execPath,[new URL('../scripts/swarm.mjs',import.meta.url).pathname,...args],{env,timeout:15000});return JSON.parse(stdout);
+    const {stdout}=await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:15000});return JSON.parse(stdout);
   };
   const coordinator=createFlatBotCoordinator({runtime,taskService:stores.tasks,missionId:stores.missionId,coordinationPermissions:registeredPermissions});
   const bots=[];
@@ -145,7 +145,7 @@ test('actual Flat host threads only explicit grants into frozen Profile, Service
         assert.deepEqual(stores.tasks.getBot(botId).coordination_permissions,coordinationPermissions);
         const credentials=controls.credentials.get(botId),env={...process.env,...credentials.environment,...credentials.secretEnvironment};
         const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.href.replace(/\/$/,'');
-        const cli=async(...args)=>JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.mjs',import.meta.url).pathname,...args],{env,timeout:15000})).stdout);
+        const cli=async(...args)=>JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:15000})).stdout);
         const f={tasks:stores.tasks,missionId:stores.missionId};
         const old=proposal(f,'Retire old input'),replacement=proposal(f,'Corrected input'),dependent=proposal(f,'Combine input',{depends_on:[old.task_id]});
         await cli('task','cancel',old.task_id,...versionArgs(old),'--reason','Retire obsolete prerequisite','--request-id','host-cancel');

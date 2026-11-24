@@ -104,7 +104,7 @@ test('installed headless and CLI share configuration, directed input provenance 
   const root = join(installed.directory, 'node_modules/@swarmenv/core');
   const outputDir = join(installed.directory, 'controlled-output');
   await mkdir(outputDir);
-  const entry = join(root, 'dist/scripts/run-environment.mjs');
+  const entry = join(root, 'dist/scripts/run-environment.js');
   const configuration = join(root, 'dist/test/fixtures/foreground-host-configuration.mjs');
   // This fixture substitutes the backend, while the installed CLI, host, router,
   // Core input ledger, report writer and result reader execute normally.
@@ -193,7 +193,7 @@ test('installed headless and CLI share configuration, directed input provenance 
     assert.equal(batches[1].batchId, reply(`feedback-${peer.key}`).result.batchId);
     assert.equal(new Set(batches.map(batch => batch.inputId)).size, 2);
   }
-  const readEntry = join(root, 'dist/scripts/read-environment-result.mjs');
+  const readEntry = join(root, 'dist/scripts/read-environment-result.js');
   const reader = JSON.parse((await execute(process.execPath, [
     readEntry, '--run-directory', ready.runDirectory, '--runtime-id', ready.runtimeId,
   ], { cwd: installed.directory, env: installed.env, timeout: 10_000 })).stdout);

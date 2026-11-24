@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { credentialReply } from '../scripts/git-credential-agensh.mjs';
+import { credentialReply } from '../scripts/git-credential-agensh.js';
 
 test('image Git helper releases only this peer token for its exact repository', () => {
   const env = { RUN_REPOSITORY: 'http://172.18.0.1:3000/run/repo.git', GITEA_TOKEN: 'private-marker', GITEA_USERNAME: 'peer' };

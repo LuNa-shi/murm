@@ -56,7 +56,7 @@ async function fixture(t,installed) {
   const credentials=controls.credentials.get(bot.id);
   const env={...installed.env,...credentials.environment,...credentials.secretEnvironment};
   const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.origin;
-  const cli=async(...args)=>JSON.parse((await execute(process.execPath,[join(installed.directory,'node_modules/@swarmenv/core/dist/scripts/swarm.mjs'),...args],{cwd:installed.directory,env,timeout:15000})).stdout);
+  const cli=async(...args)=>JSON.parse((await execute(process.execPath,[join(installed.directory,'node_modules/@swarmenv/core/dist/scripts/swarm.js'),...args],{cwd:installed.directory,env,timeout:15000})).stdout);
   await cli('task','take',stores.task.task_id,'--request-id','take');
   return {...stores,root,bot,cli,captures:()=>captures};
 }

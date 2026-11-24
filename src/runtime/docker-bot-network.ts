@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { isIP } from 'node:net';
 import { promisify } from 'node:util';
-import { BOT_UID } from '../../scripts/sandbox-project.mjs';
+import { BOT_UID } from '../../scripts/sandbox-project.js';
 import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
 
 const exec = promisify(execFile);

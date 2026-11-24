@@ -49,7 +49,7 @@ interface FileControlsOptions<Bot extends FileBot, Timeout extends symbol> {
   timedOut: Timeout;
 }
 
-import { snapshotFileSeed } from '../../scripts/core-file-seed.mjs';
+import { snapshotFileSeed } from '../../scripts/core-file-seed.js';
 import { validId } from './config.js';
 
 const knownRejections = new Set(['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY']);

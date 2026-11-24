@@ -1,5 +1,5 @@
 // Simulate external provider/Worker failures while retaining the real Runtime.
-import { decodeFileSeed } from '../../scripts/core-file-seed.mjs';
+import { decodeFileSeed } from '../../scripts/core-file-seed.js';
 import { openPiOpenSandboxBackend as openBase } from './core-input-backend.js';
 export { claimPiOpenSandboxBackend, transport } from './core-input-backend.js';
 export const controls={stopError:null,destroyError:null,credentials:new Map(),preparedFiles:new Map(),onPrepare:null};

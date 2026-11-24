@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { decodeFileSeed } from '../scripts/core-file-seed.mjs';
+import { decodeFileSeed } from '../scripts/core-file-seed.js';
 
 test('FileSeed preserves native ordinary file bytes, modes, and a canonical digest', () => {
   const encoded = decodeFileSeed({

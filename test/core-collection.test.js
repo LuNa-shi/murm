@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { collectCoreWorkDir } from '../scripts/core-collection.mjs';
+import { collectCoreWorkDir } from '../scripts/core-collection.js';
 
 const execute = promisify(execFile);
 const spec = { paths: ['.'], includeGit: true, maxBytes: 1024 * 1024, required: true };

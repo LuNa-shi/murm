@@ -13,7 +13,7 @@ test('public Bash CLI discovers permitted operations, renders manifest help and 
     return saved ?? null;
   } });
   const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
-  const cli = (...args) => execute(process.execPath, ['dist/scripts/swarm.mjs', ...args], { env, timeout: 5000 });
+  const cli = (...args) => execute(process.execPath, ['dist/scripts/swarm.js', ...args], { env, timeout: 5000 });
   const discovery = JSON.parse((await cli('service', 'view', 'notes')).stdout);
   assert.deepEqual(discovery.capabilities.map(item => item.operation), ['put', 'get']);
   const help = (await cli('notes', 'put', '--help')).stdout;

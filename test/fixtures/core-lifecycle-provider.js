@@ -5,8 +5,8 @@ import { createServer } from 'node:http';
 import { syncBuiltinESMExports } from 'node:module';
 import { once } from 'node:events';
 import { promisify } from 'node:util';
-import { BOT_UID } from '../../scripts/sandbox-project.mjs';
-import { decodeFileSeed } from '../../scripts/core-file-seed.mjs';
+import { BOT_UID } from '../../scripts/sandbox-project.js';
+import { decodeFileSeed } from '../../scripts/core-file-seed.js';
 
 let runCommand;
 let hostGit;

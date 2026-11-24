@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BOT_UID } from '../scripts/sandbox-project.mjs';
+import { BOT_UID } from '../scripts/sandbox-project.js';
 import { DockerBotNetwork } from '../src/runtime/docker-bot-network.js';
 import { openSandboxBotKey, openSandboxMissionKey } from '../src/runtime/opensandbox-metadata.js';
 

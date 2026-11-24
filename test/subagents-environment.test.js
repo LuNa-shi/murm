@@ -29,7 +29,7 @@ test('subagents host closes its complete dynamic tree and verifies adoption thro
   transport.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'subagents-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
   const bin = join(outputDir, 'bin'); await mkdir(bin);
-  await writeFile(join(bin, 'swarm'), `#!/usr/bin/env node\nimport(${JSON.stringify(new URL('../scripts/swarm.mjs', import.meta.url).href)});\n`, { mode: 0o700 });
+  await writeFile(join(bin, 'swarm'), `#!/usr/bin/env node\nimport(${JSON.stringify(new URL('../scripts/swarm.js', import.meta.url).href)});\n`, { mode: 0o700 });
   const childResults = [];
   let parentId;
   const call = async (operation, payload, operation_id) => {

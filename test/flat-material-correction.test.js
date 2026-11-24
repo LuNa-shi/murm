@@ -38,7 +38,7 @@ async function fixture(t, { corrections = true, revokeAllowed = true, coordinati
     const credentials=controls.credentials.get(bot.id);assert.ok(credentials);
     const env={...process.env,...credentials.environment,...credentials.secretEnvironment};
     const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.href.replace(/\/$/,'');
-    const {stdout}=await execute(process.execPath,[new URL('../scripts/swarm.mjs',import.meta.url).pathname,...args],{env,timeout:15000});return JSON.parse(stdout);
+    const {stdout}=await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:15000});return JSON.parse(stdout);
   };
   const bots=[];
   for(let i=0;i<2;i++) {
@@ -200,7 +200,7 @@ test('normal Flat host wires explicit Material coordinator permission without ad
         const cli=async(bot,...args)=>{
           const credentials=controls.credentials.get(bot.botId),env={...process.env,...credentials.environment,...credentials.secretEnvironment};
           const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.href.replace(/\/$/,'');
-          return JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.mjs',import.meta.url).pathname,...args],{env,timeout:15000})).stdout);
+          return JSON.parse((await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:15000})).stdout);
         };
         await cli(bots[0],'task','take',stores.task.task_id,'--request-id','take');
         const f={cli:(...args)=>cli(bots[0],...args)};const {a,args}=await replacementPair(f);

@@ -126,7 +126,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
 
     child = spawn(
       process.execPath,
-      [join(root, 'dist/scripts/run-environment.mjs'), '--config', join(installed.directory, 'host-config.mjs')],
+      [join(root, 'dist/scripts/run-environment.js'), '--config', join(installed.directory, 'host-config.mjs')],
       {
         cwd: installed.directory,
 
@@ -441,7 +441,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     }
 
     const read = JSON.parse((await shell(process.execPath, [
-      join(root, 'dist/scripts/read-environment-result.mjs'),
+      join(root, 'dist/scripts/read-environment-result.js'),
       '--run-directory',
       ready.runDirectory,
       '--runtime-id',

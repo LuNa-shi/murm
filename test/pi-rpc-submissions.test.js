@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createPiRpcSubmissions } from '../scripts/pi-rpc-submissions.mjs';
+import { createPiRpcSubmissions } from '../scripts/pi-rpc-submissions.js';
 
 test('in-flight Pi RPC replay shares one input and late evidence survives an expired wait', async () => {
   const writes = [];

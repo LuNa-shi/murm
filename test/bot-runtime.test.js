@@ -758,7 +758,7 @@ async function workspaceFixture(t, options = {}) {
     guest.receipts.set(input.request_id, receipt); guest.held = false;
     return receipt;
   };
-  const command = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', ...args], { env: { PATH: process.env.PATH, ...env }, timeout: 15_000 })).stdout);
+  const command = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['dist/scripts/swarm.js', ...args], { env: { PATH: process.env.PATH, ...env }, timeout: 15_000 })).stdout);
   const dispatch = (operation, requestId, input = {}) => f.runtime.dispatchExecutionWorkspace(operation, input, { ...identity, requestId });
   return { ...f, bot, bridge, execution, identity, guest, command, dispatch, context, workspaceMerge };
 }
@@ -766,7 +766,7 @@ async function workspaceFixture(t, options = {}) {
 test('retired active Workspace apply is absent from CLI discovery and rejected before guest work', async t => {
   const { command, bridge, dispatch, guest, service } = await workspaceFixture(t);
   assert.equal(listTools(null, { includeInternal: true }).some(tool => tool.operation === 'workspace_public_apply'), false);
-  const { stdout: help } = await promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', 'workspace', '--help']);
+  const { stdout: help } = await promisify(execFile)(process.execPath, ['dist/scripts/swarm.js', 'workspace', '--help']);
   assert.doesNotMatch(help, /\bapply\b/);
   await assert.rejects(command('workspace', 'apply', '--from', 'main'), error => /Unknown|unknown|Unsupported|unsupported/.test(error.stderr));
   const response = await fetch(`http://127.0.0.1:${bridge.address.port}/call`, { method: 'POST',
@@ -1343,7 +1343,7 @@ test('unbound CLI compares an unmerged public revision and keeps Workspace pages
     env = bridge.startBotIdentity(input.bot.bot_id);
     return startSession(input);
   } });
-  const call = (...args) => promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', 'workspace', ...args], {
+  const call = (...args) => promisify(execFile)(process.execPath, ['dist/scripts/swarm.js', 'workspace', ...args], {
     env: { PATH: process.env.PATH, ...env }, timeout: 15_000,
   });
   const command = async (...args) => JSON.parse((await call(...args)).stdout);

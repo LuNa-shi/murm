@@ -176,7 +176,7 @@ test('actual CLI handoff adopts immutable producer content after producer stop; 
     const path = join(f.directory, `input-${requestId}.json`);
     const { writeFile } = await import('node:fs/promises'); await writeFile(path, JSON.stringify(input));
     const url = new URL(start.env.SWARMENV_BRIDGE_URL); url.hostname = '127.0.0.1';
-    const result = await execute(process.execPath, ['dist/scripts/swarm.mjs', 'substrate', operation, '--input', path, '--request-id', requestId], {
+    const result = await execute(process.execPath, ['dist/scripts/swarm.js', 'substrate', operation, '--input', path, '--request-id', requestId], {
       cwd: process.cwd(), env: { ...process.env, ...start.env, ...start.secret_env, SWARMENV_BRIDGE_URL: url.href }, timeout: 5000,
     }); return JSON.parse(result.stdout);
   }

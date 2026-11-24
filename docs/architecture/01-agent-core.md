@@ -37,7 +37,7 @@ Version evidence comes from the guest used for startup. `OpenSandboxManager.agen
 
 ### 2.3 Retained Worker and provider contracts
 
-The image-resident [Worker](../../scripts/opensandbox-agent-worker.mjs) exposes authenticated `/start`, `/rpc` and `/stop`; its control bearer remains outside Pi.
+The image-resident [Worker](../../scripts/opensandbox-agent-worker.ts) exposes authenticated `/start`, `/rpc` and `/stop`; its control bearer remains outside Pi.
 
 The retired authenticated `GET /events` route returns the ordinary unknown-route HTTP 404 response, and the manager no longer exposes its old Worker event iterator. Worker stdout still enters the 2,048-record bounded sequence history and RPC receipt tracker; Core polls that history through `/rpc` and preserves its cursor, duplicate-prefix and fatal-gap handling. Worker error and exit records use that same history. The Worker drains Pi stderr without forwarding it through an event stream. Provider Execd command/session SSE parsing and the separate project collection and observability APIs remain executable and retain their own contracts.
 

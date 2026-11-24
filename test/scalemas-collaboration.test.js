@@ -33,7 +33,7 @@ test('host checkpoints verify durable search, visit, citation and reads after co
     const start = starts[author === 'publisher' ? 0 : 1]; const requestId = `request-${++request}`;
     const inputPath = join(directory, `${requestId}.json`); await writeFile(inputPath, JSON.stringify(input));
     const url = new URL(start.env.SWARMENV_BRIDGE_URL); url.hostname = '127.0.0.1';
-    const result = await execute(process.execPath, ['dist/scripts/swarm.mjs', 'substrate', operation, '--input', inputPath, '--request-id', requestId], {
+    const result = await execute(process.execPath, ['dist/scripts/swarm.js', 'substrate', operation, '--input', inputPath, '--request-id', requestId], {
       cwd: process.cwd(), env: { ...process.env, ...start.env, ...start.secret_env, SWARMENV_BRIDGE_URL: url.href }, timeout: 5000,
     }); return JSON.parse(result.stdout);
   };

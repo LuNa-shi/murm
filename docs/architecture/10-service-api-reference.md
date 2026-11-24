@@ -20,7 +20,7 @@ A JSON Schema in a manifest is a declared contract. This implementation validate
 
 ## Updating this reference
 
-After changing catalogs, capability selection, manifests, schemas or error vocabulary, run `node scripts/generate-architecture-api.mjs` and review the generated differences. `node scripts/generate-architecture-api.mjs --check` detects stale generated content without changing it. A successful check detects declaration drift; it does not prove that the explanatory text or runtime behavior is correct.
+After changing catalogs, capability selection, manifests, schemas or error vocabulary, run `node dist/scripts/generate-architecture-api.js` and review the generated differences. `node dist/scripts/generate-architecture-api.js --check` detects stale generated content without changing it. A successful check detects declaration drift; it does not prove that the explanatory text or runtime behavior is correct.
 
 <!-- BEGIN GENERATED REFERENCE -->
 
