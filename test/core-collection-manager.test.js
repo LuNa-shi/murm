@@ -16,7 +16,7 @@ async function fixture() {
       if (url.endsWith('/health')) return json({ ok: true });
       if (url.endsWith('/start')) return json({ result: { contract: { version: 'swarmenv-core-v1', resources: [] }, project_files: { version: 0, writable: false } } });
       if (url.endsWith('/stop')) return json({ result: { stopped } });
-      if (url.endsWith('/core/files/collect')) {
+      if (url.endsWith('/core/files/collect') || url.endsWith('/core/session/archive')) {
         assert.match(options.headers.authorization, /^Bearer /);
         return new Response(records.map(record => JSON.stringify(record)).join('\n') + '\n', { headers: { 'content-type': 'application/x-ndjson' } });
       }
@@ -62,4 +62,19 @@ test('collection transport rejects truncated, oversized or failed streams and pr
   f.setRecords([{ type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 }]);
   assert.equal((await consume(f.manager.collectCoreFiles('bot', spec))).length, 1);
   await assert.rejects(consume(f.manager.collectCoreFiles('bot', { ...spec, maxBytes: 2048 })), { code: 'CONFLICT' });
+});
+
+
+test('native Session transport has independent fixed scope and survives a retried stopped-resource export', async () => {
+  const f = await fixture();
+  await assert.rejects(consume(f.manager.collectCoreSession('bot')), { code: 'NOT_ALLOWED' });
+  f.setStopped();
+  await f.manager.stopAgent('bot', 'SIGTERM', { preserveWorker: true });
+  await consume(f.manager.collectCoreFiles('bot', spec));
+  f.setRecords([{ type: 'file', path: 'native.jsonl', bytes: 1, mode: 0o600 }]);
+  await assert.rejects(consume(f.manager.collectCoreSession('bot')), /complete receipt/);
+  assert.equal(f.manager.coreResource('bot').creation, 'created');
+  f.setRecords([{ type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 }]);
+  assert.equal((await consume(f.manager.collectCoreSession('bot'))).length, 1);
+  await f.manager.stopExecution('bot');
 });

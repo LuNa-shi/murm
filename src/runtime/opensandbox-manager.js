@@ -790,20 +790,25 @@ export class OpenSandboxManager {
       executionStopped: record?.executionStopped === true };
   }
 
-  async *collectCoreFiles(executionId, input) {
+  async *collectCoreSession(executionId) {
+    yield* this.collectCoreFiles(executionId, { paths: ['.'], includeGit: false, required: true, maxBytes: Number.MAX_SAFE_INTEGER }, { session: true });
+  }
+
+  async *collectCoreFiles(executionId, input, { session = false } = {}) {
     const spec = snapshotCollectionSpec(input);
     const record = this.#record(executionId);
     if (!record.executionStopped || !record.coreAgent || !record.agent || record.stopPromise) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Bot and retained Worker');
     }
     const fingerprint = JSON.stringify(spec);
-    if (record.collectionSpec && record.collectionSpec !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot collection policy is immutable');
-    record.collectionSpec = fingerprint;
+    const policyKey = session ? 'sessionCollectionSpec' : 'collectionSpec';
+    if (record[policyKey] && record[policyKey] !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot collection policy is immutable');
+    record[policyKey] = fingerprint;
     const controller = new AbortController();
-    const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), 30_000);
+    const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), session ? 610_000 : 30_000);
     let response;
     try {
-      response = await this.fetch(`${record.agent.endpoint}/core/files/collect`, { method: 'POST',
+      response = await this.fetch(`${record.agent.endpoint}${session ? '/core/session/archive' : '/core/files/collect'}`, { method: 'POST',
         headers: { authorization: `Bearer ${record.agent.token}`, 'content-type': 'application/json', accept: 'application/x-ndjson' },
         body: JSON.stringify(spec), signal: controller.signal, redirect: 'error' });
       if (!response.ok || !response.body || response.headers.get('content-type')?.split(';')[0] !== 'application/x-ndjson') {

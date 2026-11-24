@@ -397,16 +397,18 @@ const server = createServer(async (request, response) => {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request, 32 * 1024 ** 2)) }); return; }
-    if (request.method === 'POST' && url.pathname === '/core/files/collect') {
+    if (request.method === 'POST' && ['/core/files/collect', '/core/session/archive'].includes(url.pathname)) {
+      const sessionArchive = url.pathname === '/core/session/archive';
       if (!coreWorkDir || !executionStopped) throw Object.assign(new Error('Core collection requires confirmed stopped execution'), { code: 'NOT_ALLOWED' });
-      const input = await body(request);
+      const requested = await body(request);
+      const input = sessionArchive ? { paths: ['.'], includeGit: false, required: true, maxBytes: Number.MAX_SAFE_INTEGER } : requested;
       const controller = new AbortController();
-      const deadline = setTimeout(() => { controller.abort(); response.destroy(); }, 25_000);
+      const deadline = setTimeout(() => { controller.abort(); response.destroy(); }, sessionArchive ? 605_000 : 25_000);
       const disconnected = () => controller.abort();
       response.on('close', disconnected);
       response.writeHead(200, { 'content-type': 'application/x-ndjson' });
       try {
-        for await (const record of collectCoreWorkDir(PROJECT_DIR, input, { signal: controller.signal, maxEntries: collectionMaxEntries })) {
+        for await (const record of collectCoreWorkDir(sessionArchive ? join(RUNTIME_DIR, 'pi-session') : PROJECT_DIR, input, { signal: controller.signal, maxEntries: collectionMaxEntries, timeoutMs: sessionArchive ? 600_000 : 20_000 })) {
           if (!response.write(`${JSON.stringify(record)}\n`)) await once(response, 'drain', { signal: controller.signal });
         }
       } catch (error) {

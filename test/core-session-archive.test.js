@@ -1,0 +1,33 @@
+import assert from 'node:assert/strict';
+import test from 'node:test';
+import { mkdtemp, mkdir, readFile, writeFile, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { collectCoreWorkDir } from '../scripts/core-collection.mjs';
+import { saveBotArtifacts } from '../src/core/artifact-collection.js';
+
+test('native Session archive retains uncompacted history in private files with credential-redacted verified bytes', async () => {
+  const outputDir = await mkdtemp(join(tmpdir(), 'session-archive-'));
+  const sourceDir = join(outputDir, 'source'); await mkdir(sourceDir);
+  const history = [
+    { type: 'session', id: 'native-session', timestamp: '2026-11-24T00:00:00.000Z' },
+    { type: 'message', message: { role: 'user', content: 'original history credential-marker' } },
+    { type: 'compaction', summary: 'short summary' },
+    { type: 'message', message: { role: 'assistant', content: 'continued' } },
+  ].map(row => JSON.stringify(row)).join('\n') + '\n';
+  await writeFile(join(sourceDir, 'native.jsonl'), history);
+  const collect = { paths: ['.'], includeGit: false, required: true, maxBytes: 1000000 };
+  const paths = await saveBotArtifacts({ outputDir, botId: 'bot-one', collect,
+    records: () => collectCoreWorkDir(sourceDir, collect), bounds: { bytes: Number.MAX_SAFE_INTEGER, inodes: 1000 },
+    destination: 'session', privateFiles: true,
+    redactStream: () => ({ write(chunk) { return chunk.toString('utf8').replaceAll('credential-marker', '[redacted]'); }, end() { return ''; } }),
+  });
+  assert.equal(paths[0], join(outputDir, 'bot-one', 'session', 'manifest.json'));
+  const archive = await readFile(join(paths[1], 'native.jsonl'), 'utf8');
+  assert.ok(archive.includes('original history [redacted]'));
+  assert.ok(archive.includes('compaction'));
+  assert.equal(archive.includes('credential-marker'), false);
+  const manifest = JSON.parse(await readFile(paths[0], 'utf8'));
+  assert.equal(manifest.files[0].bytes, Buffer.byteLength(archive));
+  assert.equal((await stat(join(paths[1], 'native.jsonl'))).mode & 0o777, 0o600);
+});

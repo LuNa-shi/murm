@@ -45,9 +45,9 @@ function assertGitEntry(path, bytes) {
   }
 }
 
-export async function* collectCoreWorkDir(root, input, { signal, maxEntries = MAX_COLLECTION_ENTRIES } = {}) {
+export async function* collectCoreWorkDir(root, input, { signal, maxEntries = MAX_COLLECTION_ENTRIES, timeoutMs = 20_000 } = {}) {
   const spec = snapshotCollectionSpec(input);
-  const deadline = performance.now() + 20_000;
+  const deadline = performance.now() + timeoutMs;
   const visited = new Set();
   const directories = new Set();
   let totalBytes = 0;
@@ -55,7 +55,7 @@ export async function* collectCoreWorkDir(root, input, { signal, maxEntries = MA
   let metadata = 0;
   const check = () => {
     signal?.throwIfAborted();
-    if (performance.now() >= deadline) throw failure('Collection exceeded the twenty-second traversal deadline', 'SERVICE_UNAVAILABLE');
+    if (performance.now() >= deadline) throw failure('Collection exceeded its traversal deadline', 'SERVICE_UNAVAILABLE');
     if (visited.size > Math.min(maxEntries, MAX_COLLECTION_ENTRIES) || metadata > MAX_COLLECTION_METADATA_BYTES) throw failure('Collection inventory exceeds supported entry or metadata limits');
   };
   function remember(path) {
