@@ -188,7 +188,7 @@ Body SHA-256: `7418d7093926e8b20678a6c7c7b0c2986655c646a24a9c6d0e97dad73abd2e27`
 ````
 ## services/mathlib-search/SKILL.md
 
-Available through the authorized Service documentation resource; the startup message carries metadata and hashes, not this full body.
+Available through the authorized Service documentation resource. The directory example above shows its metadata and hash.
 
 Body SHA-256: `e7f79c40eed183b5a5bb0568923ec5575d450016dba41ff5a7cef94414e6f27c`
 
@@ -247,7 +247,7 @@ in the locked project before relying on it.
 ````
 ## services/mathlib-search/references/loogle.md
 
-Available through the authorized Service documentation resource; the startup message carries metadata and hashes, not this full body.
+Available through the authorized Service documentation resource. The directory example above shows its metadata and hash.
 
 Body SHA-256: `3aff1ebba86327de5465c0b44b37cb5ec57f5bac6b07c90ed211a0b2f02376bd`
 

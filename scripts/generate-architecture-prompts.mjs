@@ -79,7 +79,7 @@ output('01-system-identity.md', header('Complete stable identity instructions', 
   + block(`Registered Bot system addendum (${BOT_PROTOCOL_VERSION})`, BOT_SYSTEM_PROMPT));
 let toolsDoc = header('CLI directory and optional Service documentation', 'Core selects the four native tools read/write/edit/bash. The synthetic namespace directories below illustrate the retained botServiceDirectory projection; current startup discovery is composed by the Environment. Schemas and documentation are fetched through swarm service commands, not registered as separate Pi tools.');
 for (const [title, p] of [['Built-in Services', profile], ['With optional Mathlib Search', extendedProfile]]) toolsDoc += block(title, JSON.stringify(botServiceDirectory(p), null, 2));
-for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource; the startup message carries metadata and hashes, not this full body.');
+for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource. The directory example above shows its metadata and hash.');
 output('02-task-loop-and-tools.md', toolsDoc);
 
 let turnsDoc = header('Complete flat continuation messages', 'The flat controller selects these repository-owned texts from the durable Execution phase after a settled turn. Host Profile and initial input composition are described in the Environment references.');

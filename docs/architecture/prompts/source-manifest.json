@@ -441,7 +441,7 @@
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "559412f34d144b77d3559396d240ae2b3766289b7f0c3502900b3e3ca7ea6ae6"
+      "sha256": "5f171bca77f960e64c53b43092604bcaa357f843bf9f8455ad1c45773b88cade"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
