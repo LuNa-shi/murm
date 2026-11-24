@@ -157,3 +157,60 @@ test('invalid subagents child counts fail before Bot creation', async () => {
   }
   assert.equal(transport.spawns.size, 0);
 });
+
+test('four staged groups use real Core and parent Bot Service inputs without ending at the first integration', async t => {
+  const { createRuntime } = await import('@swarmenv/core');
+  const { ServiceRegistry } = await import('@swarmenv/core/services');
+  const { runInput } = await import('../src/environments/shared/run-input.js');
+  const { createSubagentsStages } = await import('../examples/subagents-environment/stages.mjs');
+  transport.reset(); transport.collectable = true;
+  const outputDir = await mkdtemp(join(tmpdir(), 'subagents-stages-'));
+  const common = { prompt: 'Controlled stage contract.', model: 'default', image: 'test', writable: true, services: {} };
+  const runtime = await createRuntime({ backend: {}, outputDir, maxBots: 4, services: new ServiceRegistry(), profiles: {
+    parent: { ...common, services: { bot: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] }, child: common,
+  } });
+  let stages;
+  t.after(async () => { stages?.stop(); assert.equal((await runtime.close()).cleanup, 'complete'); await stages?.drain(); stages?.dispose(); await rm(outputDir, { recursive: true, force: true }); });
+  const parent = await runtime.spawn({ profile: 'parent', requestId: 'parent' });
+  const childIds = []; const conclusions = []; let stageResults = 0; let currentStage;
+  const call = async (operation, payload, operation_id) => {
+    const credentials = transport.spawns.get(parent.id).credentials;
+    const response = await fetch(transport.url + '/call', { method: 'POST', headers: { authorization: `Bearer ${credentials.secretEnvironment.SWARMENV_BRIDGE_TOKEN}` }, body: JSON.stringify({ service_id: 'bot', operation, operation_id, payload }) });
+    const result = await response.json(); assert.equal(result.ok, true, JSON.stringify(result)); return result.result;
+  };
+  function arm() { transport.next = async inputId => {
+    arm(); const row = transport.submissions.get(inputId);
+    if (row.botId !== parent.id) {
+      transport.spawns.get(row.botId).onEvent({ type: 'settled', outcome: 'completed', output: row.input });
+    } else if (row.input === 'prepare') {
+      for (let index = 0; index < 3; index++) {
+        const result = await call('spawn', { profile: 'child' }, `child-${index}`);
+        assert.equal(result.initialInput, null); childIds.push(result.bot.id);
+      }
+      transport.spawns.get(parent.id).onEvent({ type: 'settled', outcome: 'completed', output: 'Ready without child work.' });
+    } else if (row.input.startsWith('group-')) {
+      currentStage = Number(row.input.slice(6)); stageResults = 0;
+      for (const [index, childId] of childIds.entries()) {
+        const receipt = await call('send', { bot_id: childId, input: `result-${currentStage}-${index}`, mode: 'followUp' }, `work-${currentStage}-${index}`);
+        assert.equal(receipt.status, 'accepted');
+      }
+    } else {
+      const result = JSON.parse(row.input);
+      conclusions.push({ childId: result.childId, eventSeq: result.eventSeq, quote: result.output }); stageResults++;
+      if (stageResults === 3) transport.spawns.get(parent.id).onEvent({ type: 'settled', outcome: 'completed', output: JSON.stringify({ stage: currentStage, summary: 'Cumulative adoption of original child outputs.', conclusions }) });
+    }
+  }; }
+  arm();
+  await runInput(runtime, parent.id, 'prepare', { requestId: 'prepare', timeoutMs: 2000 });
+  assert.equal(transport.submissions.size, 1);
+  stages = await createSubagentsStages(runtime, parent.id, { childIds });
+  for (let stage = 0; stage < 4; stage++) {
+    const result = await stages.runStage({ stage, input: `group-${stage}`, expected: [0, 1, 2].map(index => `result-${stage}-${index}`), timeoutMs: 2000 });
+    assert.equal(result.children.length, 3); assert.equal(result.conclusions.length, (stage + 1) * 3);
+    assert.equal(result.parent.settled.botId, parent.id);
+    assert.deepEqual(result.children.map(row => row.result.childId), childIds);
+    for (const id of [parent.id, ...childIds]) assert.equal((await runtime.get(id)).status, 'idle');
+  }
+  assert.equal(transport.spawns.size, 4); assert.equal(stages.report().deliveries.length, 16);
+  assert.equal(stages.report().stages.at(-1).conclusions.length, 12);
+});

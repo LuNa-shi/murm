@@ -1392,6 +1392,14 @@
       "role": "Bounded multi-source input queue, round snapshots, failure coalescing and shutdown receipts"
     },
     {
+      "path": "examples/subagents-environment/stages.mjs",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Optional four-group original-child identity and cumulative text adoption gate over actual controller admissions"
+    },
+    {
       "path": "examples/subagents-environment/prompts.mjs",
       "category": "Execution and control",
       "chapters": [

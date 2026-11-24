@@ -68,7 +68,7 @@ export function createSubagentsController(runtime, parentId, { maxChildren = 2 }
         ...(snapshot.output === undefined ? {} : { output: snapshot.output }),
         ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
         ...(terminalFailure ? { failure: snapshot.type } : {}) };
-      await deliver(JSON.stringify(result), `child-result:${snapshot.botId}:${snapshot.seq}`, { kind: 'child', result });
+      await deliver(JSON.stringify(result), `child-result:${snapshot.botId}:${snapshot.seq}`, { kind: 'child', result, eventOrder: observedOrder });
     }).catch(() => {});
   });
   return Object.freeze({
