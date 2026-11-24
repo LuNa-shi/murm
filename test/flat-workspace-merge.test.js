@@ -202,3 +202,17 @@ test('fresh checker failure keeps its original cause when authority is also with
   assert.equal((await f.publication.waitForMerges({timeoutMs:1000})).cleanup,'complete');
   assert.equal((await f.workspace.get({workspaceId:f.workspaceId})).main_revision,'0.1');
 });
+
+
+test('Core CLI merge rejects an abort-handler late PASS and replays timeout without rechecking', async t => {
+  const f = await fixture(t, { timeoutMs: 30, check({ signal }) {
+    return new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+  } });
+  // The fixture returns its genuine PASS after the abort handler resolves.
+  const merge = () => f.cli('workspace', 'merge', '--from', f.revisions[0].revision, '--request-id', 'late-pass');
+  await assert.rejects(merge(), error => /SERVICE_TIMEOUT/.test(error.stderr));
+  await assert.rejects(merge(), error => /SERVICE_TIMEOUT/.test(error.stderr));
+  assert.equal(f.checked.length, 1);
+  assert.equal((await f.workspace.get({ workspaceId: f.workspaceId })).main_revision, '0.1');
+  assert.equal((await f.publication.waitForMerges({ timeoutMs: 1000 })).cleanup, 'complete');
+});
