@@ -695,7 +695,7 @@
       "chapters": [
         "docs/architecture/13-historical-resume.md"
       ],
-      "role": "Automatic transaction-aware SQLite row history and source-preserving journal reconstruction"
+      "role": "Automatic transaction-aware private SQLite before/after row history and committed write boundaries"
     },
     {
       "path": "src/runtime/docker-bot-disk.js",

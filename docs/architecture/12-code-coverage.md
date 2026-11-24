@@ -203,7 +203,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and source-preserving journal reconstruction | [13-historical-resume](13-historical-resume.md) | `b2032d143a44eb242f748ebd7050902333649062375062aab34a4cf3d6a45b61` |
+| [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware private SQLite before/after row history and committed write boundaries | [13-historical-resume](13-historical-resume.md) | `135cc4ffcaa4a0995c094cbe92e7fae116e7726bbe30c81c915989546dca9c28` |
 
 ### programmable Core (17)
 

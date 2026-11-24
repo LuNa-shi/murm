@@ -152,6 +152,6 @@ Bot capacity is an independent host setting.
 
 
 
-## Offline historical reconstruction
+## Private domain history
 
-The private database history reader reconstructs one current journaled service database at an explicit historical time into a new destination. It requires automatic-history coverage and returns `REPLAY_HISTORY_MISSING` when unavailable. Workspace retains its ordinary immutable revisions and committed publication records. The former timestamp-based Workspace copy utility has been retired alongside experiment assembly, archived service-schema conversion and fresh-run ownership handoff. See [private history](13-historical-resume.md).
+Persistent Task, Context and Judge stores install transaction-aware row capture in their own databases. Public Workspace writes retain immutable revisions, request receipts and committed publication records. Current reads use these original stores and fixed result identities. Historical experiment assembly, timestamp-selected database or Workspace copies, archived service-schema conversion and fresh-run ownership handoff have been retired. See [private history](13-historical-resume.md) for capture, transaction boundaries, owner-local manual-review writes and Workspace recovery.
