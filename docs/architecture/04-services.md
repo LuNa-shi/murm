@@ -327,6 +327,10 @@ The Mathlib image similarly uses Node 22 and exposes port 8787. It copies the so
 
 Sources: [Mathlib Service](../../src/services/mathlib-search-service.js), [hosting entry](../../scripts/mathlib-search-service.mjs), [bundle](../../services/mathlib-search/service.json), [Mathlib tests](../../test/mathlib-search-service.test.js).
 
+### Current Flat notification handling
+
+`createFlatPublicationServices` contributes the catalog `task_feedback` operation to the composed Task Service. Core Bridge checks its input schema and frozen Profile capability. The adapter binds the request to the caller's actual ACTIVE Execution and checks that its notification belongs to the same receiving Task and Mission, with the existing live addressed-Execution exclusion. There is no UNBOUND or coordination-grant exception. The current guarded admission and durable handling/replay order, failure behavior and cleanup boundary are explained in [Execution](02-execution.md#flat-publication-and-controller-composition). Handling is a decision/action receipt; it is independent of Task finish and of any claim that the referenced Material is correct. Generic notification dispatch remains a separate retained Runtime path.
+
 ## 7. Controller and Bot dispatch
 
 Trusted controller code invokes the owning Task, Context or Judge Service directly using explicit envelopes. Agent calls pass through the Bridge and configured Registry, which resolves the capability and invokes its adapter. No separate SDK wrapper or generic local router participates in either path. Public Workspace reads pass through the Task provider's Mission guard before invoking MissionWorkspace; asynchronous filesystem operations remain awaited.

@@ -45,6 +45,7 @@ const definitions = {
     {...catalogCapability('result','get_check_result','read'),output_schema:{type:['object','null']}},
   ],
   task:[
+    catalogCapability('feedback','task_feedback'),
     catalogCapability('link','task_link_material'),
     catalogCapability('finish','task_finish'),
   ],
@@ -64,7 +65,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
   const mergeCalls=new Map();
   const judgeStatus=()=>({cleanup:judgeCalls.size?'pending':'complete',pending:[...new Map([...judgeCalls.values()].map(({id,work,providerStarted,providerCompleted,...receipt})=>[id,structuredClone(receipt)])).values()]});
   let closing=false;
-  function binding(caller, {write=true,allowUnboundRevocation=false}={}) {
+  function binding(caller, {write=true,allowUnboundRevocation=false,feedbackId}={}) {
     const core=getRuntime();
     if (closing || caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.botId!=='string') fail('NOT_ALLOWED','Flat publication caller is outside this Runtime');
     const bot=taskService.getBot(caller.botId);
@@ -78,6 +79,15 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     }
     const execution=bot.execution_id ? taskService.getExecution(bot.execution_id):null;
     if (execution && (execution.owner_ref!==bot.bot_id || execution.state!=='RUNNING' || Date.now()>=Date.parse(execution.lease_expires_at) || taskService.getTask(execution.task_id)?.spec_version!==execution.spec_version)) fail('NOT_ALLOWED','Flat Execution ownership or lease changed');
+    if(feedbackId!==undefined) {
+      const notification=execution&&taskService.listNotifications({missionId,recipientTaskId:execution.task_id})
+        .find(row=>row.notification_id===feedbackId);
+      if(!notification) fail('NOT_ALLOWED','Feedback notification is outside the current Task');
+      if(notification.recipient_execution_id && notification.recipient_execution_id!==execution.execution_id) {
+        const addressed=taskService.getExecution(notification.recipient_execution_id);
+        if(addressed && ['CREATED','RUNNING'].includes(addressed.state)) fail('NOT_ALLOWED','Feedback belongs to another active Execution');
+      }
+    }
     return {core,bot,execution};
   }
   const workspace = new ExecutionWorkspace({taskService,contextService,workspace:missionWorkspace,
@@ -170,7 +180,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
   }
   async function invoke(service,{capability:cap,input,caller,envelope,signal,assertAuthorized}) {
     const operation=cap.operation;
-    const guardedReplay=service==='judge'||operation==='workspace_merge'||['material_dispute','material_supersede','material_unsupersede'].includes(operation);
+    const guardedReplay=service==='judge'||operation==='workspace_merge'||operation==='task_feedback'||['material_dispute','material_supersede','material_unsupersede'].includes(operation);
     if (!definitions[service]?.some(row=>row.operation===operation)) fail('INVALID_CONTRACT','Unknown flat publication operation');
     if (!input || typeof input!=='object' || Array.isArray(input) || ['actor_ref','owner_ref','bot_id','execution_id','fencing_version','spec_version','state_version'].some(key=>Object.hasOwn(input,key))) fail('INVALID_CONTRACT','Flat publication cannot supply trusted identity');
     if (typeof envelope?.operation_id!=='string' || !envelope.operation_id) fail('INVALID_CONTRACT','Flat publication needs stable request identity');
@@ -185,7 +195,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       if(previous.work && !guardedReplay) return structuredClone(await previous.work);
     }
     const read=cap.side_effect==='read';
-    const access={write:!read,allowUnboundRevocation:service==='context' && operation==='material_unsupersede' && permissions.includes('unsupersede')};
+    const access={write:!read,allowUnboundRevocation:service==='context' && operation==='material_unsupersede' && permissions.includes('unsupersede'),...(operation==='task_feedback'?{feedbackId:input.notification_id}:{})};
     const original=binding(caller,access);
     const live=await core.get(caller.botId);
     if (!['idle','running'].includes(live.status) || live.profile!==profile) fail('NOT_ALLOWED','Core Bot is unavailable');

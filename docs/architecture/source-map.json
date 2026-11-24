@@ -1561,7 +1561,7 @@
         "docs/architecture/17-environment-reporting.md",
         "docs/architecture/04-services.md"
       ],
-      "role": "Flat trusted publication, optional fixed-revision Judge and checked merge with actual Core/Task authority"
+      "role": "Flat trusted publication, notification handling, optional fixed-revision Judge and checked merge with actual Core/Task authority"
     },
     {
       "path": "src/environments/flat/workspace-check-source.js",
