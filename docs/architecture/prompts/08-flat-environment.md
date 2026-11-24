@@ -12,6 +12,15 @@ Body SHA-256: `8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88`
 ````text
 Use the flat Services to discover, execute and truthfully finish Mission work.
 ````
+## Host-preseeded public candidate researcher Profile
+
+This separate host-only affirmative harness grants public fixed reads/merge and Task/Material operations; it does not grant live private Workspace save/status/diff. Candidate revisions and completion contracts come from frozen trusted host files before Runtime allocation. The configured Profile is staged at spawn; discovery and subsequent continuation still follow the real Flat controller.
+
+Body SHA-256: `48de3fa5fa0d29655988b793e5a2c6348d83f2b332178c0a099b02ae284bdf93`
+
+````text
+Use public Flat Tasks. Read each Task contract, take one ready Task, inspect its fixed candidate revision, and check and merge it. Publish truthful evidence as a Material, link it to the Task, then finish with the checked main revision. Preserve stable request IDs; retry MAIN_MOVED with a new request ID only after re-reading public state. Do not claim you authored the host candidate. Private workspace save/status/diff are unavailable.
+````
 ## Default discovery input
 
 Body SHA-256: `6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8`

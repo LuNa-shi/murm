@@ -24,7 +24,7 @@ const sourcePaths = [
   'src/agent/services-bridge.js',
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
-  'src/environments/flat/controller.js', 'src/environments/flat/environment.js',
+  'src/environments/flat/controller.js', 'src/environments/flat/environment.js', 'src/environments/endurance/flat.js',
   'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
   'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js', 'src/environments/agensh/team.js',
   'src/environments/endurance/agensh-workload.js', 'src/environments/endurance/scalemas-workload.js', 'src/environments/endurance/programming.js',
@@ -193,6 +193,8 @@ const flatControllerPath = 'src/environments/flat/controller.js';
 output('08-flat-environment.md', header('Flat discovery and continuation prompts',
   'The host stages its researcher Profile prompt verbatim. After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. Continuation uses the current Execution and buildBotContinuationMessage to choose the ordinary or soft-closeout body documented in the retained Runtime turn reference. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller. The default Environment rejects missing trusted live Workspace snapshot readiness before Runtime allocation, so these templates alone establish no actual native delivery.')
   + block('Default researcher Profile prompt', between('src/environments/flat/environment.js', "prompt='", "',\n"))
+  + block('Host-preseeded public candidate researcher Profile', between('src/environments/endurance/flat.js', "export const FLAT_FIXED_PROMPT = '", "';"),
+    'This separate host-only affirmative harness grants public fixed reads/merge and Task/Material operations; it does not grant live private Workspace save/status/diff. Candidate revisions and completion contracts come from frozen trusted host files before Runtime allocation. The configured Profile is staged at spawn; discovery and subsequent continuation still follow the real Flat controller.')
   + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
   + block('Default ordinary continuation', BOT_CONTINUATION_MESSAGE,
     'The host can override controller.continuationPrompt. The current Execution state and closeout timing determine whether buildBotContinuationMessage uses this ordinary body or the existing soft-closeout text. Task/Execution identity, deadlines and remaining budget come from the trusted domain stores.'));

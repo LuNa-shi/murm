@@ -46,6 +46,10 @@
       "sha256": "27b880c6f9a76a2793fd2fbe9bf972d406b3cde279ac54a730b6ad3844c8d5bd"
     },
     {
+      "path": "src/environments/endurance/flat.js",
+      "sha256": "587121575dfa74a047ea90581681073b133ab83b394059294dcef1c406b6fdd2"
+    },
+    {
       "path": "examples/subagents-environment/main.mjs",
       "sha256": "46f5e9b412a2cfd26d153685503234279f7c3a8ddcec62fd09e12de5b90addbc"
     },
@@ -334,6 +338,12 @@
       "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
     },
     {
+      "path": "src/environments/endurance/flat.js",
+      "anchor": "export const FLAT_FIXED_PROMPT = '",
+      "line": 16,
+      "sha256": "48de3fa5fa0d29655988b793e5a2c6348d83f2b332178c0a099b02ae284bdf93"
+    },
+    {
       "path": "src/environments/flat/controller.js",
       "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
       "line": 8,
@@ -507,7 +517,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "4f04ad0762c325577345c95862b76e1f8369d6cd8fb42c4746c90bfad4eaeca8"
+      "sha256": "6b07e3b2aeda33dd2d81b0ae44f77f7449c09fbf0d7dfe6ca0e596d5b20c0270"
     }
   ]
 }
