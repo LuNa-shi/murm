@@ -49,8 +49,9 @@ test('stopping an active simulated guest terminates its Bash and sleep descendan
     assert.equal(Number(fields[2]), guest.pid, 'Only the detached guest process group is owned');
   }
   const live = async pid => {
+    // A process can disappear after procfs opens stat but before its read.
     try { const stat = await readFile(`/proc/${pid}/stat`, 'utf8'); return !['Z', 'X'].includes(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[0]); }
-    catch (error) { if (error.code === 'ENOENT') return false; throw error; }
+    catch (error) { if (error.code === 'ENOENT' || error.code === 'ESRCH') return false; throw error; }
   };
   assert.ok((await Promise.all(descendants.map(live))).every(Boolean));
   await closeLeadHelperFixture({ directory, guests: [guest], work: [], stopWork() {}, async reconcile() {} });
