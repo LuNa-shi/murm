@@ -138,22 +138,35 @@ async function startAgent(input) {
   if (cwd !== PROJECT_DIR) throw new Error('worker project cwd must be /workspace/project');
   everStarted = true;
   let projectQuota = null;
+  const sharedWorkspace = input.shared_workspace;
+  if (sharedWorkspace && (typeof sharedWorkspace.id !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(sharedWorkspace.id) ||
+      !['read-only', 'read-write'].includes(sharedWorkspace.mode) || input.files !== undefined ||
+      input.writable !== (sharedWorkspace.mode === 'read-write'))) throw startupContractError('Invalid shared workspace startup');
   if (quotaRequired) {
     const { bytes, inodes } = input.project_quota ?? {};
     if (!Number.isSafeInteger(bytes) || !Number.isSafeInteger(inodes) || bytes <= 0 || inodes <= 0) throw startupContractError('Bot workspace quota is required');
     const filesystem = await statfs('/workspace', { bigint: true });
     const mounts = (await readFile('/proc/self/mountinfo', 'utf8')).trim().split('\n');
     const mount = mounts.findLast(row => row.split(' ')[4] === '/workspace')?.split(' ');
-    if (mounts.some(row => row.split(' ')[4]?.startsWith('/workspace/')) || filesystem.type !== 0x01021994n || filesystem.blocks * filesystem.bsize !== BigInt(bytes) ||
+    const childMounts = mounts.filter(row => row.split(' ')[4]?.startsWith('/workspace/'));
+    const contents = await readdir('/workspace');
+    if ((sharedWorkspace ? childMounts.length !== 1 || childMounts[0].split(' ')[4] !== PROJECT_DIR || contents.length !== 1 || contents[0] !== 'project' : childMounts.length || contents.length) || filesystem.type !== 0x01021994n || filesystem.blocks * filesystem.bsize !== BigInt(bytes) ||
         filesystem.files !== BigInt(inodes) || !mount?.[5]?.split(',').includes('nodev') ||
-        !mount[5].split(',').includes('nosuid') || (await readdir('/workspace')).length) throw startupContractError('Bot workspace quota is absent or mismatched');
+        !mount[5].split(',').includes('nosuid')) throw startupContractError('Bot workspace quota is absent or mismatched');
     const probe = spawnSync('setpriv', [...unprivileged, filesystemPolicy, '/usr/bin/true'], { cwd: '/', timeout: 2_000 });
     if (probe.error?.code === 'ENOENT' || (Number.isInteger(probe.status) && probe.status !== 0)) {
       throw startupContractError('Bot filesystem policy could not be enforced');
     }
     if (probe.status !== 0) throw new Error('Bot filesystem policy probe did not complete');
     if (project.closing) throw new Error('Bot stopped during filesystem validation');
-    await project.initialize();
+    if (sharedWorkspace) {
+      const projectFilesystem = await statfs(PROJECT_DIR, { bigint: true });
+      const options = childMounts[0].split(' ')[5].split(',');
+      if (projectFilesystem.type !== 0x01021994n || projectFilesystem.blocks * projectFilesystem.bsize !== BigInt(bytes) ||
+          projectFilesystem.files !== BigInt(inodes) || !options.includes('nodev') || !options.includes('nosuid') ||
+          options.includes('ro') !== (sharedWorkspace.mode === 'read-only')) throw startupContractError('Shared project mount is absent or mismatched');
+    }
+    await project.initialize({ shared: Boolean(sharedWorkspace) });
     initialized = true;
     projectQuota = { bytes, inodes };
     collectionMaxEntries = Math.min(inodes, MAX_COLLECTION_ENTRIES);
@@ -173,7 +186,7 @@ async function startAgent(input) {
     await chown(input.system_prompt_path, BOT_UID, BOT_UID);
   }
   coreWorkDir = new CoreWorkDir({ path: PROJECT_DIR, uid: BOT_UID, gid: BOT_UID, assertOpen: requireOpenWorkDir });
-  const projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true });
+  const projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true, shared: Boolean(sharedWorkspace) });
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   sessionPrivateValues = Object.values(input.secret_env ?? {});
   if (input.fork_session !== undefined) {
@@ -208,6 +221,7 @@ async function startAgent(input) {
   return { pid: child.pid, contract: { version: input.contract_version, resources: input.resources },
     ...(projectQuota ? { project_quota: projectQuota } : {}),
     ...(projectFiles ? { project_files: projectFiles } : {}),
+    ...(sharedWorkspace ? { shared_workspace: sharedWorkspace } : {}),
     ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}) };
 }
 
@@ -313,6 +327,11 @@ async function botProcesses() {
 
 const heldWriters = new Set();
 let installHoldTimer = null;
+const snapshotHolds = new Map();
+function releaseSnapshotHold(id) {
+  clearTimeout(snapshotHolds.get(id));
+  snapshotHolds.delete(id);
+}
 function withBotPaused(operation) {
   const pending = writerGate.then(async () => {
     if (project.closing) throw new Error('Bot is closing');
@@ -347,9 +366,9 @@ function withBotPaused(operation) {
       return { ...result, paused_process_count: paused.size };
     } finally {
       if (project.closing) await stopBot();
-      else if (project.installPending) {
+      else if (project.installPending || snapshotHolds.size) {
         for (const pid of paused) heldWriters.add(pid);
-        installHoldTimer ??= setTimeout(() => { void stopBot().catch(() => undefined); }, 30_000);
+        if (project.installPending) installHoldTimer ??= setTimeout(() => { void stopBot().catch(() => undefined); }, 30_000);
       } else {
         clearTimeout(installHoldTimer); installHoldTimer = null;
         for (const pid of new Set([...paused, ...heldWriters])) {
@@ -367,6 +386,7 @@ function stopBot() {
   project.beginClose();
   clearTimeout(installHoldTimer); installHoldTimer = null;
   heldWriters.clear();
+  for (const id of snapshotHolds.keys()) releaseSnapshotHold(id);
   if (stopping) return stopping;
   stopping = (async () => {
     if (child?.pid) { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
@@ -430,6 +450,26 @@ const server = createServer(async (request, response) => {
     }
     if (request.method === 'POST' && url.pathname === '/core/files/prepare') {
       send(response, 200, { ok: true, result: await controlCoreFiles('prepare', await body(request, 32 * 1024 ** 2)) });
+      return;
+    }
+    if (request.method === 'POST' && ['/core/files/pause', '/core/files/resume'].includes(url.pathname)) {
+      const { requestId } = await body(request);
+      if (typeof requestId !== 'string' || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId)) throw Object.assign(new Error('Capture fence requires requestId'), { code: 'INVALID_CONTRACT' });
+      requireOpenWorkDir();
+      if (!child?.pid) throw Object.assign(new Error('Capture fence requires a live Bot'), { code: 'NOT_ALLOWED' });
+      const pause = url.pathname.endsWith('/pause');
+      send(response, 200, { ok: true, result: await withBotPaused(() => {
+        releaseSnapshotHold(requestId);
+        if (pause) snapshotHolds.set(requestId, setTimeout(() => {
+          releaseSnapshotHold(requestId);
+          void withBotPaused(() => ({})).catch(() => undefined);
+        }, 90_000));
+        return { requestId, paused: pause };
+      }) });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/core/files/snapshot') {
+      send(response, 200, { ok: true, result: await controlCoreFiles('snapshot', await body(request)) });
       return;
     }
     if (request.method === 'POST' && url.pathname === '/core/files/grant') {

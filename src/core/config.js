@@ -79,7 +79,7 @@ export function snapshotProfiles(profiles, models, registrations) {
 
 export function snapshotSpawn(input, profiles, registrations) {
   if (!record(input) || !validId(input.requestId) || !profiles.has(input.profile) ||
-      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect', 'forkFrom'].includes(key)) ||
+      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect', 'forkFrom', 'workspace'].includes(key)) ||
       (input.writable !== undefined && typeof input.writable !== 'boolean') ||
       (input.parentId !== undefined && !validId(input.parentId)) ||
       (input.forkFrom !== undefined && !validId(input.forkFrom))) {
@@ -90,7 +90,21 @@ export function snapshotSpawn(input, profiles, registrations) {
     !registrations.has(service) || typeof binding !== 'string' || !binding))) {
     throw new TypeError('Invalid Service bindings');
   }
+  if (input.workspace !== undefined) {
+    const workspace = input.workspace;
+    if (!record(workspace) || input.files !== undefined) throw new TypeError('workspace requires an explicit configuration without files');
+    if (workspace.mode === 'frozen-copy') {
+      if (Object.keys(workspace).some(key => !['mode', 'files'].includes(key))) throw new TypeError('Invalid frozen-copy workspace');
+      snapshotFileSeed(workspace.files);
+    } else if (!['read-only', 'read-write'].includes(workspace.mode) || !validId(workspace.id) ||
+        Object.keys(workspace).some(key => !['mode', 'id'].includes(key)) ||
+        (workspace.mode === 'read-only' && input.writable === true)) {
+      throw new TypeError('Shared workspace requires an id and read-only or read-write mode');
+    }
+  }
   const snapshot = structuredClone(input);
+  if (input.workspace?.mode === 'frozen-copy') snapshot.files = snapshotFileSeed(input.workspace.files).files;
+  if (input.workspace && input.workspace.mode !== 'frozen-copy') snapshot.writable = input.workspace.mode === 'read-write';
   const collect = snapshotCollection(input.collect) ?? profiles.get(input.profile).collect;
   if (collect !== undefined) snapshot.collect = collect;
   if (input.files !== undefined) snapshot.files = snapshotFileSeed(input.files).files;

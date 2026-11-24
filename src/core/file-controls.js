@@ -1,4 +1,5 @@
 import { snapshotFileSeed } from '../../scripts/core-file-seed.mjs';
+import { snapshotCollectionSpec } from '../../scripts/core-collection.mjs';
 import { validId } from './config.js';
 
 const knownRejections = new Set(['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY']);
@@ -7,7 +8,7 @@ export function createFileControls({ backend, findBot, isLive, problem, observe,
   const states = new WeakMap();
 
   function register(bot, { writable, seeded }) {
-    states.set(bot, { writable, version: writable || seeded ? 1 : 0, prepares: new Map(), grants: new Map() });
+    states.set(bot, { writable, version: writable || seeded ? 1 : 0, prepares: new Map(), grants: new Map(), snapshots: new Map() });
   }
 
   function admit(bot, state, request) {
@@ -103,9 +104,42 @@ export function createFileControls({ backend, findBot, isLive, problem, observe,
       });
   }
 
+  async function snapshot(botId, options) {
+    const type = 'files.snapshot';
+    const id = options?.requestId;
+    if (!validId(id)) throw problem('INVALID_CONTRACT', 'File snapshot requires a requestId', type, botId, id);
+    let selection;
+    try {
+      if (Object.keys(options).some(key => !['requestId', 'paths', 'includeGit', 'maxBytes'].includes(key))) throw new TypeError('Unsupported snapshot options');
+      selection = snapshotCollectionSpec({ paths: options.paths, includeGit: options.includeGit ?? false,
+        maxBytes: options.maxBytes ?? 16 * 1024 ** 2, required: true });
+      if (selection.maxBytes > 16 * 1024 ** 2) throw new TypeError('Snapshot maxBytes exceeds 16 MiB');
+    } catch (error) { throw problem('INVALID_CONTRACT', error.message, type, botId, id); }
+    const bot = findBot(botId, type, id);
+    const state = states.get(bot);
+    const identity = JSON.stringify(selection);
+    let request = state.snapshots.get(id);
+    if (request && request.identity !== identity) throw problem('CONFLICT', 'Snapshot requestId has a different selection', type, botId, id);
+    if (!request) {
+      if (!isLive(bot)) throw problem('NOT_ALLOWED', 'Bot is unavailable for file snapshot', type, botId, id);
+      if (state.operation) throw problem('CONFLICT', 'The Bot has another pending file operation', type, botId, id);
+      request = { type, id, identity };
+      state.operation = request;
+      state.snapshots.set(id, request);
+    }
+    return run(bot, state, request, () => backend.snapshotFiles(botId, { requestId: id, ...selection }),
+      (reply, unknown) => {
+        if (reply?.requestId !== id || !Number.isSafeInteger(reply.version) || reply.version < 1) throw unknown();
+        const seed = snapshotFileSeed(reply.files);
+        if (seed.digest !== reply.digest) throw unknown();
+        for (const file of Object.values(seed.files)) Object.freeze(file);
+        return Object.freeze({ botId, requestId: id, version: reply.version, digest: seed.digest, files: Object.freeze(seed.files) });
+      });
+  }
+
   return {
     register,
     canSend(bot) { return states.get(bot).operation?.type !== 'files.grant'; },
-    api: Object.freeze({ prepare, grant }),
+    api: Object.freeze({ prepare, grant, snapshot }),
   };
 }

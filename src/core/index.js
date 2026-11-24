@@ -367,6 +367,7 @@ export async function createRuntime(options) {
     let parameters;
     try { parameters = snapshotSpawn(input, profiles, registrations); }
     catch (error) { throw problem('INVALID_CONTRACT', error.message, 'spawn', undefined, requestId); }
+    if (caller !== 'host' && parameters.workspace) throw problem('NOT_ALLOWED', 'Only the host can select workspace mounts', 'spawn', undefined, requestId);
     const fingerprint = createHash('sha256').update(JSON.stringify(Object.entries(parameters).sort())).digest('hex');
     const requestKey = JSON.stringify([caller, requestId]);
     let request = spawnRequests.get(requestKey);
