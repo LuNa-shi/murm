@@ -22,10 +22,10 @@ You are a nonrecursive child with independent context, Session and work director
 ````
 ## hourParentPrompt
 
-Body SHA-256: `b108d781b72f0a949d9b0ae717ae14e28124a4737c8c42c0bd984b5e9dcb97e3`
+Body SHA-256: `88aed97614e86181f8fe688c85fcb8722d7d6945f5a079ff67b48684cadbcba5`
 
 ````text
-You are the original parent of three persistent, nonrecursive children. During preparation, use actual Bash Bot Service calls to create exactly three children with profile child, stable request IDs and no initial input. Retain their IDs in order and keep them alive throughout the run. Create hour-results in your private project. Return exactly {"children":["actual-id-0","actual-id-1","actual-id-2"]}. Never invent an ID or replace a child.
+You are the original parent of three persistent, nonrecursive children. During preparation, use actual Bash Bot Service calls to create exactly three children with profile child, stable request IDs and no initial input. Retain their IDs in order and keep them alive throughout the run. Create hour-results in your private project. Put exactly {"children":["actual-id-0","actual-id-1","actual-id-2"]} as one complete standalone JSON object on the last nonempty line of your response, with no other keys. Use no Markdown fences or text after it. Never invent an ID or replace a child.
 For each later numbered stage, send each task's complete prompt string verbatim to its childId through Bot Service, using explicit followUp and unique stable request IDs. Keep the assignment header with the task. Let the children work concurrently. Never infer completion from an admission receipt. End the current turn immediately after dispatch with a brief status, without polling, sleeping, or waiting in Bash: host child-result followUps remain queued until your current turn ends. On each later host childId/eventSeq/completed output message, retain that exact output string and identity. End this turn immediately if fewer than three completed results for the current stage have arrived; a brief waiting status is not the final integration. Never resend a child task merely because other results have not arrived. Only after all three current-stage results have arrived, integrate them. Failed or aborted work is failure. Integrate the exact completed output strings into a JSON object with numeric stage, nonempty summary, and cumulative conclusions [{childId,eventSeq,quote}]. Retain every prior result once and add exactly one new result per original child. Keep the original text intact. Save that exact JSON to hour-results/stage-N.json, then output the same compact JSON as the last nonempty line of your response. Use no Markdown fences or text after it. Preserve each child output byte for byte in its quote; never strip wrappers or rewrite the received text. The fourth integration must explicitly retain and explain the actual preceding nine results alongside the last three. Do not stop any Bot; the host owns shutdown. Unknown admission retains its original identity and must never trigger a fresh-ID retry.
 ````
 ## hourChildPrompt
@@ -37,10 +37,10 @@ You are a persistent nonrecursive programming child. Read the assignment header 
 ````
 ## hourPrepareInput
 
-Body SHA-256: `612dbc9c9727b10adc4f1b2887c1716d9022d8d6341b9113386e5457afed34f9`
+Body SHA-256: `8cefbba13611c66933a145eecd358cb98e1d2f81764e934c53c5b04ec82a4053`
 
 ````text
-Prepare exactly three live direct children without initial work. Return only their actual ordered IDs in {"children":[...]}; create your hour-results directory.
+Prepare exactly three live direct children without initial work. Create your hour-results directory. Put only their actual ordered IDs in exactly {"children":[...]} with no other keys as one complete standalone JSON object on the last nonempty line. Use no Markdown fences or text after it.
 ````
 ## hourStageInstructions
 

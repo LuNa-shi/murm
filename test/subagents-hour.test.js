@@ -19,7 +19,7 @@ const {runSubagentsHour}=await import('../examples/subagents-environment/hour.mj
 const hash=value=>createHash('sha256').update(value).digest('hex');
 
 async function setup(t,{changedSession=false,changedArchive=false,lateExit=false,queuedParent=false,verbatimTasks=false,
-  narratedResults=false,childTrailer=false,fractionalLastWake=false,exhaustedLastWake=false}={}) {
+  narratedResults=false,childTrailer=false,fractionalLastWake=false,exhaustedLastWake=false,prepareFraming='exact'}={}) {
   transport.reset();transport.collectable=true;
   const outputDir=await mkdtemp(join(tmpdir(),'subagents-hour-'));t.after(()=>rm(outputDir,{recursive:true,force:true}));
   let tick=0,parentId,stageIndex,closed=false;const deadlineAt=Date.now()+6000000;
@@ -70,7 +70,8 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
       transport.spawns.get(row.botId).onEvent({type:'settled',outcome:'completed',output:completed});
     }else if(row.input.startsWith('Prepare exactly')){
       for(let i=0;i<3;i++){const result=await call('spawn',{profile:'child'},`child-${i}`);assert.equal(result.initialInput,null);childIds.push(result.bot.id);}
-      settleParent(JSON.stringify({children:childIds}));
+      const prepared=JSON.stringify({children:childIds,...(prepareFraming==='extra'?{extra:true}:{})});
+      settleParent(prepareFraming==='narrated'?'Three actual children are ready.\n\n'+prepared:prepareFraming==='fenced'?'```json\n'+prepared+'\n```':prepareFraming==='trailing'?prepared+'\nPreparation completed.':prepareFraming==='prose'?'Three children are ready.':prepared);
     }else if(row.input.startsWith('{"stage"')){
       const task=JSON.parse(row.input);stageIndex=task.stage;count=0;
       // This models natural parent-driven concurrent child admission, with no host semaphore.
@@ -234,4 +235,16 @@ test('less than one millisecond of final-stage allowance cannot be rounded up in
  options.programming.verify=async context=>{verified++;return verify(context);};
  const report=await runSubagentsHour(options);assert.ok(report.businessFailure);assert.equal(report.result,null);
  assert.equal(verified,9);assert.equal(report.cleanup.cleanup,'complete');
+});
+
+test('preparation accepts a complete final unfenced JSON object after prose while retaining original direct children',async t=>{
+ const {options}=await setup(t,{prepareFraming:'narrated'});const report=await runSubagentsHour(options);
+ assert.equal(report.businessFailure,null,JSON.stringify(report.businessFailure));assert.equal(report.cleanupFailure,null);
+ assert.equal(report.result.evidence.length,4);assert.equal(report.result.childIds.length,3);assert.equal(new Set(report.result.childIds).size,3);
+ assert.equal(report.result.childAdmissions.length,12);assert.equal(report.archives.children.length,12);
+});
+for(const prepareFraming of ['fenced','trailing','prose','extra'])test(`preparation rejects ${prepareFraming} framing without starting staged work`,async t=>{
+ const {options}=await setup(t,{prepareFraming});const report=await runSubagentsHour(options);
+ assert.equal(report.businessFailure?.code,'SUBAGENTS_PREPARE_INVALID');assert.equal(report.result,null);
+ assert.equal(report.cleanup.cleanup,'complete');
 });

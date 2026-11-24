@@ -59,7 +59,7 @@
     },
     {
       "path": "examples/subagents-environment/hour.mjs",
-      "sha256": "198a2fa18a8f141483420e4285fa65f501c3887778817cfd5aec919f6880a24d"
+      "sha256": "e9fb01f0ee381db4e068f30674ef8d391e7a21fa0918baaf19b8dca66239cc9d"
     },
     {
       "path": "examples/subagents-environment/main.mjs",
@@ -71,7 +71,7 @@
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
-      "sha256": "e7b55258617cd10f0d9c815cce8b8c8c45d2df6be4429809424f0ae145ffe929"
+      "sha256": "ace46e60b65ca86182924f8a3fd817803658b0d3d712c60f195625a3c1910eca"
     },
     {
       "path": "src/environments/agensh/index.js",
@@ -219,7 +219,7 @@
       "path": "examples/subagents-environment/prompts.mjs",
       "anchor": "export const hourParentPrompt = ",
       "line": 21,
-      "sha256": "fe29f15b7d8c079bac2317c8aeb025fb83658024adcb3e66672920ee8cfbe072"
+      "sha256": "ad581114c84abc5b0456a993dcc33c4d8bd8b522b68af1956f1dbff08fbd2e0f"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
@@ -231,7 +231,7 @@
       "path": "examples/subagents-environment/prompts.mjs",
       "anchor": "export const hourPrepareInput = ",
       "line": 26,
-      "sha256": "332d67fd37d11c787aaa65e74ca611fadd54a69ef66e6f5c69be66bf58166309"
+      "sha256": "9e71c97f1bacbd00a86c5282ff99cdc2ce9dd67f83830c95c94275eaa8d94c38"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
@@ -600,7 +600,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "d9d64671a1aaa2fd58c2f13bcef9bd450bd76c2b3c4ca550f9b7f6167c8a085c"
+      "sha256": "b12dfc9c47b4b12bb54a570b37281d90e3c3fb6fd5016f8defa3216b664b01ed"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",

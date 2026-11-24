@@ -80,7 +80,11 @@ export async function runSubagentsHour({backend,image,model='default',outputDir,
         }
         finally{handler?.();clearTimeout(prepareTimer);}
         if(receipt.status!=='accepted'||receipt.disposition!=='started')throw failure('SUBAGENTS_PREPARE_INPUT_UNKNOWN');
-        try{childIds=JSON.parse(event.output).children;}catch{throw failure('SUBAGENTS_PREPARE_INVALID');}
+        try{
+          const {value}=readSubagentsStageResult(event.output);
+          if(Object.keys(value).join()!=='children'||!Array.isArray(value.children)||value.children.length!==3)throw failure('SUBAGENTS_PREPARE_INVALID');
+          childIds=value.children;
+        }catch{throw failure('SUBAGENTS_PREPARE_INVALID');}
         stages=await createSubagentsStages(runtime,parentId,{childIds});botIds=[parentId,...childIds];await liveBots();
         lifetime=await bounded(()=>admit({runtime,outputDir,botIds,workMs:limits.workMs,cleanupMs:limits.cleanupMs,recoveryMs:limits.recoveryMs,marginMs:limits.marginMs,signal:live}),limits.turnMs);
         const observed=time();
