@@ -144,6 +144,9 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
         let artifactText = text;
         if (['program-hour', 'natural-hour'].includes(staged)) {
           assert.match(payload.task, /Write and run Python for value/);
+          assert.ok(payload.task.includes(`git add -- ${path}`), 'only the actual helper stage delivery is staged');
+          assert.ok(payload.task.includes('check that it is the only staged path before committing and pushing'));
+          assert.ok(payload.task.includes('Leave program source, stdout and test files untracked for private collection.'));
           const source = `import json\nprint(json.dumps({'value': ${Number(role.slice(6)) + (payload.stage + 1) * 10}}))\n`;
           const sourcePath = join(privateDirectories[role], `hour-program-${payload.stage + 1}.py`);
           await writeFile(sourcePath, source);
@@ -154,7 +157,12 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
         }
         await writeFile(join(privateDirectories[role], path), artifactText);
         const git = args => run('git', ['-C', privateDirectories[role], ...args], { env: { ...process.env, GIT_AUTHOR_NAME: role, GIT_COMMITTER_NAME: role, GIT_AUTHOR_EMAIL: `${role}@test.invalid`, GIT_COMMITTER_EMAIL: `${role}@test.invalid` } });
-        await git(['add', path]); await git(['commit', '-m', id]); await git(['push', 'origin', role]);
+        await git(['add', '--', path]);
+        if (['program-hour', 'natural-hour'].includes(staged)) {
+          assert.equal((await git(['diff', '--cached', '--name-only'])).stdout.trim(), path);
+          assert.equal((await git(['ls-files', '--', `hour-program-${payload.stage + 1}.py`, `hour-program-${payload.stage + 1}.stdout.json`])).stdout, '');
+        }
+        await git(['commit', '-m', id]); await git(['push', 'origin', role]);
         const commit = (await git(['rev-parse', 'HEAD'])).stdout.trim();
         const delivery = { commit, path, bytes: Buffer.byteLength(artifactText), sha256: createHash('sha256').update(artifactText).digest('hex') };
         await call(role, 'complete', { subtask_id: id, expected_revision: owned.revision, direction_id: state.directions.at(-1).seq, delivery });

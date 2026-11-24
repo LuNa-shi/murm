@@ -91,7 +91,7 @@
     },
     {
       "path": "src/environments/endurance/lead-helper-workload.js",
-      "sha256": "edaa991d8c57baa530e917a8dacb6710e5b7c5e5912dd9fe219fbcf838f92946"
+      "sha256": "963c2f14bd2702afeebdd03e982eae40348036201d326b034af824cfd3743954"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
@@ -321,7 +321,7 @@
       "path": "src/environments/endurance/lead-helper-workload.js",
       "anchor": "  function stageInput(stage) {",
       "line": 17,
-      "sha256": "646c667339f13e1ec50bf0b295330dc57c2db4d2f3f9ce240d23f2282bfaeb7d"
+      "sha256": "ee568724d99a2c65b73c7a6a37074baa9f769dd94fd4ab0e95810ea25d17b231"
     },
     {
       "path": "src/environments/endurance/programming.js",
@@ -387,7 +387,7 @@
     {
       "path": "src/environments/endurance/lead-helper-workload.js",
       "line": 20,
-      "expression": "`Write only ${paths[role]} for this group's delivery. Its JSON must have exactly helper:${JSON.stringify(role)}, stage:${stage}, directionId (the current Board direction sequence), direction (its exact current text), and programming (the requested result). Read Board before claiming. Implement and run the task, retain its program and stdout files, then publish complete proof for the actual pushed JSON file and one task-scoped feedback note. Use one coherent Bash call for read/claim/program/test/Git/publish; finish briefly.${program.prompt(index, stage + 1)}`]));"
+      "expression": "`Write only ${paths[role]} for this group's delivery. Its JSON must have exactly helper:${JSON.stringify(role)}, stage:${stage}, directionId (the current Board direction sequence), direction (its exact current text), and programming (the requested result). Read Board before claiming. Implement and run the task, retain its program and stdout files. Stage only the delivery with git add -- ${paths[role]} and check that it is the only staged path before committing and pushing. Leave program source, stdout and test files untracked for private collection. Then publish complete proof for the actual pushed JSON file and one task-scoped feedback note. Use one coherent Bash call for read/claim/program/test/Git/publish; finish briefly.${program.prompt(index, stage + 1)}`]));"
     },
     {
       "path": "src/environments/endurance/programming.js",
@@ -547,7 +547,7 @@
     },
     {
       "path": "docs/architecture/prompts/13-hour-matrix.md",
-      "sha256": "1a6236ce98485e0d942f4141c21be167adda2987870c6b4f1e0165c871aa3cc5"
+      "sha256": "79b34d8643b6de564ab5129d9b1a06170167019787220512203c5cdb1c554832"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",
