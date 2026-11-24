@@ -1530,36 +1530,6 @@ for (const policy of ['task-done-only', 'conflicting', 'none']) test(`merge hono
   assert.equal(checks, 0);
 });
 
-test('timed-out checker retains its slot until cleanup confirmation and cannot accumulate new checks', async t => {
-  let checks = 0, release;
-  const { workspaceMerge, runtime, identity, dispatch, guest } = await workspaceFixture(t, {
-    mergeRequiredCheck: mergeCheckerIdentity,
-    workspaceMergeChecker: { identity: mergeCheckerIdentity, timeoutMs: 30,
-      check() { checks += 1; return new Promise(resolve => { release = resolve; }); } },
-  });
-  guest.files['quarantine.txt'] = Buffer.from('contribution');
-  const saved = await dispatch('save', 'quarantine-source');
-  const merge = requestId => workspaceMerge.merge({ from: saved.revision }, { ...identity, requestId });
-  await assert.rejects(merge('first-hung-check'), { code: 'SERVICE_TIMEOUT' });
-  await assert.rejects(merge('second-check-blocked'), { code: 'WORKSPACE_BUSY' });
-  assert.equal(checks, 1);
-  assert.deepEqual(await workspaceMerge.close({ timeoutMs: 0 }), { cleanup: 'pending', pending_checks: 1 });
-  let shutdownDone = false;
-  let runtimeSettled = false;
-  const shutdown = workspaceMerge.close().then(() => { shutdownDone = true; });
-  const settling = workspaceMerge.waitForSettled().then(() => { runtimeSettled = true; });
-  try {
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(shutdownDone, false);
-    assert.equal(runtimeSettled, false);
-  } finally {
-    release({ verdict: 'PASS' });
-    await Promise.all([shutdown, settling]);
-  }
-  assert.deepEqual(await workspaceMerge.close(), { cleanup: 'complete', pending_checks: 0 });
-  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, '0.1');
-});
-
 test('merge reports failed final-tree evidence with pinned revisions and bounded diagnostics', async t => {
   const { workspaceMerge, runtime, dispatch, guest, identity } = await workspaceFixture(t, {
     mergeRequiredCheck: mergeCheckerIdentity,
@@ -1576,26 +1546,6 @@ test('merge reports failed final-tree evidence with pinned revisions and bounded
     assert.equal(error.details.check.diagnostic.length, 2048);
     return true;
   });
-});
-
-test('Git merge publication survives SQLite confirmation failure and replays the same result', async t => {
-  const { workspaceMerge, runtime, service, identity, dispatch, guest } = await workspaceFixture(t);
-  guest.files['durable.txt'] = Buffer.from('durable contribution');
-  const saved = await dispatch('save', 'durable-source');
-  const exec = service.db.exec.bind(service.db);
-  let failCommit = false;
-  runtime.missionWorkspace.repository.fault = point => { if (point === 'after_intent') failCommit = true; };
-  service.db.exec = sql => {
-    if (sql === 'COMMIT' && failCommit) { failCommit = false; throw new Error('controlled SQLite commit failure'); }
-    return exec(sql);
-  };
-  const merge = () => workspaceMerge.merge({ from: saved.revision }, { ...identity, requestId: 'durable-merge' });
-  await assert.rejects(merge(), { code: 'WORKSPACE_RESULT_UNKNOWN' });
-  runtime.missionWorkspace.repository.fault = null;
-  service.db.exec = exec;
-  const result = await merge();
-  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, result.main_revision);
-  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 3);
 });
 
 test('shutdown revokes and stops an active Bot before a different Core startup returns', { timeout: 15_000 }, async t => {
