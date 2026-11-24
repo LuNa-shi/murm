@@ -163,6 +163,8 @@ One listener set is attached per Session; event handlers read its current Execut
 
 The current Mission model has one canonical Task lifecycle: an identity inspects the bounded eligible view, calls `task_take`, works in its clean Workspace, publishes explicit results, and ends with `task_finish`. Dependencies use the flat `depends_on` relationship and Task reconciliation state. The registered Bot surface does not expose wait, wake, resume or registration-and-switch. Obsolete wait, wake, resume, rework and register-and-switch writers have been removed. Runtime retains activation, heartbeat, stop, fencing, dependency reconciliation and finish finalization used by this lifecycle.
 
+The retained domain Runtime keeps per-Core occupancy for its remaining binding, stop and cleanup paths, including `getCoreStatus` and active-Execution checks. Its unused aggregate occupancy-list and capacity-summary methods have been removed. Supported Core Runtime capacity and Slot release remain governed by the [Core lifecycle](15-core-runtime.md).
+
 Registered cleanup distinguishes acceptance from completion: finish first persists its intent and CLOSING, rejecting new contributions while retaining the owner. After Session/Sandbox isolation, finalization projects Task outcome, advances the fence and releases occupancy. Stop/expiry likewise retains cleanup ownership until isolation. A failure or timeout before confirmed cleanup is pending/failed cleanup, never a completed release. Terminal release retries the same physical cleanup before dropping the binding.
 
 ## 10. Code and existing verification map
