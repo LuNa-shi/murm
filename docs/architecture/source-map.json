@@ -1579,7 +1579,7 @@
         "docs/architecture/15-core-runtime.md",
         "docs/architecture/17-environment-reporting.md"
       ],
-      "role": "Flat host composition and independent business/resource reporting with explicit live snapshot readiness gate"
+      "role": "Flat host composition, optional trusted Workspace capture binding, and independent business/resource reporting"
     },
     {
       "path": "scripts/read-environment-result.mjs",

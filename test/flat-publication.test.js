@@ -79,10 +79,14 @@ test('flat Workspace save captures trusted bytes once and keeps immutable revisi
   await assert.rejects(f.call('workspace','workspace_save',{files:{'fake.txt':'fake'}},'forged'),{code:'SERVICE_INPUT_INVALID'});
 });
 
-test('flat publication explicitly refuses Workspace save without a trusted snapshot binding',async t=>{
-  const f=await fixture(t);
-  await assert.rejects(f.call('workspace','workspace_save',{},'unbound'),{code:'SERVICE_NOT_READY'});
-  assert.equal((await f.workspace.listRevisions({workspaceId:f.workspaceId})).length,1);
+test('Flat registers only public Workspace reads without a trusted snapshot binding', async t => {
+  const fixtureState = await fixture(t);
+  const workspace = await fixtureState.call('workspace', 'workspace_public_view');
+  assert.equal(workspace.workspace_id, fixtureState.workspaceId);
+  for (const operation of ['workspace_save', 'workspace_status', 'workspace_current_diff']) {
+    await assert.rejects(fixtureState.call('workspace', operation), { code: 'NOT_FOUND' });
+  }
+  assert.equal((await fixtureState.workspace.listRevisions({ workspaceId: fixtureState.workspaceId })).length, 1);
 });
 
 test('fencing during a trusted capture prevents Workspace publication',async t=>{
