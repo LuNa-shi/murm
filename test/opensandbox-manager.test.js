@@ -150,6 +150,10 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
     },
   });
   await manager.ensureExecution({ executionId: 'e-worker', botId: 'e-worker' });
+  for (const options of [{ resources: null }, { agentMode: 'core' }, { agentMode: 'core', resources: null }]) {
+    await assert.rejects(manager.startAgent({ executionId: 'e-worker', command: 'pi', ...options }), { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
+  }
+  assert.equal(calls.some(call => call.url === 'http://worker.test/sbx-worker/start'), false);
   const started = await manager.startAgent({ executionId: 'e-worker', command: 'pi', args: ['--mode', 'rpc'] });
   assert.equal(started.worker_port, 44100);
   const sandboxCreate = calls.find((call) => call.url === 'http://sandbox.test/v1/sandboxes');
@@ -159,6 +163,7 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
   const launch = calls.find((call) => call.url === 'http://worker.test/sbx-worker/start');
   assert.equal(launch.options.headers.authorization.startsWith('Bearer '), true);
   assert.deepEqual(JSON.parse(launch.options.body).args, ['--mode', 'rpc']);
+  assert.deepEqual(JSON.parse(launch.options.body).resources, BOT_RESOURCES);
   const acknowledgement = await manager.agentRpc('e-worker', { type: 'prompt', id: 'original-input', message: 'fixed' }, { timeoutMs: 50, since: 17 });
   assert.equal(acknowledgement.response.id, 'original-input');
   await manager.stopExecution('e-worker');

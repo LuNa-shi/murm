@@ -51,15 +51,29 @@ test('external installed archive resolves and typechecks public exports and runs
   const upstream = await createNotesEnvironmentUpstream(); t.after(() => upstream.close());
   await writeFile(join(installed.directory, 'smoke.mjs'), `
 import assert from 'node:assert/strict';
-import { createRuntime } from '@swarmenv/core';
-import { ServiceRegistry } from '@swarmenv/core/services';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import {runNotesEnvironment,createNotes,fixedFact} from './main.mjs';
-import {createCoreBridge} from './node_modules/@swarmenv/core/src/core/bridge.js';
-import {snapshotServiceRegistry} from './node_modules/@swarmenv/core/src/core/services.js';
+import {registerHooks} from 'node:module';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {writeFile} from 'node:fs/promises';
+const packageRoot=new URL('./node_modules/@swarmenv/core/',import.meta.url).href;
+const loaded=new Set();
+const hooks=registerHooks({load(url,context,nextLoad) {
+ const result=nextLoad(url,context);
+ if(url.startsWith(packageRoot)) loaded.add(url.slice(packageRoot.length));
+ return result;
+}});
+let createRuntime,ServiceRegistry,createPiOpenSandboxBackend;
+try {
+ ({createRuntime}=await import('@swarmenv/core'));
+ ({ServiceRegistry}=await import('@swarmenv/core/services'));
+ ({createPiOpenSandboxBackend}=await import('@swarmenv/core/backends/pi-opensandbox'));
+} finally {hooks.deregister()}
+const domainRoots=['src/task/','src/context/','src/judge/','src/environments/flat/'];
+assert.deepEqual([...loaded].filter(path=>path==='src/agent/bot-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
+ 'Public Core imports must load independently of flat Task, Mission and role contracts');
+const {runNotesEnvironment,createNotes,fixedFact}=await import('./main.mjs');
+const {createCoreBridge}=await import('./node_modules/@swarmenv/core/src/core/bridge.js');
+const {snapshotServiceRegistry}=await import('./node_modules/@swarmenv/core/src/core/services.js');
 const notes=createNotes();
 const bots={writer:{profile:'writer',status:'idle',services:{notes:['put']}},reader:{profile:'reader',status:'idle',services:{notes:['get']}}};
 const bridge=await createCoreBridge({runtimeId:'notes-package',configuration:{host:'127.0.0.1',publicUrl:'http://127.0.0.1:{port}'},getBot:id=>bots[id]??null,registrations:snapshotServiceRegistry(notes.services)});
@@ -99,6 +113,7 @@ try {
 
 for (const specifier of ['@swarmenv/core','@swarmenv/core/services','@swarmenv/core/backends/pi-opensandbox']) {
  assert.ok(import.meta.resolve(specifier).startsWith(new URL('./node_modules/',import.meta.url).href));
+ assert.ok(loaded.has(import.meta.resolve(specifier).slice(packageRoot.length)),'Public entry must be observed by the module hook');
 }
 const backend={sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'},bridge:{host:'127.0.0.1',publicUrl:'http://172.17.0.1:{port}'},
 modelGateway:{host:'127.0.0.1',advertiseHost:'172.17.0.1'},models:{default:{provider:'kimi_proxy',model:'k3',upstream:{url:${JSON.stringify(upstream.url)},headers:{}}}},isolation:{network:'local-docker',disk:{bytes:67108864,inodes:4096}}};

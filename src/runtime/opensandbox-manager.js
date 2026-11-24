@@ -1,4 +1,3 @@
-import { agentContract, BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../agent/bot-contract.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
@@ -583,11 +582,16 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ agentMode = 'swarm', writable = false, files, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
+  async startAgent({ agentMode = 'swarm', writable = false, files, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
+    let contract = { protocolVersion: 'swarmenv-core-v1', resources: [] };
+    if (agentMode !== 'core') {
+      const { agentContract } = await import('../agent/bot-contract.js');
+      contract = agentContract(agentMode);
+      if (resources === undefined) resources = contract.resources;
+    }
     const record = this.#record(executionId);
     const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }) => ({ path, sha256 })).sort((a, b) => a.path.localeCompare(b.path))) : null;
-    const contract = agentMode === 'core' ? { protocolVersion: 'swarmenv-core-v1', resources: [] } : agentContract(agentMode);
     const expectedVersion = files !== undefined || writable ? 1 : 0;
     const expectedDigest = agentMode === 'core' && expectedVersion === 1 ? decodeFileSeed(files ?? {}).digest : undefined;
     if (signature(resources) !== signature(contract.resources)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
