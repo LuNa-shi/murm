@@ -382,6 +382,7 @@ export async function createRuntime(options) {
       bots.set(info.id, bot);
       spawnRequests.set(requestKey, request);
       records.record('spawn', { state: 'registered', botId: info.id, parentId: info.parentId, profile: info.profile,
+        ...(parameters.forkFrom ? { forkFrom: parameters.forkFrom } : {}),
         requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? bot.profile.writable });
       bot.start = Promise.resolve().then(async () => {
         bot.controller.signal.throwIfAborted();

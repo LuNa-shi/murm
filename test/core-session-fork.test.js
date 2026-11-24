@@ -32,3 +32,7 @@ test('Context Fork rejects corrupt ancestry and unmatched tool results', () => {
   assert.throws(() => snapshotSessionFork({ entries: [user, result('orphan', 'user', 'unknown')], leafId: 'orphan' }), { code: 'INVALID_CONTRACT' });
   assert.throws(() => snapshotSessionFork({ entries: [{ ...user, parentId: 'user' }], leafId: 'user' }), { code: 'INVALID_CONTRACT' });
 });
+
+test('Context Fork fails closed when a credential occupies structural metadata', () => {
+  assert.throws(() => snapshotSessionFork({ entries: [user], leafId: 'user' }, ['user']), { code: 'NOT_ALLOWED' });
+});
