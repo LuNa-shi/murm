@@ -35,14 +35,13 @@ try {
     const { default: configuration } = await import(pathToFileURL(resolve(args[1])).href);
     const { runForegroundEnvironment } = await import('../src/environments/shared/foreground-host.js');
     const { runForegroundCommands } = await import('../src/environments/shared/foreground-commands.js');
+    const { summarizeCleanupReceipt } = await import('../src/environments/shared/read-result.js');
     const report = await runForegroundEnvironment({ ...configuration, signal: lifetime.signal }, host => runForegroundCommands(host));
     const code = error => typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code) ? error.code : error ? 'HOST_RUN_FAILED' : null;
     await writeOutput(`${JSON.stringify({ type: 'result', runtimeId: report.runtimeId, reportPath: report.reportPath ?? null,
-      businessFailureCode: code(report.businessFailure), cleanup: report.cleanup?.cleanup ?? 'unknown',
+      businessFailureCode: code(report.businessFailure),
       cleanupFailureCode: code(report.cleanupFailure), reportSaveFailureCode: code(report.reportSaveFailure),
-      bots: report.cleanup?.bots?.map(bot => ({ botId: bot.botId, execution: bot.execution, cleanup: bot.cleanup })) ?? null,
-      pendingCount: Array.isArray(report.cleanup?.pending) ? report.cleanup.pending.length : null,
-      pending: report.cleanup?.pending?.map(item => Object.fromEntries(['kind', 'id', 'botId', 'action'].filter(key => typeof item[key] === 'string').map(key => [key, item[key]]))) ?? null })}\n`);
+      ...summarizeCleanupReceipt(report.cleanup) })}\n`);
     process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;
   }
 } catch (error) {

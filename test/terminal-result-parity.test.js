@@ -65,8 +65,8 @@ async function assertReceiptParity(t, { failure, execution, action, failureCode 
   assert.equal(result.bots.length, 2);
   assert.deepEqual(result.bots.map(bot => bot.botId).sort(), ready.peers.map(peer => peer.botId).sort());
   assert.ok(result.bots.every(bot => bot.execution === execution && bot.cleanup === 'pending'));
-  assert.deepEqual(result.pending.filter(item => item.kind === 'bot').map(item => [item.id, item.action]).sort(),
-    result.bots.map(bot => [bot.botId, action]).sort());
+  assert.deepEqual(result.pending.filter(item => item.kind === 'bot').sort((a, b) => a.id.localeCompare(b.id)),
+    result.bots.map(bot => ({ kind: 'bot', id: bot.botId, action, errorCode: failureCode })).sort((a, b) => a.id.localeCompare(b.id)));
 
   const saved = JSON.parse(await readFile(result.reportPath, 'utf8'));
   const core = JSON.parse(await readFile(join(ready.runDirectory, 'runtime.json'), 'utf8'));
@@ -77,8 +77,8 @@ async function assertReceiptParity(t, { failure, execution, action, failureCode 
     assert.ok(receipt.bots.every(bot => bot.errors.some(error => error.code === failureCode)));
     assert.deepEqual(receipt.bots.map(({ botId, execution, cleanup }) => ({ botId, execution, cleanup })), result.bots);
     assert.equal(receipt.pending.length, result.pendingCount);
-    for (const pending of result.pending) {
-      assert.ok(receipt.pending.some(item => Object.entries(pending).every(([key, value]) => item[key] === value)));
+    for (const { errorCode, ...pending } of result.pending) {
+      assert.ok(receipt.pending.some(item => item.error?.code === errorCode && Object.entries(pending).every(([key, value]) => item[key] === value)));
     }
   }
   assert.equal(saved.businessFailure, null);
@@ -90,6 +90,7 @@ async function assertReceiptParity(t, { failure, execution, action, failureCode 
     assert.equal(receipt.cleanup, 'pending');
     assert.deepEqual(receipt.bots, result.bots);
     assert.equal(receipt.pendingCount, result.pendingCount);
+    assert.deepEqual(receipt.pending, result.pending);
   }
   assert.equal(inspected.environment.business, 'returned');
   assert.equal(inspected.environment.acceptance, 'not-interpreted');

@@ -91,6 +91,9 @@ test('rejects foreign or corrupt saved identities without exposing their results
   assert.equal(starting.core.recordedStatus, 'starting');
   assert.equal(starting.core.cleanup, 'unknown');
   assert.equal(starting.core.bots, null);
+  assert.equal(starting.core.pending, null);
+  await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'closing', cleanup: 'pending', pending: [null] }));
+  assert.equal((await readEnvironmentResult(input)).core.state, 'invalid');
   await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'closed', cleanup: 'complete', bots: [{ botId: 'b', execution: 'unknown', cleanup: 'pending' }], pending: [] }));
   assert.equal((await readEnvironmentResult(input)).core.state, 'invalid');
   await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'closed', cleanup: 'complete', bots: [], pending: [{ kind: 'backend' }] }));

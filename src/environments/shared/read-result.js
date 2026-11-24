@@ -6,14 +6,15 @@ const nullableObject = value => value === null || object(value);
 const validBots = bots => bots === undefined || (Array.isArray(bots) && bots.every(bot => object(bot) && typeof bot.botId === 'string' &&
   ['stopped', 'unknown'].includes(bot.execution) && ['complete', 'pending'].includes(bot.cleanup) &&
   (bot.artifacts === undefined || (Array.isArray(bot.artifacts) && bot.artifacts.every(path => typeof path === 'string')))));
+const validPending = pending => pending === undefined || (Array.isArray(pending) && pending.every(object));
 const validReceipt = value => object(value) && ['complete', 'pending'].includes(value.cleanup) && validBots(value.bots) &&
-  (value.pending === undefined || Array.isArray(value.pending)) &&
+  validPending(value.pending) &&
   (value.cleanup !== 'complete' || ((value.bots ?? []).every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete') && !value.pending?.length));
 const validEnvironment = value => ['result', 'businessFailure', 'cleanup', 'cleanupFailure', 'reportSaveFailure'].every(key => Object.hasOwn(value, key)) &&
   ['businessFailure', 'cleanupFailure', 'reportSaveFailure'].every(key => nullableObject(value[key])) &&
   (value.cleanup === null || validReceipt(value.cleanup));
 const validCore = value => ['starting', 'open', 'closing', 'closed', 'initialization-failed'].includes(value.status) &&
-  validBots(value.bots) && (value.cleanup === undefined || validReceipt(value));
+  (value.cleanup === undefined ? validBots(value.bots) && validPending(value.pending) : validReceipt(value));
 const code = failure => typeof failure?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(failure.code) ? failure.code : 'UNSPECIFIED_FAILURE';
 
 async function reportAt(path, runtimeId, validate) {
@@ -25,14 +26,16 @@ async function reportAt(path, runtimeId, validate) {
   return { path, state: 'read', value };
 }
 
-function cleanup(receipt) {
-  return ['complete', 'pending'].includes(receipt?.cleanup) ? receipt.cleanup : 'unknown';
-}
-
-function receiptSummary(receipt) {
-  return { cleanup: cleanup(receipt),
+/** Project only the cleanup state and identifiers needed at the terminal. */
+export function summarizeCleanupReceipt(receipt) {
+  const pending = Array.isArray(receipt?.pending) ? receipt.pending.map(item => ({
+    ...Object.fromEntries(['kind', 'id', 'botId', 'action'].filter(key => typeof item?.[key] === 'string').map(key => [key, item[key]])),
+    ...(object(item?.error) ? { errorCode: code(item.error) } : {}),
+  })) : null;
+  return { cleanup: ['complete', 'pending'].includes(receipt?.cleanup) ? receipt.cleanup : 'unknown',
     bots: Array.isArray(receipt?.bots) ? receipt.bots.map(bot => ({ botId: bot.botId, execution: bot.execution, cleanup: bot.cleanup })) : null,
-    pendingCount: Array.isArray(receipt?.pending) ? receipt.pending.length : null,
+    pendingCount: pending?.length ?? null,
+    pending,
   };
 }
 
@@ -54,7 +57,7 @@ export async function readEnvironmentResult({ runDirectory, runtimeId } = {}) {
     Object.assign(environment, {
       business: value.businessFailure ? 'failed' : 'returned', acceptance: 'not-interpreted',
       resultLocation: { path: environmentFile.path, field: 'result' },
-      ...receiptSummary(value.cleanup),
+      ...summarizeCleanupReceipt(value.cleanup),
       ...(value.businessFailure ? { businessFailureCode: code(value.businessFailure) } : {}),
       ...(value.cleanupFailure ? { cleanupFailureCode: code(value.cleanupFailure) } : {}),
       ...(value.reportSaveFailure ? { reportSaveFailureCode: code(value.reportSaveFailure) } : {}),
@@ -62,7 +65,7 @@ export async function readEnvironmentResult({ runDirectory, runtimeId } = {}) {
   }
   if (coreFile.value) {
     const value = coreFile.value;
-    Object.assign(core, { recordedStatus: value.status, ...receiptSummary(value) });
+    Object.assign(core, { recordedStatus: value.status, ...summarizeCleanupReceipt(value) });
   }
   const artifacts = [];
   for (const source of [environmentFile.value?.cleanup, coreFile.value]) {
