@@ -88,6 +88,12 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
         input.reason='task-binding-changed';record('input-not-delivered',row,{source,requestId,reason:input.reason});return input;
       }
     }
+    if (taskService.isMissionStopped(missionId)) {
+      input.reason = 'mission-stopped';
+      record('input-not-delivered', row, { source, requestId, reason: input.reason });
+      finish('mission-stopped');
+      return input;
+    }
     try {
       const receipt=await runtime.send(row.botId,text,{requestId,mode});
       Object.assign(input,{status:receipt.status,receipt});
@@ -100,12 +106,18 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
     }
     return input;
   }
+  function canRefill() {
+    if (closing || remaining() <= 0) return false;
+    if (!taskService.isMissionStopped(missionId)) return true;
+    finish('mission-stopped');
+    return false;
+  }
   async function refill() {
-    if(closing || remaining()<=0 || taskService.isMissionStopped(missionId)) return;
+    if (!canRefill()) return;
     // Refresh durable dependency state even when no notification reaches this
     // controller. TaskService preserves terminal/owned and nondependency blocks.
     for(const task of missionTasks()) {
-      if(closing || remaining()<=0 || taskService.isMissionStopped(missionId)) return;
+      if (!canRefill()) return;
       if(!['OPEN','BLOCKED'].includes(task.state)) continue;
       try {taskService.reconcileTask(task.task_id);}
       catch(error) {failures.push(info(error));record('task-repair-failed',null,{taskId:task.task_id});}
@@ -114,8 +126,9 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
     if(tasks.length && tasks.every(task=>['DONE','CANCELED'].includes(task.state))) {finish('all-tasks-terminal',{tasks:tasks.map(task=>({taskId:task.task_id,state:task.state}))});return;}
     for(let index=0;index<capacity;index++) {
       if([...bots.values()].some(row=>row.slot===index && !row.released)) continue;
+      if (!canRefill()) return;
       const serial=++generation,now=Date.now(),hard=Math.min(deadlineAt,now+hardBudgetMs),selection=Math.min(hard,now+selectionMs);
-      if(closing || selection<=now) return;
+      if(selection<=now) return;
       const legacySlotId=`flat:slot:${index}`,requestId=`flat:spawn:${serial}`;
       const bot=await coordinator.spawn({legacySlotId,requestId,profile,writable:false,selectionDeadline:new Date(selection).toISOString(),hardDeadline:new Date(hard).toISOString()});
       const row={botId:bot.id,legacySlotId,slot:index,generation:serial,continuations:0,discoveries:1,lastActivityAt:Date.now(),released:false};

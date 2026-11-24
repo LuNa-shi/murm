@@ -286,6 +286,52 @@ test('flat halt during the final asynchronous discovery lookup prevents late inp
   assert.equal(transport.submissions.size,before);
 });
 
+for (const source of ['discovery', 'continuation', 'user']) {
+  test(`flat Mission stop during the final Core lookup fences ${source} input`, async t => {
+    const f = await fixture(t);
+    if (source !== 'discovery') f.take();
+    const before = transport.submissions.size;
+    f.reads.beforeGet = () => {
+      f.reads.beforeGet = null;
+      f.tasks.setMissionStopReader(id => id === f.missionId);
+    };
+
+    if (source === 'user') {
+      await f.controller.feedback({ taskId: f.task.task_id, input: 'Do not dispatch after Mission stop', requestId: 'mission-stop-race' });
+    } else {
+      f.settle();
+      await f.controller.flush();
+    }
+
+    assert.equal(transport.submissions.size, before);
+    const completion = await f.controller.wait();
+    assert.equal(completion.completion, 'mission-stopped');
+    const input = completion.inputs.at(-1);
+    assert.equal(input.source, source);
+    assert.equal(input.status, 'not_submitted');
+    assert.equal(input.reason, 'mission-stopped');
+    await f.controller.tick();
+    assert.equal(f.controller.snapshot().bots.length, 1);
+  });
+}
+
+test('flat Mission stop during discovery prevents allocation of the next slot', async t => {
+  const f = await fixture(t, {
+    capacity: 2,
+    beforeStart({ tasks, missionId }) {
+      transport.next = id => {
+        tasks.setMissionStopReader(value => value === missionId);
+        transport.confirm(id, 'started');
+      };
+    },
+  });
+  assert.equal(transport.listeners.size, 1);
+  assert.equal(transport.submissions.size, 1);
+  const completion = await f.controller.wait();
+  assert.equal(completion.completion, 'mission-stopped');
+  assert.equal(completion.bots.length, 1);
+});
+
 test('Material publication and correction during discovery stay visible without an idle-loop wake scheduler',async t=>{
   const f=await fixture(t,{capacity:2});const execution=f.take();
   const reader=f.controller.snapshot().bots.find(row=>row.botId!==f.bot.botId);

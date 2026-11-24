@@ -60,7 +60,7 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "sha256": "5e8df416afbab03612579f6fa24a51d42ce3adb4efe541fcfa08e83a26975831"
+      "sha256": "23fd27a5355dc182c45e116e977c0dc8a96c6af155819a06a78b00bfbff24483"
     },
     {
       "path": "src/environments/flat/environment.js",
@@ -338,7 +338,7 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "line": 92,
+      "line": 98,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
