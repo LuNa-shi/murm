@@ -211,7 +211,12 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
         }
         catch(error) {row.failure=info(error);await stop(row,'lease-failed');continue;}
         try {await handoffWarning(row);}
-        catch(error) {record('handoff-warning-pending',row,{error:{code:String(error?.code??'FLAT_HANDOFF_WARNING_PENDING').slice(0,64),message:String(error?.message??'Handoff warning remains pending').slice(0,512)}});}
+        catch {
+          if(!row.handoffWarningPendingRecorded) {
+            row.handoffWarningPendingRecorded=true;
+            record('handoff-warning-pending',row,{code:'HANDOFF_WARNING_PENDING'});
+          }
+        }
       }
     }
     await refill();

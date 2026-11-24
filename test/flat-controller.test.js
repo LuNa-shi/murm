@@ -137,6 +137,28 @@ for(const fault of ['reminder-ack','enqueue','enqueue-ack','delivery-receipt']) 
   assert.equal([...transport.submissions.values()].filter(row=>row.input.includes(warnings[0].notification_id)).length,1);
 });
 
+test('handoff pending evidence suppresses throwable secrets and records one safe category across repeated failures',async t=>{
+  const f=await fixture(t);const execution=f.take();dueHandoff(f,execution);
+  const enqueue=f.tasks.enqueueNotification.bind(f.tasks);let attempts=0;
+  f.tasks.enqueueNotification=(...args)=>{
+    if(++attempts<=2) throw Object.assign(new Error('Bearer sk-PRIVATE_WARNING_CREDENTIAL /home/private/PRIVATE_WARNING_PATH'),{code:'PRIVATE_WARNING_ERROR_CODE'});
+    return enqueue(...args);
+  };
+  await f.controller.tick();await f.controller.tick();
+  const pending=f.controller.snapshot();
+  assert.doesNotMatch(JSON.stringify(pending),/PRIVATE_WARNING_|Bearer|sk-/);
+  assert.deepEqual(pending.failures,[]);
+  assert.deepEqual(pending.decisions.filter(row=>row.reason==='handoff-warning-pending').map(row=>row.code),['HANDOFF_WARNING_PENDING']);
+  await f.controller.tick();await f.controller.tick();
+  const recovered=f.controller.snapshot();
+  assert.deepEqual(recovered.failures,[]);
+  assert.doesNotMatch(JSON.stringify(recovered),/PRIVATE_WARNING_|Bearer|sk-/);
+  assert.equal(recovered.decisions.filter(row=>row.reason==='handoff-warning-pending').length,1);
+  const warning=f.tasks.listUnprocessedNotifications(f.task.task_id,execution.execution_id)[0];
+  assert.ok(warning.recipient_delivery.delivered_at);
+  assert.equal([...transport.submissions.values()].filter(row=>row.input.includes(warning.notification_id)).length,1);
+});
+
 test('handoff warning retains its original fence when a deferred admission becomes available',async t=>{
   const f=await fixture(t);const execution=f.take();dueHandoff(f,execution);
   f.reads.beforeGet=()=>{f.reads.beforeGet=null;f.tasks.db.prepare('UPDATE executions SET fencing_version = fencing_version + 1 WHERE execution_id = ?').run(execution.execution_id);};
