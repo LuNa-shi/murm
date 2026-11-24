@@ -39,11 +39,11 @@ This section is generated from executable exports and checked against the source
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
 | [src/core/index.ts](../../src/core/index.ts) | `c3b64be3e0fb91c5772b7b9c61256c58ff819be4379da13fc91a3a4d6d7ab9c5` |
-| [src/core/types.ts](../../src/core/types.ts) | `207f0f02211f976b83b0bc8977d39beccb1287f7e4b74166c8c395325d970841` |
+| [src/core/types.ts](../../src/core/types.ts) | `3dec827cbfec564603467fe9ca1aa88373b43622d5b3c9f3c2221f4581f13c8a` |
 | [src/core/services.ts](../../src/core/services.ts) | `1fda50fc0e8a0ba8c3fc8d32f009d49decdaa136b1d99f7d64587a21c50abbe2` |
-| [src/core/service-types.ts](../../src/core/service-types.ts) | `af6678a6087aea0367f943672e420c6f13f905d9e17356d75df1105abd1301e3` |
+| [src/core/service-types.ts](../../src/core/service-types.ts) | `7da3a31ce167260a41db03684371b2c7041a878391de614b9035a78695c12e29` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `7244a96921edf27773870a1c870f6db597cc7cb4fccad5bdde693fec1f1cafff` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `6df9b7fd2bb6e6b704e50f3560dfbb6c6adc8d79320b19e7e4ef8a7fe73344f3` |
 
 ### Exact built-in command operation surface
 
