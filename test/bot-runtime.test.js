@@ -794,39 +794,6 @@ test('private Pi compaction and retry records preserve the registered Bot and ex
   assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 1);
 });
 
-test('a successful retry boundary delivers one deferred handoff warning without repeating it on later turns', async t => {
-  let time = Date.now();
-  const { service, runtime, startSession } = await fixture(t, { clock: () => time });
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ mission_id: bot.mission_id, gap: 'Retain delivery of Task closeout guidance', priority: 'medium',
-    summary: 'Deliver a deferred warning', expected_output: 'Truthful closeout', acceptance_conditions: ['Warning delivered once'],
-  }, makeEnvelope({ actorRef: bot.bot_id })).task;
-  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'deferred-warning' });
-  await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id });
-  const active = service.getExecution(execution.execution_id);
-  const messages = [];
-  session.waitForSettled = async () => { throw new SwarmEnvError('SERVICE_TIMEOUT', 'controlled missing agent_settled'); };
-  session.prompt = async (message, options) => { messages.push({ message, options }); };
-  const reminders = await runtime.sweepExecutionTimeouts(new Date(active.handoff_deadline));
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(reminders[0].kind, 'handoff_reminder');
-  assert.equal(messages.length, 0);
-  assert.equal(service.listPendingNotifications(task.task_id, execution.execution_id).length, 1);
-  time += 1;
-  session.emit('rpc', { type: 'auto_retry_end', success: true });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(messages.length, 1);
-  assert.match(messages[0].message, new RegExp(reminders[0].notification.notification_id));
-  assert.equal(messages[0].options.streamingBehavior, 'followUp');
-  assert.equal(service.listPendingNotifications(task.task_id, execution.execution_id).length, 0);
-  assert.ok(service.listUnprocessedNotifications(task.task_id, execution.execution_id)[0].recipient_delivery.delivered_at);
-  time += 1;
-  session.emit('rpc', { type: 'turn_end' });
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(messages.length, 1);
-  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
-});
-
 async function workspaceFixture(t, options = {}) {
   const f = await fixture(t, options.runtimeOptions ?? {}, options);
   let session;

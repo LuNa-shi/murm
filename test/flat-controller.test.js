@@ -59,6 +59,133 @@ test('flat settled continues an unfinished owned Execution without declaring Tas
   assert.ok(snapshot.decisions.at(-1).remainingMs>0);
 });
 
+test('Flat owns one durable handoff warning at the persisted threshold without completing work',async t=>{
+  const f=await fixture(t);const execution=f.take();
+  let enqueues=0,signals=0;const enqueue=f.tasks.enqueueNotification.bind(f.tasks);
+  f.tasks.enqueueNotification=(...args)=>{enqueues++;return enqueue(...args);};
+  const unsubscribe=f.tasks.subscribeNotifications(()=>signals++);t.after(unsubscribe);
+  const deadline=new Date(Date.now()+30000).toISOString();
+  f.tasks.db.prepare('UPDATE executions SET handoff_deadline = ?, execution_deadline = ? WHERE execution_id = ?')
+    .run(new Date(Date.now()+20000).toISOString(),deadline,execution.execution_id);
+  await f.controller.tick();
+  assert.equal(f.tasks.listUnprocessedNotifications(f.task.task_id,execution.execution_id).length,0);
+  f.tasks.db.prepare('UPDATE executions SET handoff_deadline = ? WHERE execution_id = ?').run(new Date(Date.now()-1).toISOString(),execution.execution_id);
+  await f.controller.tick();
+  const warnings=f.tasks.listUnprocessedNotifications(f.task.task_id,execution.execution_id);
+  assert.equal(warnings.length,1);const warning=warnings[0];
+  assert.equal(warning.notification_type,'handoff_warning');
+  assert.equal(warning.payload.deadline,deadline);
+  assert.ok(warning.recipient_delivery.delivered_at);
+  assert.equal(warning.handled_at,null);
+  const submitted=f.controller.snapshot().inputs.filter(row=>row.source==='handoff-warning');
+  assert.equal(submitted.length,1);assert.equal(submitted[0].mode,'followUp');assert.equal(submitted[0].status,'accepted');
+  const sent=[...transport.submissions.values()].filter(row=>row.input.includes(warning.notification_id));
+  assert.equal(sent.length,1);assert.match(sent[0].input,/停止扩展，保存已有文件和研究内容，再按真实结果 finish/);
+  await f.controller.tick();f.settle();await f.controller.flush();await f.controller.tick();
+  assert.equal([...transport.submissions.values()].filter(row=>row.input.includes(warning.notification_id)).length,1);
+  assert.equal(enqueues,1);assert.equal(signals,1);
+  assert.ok(f.tasks.getExecution(execution.execution_id).handoff_reminder_sent_at);
+  assert.equal(f.tasks.getExecution(execution.execution_id).state,'RUNNING');assert.equal(f.tasks.getTask(f.task.task_id).state,'RUNNING');
+});
+
+function dueHandoff(f,execution) {
+  f.tasks.db.prepare('UPDATE executions SET handoff_deadline = ?, execution_deadline = ? WHERE execution_id = ?')
+    .run(new Date(Date.now()-1).toISOString(),new Date(Date.now()+30000).toISOString(),execution.execution_id);
+}
+
+test('handoff warning accepts an idle Bot and recovers a temporarily unavailable public lookup',async t=>{
+  const f=await fixture(t,{automaticContinuation:false});const execution=f.take();dueHandoff(f,execution);
+  f.settle();await f.controller.flush();assert.equal((await f.runtime.get(f.bot.botId)).status,'idle');
+  f.reads.beforeGet=()=>{f.reads.beforeGet=null;throw new Error('controlled unavailable lookup');};
+  const count=transport.submissions.size;
+  await f.controller.tick();assert.equal(transport.submissions.size,count);
+  await f.controller.tick();await f.controller.tick();
+  const warning=f.tasks.listUnprocessedNotifications(f.task.task_id,execution.execution_id)[0];
+  assert.ok(warning.recipient_delivery.delivered_at);
+  assert.equal([...transport.submissions.values()].filter(row=>row.input.includes(warning.notification_id)).length,1);
+  assert.deepEqual(f.controller.snapshot().failures,[]);
+});
+
+test('handoff warning unknown admission retains its original identity and original lease without another input',async t=>{
+  const f=await fixture(t);const execution=f.take();dueHandoff(f,execution);transport.next=undefined;
+  await f.controller.tick();
+  const first=f.controller.snapshot().inputs.find(row=>row.source==='handoff-warning');
+  assert.equal(first.status,'unknown');const count=transport.submissions.size;
+  const warning=f.tasks.listUnprocessedNotifications(f.task.task_id,execution.execution_id)[0];
+  assert.equal(warning.recipient_delivery,null);assert.equal(warning.delivery_attempts,1);
+  const before=f.tasks.getExecution(execution.execution_id).state_version;
+  f.settle();await f.controller.flush();await f.controller.tick();
+  assert.equal(transport.submissions.size,count);assert.equal(f.controller.snapshot().inputs.filter(row=>row.source==='handoff-warning').length,1);
+  assert.ok(f.tasks.getExecution(execution.execution_id).state_version>before);
+  assert.equal(f.tasks.getExecution(execution.execution_id).state,'RUNNING');
+});
+
+for(const fault of ['reminder-ack','enqueue','enqueue-ack','delivery-receipt']) test(`handoff warning recovers a ${fault} failure without repeating admitted input`,async t=>{
+  const f=await fixture(t);const execution=f.take();dueHandoff(f,execution);
+  const method=fault==='reminder-ack'?'dispatch':fault.startsWith('enqueue')?'enqueueNotification':'markNotificationDelivered';
+  const original=f.tasks[method].bind(f.tasks);let failed=false;
+  f.tasks[method]=(...args)=>{if(!failed && (fault!=='reminder-ack'||args[0]==='record_handoff_reminder')){failed=true;if(['reminder-ack','enqueue-ack'].includes(fault)) original(...args);throw new Error('controlled receipt failure');}return original(...args);};
+  await f.controller.tick();
+  assert.ok(f.tasks.getExecution(execution.execution_id).handoff_reminder_sent_at);
+  assert.equal(f.tasks.getExecution(execution.execution_id).state,'RUNNING');
+  await f.controller.tick();await f.controller.tick();
+  const warnings=f.tasks.listUnprocessedNotifications(f.task.task_id,execution.execution_id);
+  assert.equal(warnings.length,1);assert.ok(warnings[0].recipient_delivery.delivered_at);
+  assert.deepEqual(f.controller.snapshot().failures,[]);
+  assert.ok(f.controller.snapshot().decisions.some(row=>row.reason==='handoff-warning-pending'));
+  assert.equal(warnings[0].delivery_attempts,2);
+  assert.equal([...transport.submissions.values()].filter(row=>row.input.includes(warnings[0].notification_id)).length,1);
+});
+
+test('handoff pending evidence suppresses throwable secrets and records one safe category across repeated failures',async t=>{
+  const f=await fixture(t);const execution=f.take();dueHandoff(f,execution);
+  const enqueue=f.tasks.enqueueNotification.bind(f.tasks);let attempts=0;
+  f.tasks.enqueueNotification=(...args)=>{
+    if(++attempts<=2) throw Object.assign(new Error('Bearer sk-PRIVATE_WARNING_CREDENTIAL /home/private/PRIVATE_WARNING_PATH'),{code:'PRIVATE_WARNING_ERROR_CODE'});
+    return enqueue(...args);
+  };
+  await f.controller.tick();await f.controller.tick();
+  const pending=f.controller.snapshot();
+  assert.doesNotMatch(JSON.stringify(pending),/PRIVATE_WARNING_|Bearer|sk-/);
+  assert.deepEqual(pending.failures,[]);
+  assert.deepEqual(pending.decisions.filter(row=>row.reason==='handoff-warning-pending').map(row=>row.code),['HANDOFF_WARNING_PENDING']);
+  await f.controller.tick();await f.controller.tick();
+  const recovered=f.controller.snapshot();
+  assert.deepEqual(recovered.failures,[]);
+  assert.doesNotMatch(JSON.stringify(recovered),/PRIVATE_WARNING_|Bearer|sk-/);
+  assert.equal(recovered.decisions.filter(row=>row.reason==='handoff-warning-pending').length,1);
+  const warning=f.tasks.listUnprocessedNotifications(f.task.task_id,execution.execution_id)[0];
+  assert.ok(warning.recipient_delivery.delivered_at);
+  assert.equal([...transport.submissions.values()].filter(row=>row.input.includes(warning.notification_id)).length,1);
+});
+
+test('handoff warning retains its original fence when a deferred admission becomes available',async t=>{
+  const f=await fixture(t);const execution=f.take();dueHandoff(f,execution);
+  f.reads.beforeGet=()=>{f.reads.beforeGet=null;f.tasks.db.prepare('UPDATE executions SET fencing_version = fencing_version + 1 WHERE execution_id = ?').run(execution.execution_id);};
+  await f.controller.tick();await f.controller.tick();
+  const warning=f.tasks.listUnprocessedNotifications(f.task.task_id,execution.execution_id)[0];
+  assert.equal([...transport.submissions.values()].some(row=>row.input.includes(warning.notification_id)),false);
+  assert.ok(f.controller.snapshot().inputs.filter(row=>row.source==='handoff-warning').every(row=>row.status==='not_submitted'));
+});
+
+for(const boundary of ['finish','fence','lease']) test(`handoff warning rechecks ${boundary} after final Core lookup`,async t=>{
+  const f=await fixture(t);const execution=f.take();dueHandoff(f,execution);
+  f.reads.beforeGet=()=>{
+    f.reads.beforeGet=null;
+    if(boundary==='finish') {
+      const current=f.tasks.getExecution(execution.execution_id);
+      f.tasks.dispatch('task_finish',{outcome:'incomplete'},makeEnvelope({actorRef:f.bot.botId,taskId:current.task_id,executionId:current.execution_id,specVersion:current.spec_version,stateVersion:current.state_version,fencingVersion:current.fencing_version}));
+    } else if(boundary==='fence') f.tasks.db.prepare('UPDATE executions SET fencing_version = fencing_version + 1 WHERE execution_id = ?').run(execution.execution_id);
+    else f.tasks.db.prepare('UPDATE executions SET lease_expires_at = ? WHERE execution_id = ?').run(new Date(Date.now()-1).toISOString(),execution.execution_id);
+  };
+  await f.controller.tick();
+  const input=f.controller.snapshot().inputs.find(row=>row.source==='handoff-warning');
+  assert.equal(input.status,'not_submitted');assert.equal(input.reason,'task-binding-changed');
+  const warning=f.tasks.listUnprocessedNotifications(f.task.task_id,execution.execution_id)[0];
+  assert.equal([...transport.submissions.values()].some(row=>row.input.includes(warning.notification_id)),false);
+  assert.equal(warning.recipient_delivery,null);
+});
+
 test('directed feedback shares controller ordering, explicit mode and original input identity',async t=>{
   const f=await fixture(t);const execution=f.take();
   const first=await f.controller.feedback({taskId:f.task.task_id,input:'Check this fixed case',requestId:'feedback-one',mode:'steer'});
