@@ -155,7 +155,7 @@ export type BotEvent = { botId: string; seq: number } & (
 export interface PendingCleanup {
   kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
   id: string;
-  action: 'await-startup' | 'stop-execution' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
   error?: ErrorInfo;
   resourceKey?: string;
   sandboxId?: string;
@@ -168,6 +168,7 @@ export interface StopReceipt {
   execution: 'stopped' | 'unknown';
   cleanup: 'complete' | 'pending';
   artifacts: readonly string[];
+  sessionArchive?: string;
   errors: readonly ErrorInfo[];
   pending?: PendingCleanup;
 }

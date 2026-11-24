@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { defaultTimedResponsesLimits } from '../agent/responses-budget-gateway.js';
 import { getAdapterMetadata } from './services.js';
 import packageInfo from '../../package.json' with { type: 'json' };
@@ -8,26 +9,71 @@ import packageInfo from '../../package.json' with { type: 'json' };
 const queueLimit = 4096;
 const queueBytesLimit = 8 * 1024 ** 2;
 const redactMarker = '[redacted]';
+const credentialField = /^(?:authorization|proxy.authorization|api.?key|access.?token|refresh.?token|client.?secret|password|secret.?env)$/i;
 
 export function createRedactor(values = []) {
   const secrets = new Set();
   let pattern;
+  let longest = 0;
+
+  function addSecret(value) {
+    for (const text of [value, JSON.stringify(value).slice(1, -1), encodeURIComponent(value.toWellFormed())]) {
+      secrets.add(text);
+      longest = Math.max(longest, text.length);
+    }
+  }
 
   function add(values) {
     for (const value of values) {
       if (typeof value !== 'string' || !value) continue;
-      secrets.add(value);
+      addSecret(value);
       const credential = /^(?:Bearer|Basic)\s+(\S+)$/i.exec(value)?.[1];
-      if (credential) secrets.add(credential);
+      if (credential) addSecret(credential);
     }
     pattern = undefined;
   }
 
-  function text(value) {
-    if (typeof value !== 'string' || !secrets.size) return value;
+  function matchingSecrets() {
     pattern ??= new RegExp([...secrets].sort((a, b) => b.length - a.length)
       .map(secret => secret.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')).join('|'), 'g');
-    return value.replace(pattern, redactMarker);
+    return pattern;
+  }
+
+  function text(value) {
+    return typeof value === 'string' && secrets.size ? value.replace(matchingSecrets(), redactMarker) : value;
+  }
+
+  function value(data) {
+    if (Array.isArray(data)) return data.map(value);
+    if (data && typeof data === 'object') return Object.fromEntries(Object.entries(data).map(([key, item]) =>
+      [text(key), credentialField.test(key) ? redactMarker : value(item)]));
+    return text(data);
+  }
+
+  function stream() {
+    const decoder = new StringDecoder('utf8');
+    let pending = '';
+    return {
+      write(bytes) {
+        pending += decoder.write(bytes);
+        let safeEnd = Math.max(0, pending.length - longest);
+        if (safeEnd === 0) return '';
+        // A match starting in the stable prefix can also consume the padded suffix.
+        for (const match of secrets.size ? pending.matchAll(matchingSecrets()) : []) {
+          if (match.index >= safeEnd) break;
+          safeEnd = Math.max(safeEnd, match.index + match[0].length);
+        }
+        if (pending.charCodeAt(safeEnd - 1) >= 0xD800 && pending.charCodeAt(safeEnd - 1) <= 0xDBFF) safeEnd--;
+        const result = text(pending.slice(0, safeEnd));
+        pending = pending.slice(safeEnd);
+        return result;
+      },
+      end() {
+        const result = text(pending + decoder.end());
+        pending = '';
+        return result;
+      },
+    };
   }
 
   function error(value, fallback = 'SERVICE_UNAVAILABLE') {
@@ -39,7 +85,7 @@ export function createRedactor(values = []) {
   }
 
   add(values);
-  return { add, text, error };
+  return { add, text, value, stream, error };
 }
 
 export function runtimeConfiguration({ config, profiles, registrations, maxBots, modelAccessPolicy, defaultTimeoutMs }, redact) {

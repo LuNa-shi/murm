@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
@@ -22,7 +22,7 @@ const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-
 const { ServiceRegistry } = await import('@swarmenv/core/services');
 hooks.deregister();
 
-async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxBots = 1 } = {}) {
+async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxBots = 1, upstreamHeaders = {} } = {}) {
   provider.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'core-pi-input-'));
   const runtime = await createRuntime({
@@ -30,14 +30,14 @@ async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', servi
       sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
-      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstreamUrl, headers: {} } } },
+      models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstreamUrl, headers: upstreamHeaders } } },
       isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
     }),
     profiles: { worker: { prompt: 'fixed', model: 'default', image: 'test', writable, services: permissions } },
     services, maxBots, outputDir,
   });
   t.after(async () => { await runtime.close(); await rm(outputDir, { recursive: true, force: true }); });
-  return { runtime, bot: await runtime.spawn({ requestId: 'spawn', profile: 'worker' }) };
+  return { runtime, outputDir, bot: await runtime.spawn({ requestId: 'spawn', profile: 'worker' }) };
 }
 
 function bridgeCall(botId, operation = 'list_services', payload = {}) {
@@ -321,4 +321,82 @@ test('private Pi compaction and retry events retain the Session and expose a fai
   assert.equal((await runtime.send(bot.id, 'explicit next input', { requestId: 'explicit-next' })).status, 'accepted');
   assert.equal(provider.starts.size, 1);
   assert.equal(provider.messages.filter(message => message.type === 'prompt').length, 2);
+});
+
+test('Gateway records both request bodies and complete success, rejection and interruption traces privately', { timeout: 6_000 }, async t => {
+  const remoteSecret = 'remote-api-credential';
+  const received = [];
+  const upstream = createServer(async (request, response) => {
+    let text = '';
+    for await (const chunk of request) text += chunk;
+    const payload = JSON.parse(text);
+    received.push(payload);
+    if (payload.input === 'reject') {
+      response.writeHead(429, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ error: { detail: 'full rejection', echo: remoteSecret } }));
+      return;
+    }
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    if (payload.input === 'interrupt') {
+      response.write('event: response.created\ndata: {"type":"response.created"}\n\n');
+      return;
+    }
+    const event = { type: 'response.completed', response: { status: 'completed', model: 'k3',
+      usage: { input_tokens: 20, output_tokens: 2 }, echo: remoteSecret, unicode: '中文😀' } };
+    const bytes = Buffer.from('data: ' + JSON.stringify(event) + '\n\n');
+    const boundary = bytes.indexOf(remoteSecret) + 7;
+    response.write(bytes.subarray(0, boundary));
+    await delay(30);
+    response.end(bytes.subarray(boundary));
+  });
+  upstream.listen(0, '127.0.0.1');
+  await once(upstream, 'listening');
+  t.after(async () => { upstream.closeAllConnections(); await new Promise(resolve => upstream.close(resolve)); });
+  const { runtime, outputDir, bot } = await setup(t, {
+    upstreamUrl: `http://127.0.0.1:${upstream.address().port}/v1/responses`,
+    upstreamHeaders: { authorization: `Bearer ${remoteSecret}` },
+  });
+  const start = provider.starts.get(bot.id);
+  const botToken = start.secretEnvironment.PI_KIMI_PROXY_API_KEY;
+  const base = start.env.PI_KIMI_PROXY_BASE_URL.replace('172.17.0.1', '127.0.0.1');
+  const call = (id, input, signal) => fetch(base + '/responses', { method: 'POST', signal, headers: {
+    authorization: `Bearer ${botToken}`, 'content-type': 'application/json', 'x-swarmenv-request-id': id,
+  }, body: JSON.stringify({ input }) });
+  const previousCall = { type: 'function_call', call_id: 'call_1', name: 'read', arguments: '{}' };
+  const emptyAssistant = { type: 'message', id: 'msg_empty', role: 'assistant', status: 'completed',
+    content: [{ type: 'output_text', text: '', annotations: [] }] };
+  const toolOutput = { type: 'function_call_output', call_id: 'call_1', output: botToken };
+  await (await call('success', [previousCall, emptyAssistant, toolOutput])).text();
+  assert.equal((await call('reject', 'reject')).status, 429);
+  const abort = new AbortController();
+  const partial = await call('interrupt', 'interrupt', abort.signal);
+  const reader = partial.body.getReader();
+  assert.equal((await reader.read()).done, false);
+  abort.abort();
+  await assert.rejects(reader.read());
+  await runtime.close();
+  const directory = join(outputDir, runtime.id, 'model-trace');
+  const traces = new Map();
+  for (const id of await readdir(directory)) {
+    const path = join(directory, id);
+    const contents = await Promise.all(['request.json', 'response.txt', 'result.json'].map(async filename => {
+      assert.equal((await stat(join(path, filename))).mode & 0o777, 0o600);
+      return readFile(join(path, filename), 'utf8');
+    }));
+    assert.ok(contents.every(value => !value.includes(remoteSecret) && !value.includes(botToken)));
+    const [request, response, result] = [JSON.parse(contents[0]), contents[1], JSON.parse(contents[2])];
+    assert.equal(request.botId, bot.id);
+    assert.ok(result.endedAt >= request.startedAt);
+    traces.set(request.requestId, { request, response, result });
+  }
+  assert.equal(traces.size, 3);
+  assert.deepEqual(traces.get('success').request.before.input[1], emptyAssistant);
+  assert.equal(received[0].input.length, 2);
+  assert.deepEqual(traces.get('success').request.after.input, [previousCall, { ...toolOutput, output: '[redacted]' }]);
+  assert.match(traces.get('success').response, /中文😀/);
+  assert.deepEqual(traces.get('success').result.usage, { inputTokens: 20, outputTokens: 2 });
+  assert.match(traces.get('reject').response, /full rejection/);
+  assert.equal(traces.get('reject').result.upstreamStatus, 429);
+  assert.match(traces.get('interrupt').response, /response.created/);
+  assert.equal(traces.get('interrupt').result.reason, 'transport_interrupted');
 });

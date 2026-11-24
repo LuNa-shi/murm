@@ -4,13 +4,15 @@ import { join, resolve } from 'node:path';
 import { createCoreBridge } from './bridge.js';
 import { snapshotProfiles, snapshotSpawn, validId } from './config.js';
 import { createCoreModelAccess } from './model-access.js';
+import { createModelTrace } from './model-trace.js';
 import { createInputLedger } from './input-ledger.js';
 import { createFileControls } from './file-controls.js';
 import { saveBotArtifacts } from './artifact-collection.js';
 import { createRedactor, createRunRecords, runtimeConfiguration } from './run-records.js';
 import { claimPiOpenSandboxBackend, openPiOpenSandboxBackend } from './pi-opensandbox-backend.js';
 import { createBotService } from './bot-service.js';
-import { snapshotServiceRegistry } from './services.js';
+import { createServiceTrace, exportServiceStates } from './service-trace.js';
+import { registerServicePrivateValues, snapshotServiceRegistry } from './services.js';
 
 const defaultTimeoutMs = 60_000;
 const timedOut = Symbol('timed out');
@@ -63,6 +65,7 @@ export async function createRuntime(options) {
     redactor.add([config.sandbox.apiKey, config.sandbox.execdToken,
       ...Object.values(config.models).flatMap(model => Object.values(model.upstream.headers))]);
     registrations = snapshotServiceRegistry(options.services);
+    registerServicePrivateValues(registrations, redactor.add);
     registrations.set('bot', createBotService({ runtimeId, getBot: id => getBot(id),
       spawn: (input, caller) => spawn(input, caller), get, send: (id, input, options, caller) => send(id, input, options, caller), stop }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
@@ -77,10 +80,12 @@ export async function createRuntime(options) {
   const bots = new Map();
   const reportPath = join(outputDir, 'runtime.json');
   const records = createRunRecords(outputDir, runtimeId);
+  const modelTrace = createModelTrace(outputDir, redactor);
+  const serviceTrace = createServiceTrace(outputDir, redactor.value);
   const effectiveConfig = runtimeConfiguration({ config, profiles, registrations, maxBots, modelAccessPolicy, defaultTimeoutMs }, redactor.text);
   const saveSummary = (status, data = {}) => writeRecord(reportPath, {
     runtimeId, status, maxBots, config: effectiveConfig, evidence: records.snapshot(),
-    modelLedgers: modelAccess?.ledgerPaths?.() ?? [], ...data,
+    modelLedgers: modelAccess?.ledgerPaths?.() ?? [], modelTrace: modelTrace.snapshot(), ...data,
   });
   const getBot = botId => {
     const bot = bots.get(botId);
@@ -127,13 +132,15 @@ export async function createRuntime(options) {
     await mkdir(outputDir, { recursive: true, mode: 0o700 });
     recordsReady = true;
     await records.initialize();
+    await Promise.all([modelTrace.initialize(), serviceTrace.initialize()]);
     await saveSummary('starting');
     reportSaved = true;
     assertAssembling();
-    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy,
+    modelAccess = await createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy, modelTrace,
       onOwned: owner => { modelAccess = owner; } });
     assertAssembling();
     bridge = await createCoreBridge({ runtimeId, configuration: config.bridge, getBot, registrations,
+      traceService: entry => serviceTrace.record(entry),
       recordService: entry => records.record('service', { ...entry,
         serviceId: redactor.text(entry.serviceId), operation: redactor.text(entry.operation),
         operationId: redactor.text(entry.operationId),
@@ -155,6 +162,7 @@ export async function createRuntime(options) {
       try {
         if (failure) records.record('runtime', { state: 'initialization-failed', error: failure });
         await records.flush();
+        await serviceTrace.flush();
         await saveSummary('initialization-failed', { cleanup: pending.length ? 'pending' : 'complete', errors, pending, failure });
         reportSaved = true;
       } catch (error) {
@@ -289,6 +297,7 @@ export async function createRuntime(options) {
     const error = pendingError ?? bot.cleanupError;
     return { botId, execution: bot.executionStopped ? 'stopped' : 'unknown',
       cleanup: bot.info.status === 'closed' ? 'complete' : 'pending',
+      ...(bot.sessionArchive ? { sessionArchive: bot.sessionArchive } : {}),
       artifacts: bot.artifacts ?? [], errors: [bot.optionalCollectionError, bot.cleanupError, pendingError].filter(Boolean),
       ...(bot.info.status === 'closed' ? {} : { pending: {
         kind: 'bot', id: botId, action: bot.cleanupAction ?? 'stop-execution',
@@ -320,6 +329,14 @@ export async function createRuntime(options) {
           const { collectable } = await backend.stopExecution(info.id);
           bot.executionStopped = true;
           bot.collectable = collectable;
+        }
+        if (bot.collectable && !bot.sessionArchive && backend.collectSession) {
+          bot.cleanupAction = 'archive-session';
+          const collect = { paths: ['.'], includeGit: false, maxBytes: config.isolation.disk.bytes, required: true };
+          [bot.sessionArchive] = await saveBotArtifacts({ outputDir, botId: info.id, collect,
+            bounds: config.isolation.disk, records: () => backend.collectSession(info.id),
+            destination: 'session', redactStream: redactor.stream, privateFiles: true });
+          records.record('session-archive', { botId: info.id, manifestPath: bot.sessionArchive });
         }
         if (bot.collect && bot.collectable && !bot.artifacts && !bot.optionalCollectionError) {
           bot.cleanupAction = 'collect-artifacts';
@@ -557,12 +574,16 @@ export async function createRuntime(options) {
   }
 
   let savingClose = false;
+  let serviceStates;
   function closeReceipt(botReceipts, errors, reportError) {
     const pending = [...botReceipts.flatMap(bot => bot.pending ? [bot.pending] : []), ...pendingEndpoints()];
     if (reportError || savingClose) pending.push({ kind: 'report', id: runtimeId, action: 'save', ...(reportError ? { error: reportError } : {}) });
     const evidence = records.snapshot();
     if (evidence.lost) pending.push({ kind: 'report', id: runtimeId, action: 'save',
       error: { code: 'EVIDENCE_INCOMPLETE', message: 'Some Runtime evidence could not be saved', retryable: false } });
+    const model = modelTrace.snapshot();
+    if (model.lost || model.pending) pending.push({ kind: 'report', id: runtimeId, action: 'save',
+      error: { code: 'MODEL_TRACE_INCOMPLETE', message: 'Some model traces have not been saved', retryable: !model.lost } });
     return { bots: botReceipts, cleanup: errors.length || pending.length ? 'pending' : 'complete',
       errors, pending, outputDir, evidence, ...(reportSaved ? { reportPath } : {}) };
   }
@@ -576,6 +597,7 @@ export async function createRuntime(options) {
         records.record('runtime', { state: 'closing', timeoutMs });
         const stopping = Promise.all([...bots.values()].map(beginStop));
         await closeEndpoints();
+        if (endpointCleanup.bridge.done) serviceStates ??= await exportServiceStates(registrations, outputDir, redactor.value);
         const botReceipts = await stopping;
         if (botReceipts.every(bot => bot.cleanup === 'complete')) {
           await closeEndpoint('backend', backend);
@@ -583,13 +605,19 @@ export async function createRuntime(options) {
         const errors = pendingEndpoints().flatMap(subject => subject.error ? [subject.error] : []);
         savingClose = true;
         await records.flush();
+        let serviceTraceError;
+        try { await serviceTrace.flush(); }
+        catch {
+          serviceTraceError = { code: 'SERVICE_TRACE_INCOMPLETE', message: 'Some Service traces could not be saved', retryable: false };
+          errors.push(serviceTraceError);
+        }
         savingClose = false;
-        let receipt = closeReceipt(botReceipts, errors);
+        let receipt = closeReceipt(botReceipts, errors, serviceTraceError);
         savingClose = true;
         try {
           receipt.reportPath = reportPath;
           await saveSummary(receipt.cleanup === 'complete' ? 'closed' : 'closing', {
-            ...receipt, handlerErrors, handlerErrorCount,
+            ...receipt, serviceStates, handlerErrors, handlerErrorCount,
           });
           reportSaved = true;
         } catch (error) {

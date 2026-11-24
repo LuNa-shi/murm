@@ -30,15 +30,10 @@ function isEmptyPiToolMessage(item, index, input) {
   return calls.size === 0;
 }
 
-function kimiResponsesTransport(fetch) {
-  return (url, options) => {
-    const payload = JSON.parse(options.body);
-    if (Array.isArray(payload.input)) {
-      const input = payload.input.filter((item, index, items) => !isEmptyPiToolMessage(item, index, items));
-      if (input.length !== payload.input.length) return fetch(url, { ...options, body: JSON.stringify({ ...payload, input }) });
-    }
-    return fetch(url, options);
-  };
+function kimiResponsesPayload(payload) {
+  if (!Array.isArray(payload.input)) return payload;
+  const input = payload.input.filter((item, index, items) => !isEmptyPiToolMessage(item, index, items));
+  return input.length === payload.input.length ? payload : { ...payload, input };
 }
 
 function synchronousPolicy(policy) {
@@ -67,7 +62,7 @@ function synchronousPolicy(policy) {
   };
 }
 
-export async function createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy, onOwned }) {
+export async function createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy, modelTrace, onOwned }) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof outputDir !== 'string' || !outputDir ||
       typeof getBot !== 'function' || !config?.models || !Object.keys(config.models).length) {
     throw invalid('Model access requires Runtime identity, output directory, models and Bot authority');
@@ -138,7 +133,8 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
       await chmod(path, 0o600);
       entry.gateway = new ResponsesBudgetGateway({ db: entry.db,
         upstream: { ...entry.model.upstream, model: entry.model.model }, timeBounds: gatewayConfig,
-        ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { fetchImpl: kimiResponsesTransport(globalThis.fetch) } : {}),
+        ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { transformPayload: kimiResponsesPayload } : {}),
+        beginTrace: modelTrace ? request => modelTrace.begin({ ...request, modelAlias: alias, provider: entry.model.provider }) : undefined,
         withLifecycleWrite,
         validateBot: ({ runtimeId: callerRuntimeId, botId }) => {
           if (callerRuntimeId !== runtimeId) return null;
