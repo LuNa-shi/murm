@@ -16,7 +16,8 @@
     ".gitmodules",
     "examples/notes-environment/.npmignore",
     "examples/subagents-environment/.npmignore",
-    "examples/lead-helper-environment/.npmignore"
+    "examples/lead-helper-environment/.npmignore",
+    "examples/scalemas-environment/.npmignore"
   ],
   "excluded": [
     {
@@ -1616,6 +1617,30 @@
         "docs/architecture/04-services.md"
       ],
       "role": "Pinned third-party license or provenance attachment distributed with identified Lean material"
+    },
+    {
+      "path": "examples/scalemas-environment/main.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Editable installed scaleMAS host, public backend assembly and saved result CLI"
+    },
+    {
+      "path": "examples/scalemas-environment/config.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Host-only Kimi K3 scaleMAS configuration and finite resource defaults"
+    },
+    {
+      "path": "examples/scalemas-environment/.npmignore",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Exclude default scaleMAS run evidence from packaged examples"
     }
   ]
 }

@@ -15,7 +15,7 @@ The installable candidate provides `@swarmenv/core`, `@swarmenv/core/services` a
 | flat | Bots take independent Tasks exclusively and share versioned Materials and a public Workspace. [Flat execution](docs/architecture/02-execution.md#3-how-flat-work-reaches-a-bot) |
 | agensh | Independent peers coordinate through Git, messages and a shared Board. [Agensh](docs/architecture/18-agensh-environment.md) |
 | subagents | A parent creates and directs its own child Bots through a scoped Service. [Subagents example](examples/subagents-environment/README.md) |
-| scaleMAS | A fixed pool publishes, searches and cites durable contributions. [scaleMAS](docs/architecture/19-scalemas-environment.md) |
+| scaleMAS | A fixed pool publishes, searches and cites durable contributions. [scaleMAS example](examples/scalemas-environment/README.md) |
 | lead-helper | Helpers claim Board work and deliver through Git under a lead's shared direction. [Lead-helper example](examples/lead-helper-environment/README.md) |
 
 ## Start here

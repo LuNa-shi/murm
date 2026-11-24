@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **171 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **174 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`, `examples/scalemas-environment/.npmignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -158,12 +158,15 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/storage/judge-schema.js](../../src/storage/judge-schema.js) | Checker health/request/result/operation SQL schema | [11-storage-reference](11-storage-reference.md), [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `7fceae1e3ec7c8c5c53e4c94313e5995898a71907a3a7c8b092cb727b3239142` |
 | [src/storage/schema.js](../../src/storage/schema.js) | Mission/Task/Execution/dependency/notification/operation SQL schema | [11-storage-reference](11-storage-reference.md), [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595` |
 
-### launch and composition (14)
+### launch and composition (17)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [.env.example](../../.env.example) | Nonsecret example environment-variable names | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `7df9e7ff42f9784b2b7544aa30adb631d5a6584e82b7baeded9b0eace264eaaf` |
 | [.gitignore](../../.gitignore) | Raw evidence and credential retention boundary in the working tree and npm packlist | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `2a44776261a1d89273680ebb27ef5b053e377b13c15be7c4a9ee835d53fc0f89` |
+| [examples/scalemas-environment/.npmignore](../../examples/scalemas-environment/.npmignore) | Exclude default scaleMAS run evidence from packaged examples | [19-scalemas-environment](19-scalemas-environment.md) | `96d2d52c4436fe5ca685974790d77ab96fd18d5cf03f688004ae26b0e0616811` |
+| [examples/scalemas-environment/config.mjs](../../examples/scalemas-environment/config.mjs) | Host-only Kimi K3 scaleMAS configuration and finite resource defaults | [19-scalemas-environment](19-scalemas-environment.md) | `064f8ea8911ab9b84d562af929891e55751f43954258828fbbba8cddba93233b` |
+| [examples/scalemas-environment/main.mjs](../../examples/scalemas-environment/main.mjs) | Editable installed scaleMAS host, public backend assembly and saved result CLI | [19-scalemas-environment](19-scalemas-environment.md) | `a2738af27736be801859b5b5e20ea920fb8775041aebd4abc51de7509b566de8` |
 | [npm-shrinkwrap.json](../../npm-shrinkwrap.json) | Shipped exact dependency resolution for public package and image builds | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `2d471521d4fa707f5371b0eccc8e2476397b6d76813ebece9a88131f2d9178a8` |
 | [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `df1587854561ed9a2b462de5452e2d213e1dceb5a222beeb89eb9910ad5f6e3b` |
 | [scripts/mathlib-search-service.mjs](../../scripts/mathlib-search-service.mjs) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |

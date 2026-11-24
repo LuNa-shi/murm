@@ -124,17 +124,18 @@ test('candidate package admits only declared distribution roots and retains exec
     'src/core/backends/pi-opensandbox.js', 'src/core/backends/pi-opensandbox.d.ts',
     'scripts/swarm.mjs', 'scripts/opensandbox-agent-worker.mjs',
     'services/opensandbox-agent/pi-models.json', 'src/environments/shared/run-report.js',
+    'examples/scalemas-environment/main.mjs', 'examples/scalemas-environment/config.mjs',
     'examples/notes-environment/main.mjs', 'examples/subagents-environment/controller.mjs',
     'docs/architecture/source-map.json', 'test/fixtures/foreground-host-configuration.mjs',
   ];
   const privatePaths = ['.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',
     'local-artifacts/run/private.bin', 'experiments/run/private.bin', 'reports/run/private.bin', '.worktree/other/private.txt',
-    ...['notes', 'subagents', 'lead-helper'].map(mode => `examples/${mode}-environment/${mode}-runs/run/runtime.json`)];
+    ...['notes', 'subagents', 'lead-helper', 'scalemas'].map(mode => `examples/${mode}-environment/${mode}-runs/run/runtime.json`)];
   for (const path of [...resources, ...privatePaths]) {
     await mkdir(join(root, path, '..'), { recursive: true });
     await writeFile(join(root, path), resources.includes(path) ? 'distribution fixture\n' : 'PRIVATE_PACKAGE_PROBE\n');
   }
-  for (const mode of ['notes', 'subagents', 'lead-helper']) {
+  for (const mode of ['notes', 'subagents', 'lead-helper', 'scalemas']) {
     const path = `examples/${mode}-environment/.npmignore`;
     await writeFile(join(root, path), await readFile(new URL(`../${path}`, import.meta.url)));
   }
