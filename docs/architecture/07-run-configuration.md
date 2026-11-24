@@ -5,12 +5,18 @@ The host selects an Environment and supplies its model, image, Service and resou
 ## TypeScript build and installation
 
 Install the locked development dependencies with `npm ci` and run `npm run build`.
-The build clears `dist/`, compiles with the repository's strict Node ESM TypeScript
-configuration, then stages non-code inputs beside the compiled modules. These
+The build clears `dist/`, compiles source, scripts, examples and test-support with
+the repository's strict Node ESM TypeScript configuration, then stages non-code
+inputs beside the compiled modules. These
 inputs include the Lean drivers, namespace helper, model catalog and verification
 fixtures. The compiler reports errors before emitting output. Fix a failed build
 and rerun the same command to regenerate the output from source. `npm run typecheck`
-performs the compiler check without producing files.
+performs the same strict check without producing files. When the test tree is
+present, `tsconfig.tests.json` emits its TypeScript into `dist/test/` without
+semantic checking or declarations. The compiler leaves test module specifiers
+intact for Node to resolve. The suite exercises external boundaries with
+deliberately invalid inputs and partial mocks. The separate installed-consumer
+check typechecks valid and invalid uses of the generated public declarations.
 
 All three package exports resolve to JavaScript and declarations under
 `dist/src/core/`. `npm pack` runs the build through `prepack`. Install the resulting
@@ -35,7 +41,7 @@ For the pinned source and retained-format inventory, see
 
 ## Distribution file boundary
 
-`package.json` declares the distribution roots explicitly: `dist`, `src`, `scripts`, `services`, `examples`, `docs`, `test` and `test-support`, plus the compiler configuration and Docker context exclusions, plus the tracked root glossary, Agent instructions, dependency shrinkwrap, environment example and submodule declaration. npm also includes its mandatory package metadata and README. Runtime code, Worker/image preparation inputs, model catalog, prompts/skills, foreground/result scripts and editable example resources remain in the tarball. Test fixtures remain available for the installed-candidate verification paths; their inclusion does not imply native tests ran.
+`package.json` admits `dist`, `src`, `scripts`, `services`, `examples`, `docs`, `test` and `test-support`, the compiler configurations and Docker context exclusions, and the tracked root glossary, Agent instructions, dependency shrinkwrap, environment example and submodule declaration. npm also includes its mandatory package metadata and README. Runtime code, Worker/image preparation inputs, model catalog, prompts/skills, foreground/result scripts and editable example resources remain in the tarball. Test fixtures support deterministic and opt-in native verification of the installed candidate.
 
 The root `npm-shrinkwrap.json` carries exact dependency resolution into the archive. npm omits `package-lock.json` when packing. All three shipped image Dockerfiles copy the shrinkwrap beside `package.json`, so their dependency installation can consume the same lock from an extracted archive or a checkout. The Worker uses `npm install --omit=dev --ignore-scripts` and the built-in and Mathlib Search images use `npm ci --omit=dev --ignore-scripts`. Their OS packages and base images remain separate build inputs. A deterministic archive regression checks every repository COPY source and runs offline `npm ci` and `npm install` in the extracted context before checking Pi 1.3.0. Physical image build and startup are separate verification steps.
 

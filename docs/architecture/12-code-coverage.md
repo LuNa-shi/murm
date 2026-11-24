@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **190 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **191 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`, `examples/scalemas-environment/.npmignore`, `examples/agensh-environment/.npmignore`, `tsconfig.json`, `.dockerignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`, `examples/scalemas-environment/.npmignore`, `examples/agensh-environment/.npmignore`, `tsconfig.json`, `tsconfig.tests.json`, `.dockerignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -55,13 +55,14 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `af6678a6087aea0367f943672e420c6f13f905d9e17356d75df1105abd1301e3` |
 | [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Bot, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `207f0f02211f976b83b0bc8977d39beccb1287f7e4b74166c8c395325d970841` |
 
-### Delivery and configuration (3)
+### Delivery and configuration (4)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [.dockerignore](../../.dockerignore) | Build context exclusions for generated outputs, dependency trees and local data. | [07-run-configuration](07-run-configuration.md) | `5592ad2f492c4d0255176e75ff5f8e8ac0460821f95d1a89b0f841f8c98aa8ac` |
-| [scripts/build.ts](../../scripts/build.ts) | Clean TypeScript compilation and staging of runtime and verification assets in dist. | [07-run-configuration](07-run-configuration.md) | `ecee5ae159440f1769d0c930b277744148a0a4d79dc73dcf32e8266d425a57a5` |
-| [tsconfig.json](../../tsconfig.json) | Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree. | [07-run-configuration](07-run-configuration.md) | `10517dfdd73b589fb633f60595d6176a9e0ea38b445564d63de3a2c5645cd4a6` |
+| [scripts/build.ts](../../scripts/build.ts) | Clean TypeScript compilation and staging of runtime and verification assets in dist. | [07-run-configuration](07-run-configuration.md) | `93ed17a20f1e09a63cbe6a7f272f33a8cc6b8f8421594085b0e481cbdb4f8cac` |
+| [tsconfig.json](../../tsconfig.json) | Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree. | [07-run-configuration](07-run-configuration.md) | `5f35dafe9f8c43a0be9455dcb06216fc5884ad0afe6480fb08282aca11d5e885` |
+| [tsconfig.tests.json](../../tsconfig.tests.json) | TypeScript test emission configuration for the executable test tree. | [07-run-configuration](07-run-configuration.md) | `9927b0d021c575089dd66a4b84056140dd25b9dd24201df5913ee42d8acf8d0f` |
 
 ### Environment composition (3)
 
@@ -186,7 +187,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `0df92907ec29c96b93503d09ffbe8902732676ed040dba3546a9d7205c4e25da` |
 | [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `c759dcae017c0f1990ee33c0759d6d94d99c2fb6b9e079c1928dbb9085a11d51` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `ac9a12840d2cc1042b6890827ea6eb817f3b72484555963c2c777f24a9702a5e` |
-| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `b5b6af8233156a71d317cd8b70263ad3f920c0eb13db278cad8450d7c53f85dc` |
+| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `6028ff4e6ea78e508e65234eae52f378976e6b9ec08f6c96066f01441ebe4bf6` |
 
 ### durable storage (3)
 
@@ -208,7 +209,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [examples/scalemas-environment/config.ts](../../examples/scalemas-environment/config.ts) | Host-only Kimi K3 scaleMAS configuration and finite resource defaults | [19-scalemas-environment](19-scalemas-environment.md) | `26217013a60c9300010e5d7285b0813155347487479c6e22a0d24cc209484a64` |
 | [examples/scalemas-environment/main.ts](../../examples/scalemas-environment/main.ts) | Editable installed scaleMAS host, public backend assembly and saved result CLI | [19-scalemas-environment](19-scalemas-environment.md) | `631624d70f01e6b5e2c9d0cf1c3e8b8e01a2f4ce15c4b46e575497468751c6b5` |
 | [npm-shrinkwrap.json](../../npm-shrinkwrap.json) | Shipped exact dependency resolution for public package and image builds | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `8c5471b9873b117fa133af862cc21216575d6d74731e86dc4a83669849cf6c80` |
-| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `6633a42383f1e33570614771ac9459b84be1547229097b863af5360e992cdd58` |
+| [package.json](../../package.json) | Node support, dependency requirements and executable package scripts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md), [15-core-runtime](15-core-runtime.md) | `ca9be3c56f7ca8b7f622ed7cdc37bd6a28d542c091912dd08cc5c21fe88c3949` |
 | [scripts/mathlib-search-service.ts](../../scripts/mathlib-search-service.ts) | Mathlib HTTP provider process and environment settings | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `1aed08fd45737f05d34d9bdcb3da3caa41c29fa777ed0e0c85fc0c9b2ca59b3f` |
 | [scripts/read-environment-result.ts](../../scripts/read-environment-result.ts) | Host CLI for saved result inspection using the shared reader | [17-environment-reporting](17-environment-reporting.md) | `7adba972abf2177d7d59892d2963948a99568319ffe6cd4437500c398f6cb027` |
 | [scripts/run-environment.ts](../../scripts/run-environment.ts) | Foreground host CLI for explicit local Environment configuration and bounded control | [17-environment-reporting](17-environment-reporting.md) | `7f80f87d4bde60a8d1d603f6e3213bcdde956bca613e4318e92840aae7c25b40` |

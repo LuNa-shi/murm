@@ -7,10 +7,14 @@ const root = fileURLToPath(new URL('..', import.meta.url));
 const dist = resolve(root, 'dist');
 const compiler = fileURLToPath(new URL('./bin/tsc', import.meta.resolve('typescript/package.json')));
 
+function compile(project: string) {
+  const result = spawnSync(process.execPath, [compiler, '--project', project], { cwd: root, stdio: 'inherit' });
+  if (result.error) throw result.error;
+  if (result.status !== 0) process.exit(result.status ?? 1);
+}
+
 await rm(dist, { recursive: true, force: true });
-const result = spawnSync(process.execPath, [compiler, '--project', 'tsconfig.json'], { cwd: root, stdio: 'inherit' });
-if (result.error) throw result.error;
-if (result.status !== 0) process.exit(result.status ?? 1);
+compile('tsconfig.json');
 
 // Preserve the relative locations used by runtime scripts and compiled tests.
 // The Docker build supplies the production trees only.
@@ -20,6 +24,7 @@ for (const directory of ['src', 'scripts', 'services', 'examples', 'test']) {
     if (error.code === 'ENOENT') return null;
     throw error;
   }))) continue;
+  if (directory === 'test') compile('tsconfig.tests.json');
   await cp(source, resolve(dist, directory), {
     recursive: true,
     filter: (path) => !/\.[cm]?[jt]s$/.test(path),

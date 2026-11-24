@@ -11,7 +11,7 @@ async function runWithStreamFailure(t, failure, cleanupFailure) {
   t.after(() => rm(root, { recursive: true, force: true }));
   const path = join(root, 'configuration.mjs');
   await writeFile(path, `
-import configuration from ${JSON.stringify(new URL('./fixtures/foreground-host-configuration.mjs', import.meta.url).href)};
+import configuration from ${JSON.stringify(new URL('./fixtures/foreground-host-configuration.js', import.meta.url).href)};
 import { PassThrough, Writable } from 'node:stream';
 const original = process.stdout;
 const input = new PassThrough();
@@ -116,7 +116,7 @@ for (const stream of ['stdin', 'stdout']) {
       const expectedCode = stream === 'stdin' ? 'HOST_INPUT_FAILED' : 'HOST_OUTPUT_FAILED';
       const fail = `process.${stream}.emit('error', Object.assign(new Error('PRIVATE_STARTUP_IO'), { code: '${stream === 'stdin' ? 'EIO' : 'EPIPE'}' }));`;
       await writeFile(path, `
-import configuration from ${JSON.stringify(new URL('./fixtures/foreground-host-configuration.mjs', import.meta.url).href)};
+import configuration from ${JSON.stringify(new URL('./fixtures/foreground-host-configuration.js', import.meta.url).href)};
 import { transport } from ${JSON.stringify(new URL('./fixtures/core-bot-service-backend.js', import.meta.url).href)};
 ${stage === 'configuration' ? `setTimeout(() => { ${fail} }, 5); await new Promise(resolve => setTimeout(resolve, 25));`
   : `transport.onSpawn = async () => { ${fail} await new Promise(resolve => setTimeout(resolve, 25)); };`}

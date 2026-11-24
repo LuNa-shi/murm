@@ -20,6 +20,7 @@
     "examples/scalemas-environment/.npmignore",
     "examples/agensh-environment/.npmignore",
     "tsconfig.json",
+    "tsconfig.tests.json",
     ".dockerignore"
   ],
   "excluded": [
@@ -1709,6 +1710,14 @@
     {
       "path": "tsconfig.json",
       "role": "Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree.",
+      "category": "Delivery and configuration",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ]
+    },
+    {
+      "path": "tsconfig.tests.json",
+      "role": "TypeScript test emission configuration for the executable test tree.",
       "category": "Delivery and configuration",
       "chapters": [
         "docs/architecture/07-run-configuration.md"

@@ -6,7 +6,6 @@
     "strict": true,
     "skipLibCheck": true,
     "types": ["node"],
-    "allowJs": true,
     "declaration": true,
     "noEmitOnError": true,
     "rootDir": ".",
@@ -17,5 +16,5 @@
       "@swarmenv/core/backends/pi-opensandbox": ["./src/core/backends/pi-opensandbox.js"]
     }
   },
-  "include": ["src/**/*", "scripts/**/*", "examples/**/*", "test-support/**/*", "test/**/*"]
+  "include": ["src/**/*.ts", "scripts/**/*.ts", "examples/**/*.ts", "test-support/**/*.ts"]
 }

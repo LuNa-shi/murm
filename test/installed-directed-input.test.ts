@@ -105,7 +105,7 @@ test('installed headless and CLI share configuration, directed input provenance 
   const outputDir = join(installed.directory, 'controlled-output');
   await mkdir(outputDir);
   const entry = join(root, 'dist/scripts/run-environment.js');
-  const configuration = join(root, 'dist/test/fixtures/foreground-host-configuration.mjs');
+  const configuration = join(root, 'dist/test/fixtures/foreground-host-configuration.js');
   // This fixture substitutes the backend, while the installed CLI, host, router,
   // Core input ledger, report writer and result reader execute normally.
   const child = spawn(process.execPath, [`--redirect-warnings=${join(installed.directory, 'cli-node-warnings.log')}`, entry, '--config', configuration], {

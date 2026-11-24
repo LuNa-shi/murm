@@ -40,7 +40,7 @@ Each observation stores two payload columns. Agent projection recursively redact
 
 An `ObservationStoreCollection` discovers several stores and supplies a read projection. The experiment list de-duplicates IDs using newer metadata, but event retrieval uses the first store containing the experiment; it does not merge two complete histories with the same experiment ID. This matters when copying/importing the same run into several roots.
 
-Sources: [store and collection](../../src/observability/observation-store.ts), [store tests](../../test/observation-store.test.js).
+Sources: [store and collection](../../src/observability/observation-store.ts), [store tests](../../test/observation-store.test.ts).
 
 ## 3. Server lifecycle and complete HTTP surface
 
@@ -94,7 +94,7 @@ Common event filters include `after_sequence`, `execution_id` on the event route
 
 Operator admission covers event, detail, report and owner-service routes. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
 
-Sources: [server](../../src/observability/observability-server.ts), [daemon entry/discovery](../../scripts/serve-observability.ts), [server tests](../../test/observability-server.test.js), [worktree discovery tests](../../test/observability-worktree-discovery.test.js).
+Sources: [server](../../src/observability/observability-server.ts), [daemon entry/discovery](../../scripts/serve-observability.ts), [server tests](../../test/observability-server.test.ts), [worktree discovery tests](../../test/observability-worktree-discovery.test.ts).
 
 ## 4. Bounds, SSE and non-UI consumers
 
@@ -122,13 +122,13 @@ curl --no-buffer "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/stream?
 
 These APIs inspect registered observation databases; they do not automatically import a Core Runtime's evidence or replace live Environment control. Current-run input, status, stop and saved-result commands are documented in [Environment reporting](17-environment-reporting.md#foreground-environment-control). The old graphical navigation, theme, chart rendering and browser-local refresh/cache policy have no replacement UI. Their required data access remains in the documented APIs and pure modules. [Launch and migration](07-run-configuration.md#optional-services-and-observer-migration) maps each retired group to its retained owner and checks.
 
-Sources: [server projection](../../src/observability/observability-server.ts), [observation projection](../../src/observability/observation-projection.ts), [format](../../src/observability/format.ts), [projection test](../../test/observation-projection.test.js).
+Sources: [server projection](../../src/observability/observability-server.ts), [observation projection](../../src/observability/observation-projection.ts), [format](../../src/observability/format.ts), [projection test](../../test/observation-projection.test.ts).
 
 ## 5. Workspace views
 
 `FileWorkspaceProvider` follows only a `workspace_ref` already present in the selected Execution's observed assignment/Workspace events. It reads `.swarm/workspace.json` and numeric revision JSON files, returning file metadata and revision/checkpoint lineage. It does not expose an arbitrary path-reading endpoint. Its initial event lookup is one 1000-row page, so an older/sparse projection can fail to find the latest Workspace. A deleted/moved local Workspace cannot be reconstructed from a path string alone.
 
-Sources: [Workspace provider](../../src/observability/workspace-provider.ts), [Workspace observer tests](../../test/observability-workspace.test.js).
+Sources: [Workspace provider](../../src/observability/workspace-provider.ts), [Workspace observer tests](../../test/observability-workspace.test.ts).
 
 ## Historical research tooling
 

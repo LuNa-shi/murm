@@ -198,7 +198,7 @@ test('candidate package admits only declared distribution roots and retains exec
     'dist/examples/scalemas-environment/main.js', 'dist/examples/scalemas-environment/config.js',
     'dist/examples/notes-environment/main.js', 'dist/examples/subagents-environment/controller.js',
     'dist/examples/agensh-environment/config.js', 'examples/agensh-environment/README.md',
-    'docs/architecture/source-map.json', 'dist/test/fixtures/foreground-host-configuration.mjs',
+    'docs/architecture/source-map.json', 'dist/test/fixtures/foreground-host-configuration.js',
   ];
   const privatePaths = ['.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',
     'local-artifacts/run/private.bin', 'experiments/run/private.bin', 'reports/run/private.bin', '.worktree/other/private.txt',

@@ -37,7 +37,7 @@ The Bridge serves `GET /health` without its bearer token, and requires the token
 
 **Declared schemas versus enforced checks.** Manifest construction validates schema shape and passes schemas to the model/tool interface. Registry and ServiceHost do not run a general JSON Schema input/output validator for each call. The Bridge checks that the payload is an object and applies operation-specific gates; each domain handler checks its own fields. Consequently, the documentation records both advertised schemas and handler behavior, including places where they differ. A closed advertised schema does not establish that every direct provider invocation is rejected for every extra field.
 
-Sources: [Bridge](../../src/agent/services-bridge.ts), [Registry invocation](../../src/sdk/service-registry.ts), [ServiceHost](../../src/sdk/service-host.ts). Regression seams: [profile/Bridge tests](../../test/capability-profile-bridge.test.js), [Registry tests](../../test/service-registry.test.js), [hosted service](../../test/service-host-isolated.test.js).
+Sources: [Bridge](../../src/agent/services-bridge.ts), [Registry invocation](../../src/sdk/service-registry.ts), [ServiceHost](../../src/sdk/service-host.ts). Regression seams: [profile/Bridge tests](../../test/capability-profile-bridge.test.ts), [Registry tests](../../test/service-registry.test.ts), [hosted service](../../test/service-host-isolated.test.ts).
 
 ### HTTP waiting and cancellation
 
@@ -136,7 +136,7 @@ Sources: [manifest](../../src/sdk/service-manifest.ts), [Registry](../../src/sdk
 
 The bundle records each document's content/hash/byte size and binds the metadata into the manifest. `service://<id>/<resource>` resolves only Registry-owned resources. This is reviewed documentation available for prompt composition, not a fetch-any-URL tool. The host decides whether an initial input includes a composed documentation block; the exact send paths are in [08 Prompts](08-prompts.md).
 
-Sources: [bundle loader](../../src/sdk/service-bundle.ts), [bundle tests](../../test/service-bundle.test.js), [Mathlib bundle](../../services/mathlib-search/service.json).
+Sources: [bundle loader](../../src/sdk/service-bundle.ts), [bundle tests](../../test/service-bundle.test.ts), [Mathlib bundle](../../services/mathlib-search/service.json).
 
 ### 3.1 Bash CLI boundary (Issue 119)
 
@@ -184,7 +184,7 @@ For `swarm material unsupersede`, the adapter checks Runtime/Bot/Profile and cur
 
 The true Core/Bridge/CLI regressions cover ACTIVE compatibility, the granted UNBOUND route, default/no-Profile/no-host-policy/no-domain-grant rejection, persisted grant removal before accepted-result replay, grant/deadline/stop changes during Core lookup, immutable author history, surviving disputes and newer successor protection. A normal host test verifies both default denial and explicit registration through the actual controller/coordinator. The direct-domain and retained v1 authorization regressions remain; this does not establish trusted live Workspace capture.
 
-Sources: [Context](../../src/context/context-service.ts), [Context schema](../../src/storage/context-schema.ts), [Material contract tests](../../test/material-content.test.js), [Correction tests](../../test/material-corrections.test.js).
+Sources: [Context](../../src/context/context-service.ts), [Context schema](../../src/storage/context-schema.ts), [Material contract tests](../../test/material-content.test.ts), [Correction tests](../../test/material-corrections.test.ts).
 
 ## 5. Judge: current submission, preflight, checks and application
 
@@ -216,7 +216,7 @@ Task Service does not execute submissions. A source checker PASS does not automa
 
 The registered Bridge source route is the immutable public revision export described above. Inline source bodies and Material-based Workspace source aliases are not accepted.
 
-The deterministic domain regression in [judge-workspace-domain.test.js](../../test/judge-workspace-domain.test.js) composes real Task/Execution, Context, public Workspace and private Workspace stores through flat input preparation. The domain fixture calls JudgeService directly. It checks immutable exported project bytes, project/module scope, readable input-failure receipts, source redaction, durable aliases after reopening Judge, and rejection of a source PASS from another containing tree during Task delivery. Controlled checker callbacks establish the domain input and receipt contracts. Native Lean execution and production Core capture have their own acceptance checks. The registered CLI tests in [bot-runtime.test.js](../../test/bot-runtime.test.js) separately retain forged-input and Mission visibility checks, response fencing on Bridge shutdown, and the durable receipt for a check that completes after the Bot closes.
+The deterministic domain regression in [judge-workspace-domain.test.js](../../test/judge-workspace-domain.test.ts) composes real Task/Execution, Context, public Workspace and private Workspace stores through flat input preparation. The domain fixture calls JudgeService directly. It checks immutable exported project bytes, project/module scope, readable input-failure receipts, source redaction, durable aliases after reopening Judge, and rejection of a source PASS from another containing tree during Task delivery. Controlled checker callbacks establish the domain input and receipt contracts. Native Lean execution and production Core capture have their own acceptance checks. The registered CLI tests in [bot-runtime.test.js](../../test/bot-runtime.test.ts) separately retain forged-input and Mission visibility checks, response fencing on Bridge shutdown, and the durable receipt for a check that completes after the Bot closes.
 
 ### Request identity and duplicate checking
 
@@ -299,7 +299,7 @@ Direct Judge submission returns diagnostics without applying the result to Task 
 
 The Mission submission checker evaluates the pinned statement and axiom policy on the submitted main tree. A diagnostic CheckResult is recorded against its original Execution. The persisted accepted submission is the trusted Mission acceptance result.
 
-Sources: [Judge](../../src/judge/judge-service.ts), [Lean adapter](../../src/judge/lean-adapter.ts), [fixture](../../src/judge/fixture.ts), [result normalization/projection](../../src/judge/check-result.ts), [direct Bridge submission](../../src/agent/services-bridge.ts), [Task result application](../../src/task/task-service.ts). Tests: [Judge tests](../../test/judge.test.js), [direct submission](../../test/bot-runtime.test.js).
+Sources: [Judge](../../src/judge/judge-service.ts), [Lean adapter](../../src/judge/lean-adapter.ts), [fixture](../../src/judge/fixture.ts), [result normalization/projection](../../src/judge/check-result.ts), [direct Bridge submission](../../src/agent/services-bridge.ts), [Task result application](../../src/task/task-service.ts). Tests: [Judge tests](../../test/judge.test.ts), [direct submission](../../test/bot-runtime.test.ts).
 
 ## 6. Optional Mathlib Search
 
@@ -325,7 +325,7 @@ The standalone Mathlib host's complete environment is:
 
 The Mathlib image similarly uses Node 22 and exposes port 8787. It copies the source implementation/launcher but does not ship a Mathlib checkout. A caller must supply the upstream or mounted tree. Programmatic provider options additionally include project/module-boundary settings, fetch injection and result limits; their input behavior remains subject to the validation described above.
 
-Sources: [Mathlib Service](../../src/services/mathlib-search-service.ts), [hosting entry](../../scripts/mathlib-search-service.ts), [bundle](../../services/mathlib-search/service.json), [Mathlib tests](../../test/mathlib-search-service.test.js).
+Sources: [Mathlib Service](../../src/services/mathlib-search-service.ts), [hosting entry](../../scripts/mathlib-search-service.ts), [bundle](../../services/mathlib-search/service.json), [Mathlib tests](../../test/mathlib-search-service.test.ts).
 
 ### Current Flat notification handling
 

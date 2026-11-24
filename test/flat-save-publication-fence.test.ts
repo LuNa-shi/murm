@@ -23,7 +23,7 @@ const {createRuntime}=await import('@swarmenv/core');hooks.deregister();
 const execute=promisify(execFile);
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const closeFromAnotherProcess=(root,botId)=>execute(process.execPath,['--input-type=module','-e',`
-  import { TaskService } from './src/task/task-service.js';
+  import { TaskService } from ${JSON.stringify(new URL('../src/task/task-service.js', import.meta.url).href)};
   const tasks=new TaskService(process.argv[1]);
   tasks.requestBotStop(process.argv[2],'external-close',{terminalState:'FAILED'});
   tasks.close();

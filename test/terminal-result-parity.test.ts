@@ -19,10 +19,10 @@ const repository = new URL('../..', import.meta.url);
 async function stoppedCli(t, failure, cwd, { blockReport = false, businessFailure = false } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'terminal-result-parity-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
-  let config = 'dist/test/fixtures/foreground-host-configuration.mjs';
+  let config = 'dist/test/fixtures/foreground-host-configuration.js';
   if (businessFailure) {
     config = join(outputDir, 'self-fencing-config.mjs');
-    const fixture = new URL('dist/test/fixtures/foreground-host-configuration.mjs', cwd).href;
+    const fixture = new URL('dist/test/fixtures/foreground-host-configuration.js', cwd).href;
     await writeFile(config, `import config from ${JSON.stringify(fixture)};\nconfig.options.router.workTimeoutMs = 1000;\nexport default config;\n`);
   }
   const child = spawn(process.execPath, [`--redirect-warnings=${join(outputDir, 'node-warnings.log')}`, 'dist/scripts/run-environment.js', '--config', config], {

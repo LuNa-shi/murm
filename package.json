@@ -21,6 +21,7 @@
   "files": [
     "dist/",
     "tsconfig.json",
+    "tsconfig.tests.json",
     ".dockerignore",
     "src/",
     "scripts/",

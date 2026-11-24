@@ -45,7 +45,7 @@ The retired authenticated `GET /events` route returns the ordinary unknown-route
 
 The Worker accepts the `swarmenv-core-v1` startup version with command `pi`, the explicit Profile prompt path and an empty resource array. Omitted, malformed or legacy resource declarations are rejected before process creation. The manager validates the Worker contract, quota, catalog and initial workDir receipts, and retains a possibly started Worker for confirmed stop and resource cleanup when attestation fails. Protected Task preparation/grant APIs and caller-owned domain Runtime behavior remain described in [Workspace](05-workspace-continuity.md).
 
-Deterministic current-path coverage includes [Core input recovery](../../test/core-pi-input.test.js), [capacity lifecycle](../../test/core-capacity-lifecycle.test.js), [provider manager](../../test/opensandbox-manager.test.js) and [Worker image contract](../../test/opensandbox-image-contract.test.js). The opt-in [Worker RPC image probe](../../test/core-worker-rpc-real.test.js) checks the authenticated retired endpoint returns 404 before exercising same-ID replay and delayed receipt recovery. These replace the deleted adapter-specific transport tests as the applicable verification seams. Native probes remain opt-in; their presence is not evidence of a new execution.
+Deterministic current-path coverage includes [Core input recovery](../../test/core-pi-input.test.ts), [capacity lifecycle](../../test/core-capacity-lifecycle.test.ts), [provider manager](../../test/opensandbox-manager.test.ts) and [Worker image contract](../../test/opensandbox-image-contract.test.ts). The opt-in [Worker RPC image probe](../../test/core-worker-rpc-real.test.ts) checks the authenticated retired endpoint returns 404 before exercising same-ID replay and delayed receipt recovery. These replace the deleted adapter-specific transport tests as the applicable verification seams. Native probes remain opt-in; their presence is not evidence of a new execution.
 
 ## 3. The registered Bot path
 
@@ -119,7 +119,7 @@ A prompt resource hash identifies those bytes. Replay also depends on tool resul
 
 ## 7. Validation and known limits
 
-Existing checks include [Core input](../../test/core-pi-input.test.js), [capability profile](../../test/capability-profile.test.js), [profile/Bridge](../../test/capability-profile-bridge.test.js), [Task behavior](../../test/task-contract.test.js), [Judge boundary](04-services.md). These identify tested seams; execution results belong in the linked GitHub Issue/PR and experiment reports.
+Existing checks include [Core input](../../test/core-pi-input.test.ts), [capability profile](../../test/capability-profile.test.ts), [profile/Bridge](../../test/capability-profile-bridge.test.ts), [Task behavior](../../test/task-contract.test.ts), [Judge boundary](04-services.md). These identify tested seams; execution results belong in the linked GitHub Issue/PR and experiment reports.
 
 Registered Bots use native Bash and the protected CLI; the old whole-proof Task instructions prohibiting shell were removed. The retained service-directory projection can still describe configured CLI namespaces, but the legacy Runtime does not automatically compose or send startup discovery. The former startup helper and fixed system/skill resources have been removed; the Worker rejects their former contract. Current Core receives the Environment’s configured Profile and inputs. Actual send paths and complete repository-owned instructions are documented in [Prompts](08-prompts.md).
 

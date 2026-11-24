@@ -15,7 +15,7 @@ test('installed Flat CLI and headless host preserve the same directed Task bindi
   const installed = await installNotesExample();
   t.after(() => installed.close());
   const root = join(installed.directory, 'node_modules/@swarmenv/core');
-  const config = join(root, 'dist/test/fixtures/foreground-flat-configuration.mjs');
+  const config = join(root, 'dist/test/fixtures/foreground-flat-configuration.js');
   const cliOutput = join(installed.directory, 'cli-flat');
   const headlessOutput = join(installed.directory, 'headless-flat');
   await mkdir(cliOutput); await mkdir(headlessOutput);

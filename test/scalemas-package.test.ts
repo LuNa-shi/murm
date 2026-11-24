@@ -13,7 +13,7 @@ test('installed scaleMAS host resolves the public backend and saves an aborted r
     process.env.SWARMENV_SCALEMAS_RUN='installed-abort';process.env.SWARMENV_SCALEMAS_IMAGE='no-allocation';
     process.env.SWARMENV_SCALEMAS_MODEL_URL='http://127.0.0.1:1/v1/responses';
     process.env.SWARMENV_SCALEMAS_MODEL_TOKEN='PRIVATE_MODEL_TOKEN';
-    const config=(await import(new URL('./config.mjs',pathToFileURL(${JSON.stringify(main)})))).default;
+    const config=(await import(new URL('./config.js',pathToFileURL(${JSON.stringify(main)})))).default;
     assert.equal(config.poolSize,3);assert.equal(config.maxRounds,2);
     assert.equal(config.backend.models.default.provider,'kimi_proxy');assert.equal(config.backend.models.default.model,'k3');
     const report=await runScaleMASExample({...config,outputDir:${JSON.stringify(join(installed.directory, 'output'))}},signal);

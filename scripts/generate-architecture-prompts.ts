@@ -28,7 +28,7 @@ const sourcePaths = [
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',
   'examples/subagents-environment/main.ts', 'examples/subagents-environment/controller.ts', 'examples/subagents-environment/prompts.ts',
   'src/environments/agensh/index.ts', 'src/environments/agensh/router.ts', 'src/environments/agensh/routed.ts', 'src/environments/agensh/team.ts',
-  'test/fixtures/agensh-team-kimi.js', 'test/agensh-team-kimi-real.test.js',
+  'test/fixtures/agensh-team-kimi.ts', 'test/agensh-team-kimi-real.test.ts',
   'src/environments/lead-helper/prompts.ts', 'src/environments/lead-helper/index.ts',
   'src/runtime/runtime.ts',
   'src/runtime/workspace-contract.ts', 'src/runtime/mission-workspace.ts',
@@ -167,11 +167,11 @@ output('08-agensh-environment.md', header('Agensh peer and serial router prompts
   + block('Peer Profile prompt', between('src/environments/agensh/index.ts', 'export const peerPrompt = `', '`;'))
   + block('Serial batch instruction', between('src/environments/agensh/router.ts', "export const routerInstruction = '", "';"))
   + block('Configured idle nudge', between('src/environments/agensh/router.ts', "export const idleNudgeInput = '", "';"))
-  + block('Opt-in hosted acceptance common instructions', between('test/fixtures/agensh-team-kimi.js', 'export const liveCommon = `', '`;'))
-  + block('Opt-in hosted A initial instructions', between('test/fixtures/agensh-team-kimi.js', 'export const liveAInitial = `', '`;'))
-  + block('Opt-in hosted B initial instructions', between('test/fixtures/agensh-team-kimi.js', 'export const liveBInitial = `', '`;'))
-  + block('Opt-in hosted A external comment instructions', between('test/fixtures/agensh-team-kimi.js', 'export const liveAUser = `', '`;'))
-  + block('Exact hosted initial composition', between('test/fixtures/agensh-team-kimi.js', '  return [`', '];'),
+  + block('Opt-in hosted acceptance common instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveCommon = `', '`;'))
+  + block('Opt-in hosted A initial instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveAInitial = `', '`;'))
+  + block('Opt-in hosted B initial instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveBInitial = `', '`;'))
+  + block('Opt-in hosted A external comment instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveAUser = `', '`;'))
+  + block('Exact hosted initial composition', between('test/fixtures/agensh-team-kimi.ts', '  return [`', '];'),
     'The host supplies two distinct provisioned peer usernames and a fresh 24-character seed. Only A receives the seed. The user comment names only A and appends liveAUser. Negotiation and agreement text are actual model-authored Mattermost posts, delivered by the normal authenticated subscription. The fixture injects no model tool program or terminal response.'));
 const leadHelperPath = 'src/environments/lead-helper/prompts.ts';
 let leadHelperDoc = header('Fixed lead-helper role and turn instructions', 'Profiles stage lead/helper roles. The Environment serializes each round instruction with trusted host fields before exclusive followUp delivery; these are source templates, not a native transcript.');
