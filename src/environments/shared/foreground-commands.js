@@ -1,13 +1,52 @@
 import { createInterface } from 'node:readline';
+import { Transform } from 'node:stream';
 
 const failureCode = error => typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code) ? error.code : 'HOST_COMMAND_FAILED';
 const fail = code => Object.assign(new Error(code), { code });
+
+// Keep at most one bounded unfinished line before readline performs UTF-8 decoding.
+function boundedLines(oversized) {
+  let fragments = [], bytes = 0, discarding = false, skipLf = false;
+  const reset = () => { fragments = []; bytes = 0; };
+  return new Transform({
+    transform(chunk, encoding, callback) {
+      let start = 0;
+      if (skipLf && chunk[0] === 10) start = 1;
+      skipLf = false;
+      while (start < chunk.length) {
+        const cr = chunk.indexOf(13, start), lf = chunk.indexOf(10, start);
+        const end = cr < 0 ? lf : lf < 0 ? cr : Math.min(cr, lf);
+        const part = chunk.subarray(start, end < 0 ? chunk.length : end);
+        if (!discarding) {
+          if (bytes + part.length > 65536) { reset(); discarding = true; oversized(); }
+          else { fragments.push(Buffer.from(part)); bytes += part.length; }
+        }
+        if (end < 0) break;
+        if (!discarding) { this.push(Buffer.concat(fragments, bytes)); this.push('\n'); }
+        reset(); discarding = false;
+        start = end + 1;
+        if (chunk[end] === 13) {
+          if (chunk[start] === 10) start++;
+          else if (start === chunk.length) skipLf = true;
+        }
+      }
+      callback();
+    },
+    flush(callback) {
+      if (!discarding && bytes) this.push(Buffer.concat(fragments, bytes));
+      reset(); callback();
+    },
+  });
+}
 
 /** Ordinary commands are serial; stop seals admission even during an active command. */
 export async function runForegroundCommands(host, { input = process.stdin, output = process.stdout } = {}) {
   const status = await host.status();
   if (host.signal.aborted) return { reason: 'host-stop' };
-  const lines = createInterface({ input, crlfDelay: Infinity });
+  const framed = boundedLines(() => {
+    if (!sealed && !host.signal.aborted) reportError(undefined, fail('HOST_COMMAND_INVALID'));
+  });
+  const lines = createInterface({ input: framed, crlfDelay: Infinity });
   const write = value => {
     pendingWrites++;
     try { output.write(`${JSON.stringify(value)}\n`, error => {
@@ -73,10 +112,12 @@ export async function runForegroundCommands(host, { input = process.stdin, outpu
   };
   output.on('error', outputFailed);
   input.on('error', inputFailed);
+  framed.on('error', inputFailed);
   lines.on('error', inputFailed);
   lines.on('line', admit);
   lines.on('close', () => { ended = true; if (!active && !sealed) finish('input-ended'); });
   host.signal.addEventListener('abort', abort, { once: true });
+  input.pipe(framed);
   try {
     if (host.signal.aborted) abort();
     else write({ type: 'ready', status });
@@ -84,8 +125,9 @@ export async function runForegroundCommands(host, { input = process.stdin, outpu
   } finally {
     sealed = true; host.signal.removeEventListener('abort', abort);
     lines.removeListener('line', admit); lines.close();
+    input.unpipe(framed); framed.destroy();
     output.removeListener('error', outputFailed);
-    input.removeListener('error', inputFailed); lines.removeListener('error', inputFailed);
+    input.removeListener('error', inputFailed); framed.removeListener('error', inputFailed); lines.removeListener('error', inputFailed);
     // A rejected interaction must reach the enclosing host before it stops.
     if (!streamFailure) host.stop();
   }

@@ -314,3 +314,45 @@ test('startup source self-fence preserves its first safe cause and actual cleanu
     assert.ok(!JSON.stringify(report).includes('LATER_SUBSCRIPTION_FAILED'));
   }
 });
+
+test('foreground CLI rejects an oversized partial line before its delimiter and reads the next command', { timeout: 5000 }, async t => {
+  const { spawn } = await import('node:child_process');
+  const { createInterface } = await import('node:readline');
+  const { once } = await import('node:events');
+  const root = await mkdtemp(join(tmpdir(), 'foreground-partial-line-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const child = spawn(process.execPath, ['scripts/run-environment.mjs', '--config', 'test/fixtures/foreground-host-configuration.mjs'],
+    { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root }, stdio: ['pipe', 'pipe', 'pipe'] });
+  t.after(() => child.kill('SIGKILL'));
+  const records = [], stderr = [];
+  child.stderr.on('data', value => stderr.push(value));
+  const lines = createInterface({ input: child.stdout });
+  lines.on('line', line => {
+    const record = JSON.parse(line); records.push(record);
+    if (record.type === 'ready') {
+      child.stdin.write('x'.repeat(32768));
+      child.stdin.write('x'.repeat(32768));
+      child.stdin.write('x');
+    }
+    if (record.type === 'error' && record.code === 'HOST_COMMAND_INVALID') {
+      child.stdin.write('discarded suffix\r');
+      const command = { id: 'after-oversized', operation: 'status', padding: '' };
+      const remaining = 65536 - Buffer.byteLength(JSON.stringify(command));
+      command.padding = 'é'.repeat(Math.floor(remaining / 2)) + 'x'.repeat(remaining % 2);
+      const bytes = Buffer.from(JSON.stringify(command));
+      assert.equal(bytes.length, 65536);
+      const split = bytes.indexOf(0xc3) + 1;
+      child.stdin.write('\n');
+      child.stdin.write(bytes.subarray(0, split));
+      child.stdin.write(bytes.subarray(split));
+      child.stdin.write('\n');
+    }
+    if (record.id === 'after-oversized') child.stdin.end(JSON.stringify({ id: 'end', operation: 'stop' }));
+  });
+  const [exit] = await once(child, 'exit');
+  assert.equal(exit, 0, Buffer.concat(stderr).toString());
+  assert.deepEqual(records.filter(row => row.type === 'error').map(row => row.code), ['HOST_COMMAND_INVALID']);
+  assert.ok(records.some(row => row.id === 'after-oversized' && row.type === 'reply'));
+  assert.equal(records.at(-1).type, 'result');
+  assert.equal(records.at(-1).cleanup, 'complete');
+});
