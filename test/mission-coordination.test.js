@@ -1,3 +1,4 @@
+import { ServicesBridge } from '../src/agent/services-bridge.js';
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -5,7 +6,7 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { ContextService } from '../src/context/context-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
+import { createMissionCoordination, createMissionSubmissionAccess } from '../src/environments/flat/mission-coordination.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { TaskService } from '../src/task/task-service.js';
 
@@ -211,4 +212,37 @@ test('Mission coordination pins current main and explicit empty Materials and en
         specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version })), { code: 'NOT_ALLOWED' });
     }
   } finally { second.close(); }
+});
+
+
+test('retained Bridge uses host-owned Flat submission and observes stop changes without Runtime forwarding', async t => {
+  const { taskService, contextService, bot, store, calls } = await fixture(t);
+  bot('coordinator', ['mission_submit']);
+  let stopped = false;
+  const bridge = new ServicesBridge({ taskService, contextService, runtime: {},
+    missionSubmission: createMissionSubmissionAccess({ store, workspaceId, isStopped: id => {
+      assert.equal(id, missionId);
+      return stopped;
+    } }),
+  });
+  bridge.startBotIdentity('coordinator');
+  t.after(() => bridge.stop());
+  const receipt = await bridge.call({ operation: 'mission_submit', operation_id: 'flat-host-submission', payload: { material_ids: [] } });
+  assert.equal(receipt.state, 'pending');
+  assert.equal(receipt.workspace_id, workspaceId);
+  assert.equal(receipt.current.mission_state, 'open');
+  assert.equal(calls.length, 1);
+  stopped = true;
+  const observed = await bridge.call({ operation: 'mission_submission_get', payload: { submission_id: receipt.submission_id } });
+  assert.equal(observed.submission_id, receipt.submission_id);
+  assert.equal(observed.current.mission_state, 'stopped');
+  assert.equal(observed.current.merge_allowed, false);
+
+  const disabled = new ServicesBridge({ taskService, contextService, runtime: {} });
+  disabled.startBotIdentity('coordinator');
+  t.after(() => disabled.stop());
+  for (const operation of ['mission_submit', 'mission_submission_get']) {
+    await assert.rejects(disabled.call({ operation, payload: { material_ids: [] } }),
+      { code: 'SERVICE_UNAVAILABLE', message: 'Mission submission is not enabled' });
+  }
 });

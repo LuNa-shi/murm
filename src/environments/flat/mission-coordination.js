@@ -1,7 +1,7 @@
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
-import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
-import { assertNewExecutionWork } from '../task/execution-budget.js';
-import { MissionSubmissionStore } from './mission-submission.js';
+import { ERROR_CODES, SwarmEnvError } from '../../errors.js';
+import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
+import { assertNewExecutionWork } from '../../task/execution-budget.js';
+import { MissionSubmissionStore } from '../../runtime/mission-submission.js';
 
 /** Assemble the Mission submission boundary for one in-process project. */
 export function createMissionCoordination({
@@ -74,4 +74,21 @@ export function createMissionCoordination({
     database: taskService.db, workspace, authorize, snapshotMaterials, validateMaterials, validateCompletion, checker, manualReview,
     timeoutMs: checker?.timeoutMs ?? manualReview?.timeoutMs ?? 120_000, onAccepted, maxInfrastructureRetries, maxFinalChecks, maxConcurrentFinalChecks,
   });
+}
+
+/** Bind the retained Bridge entry to host-owned submission storage and run state. */
+export function createMissionSubmissionAccess({ store = null, workspaceId, isStopped } = {}) {
+  if (store && typeof isStopped !== 'function') throw new TypeError('Mission submission access requires a host stop predicate');
+  const requireStore = () => {
+    if (!store) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
+    return store;
+  };
+  return {
+    async submit(input = {}) {
+      return requireStore().submit({ ...input, workspaceId });
+    },
+    async describe({ missionId, submissionId = null }) {
+      return requireStore().describe({ missionId, submissionId, workspaceId, isStopped: () => isStopped(missionId) });
+    },
+  };
 }

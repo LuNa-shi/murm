@@ -6,6 +6,7 @@ import { createBuiltinServiceRegistry, MISSION_WORKSPACE_READS } from '../sdk/bu
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
 import { prepareWorkspaceCheckSource } from '../environments/flat/workspace-check-source.js';
+import { createMissionSubmissionAccess } from '../environments/flat/mission-coordination.js';
 import { agentCheckResult } from '../judge/check-result.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 
@@ -128,7 +129,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
+  constructor({ taskService, contextService, runtime, missionSubmission = createMissionSubmissionAccess(), actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.pendingCalls = new Set();
     this.pendingHandlers = new Set();
@@ -136,6 +137,7 @@ export class ServicesBridge {
     this.taskService = taskService;
     this.contextService = contextService;
     this.runtime = runtime;
+    this.missionSubmission = missionSubmission;
     this.actorRef = actorRef;
     this.coreId = coreId;
     this.taskId = taskId;
@@ -593,11 +595,11 @@ export class ServicesBridge {
           if (Object.keys(payload).some(key => key !== 'material_ids') || !Array.isArray(payload.material_ids)) {
             throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Mission submit accepts only an explicit material_ids selection');
           }
-          const result = await this.runtime.submitMission({ missionId: bot.mission_id, workspaceId: this.runtime.missionWorkspaceId,
+          const result = await this.missionSubmission.submit({ missionId: bot.mission_id,
             actorRef: bot.bot_id, taskId: this.taskId ?? null, executionId: this.executionId ?? null,
             materialIds: payload.material_ids, requestId: bridgeOperationId,
             fencingVersion: this.executionId ? this.taskService.getExecution(this.executionId)?.fencing_version : null });
-          const observed = await this.runtime.describeMissionSubmission({ missionId: bot.mission_id, submissionId: result.submission_id });
+          const observed = await this.missionSubmission.describe({ missionId: bot.mission_id, submissionId: result.submission_id });
           assertIdentity();
           log({ event: 'bridge.complete', operation, ok: true, result: observed ?? result });
           return observed ?? result;
@@ -606,7 +608,7 @@ export class ServicesBridge {
           throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'request must stay within the Bot Mission');
         }
         if (operation === 'mission_submission_get') {
-          const result = await this.runtime.describeMissionSubmission({ missionId: bot.mission_id, submissionId: payload.submission_id ?? null });
+          const result = await this.missionSubmission.describe({ missionId: bot.mission_id, submissionId: payload.submission_id ?? null });
           assertIdentity();
           log({ event: 'bridge.complete', operation, ok: true, result });
           return result;

@@ -1,3 +1,4 @@
+import { createMissionSubmissionAccess } from '../src/environments/flat/mission-coordination.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { request as httpRequest } from 'node:http';
@@ -469,13 +470,13 @@ test('Mission Bridge supplies trusted scope, rejects checker selection and retur
   const reads = [];
   const observed = { submission_id: 'submission:fixed', state: 'pending', main_revision: '0.1', materials: [],
     current: { active_submission_id: 'submission:fixed', merge_allowed: false }, notice: 'Fixed public submission observation' };
-  const { bridge, start } = await fixture(t, { runtime: { missionWorkspaceId: 'workspace:trusted',
-    async submitMission(input) { calls.push(input); return { submission_id: observed.submission_id }; },
-    async describeMissionSubmission(input) {
+  const { bridge, start } = await fixture(t, { missionSubmission: createMissionSubmissionAccess({ workspaceId: 'workspace:trusted', isStopped: () => false, store: {
+    async submit(input) { calls.push(input); return { submission_id: observed.submission_id }; },
+    async describe(input) {
       reads.push(input);
       return input.submissionId ? observed : { state: 'open', submissions: [observed] };
     },
-  } });
+  } }) });
   const env = start('bot:coordinator', ['mission_submit']);
   await assert.rejects(bridge.call({ operation: 'mission_submit', payload: {} }), { code: 'INVALID_CONTRACT' });
   await assert.rejects(bridge.call({ operation: 'mission_submit', payload: { material_ids: [], checker: 'caller-selected' } }), { code: 'INVALID_CONTRACT' });
@@ -485,7 +486,9 @@ test('Mission Bridge supplies trusted scope, rejects checker selection and retur
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0], { missionId: 'mission:auth', workspaceId: 'workspace:trusted', actorRef: 'bot:coordinator',
     taskId: null, executionId: null, materialIds: [], requestId: 'fixed-submit', fencingVersion: null });
-  assert.deepEqual(reads, [{ missionId: 'mission:auth', submissionId: observed.submission_id }]);
+  assert.equal(reads[0].workspaceId, 'workspace:trusted');
+  assert.equal(reads[0].isStopped(), false);
+  assert.deepEqual(reads.map(({ workspaceId, isStopped, ...input }) => input), [{ missionId: 'mission:auth', submissionId: observed.submission_id }]);
   const read = async payload => {
     const response = await fetch(`${env.SWARMENV_BRIDGE_URL}/call`, { method: 'POST',
       headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
@@ -494,7 +497,7 @@ test('Mission Bridge supplies trusted scope, rejects checker selection and retur
   };
   assert.deepEqual((await read({})).body, { ok: true, result: { state: 'open', submissions: [observed] } });
   assert.deepEqual((await read({ submission_id: observed.submission_id })).body, { ok: true, result: observed });
-  assert.deepEqual(reads.slice(1), [
+  assert.deepEqual(reads.slice(1).map(({ workspaceId, isStopped, ...input }) => input), [
     { missionId: 'mission:auth', submissionId: null },
     { missionId: 'mission:auth', submissionId: observed.submission_id },
   ]);

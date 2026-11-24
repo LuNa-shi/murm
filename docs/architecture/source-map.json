@@ -689,13 +689,13 @@
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
     },
     {
-      "path": "src/runtime/mission-coordination.js",
+      "path": "src/environments/flat/mission-coordination.js",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/03-mission-task.md",
         "docs/architecture/04-services.md"
       ],
-      "role": "Trusted Task/Context/Mission acceptance assembly and observed input validation"
+      "role": "Flat-owned Task/Context/Mission acceptance assembly and host-bound Bridge submission projection"
     },
     {
       "path": "src/runtime/mission-submission.js",

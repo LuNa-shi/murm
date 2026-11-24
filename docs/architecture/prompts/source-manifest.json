@@ -11,7 +11,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "3a6ba17fdb1bff8cb0ff2ea9e85f99e07d2a989e507b9269fb1780102fb2bfaf"
+      "sha256": "80926849b0db6f2c718a35f92487a7160644274e845ab66592a87052a5b66504"
     },
     {
       "path": "src/core/index.js",
@@ -91,7 +91,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "7bec10b5b19c5b567efc6227c79f9e99b702c0df218e02ca7ddcf37aea082029"
+      "sha256": "116421bdbc60d73a5e1147f04d37915bf19b396754ce6d95c83046df75b5cb67"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -307,7 +307,7 @@
   "prompt_send_sites": [
     {
       "path": "src/runtime/runtime.js",
-      "line": 1066,
+      "line": 1054,
       "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
     },
     {
@@ -324,25 +324,25 @@
   "fixed_instruction_fields": [
     {
       "path": "src/agent/services-bridge.js",
-      "line": 91,
+      "line": 92,
       "field": "action",
       "sha256": "a5e4874eff88bd459015734cb36e2d7e5cbb7a9312337c2df58750686d29a4f3"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 92,
+      "line": 93,
       "field": "hint",
       "sha256": "78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 547,
+      "line": 549,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 554,
+      "line": 556,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -428,7 +428,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "b6b92d62e4d2002191fc86b0068b35f0d4470e024950a00b0b3c362eca0e68be"
+      "sha256": "f46bcfb5a3a1d1ef1bfe6994f30338d9a9e9c6157fd24beb28d75799f96f79b7"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",

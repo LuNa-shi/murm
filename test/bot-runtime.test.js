@@ -8,7 +8,7 @@ import { TaskService } from '../src/task/task-service.js';
 import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
+import { createMissionCoordination, createMissionSubmissionAccess } from '../src/environments/flat/mission-coordination.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { stableStringify } from '../src/protocol/envelope.js';
@@ -49,7 +49,8 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   const missionWorkspace = new MissionWorkspace({ rootDir: join(root, 'default-public') });
   await missionWorkspace.create({ missionId: 'mission:bots', workspaceId: 'workspace-default', initialFiles: { 'input.txt': 'public project input' } });
   const runtime = new Runtime({ taskService: service, missionWorkspace, missionWorkspaceId: 'workspace-default', workspaceManager: new WorkspaceManager({ rootDir: root }), sandboxManager: manager, ...runtimeOptions });
-  t.after(async () => { await runtime.missionSubmissionStore?.stop({ missionId: 'mission:bots' }); await runtime.shutdown(); service.close(); await rm(root, { recursive: true, force: true }); });
+  const missionSubmission = { store: null };
+  t.after(async () => { await missionSubmission.store?.stop({ missionId: 'mission:bots' }); await runtime.shutdown(); service.close(); await rm(root, { recursive: true, force: true }); });
   const startSession = async ({ bot, onSandboxCreated, beforeAgentStart }) => {
     const sandbox = await manager.ensureExecution({ executionId: bot.resource_key, botId: bot.bot_id, onCreated: onSandboxCreated });
     await manager.startAgent({ executionId: bot.resource_key, command: 'pi', resources: [], args: [], beforeAgentStart });
@@ -59,7 +60,7 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
     session.stop = async () => { session.closed = true; session.emit('close'); };
     return session;
   };
-  return { root, service, runtime, manager, startSession, calls };
+  return { root, service, runtime, manager, startSession, calls, missionSubmission };
 }
 
 test('Runtime starts and cleans an unbound Bot without inventing an Execution', async (t) => {
@@ -80,7 +81,7 @@ test('Runtime starts and cleans an unbound Bot without inventing an Execution', 
 
 test('Mission timeout preserves a fresh Bot proposal after earlier Tasks finish and the previous Bot closes', async t => {
   const identity = { checker_ref: 'controlled', checker_version: '1', environment_ref: 'test' };
-  const { service, runtime, startSession } = await fixture(t, { coordinationPermissions: ['mission_submit'] },
+  const { service, runtime, startSession, missionSubmission } = await fixture(t, { coordinationPermissions: ['mission_submit'] },
     { acceptanceConditions: { required_check: identity } });
   const context = new ContextService(':memory:', { taskService: service });
   t.after(() => context.close());
@@ -91,7 +92,7 @@ test('Mission timeout preserves a fresh Bot proposal after earlier Tasks finish 
     deadline: Date.now() + 60_000,
     checker: { identity, check: () => { throw new SwarmEnvError('SERVICE_TIMEOUT', 'controlled final-check timeout'); } },
   });
-  runtime.missionSubmissionStore = store;
+  missionSubmission.store = store;
   const create = (summary, actorRef) => service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: missionId, summary,
     expected_output: 'Reproducible result', acceptance_conditions: ['Evidence is published'] }, makeEnvelope({ actorRef })).task;
   const former = create('Check a completed responsibility', 'operator:test');
@@ -822,9 +823,11 @@ async function workspaceFixture(t, options = {}) {
   let env;
   const context = new ContextService(f.service.db, { taskService: f.service });
   f.service.contextService = context;
-  if (options.createMissionSubmissionStore) f.runtime.missionSubmissionStore = options.createMissionSubmissionStore({ ...f, context });
+  if (options.createMissionSubmissionStore) f.missionSubmission.store = options.createMissionSubmissionStore({ ...f, context });
   const bridge = new ServicesBridge({ taskService: f.service, contextService: context, runtime: f.runtime, coreId: 'core-1',
-    registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, missionSubmissionStore: f.runtime.missionSubmissionStore, judgeService: options.createJudgeService?.(f.service, f.runtime) ?? options.judgeService }),
+    missionSubmission: createMissionSubmissionAccess({ store: f.missionSubmission.store, workspaceId: f.runtime.missionWorkspaceId,
+      isStopped: missionId => f.runtime.stopping || f.runtime.clock() >= (f.runtime.runDeadlineAt ?? Infinity) || f.service.isMissionStopped(missionId) }),
+    registry: createBuiltinServiceRegistry({ taskService: f.service, contextService: context, missionWorkspace: f.runtime.missionWorkspace, missionSubmissionStore: f.missionSubmission.store, judgeService: options.createJudgeService?.(f.service, f.runtime) ?? options.judgeService }),
     onTake: result => f.runtime.bindAgentExecution(result.execution.execution_id, session, { coreId: 'core-1' }) });
   await bridge.start();
   t.after(() => bridge.stop());
