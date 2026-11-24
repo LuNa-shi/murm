@@ -3,6 +3,7 @@ import { Transform } from 'node:stream';
 
 const failureCode = error => typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code) ? error.code : 'HOST_COMMAND_FAILED';
 const fail = code => Object.assign(new Error(code), { code });
+const MAX_COMMAND_BYTES = 65536;
 
 // Keep at most one bounded unfinished line before readline performs UTF-8 decoding.
 function boundedLines(oversized) {
@@ -14,14 +15,14 @@ function boundedLines(oversized) {
       if (skipLf && chunk[0] === 10) start = 1;
       skipLf = false;
       while (start < chunk.length) {
-        const cr = chunk.indexOf(13, start), lf = chunk.indexOf(10, start);
-        const end = cr < 0 ? lf : lf < 0 ? cr : Math.min(cr, lf);
-        const part = chunk.subarray(start, end < 0 ? chunk.length : end);
+        let end = start;
+        while (end < chunk.length && chunk[end] !== 13 && chunk[end] !== 10) end++;
+        const part = chunk.subarray(start, end);
         if (!discarding) {
-          if (bytes + part.length > 65536) { reset(); discarding = true; oversized(); }
+          if (bytes + part.length > MAX_COMMAND_BYTES) { reset(); discarding = true; oversized(); }
           else { fragments.push(Buffer.from(part)); bytes += part.length; }
         }
-        if (end < 0) break;
+        if (end === chunk.length) break;
         if (!discarding) { this.push(Buffer.concat(fragments, bytes)); this.push('\n'); }
         reset(); discarding = false;
         start = end + 1;
@@ -92,7 +93,7 @@ export async function runForegroundCommands(host, { input = process.stdin, outpu
     let command;
     try {
       const bytes = Buffer.byteLength(line);
-      if (bytes > 65536) throw fail('HOST_COMMAND_INVALID');
+      if (bytes > MAX_COMMAND_BYTES) throw fail('HOST_COMMAND_INVALID');
       command = JSON.parse(line);
       if (!command || typeof command !== 'object' || Array.isArray(command) ||
           typeof command.id !== 'string' || !command.id || command.id.length > 128 ||
