@@ -179,13 +179,10 @@ function instrumentTransactions(db) {
     if (typeof sql !== 'string') return state.rawExec(sql);
     let remaining = String(sql);
     while (remaining.length) {
-      let first;
-      try { first = state.rawPrepare(remaining).sourceSQL; }
-      catch (error) {
-        // SQLite accepts trailing comments/empty statements in exec().
-        if (error.code === 'ERR_INVALID_ARG_VALUE' && !remaining.replace(SQL_QUOTES_AND_COMMENTS, '').replace(/[;\s]/g, '')) return;
-        throw error;
-      }
+      // Avoid creating empty prepared statements, whose handles are already
+      // finalized on Node 22. SQLite still validates the complete tail.
+      if (!remaining.replace(SQL_QUOTES_AND_COMMENTS, '').replace(/[;\s]/g, '')) return state.rawExec(remaining);
+      const first = state.rawPrepare(remaining).sourceSQL;
       // Let SQLite find statement boundaries, including trigger bodies and
       // semicolons in quoted text. Every COMMIT in a compound exec is observed.
       execute(statementInfo(first), () => state.rawExec(first));

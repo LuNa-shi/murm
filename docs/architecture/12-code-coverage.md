@@ -205,7 +205,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and source-preserving journal reconstruction | [13-historical-resume](13-historical-resume.md) | `17a31c0c557bd1c8322e3bef8f1c25c49a6487cd6fbb469d0e59f52d1faf02db` |
+| [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and source-preserving journal reconstruction | [13-historical-resume](13-historical-resume.md) | `943392dfea6ca6eacd53b892a7d438b003b6f1ce92b93bac5a82f20555ec624a` |
 | [src/replay/workspace-history.js](../../src/replay/workspace-history.js) | Reconstruct past public main and reachable Git objects without modifying the source | [13-historical-resume](13-historical-resume.md) | `63b83b4bf2ff3a17d8b8983507c33b299df3348778a652f18a0eea5f1df4e29a` |
 
 ### programmable Core (17)

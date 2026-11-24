@@ -185,6 +185,19 @@ test('recording does not turn a read-only transaction into a database write', as
   db.close();
 });
 
+test('history exec preserves SQLite empty-tail handling and rejects invalid or closed input', async t => {
+  const { db } = await fixture(t);
+  for (const sql of ['', ' \n\t', '; ;\n', '-- comment', '/* comment */']) {
+    db.exec(sql);
+  }
+  assert.throws(() => db.exec("'not a statement'"), { code: 'ERR_SQLITE_ERROR' });
+  db.exec("INSERT INTO results VALUES ('a', 'recorded', NULL, 1); -- trailing comment");
+  assert.equal(db.prepare('SELECT COUNT(*) AS n FROM replay_events').get().n, 1);
+  assert.equal(db.prepare('SELECT status FROM results').get().status, 'recorded');
+  db.close();
+  assert.throws(() => db.exec(' -- comment'), { code: 'ERR_INVALID_STATE' });
+});
+
 test('compound exec, quoted savepoints and prepared transaction control retain committed boundaries', async t => {
   const { db } = await fixture(t);
   db.exec("INSERT INTO results VALUES ('a', 'old', NULL, 1)");

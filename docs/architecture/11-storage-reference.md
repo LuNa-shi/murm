@@ -65,7 +65,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Automatic service history
 
-Source: [src/replay/service-history.js](../../src/replay/service-history.js); source SHA-256: `17a31c0c557bd1c8322e3bef8f1c25c49a6487cd6fbb469d0e59f52d1faf02db`.
+Source: [src/replay/service-history.js](../../src/replay/service-history.js); source SHA-256: `943392dfea6ca6eacd53b892a7d438b003b6f1ce92b93bac5a82f20555ec624a`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS replay_tables (

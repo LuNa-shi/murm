@@ -38,7 +38,11 @@ such as finish finalization and dependent-Task reconciliation are included.
 The connection records explicit transaction completion, including prepared control
 statements and savepoint transactions. It allocates a transaction marker only when
 the first write occurs; read-only transactions remain reads. Compound `exec` input
-uses SQLite's own parsed statement boundaries. Ordinary autocommit statements use
+uses SQLite's own parsed statement boundaries. Before preparing a tail containing
+only whitespace, separators or comments, the wrapper delegates it to SQLite's native
+exec. This avoids Node 22's finalized empty-statement handles. SQLite still validates
+the complete tail, so invalid SQL and closed connections raise their native errors.
+Ordinary autocommit statements use
 SQLite's statement-stable timestamp. Timestamps have millisecond precision. A cutoff
 includes all recorded commits at or before that time, with sequence establishing
 order within a database. A transaction cannot be split by choosing a time between
