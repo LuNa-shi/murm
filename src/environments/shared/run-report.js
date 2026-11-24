@@ -56,18 +56,18 @@ export async function runWithReport({ createRuntime, run, afterClose, outputDir,
   const directory = join(resolve(outputDir), report.runtimeId);
   const reportPath = join(directory, 'environment-report.json');
   const temporary = join(directory, `.environment-report-${randomUUID()}.tmp`);
-  let projected = redact(report);
+  let projected;
   try {
-    const bytes = `${JSON.stringify(projected, null, 2)}\n`;
+    const bytes = `${JSON.stringify(redact(report), null, 2)}\n`;
     projected = JSON.parse(bytes);
     await mkdir(directory, { recursive: true, mode: 0o700 });
     await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 });
     await rename(temporary, reportPath);
     return { ...projected, reportPath };
   } catch (error) {
+    const reportSaveFailure = { code: 'REPORT_SAVE_FAILED', message: 'Environment report could not be saved', details: [describe(error)] };
+    const fallback = structuredClone(redact({ ...(projected ?? report), reportSaveFailure }));
     await rm(temporary, { force: true }).catch(() => {});
-    report.reportSaveFailure = { code: 'REPORT_SAVE_FAILED', message: 'Environment report could not be saved', details: [describe(error)] };
-    projected = redact(report);
-    return projected;
+    return fallback;
   }
 }

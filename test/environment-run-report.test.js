@@ -115,6 +115,68 @@ test('post-close work finishing after its timeout cannot mutate the saved or ret
   assert.equal(await readFile(report.reportPath, 'utf8'), saved);
 });
 
+test('a report-save failure returns a detached snapshot before late domain reconciliation finishes', { timeout: 1000 }, async t => {
+  const { runWithReport } = await import('../src/environments/shared/run-report.js');
+  const outputDir = await directory(t);
+  await writeFile(join(outputDir, 'blocked-late-reconciliation'), 'controlled blocker');
+  const reconciled = Promise.withResolvers();
+  const result = { finalization: 'pending' };
+  const report = await runWithReport({ outputDir, closeTimeoutMs: 10,
+    createRuntime: async () => ({ id: 'blocked-late-reconciliation', close: async () => ({ cleanup: 'complete', bots: [] }) }),
+    run: async () => result,
+    afterClose: async () => { await reconciled.promise; result.finalization = 'late'; },
+  });
+  assert.deepEqual(report.result, { finalization: 'pending' });
+  reconciled.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(result.finalization, 'late');
+  assert.deepEqual(report.result, { finalization: 'pending' });
+  assert.equal(report.businessFailure, null);
+  assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(report.cleanupFailure.code, 'CLOSE_WAIT_TIMEOUT');
+  assert.equal(report.reportSaveFailure.code, 'REPORT_SAVE_FAILED');
+  assert.equal(report.reportSaveFailure.details[0].code, 'EEXIST');
+  assert.equal(report.reportPath, undefined);
+});
+
+test('save failure also detaches earlier business failure details from late reconciliation', { timeout: 1000 }, async t => {
+  const { runWithReport } = await import('../src/environments/shared/run-report.js');
+  const outputDir = await directory(t);
+  await writeFile(join(outputDir, 'blocked-business-details'), 'controlled blocker');
+  const reconciled = Promise.withResolvers();
+  const details = [{ finalization: 'pending' }];
+  const report = await runWithReport({ outputDir, closeTimeoutMs: 10,
+    createRuntime: async () => ({ id: 'blocked-business-details', close: async () => ({ cleanup: 'complete', bots: [] }) }),
+    run: async () => { throw Object.assign(new Error('Business failed'), { code: 'ORIGINAL', details }); },
+    afterClose: async () => { await reconciled.promise; details[0].finalization = 'late'; },
+  });
+  reconciled.resolve();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(details[0].finalization, 'late');
+  assert.deepEqual(report.businessFailure.details, [{ finalization: 'pending' }]);
+  assert.equal(report.businessFailure.code, 'ORIGINAL');
+  assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(report.cleanupFailure.code, 'CLOSE_WAIT_TIMEOUT');
+  assert.equal(report.reportSaveFailure.code, 'REPORT_SAVE_FAILED');
+});
+
+test('initial JSON serialization failure stays a detached report-save failure', async t => {
+  const { runWithReport } = await import('../src/environments/shared/run-report.js');
+  const outputDir = await directory(t);
+  const details = [{ count: 1n }];
+  const report = await runWithReport({ outputDir,
+    createRuntime: async () => ({ id: 'serialization-failure', close: async () => ({ cleanup: 'pending', bots: [] }) }),
+    run: async () => { throw Object.assign(new Error('Business failed'), { code: 'ORIGINAL', details }); },
+  });
+  details[0].count = 2n;
+  assert.equal(report.businessFailure.code, 'ORIGINAL');
+  assert.equal(report.businessFailure.details[0].count, 1n);
+  assert.equal(report.cleanupFailure.code, 'CLEANUP_PENDING');
+  assert.equal(report.reportSaveFailure.code, 'REPORT_SAVE_FAILED');
+  assert.match(report.reportSaveFailure.details[0].message, /BigInt/i);
+  assert.equal(report.reportPath, undefined);
+});
+
 test('successful Runtime reports use separate directories and apply host redaction before save and return', async t => {
   const { runWithReport } = await import('../src/environments/shared/run-report.js');
   const outputDir = await directory(t);
