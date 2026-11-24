@@ -20,7 +20,7 @@ The former registered Bot startup helper, fixed system addendum and four skills 
 
 ## Continuations, notifications and lifecycle feedback
 
-The Flat controller composes its durable handoff warning using `buildBotNotification` and admits it through its serialized `followUp` input path. It fixes the exact text and request identity before asynchronous admission; the Execution/deadline and notification ID come from durable Task state. The retained Runtime delivers existing Task notifications to a live bound Session using the same builder. Handoff warnings name the Execution and remaining deadline allowance. Material notifications identify producer, Material and notification IDs and require reading and explicit feedback. Dependency updates direct the Bot to inspect Task state. None grants ownership, establishes correctness or completes the current Task. Notification delivery can fail if the Session has closed; durable public state remains the authority on later reads.
+The Flat controller composes its durable handoff warning using `buildBotNotification` and admits it through its serialized `followUp` input path. It fixes the exact text and request identity before asynchronous admission; the Execution/deadline and notification ID come from durable Task state. The retained Runtime no longer dispatches Task notification inputs. The builder retains Material/dependency formatting, but the current Flat host has no automatic send path for those two variants. Handoff warnings name the Execution and remaining deadline allowance. Material notifications identify producer, Material and notification IDs and require reading and explicit feedback. Dependency updates direct the Bot to inspect Task state. None grants ownership, establishes correctness or completes the current Task. Controller admission can reject a stopped Bot; durable public state remains the authority on later reads.
 
 Bridge command responses include structured results/errors and lifecycle notices. Native Bash carries these back into the model conversation; the Bridge does not create a separate turn for a tool response. Workspace conflicts also write an ordinary README artifact: it becomes model input only when read. Judge results carry actual checker diagnostics; successful request transport is not proof acceptance. Fixed guidance fields are catalogued separately from dynamic Task, Material, provider and checker content.
 
@@ -30,7 +30,7 @@ Bridge command responses include structured results/errors and lifecycle notices
 |---|---|
 | [CLI directory and provider documents](prompts/02-task-loop-and-tools.md) | Actual startup directory fixtures and available optional bundle documents |
 | [Runtime turns](prompts/03-runtime-turns.md) | Complete flat continuation and soft-closeout bodies |
-| [Runtime notifications](prompts/04-runtime-messages.md) | Exact current notification builder output |
+| [Runtime notifications](prompts/04-runtime-messages.md) | Exact notification builder output and current versus unsent variants |
 | [Tool-result guidance](prompts/06-tool-return-guidance.md) | Fixed executable hint/remediation/guidance fields and delivery conditions |
 | [Source manifest](prompts/source-manifest.json) | Source hashes, extraction anchors, send sites and generated-body hashes |
 

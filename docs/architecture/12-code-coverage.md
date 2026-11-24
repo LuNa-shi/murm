@@ -110,7 +110,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/environments/shared/run-input.js](../../src/environments/shared/run-input.js) | Environment-owned exclusive idle Bot input wait and uncertain submission guard | [15-core-runtime](15-core-runtime.md) | `f88873c40ab74a4a673e2de07216770d1b442b229f1635548b7622d41de37f78` |
 | [src/environments/shared/run-report.js](../../src/environments/shared/run-report.js) | Environment host reporting with independent business, cleanup and save failures | [17-environment-reporting](17-environment-reporting.md) | `1f2188cc16fe4b4b6fc5168f1178de4cab6256eebfe4bdacea664fbde27b59bd` |
 | [src/runtime/docker-bot-network.js](../../src/runtime/docker-bot-network.js) | Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `fece9e1daeaf52f57ac4d821abd0be86fdd94738995507a9412817eb1b268096` |
-| [src/runtime/runtime.js](../../src/runtime/runtime.js) | Registered Bot binding, physical resource ownership, process failure cleanup and fencing | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `da2f26ec8e3390ce7c18e20cb1025ee52330a2344e976ebf8f250b5186998431` |
+| [src/runtime/runtime.js](../../src/runtime/runtime.js) | Registered Bot binding, physical resource ownership, process failure cleanup and fencing | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `40c32828fbd310246d21ff3e0985357e1d7983978c093dcbccfa397d07e80377` |
 
 ### Mission acceptance and checker (9)
 
@@ -160,7 +160,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `4df59886439e8e59ece335acfad45a528f5484c5de2d70a148e88d588dd38f6e` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `cdfab37acb9125654219e9c4b0ab632ff18abb6859a7dcc0ee4acfff6052b2e1` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `e47e2842f76dd36a41a7cbc7fed82f2f9228461514b5ed9f6479d0809e32ae10` |
 
 ### durable storage (3)
 

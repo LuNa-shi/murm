@@ -12,7 +12,7 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 |---|---|
 | services-bridge.js | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the protected CLI prints the structured response into the native Bash result |
 | workspace-contract.js remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |
-| task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |
+| task-service.js action | Material-available notification payload, or invalid typed dependency error. The payload action is visible when notification data is read/composed; the retained Runtime no longer renders or sends a notification user message. |
 
 The action values integration and task are consumption/contract enums, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. The actions execute and queue_status are private Judge authorization protocol enums, never Agent instructions. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.
 ## action — src/agent/services-bridge.js:497

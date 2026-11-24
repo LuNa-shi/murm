@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
-import { buildBotNotification } from '../agent/bot-contract.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
 
 function requireString(value, field) {
@@ -67,9 +66,6 @@ export class Runtime {
     this.stopping = false;
     this.executionStateUnsubscribe = typeof this.taskService?.subscribeExecutionState === 'function'
       ? this.taskService.subscribeExecutionState((event) => this.#onExecutionState(event))
-      : null;
-    this.notificationUnsubscribe = typeof this.taskService?.subscribeNotifications === 'function'
-      ? this.taskService.subscribeNotifications((notification) => this.#onNotification(notification))
       : null;
   }
 
@@ -283,8 +279,6 @@ export class Runtime {
     const pendingStarts = [...this.startupPromises];
     this.executionStateUnsubscribe?.();
     this.executionStateUnsubscribe = null;
-    this.notificationUnsubscribe?.();
-    this.notificationUnsubscribe = null;
     const executionIds = [...this.activeProcesses.keys()];
     // A reusable identity Session is intentionally preserved on a normal
     // release, but shutdown owns every live process. Capture them before the
@@ -495,9 +489,6 @@ export class Runtime {
       }
       if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during startup');
       this.#registerActiveProcess(current, workspace, boundSession, { coreId: selectedCoreId });
-      // Selection already started the Bot turn. Deliver pending Task notices
-      // after that turn settles using the existing Session queue.
-      this.#queuePendingNotifications(this.activeProcesses.get(current.execution_id));
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
       await this.stopExecution(executionId, 'FAILED', 'bind_prepare_failed');
@@ -846,82 +837,6 @@ export class Runtime {
     throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'could not persist Workspace reference after concurrent updates');
   }
 
-  #onNotification(notification) {
-    if (!notification || notification.delivered_at) return;
-    for (const [executionId, active] of this.activeProcesses.entries()) {
-      if (active.closing || !active.session) continue;
-      if (notification.recipient_execution_id && notification.recipient_execution_id !== executionId) continue;
-      if (active.execution.task_id !== notification.recipient_task_id) continue;
-      this.#deliverNotification(active, notification);
-    }
-  }
-
-  #deliverNotification(active, notification) {
-    if (!active || active.closing || !active.session) return Promise.resolve();
-    if (!active?.notificationPromises) active.notificationPromises = new Map();
-    const existing = active.notificationPromises.get(notification.notification_id);
-    if (existing) return existing;
-    const queuedAt = this.clock();
-    const delivery = active.promptChain.catch(() => undefined).then(async () => {
-      if (active.closing) return;
-      const current = this.taskService.getExecution(active.execution.execution_id);
-      if (!current || !['CREATED', 'RUNNING'].includes(current.state)) return;
-      if (typeof active.session.waitForSettled === 'function') {
-        try {
-          await active.session.waitForSettled({ timeoutMs: 5_000 });
-        } catch (error) {
-          // Some Pi provider-retry paths emit turn_end/auto_retry_end but no
-          // agent_settled. Once that boundary is durable, the follow-up is
-          // safe to send; otherwise defer and retry at the next boundary.
-          if (!active.lastTurnEndedAt || active.lastTurnEndedAt < queuedAt) {
-            this.logger?.append({
-              event: 'runtime.notification_delivery_deferred',
-              execution_id: current.execution_id,
-              notification_id: notification.notification_id,
-              error_class: error?.code ?? error?.name ?? 'settled_timeout',
-            });
-            return;
-          }
-        }
-      }
-      this.taskService.recordNotificationAttempt?.(notification.notification_id);
-      try {
-        await active.session.prompt?.(buildBotNotification(notification), {
-          timeoutMs: 30_000,
-          streamingBehavior: 'followUp',
-        });
-        this.taskService.markNotificationDelivered?.(notification.notification_id, current.execution_id);
-        this.logger?.append({ event: 'runtime.notification_delivered', execution_id: current.execution_id, notification_id: notification.notification_id, notification_type: notification.notification_type });
-      } catch (error) {
-        this.logger?.append({ event: 'runtime.notification_delivery_error', execution_id: current.execution_id, notification_id: notification.notification_id, notification_type: notification.notification_type, error_class: error?.code ?? error?.name ?? 'prompt_error' });
-      }
-    });
-    active.promptChain = delivery.catch(() => undefined);
-    active.notificationPromises.set(notification.notification_id, delivery);
-    delivery.finally(() => {
-      if (active.notificationPromises.get(notification.notification_id) === delivery) {
-        active.notificationPromises.delete(notification.notification_id);
-      }
-    }).catch(() => undefined);
-    return delivery;
-  }
-
-  #queuePendingNotifications(active) {
-    if (!active) return;
-    const notifications = this.taskService.listUnprocessedNotifications?.(
-      active.execution.task_id,
-      active.execution.execution_id,
-    ) ?? [];
-    for (const notification of notifications) {
-      // At-least-once means once per recipient Execution, not once per turn.
-      // A notification already delivered to this Execution stays unhandled
-      // until task_feedback; re-prompting it at every turn_end (r13: 344
-      // prompts for 3 notifications) reads to the Agent as new evidence.
-      if (notification.recipient_delivery?.delivered_at) continue;
-      this.#deliverNotification(active, notification);
-    }
-  }
-
   // A Bot owns one Session; release confirms its stop before freeing capacity.
   async #releaseSessionBinding(active, executionId) {
     if (!active?.session) return;
@@ -939,14 +854,8 @@ export class Runtime {
       execution,
       workspace,
       coreId,
-      lastTurnEndedAt: null,
       failurePromise: null,
       closing: false,
-      // Initial and follow-up prompts share one queue.  Pi can accept a
-      // follow-up while a turn is active, but two concurrent prompt calls
-      // would reorder lifecycle notifications and Agent work.
-      promptChain: Promise.resolve(),
-      notificationPromises: new Map(),
     };
     this.activeProcesses.set(execution.execution_id, active);
     this.#setCoreState(coreId, {
@@ -966,21 +875,6 @@ export class Runtime {
     if (session.identitySession === true) this.identitySessions.add(session);
     if (session.__swarmenvRuntimeBound !== true) {
       session.__swarmenvRuntimeBound = true;
-      session.on('rpc', (record) => {
-        const boundId = session.boundExecutionId;
-        if (boundId) {
-          void this.#handleSessionEvent(boundId, record).catch((error) => {
-            // EventEmitter does not observe rejected async listeners. Retain
-            // provider and Session failures as Runtime evidence for cleanup.
-            this.logger?.append({
-              event: 'runtime.agent_event_error',
-              execution_id: boundId,
-              record_type: record?.type ?? null,
-              error_class: error?.code ?? error?.name ?? 'agent_event_error',
-            });
-          });
-        }
-      });
       session.on('processError', () => {
         const boundId = session.boundExecutionId;
         if (boundId) void this.#handleSessionFailure(boundId, 'process_error').catch(() => undefined);
@@ -1058,19 +952,6 @@ export class Runtime {
     // reusable slot look idle while the sibling Session is still exiting.
     await this.releaseExecution(executionId);
     this.logger?.append({ event: 'runtime.execution_fenced_released', execution_id: executionId });
-  }
-
-  async #handleSessionEvent(executionId, record) {
-    if (this.stopping) return;
-    const active = this.activeProcesses.get(executionId);
-    if (!active || active.closing) return;
-    this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type });
-    // Provider retries can finish a turn without agent_settled. Preserve this
-    // boundary for deferred notifications in the retained Bridge path.
-    if (record.type === 'turn_end' || (record.type === 'auto_retry_end' && record.success === true)) {
-      active.lastTurnEndedAt = this.clock();
-      this.#queuePendingNotifications(active);
-    }
   }
 
   async #processExit(executionId) {
