@@ -39,12 +39,12 @@ test('four idle native Core Bots attest actual provider lifetime and terminal de
       sandbox: { lifecycleBaseUrl: lifecycle, endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey,
         timeoutSeconds: lifetimeProbePlan.timeoutSeconds, resourceLimits: lifetimeProbePlan.resourceLimits, commandTimeoutMs: 30000 },
       bridge: { host: '0.0.0.0', publicUrl: process.env.SWARMENV_CORE_TEST_BRIDGE_URL ?? 'http://172.17.0.1:{port}' },
-      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', requestTimeoutMs: 1000, maxOutputTokens: 1 },
+      modelGateway: { host: '0.0.0.0', advertiseHost: process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1', ...lifetimeProbePlan.modelGatewayLimits },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${upstream.address().port}/v1/responses`, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
     });
     runtime = await createRuntime({ backend, outputDir, maxBots: lifetimeProbePlan.bots, services: new ServiceRegistry(),
-      profiles: { worker: { image, prompt: 'Wait for host input.', model: 'default', services: {} } } });
+      profiles: { worker: { image, prompt: 'Wait for host input.', writable: false, model: 'default', services: {} } } });
     const receipt = await runLifetimeProbe({ runtime, bounded, upstreamRequests: () => requests,
       admit: botIds => admitLifetime({ runtime, outputDir, botIds, workMs: lifetimeProbePlan.workMs, cleanupMs: lifetimeProbePlan.cleanupMs, recoveryMs: lifetimeProbePlan.recoveryMs, marginMs: lifetimeProbePlan.marginMs,
         provider: { baseUrl: lifecycle, headers, uncertaintyMs: 1000 } }),

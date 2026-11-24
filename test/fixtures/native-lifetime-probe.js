@@ -1,6 +1,7 @@
 // Fixed acceptance preparation only: no business input or actual-hour verdict.
 export const lifetimeProbePlan = Object.freeze({ bots: 4, timeoutSeconds: 5100,
   resourceLimits: Object.freeze({ cpu: '1', memory: '1Gi' }),
+  modelGatewayLimits: Object.freeze({ requestTimeoutMs: 1000, maxOutputTokens: 16 }),
   workMs: 3600000, cleanupMs: 180000, recoveryMs: 300000, marginMs: 120000 });
 
 export async function runLifetimeProbe({ runtime, admit, verifyDeleted, upstreamRequests, bounded }) {
