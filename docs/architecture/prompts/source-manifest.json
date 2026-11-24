@@ -51,11 +51,11 @@
     },
     {
       "path": "src/environments/endurance/flat-hour.js",
-      "sha256": "c3cbc517471871011a86599f830a2a6c69c00cb7f46fbcea75550482e5c84036"
+      "sha256": "ca1c623807a06da626ba2ffbf9c40915a1e2c1247e185213a834ec573fe40301"
     },
     {
       "path": "src/environments/endurance/flat-workload.js",
-      "sha256": "f8a61ce3a7b74f941940e1372b38a973201a5d0add6b4f2f1690c037e8735669"
+      "sha256": "c1397c2f2f70fb7ae122b86d32f49b63e9f81c4f80104184f26d8158bbbac60d"
     },
     {
       "path": "examples/subagents-environment/hour.mjs",
@@ -421,8 +421,14 @@
     },
     {
       "path": "src/environments/endurance/flat-hour.js",
+      "anchor": "export const FLAT_MISSING_MATERIAL_CORRECTION = '",
+      "line": 10,
+      "sha256": "6098cf0e115249477285ed946ec19175d4d67e1116451545b5efd80eb84ce095"
+    },
+    {
+      "path": "src/environments/endurance/flat-hour.js",
       "anchor": "input: `",
-      "line": 74,
+      "line": 105,
       "sha256": "261bdd3ae0a6284507cbc066c4c8890d362515be665ef74b6ce0b50b603f2230"
     },
     {
@@ -614,7 +620,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "5662af964f7e339dc388cdf1c536bbe6768ba24f601a2d8c925531640322791c"
+      "sha256": "e54fa546d9f64eba1a394637f06b947ae67922b0aca66f3b7ec925fa68848130"
     }
   ]
 }

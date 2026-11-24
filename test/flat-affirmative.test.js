@@ -21,6 +21,17 @@ test('Flat replacement programming input merges four sources in order without an
   const input=workload.input({peer:4,phase:3,proofKey:'proof',candidate:{revision:'1.5',stages:[2,3,4,5].map(n=>({revision:`1.${n}`}))},adopted:{materialId:'origin',revision:'1.9'}});
   assert.ok(!input.includes('Merge --from 1.5'));assert.match(input,/candidate revisions 1\.2, 1\.3, 1\.4, 1\.5 in order/);
 });
+test('Flat distinguishes completed protocol omission from ambiguous Materials and stale ownership',async()=>{
+ const workload=createFlatProgrammingWorkload({programming:{prompt:()=> 'task',verify:()=>true}});
+ const execution={execution_id:'exec',task_id:'task',owner_ref:'bot',state:'RUNNING'};let materials=[];
+ const owned={tasks:{getBot:()=>({state:'ACTIVE',execution_id:'exec'}),getExecution:()=>execution},context:{readMaterials:()=>materials}};
+ await assert.rejects(workload.verify({owned,botId:'bot',peer:0,phase:0,proofKey:'key'}),error=>error.code==='FLAT_PROGRAM_MATERIAL_MISSING'&&error.executionId==='exec'&&error.proofKey==='key');
+ materials=[{content:{proofKey:'key'}},{content:{proofKey:'key'}}];
+ await assert.rejects(workload.verify({owned,botId:'bot',peer:0,phase:0,proofKey:'key'}),{code:'FLAT_PROGRAM_PROOF_INVALID'});
+ materials=[{content:{proofKey:'old'}}];assert.throws(()=>workload.verifyRejected({owned,rejected:[{taskId:'task',proofKey:'old',code:'FLAT_PROGRAM_MATERIAL_MISSING'}]}),{code:'FLAT_PROGRAM_PROOF_INVALID'});
+ materials=[];execution.owner_ref='foreign';
+ await assert.rejects(workload.verify({owned,botId:'bot',peer:0,phase:0,proofKey:'key'}),{code:'FLAT_PROGRAM_PROOF_INVALID'});
+});
 hooks.deregister();
 const execute = promisify(execFile);
 
@@ -96,7 +107,8 @@ test('four actual Flat slots claim/check/integrate fixed candidates and durably 
 });
 
 
-for (const badProgram of [false,true]) test(`controlled Flat hour ${badProgram?'rejects an independently wrong program result':'retains four original Executions for four real program groups then verifies stopped-owner adoption'}`, {timeout:120_000}, async t=>{
+for (const scenario of [false,true,'missing','expired']) test(`controlled Flat hour ${scenario===true?'rejects an independently wrong program result':scenario==='missing'?'corrects a completed omission with its actual final input receipt':scenario==='expired'?'does not renew the original omitted-turn deadline':'retains four original Executions for four real program groups then verifies stopped-owner adoption'}`, {timeout:120_000}, async t=>{
+  const badProgram=scenario===true;let omitted=false;
   const root=await mkdtemp(join(tmpdir(),'flat-hour-positive-'));const pending=new Set();t.after(async()=>{await Promise.allSettled([...pending]);await rm(root,{recursive:true,force:true});});
   transport.reset();controls.credentials.clear();controls.preparedFiles.clear();controls.stopError=null;controls.destroyError=null;
   const directories=new Map(),bindings=new Map();let team,backgroundFailure,time=0;const programs=[],admittedWork=[];
@@ -113,6 +125,7 @@ for (const badProgram of [false,true]) test(`controlled Flat hour ${badProgram?'
       const [,p,s]=/peer=(\d+) phase=(\d+)/.exec(input),peer=Number(p),phase=Number(s),binding=bindings.get(bot);
       if(peer===0&&phase===3)time+=0.125; // Match the fractional native monotonic clock at replacement.
       const proofKey=/proofKey:([^,]+),/.exec(input)[1];assert.match(input,/Return the actual Python result/);
+      if(['missing','expired'].includes(scenario)&&!omitted&&peer===0&&phase===2){omitted=true;if(scenario==='expired')time+=60_000;transport.listeners.get(bot)({type:'settled',outcome:'completed'});return;}
       const source=`import json\nprint(json.dumps({'value': ${peer+10*(phase+1)+(badProgram&&peer===0&&phase===0?1:0)}}))\n`;
       const ran=await execute('python3',['-c',source],{timeout:2000});const answers=JSON.parse(ran.stdout);
       await writeFile(join(directories.get(bot),`hour-program-${phase+1}.py`),source);await writeFile(join(directories.get(bot),`hour-program-${phase+1}.stdout.json`),ran.stdout);
@@ -147,11 +160,13 @@ for (const badProgram of [false,true]) test(`controlled Flat hour ${badProgram?'
     return {runtimeId:runtime.id,workDeadlineAtMs:time+workMs,resources:botIds.map(botId=>({botId}))};
   };
   const report=await runFlatNaturalHour({options:{backend:{},image:'fixture',outputDir:root,candidates:Array.from({length:5},(_,i)=>({summary:`Fixed independent candidate ${i}`,files:{[`candidate-${i}-0.txt`]:`Host candidate ${i} phase0\n`},laterFiles:Array.from({length:3},(_,p)=>({[`candidate-${i}-${p+1}.txt`]:`Host candidate ${i} phase${p+1}\n`}))})),checker:{identity:{checker_ref:'fixed-files',checker_version:'1',environment_ref:'controlled'},timeoutMs:5000,async check(plan){assert.ok(Object.keys(plan.files).some(path=>path.startsWith('candidate-')));return{verdict:'PASS',check_mode:'lean-project',checked_paths:Object.keys(plan.files)};}}},workload,quota:owner,modelGate:{check:()=>owner.receipt()},budgets,clock:()=>time,waitForMs:async ms=>{time+=ms;},onReady:({botIds})=>{team=botIds;},admit});
+  if(scenario==='expired'){assert.equal(report.businessFailure?.code,'FLAT_HOUR_GROUP_LATE');assert.equal(report.result,null);assert.equal(report.cleanup.cleanup,'complete');return;}
   if(badProgram){assert.equal(report.businessFailure?.code,'HOUR_PROGRAMMING_INVALID');assert.equal(report.result,null);assert.equal(report.cleanup.cleanup,'complete');assert.equal(owner.receipt().closed,true);return;}
   assert.equal(report.businessFailure,null,JSON.stringify(report.businessFailure));
   assert.equal(backgroundFailure,undefined,backgroundFailure?.stderr??String(backgroundFailure));assert.equal(report.cleanupFailure,null,JSON.stringify(report.cleanupFailure));
   assert.equal(report.result.state,'controlled');assert.equal(report.result.durationMs,3_600_000);assert.equal(report.result.admissions.length,3);assert.equal(report.result.proofs.length,17);assert.ok(report.result.proofs.every(proof=>proof.programming?.sourceSha256&&proof.programming?.answersSha256));
   assert.deepEqual(admittedWork,[budgets.workMs,budgets.workMs,900_000]);
+  if(scenario==='missing'){assert.equal(report.result.rejectedAttempts.length,1);const rejected=report.result.rejectedAttempts[0],accepted=report.result.proofs.find(p=>p.peer===0&&p.phase===2);assert.equal(accepted.botId,rejected.botId);assert.equal(accepted.executionId,rejected.executionId);assert.equal(accepted.attempt,1);assert.notEqual(accepted.inputId,rejected.inputId);assert.notEqual(accepted.requestId,rejected.requestId);assert.notEqual(accepted.proofKey,rejected.proofKey);assert.ok(accepted.settledSeq>rejected.settledSeq);assert.equal(report.result.windows[2].receipts.find(r=>r.botId===accepted.botId).inputId,accepted.inputId);}
   assert.ok(report.result.windows.every(window=>window.botIds.length===4));assert.equal(programs.length,17);
   assert.notEqual(report.result.publisher,report.result.replacement);assert.equal(report.cleanup.cleanup,'complete');assert.equal(owner.receipt().closed,true);
 });

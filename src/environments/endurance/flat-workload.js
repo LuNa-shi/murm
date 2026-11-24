@@ -15,11 +15,22 @@ export function createFlatProgrammingWorkload({ programming }) {
           typeof proofKey !== 'string' || !proofKey || !/^\d+\.\d+$/.test(candidate?.revision ?? '')) throw invalid();
       return `FLAT_PROGRAM_GROUP peer=${peer} phase=${phase}. Keep your actual current Task and Execution. Complete this programming task and independently inspect the host candidate ${candidate.revision}. ${adopted ? 'Merge all fixed Task revisions listed below in order, each with a fresh stable request ID, and remember the last returned checked main_revision.' : `Merge --from ${candidate.revision} with a fresh stable request ID, obtain trusted whole-tree PASS and remember main_revision.`} If MAIN_MOVED, inspect current state and retry the merge with a new request ID; do not fabricate success. Publish exactly one Material whose content is JSON with exactly proofKey:${proofKey}, peer:${peer}, phase:${phase}, revision:the returned fixed main_revision, programming:the requested result${adopted ? ', adopted:{materialId,sourceSha256,answersSha256} copied from the original programming proof' : ''}. Link it to your Task with role experience. Do not finish the Task in this group. Keep executable source and stdout files for required export and wait for the next explicit host followUp.${adopted ? ` The original contributor has actually stopped. First merge each of your Task’s fixed public candidate revisions ${candidate.stages.map(stage=>stage.revision).join(', ')} in order, each with its own stable request ID, so the final whole-tree check covers your complete Task contract. Read Material ${adopted.materialId} and public revision ${adopted.revision} through their normal CLI routes, preserve the original, Use material consume with action task and a truthful impact to record the actual source consumption. Copy only its original materialId and programming sourceSha256/answersSha256 into adopted; these hashes are not supplied by the host.` : ''}${program.prompt(peer, phase + 1)}`;
     },
+    verifyRejected({owned,rejected}) {
+      for(const row of rejected) {
+        if(row.code!=='FLAT_PROGRAM_MATERIAL_MISSING'||typeof row.taskId!=='string'||typeof row.proofKey!=='string')throw invalid();
+        const found=owned.context.readMaterials({producer_task_id:row.taskId}).some(material=>{
+          try {const value=typeof material.content==='string'?JSON.parse(material.content):material.content;return value?.proofKey===row.proofKey;}catch{return false;}
+        });
+        if(found)throw invalid();
+      }
+    },
     async verify({ owned, botId, peer, phase, proofKey, adopted }) {
       const bot = owned.tasks.getBot(botId), execution = bot?.execution_id && owned.tasks.getExecution(bot.execution_id);
+      if(bot?.state!=='ACTIVE'||!execution||execution.owner_ref!==botId||execution.state!=='RUNNING')throw invalid();
       const matches=owned.context.readMaterials({producer_task_id:execution?.task_id}).filter(material=>{
         try {const value=typeof material.content==='string'?JSON.parse(material.content):material.content;return value?.proofKey===proofKey;}catch{return false;}
       });
+      if(matches.length===0)throw Object.assign(new Error('FLAT_PROGRAM_MATERIAL_MISSING'),{code:'FLAT_PROGRAM_MATERIAL_MISSING',executionId:execution.execution_id,proofKey});
       if(matches.length!==1)throw invalid();
       const materialId=matches[0].material_id;
       if(seen.has(materialId))throw invalid();
