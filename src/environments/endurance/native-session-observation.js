@@ -40,18 +40,42 @@ function headers(value) {
   if (!value || typeof value!=='object' || Array.isArray(value) || Object.entries(value).some(([name,item])=>!name||typeof item!=='string'||/[\r\n]/.test(name+item))) throw fail('NATIVE_SESSION_CONFIG_INVALID');
   return {...value};
 }
+function eventObject(text) {
+  let value;
+  try { value = JSON.parse(text); }
+  catch { throw fail('NATIVE_SESSION_STREAM_INVALID'); }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw fail('NATIVE_SESSION_STREAM_INVALID');
+  return value;
+}
+
+function* commandEvents(text) {
+  // The installed Execd v1.1 uses JSON records under its SSE media type.
+  if (text.trimStart().startsWith('{')) {
+    for (const line of text.split(/\r?\n/)) {
+      if (!line.trim()) continue;
+      const value = eventObject(line);
+      yield { event: value.type ?? value.event, value };
+    }
+    return;
+  }
+  for (const block of text.split(/\r?\n\r?\n/)) {
+    if (!block.trim()) continue;
+    let event = 'message'; const data = [];
+    const lines = block.split(/\r?\n/);
+    for (const line of lines) {
+      if (line.startsWith('event:')) event = line.slice(6).trim();
+      if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+    }
+    if (!data.length && lines.every(line => !line || line.startsWith(':'))) continue;
+    const value = eventObject(data.join('\n'));
+    yield { event: event === 'message' ? value.type ?? value.event ?? event : event, value };
+  }
+}
+
 function commandOutput(text, contentType) {
   let stdout='', stderr='', completed=false, exitCode;
   if (contentType.includes('text/event-stream')) {
-    for (const block of text.split(/\r?\n\r?\n/)) {
-      if (!block.trim()) continue;
-      let event='message'; const data=[];
-      for (const line of block.split(/\r?\n/)) {
-        if(line.startsWith('event:'))event=line.slice(6).trim();
-        if(line.startsWith('data:'))data.push(line.slice(5).trimStart());
-      }
-      const value=JSON.parse(data.join('\n'));
-      event=event==='message'?value.type??value.event??event:event;
+    for (const { event, value } of commandEvents(text)) {
       if(event==='stdout'||event==='output')stdout+=value.text??value.data??'';
       if(event==='stderr')stderr+=value.text??value.data??'';
       if(event==='error')throw fail('NATIVE_SESSION_COMMAND_FAILED');

@@ -172,7 +172,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/environments/endurance/native-session-observation.js](../../src/environments/endurance/native-session-observation.js) | Exact admitted sandbox ownership revalidation and bounded read-only Pi Session header observation through authoritative Execd endpoints | [17-environment-reporting](17-environment-reporting.md) | `8926acf41ac3cad37639c80bad832f35c126a20ee9a58a9089b02a0dfb419007` |
+| [src/environments/endurance/native-session-observation.js](../../src/environments/endurance/native-session-observation.js) | Exact admitted sandbox ownership revalidation and bounded read-only Pi Session header observation through authoritative Execd endpoints | [17-environment-reporting](17-environment-reporting.md) | `9b8a77ac310a1224845d6c2a24ff28fd394e10bda8c3744a8e1db6875256593c` |
 | [src/environments/endurance/timed-upstream.js](../../src/environments/endurance/timed-upstream.js) | Opt-in private host time-only model forwarding and observed usage with bounded metadata and no logical token/request/concurrency admission | [21-hour-matrix](21-hour-matrix.md) | `fadb6476a41bd79037ff73e65ab8fe7f353a84030e84f9986409ee46a9afb7a3` |
 
 ### Workspace and Sandbox (2)
