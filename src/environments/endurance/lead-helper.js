@@ -100,7 +100,7 @@ export async function runLeadHelperHour({ options, workload, admit, quota, budge
           // Environment's monotonic clock; all actors share this one cutoff.
           const remainingMs = Math.min((stage + 1) * 900_000, budgets.workMs) - monitor.elapsed();
           const deadlineAtMs = performance.now() + remainingMs;
-          const receipt = await environment.runStage({ ...stages[stage], signal: combined, deadlineAtMs });
+          const receipt = await environment.runStage({ ...stages[stage], signal: combined, deadlineAtMs, verifyCandidate: workload.verifyCandidate });
           if (await verifyStage(receipt) !== true) throw fail('HOUR_BUSINESS_UNCONFIRMED');
           await health();
           if (monitor.elapsed() >= (stage + 1) * 900_000) throw fail('HOUR_STAGE_LATE');

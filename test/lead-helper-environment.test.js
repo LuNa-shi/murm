@@ -131,9 +131,16 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
           for (const helper of helpers) await call(role, 'create_subtask', { id: staged ? `${helper}-stage-${payload.stage}` : `${helper}-next`, title: 'Adopt evidence direction', path: staged ? payload.paths[helper] : `${helper}-next.txt` });
         }
       } else {
-        const state = await call(role, 'read'); const next = payload.type === 'helper-followup'; const id = staged && next ? `${role}-stage-${payload.stage}` : role + (next ? '-next' : '');
+        const state = await call(role, 'read'); const correction = payload.type === 'helper-correction'; const next = payload.type === 'helper-followup' || correction;
+        const id = correction ? payload.subtaskId : staged && next ? `${role}-stage-${payload.stage}` : role + (next ? '-next' : '');
+        if (correction) {
+          assert.ok(payload.instruction.includes('No reference answer'));
+          assert.ok(payload.instruction.includes('Preserve'));
+          await call(role, 'create_subtask', { id, title: 'Correct rejected programming result', path: payload.paths[role] });
+          if (failure === 'program-correction-unknown') { input.receipt = { status: 'unknown' }; return; }
+        }
         const owned = await call(role, 'claim', { subtask_id: id, expected_revision: 0 });
-        if (failure && !['stale-feedback', 'pinned-corruption', 'hour-proof', 'hour-late', 'hour-quarter-overrun', 'last-fatal', 'last-exit', 'last-unknown'].includes(failure) && role === 'helper1' && !next) {
+        if (failure && !failure.startsWith('program-') && !['stale-feedback', 'pinned-corruption', 'hour-proof', 'hour-late', 'hour-quarter-overrun', 'last-fatal', 'last-exit', 'last-unknown'].includes(failure) && role === 'helper1' && !next) {
           if (failure === 'unknown') { input.receipt = { status: 'unknown' }; return; }
           if (failure === 'locked-failed') { lock = new DatabaseSync(join(directory, 'lead-helper-test', 'board.sqlite')); lock.exec('BEGIN IMMEDIATE'); }
           transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXED_FAILURE', message: 'Controlled failure' } }); return;
@@ -149,8 +156,14 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
           assert.ok(payload.task.includes(`git add -- ${path}`), 'only the actual helper stage delivery is staged');
           assert.ok(payload.task.includes('check that it is the only staged path before committing and pushing'));
           assert.ok(payload.task.includes('Leave program source, stdout and test files untracked for private collection.'));
-          const source = `import json\nprint(json.dumps({'value': ${Number(role.slice(6)) + (payload.stage + 1) * 10}}))\n`;
+          const wrong = failure?.startsWith('program-correction') && role === 'helper2' && payload.stage === 1 &&
+            (!correction || failure === 'program-correction-twice' && payload.attempt === 1);
+          const source = `import json\nprint(json.dumps({'value': ${Number(role.slice(6)) + (payload.stage + 1) * 10 + (wrong ? 1 : 0)}}))\n`;
           const sourcePath = join(privateDirectories[role], `hour-program-${payload.stage + 1}.py`);
+          if (correction) for (const suffix of ['py','stdout.json']) {
+            const original = join(privateDirectories[role], `hour-program-${payload.stage + 1}.${suffix}`);
+            await writeFile(join(privateDirectories[role], `hour-program-${payload.stage + 1}.rejected-${payload.attempt}.${suffix}`), await readFile(original));
+          }
           await writeFile(sourcePath, source);
           const output = (await run('python3', [sourcePath], { cwd: privateDirectories[role] })).stdout;
           await writeFile(join(privateDirectories[role], `hour-program-${payload.stage + 1}.stdout.json`), output);
@@ -171,6 +184,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
         await call(role, 'note', { subtask_id: id, text: next ? 'New direction adopted and verified' : 'Please require explicit evidence in the next direction' });
       }
       if(failure==='hour-quarter-overrun'&&helperInput&&payload.stage===0&&role==='helper1')hourTime=900000;
+      if(failure==='program-correction-quarter'&&payload.type==='helper-correction')hourTime=1800000;
       if(staged==='stage-deadline'&&helperInput&&payload.stage===0&&role==='helper1')await new Promise(resolve=>setTimeout(resolve,1100));
       transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'completed', output: 'Public Board records contain evidence' });
     } catch (error) { if (stopping) return; backgroundFailure = error; transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXTURE_FAILED', message: 'Deterministic fixture failed' } }); } finally { if (helperInput) activeHelpers--; }
@@ -205,13 +219,32 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       workload: ['program-hour', 'natural-hour'].includes(staged) ? (await import('../src/environments/endurance/lead-helper-workload.js')).createLeadHelperProgrammingWorkload({
         getFacilities: () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, actors }), adminToken: 'fixture-host-token',
         programming: { prompt: ({peer, stage}) => `Write and run Python for value ${peer + 1 + stage * 10}.`,
-          verify: ({peer, stage, submission}) => submission.value === peer + 1 + stage * 10 && typeof submission.source === 'string' },
+          verify: ({peer, stage, submission}) => {
+            if (failure === 'program-verifier-exception' && peer === 1 && stage === 2) throw new Error('Controlled checker unavailable');
+            return submission.value === peer + 1 + stage * 10 && typeof submission.source === 'string';
+          } },
       }) : { stages: Array.from({ length: 4 }, (_, stage) => ({
         ...(stage ? { supplement: `Evidence stage ${stage}` } : { goal: 'Deliver initial evidence' }),
         paths: Object.fromEntries(helpers.map(role => [role, `${role}-stage-${stage}.txt`])),
       })), verify: receipt => failure !== 'hour-proof' && receipt.deliveries.length === 3 },
     });
     assert.equal(backgroundFailure, undefined, backgroundFailure?.stderr ?? String(backgroundFailure));
+    if (['program-correction-unknown','program-verifier-exception'].includes(failure)) {
+      assert.equal(report.businessFailure?.code, failure === 'program-correction-unknown' ? 'input_unknown' : 'HOUR_PROGRAMMING_INVALID');
+      assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.result, undefined);
+      const state = environment.snapshot();
+      assert.equal(state.stages.length, 1);
+      assert.equal(state.inputs.filter(row => row.source === 'helper-correction').length, failure === 'program-correction-unknown' ? 1 : 0);
+      assert.equal(state.rejections.length, failure === 'program-correction-unknown' ? 1 : 0);
+      if (failure === 'program-correction-unknown') assert.equal(state.inputUnknown.length, 1);
+      return;
+    }
+    if (failure === 'program-correction-quarter') {
+      assert.equal(report.businessFailure?.code, 'HOUR_STAGE_LATE');
+      assert.equal(report.result, undefined); assert.equal(report.cleanup.cleanup, 'complete');
+      assert.equal(environment.snapshot().inputs.filter(row => row.source === 'helper-correction').length, 1);
+      return;
+    }
     if (['last-fatal', 'last-exit', 'last-unknown'].includes(failure)) {
       assert.equal(report.businessFailure?.code, 'HOUR_PEER_UNAVAILABLE');
       assert.equal(report.result, undefined); assert.equal(report.cleanup.cleanup, 'complete');
@@ -220,12 +253,25 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       assert.equal(transport.submissions.size, 20, 'all four groups finished before the final wake failed');
       return;
     }
-    if (failure) {
+    if (failure && !failure.startsWith('program-correction')) {
       assert.equal(report.businessFailure.code, failure === 'hour-proof' ? 'HOUR_BUSINESS_UNCONFIRMED' : 'HOUR_STAGE_LATE');
       assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.result, undefined);
       assert.equal(transport.submissions.size, 8, 'no later business stage is dispatched'); return;
     }
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure));
+    if (failure?.startsWith('program-correction')) {
+      const attempts = failure === 'program-correction-twice' ? 2 : 1;
+      const receipt = report.result.stages[1];
+      assert.equal(receipt.rejected.length, attempts);
+      assert.equal(receipt.rejected[0].input.receipt.status, 'accepted');
+      assert.equal(receipt.rejected[0].input.settled.outcome, 'completed');
+      assert.equal(receipt.inputs.length, 4);
+      assert.equal(receipt.attemptInputs.length, 4 + attempts);
+      assert.ok(receipt.deliveries.find(task => task.owner === team.helper2).path.endsWith(`-correction-${attempts}.json`));
+      assert.equal(new Set(receipt.rejected.map(row => row.task.delivery.commit)).size, attempts);
+      assert.equal(new Set(receipt.attemptInputs.map(row => row.inputId)).size, 4 + attempts);
+      assert.equal(report.result.windows.flatMap(window => window.receipts).length, 16);
+    }
     for(const row of report.cleanup.bots){
       const manifest=JSON.parse(await readFile(row.artifacts[0],'utf8'));
       assert.equal(manifest.collect.required,true);assert.equal(manifest.collect.includeGit,false);assert.equal(manifest.directories.includes('.git'),false);
@@ -368,3 +414,9 @@ for (const event of ['fatal', 'exit', 'unknown']) test(`natural Lead last wake r
 test('explicit absolute stage deadline retains the same accepted inputs past the ordinary per-input wait',t=>scenario(t,undefined,false,3,'stage-deadline'));
 
 test('a stage that completes at its quarter cutoff cannot count despite successful accepted input settlements',t=>scenario(t,'hour-quarter-overrun',false,3,'natural-hour'));
+
+test('natural Lead corrects only a rejected helper result with a fresh immutable Board task in the original quarter', t => scenario(t,'program-correction',false,3,'natural-hour'));
+test('unknown Lead correction preserves the original rejection and sends no replacement input', t => scenario(t,'program-correction-unknown',false,3,'natural-hour'));
+test('Lead checker exceptions fail closed without a corrective input or rejected-result claim', t => scenario(t,'program-verifier-exception',false,3,'natural-hour'));
+test('repeated rejected Lead attempts retain distinct immutable tasks and admissions without additional progress', t => scenario(t,'program-correction-twice',false,3,'natural-hour'));
+test('a corrected Lead result at the original quarter boundary earns no acceptance', t => scenario(t,'program-correction-quarter',false,3,'natural-hour'));
