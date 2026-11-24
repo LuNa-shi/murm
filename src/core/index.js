@@ -87,7 +87,7 @@ export async function createRuntime(options) {
     return bot && {
       profile: bot.info.profile, model: bot.profile.model, status: bot.info.status,
       unavailable: bot.fatal === true,
-      services: bot.profile.services, bindings: bot.bindings, parentId: bot.info.parentId, spawnProfiles: bot.profile.spawnProfiles,
+      services: bot.profile.services, bindings: bot.bindings, parentId: bot.info.parentId, spawnProfiles: bot.profile.spawnProfiles, allowContextFork: bot.profile.allowContextFork,
     };
   };
   let bridge, modelAccess, backend;
@@ -362,6 +362,9 @@ export async function createRuntime(options) {
       if (parameters.parentId && !isLive(findBot(parameters.parentId, 'spawn', requestId))) {
         throw problem('NOT_ALLOWED', 'Parent Bot is unavailable', 'spawn', parameters.parentId, requestId);
       }
+      if (parameters.forkFrom && !isLive(findBot(parameters.forkFrom, 'spawn', requestId))) {
+        throw problem('NOT_ALLOWED', 'Context fork source Bot is unavailable', 'spawn', parameters.forkFrom, requestId);
+      }
       if ([...bots.values()].filter(bot => bot.info.status !== 'closed').length >= maxBots) {
         throw problem('CONFLICT', 'Runtime has no free Bot Slot', 'spawn', undefined, requestId);
       }
@@ -379,6 +382,7 @@ export async function createRuntime(options) {
       bots.set(info.id, bot);
       spawnRequests.set(requestKey, request);
       records.record('spawn', { state: 'registered', botId: info.id, parentId: info.parentId, profile: info.profile,
+        ...(parameters.forkFrom ? { forkFrom: parameters.forkFrom } : {}),
         requestId: redactor.text(requestId), source: caller, collect: parameters.collect, writable: parameters.writable ?? bot.profile.writable });
       bot.start = Promise.resolve().then(async () => {
         bot.controller.signal.throwIfAborted();

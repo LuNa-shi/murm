@@ -28,6 +28,7 @@ COPY --chown=0:0 scripts/sandbox-project.mjs /opt/swarmenv/sandbox-project.mjs
 COPY --chown=0:0 scripts/core-file-seed.mjs scripts/core-work-dir.mjs scripts/core-collection.mjs /opt/swarmenv/
 COPY --chown=0:0 scripts/core-file-seed.mjs scripts/core-collection.mjs /opt/swarmenv/scripts/
 COPY --chown=0:0 scripts/pi-rpc-submissions.mjs /opt/swarmenv/pi-rpc-submissions.mjs
+COPY --chown=0:0 scripts/core-session-fork.mjs /opt/swarmenv/core-session-fork.mjs
 COPY --chown=0:0 scripts/project-install.mjs scripts/project-processes.mjs /opt/swarmenv/
 COPY --chown=0:0 scripts/swarm.mjs /opt/swarmenv/scripts/swarm.mjs
 COPY --chown=0:0 scripts/git-credential-agensh.mjs /opt/swarmenv/scripts/git-credential-agensh.mjs

@@ -10,6 +10,7 @@ import { CoreWorkDir } from './core-work-dir.mjs';
 import { collectCoreWorkDir, MAX_COLLECTION_ENTRIES } from './core-collection.mjs';
 import { once } from 'node:events';
 import { createPiRpcSubmissions } from './pi-rpc-submissions.mjs';
+import { snapshotSessionFork, sessionForkText } from './core-session-fork.mjs';
 
 const argv = process.argv.slice(2);
 function option(name, fallback = null) {
@@ -35,6 +36,7 @@ let everStarted = false;
 let stopping = null;
 let writerGate = Promise.resolve();
 let child = null;
+let sessionPrivateValues = [];
 let stdoutBuffer = '';
 let sequence = 0;
 const records = [];
@@ -173,6 +175,12 @@ async function startAgent(input) {
   coreWorkDir = new CoreWorkDir({ path: PROJECT_DIR, uid: BOT_UID, gid: BOT_UID, assertOpen: requireOpenWorkDir });
   const projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true });
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
+  sessionPrivateValues = Object.values(input.secret_env ?? {});
+  if (input.fork_session !== undefined) {
+    const sessionPath = join(RUNTIME_DIR, 'pi-session', 'fork.jsonl');
+    await writeFile(sessionPath, sessionForkText(input.fork_session, cwd), { mode: 0o600, flag: 'wx' });
+    await chown(sessionPath, BOT_UID, BOT_UID);
+  }
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;
   const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
     HOME: join(RUNTIME_DIR, 'home'), TMPDIR: join(RUNTIME_DIR, 'tmp'), PI_CODING_AGENT_DIR: join(RUNTIME_DIR, 'pi-agent') };
@@ -433,6 +441,15 @@ const server = createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/project/install') { const input = await body(request, 32 * 1024 * 1024); send(response, 200, { ok: true, result: await withBotPaused(pids => project.install(input, pids)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/install-result') { const input = await body(request); send(response, 200, { ok: true, result: project.queryInstall(input) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/install-confirm') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.confirmInstall(input)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/core/session/snapshot') {
+      requireOpenWorkDir();
+      if (!child || executionStopped) throw Object.assign(new Error('Context Fork source is unavailable'), { code: 'NOT_ALLOWED' });
+      const result = await rpc({ message: { type: 'get_entries', id: `fork-${randomUUID()}` }, timeout_ms: 10_000 });
+      requireOpenWorkDir();
+      if (!child || executionStopped || result.response?.success !== true) throw Object.assign(new Error('Context Fork observation failed'), { code: 'NOT_ALLOWED' });
+      send(response, 200, { ok: true, result: snapshotSessionFork(result.response.data, sessionPrivateValues) });
+      return;
+    }
     if (request.method === 'POST' && url.pathname === '/rpc') { send(response, 200, { ok: true, result: await rpc(await body(request)) }); return; }
     if (request.method === 'POST' && url.pathname === '/stop') {
       await body(request);

@@ -40,7 +40,7 @@ const outputs = {
 };
 const jsonSnapshot = value => JSON.parse(JSON.stringify(value));
 const definitions = [
-  ['spawn', 'Create a direct child using its Profile defaults; initialInput reports admission, not completion.', object({ profile: id, input: { type: 'string' }, mode }, ['profile'])],
+  ['spawn', 'Create a direct child using its Profile defaults; initialInput reports admission, not completion.', object({ profile: id, input: { type: 'string' }, mode, fork: { type: 'boolean' } }, ['profile'])],
   ['get', 'Inspect yourself or one direct child in this Runtime.', object({ bot_id: id }, ['bot_id'])],
   ['send', 'Continue yourself or one direct child; omitted mode is steer. Reuse request-id after unknown.', object({ bot_id: id, input: { type: 'string' }, mode }, ['bot_id', 'input'])],
   ['stop', 'Stop and collect one direct child; pending cleanup can be retried. Self-stop is unavailable.', object({ bot_id: id }, ['bot_id'])],
@@ -61,7 +61,8 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }) 
     if (!validId(requestId)) throw Object.assign(new Error('Bot request-id must contain 1-128 identifier characters'), { code: 'INVALID_CONTRACT' });
     if (operation === 'spawn') {
       if (!parent.spawnProfiles?.includes(input.profile)) deny('Profile is not allowed for child spawn');
-      const parameters = { profile: input.profile, ...(input.input === undefined ? {} : { input: input.input }), mode: input.mode ?? 'steer' };
+      if (input.fork && parent.allowContextFork !== true) deny('Profile does not permit Context Fork');
+      const parameters = { profile: input.profile, fork: input.fork === true, ...(input.input === undefined ? {} : { input: input.input }), mode: input.mode ?? 'steer' };
       const key = JSON.stringify([source, 'spawn', requestId]);
       const fingerprint = JSON.stringify(parameters);
       let request = requests.get(key);
@@ -73,7 +74,7 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }) 
       if (!request.work) request.work = (async () => {
         // Core registers parentId and binds events before spawn returns. Even a
         // fast first input therefore has a publicly queryable relationship.
-        try { request.bot ??= await spawn({ profile: input.profile, parentId: caller.botId, requestId }, source); }
+        try { request.bot ??= await spawn({ profile: input.profile, parentId: caller.botId, requestId, ...(parameters.fork ? { forkFrom: caller.botId } : {}) }, source); }
         catch (error) {
           // Startup may already own a child even when its receipt is unknown.
           // Preserve that identity and cleanup state through Service errors.

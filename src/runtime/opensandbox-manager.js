@@ -582,7 +582,7 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ writable = false, files, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
+  async startAgent({ writable = false, files, forkSession, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
     const contract = { protocolVersion: 'swarmenv-core-v1', resources: [] };
     const record = this.#record(executionId);
     const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
@@ -611,6 +611,7 @@ export class OpenSandboxManager {
       extraHeaders: workerHeaders,
       body: {
         command: required(agentCommand, 'agent_command'),
+        ...(forkSession === undefined ? {} : { fork_session: forkSession }),
         args,
         cwd,
         env: envs(env, { allowSecrets: true }),
@@ -725,6 +726,18 @@ export class OpenSandboxManager {
 
   prepareBotProject({ executionId, manifest }) { return this.#projectCall(executionId, 'prepare', manifest); }
   grantBotProject({ executionId }) { return this.#projectCall(executionId, 'grant'); }
+
+  async coreSessionSnapshot(executionId) {
+    const record = this.#record(executionId);
+    if (record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise || record.executionStopped) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Context Fork requires a live Bot Worker');
+    }
+    const response = await this.#request(`${record.agent.endpoint}/core/session/snapshot`, {
+      absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
+      body: {}, timeoutMs: 15_000,
+    });
+    return responseValue(response.body);
+  }
 
   async coreFileOperation(executionId, action, input) {
     const record = this.#record(executionId);
