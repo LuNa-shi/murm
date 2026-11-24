@@ -15,7 +15,7 @@ const taskId = { type: 'string', minLength: 1, maxLength: 256 };
 
 export function flatResearcherProfile({ prompt, model, image, coordinationPermissions = [], ...options }) {
   if (Object.keys(options).some(key => !['env', 'network', 'collect'].includes(key))) invalid('Flat researcher only accepts readonly discovery resource defaults');
-  return { ...options, prompt, model, image, writable: false, services: { task: [...operations, ...flatCoordinationPermissions(coordinationPermissions)] } };
+  return { ...options, prompt, model, image, writable: false, services: { task: [...operations, ...flatCoordinationPermissions(coordinationPermissions).filter(permission => permission === 'task_dependency_replace')] } };
 }
 
 /** Trusted host composition. The getter permits registration before Core assembly. */
@@ -28,7 +28,7 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
       ![executionTimeoutMs, handoffLeadMs, heartbeatMs, preparationTimeoutMs, stopTimeoutMs].every(value => Number.isFinite(value) && value > 0) || heartbeatMs > 10_000) {
     invalid('Flat Task Service requires trusted domain stores, Core, ordered finite budgets and a Mission deadline');
   }
-  const permissions = flatCoordinationPermissions(coordinationPermissions);
+  const permissions = flatCoordinationPermissions(coordinationPermissions).filter(permission => permission === 'task_dependency_replace');
   const enabledCoordination = [...coordinationOperations, ...permissions];
   const enabledOperations = [...operations, ...permissions];
   const enabledTools = [...coordinationTools, ...listTools('task').filter(tool => permissions.includes(tool.operation))];

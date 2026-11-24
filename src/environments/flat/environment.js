@@ -32,7 +32,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       if (workspace.mission_id !== missionId) throw new SwarmEnvError('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       taskService.contextService=contextService;
       discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:()=>deadlineAt,coordinationPermissions:permissions});
-      publication=createFlatPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline:()=>deadlineAt,snapshotProject,judgeService,workspaceProjectCheck,workspaceMergeChecker,
+      publication=createFlatPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline:()=>deadlineAt,coordinationPermissions:permissions,snapshotProject,judgeService,workspaceProjectCheck,workspaceMergeChecker,
         onFinish:()=>controller?.notify()});
       const services=new ServiceRegistry();
       services.registerService(publication.composeTask(discovery));

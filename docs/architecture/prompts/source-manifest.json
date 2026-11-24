@@ -43,7 +43,7 @@
     },
     {
       "path": "src/environments/flat/environment.js",
-      "sha256": "946ed41c3623b13485676948ff0dee4073a1917efb9acf7e7f668cdb31d0f333"
+      "sha256": "9e83a133dcb5b9100b587f53444fafb0a93f29d75800c35e3b0b3404894ef59d"
     },
     {
       "path": "src/environments/endurance/flat.js",

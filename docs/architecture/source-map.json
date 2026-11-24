@@ -1269,7 +1269,7 @@
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Flat host-only validation and immutable copy of the existing dependency-replacement grant"
+      "role": "Flat host-only validation and immutable copy of existing Task dependency and Material revocation grants"
     },
     {
       "path": "src/environments/flat/task-service.js",
