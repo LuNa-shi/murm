@@ -125,7 +125,7 @@ test('public CLI discovers built-in operations, creates, inspects, continues and
   const { parent } = await setup(t);
   const credentials = transport.spawns.get(parent.id).credentials;
   const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
-  const cli = async (...args) => (await execute(process.execPath, ['scripts/swarm.mjs', ...args], { env, timeout: 5000 })).stdout;
+  const cli = async (...args) => (await execute(process.execPath, ['dist/scripts/swarm.mjs', ...args], { env, timeout: 5000 })).stdout;
   assert.deepEqual(JSON.parse(await cli('service', 'view', 'bot')).capabilities.map(c => c.operation), ['spawn', 'get', 'send', 'stop']);
   assert.match(await cli('bot', 'spawn', '--help'), /initialInput/);
   assert.match(await cli('bot', '--help'), /initialInput/);
@@ -245,7 +245,7 @@ for (const size of [4, 8]) test(`public CLI maintains a ${size}-Bot parent tree 
   runtime.onEvent(event => events.push(event));
   const cli = async (caller, ...args) => {
     const credentials = transport.spawns.get(caller).credentials;
-    const result = await execute(process.execPath, ['scripts/swarm.mjs', 'bot', ...args], {
+    const result = await execute(process.execPath, ['dist/scripts/swarm.mjs', 'bot', ...args], {
       env: { ...process.env, ...credentials.environment, ...credentials.secretEnvironment }, timeout: 5000,
     });
     return JSON.parse(result.stdout);

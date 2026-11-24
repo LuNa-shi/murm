@@ -35,7 +35,7 @@ test('flat foreground input uses the current controller Task binding and stops w
     const credentials = controls.credentials.get(bot.botId);
     const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
     const bridge = new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.SWARMENV_BRIDGE_URL = bridge.origin;
-    await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'task', 'take', stores.task.task_id, '--request-id', 'host-take'], { env, timeout: 5000 });
+    await promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', 'task', 'take', stores.task.task_id, '--request-id', 'host-take'], { env, timeout: 5000 });
     const input = { taskId: stores.task.task_id, input: 'fixed host direction', requestId: 'host-direction', mode: 'steer' };
     const accepted = await host.input(input);
     assert.equal(accepted.status, 'accepted'); assert.equal(accepted.requestId, 'host-direction');

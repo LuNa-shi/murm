@@ -22,7 +22,7 @@ const sourcePaths = [
   'src/agent/bot-contract.js',
   'src/agent/capability-profile.js',
   'src/agent/services-bridge.js',
-  'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
+  'src/core/index.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.mjs',
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
   'src/environments/flat/controller.js', 'src/environments/flat/environment.js',
   'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
@@ -31,8 +31,8 @@ const sourcePaths = [
   'src/environments/lead-helper/prompts.js', 'src/environments/lead-helper/index.js',
   'src/runtime/runtime.js',
   'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
-  'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-bundle.js',
-  'src/sdk/service-registry.js', 'src/sdk/service-manifest.js', 'src/protocol/envelope.js',
+  'src/sdk/service-catalog.ts', 'src/sdk/builtin-registry.ts', 'src/sdk/service-bundle.ts',
+  'src/sdk/service-registry.ts', 'src/sdk/service-manifest.ts', 'src/protocol/envelope.ts',
   'src/task/task-service.js', 'src/task/task-types.js',
   'services/mathlib-search/service.json', 'services/mathlib-search/SKILL.md',
   'services/mathlib-search/references/loogle.md',
@@ -121,7 +121,7 @@ for (const path of await listSourceFiles('src')) {
     const value = evaluate(match[2]);
     assert.equal(typeof value, 'string', `non-static instruction field requires explicit documentation: ${path}`);
     if (key === 'action' && nonInstructionActions.has(value)) continue;
-    if (key === 'action' && ['src/core/index.js', 'src/core/model-access.js', 'src/environments/lead-helper/index.js'].includes(path) && cleanupActions.has(value)) continue;
+    if (key === 'action' && ['src/core/index.ts', 'src/core/model-access.ts', 'src/environments/lead-helper/index.js'].includes(path) && cleanupActions.has(value)) continue;
     if (key === 'action') assert.ok(instructionActions.has(value), `review new literal action field for prompt delivery: ${path}: ${value}`);
     assert.ok(sourcePaths.includes(path), `new instruction-field source requires documented ownership: ${path}`);
     const line = source.slice(0, match.index).split('\n').length;

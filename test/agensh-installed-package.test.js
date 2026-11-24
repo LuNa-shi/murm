@@ -14,10 +14,10 @@ test('offline archive ships the native Agensh host configuration and declared fo
   assert.ok(metadata.exports['./backends/pi-opensandbox']);
 
   for (const path of [
-    'test/fixtures/agensh-installed-host.mjs',
-    'test/fixtures/agensh-team-upstream.js',
-    'scripts/run-environment.mjs',
-    'scripts/read-environment-result.mjs'
+    'dist/test/fixtures/agensh-installed-host.mjs',
+    'dist/test/fixtures/agensh-team-upstream.js',
+    'dist/scripts/run-environment.mjs',
+    'dist/scripts/read-environment-result.mjs'
   ]) {
     await execute(process.execPath, ['--check', join(root, path)], {
       cwd: installed.directory,
@@ -26,7 +26,7 @@ test('offline archive ships the native Agensh host configuration and declared fo
     });
   }
 
-  const help = await execute(process.execPath, [join(root, 'scripts/run-environment.mjs'), '--help'], {
+  const help = await execute(process.execPath, [join(root, 'dist/scripts/run-environment.mjs'), '--help'], {
     cwd: installed.directory,
     env: installed.env,
     timeout: 10_000

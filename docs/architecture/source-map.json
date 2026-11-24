@@ -442,7 +442,7 @@
       "role": "Material publication, lineage, read/search and consumption persistence"
     },
     {
-      "path": "src/errors.js",
+      "path": "src/errors.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -628,7 +628,7 @@
       "role": "Workspace inspection adapter for observation routes"
     },
     {
-      "path": "src/protocol/envelope.js",
+      "path": "src/protocol/envelope.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -638,7 +638,7 @@
       "role": "Identity/version envelope validation and stable serialization"
     },
     {
-      "path": "src/protocol/http-request.js",
+      "path": "src/protocol/http-request.ts",
       "category": "service and Agent integration",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -802,7 +802,7 @@
       "role": "Workspace Git object creation, single-writer OS locking, immutable revision refs, durable request results and ref/index recovery barrier"
     },
     {
-      "path": "src/sdk/builtin-registry.js",
+      "path": "src/sdk/builtin-registry.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -812,7 +812,7 @@
       "role": "Built-in registered manifests and local/remote provider composition"
     },
     {
-      "path": "src/sdk/context-service-peer.js",
+      "path": "src/sdk/context-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -822,7 +822,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/coordinator-peer-client.js",
+      "path": "src/sdk/coordinator-peer-client.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -832,7 +832,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/coordinator-peer-host.js",
+      "path": "src/sdk/coordinator-peer-host.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -842,7 +842,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/independent-services.js",
+      "path": "src/sdk/independent-services.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -852,7 +852,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/judge-service-peer.js",
+      "path": "src/sdk/judge-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -862,7 +862,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/peer-process-lifetime.js",
+      "path": "src/sdk/peer-process-lifetime.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -872,7 +872,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/remote-context-service.js",
+      "path": "src/sdk/remote-context-service.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -882,7 +882,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/remote-judge-service.js",
+      "path": "src/sdk/remote-judge-service.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -892,7 +892,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/service-adapter.js",
+      "path": "src/sdk/service-adapter.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -902,7 +902,7 @@
       "role": "In-process and HTTP adapters, readiness, timeout and transport errors"
     },
     {
-      "path": "src/sdk/service-authority-snapshot.js",
+      "path": "src/sdk/service-authority-snapshot.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -912,7 +912,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/service-bundle.js",
+      "path": "src/sdk/service-bundle.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -922,7 +922,7 @@
       "role": "Manifest and Service documentation loading with containment/hash checks"
     },
     {
-      "path": "src/sdk/service-catalog.js",
+      "path": "src/sdk/service-catalog.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -932,7 +932,7 @@
       "role": "Operation schemas/help, discoverability and retained compatibility catalog"
     },
     {
-      "path": "src/sdk/service-commit-gate.js",
+      "path": "src/sdk/service-commit-gate.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -942,7 +942,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/service-host.js",
+      "path": "src/sdk/service-host.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -952,7 +952,7 @@
       "role": "HTTP manifest/readiness/invocation server and token/role/binding checks"
     },
     {
-      "path": "src/sdk/service-manifest.js",
+      "path": "src/sdk/service-manifest.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -962,7 +962,7 @@
       "role": "Manifest/capability normalization, endpoint and schema metadata validation"
     },
     {
-      "path": "src/sdk/service-registry.js",
+      "path": "src/sdk/service-registry.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -982,7 +982,7 @@
       "role": "Upstream or local lexical Mathlib provider, cache, limits and fallback"
     },
     {
-      "path": "src/storage/context-schema.js",
+      "path": "src/storage/context-schema.ts",
       "category": "durable storage",
       "chapters": [
         "docs/architecture/11-storage-reference.md",
@@ -992,7 +992,7 @@
       "role": "Material/consumption/operation SQL schema"
     },
     {
-      "path": "src/storage/judge-schema.js",
+      "path": "src/storage/judge-schema.ts",
       "category": "durable storage",
       "chapters": [
         "docs/architecture/11-storage-reference.md",
@@ -1002,7 +1002,7 @@
       "role": "Checker health/request/result/operation SQL schema"
     },
     {
-      "path": "src/storage/schema.js",
+      "path": "src/storage/schema.ts",
       "category": "durable storage",
       "chapters": [
         "docs/architecture/11-storage-reference.md",
@@ -1012,7 +1012,7 @@
       "role": "Mission/Task/Execution/dependency/notification/operation SQL schema"
     },
     {
-      "path": "src/storage/service-peer-schema.js",
+      "path": "src/storage/service-peer-schema.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1060,7 +1060,7 @@
       "role": "Pinned external Agensh source location and board schema attribution"
     },
     {
-      "path": "src/core/bot-service.js",
+      "path": "src/core/bot-service.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1069,7 +1069,7 @@
       "role": "Built-in Bot Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger"
     },
     {
-      "path": "src/core/index.js",
+      "path": "src/core/index.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1077,15 +1077,7 @@
       "role": "Runtime assembly, Bot admission, input and bounded lifecycle"
     },
     {
-      "path": "src/core/index.d.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Public Runtime, Bot and model policy declarations"
-    },
-    {
-      "path": "src/core/config.js",
+      "path": "src/core/config.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1093,7 +1085,7 @@
       "role": "Profile snapshot, spawn request and environment validation"
     },
     {
-      "path": "src/core/services.js",
+      "path": "src/core/services.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1102,15 +1094,7 @@
       "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
     },
     {
-      "path": "src/core/services.d.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Public Service registry, manifest and adapter declarations"
-    },
-    {
-      "path": "src/core/bridge.js",
+      "path": "src/core/bridge.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1119,7 +1103,7 @@
       "role": "Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch"
     },
     {
-      "path": "src/core/model-access.js",
+      "path": "src/core/model-access.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1127,7 +1111,7 @@
       "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
     },
     {
-      "path": "src/core/pi-opensandbox-backend.js",
+      "path": "src/core/pi-opensandbox-backend.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -1135,20 +1119,12 @@
       "role": "Core backend lifecycle, Worker transport and confirmed cleanup"
     },
     {
-      "path": "src/core/backends/pi-opensandbox.js",
+      "path": "src/core/backends/pi-opensandbox.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Public opaque Pi/OpenSandbox backend factory export"
-    },
-    {
-      "path": "src/core/backends/pi-opensandbox.d.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Public Pi/OpenSandbox deployment and model configuration declarations"
     },
     {
       "path": "src/agent/model-catalog.js",
@@ -1167,7 +1143,7 @@
       "role": "Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries"
     },
     {
-      "path": "src/core/input-ledger.js",
+      "path": "src/core/input-ledger.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1175,7 +1151,7 @@
       "role": "Runtime/caller/operation/target/request input identity and parameter conflict ledger"
     },
     {
-      "path": "src/core/file-controls.js",
+      "path": "src/core/file-controls.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1209,7 +1185,7 @@
       "role": "Shared collection policy and bounded trusted Worker artifact traversal"
     },
     {
-      "path": "src/core/artifact-collection.js",
+      "path": "src/core/artifact-collection.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1244,7 +1220,7 @@
       "role": "Trusted Core-returned flat Bot identity registration and readiness"
     },
     {
-      "path": "src/core/run-records.js",
+      "path": "src/core/run-records.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1752,6 +1728,30 @@
       "category": "Delivery and configuration",
       "chapters": [
         "docs/architecture/07-run-configuration.md"
+      ]
+    },
+    {
+      "path": "src/core/types.ts",
+      "role": "Published Core Runtime, Bot, event and receipt contracts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ]
+    },
+    {
+      "path": "src/core/backend-config.ts",
+      "role": "Published Pi/OpenSandbox Backend configuration contract",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ]
+    },
+    {
+      "path": "src/core/service-types.ts",
+      "role": "Published Core Service manifest, adapter and operation contracts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/04-services.md"
       ]
     }
   ]

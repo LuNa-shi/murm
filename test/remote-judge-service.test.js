@@ -21,7 +21,7 @@ for (const closeDuringPreflight of [false, true, 'scoped']) test(`independent Ju
   const token = 'private-judge-coordinator-test-token';
   const judge = new RemoteJudgeService({ taskService: tasks, token, timeoutMs: 10000 });
   const coordinator = await judge.startCoordinator();
-  const child = spawn('flock', ['--nonblock', '--no-fork', join(root, 'judge.lock'), process.execPath, 'test-support/judge-peer-fixture.mjs'], {
+  const child = spawn('flock', ['--nonblock', '--no-fork', join(root, 'judge.lock'), process.execPath, 'dist/test-support/judge-peer-fixture.mjs'], {
     env: { ...process.env, JUDGE_PEER_FIXTURE: JSON.stringify({ database: join(root, 'judge.sqlite'), token,
       coordinator: { url: coordinator.url, token }, fixtureManifest, preflightDelay: closeDuringPreflight ? 500 : 0 }) }, stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -97,7 +97,7 @@ async function queuedJudge(t, { sourceDelay = 1200, missionBudget, interruptQueu
   }) : null;
   if (proxy) { proxy.listen(0, '127.0.0.1'); await once(proxy, 'listening'); }
   const coordinatorUrl = proxy ? `http://127.0.0.1:${proxy.address().port}` : coordinator.url;
-  const child = spawn('flock', ['--nonblock', '--no-fork', join(root, 'judge.lock'), process.execPath, 'test-support/judge-peer-fixture.mjs'], {
+  const child = spawn('flock', ['--nonblock', '--no-fork', join(root, 'judge.lock'), process.execPath, 'dist/test-support/judge-peer-fixture.mjs'], {
     env: { ...process.env, JUDGE_PEER_FIXTURE: JSON.stringify({ database: join(root, 'judge.sqlite'), token,
       coordinator: { url: coordinatorUrl, token }, fixtureManifest, sourceDelay, processTimeoutMs: 5000, missionBudget }) },
     stdio: ['ignore', 'pipe', 'pipe'],

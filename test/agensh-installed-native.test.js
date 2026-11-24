@@ -95,7 +95,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
   try {
     // This source is a trusted fixture config. Backend consumption is through the public package export.
     // Stack ownership stays in this child, whose private IPC accepts cleanup only after terminal proof.
-    await copyFile(join(root, 'test/fixtures/agensh-installed-host.mjs'), join(installed.directory, 'host-config.mjs'));
+    await copyFile(join(root, 'dist/test/fixtures/agensh-installed-host.mjs'), join(installed.directory, 'host-config.mjs'));
 
     // The upstream deadline includes setup; its per-request work gate starts at facilities readiness.
     upstream = await createTeamUpstream({
@@ -126,7 +126,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
 
     child = spawn(
       process.execPath,
-      [join(root, 'scripts/run-environment.mjs'), '--config', join(installed.directory, 'host-config.mjs')],
+      [join(root, 'dist/scripts/run-environment.mjs'), '--config', join(installed.directory, 'host-config.mjs')],
       {
         cwd: installed.directory,
 
@@ -441,7 +441,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     }
 
     const read = JSON.parse((await shell(process.execPath, [
-      join(root, 'scripts/read-environment-result.mjs'),
+      join(root, 'dist/scripts/read-environment-result.mjs'),
       '--run-directory',
       ready.runDirectory,
       '--runtime-id',

@@ -28,10 +28,11 @@ const fence = (language, value) => `\n\`\`\`${language}\n${value.trimEnd()}\n\`\
 const json = (value) => fence('json', JSON.stringify(value, null, 2));
 const registry = createBuiltinServiceRegistry({});
 const sourcePaths = [
-  'src/sdk/service-catalog.js', 'src/sdk/builtin-registry.js', 'src/sdk/service-manifest.js',
-  'src/sdk/service-registry.js', 'src/agent/capability-profile.js', 'src/agent/services-bridge.js',
-  'services/mathlib-search/service.json', 'src/errors.js',
-  'src/core/index.d.ts', 'src/core/services.d.ts', 'src/core/backends/pi-opensandbox.d.ts',
+  'src/sdk/service-catalog.ts', 'src/sdk/builtin-registry.ts', 'src/sdk/service-manifest.ts',
+  'src/sdk/service-registry.ts', 'src/agent/capability-profile.js', 'src/agent/services-bridge.js',
+  'services/mathlib-search/service.json', 'src/errors.ts',
+  'src/core/index.ts', 'src/core/types.ts', 'src/core/services.ts', 'src/core/service-types.ts',
+  'src/core/backends/pi-opensandbox.ts', 'src/core/backend-config.ts',
 ];
 const sourceRows = await Promise.all(sourcePaths.map(async (path) => `| [${path}](../../${path}) | \`${hash(await readFile(resolve(root, path)))}\` |`));
 let api = '## Generated API inventory\n\nThis section is generated from executable exports and checked against the source hashes below. It contains declarations; call-time behavior and known differences are explained in [Services](04-services.md), [Mission and Task](03-mission-task.md), and [Workspace](05-workspace-continuity.md).\n\n| Source | SHA-256 |\n|---|---|\n' + sourceRows.join('\n') + '\n';
@@ -54,22 +55,23 @@ api += '\n### Internal catalog entries\n\nThis section records catalog declarati
 for (const cap of uniqueInternalExtras) api += `\n#### Catalog ${cap.service}.${cap.name} / ${cap.operation}\n${json(cap)}`;
 api += '\n### Exact shared error-code vocabulary\n' + json(ERROR_CODES);
 api += '\n### Phase 0005 Core public declarations\n\nThese are the declarations exposed by the private checkout package. [Core Runtime](15-core-runtime.md) describes the executable contracts and limits.\n';
-for (const path of sourcePaths.filter(path => path.startsWith('src/core/'))) {
-  api += `\n#### ${path}\n${fence('ts', await readFile(resolve(root, path), 'utf8'))}`;
+for (const source of sourcePaths.filter(path => path.startsWith('src/core/'))) {
+  const declaration = 'dist/' + source.replace(/\.ts$/, '.d.ts');
+  api += `\n#### ${declaration}\n${fence('ts', await readFile(resolve(root, declaration), 'utf8'))}`;
 }
 
 const schemas = [
   ['Automatic service history', 'src/replay/service-history.js', SERVICE_HISTORY_SCHEMA_SQL],
-  ['Task-owned independent service commit gates', 'src/storage/service-peer-schema.js', SERVICE_COMMIT_SCHEMA_SQL],
-  ['Context peer receipts', 'src/storage/service-peer-schema.js', CONTEXT_PEER_SCHEMA_SQL],
-  ['Judge peer launch phases', 'src/storage/service-peer-schema.js', JUDGE_PEER_SCHEMA_SQL],
+  ['Task-owned independent service commit gates', 'src/storage/service-peer-schema.ts', SERVICE_COMMIT_SCHEMA_SQL],
+  ['Context peer receipts', 'src/storage/service-peer-schema.ts', CONTEXT_PEER_SCHEMA_SQL],
+  ['Judge peer launch phases', 'src/storage/service-peer-schema.ts', JUDGE_PEER_SCHEMA_SQL],
   ['Core Runtime model attempts', 'src/agent/responses-budget-gateway.js', CORE_MODEL_SCHEMA_SQL],
   ['Mission submission coordinator', 'src/runtime/mission-submission.js', MISSION_SUBMISSION_SCHEMA_SQL],
   ['Owner-local manual Mission review', 'src/runtime/manual-mission-review.js', MANUAL_MISSION_REVIEW_SCHEMA_SQL],
   ['Execution Workspace coordinator', 'src/runtime/execution-workspace.js', EXECUTION_WORKSPACE_SCHEMA_SQL],
-  ['Task and Execution database', 'src/storage/schema.js', SCHEMA_SQL],
-  ['Context database', 'src/storage/context-schema.js', CONTEXT_SCHEMA_SQL],
-  ['Judge database', 'src/storage/judge-schema.js', JUDGE_SCHEMA_SQL],
+  ['Task and Execution database', 'src/storage/schema.ts', SCHEMA_SQL],
+  ['Context database', 'src/storage/context-schema.ts', CONTEXT_SCHEMA_SQL],
+  ['Judge database', 'src/storage/judge-schema.ts', JUDGE_SCHEMA_SQL],
   ['Observation database', 'src/observability/observation-store.js', OBSERVATION_SCHEMA_SQL],
 ];
 let storage = '## Generated SQL schema reference\n\nThe SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors initialize the current schema on new databases. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.\n';

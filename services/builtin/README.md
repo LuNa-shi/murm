@@ -6,7 +6,7 @@ Workspace authority remains in the coordinator. Each
 peer owns its own SQLite database and exchanges authenticated private HTTP
 commands with the coordinator; it never opens the Task database.
 
-`startIndependentServices` in `src/sdk/independent-services.js` starts the peers
+`startIndependentServices` in `src/sdk/independent-services.ts` starts the peers
 under exclusive instance locks, provisions credentials and pinned checker
 configuration, records endpoints/PIDs, and owns shutdown. Judge startup verifies
 the complete artifact lock and resource profile before becoming ready. Context

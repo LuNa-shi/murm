@@ -1,8 +1,8 @@
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { createLocalAgenshStack } from './node_modules/@swarmenv/core/test/fixtures/agensh-local-stack.js';
-import { createCleanupBudget } from './node_modules/@swarmenv/core/test/fixtures/agensh-deadline.js';
-import { httpClient } from './node_modules/@swarmenv/core/src/environments/agensh/http.js';
-import { teamFact, teamInputs } from './node_modules/@swarmenv/core/test/fixtures/agensh-team-upstream.js';
+import { createLocalAgenshStack } from './node_modules/@swarmenv/core/dist/test/fixtures/agensh-local-stack.js';
+import { createCleanupBudget } from './node_modules/@swarmenv/core/dist/test/fixtures/agensh-deadline.js';
+import { httpClient } from './node_modules/@swarmenv/core/dist/src/environments/agensh/http.js';
+import { teamFact, teamInputs } from './node_modules/@swarmenv/core/dist/test/fixtures/agensh-team-upstream.js';
 import { readFile } from 'node:fs/promises';
 const input = JSON.parse(await readFile(process.env.SWARMENV_AGENSH_HOST_INPUT, 'utf8'));
 

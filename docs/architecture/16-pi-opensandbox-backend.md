@@ -1,6 +1,6 @@
 # Pi / OpenSandbox backend
 
-The Phase 0005 backend is implemented in `src/core/pi-opensandbox-backend.js`. Its public factory creates an opaque, single-Runtime configuration handle. Claiming that handle freezes ownership. Configuration requires the local Docker isolation mode, explicit disk byte/inode limits, HTTP(S) lifecycle and Responses URLs, a Bridge URL containing `{port}`, and concrete non-loopback IPv4 gateway destinations. Creating a handle allocates no sandbox.
+The Phase 0005 backend is implemented in `src/core/pi-opensandbox-backend.ts`. Its public factory creates an opaque, single-Runtime configuration handle. Claiming that handle freezes ownership. Configuration requires the local Docker isolation mode, explicit disk byte/inode limits, HTTP(S) lifecycle and Responses URLs, a Bridge URL containing `{port}`, and concrete non-loopback IPv4 gateway destinations. Creating a handle allocates no sandbox.
 
 The optional host setting `sandbox.timeoutSeconds` selects the provider creation lifetime. Omission sends 3,600 seconds; an explicit value must be a safe integer of at least 60 seconds and at most JavaScript's `Number.MAX_SAFE_INTEGER`. Invalid values, including null, fractions and numeric strings, fail with `INVALID_CONTRACT` when creating the backend handle, before allocation. The provider may enforce a smaller configured maximum and reject a request. The host must choose a finite value justified by setup, work, cleanup, recovery and clock margin, within the actual deployment's limit.
 

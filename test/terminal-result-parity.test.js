@@ -14,18 +14,18 @@ import { readEnvironmentResult } from '../src/environments/shared/read-result.js
 import { installNotesExample } from './fixtures/notes-installed-package.js';
 
 const execute = promisify(execFile);
-const repository = new URL('..', import.meta.url);
+const repository = new URL('../..', import.meta.url);
 
 async function stoppedCli(t, failure, cwd, { blockReport = false, businessFailure = false } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'terminal-result-parity-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
-  let config = 'test/fixtures/foreground-host-configuration.mjs';
+  let config = 'dist/test/fixtures/foreground-host-configuration.mjs';
   if (businessFailure) {
     config = join(outputDir, 'self-fencing-config.mjs');
-    const fixture = new URL('test/fixtures/foreground-host-configuration.mjs', cwd).href;
+    const fixture = new URL('dist/test/fixtures/foreground-host-configuration.mjs', cwd).href;
     await writeFile(config, `import config from ${JSON.stringify(fixture)};\nconfig.options.router.workTimeoutMs = 1000;\nexport default config;\n`);
   }
-  const child = spawn(process.execPath, [`--redirect-warnings=${join(outputDir, 'node-warnings.log')}`, 'scripts/run-environment.mjs', '--config', config], {
+  const child = spawn(process.execPath, [`--redirect-warnings=${join(outputDir, 'node-warnings.log')}`, 'dist/scripts/run-environment.mjs', '--config', config], {
     cwd, env: { ...process.env, FOREGROUND_TEST_OUTPUT: outputDir, FOREGROUND_TEST_CLEANUP_FAILURE: failure },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -95,7 +95,7 @@ async function assertReceiptParity(t, { failure, execution, action, failureCode 
   assert.equal(inspected.environment.business, 'returned');
   assert.equal(inspected.environment.acceptance, 'not-interpreted');
   assert.equal(inspected.core.recordedStatus, 'closing');
-  const { stdout } = await execute(process.execPath, ['scripts/read-environment-result.mjs', '--run-directory', input.runDirectory, '--runtime-id', input.runtimeId], { cwd });
+  const { stdout } = await execute(process.execPath, ['dist/scripts/read-environment-result.mjs', '--run-directory', input.runDirectory, '--runtime-id', input.runtimeId], { cwd });
   assert.deepEqual(JSON.parse(stdout), inspected);
   assert.ok(!JSON.stringify({ records, inspected }).includes('PRIVATE_'));
 }

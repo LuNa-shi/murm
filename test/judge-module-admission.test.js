@@ -133,7 +133,7 @@ for (const cancelDuringParser of [false, true]) test(`independent Judge peer gat
     git_commit: revision.padEnd(40, 'c'), git_tree: revision.padEnd(40, 'd'), content_hash: revision, files: sources });
   const judge = new RemoteJudgeService({ taskService: tasks, token, readProjectRevision, timeoutMs: 25000 });
   const coordinator = await judge.startCoordinator();
-  const child = spawn('flock', ['--nonblock', '--no-fork', join(root, 'judge.lock'), process.execPath, 'test-support/judge-peer-fixture.mjs'], {
+  const child = spawn('flock', ['--nonblock', '--no-fork', join(root, 'judge.lock'), process.execPath, 'dist/test-support/judge-peer-fixture.mjs'], {
     env: { ...process.env, JUDGE_PEER_FIXTURE: JSON.stringify({ database: join(root, 'judge.sqlite'), token,
       coordinator: { url: coordinator.url, token }, fixtureManifest, projectChecks: true, realLeanRoot: process.env.SWARMENV_TEST_LEAN_ROOT }) },
     stdio: ['ignore', 'pipe', 'pipe'] });

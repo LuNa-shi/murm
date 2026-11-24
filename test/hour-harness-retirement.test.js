@@ -16,19 +16,20 @@ for(const path of ['src/environments/endurance','src/environments/shared/hour-wi
  'examples/subagents-environment/hour.mjs','examples/subagents-environment/hour-config.mjs','examples/subagents-environment/hour-artifacts.mjs',
  'test/core-endurance-quota.test.js','test/fixtures/hour-quota-owner.js','test/fixtures/subagents-hour-backend.js','docs/architecture/prompts/13-hour-matrix.md']) {
  await assert.rejects(access(join(root,path)),{code:'ENOENT'});
+ await assert.rejects(access(join(root,'dist',path)),{code:'ENOENT'});
 }
-for(const name of await readdir(join(root,'test'))) {
+for(const name of await readdir(join(root,'dist/test'))) {
  assert.ok(!/^hour-(?!harness-retirement)/.test(name)&&!/^subagents-hour/.test(name));
 }
 for(const path of ['src/environments/flat/environment.js','src/environments/agensh/index.js','src/environments/scalemas/index.js','src/environments/lead-helper/index.js',
  'examples/subagents-environment/stages.mjs',
- 'examples/scalemas-environment/main.mjs','examples/lead-helper-environment/main.mjs']) await import(pathToFileURL(join(root,path)));
-for(const name of ['bot-disk-probe','drop-peer-response','judge-peer-fixture','project-install-rollback-probe','sandbox-project-probe']) await access(join(root,'test-support',name+'.mjs'));
+ 'examples/scalemas-environment/main.mjs','examples/lead-helper-environment/main.mjs']) await import(pathToFileURL(join(root,'dist',path)));
+for(const name of ['bot-disk-probe','drop-peer-response','judge-peer-fixture','project-install-rollback-probe','sandbox-project-probe']) await access(join(root,'dist/test-support',name+'.mjs'));
 // Notes and Subagents are editable adjacent-module examples; assemble their documented layout.
 await import('./main.mjs');
 await mkdir('subagents');
-for(const name of ['main','controller','prompts','stages']) await copyFile(join(root,'examples/subagents-environment',name+'.mjs'),'subagents/'+name+'.mjs');
-await copyFile(join(root,'src/environments/shared/run-report.js'),'subagents/run-report.mjs');
+for(const name of ['main','controller','prompts','stages']) await copyFile(join(root,'dist/examples/subagents-environment',name+'.mjs'),'subagents/'+name+'.mjs');
+await copyFile(join(root,'dist/src/environments/shared/run-report.js'),'subagents/run-report.mjs');
 await import('./subagents/main.mjs');
 assert.ok(import.meta.resolve('@swarmenv/core').includes('/node_modules/@swarmenv/core/'));
 console.log(JSON.stringify({contained:true,ordinary:true,staged:true}));

@@ -68,7 +68,7 @@ test('actual CLI subprocess discovers and takes through the Core v2 Bridge with 
   const bot = await f.spawn('actual-cli');
   const url = new URL(startup.env.SWARMENV_BRIDGE_URL); url.hostname = '127.0.0.1';
   const env = { ...process.env, ...startup.env, ...startup.secret_env, SWARMENV_BRIDGE_URL: url.href };
-  const cli = async (...args) => JSON.parse((await runProcess(process.execPath, ['scripts/swarm.mjs', ...args],
+  const cli = async (...args) => JSON.parse((await runProcess(process.execPath, ['dist/scripts/swarm.mjs', ...args],
     { env, timeout: 10_000 })).stdout);
   assert.ok((await cli('task', 'list', '--state', 'ready', '--request-id', 'cli-list')).tasks.some(task => task.task_id === f.task.task_id));
   assert.equal((await cli('task', 'view', f.task.task_id, '--request-id', 'cli-view')).task.task_id, f.task.task_id);
@@ -156,7 +156,7 @@ test('public Core CLI take pins verified Material and warns when main advances a
   const bot = await f.spawn('preview');
   const url = new URL(startup.env.SWARMENV_BRIDGE_URL); url.hostname = '127.0.0.1';
   const env = { ...process.env, ...startup.env, ...startup.secret_env, SWARMENV_BRIDGE_URL: url.href };
-  const cli = async (...args) => JSON.parse((await runProcess(process.execPath, ['scripts/swarm.mjs', ...args],
+  const cli = async (...args) => JSON.parse((await runProcess(process.execPath, ['dist/scripts/swarm.mjs', ...args],
     { env, timeout: 10_000 })).stdout);
   assert.equal((await cli('task', 'view', task.task_id, '--request-id', 'preview')).task.task_id, task.task_id);
   const workspaceId = f.task.workspace.workspace_id;

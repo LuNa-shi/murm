@@ -30,17 +30,20 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `90d436f090046de3e7171a45044efc8f78a1e20efad46741eabd62f2bbc15719` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `02416ed6f3c28313edaca0ddb945abbd37bc293e1841d46db9eade72a2581855` |
-| [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
-| [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
+| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `0e284ab9a0d04987bbf3d48988dad86a6cd9ad491c1d38adf3cc8390a5dae399` |
+| [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `98d9ded93d7254f1813080c71862e0b8a305de12704219046156e16bd5787623` |
+| [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `ef5119f0fa92a587850498a8ae2d1fc19c35d45f1cd3df9301916460433a34c2` |
+| [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `059326242222f5a036a03b33fb0e7b260fb0f527dfd771822755db2419ef5253` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `cb014f632b97e2e525fce8920f7f36105a7684771e50fd06c3082db421e315b2` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
-| [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
-| [src/core/index.d.ts](../../src/core/index.d.ts) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
-| [src/core/services.d.ts](../../src/core/services.d.ts) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
-| [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `bfb63428e06a323231e381d0f0a094f5759bd2d7fde0746db984f392400af88c` |
+| [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
+| [src/core/index.ts](../../src/core/index.ts) | `c3b64be3e0fb91c5772b7b9c61256c58ff819be4379da13fc91a3a4d6d7ab9c5` |
+| [src/core/types.ts](../../src/core/types.ts) | `207f0f02211f976b83b0bc8977d39beccb1287f7e4b74166c8c395325d970841` |
+| [src/core/services.ts](../../src/core/services.ts) | `1fda50fc0e8a0ba8c3fc8d32f009d49decdaa136b1d99f7d64587a21c50abbe2` |
+| [src/core/service-types.ts](../../src/core/service-types.ts) | `af6678a6087aea0367f943672e420c6f13f905d9e17356d75df1105abd1301e3` |
+| [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `7244a96921edf27773870a1c870f6db597cc7cb4fccad5bdde693fec1f1cafff` |
 
 ### Exact built-in command operation surface
 
@@ -3080,284 +3083,388 @@ This section records catalog declarations used by trusted service composition bu
 
 These are the declarations exposed by the private checkout package. [Core Runtime](15-core-runtime.md) describes the executable contracts and limits.
 
-#### src/core/index.d.ts
+#### dist/src/core/index.d.ts
+
+```ts
+import type { CreateRuntimeOptions, Runtime } from './types.js';
+export type * from './types.js';
+export declare function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
+```
+
+#### dist/src/core/types.d.ts
 
 ```ts
 import type { ServiceRegistry } from './services.js';
-
 declare const backendBrand: unique symbol;
-
 export interface Backend {
-  readonly [backendBrand]: true;
+    readonly [backendBrand]: true;
 }
-
 export interface Profile {
-  prompt: string;
-  model: string;
-  image: string;
-  writable: boolean;
-  services: Readonly<Record<string, readonly string[]>>;
-  spawnProfiles?: readonly string[];
-  env?: Readonly<Record<string, string>>;
-  network?: { allow: readonly string[] };
-  collect?: CollectionSpec;
+    prompt: string;
+    model: string;
+    image: string;
+    writable: boolean;
+    services: Readonly<Record<string, readonly string[]>>;
+    spawnProfiles?: readonly string[];
+    env?: Readonly<Record<string, string>>;
+    network?: {
+        allow: readonly string[];
+    };
+    collect?: CollectionSpec;
 }
-
 export interface ModelCaller {
-  readonly runtimeId: string;
-  readonly botId: string;
-  readonly profile: string;
-  readonly model: string;
+    readonly runtimeId: string;
+    readonly botId: string;
+    readonly profile: string;
+    readonly model: string;
 }
-
 export interface ModelPermit {
-  phase: 'selection' | 'work' | 'closeout';
-  deadlineAt: number;
-  lease?: { key: string; version: number; expiresAt: number };
+    phase: 'selection' | 'work' | 'closeout';
+    deadlineAt: number;
+    lease?: {
+        key: string;
+        version: number;
+        expiresAt: number;
+    };
 }
-
 export interface ModelAccessPolicy {
-  authorize(caller: ModelCaller): ModelPermit | null;
-  withCommit<T>(commit: () => T): T;
+    authorize(caller: ModelCaller): ModelPermit | null;
+    withCommit<T>(commit: () => T): T;
 }
-
 export interface CreateRuntimeOptions {
-  backend: Backend;
-  profiles: Readonly<Record<string, Profile>>;
-  services: ServiceRegistry;
-  maxBots: number;
-  outputDir: string;
-  modelAccessPolicy?: ModelAccessPolicy;
+    backend: Backend;
+    profiles: Readonly<Record<string, Profile>>;
+    services: ServiceRegistry;
+    maxBots: number;
+    outputDir: string;
+    modelAccessPolicy?: ModelAccessPolicy;
 }
-
 export interface FileEntry {
-  encoding: 'utf8' | 'base64';
-  data: string;
-  mode?: 0o644 | 0o755;
+    encoding: 'utf8' | 'base64';
+    data: string;
+    mode?: 0o644 | 0o755;
 }
-
 export type FileSeed = Readonly<Record<string, FileEntry>>;
-
 export interface CollectionSpec {
-  paths: readonly string[];
-  includeGit: boolean;
-  maxBytes: number;
-  required: boolean;
+    paths: readonly string[];
+    includeGit: boolean;
+    maxBytes: number;
+    required: boolean;
 }
-
 export interface PreparedFiles {
-  readonly botId: string;
-  readonly version: number;
-  readonly digest: string;
+    readonly botId: string;
+    readonly version: number;
+    readonly digest: string;
 }
-
 export interface GrantReceipt {
-  readonly botId: string;
-  readonly version: number;
-  readonly writable: true;
+    readonly botId: string;
+    readonly version: number;
+    readonly writable: true;
 }
-
 export interface SpawnOptions {
-  requestId: string;
-  profile: string;
-  parentId?: string;
-  writable?: boolean;
-  files?: FileSeed;
-  bindings?: Readonly<Record<string, string>>;
-  secretEnv?: Readonly<Record<string, string>>;
-  collect?: CollectionSpec;
+    requestId: string;
+    profile: string;
+    parentId?: string;
+    writable?: boolean;
+    files?: FileSeed;
+    bindings?: Readonly<Record<string, string>>;
+    secretEnv?: Readonly<Record<string, string>>;
+    collect?: CollectionSpec;
 }
-
 export interface ErrorInfo {
-  code: string;
-  message: string;
-  retryable: boolean;
+    code: string;
+    message: string;
+    retryable: boolean;
 }
-
 export interface ResourceError extends Error {
-  code: string;
-  operation: string;
-  runtimeId?: string;
-  botId?: string;
-  requestId?: string;
-  cleanup: 'complete' | 'pending';
-  reportPath?: string;
-  details: readonly ErrorInfo[];
+    code: string;
+    operation: string;
+    runtimeId?: string;
+    botId?: string;
+    requestId?: string;
+    cleanup: 'complete' | 'pending';
+    reportPath?: string;
+    details: readonly ErrorInfo[];
 }
-
 export interface BotInfo {
-  id: string;
-  profile: string;
-  parentId?: string;
-  status: 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
-  cursor: number;
-  latestOutput?: string;
-  lastError?: ErrorInfo;
-  lastStop?: StopReceipt;
+    id: string;
+    profile: string;
+    parentId?: string;
+    status: 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+    cursor: number;
+    latestOutput?: string;
+    lastError?: ErrorInfo;
+    lastStop?: StopReceipt;
 }
-
 export type InputMode = 'steer' | 'followUp';
-
-export type InputReceipt =
-  | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
-  | { inputId: string; status: 'unknown' };
-
-export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
-
+export type InputReceipt = {
+    inputId: string;
+    status: 'accepted';
+    disposition: 'started' | 'queued' | 'handled';
+} | {
+    inputId: string;
+    status: 'unknown';
+};
+export type BotInitialInputResult = InputReceipt | {
+    status: 'rejected';
+    error: ErrorInfo;
+} | null;
 /** Built-in bot.spawn Service result, distinct from host Runtime.spawn. */
 export interface BotSpawnReceipt {
-  bot: BotInfo;
-  initialInput: BotInitialInputResult;
+    bot: BotInfo;
+    initialInput: BotInitialInputResult;
 }
-
-export type BotEvent = { botId: string; seq: number } & (
-  | { type: 'output'; text: string }
-  | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
-  | { type: 'error'; error: ErrorInfo; fatal: boolean }
-  | { type: 'exit'; reason: string; expected: boolean }
-);
-
+export type BotEvent = {
+    botId: string;
+    seq: number;
+} & ({
+    type: 'output';
+    text: string;
+} | {
+    type: 'settled';
+    outcome: 'completed' | 'failed' | 'aborted';
+    output?: string;
+    error?: ErrorInfo;
+} | {
+    type: 'error';
+    error: ErrorInfo;
+    fatal: boolean;
+} | {
+    type: 'exit';
+    reason: string;
+    expected: boolean;
+});
 export interface PendingCleanup {
-  kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
-  id: string;
-  action: 'await-startup' | 'stop-execution' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
-  error?: ErrorInfo;
-  resourceKey?: string;
-  sandboxId?: string;
-  creation?: 'created' | 'pending' | 'absent';
-  executionStopped?: boolean;
+    kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
+    id: string;
+    action: 'await-startup' | 'stop-execution' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+    error?: ErrorInfo;
+    resourceKey?: string;
+    sandboxId?: string;
+    creation?: 'created' | 'pending' | 'absent';
+    executionStopped?: boolean;
 }
-
 export interface StopReceipt {
-  botId: string;
-  execution: 'stopped' | 'unknown';
-  cleanup: 'complete' | 'pending';
-  artifacts: readonly string[];
-  errors: readonly ErrorInfo[];
-  pending?: PendingCleanup;
+    botId: string;
+    execution: 'stopped' | 'unknown';
+    cleanup: 'complete' | 'pending';
+    artifacts: readonly string[];
+    errors: readonly ErrorInfo[];
+    pending?: PendingCleanup;
 }
-
 export interface CloseReceipt {
-  bots: readonly StopReceipt[];
-  cleanup: 'complete' | 'pending';
-  errors: readonly ErrorInfo[];
-  pending: readonly PendingCleanup[];
-  outputDir: string;
-  reportPath?: string;
-  evidence: { path?: string; recorded: number; lost: number; pending: number };
+    bots: readonly StopReceipt[];
+    cleanup: 'complete' | 'pending';
+    errors: readonly ErrorInfo[];
+    pending: readonly PendingCleanup[];
+    outputDir: string;
+    reportPath?: string;
+    evidence: {
+        path?: string;
+        recorded: number;
+        lost: number;
+        pending: number;
+    };
 }
-
 export interface Runtime {
-  readonly id: string;
-  spawn(options: SpawnOptions): Promise<BotInfo>;
-  get(botId: string): Promise<BotInfo>;
-  send(botId: string, input: string, options: { requestId: string; mode?: InputMode }): Promise<InputReceipt>;
-  onEvent(handler: (event: BotEvent) => void): () => void;
-  stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
-  close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
-  readonly files: {
-    prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
-    grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
-  };
+    readonly id: string;
+    spawn(options: SpawnOptions): Promise<BotInfo>;
+    get(botId: string): Promise<BotInfo>;
+    send(botId: string, input: string, options: {
+        requestId: string;
+        mode?: InputMode;
+    }): Promise<InputReceipt>;
+    onEvent(handler: (event: BotEvent) => void): () => void;
+    stop(botId: string, options?: {
+        timeoutMs?: number;
+    }): Promise<StopReceipt>;
+    close(options?: {
+        timeoutMs?: number;
+    }): Promise<CloseReceipt>;
+    readonly files: {
+        prepare(botId: string, options: {
+            requestId: string;
+            files: FileSeed;
+        }): Promise<PreparedFiles>;
+        grant(options: {
+            requestId: string;
+            prepared: PreparedFiles;
+        }): Promise<GrantReceipt>;
+    };
 }
-
-export function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
+export {};
 ```
 
-#### src/core/services.d.ts
+#### dist/src/core/services.d.ts
 
 ```ts
-export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+import type { JsonValue, ServiceManifest, ServiceCaller, ServiceAdapter } from './service-types.js';
+export type * from './service-types.js';
+export interface ServiceRegistration {
+    manifest: ServiceManifest;
+    adapter: ServiceAdapter;
+}
+export interface AdapterMetadata {
+    transport: 'http-json';
+    timeoutMs: number;
+}
+export interface ServiceInvocation {
+    operation: string;
+    input: unknown;
+    envelope: {
+        operation_id: string;
+    };
+    caller: ServiceCaller;
+    signal?: AbortSignal;
+    recordService?: (record: ServiceInvocationRecord) => void;
+    assertAuthorized?: () => void;
+}
+export interface ServiceInvocationRecord {
+    runtimeId: string;
+    botId: string;
+    profile: string;
+    serviceId: string;
+    operation: string;
+    operationId: string;
+    state: string;
+    outcome: string;
+    error?: {
+        code: string;
+        retryable: boolean;
+    };
+}
+/** Internal non-credential effective adapter configuration for run evidence. */
+export declare function getAdapterMetadata(adapter: ServiceAdapter): Readonly<AdapterMetadata> | undefined;
+export declare function isJson(value: unknown, seen?: Set<object>, depth?: number): value is JsonValue;
+export declare class ServiceRegistry {
+    constructor();
+    registerService(registration: ServiceRegistration): void;
+}
+export declare function builtinBotRegistration(manifest: ServiceManifest, adapter: ServiceAdapter): Readonly<ServiceRegistration>;
+export declare function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
+export declare function snapshotServiceRegistry(services: ServiceRegistry): Map<string, Readonly<ServiceRegistration>>;
+export declare function invokeService(registration: ServiceRegistration, { operation, input, envelope, caller, signal, recordService, assertAuthorized }: ServiceInvocation, timeoutMs?: number): Promise<JsonValue>;
+/** Host-configured HTTP adapter. Its credential never enters Bot environments. */
+export declare function createHttpJsonAdapter({ token, timeoutMs, fetchImpl }?: {
+    token?: string;
+    timeoutMs?: number;
+    fetchImpl?: typeof fetch;
+}): ServiceAdapter;
+```
 
+#### dist/src/core/service-types.d.ts
+
+```ts
+export type JsonValue = null | boolean | number | string | JsonValue[] | {
+    [key: string]: JsonValue;
+};
 export interface ServiceManifest {
-  id: string;
-  title: string;
-  purpose: string;
-  provider_version: string;
-  contract_version: '2';
-  endpoint: { transport: 'in-process' } | { transport: 'http-json'; url: string };
-  capabilities: readonly ServiceCapability[];
+    id: string;
+    title: string;
+    purpose: string;
+    provider_version: string;
+    contract_version: '2';
+    endpoint: {
+        transport: 'in-process';
+    } | {
+        transport: 'http-json';
+        url: string;
+    };
+    capabilities: readonly ServiceCapability[];
 }
-
 export interface ServiceCapability {
-  name: string;
-  operation: string;
-  description: string;
-  side_effect: 'read' | 'write';
-  idempotent: boolean;
-  help: { when: string; ref?: string };
-  input_schema: Record<string, unknown>;
-  output_schema: Record<string, unknown>;
-  errors: readonly { code: string; retryable: boolean }[];
-  path?: string;
+    name: string;
+    operation: string;
+    description: string;
+    side_effect: 'read' | 'write';
+    idempotent: boolean;
+    help: {
+        when: string;
+        ref?: string;
+    };
+    input_schema: Record<string, unknown>;
+    output_schema: Record<string, unknown>;
+    errors: readonly {
+        code: string;
+        retryable: boolean;
+    }[];
+    path?: string;
 }
-
 export interface ServiceCaller {
-  runtimeId: string;
-  botId: string;
-  profile: string;
-  binding?: string;
+    runtimeId: string;
+    botId: string;
+    profile: string;
+    binding?: string;
 }
-
 export interface ServiceRequest {
-  manifest: ServiceManifest;
-  capability: ServiceCapability;
-  input: JsonValue;
-  envelope: { operation_id: string; [key: string]: unknown };
-  caller: ServiceCaller;
-  signal: AbortSignal;
+    manifest: ServiceManifest;
+    capability: ServiceCapability;
+    input: JsonValue;
+    envelope: {
+        operation_id: string;
+        [key: string]: unknown;
+    };
+    caller: ServiceCaller;
+    signal: AbortSignal;
+    /** Recheck caller authority immediately before a Service commits its side effect. */
+    assertAuthorized(): void;
 }
-
 export interface ServiceAdapter {
-  invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
+    invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
 }
-
-export class ServiceRegistry {
-  registerService(registration: { manifest: ServiceManifest; adapter: ServiceAdapter }): void;
-}
-
-export function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
-
-/** Host-only Service credential; HTTP Service must authenticate this connection before trusting caller. */
-export function createHttpJsonAdapter(options?: { token?: string; timeoutMs?: number; fetchImpl?: typeof fetch }): ServiceAdapter;
 ```
 
-#### src/core/backends/pi-opensandbox.d.ts
+#### dist/src/core/backends/pi-opensandbox.d.ts
 
 ```ts
-import type { Backend } from '../index.js';
+export { createPiOpenSandboxBackend } from '../pi-opensandbox-backend.js';
+export type { PiOpenSandboxBackendConfig } from '../backend-config.js';
+```
 
+#### dist/src/core/backend-config.d.ts
+
+```ts
 export interface PiOpenSandboxBackendConfig {
-  sandbox: {
-    lifecycleBaseUrl: string;
-    apiKey?: string;
-    execdToken?: string;
-    endpointHost?: string;
-    resourceLimits?: { cpu: string; memory: string };
-    commandTimeoutMs?: number;
-    /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
-    timeoutSeconds?: number;
-  };
-  bridge: { host: string; publicUrl: string };
-  modelGateway: {
-    host: string;
-    advertiseHost: string;
-    requestTimeoutMs?: number;
-    /** null preserves provider/Pi output parameters without a host token clamp. */
-    maxOutputTokens?: number | null;
-  };
-  models: Readonly<Record<string, {
-    provider: string;
-    model: string;
-    upstream: { url: string; headers: Readonly<Record<string, string>> };
-  }>>;
-  isolation: {
-    network: 'local-docker';
-    disk: { bytes: number; inodes: number };
-  };
+    sandbox: {
+        lifecycleBaseUrl: string;
+        apiKey?: string;
+        execdToken?: string;
+        endpointHost?: string;
+        resourceLimits?: {
+            cpu: string;
+            memory: string;
+        };
+        commandTimeoutMs?: number;
+        /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
+        timeoutSeconds?: number;
+    };
+    bridge: {
+        host: string;
+        publicUrl: string;
+    };
+    modelGateway: {
+        host: string;
+        advertiseHost: string;
+        requestTimeoutMs?: number;
+        /** null preserves provider/Pi output parameters without a host token clamp. */
+        maxOutputTokens?: number | null;
+    };
+    models: Readonly<Record<string, {
+        provider: string;
+        model: string;
+        upstream: {
+            url: string;
+            headers: Readonly<Record<string, string>>;
+        };
+    }>>;
+    isolation: {
+        network: 'local-docker';
+        disk: {
+            bytes: number;
+            inodes: number;
+        };
+    };
 }
-
-export function createPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig): Backend;
 ```
 
 <!-- END GENERATED REFERENCE -->

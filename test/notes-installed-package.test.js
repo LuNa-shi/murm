@@ -191,14 +191,14 @@ test('candidate package admits only declared distribution roots and retains exec
   await writeFile(join(root, 'package.json'), await readFile(new URL('../../package.json', import.meta.url)));
   await writeFile(join(root, '.gitignore'), await readFile(new URL('../../.gitignore', import.meta.url)));
   const resources = [
-    'src/core/index.js', 'src/core/index.d.ts', 'src/core/services.js', 'src/core/services.d.ts',
-    'src/core/backends/pi-opensandbox.js', 'src/core/backends/pi-opensandbox.d.ts',
-    'scripts/swarm.mjs', 'scripts/opensandbox-agent-worker.mjs',
-    'services/opensandbox-agent/pi-models.json', 'src/environments/shared/run-report.js',
-    'examples/scalemas-environment/main.mjs', 'examples/scalemas-environment/config.mjs',
-    'examples/notes-environment/main.mjs', 'examples/subagents-environment/controller.mjs',
-    'examples/agensh-environment/config.mjs', 'examples/agensh-environment/README.md',
-    'docs/architecture/source-map.json', 'test/fixtures/foreground-host-configuration.mjs',
+    'dist/src/core/index.js', 'dist/src/core/index.d.ts', 'dist/src/core/services.js', 'dist/src/core/services.d.ts',
+    'dist/src/core/backends/pi-opensandbox.js', 'dist/src/core/backends/pi-opensandbox.d.ts',
+    'dist/scripts/swarm.mjs', 'dist/scripts/opensandbox-agent-worker.mjs',
+    'services/opensandbox-agent/pi-models.json', 'dist/src/environments/shared/run-report.js',
+    'dist/examples/scalemas-environment/main.mjs', 'dist/examples/scalemas-environment/config.mjs',
+    'dist/examples/notes-environment/main.mjs', 'dist/examples/subagents-environment/controller.mjs',
+    'dist/examples/agensh-environment/config.mjs', 'examples/agensh-environment/README.md',
+    'docs/architecture/source-map.json', 'dist/test/fixtures/foreground-host-configuration.mjs',
   ];
   const privatePaths = ['.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',
     'local-artifacts/run/private.bin', 'experiments/run/private.bin', 'reports/run/private.bin', '.worktree/other/private.txt',

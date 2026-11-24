@@ -14,12 +14,12 @@
       "sha256": "cb014f632b97e2e525fce8920f7f36105a7684771e50fd06c3082db421e315b2"
     },
     {
-      "path": "src/core/index.js",
-      "sha256": "f7abae3e2a8928b38891c44b435b808cb47d7cd2dbd86b824cadb05ecef6b1cc"
+      "path": "src/core/index.ts",
+      "sha256": "c3b64be3e0fb91c5772b7b9c61256c58ff819be4379da13fc91a3a4d6d7ab9c5"
     },
     {
-      "path": "src/core/pi-opensandbox-backend.js",
-      "sha256": "43df7111e6e59ce631e6b8cfe9b04a0fd0c73335a60992a76dc5f72b409f9bb0"
+      "path": "src/core/pi-opensandbox-backend.ts",
+      "sha256": "07167c0da00688c879ec9539e1ad95db5e8bdec818b6c651b27bf1c91b722aa7"
     },
     {
       "path": "scripts/opensandbox-agent-worker.mjs",
@@ -102,28 +102,28 @@
       "sha256": "f7361fa46eb42926b7dae0c5c5d762f87e2df2dbe753572fab2ed7b6e07f2de0"
     },
     {
-      "path": "src/sdk/service-catalog.js",
-      "sha256": "90d436f090046de3e7171a45044efc8f78a1e20efad46741eabd62f2bbc15719"
+      "path": "src/sdk/service-catalog.ts",
+      "sha256": "0e284ab9a0d04987bbf3d48988dad86a6cd9ad491c1d38adf3cc8390a5dae399"
     },
     {
-      "path": "src/sdk/builtin-registry.js",
-      "sha256": "02416ed6f3c28313edaca0ddb945abbd37bc293e1841d46db9eade72a2581855"
+      "path": "src/sdk/builtin-registry.ts",
+      "sha256": "98d9ded93d7254f1813080c71862e0b8a305de12704219046156e16bd5787623"
     },
     {
-      "path": "src/sdk/service-bundle.js",
-      "sha256": "492c92603a5ac6591958d77cc3e1e492b0d4e0bc6d2c876233ac5218deb047af"
+      "path": "src/sdk/service-bundle.ts",
+      "sha256": "d866c1655c5d17acaf84b86422be3057ad2b04935d9c43c52d7b10b149a88481"
     },
     {
-      "path": "src/sdk/service-registry.js",
-      "sha256": "6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46"
+      "path": "src/sdk/service-registry.ts",
+      "sha256": "059326242222f5a036a03b33fb0e7b260fb0f527dfd771822755db2419ef5253"
     },
     {
-      "path": "src/sdk/service-manifest.js",
-      "sha256": "415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf"
+      "path": "src/sdk/service-manifest.ts",
+      "sha256": "ef5119f0fa92a587850498a8ae2d1fc19c35d45f1cd3df9301916460433a34c2"
     },
     {
-      "path": "src/protocol/envelope.js",
-      "sha256": "d570d85450930312361626f14bbef82f7dc0226eb304adb7213fe89391f35043"
+      "path": "src/protocol/envelope.ts",
+      "sha256": "878a771020466e90edadaa60a8d3ef4fba7a79534969c7ea510fa02795773ea8"
     },
     {
       "path": "src/task/task-service.js",

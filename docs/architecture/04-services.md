@@ -19,7 +19,7 @@ The built-in Registry declares 40 capabilities: Catalog 3, Task 27, Context 8 an
 
 The normal Task surface does not advertise child creation. Registered Bots explicitly save Workspace revisions, publish Materials and finish Tasks. Runtime Sandbox declarations do not permit registered Bots to invoke legacy root shell; their shell is native non-root Pi Bash. Read the generated matrix together with Bridge guards.
 
-Sources: [service catalog](../../src/sdk/service-catalog.js), [built-in Registry](../../src/sdk/builtin-registry.js), [capability profile](../../src/agent/capability-profile.js).
+Sources: [service catalog](../../src/sdk/service-catalog.ts), [built-in Registry](../../src/sdk/builtin-registry.ts), [capability profile](../../src/agent/capability-profile.js).
 
 ## 2. One tool call, from Pi to durable state
 
@@ -37,7 +37,7 @@ The Bridge serves `GET /health` without its bearer token, and requires the token
 
 **Declared schemas versus enforced checks.** Manifest construction validates schema shape and passes schemas to the model/tool interface. Registry and ServiceHost do not run a general JSON Schema input/output validator for each call. The Bridge checks that the payload is an object and applies operation-specific gates; each domain handler checks its own fields. Consequently, the documentation records both advertised schemas and handler behavior, including places where they differ. A closed advertised schema does not establish that every direct provider invocation is rejected for every extra field.
 
-Sources: [Bridge](../../src/agent/services-bridge.js), [Registry invocation](../../src/sdk/service-registry.js), [ServiceHost](../../src/sdk/service-host.js). Regression seams: [profile/Bridge tests](../../test/capability-profile-bridge.test.js), [Registry tests](../../test/service-registry.test.js), [hosted service](../../test/service-host-isolated.test.js).
+Sources: [Bridge](../../src/agent/services-bridge.js), [Registry invocation](../../src/sdk/service-registry.ts), [ServiceHost](../../src/sdk/service-host.ts). Regression seams: [profile/Bridge tests](../../test/capability-profile-bridge.test.js), [Registry tests](../../test/service-registry.test.js), [hosted service](../../test/service-host-isolated.test.js).
 
 ### HTTP waiting and cancellation
 
@@ -47,7 +47,7 @@ The caller owns the absolute cancellation signal, covering both response headers
 
 Independent Judge startup expands the peer deadline using the configured queue and checker allowances, as documented in [07 Run configuration](07-run-configuration.md). Queue waiting continues to refresh Execution authority and cannot extend Mission or Execution lifetime. A longer transport deadline is not a longer checker process allowance. Transport makes no durable writes; the existing service handlers and CLI replay receipts retain ownership of state.
 
-Sources: [shared HTTP transport](../../src/protocol/http-request.js), [peer client](../../src/sdk/coordinator-peer-client.js), [CLI](../../src/cli/swarm-cli.js). Tests cover delayed headers, partial-body cancellation and socket cleanup, domain errors, invalid deadlines, and CLI replay after lost responses. An opt-in real 310-second delayed-header test exercises the former five-minute limit.
+Sources: [shared HTTP transport](../../src/protocol/http-request.ts), [peer client](../../src/sdk/coordinator-peer-client.ts), [CLI](../../src/cli/swarm-cli.js). Tests cover delayed headers, partial-body cancellation and socket cleanup, domain errors, invalid deadlines, and CLI replay after lost responses. An opt-in real 310-second delayed-header test exercises the former five-minute limit.
 
 ### CLI error evidence and concurrent calls
 
@@ -82,7 +82,7 @@ Bridge start/completion events carry both the operation ID and a fresh `bridge_c
 
 The API reference reproduces the complete error-code object. Each handler can attach more specific `details`; an empty manifest `errors` array does not mean a built-in capability cannot fail.
 
-Sources: [envelope](../../src/protocol/envelope.js), [errors](../../src/errors.js), [Task](../../src/task/task-service.js), [Context](../../src/context/context-service.js).
+Sources: [envelope](../../src/protocol/envelope.ts), [errors](../../src/errors.ts), [Task](../../src/task/task-service.js), [Context](../../src/context/context-service.js).
 
 ## 3. Registry, manifests and hosted providers
 
@@ -128,7 +128,7 @@ The complete built-in host environment is:
 
 Both host scripts print their service identity, endpoint and manifest hash at startup; the built-in script also prints its database path. SIGINT/SIGTERM stops HTTP and closes owned database handles. The built-in Dockerfile uses Node 22, installs production dependencies with lifecycle scripts disabled, exposes 8787, selects `task` by default, and sets its database to `/var/lib/swarmenv/service.sqlite` on the declared volume. It does not install Lean or configure the full multi-provider deployment.
 
-Sources: [manifest](../../src/sdk/service-manifest.js), [Registry](../../src/sdk/service-registry.js), [adapters](../../src/sdk/service-adapter.js), [host](../../src/sdk/service-host.js), [hosting script](../../scripts/service-host.mjs), [builtin container](../../services/builtin/Dockerfile).
+Sources: [manifest](../../src/sdk/service-manifest.ts), [Registry](../../src/sdk/service-registry.ts), [adapters](../../src/sdk/service-adapter.ts), [host](../../src/sdk/service-host.ts), [hosting script](../../scripts/service-host.mjs), [builtin container](../../services/builtin/Dockerfile).
 
 ### Documentation bundles
 
@@ -136,7 +136,7 @@ Sources: [manifest](../../src/sdk/service-manifest.js), [Registry](../../src/sdk
 
 The bundle records each document's content/hash/byte size and binds the metadata into the manifest. `service://<id>/<resource>` resolves only Registry-owned resources. This is reviewed documentation available for prompt composition, not a fetch-any-URL tool. The host decides whether an initial input includes a composed documentation block; the exact send paths are in [08 Prompts](08-prompts.md).
 
-Sources: [bundle loader](../../src/sdk/service-bundle.js), [bundle tests](../../test/service-bundle.test.js), [Mathlib bundle](../../services/mathlib-search/service.json).
+Sources: [bundle loader](../../src/sdk/service-bundle.ts), [bundle tests](../../test/service-bundle.test.js), [Mathlib bundle](../../services/mathlib-search/service.json).
 
 ### 3.1 Bash CLI boundary (Issue 119)
 
@@ -184,7 +184,7 @@ For `swarm material unsupersede`, the adapter checks Runtime/Bot/Profile and cur
 
 The true Core/Bridge/CLI regressions cover ACTIVE compatibility, the granted UNBOUND route, default/no-Profile/no-host-policy/no-domain-grant rejection, persisted grant removal before accepted-result replay, grant/deadline/stop changes during Core lookup, immutable author history, surviving disputes and newer successor protection. A normal host test verifies both default denial and explicit registration through the actual controller/coordinator. The direct-domain and retained v1 authorization regressions remain; this does not establish trusted live Workspace capture.
 
-Sources: [Context](../../src/context/context-service.js), [Context schema](../../src/storage/context-schema.js), [Material contract tests](../../test/material-content.test.js), [Correction tests](../../test/material-corrections.test.js).
+Sources: [Context](../../src/context/context-service.js), [Context schema](../../src/storage/context-schema.ts), [Material contract tests](../../test/material-content.test.js), [Correction tests](../../test/material-corrections.test.js).
 
 ## 5. Judge: current submission, preflight, checks and application
 

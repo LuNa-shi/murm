@@ -103,7 +103,7 @@ CREATE INDEX IF NOT EXISTS replay_events_transaction ON replay_events(transactio
 
 ### Task-owned independent service commit gates
 
-Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+Source: [src/storage/service-peer-schema.ts](../../src/storage/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS service_commit_gate (
@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS service_commit_events (
 
 ### Context peer receipts
 
-Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+Source: [src/storage/service-peer-schema.ts](../../src/storage/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS context_peer_receipts (
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS context_peer_receipts (
 
 ### Judge peer launch phases
 
-Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+Source: [src/storage/service-peer-schema.ts](../../src/storage/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS judge_peer_phases (
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595`.
+Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -513,7 +513,7 @@ CREATE TABLE IF NOT EXISTS take_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `beb3d52d141f9d4e0b02aff35f578907b9997835fd3084580ef18bd29a985ae7`.
+Source: [src/storage/context-schema.ts](../../src/storage/context-schema.ts); source SHA-256: `beb3d52d141f9d4e0b02aff35f578907b9997835fd3084580ef18bd29a985ae7`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -621,7 +621,7 @@ CREATE INDEX IF NOT EXISTS material_consumptions_material_scan
 
 ### Judge database
 
-Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `7fceae1e3ec7c8c5c53e4c94313e5995898a71907a3a7c8b092cb727b3239142`.
+Source: [src/storage/judge-schema.ts](../../src/storage/judge-schema.ts); source SHA-256: `b2f060d3f4854661833921fdc3889a20e9890d1dbbeca35995487227dca70373`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (

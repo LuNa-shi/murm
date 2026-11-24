@@ -15,7 +15,7 @@ test('installed Notes and subagents CLIs preserve cancellation received during c
   for (const mode of ['notes', 'subagents']) {
     if (mode === 'subagents') {
       for (const name of ['main', 'controller', 'prompts']) {
-        await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/examples/subagents-environment', `${name}.mjs`), join(installed.directory, `${name}.mjs`));
+        await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/subagents-environment', `${name}.mjs`), join(installed.directory, `${name}.mjs`));
       }
     }
     const outputDir = join(installed.directory, `${mode}-cancelled`);
@@ -68,8 +68,8 @@ try {
  ({ServiceRegistry}=await import('@swarmenv/core/services'));
  ({createPiOpenSandboxBackend}=await import('@swarmenv/core/backends/pi-opensandbox'));
 } finally {hooks.deregister()}
-const domainRoots=['src/task/','src/context/','src/judge/','src/environments/flat/'];
-assert.deepEqual([...loaded].filter(path=>path==='src/agent/bot-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
+const domainRoots=['dist/src/task/','dist/src/context/','dist/src/judge/','dist/src/environments/flat/'];
+assert.deepEqual([...loaded].filter(path=>path==='dist/src/agent/bot-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
  'Public Core imports must load independently of flat Task, Mission and role contracts');
 const {runNotesEnvironment,createNotes,fixedFact}=await import('./main.mjs');
 const {createCoreBridge}=await import('./node_modules/@swarmenv/core/dist/src/core/bridge.js');
@@ -81,7 +81,7 @@ try {
  const run=promisify(execFile);
  const cli=async(bot,...args)=>{
   const credentials=bridge.credentialsForBot(bot);
-  return run(process.execPath,['./node_modules/@swarmenv/core/scripts/swarm.mjs',...args],{env:{...process.env,...credentials.environment,...credentials.secretEnvironment},timeout:5000});
+  return run(process.execPath,['./node_modules/@swarmenv/core/dist/scripts/swarm.mjs',...args],{env:{...process.env,...credentials.environment,...credentials.secretEnvironment},timeout:5000});
  };
  const rejected=async(code,...args)=>assert.rejects(cli(...args),error=>{assert.equal(JSON.parse(error.stderr).code,code);return true});
  const key='core-service-boundary'; const original=JSON.stringify(fixedFact);
@@ -111,7 +111,14 @@ try {
  assert.deepEqual(notes.records.get(key),record); assert.equal(notes.records.size,1); assert.equal(notes.reads.length,1);
 } finally {await bridge.close()}
 
-for (const specifier of ['@swarmenv/core','@swarmenv/core/services','@swarmenv/core/backends/pi-opensandbox']) {
+const expectedExports = {
+ '@swarmenv/core': ['createRuntime'],
+ '@swarmenv/core/services': ['ServiceRegistry', 'builtinBotRegistration', 'createHttpJsonAdapter',
+  'createInProcessAdapter', 'getAdapterMetadata', 'invokeService', 'isJson', 'snapshotServiceRegistry'],
+ '@swarmenv/core/backends/pi-opensandbox': ['createPiOpenSandboxBackend'],
+};
+for (const [specifier, names] of Object.entries(expectedExports)) {
+ assert.deepEqual(Object.keys(await import(specifier)).sort(), names);
  assert.ok(import.meta.resolve(specifier).startsWith(new URL('./node_modules/',import.meta.url).href));
  assert.ok(loaded.has(import.meta.resolve(specifier).slice(packageRoot.length)),'Public entry must be observed by the module hook');
 }
@@ -137,6 +144,13 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
 import { createRuntime, type Runtime } from '@swarmenv/core';
 import { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend, type PiOpenSandboxBackendConfig } from '@swarmenv/core/backends/pi-opensandbox';
+type Assert<T extends true> = T;
+type Same<A, B> = [A, B] extends [B, A] ? true : false;
+type CoreExports = Assert<Same<keyof typeof import('@swarmenv/core'), 'createRuntime'>>;
+type ServiceExports = Assert<Same<keyof typeof import('@swarmenv/core/services'), 'ServiceRegistry' |
+  'builtinBotRegistration' | 'createHttpJsonAdapter' | 'createInProcessAdapter' | 'getAdapterMetadata' |
+  'invokeService' | 'isJson' | 'snapshotServiceRegistry'>>;
+type BackendExports = Assert<Same<keyof typeof import('@swarmenv/core/backends/pi-opensandbox'), 'createPiOpenSandboxBackend'>>;
 const config: PiOpenSandboxBackendConfig = {
   sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' },
   bridge: { host: '127.0.0.1', publicUrl: 'http://127.0.0.1:{port}' },

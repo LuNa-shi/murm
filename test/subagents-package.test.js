@@ -6,7 +6,7 @@ import { installNotesExample, execute } from './fixtures/notes-installed-package
 
 test('external installed subagents example imports only package exports and adjacent host modules', { timeout: 210_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
-  for (const name of ['main', 'controller', 'prompts', 'stages']) await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/examples/subagents-environment', `${name}.mjs`), join(installed.directory, `${name}.mjs`));
+  for (const name of ['main', 'controller', 'prompts', 'stages']) await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/subagents-environment', `${name}.mjs`), join(installed.directory, `${name}.mjs`));
   await writeFile(join(installed.directory, 'smoke.mjs'), `
 import assert from 'node:assert/strict';
 import {runSubagentsEnvironment} from './main.mjs';

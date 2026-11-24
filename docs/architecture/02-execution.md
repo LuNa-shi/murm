@@ -180,7 +180,7 @@ Registered cleanup distinguishes acceptance from completion: finish first persis
 |---|---|---|
 | [flat/controller.js](../../src/environments/flat/controller.js) | Dependency repair, discovery, continuation, directed feedback and domain cleanup | [flat-controller.test.js](../../test/flat-controller.test.js) |
 | [runtime.js](../../src/runtime/runtime.js) | Binding, events, deadlines, recovery and cleanup | [Workspace contract](../../test/workspace-contract.test.js), [cleanup integration](../../test/runtime-cleanup.test.js) |
-| [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.js) | Durable state/version/Core/lease transitions and replay | [Task behavior](../../test/task-contract.test.js), [finish lifecycle](../../test/task-finish-lifecycle.test.js) |
+| [task-service.js](../../src/task/task-service.js), [task-types.js](../../src/task/task-types.js), [schema.js](../../src/storage/schema.ts) | Durable state/version/Core/lease transitions and replay | [Task behavior](../../test/task-contract.test.js), [finish lifecycle](../../test/task-finish-lifecycle.test.js) |
 | [services-bridge.js](../../src/agent/services-bridge.js) | Identity, original Bot binding and compensation | [Bot Bridge](../../test/bot-bridge.test.js), [Bot Runtime](../../test/bot-runtime.test.js) |
 
 Test links identify existing regression scenarios, not a claim that they ran in this documentation session. Mock adapter tests do not establish live-provider, Docker or long-duration scientific behavior.

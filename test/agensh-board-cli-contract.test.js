@@ -40,7 +40,7 @@ test('Kimi Board instructions describe the real schema and unwrapped CLI results
   t.after(() => bridge.close());
   const credentials = bridge.credentialsForBot('bot-a');
   const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
-  const cli = (...args) => execute(process.execPath, ['scripts/swarm.mjs', ...args], { env, timeout: 5000 });
+  const cli = (...args) => execute(process.execPath, ['dist/scripts/swarm.mjs', ...args], { env, timeout: 5000 });
   const manifest = JSON.parse((await cli('service', 'view', 'agensh-context')).stdout);
   assert.deepEqual(manifest.capabilities.find(row => row.operation === 'board_read').output_schema.required, ['rendered']);
   assert.deepEqual(manifest.capabilities.find(row => row.operation === 'board_grep').output_schema.required, ['total', 'entries']);

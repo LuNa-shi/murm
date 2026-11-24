@@ -83,7 +83,7 @@ test('swarm bot exit uses the provisioned Bridge identity without an actor overr
   const { service, start } = await fixture(t);
   const env = start('bot:cli');
   service.setMissionStopReader(id => id === 'mission:auth');
-  const { stdout } = await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'bot', 'exit', '--reason', 'no-work', '--json'], { cwd: process.cwd(), env: { ...process.env, ...env }, timeout: 10_000 });
+  const { stdout } = await promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', 'bot', 'exit', '--reason', 'no-work', '--json'], { cwd: process.cwd(), env: { ...process.env, ...env }, timeout: 10_000 });
   const result = JSON.parse(stdout);
   assert.equal(result.bot.bot_id, 'bot:cli');
   assert.equal(service.getBot('bot:cli').state, 'CLOSING');
@@ -139,7 +139,7 @@ test('real swarm CLI discovers services, reads pinned public input and takes hos
   service = fixtureResult.service;
   const env = fixtureResult.start('bot:cli-flow');
   const run = async (...args) => {
-    const result = await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], {
+    const result = await promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', ...args], {
       env: { PATH: process.env.PATH, ...env }, timeout: 10_000,
     });
     return JSON.parse(result.stdout);
@@ -216,7 +216,7 @@ test('Bot public discovery refuses foreign Mission/Task identities and does not 
   const status = await bridge.call({ operation: 'task_status', payload: {} });
   assert.deepEqual(status.lanes, []);
   await assert.rejects(bridge.call({ operation: 'mission_submit', payload: {} }), { code: 'INVALID_CONTRACT' });
-  const { stdout } = await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'task', 'list', '--query=x=y=z'], { env: { PATH: process.env.PATH, ...env }, timeout: 10_000 });
+  const { stdout } = await promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', 'task', 'list', '--query=x=y=z'], { env: { PATH: process.env.PATH, ...env }, timeout: 10_000 });
   assert.equal(JSON.parse(stdout).tasks.length, 0);
 });
 
@@ -231,7 +231,7 @@ test('real CLI follows Task pages and takes an existing low-priority responsibil
   for (let i = 0; i < 505; i += 1) service.createTask({ mission_id: 'mission:auth', task_id: `existing:${i}`, summary: `Inspect reusable responsibility number ${i}`,
     expected_output: 'A reusable result', acceptance_conditions: ['Result is readable'], priority: i === 504 ? 0 : 1 }, makeEnvelope({ actorRef: 'operator:fixture' }));
   const env = f.start('bot:deep-lookup');
-  const run = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], {
+  const run = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', ...args], {
     env: { PATH: process.env.PATH, ...env }, timeout: 10000,
   })).stdout);
   const status = await run('task', 'status', '--limit', '2');
@@ -498,7 +498,7 @@ test('Bot task creation is absent from discovery and rejected through raw and re
   await assert.rejects(bridge.registry.invoke({ serviceId: 'task', capability: 'task_create', input: payload, envelope: makeEnvelope({ actorRef: 'bot:no-proposal' }), role: 'bound' }), { code: 'SERVICE_CAPABILITY_NOT_FOUND' });
   for (const version of [undefined, '2']) {
     const childEnv = { PATH: process.env.PATH, ...env, ...(version ? { SWARMENV_BRIDGE_CONTRACT_VERSION: version } : {}) };
-    for (const command of ['propose', 'task_create']) await assert.rejects(promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'task', command, '--summary', payload.summary], { env: childEnv, timeout: 10000 }), error => {
+    for (const command of ['propose', 'task_create']) await assert.rejects(promisify(execFile)(process.execPath, ['dist/scripts/swarm.mjs', 'task', command, '--summary', payload.summary], { env: childEnv, timeout: 10000 }), error => {
       assert.match(error.stderr, /unknown task command/); return true;
     });
   }

@@ -26,13 +26,4 @@ for (const directory of ['src', 'scripts', 'services', 'examples', 'test']) {
   });
 }
 
-// During incremental migration the three JavaScript public entries still
-// use their existing declarations. This copy retires with the TypeScript entries.
-for (const path of ['src/core/index.d.ts', 'src/core/services.d.ts', 'src/core/backends/pi-opensandbox.d.ts']) {
-  const source = resolve(root, path);
-  if (await stat(source).catch(error => {
-    if (error.code === 'ENOENT') return null;
-    throw error;
-  })) await cp(source, resolve(dist, path));
-}
 await chmod(resolve(dist, 'scripts/swarm.mjs'), 0o755);

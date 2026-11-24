@@ -8,7 +8,7 @@ import { ObservationStore } from '../src/observability/observation-store.js';
 
 async function startServer(root) {
   const child = spawn(process.execPath, [
-    'scripts/serve-observability.mjs',
+    'dist/scripts/serve-observability.mjs',
     '--root', join(root, 'experiments'),
     '--port', '0',
   ], { cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'] });
@@ -65,7 +65,7 @@ test('persistent observability discovers repository .worktrees and .worktree exp
     assert.ok(startup.scan_roots.includes(join(root, '.worktree')));
 
     const reused = spawnSync(process.execPath, [
-      'scripts/serve-observability.mjs', '--root', join(root, 'experiments'), '--port', '0',
+      'dist/scripts/serve-observability.mjs', '--root', join(root, 'experiments'), '--port', '0',
     ], { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 });
     assert.equal(reused.status, 0, reused.stderr);
     const reusedStartup = JSON.parse(reused.stdout);
@@ -124,7 +124,7 @@ test('standalone Observer fails before side effects when remote auth is omitted'
   const env = { ...process.env };
   delete env.SWARMENV_OBSERVABILITY_OPERATOR_PASSWORD;
   const rejected = spawnSync(process.execPath, [
-    'scripts/serve-observability.mjs', '--root', join(root, 'experiments'), '--host', '0.0.0.0', '--port', '0',
+    'dist/scripts/serve-observability.mjs', '--root', join(root, 'experiments'), '--host', '0.0.0.0', '--port', '0',
   ], { cwd: process.cwd(), env, encoding: 'utf8', timeout: 5000 });
   assert.equal(rejected.status, 1);
   assert.match(rejected.stderr, /requires explicit operator authentication/);
@@ -137,7 +137,7 @@ test('standalone Observer rejects retired report import options before creating 
   for (const option of ['--report=missing.json', '--experiment-dir=missing', '--no-raw-logs']) {
     const runRoot = join(root, option.split('=')[0].slice(2));
     const rejected = spawnSync(process.execPath, [
-      'scripts/serve-observability.mjs', '--root', runRoot, '--host', '0.0.0.0', '--port', '0', option,
+      'dist/scripts/serve-observability.mjs', '--root', runRoot, '--host', '0.0.0.0', '--port', '0', option,
     ], { cwd: process.cwd(), encoding: 'utf8', timeout: 5000 });
     assert.equal(rejected.status, 1);
     assert.match(rejected.stderr, /unknown option:/);
