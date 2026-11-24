@@ -30,6 +30,9 @@ test('shipped image contexts contain every COPY input and install their locked d
   await execute('npm', ['ci', '--offline', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: root, timeout: 30_000, maxBuffer: 4 * 1024 ** 2,
   });
+  const ciPi = JSON.parse(await readFile(join(root, 'node_modules/@earendil-works/pi-coding-agent/package.json'), 'utf8'));
+  assert.equal(ciPi.version, '1.3.0');
+  await rm(join(root, 'node_modules'), { recursive: true });
   await execute('npm', ['install', '--offline', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: root, timeout: 15_000, maxBuffer: 4 * 1024 ** 2,
   });
