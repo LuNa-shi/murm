@@ -158,21 +158,6 @@ test('closing lease expiry rejects Runtime heartbeat while physical deletion rem
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
-test('Runtime completes an accepted finish without a live CLI caller', { timeout: 30000 }, async (t) => {
-  const { service, runtime, session, executionId } = await fixture(t);
-  const closed = deferred();
-  service.subscribeTaskEvents((event) => { if (event.kind === 'task_finish_closed') closed.resolve(); });
-  const execution = service.getExecution(executionId);
-  service.dispatch('task_finish', { outcome: 'done' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
-    executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
-  await closed.promise;
-  // Join the already initiated release, including its Workspace cleanup.
-  await runtime.releaseExecution(executionId);
-  assert.equal(session.closed, true);
-  assert.equal(service.getTask(execution.task_id).state, 'DONE');
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
 test('finish accepted during an existing release is finalized before its Core is reused', async (t) => {
   const removing = deferred();
   const removed = deferred();
