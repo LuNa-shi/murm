@@ -6,14 +6,6 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 import { WorkspaceRepository } from './workspace-repository.js';
 
-export const WORKSPACE_CONFLICT_HELP = Object.freeze({
-  guidance: `Workspace apply has unresolved conflicts. The ordinary project tree contains Git's editable merge result.
-The base/current/incoming files here preserve the exact alternatives, including binary, rename and deletion conflicts.
-Resolve the intended ordinary project paths, remove this alternatives directory, then call swarm workspace save --resolved.
-Resolution records your decision; it does not establish correctness or replace a required check.
-`,
-});
-
 const META = '.swarm-workspace.json';
 const REVISION_DIR = '.swarm-revisions';
 const pendingRequests = new Map();
@@ -103,7 +95,7 @@ function fileEntries(files) {
  *
  * This module deliberately keeps Git and revision metadata outside an
  * Execution directory. Bots only receive materialized files and high-level
- * save/apply/merge operations; they never receive a repository path or Git
+ * save and checked merge operations; they never receive a repository path or Git
  * credentials.
  */
 export class MissionWorkspace {
@@ -564,65 +556,6 @@ export class MissionWorkspace {
         git_commit: metadata.git_commit, git_tree: metadata.git_tree, content_hash: metadata.content_hash,
         manifest: metadata.files, conflicts: metadata.conflicts ?? [], files: await this.#tree(root, selected) };
     }, { signal });
-  }
-
-  async planApply({ workspaceId, baseRevision, fromRevision, requestId }) {
-    required(requestId, 'request_id');
-    const root = this.workspacePath(workspaceId);
-    return this.repository.locked(root, async () => {
-      const record = await this.#read(root);
-      const base = await this.#revisionMetadata(root, revisionNumber(baseRevision));
-      const source = await this.#revisionMetadata(root, resolvedRevision(fromRevision, record));
-      const alreadyIncluded = await this.repository.isAncestor(root, source.git_commit, base.git_commit);
-      const merged = alreadyIncluded ? { tree: base.git_tree, conflicted: false, stages: [], messages: [] }
-        : await this.repository.applyTree(root, base.git_commit, source.git_commit);
-      const files = this.#normalizeTree(await this.repository.readTree(root, merged.tree));
-      const conflicts = [...(base.conflicts ?? []), ...(alreadyIncluded ? [] : source.conflicts ?? [])];
-      if (merged.conflicted) {
-        const id = textHash(stableStringify({ workspaceId, requestId, base: base.revision, source: source.revision })).slice(0, 24);
-        const stem = `workspace-conflicts-${id}`;
-        let artifacts = stem, suffix = 0;
-        const collides = prefix => Object.keys(files).some(path => path === prefix || path.startsWith(`${prefix}/`) || prefix.startsWith(`${path}/`));
-        while (collides(artifacts)) artifacts = `${stem}-${++suffix}`;
-        const stages = [];
-        for (const entry of merged.stages) {
-          if (!['100644', '100755'].includes(entry.mode)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Apply conflict contains a non-regular file');
-          const path = safePath(entry.path);
-          const artifact = `${artifacts}/${({ 1: 'base', 2: 'current', 3: 'incoming' })[entry.stage]}/${path}`;
-          files[artifact] = await this.repository.readBlob(root, entry.object);
-          stages.push({ ...entry, path, artifact_path: artifact });
-        }
-        const paths = [...new Set([...stages.map(stage => stage.path), ...merged.messages.flatMap(message => message.paths)])].sort();
-        const markerLines = [];
-        for (const path of paths) {
-          if (files[path] === undefined) continue;
-          const lines = Buffer.from(files[path]).toString('utf8').split('\n');
-          const generated = new Map();
-          let width = 0;
-          for (const line of lines) {
-            const opening = /^(<+) /.exec(line);
-            if (opening && line.includes(base.git_commit)) width = opening[1].length;
-            if (!width) continue;
-            const closing = line.startsWith('>'.repeat(width) + ' ') && line.includes(source.git_commit);
-            if (opening || closing || line === '='.repeat(width) || line.startsWith('|'.repeat(width) + ' ')) generated.set(line, (generated.get(line) ?? 0) + 1);
-            if (closing) width = 0;
-          }
-          const alternatives = stages.filter(stage => stage.path === path).map(stage => Buffer.from(files[stage.artifact_path]).toString('utf8').split('\n'));
-          for (const [line, count] of generated) markerLines.push({ path, line,
-            allowed_count: Math.max(lines.filter(value => value === line).length - count, ...alternatives.map(values => values.filter(value => value === line).length)) });
-        }
-        files[`${artifacts}/README.txt`] = WORKSPACE_CONFLICT_HELP.guidance;
-        conflicts.push({ conflict_id: id, kind: 'git-merge', base_revision: base.revision, source_revision: source.revision,
-          paths, stages, messages: merged.messages, artifact_root: artifacts, marker_labels: [base.git_commit, source.git_commit],
-          marker_lines: markerLines });
-      }
-      const complete = this.#normalizeTree(files);
-      const manifest = fileEntries(complete);
-      return { workspace_id: workspaceId, base_revision: base.revision, source_revision: source.revision, already_included: alreadyIncluded,
-        parents: alreadyIncluded ? [base.revision] : [...new Set([base.revision, source.revision])],
-        expected_content_hash: base.content_hash, content_hash: textHash(stableStringify(manifest)), manifest, files: complete,
-        changed_paths: this.#changed(base.files, manifest), conflicts: [...new Map(conflicts.map(conflict => [conflict.conflict_id, conflict])).values()] };
-    });
   }
 
   async materialize({ workspaceId, revision = undefined, targetDir }) {

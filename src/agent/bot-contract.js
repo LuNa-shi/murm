@@ -3,7 +3,7 @@ import { isSoftCloseout } from '../task/execution-budget.js';
 export const BOT_CONTINUATION_MESSAGE = '继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。';
 
 
-export const BOT_SOFT_CLOSEOUT_MESSAGE = '当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、apply 新输入、发起新 Judge 检查、Mission 验收或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。';
+export const BOT_SOFT_CLOSEOUT_MESSAGE = '当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、发起新 Judge 检查、Mission 验收或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。';
 
 export function buildBotSoftCloseoutNotice(executionId, deadline, at = Date.now()) {
   const remaining = Math.max(0, Date.parse(deadline ?? '') - at);
@@ -32,7 +32,7 @@ export function botServiceDirectory(profile) {
     for (const name of namespaces) entries.push({ name, provider_service: id, provider_version: service.provider_version ?? null, manifest_hash: service.manifest_hash ?? null,
       help: `swarm ${name} --help`, manifest_help: `swarm service view ${id} --json`,
       documentation: service.documentation ?? [],
-      permission: ({ mission: 'read public acceptance state; submit fixed main and explicit Materials only with a Mission coordination grant', task: 'Mission reads and direct take; UNBOUND/ACTIVE may propose; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant', workspace: 'public view/history/files/read/search and revision-pair diff before take; status/current-E diff/save/apply and checked merge require current E', material: 'Mission reads/search; publication, use and correction require current E; explicitly granted coordination can only revoke a matching supersession', judge: 'checks and result reads require current active E', bot: 'exit only when unbound with no pending take', service: 'configured service metadata only' })[name] ?? 'consult registered operation metadata; Bridge enforces current binding',
+      permission: ({ mission: 'read public acceptance state; submit fixed main and explicit Materials only with a Mission coordination grant', task: 'Mission reads and direct take; UNBOUND/ACTIVE may propose; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant', workspace: 'public view/history/files/read/search and revision-pair diff before take; status/current-E diff/save and checked merge require current E', material: 'Mission reads/search; publication, use and correction require current E; explicitly granted coordination can only revoke a matching supersession', judge: 'checks and result reads require current active E', bot: 'exit only when unbound with no pending take', service: 'configured service metadata only' })[name] ?? 'consult registered operation metadata; Bridge enforces current binding',
     });
   }
   return entries;
