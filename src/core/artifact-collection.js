@@ -11,9 +11,9 @@ function valid(condition, message) {
   if (!condition) throw collectionError('ARTIFACT_INVALID', message);
 }
 
-export async function saveBotArtifacts({ outputDir, botId, collect, records, bounds }) {
+export async function saveBotArtifacts({ outputDir, botId, collect, records, bounds, destination = 'artifacts', redactStream, privateFiles = false }) {
   const botDir = join(outputDir, botId);
-  const finalDir = join(botDir, 'artifacts');
+  const finalDir = join(botDir, destination);
   let staging, file;
   const files = [];
   const directories = [];
@@ -49,7 +49,8 @@ export async function saveBotArtifacts({ outputDir, botId, collect, records, bou
           'Artifact file exceeds its declared mode or byte bounds');
           const target = join(tree, path);
           await mkdir(dirname(target), { recursive: true, mode: 0o700 });
-          file = { path, mode, bytes, received: 0, hash: createHash('sha256'), handle: await open(target, 'wx', 0o600), target };
+          file = { path, mode: privateFiles ? 0o600 : mode, bytes, received: 0, written: 0, redact: redactStream?.(),
+            outputHash: createHash('sha256'), hash: createHash('sha256'), handle: await open(target, 'wx', 0o600), target };
         }
       } else if (record?.type === 'chunk') {
         const { data } = record;
@@ -57,15 +58,25 @@ export async function saveBotArtifacts({ outputDir, botId, collect, records, bou
         const chunk = Buffer.from(data, 'base64');
         valid(chunk.length > 0 && chunk.length <= chunkLimit && chunk.toString('base64') === data &&
           file.received + chunk.length <= file.bytes, 'Invalid or oversized artifact byte chunk');
-        await file.handle.writeFile(chunk);
+        const output = file.redact ? Buffer.from(file.redact.write(chunk)) : chunk;
+        await file.handle.writeFile(output);
+        file.outputHash.update(output);
+        file.written += output.length;
         file.hash.update(chunk);
         file.received += chunk.length;
       } else if (record?.type === 'fileEnd') {
         valid(file && file.received === file.bytes && file.hash.digest('hex') === record.sha256,
           'Artifact bytes or digest did not match the Worker manifest');
+        if (file.redact) {
+          const tail = Buffer.from(file.redact.end());
+          await file.handle.writeFile(tail);
+          file.outputHash.update(tail);
+          file.written += tail.length;
+        }
         await file.handle.close();
         await chmod(file.target, file.mode);
-        files.push({ path: file.path, mode: file.mode, bytes: file.bytes, sha256: record.sha256 });
+        files.push({ path: file.path, mode: file.mode, bytes: file.written, sha256: file.outputHash.digest('hex'),
+          ...(file.redact ? { sourceBytes: file.bytes, sourceSha256: record.sha256 } : {}) });
         totalBytes += file.bytes;
         file = undefined;
       } else {

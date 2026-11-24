@@ -262,6 +262,12 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       }
       return { collectable: stopped };
     },
+    async *collectSession(botId) {
+      const bot = bots.get(botId);
+      if (!bot?.executionStopped) throw Object.assign(new Error('Session archive requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
+      if (!bot.started) { yield { type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 }; return; }
+      yield* bot.manager.collectCoreSession(botId);
+    },
     async *collect(botId, specification) {
       const bot = bots.get(botId);
       if (!bot?.executionStopped) throw Object.assign(new Error('Artifact collection requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
