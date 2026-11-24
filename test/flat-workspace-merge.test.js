@@ -10,7 +10,8 @@ import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls } from './fixtures/flat-controller-backend.js';
 import { createFlatTaskService } from '../src/environments/flat/task-service.js';
 import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
-import { ServiceRegistry } from '../src/core/services.js';
+import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
+import { SwarmEnvError } from '../src/errors.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
@@ -26,8 +27,9 @@ async function fixture(t,options={}) {
   let runtime;
   const checked=[];
   const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
-  const publication=createFlatPublicationServices({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,missionId:stores.missionId,workspaceId:stores.workspaceId,deadline:()=>Date.now()+60000,
-    workspaceMergeChecker:options.disabled?null:{identity,timeoutMs:options.timeoutMs??5000,async check(plan) {checked.push(plan);await options.check?.(plan);return {verdict:options.verdict??'PASS',check_mode:'lean-project',checked_paths:['input.txt','a.txt','b.txt']};}}});
+  const publicationOptions={runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,missionId:stores.missionId,workspaceId:stores.workspaceId,deadline:()=>Date.now()+60000,
+    workspaceMergeChecker:options.disabled?null:{identity,timeoutMs:options.timeoutMs??5000,async check(plan) {checked.push(plan);await options.check?.(plan);return {verdict:options.verdict??'PASS',check_mode:'lean-project',checked_paths:['input.txt','a.txt','b.txt']};}}};
+  const publication=createFlatPublicationServices(publicationOptions);
   const services=new ServiceRegistry();services.registerService(publication.composeTask(discovery));
   for(const row of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(row);
   const allowed=Object.fromEntries(publication.registrations.map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]));
@@ -54,7 +56,7 @@ async function fixture(t,options={}) {
     revisions.push(await stores.workspace.save({workspaceId:stores.workspaceId,baseRevision:'0.1',files:{'input.txt':'fixed λ\n',[i?'b.txt':'a.txt']:i?'second contribution\n':'first contribution\n'},requestId:`published-${i}`,
       source:{operation:'save',mission_id:stores.missionId,task_id:execution.task_id,execution_id:execution.execution_id,bot_id:bots[i].id,fencing_version:execution.fencing_version}}));
   }
-  return {...stores,publication,runtime,bots,revisions,checked,cli:(...args)=>cli(bots[0],...args),cliFor:cli};
+  return {...stores,publication,publicationOptions,runtime,bots,revisions,checked,cli:(...args)=>cli(bots[0],...args),cliFor:cli};
 }
 
 test('Core Bridge CLI checked merge integrates two fixed public contributors and replays its original result',async t=>{
@@ -147,6 +149,56 @@ test('a timed-out checker retains ownership and cannot publish a late PASS',asyn
     f.publication.close();
     assert.equal((await f.publication.waitForMerges({timeoutMs:10})).cleanup,'pending');
   } finally {release.resolve();}
+  assert.equal((await f.publication.waitForMerges({timeoutMs:1000})).cleanup,'complete');
+  assert.equal((await f.workspace.get({workspaceId:f.workspaceId})).main_revision,'0.1');
+});
+
+
+for(const authority of ['Execution fence','Bridge revoke','Flat close']) test(`durable replay cannot return an old PASS after ${authority} during repository lock wait`,async t=>{
+  const f=await fixture(t);
+  const requestId='durable-replay';
+  const published=await f.cli('workspace','merge','--from',f.revisions[0].revision,'--request-id',requestId);
+  assert.equal(published.check.verdict,'PASS');
+  // Recompose the public adapter without its process-local request cache. The
+  // same actual Runtime/Execution and Git receipt remain the replay authority.
+  const publication=createFlatPublicationServices(f.publicationOptions);
+  t.after(async()=>{publication.close();await publication.waitForMerges({timeoutMs:1000});});
+  const registry=new ServiceRegistry();
+  registry.registerService(publication.registrations.find(row=>row.manifest.id==='workspace'));
+  const registered=snapshotServiceRegistry(registry).get('workspace');
+  const held=Promise.withResolvers(),locked=Promise.withResolvers(),entered=Promise.withResolvers();
+  const lock=f.workspace.repository.locked(f.workspace.workspacePath(f.workspaceId),async()=>{locked.resolve();await held.promise;});
+  await locked.promise;
+  // Observe the actual public merge call entering the held Git resource; do
+  // not replace its persistence/replay behavior.
+  const merge=f.workspace.merge.bind(f.workspace);
+  f.workspace.merge=options=>{const work=merge(options);entered.resolve();return work;};
+  let revoked=false;
+  const attempt=invokeService(registered,{operation:'workspace_merge',input:{from:f.revisions[0].revision},envelope:{operation_id:requestId},
+    caller:{runtimeId:f.runtime.id,botId:f.bots[0].id,profile:'researcher'},
+    assertAuthorized(){if(revoked) throw new SwarmEnvError('NOT_ALLOWED','Caller revoked');},
+  }).then(value=>({value}),error=>({error}));
+  await entered.promise;
+  if(authority==='Execution fence') {
+    const execution=f.tasks.getExecution(f.tasks.getBot(f.bots[0].id).execution_id);
+    f.tasks.dispatch('fence_execution',{reason:'Revoke while replay waits'},makeEnvelope({actorRef:'host',taskId:execution.task_id,executionId:execution.execution_id,specVersion:execution.spec_version,stateVersion:execution.state_version,fencingVersion:execution.fencing_version}));
+  } else if(authority==='Bridge revoke') revoked=true; else publication.close();
+  held.resolve();await lock;
+  const result=await attempt;
+  assert.ok(result.error,'revoked durable replay must not return the previously published PASS');
+  assert.match(result.error.code,/NOT_ALLOWED|FENCED/);
+  assert.equal(f.checked.length,1);
+  assert.equal((await f.workspace.get({workspaceId:f.workspaceId})).main_revision,published.main_revision);
+});
+
+test('fresh checker failure keeps its original cause when authority is also withdrawn',async t=>{
+  let f;
+  f=await fixture(t,{async check(){
+    const execution=f.tasks.getExecution(f.tasks.getBot(f.bots[0].id).execution_id);
+    f.tasks.dispatch('fence_execution',{reason:'Concurrent checker failure'},makeEnvelope({actorRef:'host',taskId:execution.task_id,executionId:execution.execution_id,specVersion:execution.spec_version,stateVersion:execution.state_version,fencingVersion:execution.fencing_version}));
+    throw new SwarmEnvError('SERVICE_TIMEOUT','Controlled checker timeout');
+  }});
+  await assert.rejects(f.cli('workspace','merge','--from',f.revisions[0].revision,'--request-id','original-failure'),error=>/SERVICE_TIMEOUT/.test(error.stderr));
   assert.equal((await f.publication.waitForMerges({timeoutMs:1000})).cleanup,'complete');
   assert.equal((await f.workspace.get({workspaceId:f.workspaceId})).main_revision,'0.1');
 });

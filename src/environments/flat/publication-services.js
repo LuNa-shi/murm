@@ -172,19 +172,19 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     signal?.throwIfAborted();
     const current=binding(caller,{write:!read});
     if (current.execution?.execution_id!==original.execution?.execution_id || current.execution?.fencing_version!==original.execution?.fencing_version) fail('FENCED','Flat binding changed during admission');
+    const reauthorize=expected=>{
+      assertAuthorized?.();signal?.throwIfAborted();
+      const latest=binding(caller,{write:!read});
+      if(latest.execution?.execution_id!==expected.executionId || latest.execution?.fencing_version!==expected.fencingVersion) fail('FENCED','Flat publication replay binding changed');
+    };
     const joined=requests.get(key);
     if (joined) {
       if(joined.fingerprint!==fingerprint) fail('CONFLICT','Flat publication request has different parameters');
       if(joined.work && !guardedReplay) return structuredClone(await joined.work);
       if(guardedReplay && joined.work && (operation==='workspace_merge'||joined.pending)) {
-        const reauthorize=()=>{
-          assertAuthorized?.();signal?.throwIfAborted();
-          const latest=binding(caller,{write:!read});
-          if(latest.execution?.execution_id!==joined.executionId || latest.execution?.fencing_version!==joined.fencingVersion) fail('FENCED','Flat publication replay binding changed');
-        };
-        reauthorize();
+        reauthorize(joined);
         const result=await joined.work;
-        reauthorize();
+        reauthorize(joined);
         return structuredClone(result);
       }
     }
@@ -216,7 +216,12 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       });
     }
     void work.then(()=>{request.pending=false;},()=>{request.pending=false;if(request.work===work) request.work=null;});
-    return structuredClone(await work);
+    const result=await work;
+    // Durable Git replay can return before its publication guard. A fresh or
+    // re-entered call must recheck authority after that asynchronous lookup,
+    // exactly as a joined request does. Preserve original operation failures.
+    if(operation==='workspace_merge') reauthorize(request);
+    return structuredClone(result);
   }
   const registrations=Object.entries(definitions).filter(([id])=>id!=='judge'||judgeService).map(([id,capabilities])=>({
     manifest:{id,title:`Flat ${id}`,purpose:'Publish and read durable flat results with actual Task ownership',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(cap=>cap.operation!=='workspace_merge'||merge)},
