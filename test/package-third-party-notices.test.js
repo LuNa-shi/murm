@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
+import { preparePackageArchive } from './fixtures/notes-installed-package.js';
 
 const execute = promisify(execFile);
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
@@ -13,12 +14,9 @@ const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 test('actual candidate archive carries pinned third-party sources, licenses and scoped notices', { timeout: 30_000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'package-third-party-notices-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const packed = await execute('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', directory], {
-    cwd: new URL('..', import.meta.url), timeout: 20_000, maxBuffer: 4 * 1024 ** 2,
-  });
-  const manifest = JSON.parse(packed.stdout)[0];
-  const files = new Set(manifest.files.map(file => file.path));
-  const archive = join(directory, manifest.filename);
+  const { archive } = await preparePackageArchive(directory);
+  const listing = await execute('tar', ['-tzf', archive], { timeout: 5000, maxBuffer: 4 * 1024 ** 2 });
+  const files = new Set(listing.stdout.trim().split('\n').filter(path => !path.endsWith('/')).map(path => path.replace(/^package\//, '')));
   const readEntry = async path => {
     assert.ok(files.has(path), `Missing third-party distribution file: ${path}`);
     return (await execute('tar', ['-xOf', archive, `package/${path}`], { encoding: 'buffer' })).stdout;

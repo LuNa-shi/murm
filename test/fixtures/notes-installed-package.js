@@ -8,8 +8,8 @@ import { promisify } from 'node:util';
 export const execute = promisify(execFile);
 const repository = resolve(import.meta.dirname, '../..');
 
-// Install the real archive: no checkout symlink, NODE_PATH or loader hooks.
-export async function installNotesExample({ archive: frozenArchive, expectedSha256 } = {
+// Select and snapshot the actual package before audits or installation consume it.
+export async function preparePackageArchive(directory, { archive: frozenArchive, expectedSha256 } = {
   archive: process.env.SWARMENV_TEST_PACKAGE_ARCHIVE,
   expectedSha256: process.env.SWARMENV_TEST_PACKAGE_SHA256,
 }, { requireCleanCheckout = false } = {}) {
@@ -23,23 +23,29 @@ export async function installNotesExample({ archive: frozenArchive, expectedSha2
   if (frozen && createHash('sha256').update(bytes).digest('hex') !== expectedSha256) {
     throw Object.assign(new Error('Frozen package digest does not match'), { code: 'FROZEN_PACKAGE_DIGEST_MISMATCH' });
   }
+  let sourceCommit = null, sourceDirty = null, archive;
+  if (frozen) {
+    archive = join(directory, 'frozen-package.tgz');
+    await writeFile(archive, bytes, { flag: 'wx', mode: 0o600 });
+  } else {
+    const revision = await execute('git', ['rev-parse', 'HEAD'], { cwd: repository });
+    const status = await execute('git', ['status', '--porcelain'], { cwd: repository });
+    sourceCommit = revision.stdout.trim(); sourceDirty = Boolean(status.stdout.trim());
+    if (requireCleanCheckout && sourceDirty) {
+      throw Object.assign(new Error('Native acceptance requires a clean package source pin'), { code: 'DIRTY_PACKAGE_SOURCE' });
+    }
+    const packed = await execute('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', directory],
+      { cwd: repository, timeout: 60_000, maxBuffer: 4 * 1024 ** 2 });
+    archive = join(directory, JSON.parse(packed.stdout)[0].filename);
+  }
+  return { archive, sourceCommit, sourceDirty };
+}
+
+// Install the real archive: no checkout symlink, NODE_PATH or loader hooks.
+export async function installNotesExample(selection, { requireCleanCheckout = false } = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'swarmenv-notes-installed-'));
   try {
-    let sourceCommit = null, sourceDirty = null, archive;
-    if (frozen) {
-      archive = join(directory, 'frozen-package.tgz');
-      await writeFile(archive, bytes, { flag: 'wx', mode: 0o600 });
-    } else {
-      const revision = await execute('git', ['rev-parse', 'HEAD'], { cwd: repository });
-      const status = await execute('git', ['status', '--porcelain'], { cwd: repository });
-      sourceCommit = revision.stdout.trim(); sourceDirty = Boolean(status.stdout.trim());
-      if (requireCleanCheckout && sourceDirty) {
-        throw Object.assign(new Error('Native acceptance requires a clean package source pin'), { code: 'DIRTY_PACKAGE_SOURCE' });
-      }
-      const packed = await execute('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', directory],
-        { cwd: repository, timeout: 60_000, maxBuffer: 4 * 1024 ** 2 });
-      archive = join(directory, JSON.parse(packed.stdout)[0].filename);
-    }
+    const { archive, sourceCommit, sourceDirty } = await preparePackageArchive(directory, selection, { requireCleanCheckout });
     await writeFile(join(directory, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
     await execute('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive],
       { cwd: directory, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 });

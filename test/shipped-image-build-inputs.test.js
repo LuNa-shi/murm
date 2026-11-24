@@ -5,18 +5,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
+import { preparePackageArchive } from './fixtures/notes-installed-package.js';
 
 const execute = promisify(execFile);
 
 test('shipped image contexts contain every COPY input and install their locked dependencies offline', { timeout: 60_000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), 'swarmenv-image-build-inputs-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const packed = await execute('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', directory], {
-    cwd: new URL('..', import.meta.url), timeout: 20_000, maxBuffer: 4 * 1024 ** 2,
-  });
-  const manifest = JSON.parse(packed.stdout)[0];
-  const files = manifest.files.map(file => file.path);
-  await execute('tar', ['-xzf', join(directory, manifest.filename), '-C', directory]);
+  const { archive } = await preparePackageArchive(directory);
+  const listing = await execute('tar', ['-tzf', archive], { timeout: 5000, maxBuffer: 4 * 1024 ** 2 });
+  const files = listing.stdout.trim().split('\n').filter(path => !path.endsWith('/')).map(path => path.replace(/^package\//, ''));
+  await execute('tar', ['-xzf', archive, '-C', directory]);
   const root = join(directory, 'package');
   for (const name of ['opensandbox-agent', 'builtin', 'mathlib-search']) {
     const dockerfile = await readFile(join(root, 'services', name, 'Dockerfile'), 'utf8');
