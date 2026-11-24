@@ -17,7 +17,8 @@
     "examples/notes-environment/.npmignore",
     "examples/subagents-environment/.npmignore",
     "examples/lead-helper-environment/.npmignore",
-    "examples/scalemas-environment/.npmignore"
+    "examples/scalemas-environment/.npmignore",
+    "examples/agensh-environment/.npmignore"
   ],
   "excluded": [
     {
@@ -1649,6 +1650,23 @@
         "docs/architecture/19-scalemas-environment.md"
       ],
       "role": "Exclude default scaleMAS run evidence from packaged examples"
+    },
+    {
+      "path": "examples/agensh-environment/config.mjs",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Installed foreground Agensh configuration with host-owned prerequisites and finite defaults"
+    },
+    {
+      "path": "examples/agensh-environment/.npmignore",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/18-agensh-environment.md"
+      ],
+      "role": "Exclude default Agensh run evidence from packaged examples"
     }
   ]
 }
