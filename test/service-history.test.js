@@ -187,7 +187,7 @@ test('recording does not turn a read-only transaction into a database write', as
 
 test('history exec preserves SQLite empty-tail handling and rejects invalid or closed input', async t => {
   const { db } = await fixture(t);
-  for (const sql of ['', ' \n\t', '; ;\n', '-- comment', '/* comment */']) {
+  for (const sql of ['', ' \n\t', '; ;\n', '-- comment', '/* comment */', '/* unfinished comment']) {
     db.exec(sql);
   }
   assert.throws(() => db.exec("'not a statement'"), { code: 'ERR_SQLITE_ERROR' });

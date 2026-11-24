@@ -79,6 +79,7 @@ function rowExpression(columns, rowidAlias, side) {
 }
 
 const SQL_QUOTES_AND_COMMENTS = /--[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/|'(?:''|[^'])*'|"(?:""|[^"])*"|`(?:``|[^`])*`|\[[^\]]*\]/g;
+const SQL_TRIVIA_PREFIX = /^(?:[;\s]|--[^\n]*(?:\n|$)|\/\*[\s\S]*?(?:\*\/|$))*/;
 function statementInfo(sql) {
   const withoutComments = String(sql).replace(SQL_QUOTES_AND_COMMENTS, part => /^(?:--|\/\*)/.test(part) ? ' ' : part)
     .trim().replace(/^(?:;\s*)+/, '').replace(/;\s*$/, '').trim();
@@ -181,7 +182,7 @@ function instrumentTransactions(db) {
     while (remaining.length) {
       // Avoid creating empty prepared statements, whose handles are already
       // finalized on Node 22. SQLite still validates the complete tail.
-      if (!remaining.replace(SQL_QUOTES_AND_COMMENTS, '').replace(/[;\s]/g, '')) return state.rawExec(remaining);
+      if (SQL_TRIVIA_PREFIX.exec(remaining)[0].length === remaining.length) return state.rawExec(remaining);
       const first = state.rawPrepare(remaining).sourceSQL;
       // Let SQLite find statement boundaries, including trigger bodies and
       // semicolons in quoted text. Every COMMIT in a compound exec is observed.
