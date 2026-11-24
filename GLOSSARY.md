@@ -1,26 +1,45 @@
-# SwarmEnv research runtime
+# SwarmEnv
 
-SwarmEnv coordinates independent research responsibilities and public reusable results within a shared Mission. These terms follow the approved [Issue #122 model](docs/phases/0002-task-material-workspace/01-model-and-runtime.md); implementation and compatibility behavior belong in [Architecture](docs/architecture/INDEX.md).
+SwarmEnv provides a Core library for running Bots and programmable Environments for their collaboration. The [Phase 0005 design](docs/phases/0005-core-environment/README.md) defines this stage's requirements, and [Architecture](docs/architecture/INDEX.md) describes the implementation and retained compatibility paths.
 
-## Phase 0005 target vocabulary
+## Core and Environment vocabulary
 
-The [Core / Environment design](docs/phases/0005-core-environment/README.md) is the authority for this new stage. Its **Core** is the importable library, **Runtime** is one host run, **Slot** is Bot capacity, and **workDir** is a Bot's private directory. **Workspace** remains flat's public Git project. The legacy Core/capacity meaning below describes the current implementation; it must not be confused with the new library or `Runtime.id`. A generic Phase 0005 Bot does not require a Task or Execution; flat retains its one-Bot/one-Execution rule. Target terms do not establish that migration is implemented.
+**Core**
+The importable library that owns Bot identities, resource lifecycles, input delivery and Service access for its Runtimes.
+_Avoid_ capacity slot, research role, permanent manager.
 
-## Current implementation and flat vocabulary
+**Runtime**
+One host run created through Core, with its own Bot capacity, registered resources and close responsibility.
+
+**Slot**
+One unit of a Runtime's Bot capacity, occupied until the Bot's resource cleanup is complete.
+_Avoid_ Core, research role, manager lane.
+
+**Environment**
+A host program that assembles a Runtime and Services, supplies collaboration policy and routes inputs among Bots.
+
+**Profile**
+A named, frozen configuration of a Bot role, including its prompt, model, image and permitted Service operations.
+
+**Bot**
+One identity with a private Session and workDir, belonging to one Runtime. In flat, a Bot has zero or one Execution.
+_Avoid_ reusable Agent identity.
+
+**Session**
+The Bot's model conversation context, retained across its input turns.
+
+**workDir / Working directory**
+A Bot's private project directory. In flat, an active Execution's unsaved changes remain in this directory until published to Workspace.
+
+## Flat vocabulary
+
+Flat's Mission, Task and public-result terms follow the approved [Issue #122 model](docs/phases/0002-task-material-workspace/01-model-and-runtime.md).
 
 **Mission**: The shared research objective, resource boundary and final acceptance scope. A Mission is not a Task to be taken.
 _Avoid_: Goal object, Mission Task, root Task.
 
 **Task**: A bounded responsibility with its own objective, deliverable and completion conditions. It has at most one current executor.
 _Avoid_: child Task, manager Task, shared Mission Task.
-
-**Bot**: One research identity with its own private conversation and computation context. A Bot has zero or one Execution.
-_Avoid_: reusable Agent identity.
-
-**Core**: A reusable capacity slot in which one Bot works at a time.
-_Avoid_: research role, permanent manager, Core lane.
-
-**Session**: The Bot's model conversation context. Session events are not research deliverables.
 
 **Execution**: A Bot's authorized interval of responsibility for one taken Task, through finish and cleanup.
 _Avoid_: permanent worker, resumed predecessor identity.
@@ -38,8 +57,6 @@ _Avoid_: global trust score, mandatory Evidence object.
 
 **Workspace**: The Mission's public project repository, with main and immutable public file revisions, including unmerged saves.
 _Avoid_: Bot private directory, Workspace lineage.
-
-**Working directory**: The isolated local project files available to an active Execution. Unsaved private changes are not public Workspace revisions.
 
 **Revision**: An immutable Workspace file version with explicit ancestry. Revision numbering alone does not establish ancestry.
 
