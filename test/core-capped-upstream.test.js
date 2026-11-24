@@ -142,10 +142,10 @@ test('optional terminal details stay bounded and cannot bypass the first output 
 
 test('terminal geometry keeps the first replay observation and omits unavailable optional fields', async t => {
   const first = { type: 'response.completed', response: {
-    id: 'stable-terminal', usage: { input_tokens: 10, output_tokens: 7 },
+    id: 'stable-terminal', model: 'k3', status: 'completed', usage: { input_tokens: 10, output_tokens: 7 },
   } };
   const replay = { type: 'response.completed', response: {
-    ...first.response, model: 'k3', status: 'completed', max_output_tokens: 0,
+    ...first.response, max_output_tokens: 0,
     usage: { ...first.response.usage, output_tokens_details: { reasoning_tokens: 0 } }, output: [],
   } };
   const sse = 'data: ' + JSON.stringify(first) + '\n\ndata: ' + JSON.stringify(replay) + '\n\n';
@@ -160,7 +160,7 @@ test('terminal geometry keeps the first replay observation and omits unavailable
   const response = await fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
   assert.equal(await response.text(), sse);
   const receipt = cap.receipt();
-  assert.deepEqual(receipt.requests[0].terminalGeometry, { status: 'other', modelMatches: false });
+  assert.deepEqual(receipt.requests[0].terminalGeometry, { status: 'completed', modelMatches: true });
   assert.equal(receipt.failure, undefined);
   assert.equal(receipt.reservedOutputTokens, 768);
 });
@@ -169,7 +169,7 @@ test('conflicting hosted terminal usage cannot replace the first metered receipt
   const upstreamUrl = await localUpstream(t, (_request, response) => {
     response.writeHead(200, { 'content-type': 'text/event-stream' });
     for (const outputTokens of [700, 3]) response.write('data: ' + JSON.stringify({ type: 'response.completed', response: {
-      id: 'same-response', usage: { input_tokens: 10, output_tokens: outputTokens }, output: [] } }) + '\n\n');
+      id: 'same-response', model: 'k3', status: 'completed', usage: { input_tokens: 10, output_tokens: outputTokens }, output: [] } }) + '\n\n');
     response.end();
   });
   const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
@@ -187,13 +187,16 @@ test('conflicting hosted terminal usage cannot replace the first metered receipt
   assert.equal(cap.receipt().forwarded, 1);
 });
 
-test('hosted terminal replay is idempotent but remapped response identity fails without retaining the new identity', async t => {
-  for (const remapped of [false, true]) await t.test(remapped ? 'remapped identity' : 'identical replay', async t => {
+test('hosted terminal replay must preserve response identity and the valid envelope', async t => {
+  for (const replay of ['identical replay', 'remapped identity', 'mismatched model']) await t.test(replay, async t => {
     const originalId = 'a'.repeat(256) + '-original', replacementId = 'a'.repeat(256) + '-private-remap';
+    const first = { id: originalId, model: 'k3', status: 'completed', usage: { input_tokens: 10, output_tokens: 700 }, output: [] };
+    const second = { ...first };
+    if (replay === 'remapped identity') second.id = replacementId;
+    if (replay === 'mismatched model') second.model = 'private-remap';
     const upstreamUrl = await localUpstream(t, (_request, response) => {
       response.writeHead(200, { 'content-type': 'text/event-stream' });
-      for (const id of [originalId, remapped ? replacementId : originalId]) response.write('data: ' + JSON.stringify({ type: 'response.completed', response: {
-        id, usage: { input_tokens: 10, output_tokens: 700 }, output: [] } }) + '\n\n');
+      for (const terminal of [first, second]) response.write(`data: ${JSON.stringify({ type: 'response.completed', response: terminal })}\n\n`);
       response.end();
     });
     const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000, maxRequests: 2,
@@ -206,9 +209,9 @@ test('hosted terminal replay is idempotent but remapped response identity fails 
     assert.deepEqual(receipt.requests[0].usage, { inputTokens: 10, outputTokens: 700 });
     assert.equal(receipt.reservedOutputTokens, 768);
     assert.equal(JSON.stringify(receipt).includes('private-remap'), false);
-    if (remapped) {
+    if (replay !== 'identical replay') {
       assert.equal(receipt.failure.code, 'LIVE_TERMINAL_CONFLICT');
-      assert.equal(receipt.requests[0].terminalConflict.responseIdentityMatches, false);
+      assert.equal(receipt.requests[0].terminalConflict.responseIdentityMatches, replay !== 'remapped identity');
       assert.equal((await send()).status, 400);
     } else {
       assert.equal(receipt.failure, undefined);
@@ -346,6 +349,40 @@ test('hosted success without valid usage fences its terminal and the next arriva
   });
 });
 
+test('hosted usage requires a terminal for the requested model and matching event status', { timeout: 4000 }, async t => {
+  for (const mismatch of ['model', 'status']) await t.test(mismatch, async t => {
+    const held = [], failures = [];
+    const upstreamUrl = await localUpstream(t, (request, response) => {
+      request.resume();
+      held.push(response);
+      response.writeHead(200, { 'content-type': 'text/event-stream' });
+      response.write(':held\n\n');
+    });
+    const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2500,
+      maxRequests: 3, maxConcurrent: 2, maxOutputTokens: 768, filename: 'unused', marker: 'unused',
+      failFast: true, recordGeometry: true, onFailure: failure => failures.push(failure) });
+    t.after(() => cap.close());
+    const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+    const peer = await send();
+    const offender = await send();
+    const response = { id: 'terminal', model: 'k3', status: 'completed', usage: { input_tokens: 10, output_tokens: 5 } };
+    response[mismatch] = 'private-invalid-terminal';
+    held[1].end(`data: ${JSON.stringify({ type: 'response.completed', response })}\n\n`);
+    assert.doesNotMatch(await offender.text().catch(() => ''), /response\.completed/);
+    await peer.text().catch(() => '');
+    assert.equal((await send()).status, 400);
+    const receipt = cap.receipt();
+    assert.equal(held.length, 2);
+    assert.equal(receipt.deadlineReached, false);
+    assert.equal(receipt.requests[1].usage, undefined);
+    assert.equal(receipt.requests[1].transport.firstTermination.kind, 'terminal_envelope_invalid');
+    assert.equal(receipt.requests[0].transport.firstTermination.kind, 'terminal_envelope_abort');
+    assert.deepEqual(receipt.failure, { code: 'LIVE_TERMINAL_ENVELOPE_INVALID', number: 2 });
+    assert.deepEqual(failures, [receipt.failure]);
+    assert.ok(!JSON.stringify(receipt).includes('private-invalid-terminal'));
+  });
+});
+
 test('hosted stream ending without a terminal fences siblings and later arrivals', { timeout: 4000 }, async t => {
   const held = [], failures = [];
   const upstreamUrl = await localUpstream(t, (request, response) => {
@@ -434,7 +471,7 @@ test('hosted transport loss after verified terminal usage retains accounting and
   const upstreamUrl = await localUpstream(t, (request, response) => {
     request.resume(); response.writeHead(200, { 'content-type': 'text/event-stream' });
     response.write('data: ' + JSON.stringify({ type: 'response.completed', response: {
-      usage: { input_tokens: 2, output_tokens: 3 }, output: [] } }) + '\n\n'); held.push(response);
+      model: 'k3', status: 'completed', usage: { input_tokens: 2, output_tokens: 3 }, output: [] } }) + '\n\n'); held.push(response);
   });
   const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 2000,
     filename: 'unused', marker: 'unused', failFast: true });

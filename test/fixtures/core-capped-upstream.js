@@ -2,6 +2,12 @@ import { createServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { once } from 'node:events';
 
+const terminalStatuses = new Map([
+  ['response.completed', 'completed'],
+  ['response.failed', 'failed'],
+  ['response.incomplete', 'incomplete'],
+]);
+
 function json(response, status, code) {
   if (response.destroyed || response.headersSent) return;
   response.writeHead(status, { 'content-type': 'application/json' });
@@ -154,11 +160,14 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   }
 
   function observeEvent(value, record, model) {
-    if (['response.completed', 'response.failed', 'response.incomplete'].includes(value.type)) {
+    const terminalStatus = terminalStatuses.get(value.type);
+    if (terminalStatus) {
       const usage = value.response?.usage;
       const validUsage = Number.isSafeInteger(usage?.input_tokens) && Number.isSafeInteger(usage?.output_tokens) && usage.input_tokens >= 0 && usage.output_tokens >= 0;
+      const validEnvelope = value.response?.model === model && value.response?.status === terminalStatus;
+      const outputExceeded = failFast && Number.isSafeInteger(usage?.output_tokens) && usage.output_tokens > record.maxOutputTokens;
       if (failFast) {
-        const observation = { terminal: value.type, responseId: value.response?.id,
+        const observation = { terminal: value.type, responseId: value.response?.id, validEnvelope,
           inputTokens: usage?.input_tokens, outputTokens: usage?.output_tokens };
         const previous = terminalObservations.get(record);
         if (previous) {
@@ -176,11 +185,11 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       transport(record, 'terminal');
       record.terminal = value.type;
       if (typeof value.response?.id === 'string') record.responseId = value.response.id.slice(0, 256);
-      if (validUsage) {
+      if (validUsage && (!failFast || validEnvelope || outputExceeded)) {
         record.usage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
       }
       if (recordGeometry) record.terminalGeometry = terminalGeometry(value.response, model);
-      if (failFast && Number.isSafeInteger(usage?.output_tokens) && usage.output_tokens > record.maxOutputTokens) {
+      if (outputExceeded) {
         transport(record, 'output_limit_exceeded', true);
         failRun({ code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: record.number,
           maxOutputTokens: record.maxOutputTokens, outputTokens: usage.output_tokens }, 'output_limit_abort');
@@ -189,6 +198,11 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       if (failFast && !validUsage) {
         transport(record, 'terminal_usage_invalid', true);
         failRun({ code: 'LIVE_TERMINAL_USAGE_INVALID', number: record.number }, 'terminal_usage_abort');
+        return true;
+      }
+      if (failFast && !validEnvelope) {
+        transport(record, 'terminal_envelope_invalid', true);
+        failRun({ code: 'LIVE_TERMINAL_ENVELOPE_INVALID', number: record.number }, 'terminal_envelope_abort');
         return true;
       }
     }
