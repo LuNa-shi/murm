@@ -79,7 +79,7 @@
     },
     {
       "path": "src/environments/endurance/agensh-workload.js",
-      "sha256": "5237c1358f150805e9a1c783e80b2d5cdf3b1c2f07d94e322f22009a88484179"
+      "sha256": "5007ce60095704d0d02f66a44bcb98bdd08f07b0bc29129d172978c5685dbed1"
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
@@ -303,7 +303,7 @@
       "path": "src/environments/endurance/agensh-workload.js",
       "anchor": "  function input(peer, stage) {",
       "line": 30,
-      "sha256": "d1e0ea1b43f93c0f906aae957af73e12a41dd210c1840131aa6ae83457e9d95a"
+      "sha256": "6c1270c622ebf39b9f880af36213649f51a5a40bb5fce6e672f05b75fd0c8128"
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
@@ -382,7 +382,7 @@
     {
       "path": "src/environments/endurance/agensh-workload.js",
       "line": 33,
-      "expression": "return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {\"peer\":\"${peer.key}\",\"stage\":${stage},\"n\":${n},\"square\":${n * n}} and exactly one trailing newline. Check its bytes, commit and push. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:\"FACT\",content:\"${fact}\"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Board write fields are board_id,type,content; PR create fields are owner,repo,method:\"create\",title,head:WORK_BRANCH,base:\"main\". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;"
+      "expression": "return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {\"peer\":\"${peer.key}\",\"stage\":${stage},\"n\":${n},\"square\":${n * n}} and exactly one trailing newline. Check its bytes. Stage only the delivery with git add -- ${path} and check that it is the only staged path before committing and pushing. Leave program source, stdout and test files untracked for private collection. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:\"FACT\",content:\"${fact}\"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Board write fields are board_id,type,content; PR create fields are owner,repo,method:\"create\",title,head:WORK_BRANCH,base:\"main\". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;"
     },
     {
       "path": "src/environments/endurance/lead-helper-workload.js",
@@ -547,7 +547,7 @@
     },
     {
       "path": "docs/architecture/prompts/13-hour-matrix.md",
-      "sha256": "2f0de4f5c5e69d93e2a2f223c75435a171451b28ff37f532aefea77aeebe4e7d"
+      "sha256": "1a6236ce98485e0d942f4141c21be167adda2987870c6b4f1e0165c871aa3cc5"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",

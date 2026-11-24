@@ -84,6 +84,8 @@ for (const corrupt of [false, true]) test(`frozen Agensh hour workload ${corrupt
     const value = { peer: key, stage, n, square: n * n, programming: { answer: `${index}:${stage}` } };
     if (key === 'b' && stage === 4) { assert.ok(stopped.has('a')); value.adoptedSquare = JSON.parse(main.get('hour-a-4.json')).square; value.sum = value.square + value.adoptedSquare; if (corrupt) value.adoptedSquare++; }
     const peer = peers[index], path = `hour-${key}-${stage}.json`;
+    assert.ok(submission.input.includes(`git add -- ${path}`));
+    assert.match(submission.input, /Leave program source, stdout and test files untracked for private collection/);
     if (!files.has(peer.branch)) files.set(peer.branch, new Map());
     files.get(peer.branch).set(path, Buffer.from(`${JSON.stringify(value)}\n`)); heads.set(peer.branch, sha(`${key}:${stage}`));
     facts.push({ type: 'FACT', thread_id: peer.board.workerId, content: `HOUR_${key}_${stage}_${n * n}` });
