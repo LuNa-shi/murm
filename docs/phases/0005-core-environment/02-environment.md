@@ -241,6 +241,8 @@ Core 与 flat 使用同一 botId。flat 兼容层维护旧容量字段 legacySlo
 
 ### 6.2 Services 与命令
 
+本节的在线保存目标受 [2026-11-24 本轮范围调整](README.md#2026-11-24-owner-确认的本轮范围调整)限定：标准 Core 的生产 live capture 接线由 #197 留待后续，#196 仍为延后草稿。本轮对已有可信宿主注入和公共产物路径按实际能力验收；下列命令和流程不构成标准安装包已经具备生产 live capture 的声明，原有领域校验和失败关闭合同保持。
+
 ```bash
 swarm task list --state ready
 swarm task view "$TASK_ID"
@@ -670,6 +672,8 @@ runInput、Board 验收与 controller 是 Environment 代码。controller 决定
 **Q8 已确认：一周版最低交付为 flat + agensh + 最小开发者示例。** Core 接口明确后，先验证 Agensh 单 peer 的网络、身份、Git、连续输入和导出，再接入第二个 peer 完成协作验收；同时保持 flat 回归，并确保仓库外示例能够独立导入 Core、注册自定义 Service、完成输入和收尾。subagents、scaleMAS、lead-helper 保留为后续目标。“前三天形成 Core”是期望节点，实际进度按验收结果判断。
 
 ### 10.2 每种模式的验收记录
+
+五种 Example 的统一符合性核对按 [owner 确认的范围调整](README.md#2026-11-24-owner-确认的本轮范围调整)延后。以下记录规则继续适用于本轮实际验收与已有模式证据，不将后续统一核对记为已完成，也不免除 Q8 三项最低组合的实际验收。
 
 每次验收固定输入、小任务、参与角色、必须发生的协作交接、可检查结果、最大轮数/预算和失败判定。接口的确定性检查与真实模型协作分开记录：前者定位接线和状态错误，后者确认模型是否按该模式完成了交付。
 
