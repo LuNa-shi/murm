@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { mkdtemp, rm } from 'node:fs/promises';
 import test from 'node:test';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ObservationStore } from '../src/observability/observation-store.js';
@@ -11,7 +12,7 @@ import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
 test('ObservabilityServer exposes the selected Execution Workspace files and revisions', async t => {
-  const root = await mkdtemp('/tmp/swarmenv-observability-workspace-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-observability-workspace-'));
   const database = new DatabaseSync(join(root, 'state.sqlite'));
   const taskService = new TaskService(database);
   const mission = taskService.createMission({

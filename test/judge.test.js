@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
 import { JudgeService } from '../src/judge/judge-service.js';
@@ -114,7 +115,7 @@ test('Agent CheckResult feedback redacts credentials from checker diagnostics', 
 });
 
 test('fixture manifest binds original source bytes and validates locked checker identity', async t => {
-  const root = await mkdtemp('/tmp/swarmenv-original-fixture-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-original-fixture-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const problemFile = join(root, 'input.lean');
   await writeFile(problemFile, fixtureSource);
@@ -138,7 +139,7 @@ test('fixture manifest binds original source bytes and validates locked checker 
 });
 
 test('Judge reopening reuses one fixture revision but checks a changed canonical revision', async t => {
-  const root = await mkdtemp('/tmp/swarmenv-judge-fixture-revision-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-judge-fixture-revision-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const { putnambench_commit: originalCommit, ...manifest } = fixtureManifest;
   const checker = checkerWithPreflight({
@@ -242,7 +243,7 @@ test('Checker result contract distinguishes source failure from a checker that n
 });
 
 test('Lean checker preflight reports an unavailable executable before proof checking', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-checker-missing-executable-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-missing-executable-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = fixtureSource;
@@ -270,7 +271,7 @@ test('Lean checker preflight refuses an unbound fixture or an unknown toolchain 
   assert.equal(unbound.diagnostic_code, 'checker_input_binding_unverified');
   assert.equal(unbound.evidence.input_binding_verified, false);
 
-  const root = await mkdtemp('/tmp/swarmenv-checker-unknown-version-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-unknown-version-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = 'import Mathlib\ntheorem input : True := by trivial\n';
@@ -296,7 +297,7 @@ test('Lean checker preflight refuses an unbound fixture or an unknown toolchain 
 });
 
 test('Lean checker preflight binds the locked input, project cwd, and toolchain version', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-checker-preflight-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-preflight-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = 'import Mathlib\ntheorem input : True := by trivial\n';
