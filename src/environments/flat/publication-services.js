@@ -2,7 +2,7 @@ import { createWorkspaceMergeService } from './workspace-merge.js';
 import { MISSION_WORKSPACE_READS } from './public-workspace-reads.js';
 import { prepareWorkspaceCheckSource } from './workspace-check-source.js';
 import { agentCheckResult } from '../../judge/check-result.js';
-import { ExecutionWorkspace } from '../../runtime/execution-workspace.js';
+import { ExecutionWorkspace, WorkspaceRequestMismatchError } from '../../runtime/execution-workspace.js';
 import { SwarmEnvError } from '../../errors.js';
 import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
 import { inputFingerprint, executionEnvelope } from './prepare-inputs.js';
@@ -215,7 +215,15 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
         } else judgeCalls.delete(work);
       });
     }
-    void work.then(()=>{request.pending=false;},()=>{request.pending=false;if(request.work===work) request.work=null;});
+    void work.then(()=>{request.pending=false;},error=>{
+      request.pending=false;
+      if(request.work===work) request.work=null;
+      // A fresh adapter can learn a different durable Workspace fingerprint
+      // only by dispatching. Its rejected candidate must not shadow that
+      // original request when the caller retries the correct operation.
+      if(service==='workspace' && ['workspace_save','workspace_status','workspace_current_diff'].includes(operation) &&
+          error instanceof WorkspaceRequestMismatchError && requests.get(key)===request) requests.delete(key);
+    });
     const result=await work;
     // Durable Git replay can return before its publication guard. A fresh or
     // re-entered call must recheck authority after that asynchronous lookup,

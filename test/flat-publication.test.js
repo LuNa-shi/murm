@@ -8,6 +8,7 @@ import { createFlatPublicationServices } from '../src/environments/flat/publicat
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
 import { createHash } from 'node:crypto';
 import { prepareFlatInputs } from '../src/environments/flat/prepare-inputs.js';
+import { SwarmEnvError } from '../src/errors.js';
 import { stableStringify, makeEnvelope } from '../src/protocol/envelope.js';
 
 async function fixture(t, options = {}) {
@@ -23,12 +24,17 @@ async function fixture(t, options = {}) {
   execution=stores.tasks.getExecution(execution.execution_id);
   execution = stores.tasks.dispatch('start_execution', { core_id:'slot:A' }, makeEnvelope({ actorRef:botId, taskId:execution.task_id, executionId:execution.execution_id, specVersion:execution.spec_version, stateVersion:execution.state_version, fencingVersion:execution.fencing_version })).execution;
   const runtime = { id:'runtime:flat', async get(id) { assert.equal(id,botId); return {id,profile:'researcher',status:'running'}; } };
-  const publication = createFlatPublicationServices({ runtime, taskService:stores.tasks, contextService:stores.context, missionId:stores.missionId, missionWorkspace:stores.workspace, workspaceId:stores.workspaceId, deadline:()=>Date.now()+60000, ...options });
-  const registry = new ServiceRegistry();
-  for (const registration of publication.registrations) registry.registerService(registration);
-  const registrations = snapshotServiceRegistry(registry);
+  let publication, registrations;
+  const restartPublication = () => {
+    publication = createFlatPublicationServices({ runtime, taskService:stores.tasks, contextService:stores.context, missionId:stores.missionId, missionWorkspace:stores.workspace, workspaceId:stores.workspaceId, deadline:()=>Date.now()+60000, ...options });
+    const registry = new ServiceRegistry();
+    for (const registration of publication.registrations) registry.registerService(registration);
+    registrations = snapshotServiceRegistry(registry);
+    return publication;
+  };
+  restartPublication();
   const call = (service,operation,input={},requestId=operation) => invokeService(registrations.get(service), { operation,input,envelope:{operation_id:requestId}, caller:{runtimeId:runtime.id,botId,profile:'researcher'} });
-  return {...stores,root,botId,runtime,publication,call,execution};
+  return {...stores,root,botId,runtime,publication,call,execution,restartPublication};
 }
 
 test('flat Material publication and linked finish preserve actual ownership, public bytes and duplicate identity', async t => {
@@ -138,4 +144,137 @@ test('flat rejects mismatched capture evidence and still publishes exact bounded
   assert.deepEqual(Buffer.from(published.files['result.bin']), fullFile);
   assert.deepEqual(await f.call('workspace', 'workspace_save', {}, 'valid-binary'), saved);
   assert.equal(captures, beforeValid + 1);
+});
+
+// The trusted host capture is injected; publication, Git and Task stores are real.
+async function recoveryFixture(t) {
+  const guest = { files: { 'input.txt': Buffer.from('fixed λ\n') }, captures: 0, before: null };
+  const f = await fixture(t, { async snapshotProject({ executionId, fencingVersion }) {
+    guest.captures++;
+    await guest.before?.();
+    const hash = value => createHash('sha256').update(value).digest('hex');
+    const manifest = Object.fromEntries(Object.entries(guest.files).map(([path, bytes]) => [path, { bytes: bytes.length, content_hash: hash(bytes) }]));
+    return { execution_id: executionId, binding_version: fencingVersion, state: 'ACTIVE',
+      files: Object.fromEntries(Object.entries(guest.files).map(([path, bytes]) => [path, bytes.toString('base64')])),
+      manifest, content_hash: hash(stableStringify(manifest)) };
+  } });
+  return { ...f, guest, save: id => f.call('workspace', 'workspace_save', {}, id),
+    async revisions() { return f.workspace.listRevisions({ workspaceId: f.workspaceId }); },
+    async bytes(saved, path) {
+      const revision = await f.workspace.exportRevision({ workspaceId: f.workspaceId, revision: saved.revision });
+      return Buffer.from(revision.files[path]);
+    } };
+}
+
+test('flat busy capture failure survives adapter replacement without poisoning a fresh save', async t => {
+  const f = await recoveryFixture(t);
+  f.guest.before = () => { throw new SwarmEnvError('WORKSPACE_BUSY', 'controlled writer busy'); };
+  let first;
+  await assert.rejects(f.save('busy'), error => { first = { code: error.code, message: error.message, details: error.details }; return error.code === 'WORKSPACE_BUSY'; });
+  f.guest.before = null;
+  f.restartPublication();
+  await assert.rejects(f.save('busy'), error => {
+    assert.deepEqual({ code: error.code, message: error.message, details: error.details }, first);
+    return true;
+  });
+  assert.equal(f.guest.captures, 1);
+  assert.equal((await f.revisions()).length, 1);
+  assert.equal((await f.call('workspace', 'workspace_status', {}, 'after-busy')).dirty, false);
+  const saved = await f.save('fresh');
+  assert.deepEqual(await f.bytes(saved, 'input.txt'), Buffer.from('fixed λ\n'));
+  assert.equal((await f.revisions()).length, 2);
+});
+
+test('flat definitive publication rejection replays after replacement and permits a new request', async t => {
+  const f = await recoveryFixture(t);
+  const repository = f.workspace.repository;
+  const importTree = repository.importTree.bind(repository);
+  let reject = true;
+  repository.importTree = async (...args) => {
+    if (reject) { reject = false; throw new SwarmEnvError('NOT_ALLOWED', 'controlled publication rejection'); }
+    return importTree(...args);
+  };
+  await assert.rejects(f.save('rejected'), { code: 'NOT_ALLOWED' });
+  f.restartPublication();
+  await assert.rejects(f.save('rejected'), { code: 'NOT_ALLOWED' });
+  assert.equal(f.guest.captures, 1);
+  assert.equal((await f.revisions()).length, 1);
+  assert.equal((await f.call('workspace', 'workspace_status', {}, 'after-rejection')).dirty, false);
+  const saved = await f.save('fresh');
+  assert.deepEqual(await f.bytes(saved, 'input.txt'), Buffer.from('fixed λ\n'));
+  assert.equal((await f.revisions()).length, 2);
+});
+
+test('flat unknown publication replays captured bytes after replacement without accepting a changed operation', async t => {
+  const f = await recoveryFixture(t);
+  const repository = f.workspace.repository;
+  const importTree = repository.importTree.bind(repository);
+  let reject = true;
+  repository.importTree = async (...args) => {
+    if (reject) { reject = false; throw new Error('controlled transient import loss'); }
+    return importTree(...args);
+  };
+  f.guest.files = { 'exact.bin': Buffer.from([0, 255, 128, 10]) };
+  await assert.rejects(f.save('unknown'), { code: 'SERVICE_UNAVAILABLE' });
+  f.restartPublication();
+  f.guest.files = { 'new.txt': Buffer.from('newer unsaved bytes') };
+  await assert.rejects(f.call('workspace', 'workspace_status', {}, 'unknown'), { code: 'CONFLICT' });
+  assert.equal((await f.revisions()).length, 1);
+  const saved = await f.save('unknown');
+  assert.deepEqual(Object.keys(saved.files), ['exact.bin']);
+  assert.deepEqual(await f.bytes(saved, 'exact.bin'), Buffer.from([0, 255, 128, 10]));
+  assert.equal(f.guest.captures, 1);
+  assert.equal((await f.revisions()).length, 2);
+  assert.deepEqual((await f.call('workspace', 'workspace_status', {}, 'new-status')).changed_paths, ['exact.bin', 'new.txt']);
+});
+
+for (const loss of ['Git receipt', 'SQLite acknowledgement']) test(`flat lost ${loss} recovers one immutable save after adapter replacement`, async t => {
+  const f = await recoveryFixture(t);
+  f.guest.files = { 'exact.bin': Buffer.from([0, 255, 128, 10]) };
+  let faulted = false;
+  if (loss === 'Git receipt') f.workspace.repository.fault = point => {
+    if (point === 'after_receipt' && !faulted) { faulted = true; throw new Error('controlled loss after Git receipt'); }
+  };
+  else f.tasks.db.exec("CREATE TRIGGER reject_save_ack BEFORE UPDATE ON execution_workspace_state BEGIN SELECT RAISE(ABORT, 'controlled SQL ack failure'); END;");
+  await assert.rejects(f.save('lost-ack'), error => error.code === 'WORKSPACE_RESULT_UNKNOWN' && error.retryable);
+  f.workspace.repository.fault = null;
+  if (loss === 'SQLite acknowledgement') f.tasks.db.exec('DROP TRIGGER reject_save_ack');
+  f.restartPublication();
+  f.guest.files = { 'new.txt': Buffer.from('must not recapture') };
+  const saved = await f.save('lost-ack');
+  assert.deepEqual(await f.bytes(saved, 'exact.bin'), Buffer.from([0, 255, 128, 10]));
+  assert.deepEqual(Object.keys(saved.files), ['exact.bin']);
+  assert.equal(f.guest.captures, 1);
+  assert.equal((await f.revisions()).length, 2);
+  f.restartPublication();
+  assert.deepEqual(await f.save('lost-ack'), saved);
+  assert.equal(f.guest.captures, 1);
+  assert.equal((await f.revisions()).length, 2);
+});
+
+test('flat capture completing after Bot stop cannot publish or recapture its failed request', async t => {
+  const f = await recoveryFixture(t);
+  f.guest.before = () => { f.tasks.requestBotStop(f.botId, 'controlled-close', { terminalState: 'FAILED' }); };
+  await assert.rejects(f.save('close-first'), { code: 'WORKSPACE_REQUEST_ABORTED' });
+  assert.equal((await f.revisions()).length, 1);
+  f.restartPublication();
+  await assert.rejects(f.save('close-first'), { code: 'NOT_ALLOWED' });
+  assert.equal(f.guest.captures, 1);
+  assert.equal((await f.revisions()).length, 1);
+});
+
+test('flat admitted publication conflict keeps its identity against a changed service', async t => {
+  const f = await recoveryFixture(t);
+  const repository = f.workspace.repository;
+  const importTree = repository.importTree.bind(repository);
+  let reject = true;
+  repository.importTree = async (...args) => {
+    if (reject) { reject = false; throw new SwarmEnvError('CONFLICT', 'controlled publication guard conflict'); }
+    return importTree(...args);
+  };
+  await assert.rejects(f.save('guard-conflict'), { code: 'CONFLICT' });
+  await assert.rejects(f.call('context', 'context_publish_material', { content: 'must not publish under admitted save identity' }, 'guard-conflict'), { code: 'CONFLICT' });
+  await assert.rejects(f.save('guard-conflict'), { code: 'CONFLICT' });
+  assert.equal(f.guest.captures, 1);
+  assert.equal((await f.revisions()).length, 1);
 });

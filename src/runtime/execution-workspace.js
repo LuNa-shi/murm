@@ -11,6 +11,13 @@ const invalid = message => new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, messa
 const changed = (before, after) => [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()
   .filter(path => before[path]?.content_hash !== after[path]?.content_hash || before[path]?.bytes !== after[path]?.bytes);
 
+// Internal coordinator signal: the candidate never owned this durable request.
+export class WorkspaceRequestMismatchError extends SwarmEnvError {
+  constructor() {
+    super(ERROR_CODES.CONFLICT, 'Workspace request ID was reused with another payload');
+  }
+}
+
 export const EXECUTION_WORKSPACE_SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS execution_workspace_state (
       execution_id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, initial_revision TEXT NOT NULL,
       last_saved_revision TEXT, manifest_json TEXT NOT NULL, parents_json TEXT NOT NULL,
@@ -135,7 +142,7 @@ export class ExecutionWorkspace {
     return this.workspace.repository.requestLocked(this.workspace.workspacePath(state.workspace_id), hash(`execution:${execution.execution_id}`), async () => {
       this.guard(identity, { receiptOnly: true });
       const original = this.#request(execution.execution_id, requestId);
-      if (original && original.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace request ID was reused with another payload');
+      if (original && original.fingerprint !== fingerprint) throw new WorkspaceRequestMismatchError();
       if (original?.error_json) { const error = JSON.parse(original.error_json); throw new SwarmEnvError(error.code, error.message, error.details); }
       if (original?.phase === 'done' && original.result_json) return JSON.parse(original.result_json);
       // A prior process can have committed Git before its SQL acknowledgement.
@@ -153,7 +160,7 @@ export class ExecutionWorkspace {
       }
       const existing = this.#request(execution.execution_id, requestId);
       if (existing) {
-        if (existing.fingerprint !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Workspace request ID was reused with another payload');
+        if (existing.fingerprint !== fingerprint) throw new WorkspaceRequestMismatchError();
         if (existing.error_json) { const error = JSON.parse(existing.error_json); throw new SwarmEnvError(error.code, error.message, error.details); }
         if (existing.result_json) return JSON.parse(existing.result_json);
       }
