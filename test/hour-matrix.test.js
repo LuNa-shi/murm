@@ -21,3 +21,10 @@ test('a failed configured preflight closes the exact sole owner before ending th
   assert.equal(report.results[0].quota.forwarded,7); assert.equal(report.results[0].quota.outstandingOutputTokens,1024);
   assert.equal(report.results[0].quota.requests[0].status,'transport_failed');
 });
+
+test('optional lead-helper selection requires its own factory and never replaces the minimum matrix', async () => {
+  const result = await runHourMatrix({ configurations: {}, modes: ['lead-helper'] });
+  assert.equal(result.accepted, false);
+  assert.equal(result.results[0].mode, 'lead-helper');
+  assert.equal(result.results[0].preflightFailure.code, 'HOUR_CONFIGURATION_MISSING');
+});

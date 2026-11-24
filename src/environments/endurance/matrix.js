@@ -1,18 +1,19 @@
 import { runAgenshHour } from './agensh.js';
 import { runScaleMASHour } from './scalemas.js';
+import { runLeadHelperHour } from './lead-helper.js';
 import { HOUR_QUOTAS, validateHourBudgets } from './policy.js';
 
 export const HOUR_BUDGETS = Object.freeze({ setupMs: 720_000, workMs: 4_200_000,
   turnMs: 300_000, cleanupMs: 600_000, recoveryMs: 300_000, marginMs: 120_000 });
-const peerCounts = Object.freeze({ flat: 4, agensh: 8, scaleMAS: 6 });
-const runners = { agensh: runAgenshHour, scaleMAS: runScaleMASHour };
+const peerCounts = Object.freeze({ flat: 4, agensh: 8, scaleMAS: 6, 'lead-helper': 4 });
+const runners = { agensh: runAgenshHour, scaleMAS: runScaleMASHour, 'lead-helper': runLeadHelperHour };
 const invalid = code => Object.assign(new Error(code), { code });
 
 /** Serial by default: every configuration retains its own owner through final
  * receipts. Missing workload/lifetime/quota gates are preparation failures,
  * never replaced by fixtures. Controlled clocks are intentionally absent. */
 export async function runHourMatrix({ configurations, modes = ['flat', 'agensh', 'scaleMAS'], signal }) {
-  if (!configurations || !Array.isArray(modes) || modes.length < 1 || modes.length > 3 ||
+  if (!configurations || !Array.isArray(modes) || modes.length < 1 || modes.length > 4 ||
       new Set(modes).size !== modes.length || modes.some(mode => !Object.hasOwn(peerCounts, mode))) throw invalid('HOUR_MATRIX_INVALID');
   const results = [];
   for (const mode of modes) {
@@ -46,7 +47,7 @@ export async function runHourMatrix({ configurations, modes = ['flat', 'agensh',
   }
   // Three real, independently reviewed mode results are the minimum matrix;
   // the current pending Flat workload deliberately prevents a blanket claim.
-  const accepted = modes.length === 3 && results.length === 3 && results.every(row =>
+  const accepted = ['flat', 'agensh', 'scaleMAS'].every(mode => modes.includes(mode)) && results.length === modes.length && results.every(row =>
     !row.preflightFailure && !row.businessFailure && !row.reportSaveFailure && row.result?.state === 'work-and-cleanup-verified');
   return { accepted, results };
 }

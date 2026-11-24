@@ -129,7 +129,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       } else {
         const state = await call(role, 'read'); const next = payload.type === 'helper-followup'; const id = staged && next ? `${role}-stage-${payload.stage}` : role + (next ? '-next' : '');
         const owned = await call(role, 'claim', { subtask_id: id, expected_revision: 0 });
-        if (failure && !['stale-feedback', 'pinned-corruption'].includes(failure) && role === 'helper1' && !next) {
+        if (failure && !['stale-feedback', 'pinned-corruption', 'hour-proof', 'hour-late'].includes(failure) && role === 'helper1' && !next) {
           if (failure === 'unknown') { input.receipt = { status: 'unknown' }; return; }
           if (failure === 'locked-failed') { lock = new DatabaseSync(join(directory, 'lead-helper-test', 'board.sqlite')); lock.exec('BEGIN IMMEDIATE'); }
           transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXED_FAILURE', message: 'Controlled failure' } }); return;
@@ -154,6 +154,35 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
   if (failure === 'unknown') transport.onStop = botId => { if (botId === team.helper1) throw new Error('Controlled stop uncertainty'); };
   const configuration = { runId: 'test', outputDir: directory, image: 'test', backend: {}, ...(helperCount === 2 ? {} : { helperCount }), turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
     prepare: async () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors }) };
+  if (staged === 'hour') {
+    const { runLeadHelperHour } = await import('../src/environments/endurance/lead-helper.js');
+    const { controlledHourQuota } = await import('./fixtures/hour-quota-owner.js');
+    const budgets = { setupMs: 600000, workMs: 3900000, cleanupMs: 600000, recoveryMs: 300000, marginMs: 120000, turnMs: 120000 };
+    let time = 0;
+    const report = await runLeadHelperHour({ options: configuration, budgets, quota: controlledHourQuota(budgets),
+      clock: () => time, waitForMs: async ms => { time += ms; if (failure === 'hour-late' && time === 900000) time += 900000; },
+      admit: async ({ runtime, workMs }) => ({ runtimeId: runtime.id, workDeadlineAtMs: time + workMs }),
+      onReady: value => { environment = value; },
+      workload: { stages: Array.from({ length: 4 }, (_, stage) => ({
+        ...(stage ? { supplement: `Evidence stage ${stage}` } : { goal: 'Deliver initial evidence' }),
+        paths: Object.fromEntries(helpers.map(role => [role, `${role}-stage-${stage}.txt`])),
+      })), verify: receipt => failure !== 'hour-proof' && receipt.deliveries.length === 3 },
+    });
+    assert.equal(backgroundFailure, undefined, backgroundFailure?.stderr ?? String(backgroundFailure));
+    if (failure) {
+      assert.equal(report.businessFailure.code, failure === 'hour-proof' ? 'HOUR_BUSINESS_UNCONFIRMED' : 'HOUR_STAGE_LATE');
+      assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.result, undefined);
+      assert.equal(transport.submissions.size, 8, 'no later business stage is dispatched'); return;
+    }
+    assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure));
+    assert.equal(report.accepted, false); assert.equal(report.result.state, 'controlled');
+    assert.equal(report.result.durationMs, 3600000); assert.equal(report.result.baselines.length, 4);
+    assert.deepEqual(report.result.windows.map(row => row.botIds.length), [4,4,4,4]);
+    assert.deepEqual(report.result.stages.map(row => row.stage), [0,1,2,3]);
+    assert.equal(report.result.stages[3].pinnedDeliveries.length, 12);
+    assert.equal(report.cleanup.cleanup, 'complete');
+    return;
+  }
   const report = await runWithReport({ outputDir: directory, closeTimeoutMs: 1000, createRuntime: async () => {
     const owned = await createLeadHelperEnvironment(configuration);
     // The simulator cannot outlive the first Core close: a complete receipt is
@@ -262,3 +291,8 @@ test('staged lead cannot substitute accumulated old feedback for the previous th
 test('staged helper failure fences all later stages and retains the exclusive owner', t => scenario(t, 'failed', false, 3, true));
 
 test('final staged fixed-object read rejects corrupted remote bytes despite twelve verified Board deliveries', t => scenario(t, 'pinned-corruption', false, 3, true));
+
+test('hour lead-helper keeps four original Bots and twelve real Git deliveries under shared controlled windows', t => scenario(t, undefined, false, 3, 'hour'));
+
+test('hour lead-helper failed artifact verification closes the same team before later groups', t => scenario(t, 'hour-proof', false, 3, 'hour'));
+test('hour lead-helper refuses a group whose own fifteen-minute window was missed', t => scenario(t, 'hour-late', false, 3, 'hour'));
