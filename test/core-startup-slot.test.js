@@ -30,9 +30,10 @@ test('Core close stops a ready sibling while a late allocation keeps its origina
   services: new ServiceRegistry(), maxBots: 2, outputDir });
   t.after(async () => { release(); provider.allowDeletion(); await runtime.close(); });
   const ready = await runtime.spawn({ requestId: 'ready-sibling', profile: 'worker' });
-  await runtime.send(ready.id, 'Controlled input', { requestId: 'sibling-input' });
   const spawning = runtime.spawn({ requestId: 'held-allocation', profile: 'worker' }).catch(error => error);
   await allocating;
+  const input = await runtime.send(ready.id, 'Controlled input', { requestId: 'sibling-input' });
+  assert.equal(input.status, 'accepted');
   await assert.rejects(runtime.spawn({ requestId: 'third', profile: 'worker' }), { code: 'CONFLICT' });
   const closing = await runtime.close({ timeoutMs: 20 });
   assert.equal(closing.cleanup, 'pending');
