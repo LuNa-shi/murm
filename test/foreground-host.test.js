@@ -134,7 +134,9 @@ test('actual foreground CLI routes explicit peer commands and emits bounded save
     if (record.id === 'kick') send('first-done', 'wait', { recipient: 'a', batchId: record.result.batchId, timeoutMs: 1000 });
     if (record.id === 'first-done') send('feedback', 'input', { recipient: 'a', requestId: 'user-fixed', input: 'fixed direction' });
     if (record.id === 'feedback') send('second-done', 'wait', { recipient: 'a', batchId: record.result.batchId, timeoutMs: 1000 });
-    if (record.id === 'second-done') send('view', 'status');
+    if (record.id === 'second-done') send('feedback-replay', 'input', { recipient: 'a', requestId: 'user-fixed', input: 'fixed direction' });
+    if (record.id === 'feedback-replay') send('feedback-conflict', 'input', { recipient: 'a', requestId: 'user-fixed', input: 'changed direction' });
+    if (record.id === 'feedback-conflict') send('view', 'status');
     if (record.id === 'view') send('end', 'stop');
   });
   const [exit] = await once(child, 'exit');
@@ -142,7 +144,10 @@ test('actual foreground CLI routes explicit peer commands and emits bounded save
   assert.ok(records.some(record => record.type === 'error' && record.code === 'HOST_COMMAND_FAILED'));
   assert.ok(records.some(record => record.id === 'missing' && record.code === 'UNKNOWN_RECIPIENT'));
   assert.ok(records.some(record => record.id === 'second-done' && record.result.state === 'completed'));
+  assert.equal(records.find(record => record.id === 'feedback-replay').result.batchId, records.find(record => record.id === 'feedback').result.batchId);
+  assert.equal(records.find(record => record.id === 'feedback-conflict').code, 'BATCH_CONFLICT');
   const view = records.find(record => record.id === 'view').result;
+  assert.deepEqual(view.peers.map(peer => peer.botId), records.find(record => record.type === 'ready').status.peers.map(peer => peer.botId));
   assert.equal(view.runDirectory, join(root, view.runtimeId));
   assert.deepEqual(view.peers.map(peer => peer.status), ['idle', 'idle']);
   assert.ok(view.peers[0].cursor > 0);

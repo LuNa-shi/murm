@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { createNativeEvidenceDirectory, installNativeNotesExample, execute } from './fixtures/notes-installed-package.js';
-import { createTeamUpstream, teamInputs, teamFact } from './fixtures/agensh-team-upstream.js';
+import { createTeamUpstream, teamInputs, teamFact, foregroundInput } from './fixtures/agensh-team-upstream.js';
 import { createDeadline, createCleanupBudget } from './fixtures/agensh-deadline.js';
 import { httpClient } from '../src/environments/agensh/http.js';
 import { createAgenshDelivery } from '../src/environments/agensh/delivery.js';
@@ -40,8 +40,8 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
       workMs: 180_000,
       cleanupMs: 100_000,
       bots: 2,
-      inputs: 5,
-      arrivals: 10,
+      inputs: 6,
+      arrivals: 12,
       outputTokens: 128
     }
   };
@@ -68,7 +68,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     }
   });
 
-  const command = async (operation, input) => {
+  const command = async (operation, input, errorCode) => {
     const id = `cli-${++serial}`;
 
     child.stdin.write(JSON.stringify({
@@ -78,7 +78,8 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     }) + '\n');
 
     const row = await waitFor(rows, row => row.id === id, work);
-    assert.equal(row.type, 'reply', row.code);
+    assert.equal(row.type, errorCode ? 'error' : 'reply', row.code);
+    if (errorCode) { assert.equal(row.code, errorCode); return { code: row.code }; }
     return row.result;
   };
 
@@ -98,6 +99,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
 
     // The upstream deadline includes setup; its per-request work gate starts at facilities readiness.
     upstream = await createTeamUpstream({
+      foregroundInput: true,
       deadlineAt: Date.now() + 360_000,
 
       peerNames: {
@@ -333,6 +335,22 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     await complete('a', 3);
     report.lastStatus = await command('status');
     assert.deepEqual(report.lastStatus.peers.map(peer => peer.batches.length), [3, 2]);
+    const direct = { recipient: 'a', input: foregroundInput, requestId: 'installed-user-fixed' };
+    const beforeDirect = upstream.receipt().arrivals;
+    const admitted = await command('input', direct);
+    assert.equal((await wait('a', admitted.batchId)).state, 'completed');
+    const replay = await command('input', direct);
+    assert.equal(replay.batchId, admitted.batchId);
+    assert.equal(replay.requestId, admitted.requestId);
+    const conflict = await command('input', { ...direct, input: 'Changed foreground direction' }, 'BATCH_CONFLICT');
+    assert.equal(upstream.receipt().arrivals, beforeDirect + 2);
+    report.lastStatus = await command('status');
+    assert.deepEqual(report.lastStatus.peers.map(peer => peer.batches.length), [4, 2]);
+    assert.deepEqual(report.lastStatus.peers.map(peer => peer.botId), ready.peers.map(peer => peer.botId));
+    const userBatch = report.lastStatus.peers[0].batches.find(row => row.batchId === admitted.batchId);
+    assert.equal(userBatch.state, 'completed');
+    assert.equal(report.lastStatus.peers[1].batches.some(row => row.batchId === admitted.batchId), false);
+    report.foregroundInput = { recipient: 'a', eventId: direct.requestId, batchId: admitted.batchId, requestId: admitted.requestId, replayBatchId: replay.batchId, conflictCode: conflict.code, extraArrivals: upstream.receipt().arrivals - beforeDirect };
     assert.deepEqual(await Promise.all(owned.map(id => sessionEvidence(id, shell))), sessions);
 
     for (const key of ['a', 'b']) {
@@ -374,8 +392,15 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
 
     const saved = JSON.parse(await cleanup.step(() => readFile(terminal.reportPath, 'utf8')));
     assert.equal(saved.runtimeId, ready.runtimeId);
-    assert.deepEqual(saved.environment.peers.map(peer => peer.router.batches.length), [3, 2]);
+    assert.deepEqual(saved.environment.peers.map(peer => peer.router.batches.length), [4, 2]);
     assert.ok(saved.environment.peers.every(peer => peer.subscription.closed));
+    const savedDirect = saved.environment.peers[0].router.batches.filter(row => row.batchId === report.foregroundInput.batchId);
+    assert.equal(savedDirect.length, 1);
+    assert.equal(savedDirect[0].source, 'user');
+    assert.equal(savedDirect[0].eventId, report.foregroundInput.eventId);
+    assert.equal(savedDirect[0].requestId, report.foregroundInput.requestId);
+    assert.equal(savedDirect[0].state, 'completed');
+    assert.equal(saved.environment.peers[1].router.batches.some(row => row.eventId === report.foregroundInput.eventId), false);
 
     assert.equal(
       saved.environment.peers[1].subscription.records.some(row => row.eventId === `comment:${comment.id}`),
@@ -390,11 +415,21 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
       assert.deepEqual(initial, upstream.receipt().evidence.find(row => row.stage === `${peer.key}-initial`));
       assert.equal(initial.branch, `peer-${runId}-${peer.key}`);
 
+      if (peer.key === 'b') await assert.rejects(cleanup.step(() => readFile(join(files, 'foreground-event.json'))), { code: 'ENOENT' });
+
       if (peer.key === 'a') {
         assert.deepEqual(await cleanup.step(() => readFile(join(files, 'untracked.bin'))), Buffer.from([0, 255, 65, 10]));
         assert.equal(await cleanup.step(() => readFile(join(files, 'left.txt'), 'utf8')), 'T15_DIRTY_PRIVATE\n');
         const event = JSON.parse(await cleanup.step(() => readFile(join(files, 'user-event.json'), 'utf8')));
         assert.equal(event.event.eventId, `comment:${comment.id}`);
+        const directEvent = JSON.parse(await cleanup.step(() => readFile(join(files, 'foreground-event.json'), 'utf8')));
+        assert.deepEqual(directEvent, upstream.receipt().evidence.find(row => row.stage === 'a-foreground'));
+        assert.equal(directEvent.event.eventId, report.foregroundInput.eventId);
+        assert.equal(directEvent.event.batchId, report.foregroundInput.batchId);
+        assert.equal(directEvent.event.source, 'user');
+        assert.deepEqual(directEvent.pi, initial.pi);
+        assert.equal(directEvent.privateHead, event.privateHead);
+        assert.equal(directEvent.publicHead, event.publicHead);
         await shell('git', ['-C', files, 'fsck', '--full']);
         assert.equal((await shell('git', ['-C', files, 'rev-parse', 'HEAD'])).stdout.trim(), event.privateHead);
 
@@ -444,9 +479,10 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     report.reader = read;
     report.delivery = delivery.snapshot();
     report.upstream = upstream.receipt();
-    assert.equal(report.upstream.arrivals, 10);
-    assert.equal(report.upstream.accepted, 10);
+    assert.equal(report.upstream.arrivals, 12);
+    assert.equal(report.upstream.accepted, 12);
     assert.equal(report.upstream.failure, undefined);
+    assert.deepEqual(report.upstream.evidence.map(row => row.stage).sort(), ['a-initial', 'b-initial', 'a-contribution', 'b-contribution', 'a-user', 'a-foreground'].sort());
     report.failure = false;
   } catch (error) {
     report.error = {

@@ -56,3 +56,49 @@ test('eight-peer fixture requires all twelve current native batch results within
   assert.match(await overflow.text(), /response.failed/);
   assert.equal(upstream.receipt().arrivals, 25);
 });
+
+test('installed foreground extension requires a distinct user source and correlated readback without changing default cap', async t => {
+  const marker = 'T15_FOREGROUND_A';
+  for (const source of ['user', 'gitea']) {
+    const upstream = await createTeamUpstream({ deadlineAt: Date.now() + 5000, peerNames: names, foregroundInput: true });
+    t.after(() => upstream.close());
+    const current = { batchId: 'foreground-batch', eventId: 'foreground-fixed', source, text: marker, context: teamFact };
+    const input = [{ role: 'user', content: `instruction\n${JSON.stringify(current)}` }];
+    const send = async () => (await fetch(upstream.url, { method: 'POST', body: JSON.stringify({ model: 'k3', max_output_tokens: 128, input }) })).text();
+    const first = await send();
+    if (source !== 'user') { assert.match(first, /response.failed/); assert.equal(upstream.receipt().accepted, 0); continue; }
+    assert.match(first, /team_a-foreground/);
+    input.push({ type: 'function_call_output', call_id: 'team_a-foreground', output: JSON.stringify({ stage: 'a-foreground', event: current, pi: { pid: 1, start: '123' }, privateHead: 'b'.repeat(40), publicHead: 'a'.repeat(40), binary: 'AP9BCg==', dirty: 'T15_DIRTY_PRIVATE\n' }) });
+    assert.match(await send(), /response.completed/);
+    assert.equal(upstream.receipt().maxRequests, 12);
+    assert.equal(upstream.receipt().evidence.length, 1);
+  }
+  const normal = await createTeamUpstream({ deadlineAt: Date.now() + 5000, peerNames: names }); t.after(() => normal.close());
+  assert.equal(normal.receipt().maxRequests, 10);
+});
+
+test('foreground readback cannot pass with a fabricated dirty-file confirmation', async t => {
+  const upstream = await createTeamUpstream({ deadlineAt: Date.now() + 5000, peerNames: names, foregroundInput: true }); t.after(() => upstream.close());
+  const current = { batchId: 'foreground-batch', eventId: 'foreground-fixed', source: 'user', text: 'T15_FOREGROUND_A', context: teamFact };
+  const input = [{ role: 'user', content: `instruction\n${JSON.stringify(current)}` }];
+  const send = async () => (await fetch(upstream.url, { method: 'POST', body: JSON.stringify({ model: 'k3', max_output_tokens: 128, input }) })).text();
+  assert.match(await send(), /function_call/);
+  input.push({ type: 'function_call_output', call_id: 'team_a-foreground', output: JSON.stringify({ stage: 'a-foreground', event: current, pi: { pid: 1, start: '123' }, privateHead: 'b'.repeat(40), publicHead: 'a'.repeat(40), binary: 'AP9BCg==', dirty: 'altered' }) });
+  assert.match(await send(), /response.failed/); assert.equal(upstream.receipt().accepted, 1);
+  assert.equal(upstream.receipt().failure.step, 'tool-result'); assert.deepEqual(upstream.receipt().evidence, []);
+});
+
+test('foreground variant admits exactly six complete batches and rejects a thirteenth arrival', async t => {
+  const upstream = await createTeamUpstream({ deadlineAt: Date.now() + 5000, peerNames: names, foregroundInput: true }); t.after(() => upstream.close());
+  const rows = [...stages.map((stage, index) => ({ stage, current: batch(index) })), { stage: 'a-foreground', current: { batchId: 'foreground-batch', eventId: 'foreground-fixed', source: 'user', text: 'T15_FOREGROUND_A', context: teamFact } }];
+  for (const { stage, current } of rows) {
+    const input = [{ role: 'user', content: `instruction\n${JSON.stringify(current)}` }];
+    const send = async () => (await fetch(upstream.url, { method: 'POST', body: JSON.stringify({ model: 'k3', max_output_tokens: 128, input }) })).text();
+    assert.match(await send(), /function_call/);
+    input.push({ type: 'function_call_output', call_id: `team_${stage}`, output: JSON.stringify({ stage, event: current, pi: { pid: 1, start: '123' }, head: 'a'.repeat(40), prNumber: 1, claimCount: 2, adopted: true, binary: 'AP9BCg==', privateHead: 'b'.repeat(40), publicHead: 'a'.repeat(40), dirty: 'T15_DIRTY_PRIVATE\n' }) });
+    assert.match(await send(), /response.completed/);
+  }
+  assert.equal(upstream.receipt().accepted, 12); assert.equal(upstream.receipt().evidence.length, 6);
+  const overflow = await fetch(upstream.url, { method: 'POST', body: '{}' });
+  assert.match(await overflow.text(), /response.failed/); assert.equal(upstream.receipt().arrivals, 13); assert.equal(upstream.receipt().accepted, 12);
+});

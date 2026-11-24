@@ -15,6 +15,7 @@ test('offline archive ships the native Agensh host configuration and declared fo
 
   for (const path of [
     'test/fixtures/agensh-installed-host.mjs',
+    'test/fixtures/agensh-team-upstream.js',
     'scripts/run-environment.mjs',
     'scripts/read-environment-result.mjs'
   ]) {
