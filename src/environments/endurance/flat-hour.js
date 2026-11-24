@@ -59,6 +59,7 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
   };
   const group = async (botId, peer, phase, adopted) => {
     const { execution, candidate } = binding(botId);
+    const taskId=execution.task_id, executionId=execution.execution_id, fencingVersion=execution.fencing_version;
     // One deadline covers the original turn and every correction, including
     // trusted verification. Corrections never open another quarter window.
     const startedAt = now();
@@ -68,7 +69,8 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
     const requireCurrent = () => {
       turnSignal.throwIfAborted();
       if(now() >= deadline)throw fail('FLAT_HOUR_GROUP_LATE');
-      if(binding(botId).execution.execution_id !== execution.execution_id)throw fail('FLAT_HOUR_BINDING_CHANGED');
+      const current=binding(botId).execution;
+      if(current.execution_id!==executionId||current.task_id!==taskId||current.owner_ref!==botId||current.fencing_version!==fencingVersion)throw fail('FLAT_HOUR_BINDING_CHANGED');
     };
     try {
       for(let attempt=0;;attempt++) {
@@ -80,13 +82,13 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
         requireCurrent();
         const receipt = await runInput(owned.runtime, botId, input, { requestId, timeoutMs: Math.max(1,Math.ceil(deadline-now())), signal: turnSignal });
         requireCurrent();
-        const identity = {botId,peer,phase,attempt,proofKey,requestId,inputId:receipt.inputId,settledSeq:receipt.settled.seq,executionId:execution.execution_id};
+        const identity = {botId,peer,phase,attempt,proofKey,requestId,inputId:receipt.inputId,settledSeq:receipt.settled.seq,executionId,fencingVersion};
         let proof;
-        try { proof = await workload.verify({ owned, botId, peer, phase, proofKey, adopted }); }
+        try { proof = await workload.verify({ owned, botId, peer, phase, proofKey, adopted, signal:turnSignal, deadlineAtMs:deadline }); }
         catch(error) {
           requireCurrent();
-          if(error.code!=='FLAT_PROGRAM_MATERIAL_MISSING'||error.executionId!==execution.execution_id||error.proofKey!==proofKey||typeof workload.verifyRejected!=='function')throw error;
-          rejectedAttempts.push({...identity,taskId:execution.task_id,code:error.code});
+          if(error.code!=='FLAT_PROGRAM_MATERIAL_MISSING'||error.executionId!==executionId||error.taskId!==taskId||error.fencingVersion!==fencingVersion||error.proofKey!==proofKey||typeof workload.verifyRejected!=='function')throw error;
+          rejectedAttempts.push({...identity,taskId,code:error.code});
           continue;
         }
         requireCurrent();
@@ -170,5 +172,5 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
     clearTimeout(timer); unsubscribe?.(); life.abort();
     try { await quota.close(); } catch { closeFailure = { code: 'FLAT_HOUR_MODEL_CLOSE_UNKNOWN' }; }
   }
-  return { ...report, mode: 'flat', accepted: false, ...(closeFailure ? { cleanupFailure: closeFailure } : {}), quota: quota.receipt() };
+  return { ...report, mode: 'flat', accepted: false, rejectedAttempts:structuredClone(rejectedAttempts), ...(closeFailure ? { cleanupFailure: closeFailure } : {}), quota: quota.receipt() };
 }
