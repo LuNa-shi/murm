@@ -43,7 +43,7 @@
     },
     {
       "path": "src/environments/flat/environment.js",
-      "sha256": "9e83a133dcb5b9100b587f53444fafb0a93f29d75800c35e3b0b3404894ef59d"
+      "sha256": "ea48d3652ba25b01490bf1f488f74aa013aac8996e5407d8b6dfaf7d58be141b"
     },
     {
       "path": "src/environments/endurance/flat.js",
@@ -398,7 +398,7 @@
     {
       "path": "src/environments/flat/environment.js",
       "anchor": "prompt='",
-      "line": 14,
+      "line": 15,
       "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
     },
     {

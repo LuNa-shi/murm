@@ -1,4 +1,5 @@
 import { flatCoordinationPermissions } from './coordination-permissions.js';
+import { createFlatMissionService } from './mission-service.js';
 import { createRuntime } from '../../core/index.js';
 import { ServiceRegistry } from '../../core/services.js';
 import { SwarmEnvError } from '../../errors.js';
@@ -13,11 +14,11 @@ import { createFlatModelAccessPolicy } from './model-access-policy.js';
  * callers must not substitute a legacy Runtime or model-supplied file payload. */
 export async function runFlatEnvironment({backend,model,image,prompt='Use the flat Services to discover, execute and truthfully finish Mission work.',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
-  capacity=2,coordinationPermissions=[],snapshotProject,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
+  capacity=2,coordinationPermissions=[],missionCoordination=null,snapshotProject,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
   closeTimeoutMs=30_000,redact=value=>value,signal}) {
   if(signal!==undefined && !(signal instanceof AbortSignal)) throw new TypeError('Flat host signal must be an AbortSignal');
   const permissions=flatCoordinationPermissions(coordinationPermissions);
-  let runtime,controller,discovery,publication,closeDeadline;
+  let runtime,controller,discovery,publication,mission,closeDeadline;
   const result={};
   return runWithReport({outputDir,closeTimeoutMs,redact,
     async createRuntime() {
@@ -37,10 +38,16 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       const services=new ServiceRegistry();
       services.registerService(publication.composeTask(discovery));
       for(const registration of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(registration);
+      if(missionCoordination!==null) {
+        mission=createFlatMissionService({runtime:()=>runtime,taskService,missionWorkspace,missionId,workspaceId,missionCoordination,
+          coordinationPermissions:permissions,deadline:()=>deadlineAt});
+        services.registerService(mission);
+      }
       const researcher=flatResearcherProfile({prompt,model,image,coordinationPermissions:permissions});
       researcher.services=Object.fromEntries([
         ['task',[...discovery.manifest.capabilities,...publication.registrations.find(row=>row.manifest.id==='task').manifest.capabilities].map(row=>row.operation)],
         ...publication.registrations.filter(row=>row.manifest.id!=='task').map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]),
+        ...(mission?[['mission',mission.manifest.capabilities.filter(cap=>cap.operation!=='mission_submit'||permissions.includes('mission_submit')).map(cap=>cap.operation)]]:[]),
       ]);
       runtime=await createRuntime({backend,profiles:{researcher},services,maxBots:capacity,outputDir,
         modelAccessPolicy:createFlatModelAccessPolicy({runtimeId:()=>runtime?.id,taskService,missionId,deadline:()=>deadlineAt,isStopping:()=>controller?.snapshot().closing??false})});
@@ -59,6 +66,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       return {id:runtime.id,async close(options) {
         signal?.removeEventListener('abort',aborted);
         controller.halt();
+        mission?.close();
         closeDeadline=Date.now()+Math.min(closeTimeoutMs,options.timeoutMs);
         const judgeStatus=publication.close();
         if(judgeService) result.judge=judgeStatus;

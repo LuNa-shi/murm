@@ -690,6 +690,15 @@
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
     },
     {
+      "path": "src/environments/flat/mission-service.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/03-mission-task.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Optional Core Bridge Mission reads and explicit-grant submission to caller-owned coordination"
+    },
+    {
       "path": "src/environments/flat/mission-coordination.js",
       "category": "Mission acceptance and checker",
       "chapters": [
@@ -1269,7 +1278,7 @@
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Flat host-only validation and immutable copy of existing Task dependency and Material revocation grants"
+      "role": "Flat host-only validation and immutable copy of existing Task dependency, Material revocation and Mission submission grants"
     },
     {
       "path": "src/environments/flat/task-service.js",
