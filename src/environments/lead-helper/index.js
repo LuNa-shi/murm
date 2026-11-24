@@ -27,12 +27,12 @@ export async function createLeadHelperEnvironment(options) {
   let runtime; let board; let git; let unsubscribe; let closing = false; let closeWork; let complete; let workflowUsed = false; let boardFenceFailure;
   const pendingFences = new Map(); const activeInputs = new Set();
   const team = {}; const inputs = []; const events = [];
-  const stages = []; let stageActive = false;
+  const stages = []; let stageActive = false; let preparedStages;
   const redact = value => { let body = JSON.stringify(value); for (const secret of [...secrets].sort((a, b) => b.length - a.length)) body = body.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(body); };
   const snapshot = () => {
     let publicBoard; let boardReadFailure;
     try { publicBoard = board?.snapshot(); } catch { boardReadFailure = { code: 'BOARD_READ_FAILED' }; }
-    return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, stages: structuredClone(stages), git: git?.identities(), board: publicBoard, ...(boardReadFailure ? { boardReadFailure } : {}), inputs: structuredClone(inputs), events: structuredClone(events),
+    return { runId, runtimeId: runtime?.id, boardPath, team: { ...team }, stages: structuredClone(stages), preparation: structuredClone(preparedStages ?? null), git: git?.identities(), board: publicBoard, ...(boardReadFailure ? { boardReadFailure } : {}), inputs: structuredClone(inputs), events: structuredClone(events),
       delivered: publicBoard?.subtasks.filter(row => row.delivery?.verified) ?? [], unfinished: publicBoard?.subtasks.filter(row => row.state !== 'complete') ?? [], inputUnknown: inputs.filter(row => row.uncertain).map(row => ({ botId: row.botId, requestId: row.requestId, inputId: row.inputId, code: row.code })), resources: resources.snapshot(),
       ...(boardFenceFailure ? { boardFenceFailure, pendingBoardFailures: [...pendingFences.values()] } : {}), limitations: ['Local SQLite Board and exclusive turn controller', 'Fixed preconfigured team; no replacement or claim reclamation', 'Upstream scale and performance not verified'] };
   };
@@ -111,10 +111,32 @@ export async function createLeadHelperEnvironment(options) {
     if (startup.aborted || lifetime.signal.aborted) throw fail('ENVIRONMENT_START_ABORTED');
     board.bindTeam(runtime.id, team); git.bindTeam(runtime.id, team);
     return Object.freeze({ id: runtime.id, snapshot, redact, close, get: botId => runtime.get(botId),
+      async prepareStages({ signal } = {}) {
+        if (closing || workflowUsed || stageActive || helperCount !== 3 ||
+            (signal !== undefined && !(signal instanceof AbortSignal))) throw fail('INVALID_STAGE_PREPARATION');
+        workflowUsed = true; stageActive = true;
+        const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
+        const startInput = inputs.length; const notes = [];
+        try {
+          for (const role of roles) {
+            const readyNote = `Ready for staged workload: ${runtime.id}:${role}:${team[role]}`;
+            const before = board.snapshot();
+            await dispatch(role, `prepare-stage-${role}`, { type: 'prepare-stage', ready_note: readyNote,
+              instruction: 'Read the public Board, verify your own trusted role and Bot identity, then publish exactly ready_note as a public unscoped Board note. Do not claim work or create an artifact. This is setup only.' }, workSignal);
+            const after = board.snapshot();
+            const note = after.notes.find(row => row.actor === team[role] && row.text === readyNote && !row.subtask_id && !before.notes.some(old => old.seq === row.seq));
+            if (!note || !after.reads.some(row => row.actor === team[role] && !before.reads.some(old => old.seq === row.seq))) throw fail('STAGE_PREPARATION_INVALID');
+            notes.push(note);
+          }
+          preparedStages = { notes, inputs: structuredClone(inputs.slice(startInput)) };
+          return structuredClone(preparedStages);
+        } catch (error) { stop(); error.details = [...(error.details ?? []), snapshot()]; throw error; }
+        finally { stageActive = false; }
+      },
       async runStage({ goal, supplement, paths, signal } = {}) {
         const stage = stages.length;
         const text = stage === 0 ? goal : supplement;
-        if (closing || stageActive || stage >= 4 || helperCount !== 3 || workflowUsed && stage === 0 ||
+        if (closing || stageActive || stage >= 4 || helperCount !== 3 || workflowUsed && stage === 0 && !preparedStages ||
             typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 8192 ||
             (signal !== undefined && !(signal instanceof AbortSignal)) ||
             !paths || Object.keys(paths).length !== 3 || helperRoles.some(role => !Object.hasOwn(paths, role) || typeof paths[role] !== 'string' ||
@@ -141,8 +163,15 @@ export async function createLeadHelperEnvironment(options) {
                 !announced.subtasks.some(row => row.path === fixedPaths[role] && row.state === 'ready' && !row.owner && !before.subtasks.some(old => old.id === row.id)))) throw fail('STAGE_DIRECTION_INVALID');
           if (stage && (direction.text === previous.direction.text || direction.user_input_id !== `lead-stage-${stage}` ||
               direction.feedback_ids.length !== 3 || previous.feedback.some(note => !direction.feedback_ids.includes(note.seq)))) throw fail('DIRECTION_ADJUSTMENT_INVALID');
-          const results = await Promise.allSettled(helperRoles.map(role => send(role, { type: stage ? 'helper-followup' : 'helper-initial',
-            instruction: (stage ? helperFollowupInstruction : helperInitialInstruction) + ' Deliver only your supplied path and publish one new feedback note.' })));
+          const results = [];
+          // The cumulative hour owner permits two concurrent model requests.
+          // Complete each pair of exclusive inputs before admitting the next.
+          for (let offset = 0; offset < helperRoles.length; offset += 2) {
+            results.push(...await Promise.allSettled(helperRoles.slice(offset, offset + 2).map(role => send(role, {
+              type: stage ? 'helper-followup' : 'helper-initial',
+              instruction: (stage ? helperFollowupInstruction : helperInitialInstruction) + ' Deliver only your supplied path and publish one new feedback note.' }))));
+            if (results.some(row => row.status === 'rejected')) break;
+          }
           if (results.some(row => row.status === 'rejected')) throw results.find(row => row.status === 'rejected').reason;
           const final = board.snapshot();
           const deliveries = helperRoles.map(role => final.subtasks.find(row => row.owner === team[role] && row.path === fixedPaths[role] &&

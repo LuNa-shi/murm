@@ -99,7 +99,7 @@
     },
     {
       "path": "src/environments/lead-helper/index.js",
-      "sha256": "81969de5e142d78fdfb5bc36b92ba3b0372b033090b6997296e6be3770dd2649"
+      "sha256": "dd612393279ac609876504a66124b9f08b57c24bced348ae685e21b5a35358b6"
     },
     {
       "path": "src/runtime/runtime.js",

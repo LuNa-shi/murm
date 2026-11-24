@@ -112,7 +112,10 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
         return;
       }
 
-      if (role === 'lead') {
+      if (payload.type === 'prepare-stage') {
+        await call(role, 'read');
+        await call(role, 'note', { text: payload.ready_note });
+      } else if (role === 'lead') {
         const state = await call(role, 'read');
         if (payload.type === 'initialize') {
           assert.deepEqual(payload.helpers, Object.fromEntries(helpers.map(name => [name, team[name]])));
@@ -120,7 +123,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
           for (const helper of helpers) { await call(role, 'assign', { helper_id: team[helper], text: helper }); await call(role, 'create_subtask', { id: helper, title: 'Initial artifact', path: staged ? payload.paths[helper] : `${helper}.txt` }); }
         } else {
           assert.equal(payload.supplement, staged ? `Evidence stage ${payload.stage}` : 'Add explicit evidence');
-          await call(role, 'announce', { text: staged ? `Evidence direction ${payload.stage}` : 'Add explicit evidence based on public feedback', feedback_ids: staged && failure !== 'stale-feedback' ? payload.feedback_ids : state.notes.map(row => row.seq), user_input_id: payload.user_input_id });
+          await call(role, 'announce', { text: staged ? `Evidence direction ${payload.stage}` : 'Add explicit evidence based on public feedback', feedback_ids: staged && failure !== 'stale-feedback' ? payload.feedback_ids : state.notes.filter(row => !staged || row.subtask_id).map(row => row.seq), user_input_id: payload.user_input_id });
           for (const helper of helpers) await call(role, 'create_subtask', { id: staged ? `${helper}-stage-${payload.stage}` : `${helper}-next`, title: 'Adopt evidence direction', path: staged ? payload.paths[helper] : `${helper}-next.txt` });
         }
       } else {
@@ -159,6 +162,9 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     return environment;
   }, run: async owned => {
     if (!staged) return owned.runWorkflow({ goal: 'Deliver one check per assigned helper', supplement: fixturePrograms ? adjustedDirection : 'Add explicit evidence' });
+    const prepared = await owned.prepareStages();
+    assert.equal(prepared.inputs.length, 4); assert.equal(prepared.notes.length, 4);
+    await assert.rejects(owned.prepareStages(), { code: 'INVALID_STAGE_PREPARATION' });
     const stages = [];
     for (let stage = 0; stage < 4; stage++) {
       for (const botId of Object.values(team)) assert.equal((await owned.get(botId)).status, 'idle');
@@ -181,17 +187,17 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     if (failure === 'pinned-corruption') {
       assert.equal(report.businessFailure.code, 'DELIVERY_INVALID');
       assert.equal(state.subtasks.filter(row => row.state === 'complete').length, 12);
-      assert.equal(transport.submissions.size, 16);
+      assert.equal(transport.submissions.size, 20);
       return;
     }
     if (failure === 'stale-feedback') {
       assert.equal(report.businessFailure.code, 'DIRECTION_ADJUSTMENT_INVALID');
-      assert.equal(transport.submissions.size, 9, 'no helpers receive the stage with stale feedback');
+      assert.equal(transport.submissions.size, 13, 'no helpers receive the stage with stale feedback');
       assert.equal(state.subtasks.filter(row => row.state === 'complete').length, 6);
       return;
     }
     const task = state.subtasks.find(row => row.id === 'helper1'); assert.equal(task.owner, team.helper1); if (failure === 'locked-failed') assert.ok(report.businessFailure.details.at(-1).pendingBoardFailures.some(row => row.botId === team.helper1 && row.code === 'input_failed')); else assert.ok(task.failure); assert.equal(task.state, 'claimed');
-    assert.equal(transport.submissions.size, helperCount + 1, 'No adjustment, replacement or resubmission after failure');
+    assert.equal(transport.submissions.size, staged ? 7 : helperCount + 1, 'No adjustment, replacement or resubmission after failure');
     if (failure === 'unknown') { assert.ok(report.cleanupFailure); assert.equal(report.cleanup.bots.find(row => row.botId === team.helper1).execution, 'unknown'); }
   } else {
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure)); assert.equal(report.cleanupFailure, null, JSON.stringify(report.cleanup));
