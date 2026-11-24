@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -109,7 +109,14 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   const bytes = await readFile(archive), expectedSha256 = createHash('sha256').update(bytes).digest('hex');
   const installed = await installNotesExample({ archive, expectedSha256 }); t.after(() => installed.close());
   assert.deepEqual(installed.metadata, { name: '@swarmenv/core', version: '0.0.0-frozen-fixture', sourceCommit: null, sourceDirty: null, sha256: expectedSha256 });
-  assert.equal(dirname(installed.directory), tmpdir());
+  // The platform temporary directory can itself have checkout ancestry.
+  let ancestor = await realpath(installed.directory);
+  for (;;) {
+    await assert.rejects(lstat(join(ancestor, '.git')), { code: 'ENOENT' });
+    const parent = dirname(ancestor);
+    if (parent === ancestor) break;
+    ancestor = parent;
+  }
   assert.equal((await stat(installed.directory)).mode & 0o777, 0o700);
   assert.deepEqual(await readFile(join(installed.directory, 'frozen-package.tgz')), bytes);
   const result = await execute(process.execPath, ['--input-type=module', '-e', `
@@ -122,11 +129,13 @@ test('matching frozen archive installs its exact bytes outside checkout without 
     assert.equal(reader, 'read-result');
   `], { cwd: installed.directory, env: installed.env, timeout: 5000 });
   assert.equal(result.stderr, '');
+  const nativeParent = await mkdtemp(join(dirname(installed.directory), 'notes-native-parent-'));
+  t.after(() => rm(nativeParent, { recursive: true, force: true }));
   const selected = await execute(process.execPath, ['--input-type=module', '-e', `
 import assert from 'node:assert/strict'; import {installNativeNotesExample,execute} from ${JSON.stringify(fixture)};
-const installed=await installNativeNotesExample({parentDirectory:${JSON.stringify(root)}});
+const installed=await installNativeNotesExample({parentDirectory:${JSON.stringify(nativeParent)}});
 try {
-  assert.equal((await import('node:path')).dirname(installed.directory),${JSON.stringify(root)});
+  assert.equal((await import('node:path')).dirname(installed.directory),${JSON.stringify(nativeParent)});
   assert.equal((await (await import('node:fs/promises')).stat(installed.directory)).mode & 0o777,0o700);
   assert.equal(installed.metadata.sha256,process.env.SWARMENV_TEST_PACKAGE_SHA256);
   assert.equal(installed.metadata.sourceCommit,null); assert.equal(installed.metadata.sourceDirty,null);
