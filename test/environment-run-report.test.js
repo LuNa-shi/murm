@@ -75,6 +75,46 @@ test('a hung post-close reconciliation preserves the physical receipt within the
   assert.equal(saved.cleanupFailure.code, 'CLOSE_WAIT_TIMEOUT');
 });
 
+test('a close receipt arriving after the host timeout cannot start domain reconciliation or alter the report', { timeout: 1000 }, async t => {
+  const { runWithReport } = await import('../src/environments/shared/run-report.js');
+  const outputDir = await directory(t);
+  const closed = Promise.withResolvers();
+  let reconciliations = 0;
+  const report = await runWithReport({ outputDir, closeTimeoutMs: 10,
+    createRuntime: async () => ({ id: 'late-close', close: () => closed.promise }),
+    run: async () => ({ completed: false }),
+    afterClose: () => { reconciliations++; },
+  });
+  const saved = await readFile(report.reportPath, 'utf8');
+  closed.resolve({ cleanup: 'complete', bots: [] });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(reconciliations, 0);
+  assert.equal(report.cleanup, null);
+  assert.equal(report.cleanupFailure.code, 'CLOSE_WAIT_TIMEOUT');
+  assert.equal(await readFile(report.reportPath, 'utf8'), saved);
+});
+
+test('post-close work finishing after its timeout cannot mutate the saved or returned result projection', { timeout: 1000 }, async t => {
+  const { runWithReport } = await import('../src/environments/shared/run-report.js');
+  const outputDir = await directory(t);
+  const reconciled = Promise.withResolvers();
+  const result = { finalization: 'pending' };
+  const report = await runWithReport({ outputDir, closeTimeoutMs: 10,
+    createRuntime: async () => ({ id: 'late-reconciliation', close: async () => ({ cleanup: 'complete', bots: [] }) }),
+    run: async () => result,
+    afterClose: async () => { await reconciled.promise; result.finalization = 'late'; },
+    redact: value => { queueMicrotask(() => reconciled.resolve()); return value; },
+  });
+  const saved = await readFile(report.reportPath, 'utf8');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(result.finalization, 'late');
+  assert.deepEqual(report.result, { finalization: 'pending' });
+  assert.deepEqual(JSON.parse(saved).result, { finalization: 'pending' });
+  assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(report.cleanupFailure.code, 'CLOSE_WAIT_TIMEOUT');
+  assert.equal(await readFile(report.reportPath, 'utf8'), saved);
+});
+
 test('successful Runtime reports use separate directories and apply host redaction before save and return', async t => {
   const { runWithReport } = await import('../src/environments/shared/run-report.js');
   const outputDir = await directory(t);

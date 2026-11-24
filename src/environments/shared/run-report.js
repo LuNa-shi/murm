@@ -34,12 +34,15 @@ export async function runWithReport({ createRuntime, run, afterClose, outputDir,
     if (runtime) {
       let timer;
       try {
-        await Promise.race([Promise.resolve().then(async () => {
-          report.cleanup = await runtime.close({ timeoutMs: closeTimeoutMs });
-          await afterClose?.(report.cleanup);
-        }), new Promise((_, reject) => {
-          timer = setTimeout(() => reject(Object.assign(new Error('Host close wait ended; Runtime cleanup is still unknown'), { code: 'CLOSE_WAIT_TIMEOUT' })), closeTimeoutMs);
-        })]);
+        const expired = new Promise((_, reject) => {
+          timer = setTimeout(() => reject(Object.assign(new Error(report.cleanup
+            ? 'Host close wait ended during domain reconciliation'
+            : 'Host close wait ended. Runtime cleanup is still unknown'), { code: 'CLOSE_WAIT_TIMEOUT' })), closeTimeoutMs);
+        });
+        report.cleanup = await Promise.race([
+          Promise.resolve().then(() => runtime.close({ timeoutMs: closeTimeoutMs })), expired,
+        ]);
+        if (afterClose) await Promise.race([Promise.resolve().then(() => afterClose(report.cleanup)), expired]);
         if (report.cleanup?.cleanup !== 'complete' || report.cleanup.bots?.some(bot => bot.execution !== 'stopped' || bot.cleanup !== 'complete')) {
           report.cleanupFailure = { code: 'CLEANUP_PENDING', message: 'Runtime cleanup remains pending',
             ...(report.cleanup?.reportPath ? { reportPath: report.cleanup.reportPath } : {}) };
@@ -55,8 +58,10 @@ export async function runWithReport({ createRuntime, run, afterClose, outputDir,
   const temporary = join(directory, `.environment-report-${randomUUID()}.tmp`);
   let projected = redact(report);
   try {
+    const bytes = `${JSON.stringify(projected, null, 2)}\n`;
+    projected = JSON.parse(bytes);
     await mkdir(directory, { recursive: true, mode: 0o700 });
-    await writeFile(temporary, `${JSON.stringify(projected, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    await writeFile(temporary, bytes, { flag: 'wx', mode: 0o600 });
     await rename(temporary, reportPath);
     return { ...projected, reportPath };
   } catch (error) {
