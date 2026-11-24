@@ -112,3 +112,21 @@ test('expired dispatch admission stays closed when the wall clock rolls back', a
   assert.equal(response.status, 429); await response.text();
   assert.equal(calls, 0); assert.equal(owner.receipt().deadlineReached, true);
 });
+
+test('an observed wall-clock expiry latches before its timer and cancels an active peer', async t => {
+  let calls = 0;
+  const url = await upstream(t, (request, response) => { request.resume(); calls++; response.writeHead(200); response.write(':held\n\n'); });
+  const owner = await createCappedUpstream(configuration(url)); t.after(() => owner.close());
+  const send = () => fetch(owner.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const peer = await send(); const cancelled = peer.text().catch(() => undefined);
+  const policy = owner.receipt(); let wallNow = policy.deadlineAt + 1;
+  t.mock.method(Date, 'now', () => wallNow);
+  const expired = await send(); assert.equal(expired.status, 429); await expired.text();
+  assert.equal(owner.receipt().deadlineReached, true);
+  await cancelled;
+  wallNow = policy.createdAt;
+  const rolledBack = await send(); assert.equal(rolledBack.status, 429); await rolledBack.text();
+  const receipt = owner.receipt(); assert.equal(calls, 1); assert.equal(receipt.forwarded, 1);
+  assert.equal(receipt.outstandingOutputTokens, 1024);
+  assert.equal(receipt.requests[0].transport.firstTermination.kind, 'work_expiry');
+});

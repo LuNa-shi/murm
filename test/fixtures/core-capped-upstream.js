@@ -260,10 +260,20 @@ export async function createCappedUpstream(options) {
     }
   }
 
+  function expireDispatch() {
+    if (deadlineReached) return;
+    deadlineReached = true;
+    active.forEach(request => { transport(requestRecords.get(request), 'work_expiry', true); request.destroy(); });
+  }
+  function dispatchExpired() {
+    if (!deadlineReached && Date.now() >= deadlineAt) expireDispatch();
+    return deadlineReached;
+  }
+
   const server = createServer(async (request, response) => {
     arrivals++;
     if (failure) { rejectAdmission(response, 400, 'LIVE_RUN_FAILED'); return; }
-    if (closing || deadlineReached || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
+    if (closing || dispatchExpired()) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
     if (request.method !== 'POST' || request.url !== '/v1/responses') { rejectAdmission(response, 404, 'LIVE_ROUTE_REJECTED'); return; }
     let body;
     try {
@@ -280,7 +290,7 @@ export async function createCappedUpstream(options) {
         throw new Error('shape');
       }
     } catch { rejectAdmission(response, 400, 'LIVE_REQUEST_REJECTED'); return; }
-    if (closing || deadlineReached || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
+    if (closing || dispatchExpired()) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
     if (failure) { rejectAdmission(response, 400, 'LIVE_RUN_FAILED'); return; }
     if (forwarded >= maxRequests) { rejectAdmission(response, 429, 'LIVE_REQUEST_CAP'); return; }
     if (active.size >= maxConcurrent) { rejectAdmission(response, 429, 'LIVE_CONCURRENCY_CAP'); return; }
@@ -406,10 +416,7 @@ export async function createCappedUpstream(options) {
   server.requestTimeout = 10_000;
   server.headersTimeout = 10_000;
   server.timeout = Math.max(1, deadlineAt - Date.now());
-  const deadline = setTimeout(() => {
-    deadlineReached = true;
-    active.forEach(request => { transport(requestRecords.get(request), 'work_expiry', true); request.destroy(); });
-  }, Math.max(1, deadlineAt - Date.now()));
+  const deadline = setTimeout(expireDispatch, Math.max(1, deadlineAt - Date.now()));
   let ownerTimer;
   function closeOwner() {
     if (closePromise) return closePromise;
