@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS mission_final_check_policies (
 
 ### Owner-local manual Mission review
 
-Source: [src/runtime/manual-mission-review.js](../../src/runtime/manual-mission-review.js); source SHA-256: `91bd77a9dcf425b1bd201c60924856944ad4e69baf99c40dab4e2b039c120d58`.
+Source: [src/runtime/manual-mission-review.js](../../src/runtime/manual-mission-review.js); source SHA-256: `89b60230346c38dbf73a86e277950448385383f2e66ed3452518ea3d7d36d4bd`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_manual_reviews (
