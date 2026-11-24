@@ -1,7 +1,7 @@
 FROM node:22-bookworm-slim
 
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY package.json npm-shrinkwrap.json ./
 RUN npm ci --omit=dev --ignore-scripts
 COPY src ./src
 COPY scripts/mathlib-search-service.mjs ./scripts/mathlib-search-service.mjs

@@ -18,7 +18,7 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/swarmenv
-COPY --chown=0:0 package.json package-lock.json ./
+COPY --chown=0:0 package.json npm-shrinkwrap.json ./
 RUN npm install --omit=dev --ignore-scripts --no-audit --no-fund
 
 # Archive build contexts can carry the host checkout's UID and GID.

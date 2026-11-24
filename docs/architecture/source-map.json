@@ -10,7 +10,7 @@
   ],
   "scope_root_files": [
     "package.json",
-    "package-lock.json",
+    "npm-shrinkwrap.json",
     ".env.example",
     ".gitignore",
     ".gitmodules",
@@ -60,14 +60,14 @@
       "role": "Raw evidence and credential retention boundary in the working tree and npm packlist"
     },
     {
-      "path": "package-lock.json",
+      "path": "npm-shrinkwrap.json",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
         "docs/architecture/07-run-configuration.md",
         "docs/architecture/15-core-runtime.md"
       ],
-      "role": "Exact dependency resolution, including external Pi/frontend packages"
+      "role": "Shipped exact dependency resolution for public package and image builds"
     },
     {
       "path": "package.json",

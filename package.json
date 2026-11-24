@@ -28,6 +28,7 @@
     "test-support/",
     "AGENTS.md",
     "GLOSSARY.md",
+    "npm-shrinkwrap.json",
     ".env.example",
     ".gitmodules"
   ],
