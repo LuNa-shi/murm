@@ -66,11 +66,23 @@ export interface PreparedFiles {
   readonly digest: string;
 }
 
+export interface FileSnapshot {
+  readonly botId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly digest: string;
+  readonly files: FileSeed;
+}
+
 export interface GrantReceipt {
   readonly botId: string;
   readonly version: number;
   readonly writable: true;
 }
+
+export type WorkspaceOptions =
+  | { id: string; mode: 'read-only' | 'read-write' }
+  | { mode: 'frozen-copy'; files: FileSeed };
 
 export interface SpawnOptions {
   requestId: string;
@@ -80,6 +92,7 @@ export interface SpawnOptions {
   files?: FileSeed;
   bindings?: Readonly<Record<string, string>>;
   secretEnv?: Readonly<Record<string, string>>;
+  workspace?: WorkspaceOptions;
   collect?: CollectionSpec;
 }
 
@@ -171,6 +184,7 @@ export interface Runtime {
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {
+    snapshot(botId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>;
     prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
     grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
   };

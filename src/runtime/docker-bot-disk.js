@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -13,6 +14,25 @@ export class DockerBotDisk {
     this.bytes = bytes;
     this.inodes = inodes;
     this.execute = execute;
+  }
+
+  async sharedWorkspace(action, { runtimeId, workspaceId, sandboxId, bot, mode }) {
+    const key = value => createHash('sha256').update(value).digest('hex');
+    const program = fileURLToPath(new URL('../../scripts/mount-shared-workspace.py', import.meta.url));
+    const args = ['-n', '/usr/bin/python3', '-I', program, action, key(runtimeId), key(workspaceId)];
+    if (action === 'create') args.push(String(this.bytes), String(this.inodes));
+    if (action === 'attach') {
+      if (!/^[a-zA-Z0-9_-]+$/.test(sandboxId ?? '') || !bot?.bot_id || bot.runtime_id !== runtimeId) throw new TypeError('Trusted shared mount identity required');
+      const result = await this.execute('docker', ['inspect', '--type', 'container', '--format',
+        '{"id":{{json .Id}},"pid":{{json .State.Pid}},"running":{{json .State.Running}},"labels":{{json .Config.Labels}}}', `sandbox-${sandboxId}`],
+        { encoding: 'utf8', timeout: 12_000, maxBuffer: 1024 * 1024 });
+      const info = JSON.parse(result.stdout);
+      if (!info.running || !/^[a-f0-9]{64}$/.test(info.id) || !Number.isSafeInteger(info.pid) || info.pid <= 1 ||
+          info.labels?.['opensandbox.io/id'] !== sandboxId || info.labels?.bot_key !== openSandboxBotKey(bot.bot_id) ||
+          info.labels?.runtime_key !== openSandboxRuntimeKey(runtimeId) || info.labels?.resource_key !== openSandboxBotKey(bot.resource_key)) throw new Error('Sandbox shared mount identity does not match');
+      args.push(String(info.pid), info.id, mode);
+    }
+    await this.execute('sudo', args, { encoding: 'utf8', timeout: 12_000, maxBuffer: 1024 * 1024 });
   }
 
   async isolate({ sandboxId, bot }) {

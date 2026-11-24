@@ -71,6 +71,7 @@ export function claimPiOpenSandboxBackend(handle) {
 
 export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, modelAccess, registerPrivateValues = () => {} }) {
   const bots = new Map();
+  const workspaces = new Map();
   let closing = false;
   const network = new DockerBotNetwork();
   const disk = new DockerBotDisk(config.isolation.disk);
@@ -137,6 +138,19 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       const manager = new OpenSandboxManager({ ...config.sandbox, image: profile.image });
       const bot = { id: botId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
       bots.set(botId, bot);
+      const workspace = options.workspace?.mode !== 'frozen-copy' ? options.workspace : undefined;
+      if (workspace) {
+        let entry = workspaces.get(workspace.id);
+        if (entry?.retiring) { await entry.retiring; entry = workspaces.get(workspace.id); }
+        if (!entry) {
+          entry = { owners: new Set(), ready: disk.sharedWorkspace('create', { runtimeId, workspaceId: workspace.id }) };
+          workspaces.set(workspace.id, entry);
+        }
+        bot.workspace = workspace;
+        entry.owners.add(botId);
+        await entry.ready;
+        await entry.captureWork;
+      }
       const assertOpen = () => {
         if (closing || bot.stopping || signal?.aborted) throw Object.assign(new Error('Bot startup is closing'), { code: 'NOT_ALLOWED' });
       };
@@ -155,6 +169,8 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       await network.isolate({ sandboxId: sandbox.sandbox_id, bot: identity, bridgeUrl: bridge.publicUrl, modelUrl: credentials.baseUrl, additionalEndpoints: profile.network?.allow ?? [] });
       assertOpen();
       const quota = await disk.isolate({ sandboxId: sandbox.sandbox_id, bot: identity });
+      if (workspace) await disk.sharedWorkspace('attach', { runtimeId, workspaceId: workspace.id, mode: workspace.mode,
+        sandboxId: sandbox.sandbox_id, bot: identity });
       const versions = await manager.agentVersions({ executionId: botId });
       if (versions.piVersion !== '1.3.0') throw invalid('Backend requires Pi 1.3.0');
       assertOpen();
@@ -166,6 +182,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
         systemPrompt: profile.prompt, systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
         files: options.files,
+        workspace,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
         projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
@@ -176,6 +193,30 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       assertOpen();
       bot.polling = poll(bot);
       return { sandboxId: sandbox.sandbox_id, versions };
+    },
+    async snapshotFiles(botId, input) {
+      const bot = bots.get(botId);
+      if (!bot?.workspace) return fileOperation(botId, 'snapshot', input);
+      const workspace = workspaces.get(bot.workspace.id);
+      const before = workspace.captureWork ?? Promise.resolve();
+      const work = before.then(async () => {
+        const owners = [...workspace.owners].map(id => bots.get(id));
+        if (owners.some(owner => !owner?.started || owner.stopping || owner.exited)) throw Object.assign(new Error('Shared workspace owners are changing'), { code: 'WORKSPACE_BUSY' });
+        const fence = randomUUID();
+        const paused = [];
+        try {
+          await Promise.all(owners.map(async owner => {
+            paused.push(owner);
+            const reply = await owner.manager.coreFileOperation(owner.id, 'pause', { requestId: fence });
+            if (reply?.paused !== true || reply.requestId !== fence) throw new Error('Shared writer fence was not confirmed');
+          }));
+          return await fileOperation(botId, 'snapshot', input);
+        } finally {
+          await Promise.all(paused.map(owner => owner.manager.coreFileOperation(owner.id, 'resume', { requestId: fence }).catch(() => undefined)));
+        }
+      });
+      workspace.captureWork = work.catch(() => undefined);
+      return work;
     },
     prepareFiles(botId, input) { return fileOperation(botId, 'prepare', input); },
     grantFiles(botId, input) { return fileOperation(botId, 'grant', input); },
@@ -261,6 +302,14 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       bot.pollController.abort();
       await bot.manager.stopExecution(botId);
       await bot.polling;
+      if (bot.workspace) {
+        const entry = workspaces.get(bot.workspace.id);
+        entry.owners.delete(botId);
+        if (!entry.owners.size) {
+          entry.retiring = disk.sharedWorkspace('delete', { runtimeId, workspaceId: bot.workspace.id }).then(() => workspaces.delete(bot.workspace.id));
+          try { await entry.retiring; } catch (error) { entry.retiring = undefined; throw error; }
+        }
+      }
       bots.delete(botId);
     },
     async close() {

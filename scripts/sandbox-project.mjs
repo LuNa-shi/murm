@@ -26,18 +26,18 @@ export class SandboxProject {
       snapshot: input => this.#capture(input), assertOpen: input => this.#active(input) });
   }
 
-  async initialize() {
+  async initialize({ shared = false } = {}) {
+    this.shared = shared;
     if (process.getuid?.() !== 0) throw new Error('trusted project worker must run as root');
     for (const directory of ['/workspace', PROJECT_DIR, RUNTIME_DIR]) {
       await mkdir(directory, { recursive: true });
       const info = await lstat(directory);
       if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('worker directories cannot be symlinks');
     }
-    if ((await readdir(PROJECT_DIR)).length) throw new Error('new Bot project must be empty');
+    if (!shared && (await readdir(PROJECT_DIR)).length) throw new Error('new Bot project must be empty');
     await chown('/workspace', 0, 0);
     await chmod('/workspace', 0o755);
-    await chown(PROJECT_DIR, 0, 0);
-    await chmod(PROJECT_DIR, 0o555);
+    if (!shared) { await chown(PROJECT_DIR, 0, 0); await chmod(PROJECT_DIR, 0o555); }
     await chown(RUNTIME_DIR, BOT_UID, BOT_UID);
     await chmod(RUNTIME_DIR, 0o700);
     await this.installer.initialize();
@@ -73,7 +73,7 @@ export class SandboxProject {
         return { state: this.state, ...identity };
       }
       if (supplied) {
-        if ((await readdir(PROJECT_DIR)).length) throw new Error('new Bot project input must be empty');
+        if (!shared && (await readdir(PROJECT_DIR)).length) throw new Error('new Bot project input must be empty');
         try {
           for (const [path, content] of Object.entries(supplied.bytes)) {
             this.#open();
@@ -219,8 +219,7 @@ export class SandboxProject {
   close() {
     this.beginClose();
     return this.#locked(async () => {
-      await chown(PROJECT_DIR, 0, 0);
-      await chmod(PROJECT_DIR, 0o555);
+      if (!this.shared) { await chown(PROJECT_DIR, 0, 0); await chmod(PROJECT_DIR, 0o555); }
       this.state = 'CLOSED';
       return { state: this.state };
     });
