@@ -55,7 +55,7 @@
     },
     {
       "path": "src/environments/endurance/flat-workload.js",
-      "sha256": "d8341f698c5dee1c62e1d9600f2600ec6b4bc1a1f56d06acb481389a36fb7b15"
+      "sha256": "f8a61ce3a7b74f941940e1372b38a973201a5d0add6b4f2f1690c037e8735669"
     },
     {
       "path": "examples/subagents-environment/hour.mjs",
@@ -399,7 +399,7 @@
       "path": "src/environments/endurance/flat-workload.js",
       "anchor": "      return `",
       "line": 16,
-      "sha256": "eea7ef975385be6b0a879a4cf3d219ac4074ef5f9ce721729ff4f28f738d37fe"
+      "sha256": "89c8746a7fe5b18a678673e9796170203dfa1aceb139e026f3c6d0e7f67b941f"
     },
     {
       "path": "src/environments/endurance/flat-hour.js",
@@ -423,7 +423,7 @@
     {
       "path": "src/environments/endurance/flat-workload.js",
       "line": 16,
-      "expression": "return `FLAT_PROGRAM_GROUP peer=${peer} phase=${phase}. Keep your actual current Task and Execution. Complete this programming task and independently inspect the host candidate ${candidate.revision}. Merge --from ${candidate.revision} with a fresh stable request ID, obtain trusted whole-tree PASS and remember main_revision. If MAIN_MOVED, inspect current state and retry the merge with a new request ID; do not fabricate success. Publish exactly one Material whose content is JSON with exactly proofKey:${proofKey}, peer:${peer}, phase:${phase}, revision:the returned fixed main_revision, programming:the requested result${adopted ? ', adopted:{materialId,sourceSha256,answersSha256} copied from the original programming proof' : ''}. Link it to your Task with role experience. Do not finish the Task in this group. Keep executable source and stdout files for required export and wait for the next explicit host followUp.${adopted ? ` The original contributor has actually stopped. First merge each of your Task’s fixed public candidate revisions ${candidate.stages.map(stage=>stage.revision).join(', ')} in order, each with its own stable request ID, so the final whole-tree check covers your complete Task contract. Read Material ${adopted.materialId} and public revision ${adopted.revision} through their normal CLI routes, preserve the original, Use material consume with action task and a truthful impact to record the actual source consumption. Copy only its original materialId and programming sourceSha256/answersSha256 into adopted; these hashes are not supplied by the host.` : ''}${program.prompt(peer, phase + 1)}`;"
+      "expression": "return `FLAT_PROGRAM_GROUP peer=${peer} phase=${phase}. Keep your actual current Task and Execution. Complete this programming task and independently inspect the host candidate ${candidate.revision}. ${adopted ? 'Merge all fixed Task revisions listed below in order, each with a fresh stable request ID, and remember the last returned checked main_revision.' : `Merge --from ${candidate.revision} with a fresh stable request ID, obtain trusted whole-tree PASS and remember main_revision.`} If MAIN_MOVED, inspect current state and retry the merge with a new request ID; do not fabricate success. Publish exactly one Material whose content is JSON with exactly proofKey:${proofKey}, peer:${peer}, phase:${phase}, revision:the returned fixed main_revision, programming:the requested result${adopted ? ', adopted:{materialId,sourceSha256,answersSha256} copied from the original programming proof' : ''}. Link it to your Task with role experience. Do not finish the Task in this group. Keep executable source and stdout files for required export and wait for the next explicit host followUp.${adopted ? ` The original contributor has actually stopped. First merge each of your Task’s fixed public candidate revisions ${candidate.stages.map(stage=>stage.revision).join(', ')} in order, each with its own stable request ID, so the final whole-tree check covers your complete Task contract. Read Material ${adopted.materialId} and public revision ${adopted.revision} through their normal CLI routes, preserve the original, Use material consume with action task and a truthful impact to record the actual source consumption. Copy only its original materialId and programming sourceSha256/answersSha256 into adopted; these hashes are not supplied by the host.` : ''}${program.prompt(peer, phase + 1)}`;"
     },
     {
       "path": "src/environments/endurance/lead-helper-workload.js",
@@ -596,7 +596,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "4370680e0993c2806423a9db25645d8d4327739ef3172350bc28a606b5dae62e"
+      "sha256": "5662af964f7e339dc388cdf1c536bbe6768ba24f601a2d8c925531640322791c"
     }
   ]
 }

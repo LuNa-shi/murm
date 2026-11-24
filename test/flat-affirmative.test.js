@@ -16,6 +16,11 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
 const { createFlatAffirmativeEnvironment } = await import('../src/environments/endurance/flat.js');
 const { runFlatNaturalHour } = await import('../src/environments/endurance/flat-hour.js');
 const { createFlatProgrammingWorkload } = await import('../src/environments/endurance/flat-workload.js');
+test('Flat replacement programming input merges four sources in order without an earlier last-stage merge',()=>{
+  const workload=createFlatProgrammingWorkload({programming:{prompt:()=> 'task',verify:()=>true}});
+  const input=workload.input({peer:4,phase:3,proofKey:'proof',candidate:{revision:'1.5',stages:[2,3,4,5].map(n=>({revision:`1.${n}`}))},adopted:{materialId:'origin',revision:'1.9'}});
+  assert.ok(!input.includes('Merge --from 1.5'));assert.match(input,/candidate revisions 1\.2, 1\.3, 1\.4, 1\.5 in order/);
+});
 hooks.deregister();
 const execute = promisify(execFile);
 
