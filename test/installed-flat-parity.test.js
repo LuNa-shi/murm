@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { access, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createInterface } from 'node:readline';
@@ -70,11 +70,11 @@ console.log(JSON.stringify({records,reportPath:report.reportPath,runtimeId:repor
     cwd: installed.directory, env: { ...installed.env, FOREGROUND_TEST_OUTPUT: headlessOutput }, timeout: 20_000,
   })).stdout);
   async function inspect(rows, output, reportPath) {
-    await assert.rejects(access(join(output, 'unexpected-snapshot')), { code: 'ENOENT' });
     const ready = rows.find(row => row.type === 'ready').status;
     const binding = JSON.parse(await readFile(join(output, 'fixture-binding.json'), 'utf8'));
     const saved = JSON.parse(await readFile(reportPath, 'utf8'));
     const core = JSON.parse(await readFile(join(ready.runDirectory, 'runtime.json'), 'utf8'));
+    assert.deepEqual(core.config.profiles.researcher.services.workspace, ['workspace_public_view', 'workspace_public_read', 'workspace_public_files']);
     assert.equal(ready.runtimeId, saved.runtimeId); assert.equal(core.runtimeId, ready.runtimeId);
     assert.equal(ready.runDirectory, join(output, ready.runtimeId));
     assert.equal(ready.bots.length, 1); assert.equal(ready.bots[0].botId, binding.botId);

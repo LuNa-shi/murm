@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { parentPromptFor, initialGoalFor } from '../examples/subagents-environment/prompts.mjs';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
-import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory } from '../src/agent/bot-contract.js';
+import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, BOT_MATERIAL_CONTINUATION_MESSAGE, BOT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory } from '../src/agent/bot-contract.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
 
@@ -181,12 +181,24 @@ for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'help
 leadHelperDoc += block('Staged corrective input composition and send', between('src/environments/lead-helper/index.js', '                  const nextPath =', '\n                  final = board.snapshot();'), 'The trusted host checker must explicitly return STAGE_CANDIDATE_REJECTED. Actual stage, helper role and attempt derive the fresh path and request ID; the original task and monotonic deadline remain fixed. No reference answer or new permission is supplied.');
 output('08-lead-helper-environment.md', leadHelperDoc);
 const flatControllerPath = 'src/environments/flat/controller.js';
+const flatEnvironmentPath = 'src/environments/flat/environment.js';
+const sampleCloseout = { at: Date.parse('2026-01-01T00:00:30.000Z'), workspaceSaveAvailable: false };
+const warningDeadline = '2026-01-01T00:01:00.000Z';
 output('08-flat-environment.md', header('Flat discovery and continuation prompts',
-  'The host stages its researcher Profile prompt verbatim. After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. Continuation uses the current Execution and buildBotContinuationMessage to choose the ordinary or soft-closeout body documented in the retained Runtime turn reference. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller. The default Environment rejects missing trusted live Workspace snapshot readiness before Runtime allocation, so these templates alone establish no actual native delivery.')
-  + block('Default researcher Profile prompt', between('src/environments/flat/environment.js', "prompt='", "',\n"))
+  'After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The optional trusted snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.')
+  + block('Default researcher Profile prompt', between(flatEnvironmentPath, "prompt='", "',\n"))
+  + block('Profile suffix when live Workspace save is unavailable', between(flatEnvironmentPath, "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '", "';"),
+    'The host appends this suffix after two newlines to the default or host-supplied Profile prompt when it omits snapshotProject.')
   + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
-  + block('Default ordinary continuation', BOT_CONTINUATION_MESSAGE,
-    'The host can override controller.continuationPrompt. The current Execution state and closeout timing determine whether buildBotContinuationMessage uses this ordinary body or the existing soft-closeout text. Task/Execution identity, deadlines and remaining budget come from the trusted domain stores.'));
+  + block('Default ordinary continuation with a snapshot binding', BOT_CONTINUATION_MESSAGE)
+  + block('Default ordinary continuation without a snapshot binding', BOT_MATERIAL_CONTINUATION_MESSAGE,
+    'The host can override controller.continuationPrompt in either configuration. During soft closeout the controller selects the built-in text for the registered Workspace capabilities.')
+  + block('Soft-closeout continuation without a snapshot binding',
+    `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', warningDeadline, sampleCloseout.at, sampleCloseout)}\n${BOT_MATERIAL_SOFT_CLOSEOUT_MESSAGE}`)
+  + block('Handoff warning without a snapshot binding', buildBotNotification({
+    notification_id: '<NOTIFICATION_ID>', notification_type: 'handoff_warning',
+    payload: { execution_id: '<EXECUTION_ID>', deadline: warningDeadline },
+  }, sampleCloseout), 'The persisted warning payload supplies the Execution ID and deadline. The controller records the notification ID and fixed composed message before dispatch.'));
 for (const [index, line] of sources.get(flatControllerPath).split('\n').entries()) {
   if (line.includes('await runtime.send(')) sendSites.push({ path: flatControllerPath, line: index + 1, expression: line.trim() });
 }
