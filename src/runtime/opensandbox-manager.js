@@ -762,22 +762,6 @@ export class OpenSandboxManager {
     return responseValue(response.body);
   }
 
-  async *agentEvents(executionId, { since = 0 } = {}) {
-    const record = this.#record(executionId);
-    if (!record.agent) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker is not started', { execution_id: executionId });
-    const response = await this.fetch(`${record.agent.endpoint}/events?since=${encodeURIComponent(Math.max(0, Number(since) || 0))}`, { method: 'GET', headers: { accept: 'text/event-stream', authorization: `Bearer ${record.agent.token}` } });
-    if (!response.ok || !response.body) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `Agent worker event stream failed with HTTP ${response.status}`, { status: response.status }, { retryable: true });
-    let buffer = '';
-    for await (const chunk of response.body) {
-      buffer += Buffer.from(chunk).toString('utf8');
-      for (const block of buffer.split(/\r?\n\r?\n/).slice(0, -1)) {
-        const data = block.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
-        if (data) yield jsonData(data);
-      }
-      buffer = buffer.includes('\n\n') ? buffer.slice(buffer.lastIndexOf('\n\n') + 2) : buffer;
-    }
-  }
-
   async stopAgent(executionId, signal = 'SIGTERM', { preserveWorker = false } = {}) {
     const record = this.executions.get(executionId);
     if (!record?.agent) return record?.executionStopped === true;

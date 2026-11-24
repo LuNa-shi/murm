@@ -39,7 +39,6 @@ let stdoutBuffer = '';
 let sequence = 0;
 const records = [];
 const MAX_RECORDS = 2_048;
-const subscribers = new Set();
 const rpcSubmissions = createPiRpcSubmissions({ write(message) {
   if (!child?.stdin?.writable) throw Object.assign(new Error('worker Agent is not running'), { code: 'NOT_ALLOWED' });
   child.stdin.write(`${JSON.stringify(message)}\n`);
@@ -71,7 +70,6 @@ function publish(record) {
   const value = { ...record, worker_sequence: ++sequence };
   records.push(value);
   if (records.length > MAX_RECORDS) records.splice(0, records.length - MAX_RECORDS);
-  for (const response of subscribers) response.write(`data: ${JSON.stringify(value)}\n\n`);
   rpcSubmissions.observe(value);
   return value;
 }
@@ -185,12 +183,11 @@ async function startAgent(input) {
   child = spawn('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), input.command, ...input.args],
     { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdout.on('data', processStdout);
-  child.stderr.on('data', (chunk) => { for (const response of subscribers) response.write(`event: stderr\ndata: ${JSON.stringify({ text: chunk.toString() })}\n\n`); });
+  // Drain the private stderr pipe so a noisy process cannot block on it.
+  child.stderr.resume();
   child.on('error', (error) => publish({ type: 'worker_error', message: error.message }));
   child.on('close', (code, signal) => {
     publish({ type: 'worker_exit', code, signal });
-    for (const response of subscribers) response.end();
-    subscribers.clear();
     child = null;
   });
   return { pid: child.pid, contract: { version: input.contract_version, resources: input.resources },
@@ -202,9 +199,7 @@ async function startAgent(input) {
 async function rpc(input) {
   const message = input?.message ?? input;
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('worker RPC message must be an object');
-  // Transport recovery asks for the bounded record history that accumulated
-  // while the SSE endpoint was unavailable.  Keep this read local to the
-  // worker so the caller can replay from an explicit sequence without
+  // Core polls bounded Worker history from an explicit sequence without
   // sending a synthetic command to Pi.
   if (message.type === 'get_state' && Number.isFinite(Number(message.since))) {
     const since = Math.max(0, Number(message.since));
@@ -367,14 +362,6 @@ const server = createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/stop') {
       await body(request);
       send(response, 200, { ok: true, result: await stopBot() });
-      return;
-    }
-    if (request.method === 'GET' && url.pathname === '/events') {
-      response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
-      subscribers.add(response);
-      const since = Number.parseInt(url.searchParams.get('since') ?? '0', 10) || 0;
-      for (const record of records) if (record.worker_sequence > since) response.write(`data: ${JSON.stringify(record)}\n\n`);
-      request.on('close', () => subscribers.delete(response));
       return;
     }
     send(response, 404, { ok: false, error: 'unknown worker route' });

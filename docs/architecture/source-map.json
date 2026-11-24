@@ -182,7 +182,7 @@
         "docs/architecture/07-run-configuration.md",
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Sandbox-resident Pi worker and authenticated RPC/event HTTP surface"
+      "role": "Sandbox-resident Pi worker and authenticated RPC, file collection and lifecycle HTTP surface"
     },
     {
       "path": "scripts/project-install.mjs",

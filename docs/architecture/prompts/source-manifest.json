@@ -23,7 +23,7 @@
     },
     {
       "path": "scripts/opensandbox-agent-worker.mjs",
-      "sha256": "bff18e6caf41e41efbb5f6da7e846d295c748eb40714c4476e5c375f0baf33ed"
+      "sha256": "d6fa3cd1bf167acb2c1230c1be9ed051d156cde3abf03599ee8f14729729becf"
     },
     {
       "path": "examples/notes-environment/main.mjs",

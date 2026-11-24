@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
 
-test('native Worker HTTP joins in-flight RPC and queries delayed evidence without a second process input', {
+test('native Worker rejects retired SSE while RPC joins in-flight input and queries delayed evidence', {
   skip: process.env.SWARMENV_CORE_WORKER_RPC_TEST !== '1' && 'Native Worker container probe requires independent review and explicit opt-in',
   timeout: 35_000,
 }, async t => {
@@ -57,6 +57,13 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
     try {
       const deadline=Date.now()+5000;
       while (!(await fetch(origin+'/health').then(r=>r.ok,()=>false))) { assert.ok(Date.now()<deadline); await delay(20); }
+      const retiredEvents=await fetch(origin+'/events?since=0', {
+        headers:{authorization:'Bearer controlled-rpc-test'}, signal:AbortSignal.timeout(3000),
+      });
+      try {
+        assert.equal(retiredEvents.status,404,'Authenticated Worker SSE endpoint is retired');
+        assert.deepEqual(await retiredEvents.json(),{ok:false,error:'unknown worker route'});
+      } finally { await retiredEvents.body?.cancel().catch(()=>undefined); }
       const start=await post('/start',input); assert.equal(start.status,200);
       const readyDeadline=Date.now()+2000;
       while (!(await post('/rpc',{type:'get_state',since:0})).body.result.records.some(r=>r.type==='process_ready')) {
@@ -93,7 +100,7 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
       assert.equal(replay.body.result.state,'complete');
       assert.equal(await readFile('/workspace/runtime/home/received-inputs.txt','utf8'),'original-input\\n');
       assert.equal((await post('/stop',{})).status,200);
-      console.log(JSON.stringify({receivedInputs:1,sideEffects:1,queryState:'complete',conflict:true}));
+      console.log(JSON.stringify({receivedInputs:1,sideEffects:1,queryState:'complete',conflict:true,retiredEventsStatus:retiredEvents.status}));
     } finally { worker.kill('SIGKILL'); }
   `;
   const input = { contract_version: 'swarmenv-core-v1', resources: [],
@@ -102,5 +109,5 @@ test('native Worker HTTP joins in-flight RPC and queries delayed evidence withou
   const result = await run('docker', ['run', '--rm', '--name', name, '--label', `swarmenv.core-input-probe=${probeId}`,
     '--cpus', '1', '--memory', '512m', '--pids-limit', '64', '--network', 'none', '--entrypoint', 'node', image,
     '--input-type=module', '-e', probe, JSON.stringify(input)], { timeout: 30_000, maxBuffer: 1024 * 1024 });
-  assert.deepEqual(JSON.parse(result.stdout.trim()), { receivedInputs: 1, sideEffects: 1, queryState: 'complete', conflict: true });
+  assert.deepEqual(JSON.parse(result.stdout.trim()), { receivedInputs: 1, sideEffects: 1, queryState: 'complete', conflict: true, retiredEventsStatus: 404 });
 });
