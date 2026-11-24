@@ -379,7 +379,7 @@
       "role": "Native Pi compatible-provider catalog with runtime environment interpolation"
     },
     {
-      "path": "src/agent/bot-contract.js",
+      "path": "src/agent/bot-contract.ts",
       "category": "Agent and prompts",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -389,7 +389,7 @@
       "role": "Flat continuation and notification messages with Service directory projection"
     },
     {
-      "path": "src/agent/capability-profile.js",
+      "path": "src/agent/capability-profile.ts",
       "category": "Agent and prompts",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -399,7 +399,7 @@
       "role": "Role-specific capability profile, binding requirements and tool directory"
     },
     {
-      "path": "src/agent/responses-budget-gateway.js",
+      "path": "src/agent/responses-budget-gateway.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -410,7 +410,7 @@
       "role": "Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage"
     },
     {
-      "path": "src/agent/services-bridge.js",
+      "path": "src/agent/services-bridge.ts",
       "category": "Agent and prompts",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -420,7 +420,7 @@
       "role": "Authenticated per-Core tool endpoint, binding and lifecycle orchestration"
     },
     {
-      "path": "src/cli/swarm-cli.js",
+      "path": "src/cli/swarm-cli.ts",
       "category": "service and Agent integration",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -431,7 +431,7 @@
       "role": "Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation"
     },
     {
-      "path": "src/context/context-service.js",
+      "path": "src/context/context-service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -452,7 +452,7 @@
       "role": "Shared structured error vocabulary and normalization"
     },
     {
-      "path": "src/judge/check-result.js",
+      "path": "src/judge/check-result.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -462,7 +462,7 @@
       "role": "Check outcome/diagnostic classification and caller-safe result projections"
     },
     {
-      "path": "src/judge/checker-owner.js",
+      "path": "src/judge/checker-owner.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -471,7 +471,7 @@
       "role": "Durable checker resource ownership and confirmed systemd cleanup"
     },
     {
-      "path": "src/judge/checker-process-limits.js",
+      "path": "src/judge/checker-process-limits.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -480,7 +480,7 @@
       "role": "Verified systemd cgroup limits and process-tree cleanup ownership"
     },
     {
-      "path": "src/judge/final-tree-deployment.js",
+      "path": "src/judge/final-tree-deployment.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -497,7 +497,7 @@
       "role": "Trusted Comparator harness consuming inert proof exports"
     },
     {
-      "path": "src/judge/fixture.js",
+      "path": "src/judge/fixture.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -507,7 +507,7 @@
       "role": "Locked fixture metadata and Candidate identity validation"
     },
     {
-      "path": "src/judge/judge-service.js",
+      "path": "src/judge/judge-service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -518,7 +518,7 @@
       "role": "Idempotent checks, preflight health, retries and durable CheckResults"
     },
     {
-      "path": "src/judge/lean-adapter.js",
+      "path": "src/judge/lean-adapter.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -528,7 +528,7 @@
       "role": "Independent Lean preflight/compiler process and diagnostic extraction"
     },
     {
-      "path": "src/judge/lean-final-tree-verifier.js",
+      "path": "src/judge/lean-final-tree-verifier.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -547,7 +547,7 @@
       "role": "Pinned Lean frontend driver recording completed fixed-source elaboration before module serialization"
     },
     {
-      "path": "src/judge/lean-module-checker.js",
+      "path": "src/judge/lean-module-checker.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -556,7 +556,7 @@
       "role": "Isolated module dependency compilation and Mission-scoped immutable artifact cache"
     },
     {
-      "path": "src/judge/lean-source-policy.js",
+      "path": "src/judge/lean-source-policy.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -574,7 +574,7 @@
       "role": "Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers"
     },
     {
-      "path": "src/observability/format.js",
+      "path": "src/observability/format.ts",
       "category": "observability and reporting",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -583,7 +583,7 @@
       "role": "Human-facing time, IDs, state and value formatting"
     },
     {
-      "path": "src/observability/observation-projection.js",
+      "path": "src/observability/observation-projection.ts",
       "category": "observability and reporting",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -592,7 +592,7 @@
       "role": "Shared observation projection for events, timelines and derived views"
     },
     {
-      "path": "src/observability/durable-event-log.js",
+      "path": "src/observability/durable-event-log.ts",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -601,7 +601,7 @@
       "role": "Append component NDJSON with raw/sanitized logging modes"
     },
     {
-      "path": "src/observability/observability-server.js",
+      "path": "src/observability/observability-server.ts",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -610,7 +610,7 @@
       "role": "HTTP routes, SSE, multi-store queries, reports and bounded operator reads"
     },
     {
-      "path": "src/observability/observation-store.js",
+      "path": "src/observability/observation-store.ts",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -619,7 +619,7 @@
       "role": "SQLite event/projection schema, visibility and multi-database collections"
     },
     {
-      "path": "src/observability/workspace-provider.js",
+      "path": "src/observability/workspace-provider.ts",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -648,7 +648,7 @@
       "role": "Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers"
     },
     {
-      "path": "src/replay/service-history.js",
+      "path": "src/replay/service-history.ts",
       "category": "private history",
       "chapters": [
         "docs/architecture/13-historical-resume.md"
@@ -656,7 +656,7 @@
       "role": "Automatic transaction-aware private SQLite before/after row history and committed write boundaries"
     },
     {
-      "path": "src/runtime/docker-bot-disk.js",
+      "path": "src/runtime/docker-bot-disk.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -666,7 +666,7 @@
       "role": "Docker Bot identity validation and bounded filesystem preparation"
     },
     {
-      "path": "src/runtime/docker-bot-network.js",
+      "path": "src/runtime/docker-bot-network.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -676,7 +676,7 @@
       "role": "Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins"
     },
     {
-      "path": "src/runtime/execution-workspace.js",
+      "path": "src/runtime/execution-workspace.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -685,7 +685,7 @@
       "role": "Authenticated guest snapshot, durable E save lineage, save reconciliation and recovery-only pre-retirement install acknowledgement"
     },
     {
-      "path": "src/runtime/manual-mission-review.js",
+      "path": "src/runtime/manual-mission-review.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -713,7 +713,7 @@
       "role": "Flat-owned Task/Context/Mission acceptance assembly and host-bound Bridge submission projection"
     },
     {
-      "path": "src/runtime/mission-submission.js",
+      "path": "src/runtime/mission-submission.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -724,7 +724,7 @@
       "role": "Durable Mission submission snapshot, single active freeze, and late-result fencing"
     },
     {
-      "path": "src/runtime/mission-workspace.js",
+      "path": "src/runtime/mission-workspace.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -736,7 +736,7 @@
       "role": "Runtime-owned Mission Workspace repository with immutable public revisions, fixed-file reads, materialization, and whole-revision merge"
     },
     {
-      "path": "src/runtime/opensandbox-manager.js",
+      "path": "src/runtime/opensandbox-manager.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -746,7 +746,7 @@
       "role": "OpenSandbox lifecycle and Execd provider boundary for one Execution"
     },
     {
-      "path": "src/runtime/opensandbox-metadata.js",
+      "path": "src/runtime/opensandbox-metadata.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -755,7 +755,7 @@
       "role": "Provider-compatible Mission, Bot and Execution identity labels"
     },
     {
-      "path": "src/runtime/runtime.js",
+      "path": "src/runtime/runtime.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -766,7 +766,7 @@
       "role": "Registered Bot binding, physical resource ownership, process failure cleanup and fencing"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
+      "path": "src/runtime/workspace-contract.ts",
       "category": "Workspace and Sandbox",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -775,7 +775,7 @@
       "role": "Workspace path normalization, input/output contracts and required-input validation"
     },
     {
-      "path": "src/runtime/workspace-manager.js",
+      "path": "src/runtime/workspace-manager.ts",
       "category": "Workspace and Sandbox",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -784,7 +784,7 @@
       "role": "Execution-owned filesystem, manifests, revisions, local Git and snapshots"
     },
     {
-      "path": "src/runtime/workspace-publication.js",
+      "path": "src/runtime/workspace-publication.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md"
@@ -792,7 +792,7 @@
       "role": "Synchronous lifecycle SQLite lock around Git publication and unknown-result classification"
     },
     {
-      "path": "src/runtime/workspace-repository.js",
+      "path": "src/runtime/workspace-repository.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -972,7 +972,7 @@
       "role": "Provider registration, profile projection, readiness cache and invocation"
     },
     {
-      "path": "src/services/mathlib-search-service.js",
+      "path": "src/services/mathlib-search-service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1021,7 +1021,7 @@
       "role": "Independent service gate, receipt and phase storage definitions"
     },
     {
-      "path": "src/task/execution-budget.js",
+      "path": "src/task/execution-budget.ts",
       "category": "task and lifecycle authority",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1031,7 +1031,7 @@
       "role": "Shared durable soft-closeout boundary for Task, Workspace and actual Bot continuation dispatch"
     },
     {
-      "path": "src/task/task-service.js",
+      "path": "src/task/task-service.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -1042,7 +1042,7 @@
       "role": "Authoritative Task/Execution transactions, admission, projections and lifecycle"
     },
     {
-      "path": "src/task/task-types.js",
+      "path": "src/task/task-types.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -1127,7 +1127,7 @@
       "role": "Public opaque Pi/OpenSandbox backend factory export"
     },
     {
-      "path": "src/agent/model-catalog.js",
+      "path": "src/agent/model-catalog.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"

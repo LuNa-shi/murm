@@ -17,7 +17,7 @@ The complete prompt bodies, composition branches and delivery evidence are in [0
 | Execution | Durable authority for an attempt: Task ID, owner, Core, lease, fencing version and Workspace | Ends at a lifecycle boundary; Runtime never replaces the Session under the same Execution |
 | Capability profile | Normalized Registry/Runtime description for `bound` or `recovery` | Built from Registry revision and the deployment capability list; it is not a Task take |
 
-An unbound registered Bot still uses role `bound`. There is no separate `idle` role in `AGENT_ROLES`; the exported idle/generic/recovery prompt aliases contain the same stable instructions. Role `bound` therefore does not prove that an Execution exists. The Bridge checks the binding separately. [Sources: capability-profile](../../src/agent/capability-profile.js), [Bridge](../../src/agent/services-bridge.js).
+An unbound registered Bot still uses role `bound`. There is no separate `idle` role in `AGENT_ROLES`; the exported idle/generic/recovery prompt aliases contain the same stable instructions. Role `bound` therefore does not prove that an Execution exists. The Bridge checks the binding separately. [Sources: capability-profile](../../src/agent/capability-profile.ts), [Bridge](../../src/agent/services-bridge.ts).
 
 ## 2. How the model process starts
 
@@ -33,7 +33,7 @@ The Core backend supplies the host Profile prompt at `/workspace/runtime/profile
 
 The backend checks a successful `get_state` response with a ten-second wait before reporting readiness. Input acknowledgements and semantic settlement remain different: Core owns the request ledger and the backend submits each prompt once, then queries the same Worker RPC result after a lost acknowledgement. It does not resend that prompt to recover a receipt. The backend consumes retained Worker records by contiguous sequence, ignores an already consumed prefix and reports a fatal history gap instead of fabricating output or a later settlement. It polls the authenticated RPC endpoint rather than using the retired adapter's SSE reconnect/fallback loop. Its actual output, failure, exit and stop handling are described in [Core Runtime](15-core-runtime.md); settlement does not release capacity.
 
-Version evidence comes from the guest used for startup. `OpenSandboxManager.agentVersions` executes `pi --version` and `node --version` through the authenticated guest command endpoint, checks successful exit and parses exact semantic versions. The Core backend requires the observed Pi version to be `1.3.0` before launching the Bot and records both observed versions with the spawn receipt. It does not query the npm registry or use a separate host-generated version manifest. [Guest version resolution](../../src/runtime/opensandbox-manager.js) and [backend startup](../../src/core/pi-opensandbox-backend.ts) own this path.
+Version evidence comes from the guest used for startup. `OpenSandboxManager.agentVersions` executes `pi --version` and `node --version` through the authenticated guest command endpoint, checks successful exit and parses exact semantic versions. The Core backend requires the observed Pi version to be `1.3.0` before launching the Bot and records both observed versions with the spawn receipt. It does not query the npm registry or use a separate host-generated version manifest. [Guest version resolution](../../src/runtime/opensandbox-manager.ts) and [backend startup](../../src/core/pi-opensandbox-backend.ts) own this path.
 
 ### 2.3 Retained Worker and provider contracts
 

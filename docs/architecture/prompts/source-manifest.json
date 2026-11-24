@@ -2,16 +2,16 @@
   "description": "Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.",
   "sources": [
     {
-      "path": "src/agent/bot-contract.js",
-      "sha256": "c54511765c7121c0d4537e1557a562176faf4ad948ff059342a38c222b2e7570"
+      "path": "src/agent/bot-contract.ts",
+      "sha256": "c3cc8d1e990624772e85bc67c5319b6a9346b3afc6809be54ba67b33da31e6bc"
     },
     {
-      "path": "src/agent/capability-profile.js",
-      "sha256": "7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07"
+      "path": "src/agent/capability-profile.ts",
+      "sha256": "53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5"
     },
     {
-      "path": "src/agent/services-bridge.js",
-      "sha256": "cb014f632b97e2e525fce8920f7f36105a7684771e50fd06c3082db421e315b2"
+      "path": "src/agent/services-bridge.ts",
+      "sha256": "f2ba8c143c277f817a49248e85c1499dd27083be081d8deefd663cd9ce4b8fd5"
     },
     {
       "path": "src/core/index.ts",
@@ -90,16 +90,16 @@
       "sha256": "bcc32c4f65e0b729d47479aafacfe55c5d71b560b482d402feb1c88035f0e7da"
     },
     {
-      "path": "src/runtime/runtime.js",
-      "sha256": "40c32828fbd310246d21ff3e0985357e1d7983978c093dcbccfa397d07e80377"
+      "path": "src/runtime/runtime.ts",
+      "sha256": "653d47ca3fec1a6b6a900d2c9352c9942f023937818da5cf82f3ed5aac29fe50"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
-      "sha256": "8d602261f4d1dd30963050e4367004afd4a93205ac3cce79090af37f76d3cddf"
+      "path": "src/runtime/workspace-contract.ts",
+      "sha256": "62281cf9f9842eef0da944b7b2a31ed2b39f58ce5a5c71361cd3f2d65c5b30f5"
     },
     {
-      "path": "src/runtime/mission-workspace.js",
-      "sha256": "f7361fa46eb42926b7dae0c5c5d762f87e2df2dbe753572fab2ed7b6e07f2de0"
+      "path": "src/runtime/mission-workspace.ts",
+      "sha256": "12a377fa5203b300315fa09b1c03f5a0c9a6959b6c22c3c75b4cc7bfe73cba78"
     },
     {
       "path": "src/sdk/service-catalog.ts",
@@ -126,11 +126,11 @@
       "sha256": "878a771020466e90edadaa60a8d3ef4fba7a79534969c7ea510fa02795773ea8"
     },
     {
-      "path": "src/task/task-service.js",
-      "sha256": "a80936319ad9cfdd0ceca51dbc9725ce1ba8ce0322443f45ac4af9468a9e7c8e"
+      "path": "src/task/task-service.ts",
+      "sha256": "0842ce7bae7bd01b6dab03359682c50f7335321799dbc81f08e5d5229bd74df1"
     },
     {
-      "path": "src/task/task-types.js",
+      "path": "src/task/task-types.ts",
       "sha256": "fe71c025f6236adde42d949cf7cc70b788a76dbf2a152384e4d6520d771dd722"
     },
     {
@@ -330,74 +330,74 @@
   ],
   "fixed_instruction_fields": [
     {
-      "path": "src/agent/services-bridge.js",
-      "line": 497,
+      "path": "src/agent/services-bridge.ts",
+      "line": 532,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
-      "path": "src/agent/services-bridge.js",
-      "line": 505,
+      "path": "src/agent/services-bridge.ts",
+      "line": 540,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
+      "path": "src/runtime/workspace-contract.ts",
       "line": 36,
       "field": "remediation",
       "sha256": "24bc9dbf3b8d5cd7bd18049833a304b79a170672842e9a2883a885e95d31aa6f"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
+      "path": "src/runtime/workspace-contract.ts",
       "line": 44,
       "field": "remediation",
       "sha256": "c84511b74f73e8f7c67f20a2e7bc0b05ea5faf82d1ece7929c9868e6780ea2f1"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
+      "path": "src/runtime/workspace-contract.ts",
       "line": 52,
       "field": "remediation",
       "sha256": "5f9f97c1ee95ef8dcfc2a716dde395f69419e44fad0b056099e9eb1853ac50c2"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
+      "path": "src/runtime/workspace-contract.ts",
       "line": 147,
       "field": "remediation",
       "sha256": "a8e576ad724ea7364d2e597ce43a8cba8de5bde747fe3f82553feb360a11235e"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
+      "path": "src/runtime/workspace-contract.ts",
       "line": 155,
       "field": "remediation",
       "sha256": "7549e00a45aaaa09ee3b7bde2a9fa7595021c7f545f54c4cc9767e31c2b109ed"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
+      "path": "src/runtime/workspace-contract.ts",
       "line": 169,
       "field": "remediation",
       "sha256": "60e282eebd16082cc7e18cef63bb5f8671a6c643ff02ee47789a9e8170c76c16"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
+      "path": "src/runtime/workspace-contract.ts",
       "line": 177,
       "field": "remediation",
       "sha256": "f54f33ecfd41745a310aa5c249667ade5e1fb31f77528b4b0bb1843188745631"
     },
     {
-      "path": "src/task/task-service.js",
-      "line": 1483,
+      "path": "src/task/task-service.ts",
+      "line": 1493,
       "field": "guidance",
       "sha256": "7e00a9a0673a67a15ea3cc67a3ce0331614bdf9a024122bbf2821ad7cb98844f"
     },
     {
-      "path": "src/task/task-service.js",
-      "line": 1601,
+      "path": "src/task/task-service.ts",
+      "line": 1611,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
-      "path": "src/task/task-service.js",
-      "line": 1751,
+      "path": "src/task/task-service.ts",
+      "line": 1761,
       "field": "guidance",
       "sha256": "0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b"
     }
@@ -417,7 +417,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "a0315e17997299510fe0b7cffbeb965e8a343e5ac64f681debb7e6af481b2b46"
+      "sha256": "22c1ec9b0b70a223f7b12d5f0b27f7e337e8c413320aecb29d845b78faf5f23c"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",

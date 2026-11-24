@@ -34,8 +34,8 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `98d9ded93d7254f1813080c71862e0b8a305de12704219046156e16bd5787623` |
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `ef5119f0fa92a587850498a8ae2d1fc19c35d45f1cd3df9301916460433a34c2` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `059326242222f5a036a03b33fb0e7b260fb0f527dfd771822755db2419ef5253` |
-| [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `cb014f632b97e2e525fce8920f7f36105a7684771e50fd06c3082db421e315b2` |
+| [src/agent/capability-profile.ts](../../src/agent/capability-profile.ts) | `53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5` |
+| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `f2ba8c143c277f817a49248e85c1499dd27083be081d8deefd663cd9ce4b8fd5` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
 | [src/core/index.ts](../../src/core/index.ts) | `c3b64be3e0fb91c5772b7b9c61256c58ff819be4379da13fc91a3a4d6d7ab9c5` |

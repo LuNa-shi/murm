@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Deterministic, offline prompt documentation. No Agent, provider or service is invoked.
 import assert from 'node:assert/strict';
+import { stripTypeScriptTypes } from 'node:module';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
@@ -19,9 +20,9 @@ assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Us
 const check = args[0] === '--check';
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
-  'src/agent/bot-contract.js',
-  'src/agent/capability-profile.js',
-  'src/agent/services-bridge.js',
+  'src/agent/bot-contract.ts',
+  'src/agent/capability-profile.ts',
+  'src/agent/services-bridge.ts',
   'src/core/index.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.mjs',
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
   'src/environments/flat/controller.js', 'src/environments/flat/environment.js',
@@ -29,11 +30,11 @@ const sourcePaths = [
   'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js', 'src/environments/agensh/team.js',
   'test/fixtures/agensh-team-kimi.js', 'test/agensh-team-kimi-real.test.js',
   'src/environments/lead-helper/prompts.js', 'src/environments/lead-helper/index.js',
-  'src/runtime/runtime.js',
-  'src/runtime/workspace-contract.js', 'src/runtime/mission-workspace.js',
+  'src/runtime/runtime.ts',
+  'src/runtime/workspace-contract.ts', 'src/runtime/mission-workspace.ts',
   'src/sdk/service-catalog.ts', 'src/sdk/builtin-registry.ts', 'src/sdk/service-bundle.ts',
   'src/sdk/service-registry.ts', 'src/sdk/service-manifest.ts', 'src/protocol/envelope.ts',
-  'src/task/task-service.js', 'src/task/task-types.js',
+  'src/task/task-service.ts', 'src/task/task-types.ts',
   'services/mathlib-search/service.json', 'services/mathlib-search/SKILL.md',
   'services/mathlib-search/references/loogle.md',
 ];
@@ -92,7 +93,7 @@ async function listSourceFiles(directory) {
   for (const entry of await readdir(resolve(root, directory), { withFileTypes: true })) {
     const path = `${directory}/${entry.name}`;
     if (entry.isDirectory()) files.push(...await listSourceFiles(path));
-    else if (/\.(?:js|mjs)$/.test(path)) files.push(path);
+    else if (/\.(?:js|mjs|ts)$/.test(path)) files.push(path);
   }
   return files.sort();
 }
@@ -106,9 +107,11 @@ const instructionActions = new Set([
   'inspect_material_and_record_task_feedback', 'use_dependency_kind_TASK_or_CAPABILITY',
 ]);
 let guidanceDoc = header('Complete fixed guidance in tool results and notification data', 'This appendix records complete literal hint, remediation and guidance fields in executable sources, plus instructional action values. These are individual response fields, not fabricated full error responses or actual run transcripts. Dynamic IDs, versions, paths, provider diagnostics and complete error envelopes follow the contracts in [Services](../04-services.md) and [the API reference](../10-service-api-reference.md).');
-guidanceDoc += '\n## Delivery conditions\n\n| Source | When the fixed field can be visible |\n|---|---|\n| services-bridge.js | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the protected CLI prints the structured response into the native Bash result |\n| workspace-contract.js remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |\n| task-service.js action | Material-available notification payload, or invalid typed dependency error. The payload action is visible when notification data is read/composed; the retained Runtime no longer renders or sends a notification user message. |\n\nThe action values integration and task are consumption/contract enums, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. The actions execute and queue_status are private Judge authorization protocol enums, never Agent instructions. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.\n';
+guidanceDoc += '\n## Delivery conditions\n\n| Source | When the fixed field can be visible |\n|---|---|\n| services-bridge.ts | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the protected CLI prints the structured response into the native Bash result |\n| workspace-contract.ts remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |\n| task-service.ts action | Material-available notification payload, or invalid typed dependency error. The payload action is visible when notification data is read/composed; the retained Runtime no longer renders or sends a notification user message. |\n\nThe action values integration and task are consumption/contract enums, and continue_until_boundary is an operator log event field; neither is a separate instructional tool-result string. The actions execute and queue_status are private Judge authorization protocol enums, never Agent instructions. Arbitrary runtime Task/Material/provider text is outside this fixed-field inventory.\n';
 for (const path of await listSourceFiles('src')) {
-  const source = await readFile(resolve(root, path), 'utf8');
+  const original = await readFile(resolve(root, path), 'utf8');
+  // Strip type-only fields while preserving line and column positions.
+  const source = path.endsWith('.ts') ? stripTypeScriptTypes(original) : original;
   for (const [i, line] of source.split('\n').entries()) {
     if (/\.prompt\s*(?:\?\.)?\(|\.agentRpc\([^,]+,\s*\{\s*type:\s*'prompt'/.test(line)) {
       assert.ok(sourcePaths.includes(path), `new prompt sender requires documented ownership: ${path}:${i + 1}`);

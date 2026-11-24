@@ -29,7 +29,7 @@ const json = (value) => fence('json', JSON.stringify(value, null, 2));
 const registry = createBuiltinServiceRegistry({});
 const sourcePaths = [
   'src/sdk/service-catalog.ts', 'src/sdk/builtin-registry.ts', 'src/sdk/service-manifest.ts',
-  'src/sdk/service-registry.ts', 'src/agent/capability-profile.js', 'src/agent/services-bridge.js',
+  'src/sdk/service-registry.ts', 'src/agent/capability-profile.ts', 'src/agent/services-bridge.ts',
   'services/mathlib-search/service.json', 'src/errors.ts',
   'src/core/index.ts', 'src/core/types.ts', 'src/core/services.ts', 'src/core/service-types.ts',
   'src/core/backends/pi-opensandbox.ts', 'src/core/backend-config.ts',
@@ -61,18 +61,18 @@ for (const source of sourcePaths.filter(path => path.startsWith('src/core/'))) {
 }
 
 const schemas = [
-  ['Automatic service history', 'src/replay/service-history.js', SERVICE_HISTORY_SCHEMA_SQL],
+  ['Automatic service history', 'src/replay/service-history.ts', SERVICE_HISTORY_SCHEMA_SQL],
   ['Task-owned independent service commit gates', 'src/storage/service-peer-schema.ts', SERVICE_COMMIT_SCHEMA_SQL],
   ['Context peer receipts', 'src/storage/service-peer-schema.ts', CONTEXT_PEER_SCHEMA_SQL],
   ['Judge peer launch phases', 'src/storage/service-peer-schema.ts', JUDGE_PEER_SCHEMA_SQL],
-  ['Core Runtime model attempts', 'src/agent/responses-budget-gateway.js', CORE_MODEL_SCHEMA_SQL],
-  ['Mission submission coordinator', 'src/runtime/mission-submission.js', MISSION_SUBMISSION_SCHEMA_SQL],
-  ['Owner-local manual Mission review', 'src/runtime/manual-mission-review.js', MANUAL_MISSION_REVIEW_SCHEMA_SQL],
-  ['Execution Workspace coordinator', 'src/runtime/execution-workspace.js', EXECUTION_WORKSPACE_SCHEMA_SQL],
+  ['Core Runtime model attempts', 'src/agent/responses-budget-gateway.ts', CORE_MODEL_SCHEMA_SQL],
+  ['Mission submission coordinator', 'src/runtime/mission-submission.ts', MISSION_SUBMISSION_SCHEMA_SQL],
+  ['Owner-local manual Mission review', 'src/runtime/manual-mission-review.ts', MANUAL_MISSION_REVIEW_SCHEMA_SQL],
+  ['Execution Workspace coordinator', 'src/runtime/execution-workspace.ts', EXECUTION_WORKSPACE_SCHEMA_SQL],
   ['Task and Execution database', 'src/storage/schema.ts', SCHEMA_SQL],
   ['Context database', 'src/storage/context-schema.ts', CONTEXT_SCHEMA_SQL],
   ['Judge database', 'src/storage/judge-schema.ts', JUDGE_SCHEMA_SQL],
-  ['Observation database', 'src/observability/observation-store.js', OBSERVATION_SCHEMA_SQL],
+  ['Observation database', 'src/observability/observation-store.ts', OBSERVATION_SCHEMA_SQL],
 ];
 let storage = '## Generated SQL schema reference\n\nThe SQL below is the complete exported create-schema text, including checks, keys and indexes. It is schema text, not an export of a user database. The `tasks` interpolation is expanded. Constructors initialize the current schema on new databases. Shared `operations` declarations intentionally appear in several owners because the services can share a SQLite connection.\n';
 for (const [label, path, sql] of schemas) {
@@ -86,7 +86,7 @@ schemaOnly.exec(JUDGE_SCHEMA_SQL);
 const priorObjects = new Set(schemaOnly.prepare('SELECT name FROM sqlite_master').all().map((row) => row.name));
 const initialized = new TaskService(schemaOnly);
 const supplemental = schemaOnly.prepare("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY name").all().filter((row) => !priorObjects.has(row.name));
-storage += '\n### Constructor-added schema objects\n\nFresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `' + hash(await readFile(resolve(root, 'src/task/task-service.js'))) + '`.\n';
+storage += '\n### Constructor-added schema objects\n\nFresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `' + hash(await readFile(resolve(root, 'src/task/task-service.ts'))) + '`.\n';
 for (const row of supplemental) storage += '\n#### ' + row.name + '\n' + fence('sql', row.sql + ';');
 initialized.close();
 
