@@ -30,12 +30,12 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `3eb4dbc87d69a3341886b9f9cab68daca531ae7ea0386b50c072473aebc4a98a` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `2fe172f496be496e92d1a0d9d8245917b4ffe54f49239fac7281c74349ece85e` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `85645eff3a806b665f17111c2e922d4e5eacde56c2769ba440ba845bd87114d1` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `a488b6f08399f9afba69f927c2ce44efd8fef88249e302f05cb1e8c03cc34c99` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `672e42350cf2556acada25f7f2f3960b274dba0f0e48f9799229f65d74bcd986` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `3a134d698933777ed2a42e4edf2c8a0a51fb9a6661dd9d8dc8ae588b1ec05ff4` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 | [src/core/index.d.ts](../../src/core/index.d.ts) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
@@ -78,7 +78,6 @@ Bots use native Bash to invoke typed swarm commands. Registry declarations below
 | `task.task_view` | `task` | `task_view` |
 | `task.workspace_current_diff` | `task` | `workspace_current_diff` |
 | `task.workspace_merge` | `task` | `workspace_merge` |
-| `task.workspace_public_apply` | `task` | `workspace_public_apply` |
 | `task.workspace_public_diff` | `task` | `workspace_public_diff` |
 | `task.workspace_public_files` | `task` | `workspace_public_files` |
 | `task.workspace_public_history` | `task` | `workspace_public_history` |
@@ -258,7 +257,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 26 registered capabilities
+### Task Service: 25 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -281,7 +280,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "8a15810bfe35a42b7b8868ab6c336acf82bcc1b249081217a2ba8142bda30b0c"
+  "manifest_hash": "a980b68a35f88c552f458b5b1c86448c5327885131f4702f542ae7f7c4ac354e"
 }
 ```
 
@@ -1804,60 +1803,6 @@ Search text in an immutable Mission Workspace revision before a Task is taken.
   },
   "method": "POST",
   "path": "/v1/workspace_public_search",
-  "errors": []
-}
-```
-
-#### task.workspace_public_apply
-
-Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.
-
-```json
-{
-  "name": "workspace_public_apply",
-  "operation": "workspace_public_apply",
-  "description": "Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "from"
-    ],
-    "properties": {
-      "from": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "execution-write",
-  "help": {
-    "when": "Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
-    "ref": "service://task/workspace_public_apply",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/workspace_public_apply",
   "errors": []
 }
 ```

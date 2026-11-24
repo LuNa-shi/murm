@@ -677,7 +677,7 @@
         "docs/architecture/05-workspace-continuity.md",
         "docs/architecture/11-storage-reference.md"
       ],
-      "role": "Authenticated guest snapshot, durable E save lineage and request reconciliation"
+      "role": "Authenticated guest snapshot, durable E save lineage, save reconciliation and recovery-only pre-retirement install acknowledgement"
     },
     {
       "path": "src/runtime/manual-mission-review.js",

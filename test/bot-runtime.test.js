@@ -18,6 +18,7 @@ import { stableStringify } from '../src/protocol/envelope.js';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { listTools } from '../src/sdk/service-catalog.js';
 import { ServicesBridge } from '../src/agent/services-bridge.js';
 import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
@@ -866,6 +867,25 @@ async function workspaceFixture(t, options = {}) {
   return { ...f, bot, bridge, execution, identity, guest, command, dispatch, context, workspaceMerge };
 }
 
+test('retired active Workspace apply is absent from CLI discovery and rejected before guest work', async t => {
+  const { command, bridge, dispatch, guest, service } = await workspaceFixture(t);
+  assert.equal(listTools(null, { includeInternal: true }).some(tool => tool.operation === 'workspace_public_apply'), false);
+  const { stdout: help } = await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'workspace', '--help']);
+  assert.doesNotMatch(help, /\bapply\b/);
+  await assert.rejects(command('workspace', 'apply', '--from', 'main'), error => /Unknown|unknown|Unsupported|unsupported/.test(error.stderr));
+  const response = await fetch(`http://127.0.0.1:${bridge.address.port}/call`, { method: 'POST',
+    headers: { authorization: `Bearer ${bridge.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ operation: 'workspace_public_apply', payload: { from: 'main' }, operation_id: 'retired' }) });
+  assert.equal(response.status, 400);
+  const rejected = await response.json();
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.error.code, 'NOT_ALLOWED');
+  await assert.rejects(dispatch('apply', 'retired', { from: 'main' }), error => error.code === 'INVALID_CONTRACT');
+  assert.equal(guest.captures, 0);
+  assert.equal(guest.installs, 0);
+  assert.equal(service.db.prepare('SELECT count(*) AS count FROM execution_workspace_requests').get().count, 0);
+});
+
 test('real CLI saves guest additions/deletions/binary files and chains immutable public revisions', async t => {
   const { runtime, command, dispatch, guest, execution, bridge } = await workspaceFixture(t);
   assert.equal((await command('workspace', 'status')).dirty, false);
@@ -984,189 +1004,106 @@ test('lease renewal before atomic expiry intent keeps the Bot active', async t =
   assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
 });
 
-test('CLI apply retains both saved parents, requires saving dirty work and preserves the take origin', async t => {
-  const { runtime, command, guest, execution } = await workspaceFixture(t);
-  const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'public project input', incoming: 'from peer' } });
-  guest.files.local = Buffer.from('local saved contribution');
-  await assert.rejects(command('workspace', 'apply', '--from', incoming.revision, '--request-id', 'dirty-apply'), error => {
-    const failure = JSON.parse(error.stderr);
-    assert.equal(failure.details.request_id, 'dirty-apply');
-    assert.equal(failure.details.cause_code, 'WORKSPACE_BUSY');
-    assert.match(failure.details.notice, /未替换文件/);
-    return true;
-  });
-  assert.equal(guest.installs, 0);
-  const local = await command('workspace', 'save', '--request-id', 'before-apply');
-  const applied = await command('workspace', 'apply', '--from', incoming.revision, '--request-id', 'apply-clean');
-  assert.deepEqual(applied.parents, [local.revision, incoming.revision]);
-  assert.equal(guest.files.local.toString(), 'local saved contribution');
-  assert.equal(guest.files.incoming.toString(), 'from peer');
-  const status = await command('workspace', 'status');
-  assert.equal(status.initial_revision, '0.1');
-  assert.equal(status.dirty, true);
-  assert.equal(status.applied_revisions[0].revision, incoming.revision);
-  const saved = await command('workspace', 'save', '--request-id', 'after-apply');
-  assert.deepEqual(saved.parents, applied.parents);
-  guest.files.later = Buffer.from('later unsaved content');
-  assert.deepEqual(await command('workspace', 'apply', '--from', incoming.revision, '--request-id', 'apply-clean'), applied);
-  assert.equal(guest.installs, 1);
-  assert.equal(guest.files.later.toString(), 'later unsaved content');
-  assert.equal(runtime.taskService.getExecution(execution.execution_id).workspace_input.revision, '0.1');
-});
+// Represents an already durable pre-retirement request; no public operation can
+// create this plan. The captured bytes and request identity must survive upgrade.
+async function seedPendingInstall(f, requestId, phase = 'installing') {
+  await f.dispatch('status', 'initialize-lineage');
+  f.guest.captures = 0;
+  const state = f.service.db.prepare('SELECT * FROM execution_workspace_state WHERE execution_id = ?').get(f.execution.execution_id);
+  const files = { 'input.txt': Buffer.from('public project input'), peer: Buffer.from('previously captured contribution') };
+  const manifest = Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, { bytes: bytes.length, content_hash: createHash('sha256').update(bytes).digest('hex') }]));
+  const published = await f.runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files });
+  const captured = { kind: 'apply', workspace_id: 'workspace-default', base_revision: '0.1', source_revision: published.revision,
+    state_version: state.version, expected_content_hash: createHash('sha256').update(stableStringify(JSON.parse(state.manifest_json))).digest('hex'),
+    content_hash: createHash('sha256').update(stableStringify(manifest)).digest('hex'), manifest,
+    files: Object.fromEntries(Object.entries(files).map(([path, bytes]) => [path, bytes.toString('base64')])),
+    parents: ['0.1', published.revision], conflicts: [], changed_paths: ['peer'], already_included: false,
+    source: { mission_id: f.bot.mission_id, task_id: f.execution.task_id, execution_id: f.execution.execution_id,
+      bot_id: f.bot.bot_id, fencing_version: f.execution.fencing_version } };
+  f.service.db.prepare(`INSERT INTO execution_workspace_requests
+    (execution_id, request_id, fingerprint, phase, captured_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)`)
+    .run(f.execution.execution_id, requestId, 'original-durable-fingerprint', phase, JSON.stringify(captured), new Date().toISOString(), new Date().toISOString());
+  return () => f.service.db.prepare('SELECT * FROM execution_workspace_requests WHERE execution_id = ? AND request_id = ?').get(f.execution.execution_id, requestId);
+}
 
-test('apply conflict metadata survives save and a fresh E; resolved save checks real markers and alternatives', async t => {
-  const { runtime, service, command, guest, execution, startSession, manager } = await workspaceFixture(t);
-  const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'incoming choice\n' } });
-  guest.files['input.txt'] = Buffer.from('local choice\n');
-  await command('workspace', 'save', '--request-id', 'local-conflict');
-  const applied = await command('workspace', 'apply', '--from', incoming.revision, '--request-id', 'conflicting-apply');
-  assert.ok(applied.conflicts.length);
-  assert.match(applied.notice, /冲突文件为 input\.txt.*save --resolved/);
-  const unresolved = await command('workspace', 'save', '--request-id', 'unresolved');
-  assert.deepEqual(unresolved.conflicts, applied.conflicts);
-  await runtime.stopExecution(execution.execution_id);
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Resolve recorded public Workspace conflicts', expected_output: 'Resolved revision', acceptance_conditions: ['Conflicts resolved'], workspace: { workspace_id: 'workspace-default', revision: unresolved.revision } }, makeEnvelope({ actorRef: bot.bot_id })).task;
-  const take = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'inherit-conflicts' });
-  await runtime.bindAgentExecution(take.execution.execution_id, session, { coreId: 'core-1' });
-  const next = service.getExecution(take.execution.execution_id);
-  guest.files = Object.fromEntries(Object.entries((await runtime.missionWorkspace.exportRevision({ workspaceId: 'workspace-default', revision: unresolved.revision })).files).map(([path, bytes]) => [path, Buffer.from(bytes)]));
-  const call = (operation, requestId, input = {}) => runtime.dispatchExecutionWorkspace(operation, input, { actorRef: bot.bot_id, taskId: task.task_id, executionId: next.execution_id, fencingVersion: next.fencing_version, requestId });
-  assert.deepEqual((await call('status', 'inherited')).conflicts, applied.conflicts);
-  await assert.rejects(call('save', 'too-early', { resolved: true }), error => error.code === 'INVALID_CONTRACT');
-  for (const path of Object.keys(guest.files)) if (applied.conflicts.some(conflict => path.startsWith(conflict.artifact_root + '/'))) delete guest.files[path];
-  await assert.rejects(call('save', 'markers-remain', { resolved: true }), error => error.code === 'INVALID_CONTRACT');
-  guest.files['input.txt'] = Buffer.from('chosen resolution\n');
-  const resolved = await call('save', 'resolved', { resolved: true });
-  assert.deepEqual(resolved.conflicts, []);
-  assert.deepEqual((await runtime.missionWorkspace.exportRevision({ workspaceId: 'workspace-default', revision: resolved.revision })).conflicts, []);
-});
-
-test('install intent excludes Task finish until E lineage and worker acknowledgement are durable', async t => {
-  const { runtime, service, guest, dispatch, execution, identity } = await workspaceFixture(t);
-  const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'public project input', peer: 'note' } });
-  let rejected = false;
-  guest.installHook = () => {
-    assert.throws(() => service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: identity.actorRef, taskId: execution.task_id, executionId: execution.execution_id,
-      specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version })), error => error.code === 'WORKSPACE_BUSY');
-    rejected = true;
-  };
-  await dispatch('apply', 'mutual-exclusion', { from: incoming.revision });
-  assert.equal(rejected, true);
-  const current = service.getExecution(execution.execution_id);
-  const finished = service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: identity.actorRef, taskId: execution.task_id, executionId: execution.execution_id,
-    specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version }));
-  assert.equal(finished.execution.state, 'CLOSING');
-});
-
-test('Runtime reconciles lost apply acknowledgement without waiting for the paused Bot to retry', { timeout: 8000 }, async t => {
-  const { runtime, guest, service, dispatch } = await workspaceFixture(t);
-  const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'public project input', peer: 'note' } });
-  let fail = true;
-  guest.confirmHook = () => { if (fail) { fail = false; throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled acknowledgement loss'); } };
-  await assert.rejects(dispatch('apply', 'lost-ack', { from: incoming.revision }), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
-  assert.equal(guest.held, true);
+test('persisted install recovery retries only original confirmation and preserves finish interlock', { timeout: 8000 }, async t => {
+  const f = await workspaceFixture(t);
+  const row = await seedPendingInstall(f, 'lost-ack', 'captured');
+  let once = true;
+  f.guest.confirmHook = () => { if (once) { once = false; throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled acknowledgement loss'); } };
+  f.guest.installHook = () => assert.throws(() => f.service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({
+    actorRef: f.bot.bot_id, taskId: f.execution.task_id, executionId: f.execution.execution_id,
+    specVersion: f.execution.spec_version, stateVersion: f.execution.state_version, fencingVersion: f.execution.fencing_version })), error => error.code === 'WORKSPACE_BUSY');
+  await assert.rejects(f.runtime.executionWorkspace.reconcile(f.execution.execution_id), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
+  assert.equal(row().phase, 'installed');
+  assert.equal(f.guest.held, true);
+  const before = row().result_json;
   const until = Date.now() + 4000;
-  while (guest.held && Date.now() < until) await new Promise(resolve => setTimeout(resolve, 50));
-  assert.equal(guest.held, false);
-  assert.equal(guest.installs, 1);
-  assert.equal(service.db.prepare('SELECT phase FROM execution_workspace_requests WHERE request_id = ?').get('lost-ack').phase, 'done');
-  assert.equal((await dispatch('apply', 'lost-ack', { from: incoming.revision })).source_revision, incoming.revision);
+  while (f.guest.held && Date.now() < until) await delay(50);
+  assert.equal(row().phase, 'done');
+  assert.equal(row().result_json, before);
+  assert.equal(row().captured_json, null);
+  assert.equal(f.guest.held, false);
+  assert.equal(f.guest.installs, 1);
+  assert.equal(f.guest.captures, 0);
+  assert.equal(f.guest.files.peer.toString(), 'previously captured contribution');
+  await assert.rejects(f.dispatch('apply', 'lost-ack', { from: 'main' }), error => error.code === 'INVALID_CONTRACT');
+  assert.equal(row().result_json, before);
 });
 
-test('confirmed apply survives response loss followed by hard close with the same terminal receipt', async t => {
-  const { runtime, guest, manager, service, dispatch, execution } = await workspaceFixture(t);
-  const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'public project input', peer: 'note' } });
-  const confirm = manager.confirmBotProjectInstall;
-  let lose = true;
-  manager.confirmBotProjectInstall = async input => {
-    const receipt = await confirm(input);
-    if (lose) { lose = false; throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled response lost after resume'); }
-    return receipt;
-  };
-  await assert.rejects(dispatch('apply', 'confirmed-before-close', { from: incoming.revision }), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
-  const before = JSON.parse(service.db.prepare('SELECT result_json FROM execution_workspace_requests WHERE request_id = ?').get('confirmed-before-close').result_json);
-  assert.equal(guest.held, false);
-  await runtime.stopExecution(execution.execution_id);
-  assert.deepEqual(await dispatch('apply', 'confirmed-before-close', { from: incoming.revision }), before);
-  assert.equal(service.db.prepare('SELECT phase FROM execution_workspace_requests WHERE request_id = ?').get('confirmed-before-close').phase, 'done');
-  assert.equal(guest.installs, 1);
+test('persisted committed install retains original receipt through confirmed physical stop', async t => {
+  const f = await workspaceFixture(t);
+  const row = await seedPendingInstall(f, 'confirmed-before-close');
+  const confirm = f.manager.confirmBotProjectInstall;
+  f.manager.confirmBotProjectInstall = async input => { await confirm(input); throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled response lost after resume'); };
+  await assert.rejects(f.runtime.executionWorkspace.reconcile(f.execution.execution_id), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
+  const before = row().result_json;
+  assert.equal(row().phase, 'installed');
+  assert.equal(f.guest.held, false);
+  await f.runtime.stopExecution(f.execution.execution_id, 'FAILED', 'controlled-hard-stop');
+  assert.equal(row().phase, 'done');
+  assert.equal(row().result_json, before);
+  assert.equal(f.guest.installs, 1);
+  assert.equal(f.guest.captures, 0);
 });
 
-test('apply installation stays held through SQL failure and Runtime retries only acknowledgement', { timeout: 30000 }, async t => {
-  const { runtime, guest, service, dispatch } = await workspaceFixture(t);
-  const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'public project input', peer: 'note' } });
-  service.db.exec("CREATE TRIGGER reject_apply_ack BEFORE UPDATE ON execution_workspace_state BEGIN SELECT RAISE(ABORT, 'controlled apply SQL failure'); END;");
-  await assert.rejects(dispatch('apply', 'sql-apply', { from: incoming.revision }), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
-  assert.equal(guest.held, true);
-  service.db.exec('DROP TRIGGER reject_apply_ack');
-  let entered, release;
-  const enteredPromise = new Promise(resolve => { entered = resolve; });
-  const heldPromise = new Promise(resolve => { release = resolve; });
-  const reconcile = runtime.executionWorkspace.reconcile.bind(runtime.executionWorkspace);
-  runtime.executionWorkspace.reconcile = async (...args) => {
-    entered();
-    await heldPromise;
-    return reconcile(...args);
-  };
-  await enteredPromise;
-  let settled = false;
-  const settling = runtime.waitForSettled().then(() => { settled = true; });
-  try {
-    await new Promise(resolve => setImmediate(resolve));
-    assert.equal(settled, false);
-  } finally {
-    release();
-    await settling;
-  }
-  assert.equal(guest.held, false);
-  assert.equal(guest.installs, 1);
-  assert.equal((await dispatch('status', 'after-sql-apply')).applied_revisions[0].revision, incoming.revision);
+test('persisted install closing intent retains capture until physical close is confirmed', async t => {
+  const f = await workspaceFixture(t);
+  const row = await seedPendingInstall(f, 'close-query-race');
+  f.guest.confirmHook = () => { throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled held acknowledgement'); };
+  await assert.rejects(f.runtime.executionWorkspace.reconcile(f.execution.execution_id), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
+  f.service.requestBotStop(f.bot.bot_id, 'controlled-close', { terminalState: 'FAILED' });
+  const query = f.manager.queryBotProjectInstall;
+  f.manager.queryBotProjectInstall = async () => { throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'physical stop still pending'); };
+  await assert.rejects(f.runtime.executionWorkspace.reconcile(f.execution.execution_id), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
+  assert.equal(row().phase, 'installed');
+  assert.ok(row().captured_json);
+  f.manager.queryBotProjectInstall = query;
+  await f.runtime.stopExecution(f.execution.execution_id);
+  assert.equal(row().phase, 'failed');
+  assert.equal(JSON.parse(row().error_json).details.worktree_closed, true);
+  assert.equal(f.guest.installs, 1);
 });
 
-for (const width of [1, 9]) test(`resolved save rejects actual ${width}-character Git markers`, async t => {
-  const { runtime, guest, dispatch } = await workspaceFixture(t);
-  guest.files['.gitattributes'] = Buffer.from(`input.txt conflict-marker-size=${width}\n`);
-  guest.files['input.txt'] = Buffer.from('base\n');
-  const base = await dispatch('save', 'marker-base');
-  const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: base.revision, files: { '.gitattributes': guest.files['.gitattributes'], 'input.txt': 'incoming\n' } });
-  guest.files['input.txt'] = Buffer.from('current\n');
-  await dispatch('save', 'marker-current');
-  const applied = await dispatch('apply', 'marker-apply', { from: incoming.revision });
-  assert.ok(guest.files['input.txt'].toString().startsWith('<'.repeat(width) + ' '));
-  for (const path of Object.keys(guest.files)) if (applied.conflicts.some(conflict => path.startsWith(conflict.artifact_root + '/'))) delete guest.files[path];
-  await assert.rejects(dispatch('save', 'false-resolution', { resolved: true }), error => error.code === 'INVALID_CONTRACT');
-  guest.files['input.txt'] = Buffer.from(guest.files['input.txt'].toString().split('\n').filter(line => !/^[<>]+ /.test(line)).join('\n'));
-  await assert.rejects(dispatch('save', 'separator-remains', { resolved: true }), error => error.code === 'INVALID_CONTRACT' && /markers remain/.test(error.message));
-  const saved = await dispatch('save', 'honest-unresolved');
-  assert.equal(saved.conflicts.length, applied.conflicts.length);
-});
-
-test('closing intent alone does not discard a pending apply receipt while physical stop is outstanding', async t => {
-  const { runtime, guest, manager, service, dispatch, execution, bot } = await workspaceFixture(t);
-  const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'public project input', peer: 'note' } });
-  const confirm = manager.confirmBotProjectInstall;
-  manager.confirmBotProjectInstall = async input => { await confirm(input); throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'lost confirmed response'); };
-  await assert.rejects(dispatch('apply', 'close-query-race', { from: incoming.revision }), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
-  service.requestBotStop(bot.bot_id, 'controlled in-flight close', { terminalState: 'FAILED' });
-  const query = manager.queryBotProjectInstall;
-  manager.queryBotProjectInstall = async () => { throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'physical stop is still collecting receipts'); };
-  await assert.rejects(runtime.executionWorkspace.reconcile(execution.execution_id), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
-  assert.equal(service.db.prepare('SELECT phase FROM execution_workspace_requests WHERE request_id = ?').get('close-query-race').phase, 'installed');
-  manager.queryBotProjectInstall = query;
-  await runtime.stopExecution(execution.execution_id);
-  assert.equal(service.db.prepare('SELECT phase FROM execution_workspace_requests WHERE request_id = ?').get('close-query-race').phase, 'done');
-  assert.equal(guest.installs, 1);
-});
-
-test('Task finish accepted before apply intent prevents any guest installation', async t => {
-  const { runtime, guest, service, dispatch, execution, identity } = await workspaceFixture(t);
-  const incoming = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', files: { 'input.txt': 'public project input', peer: 'note' } });
-  guest.before = () => service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: identity.actorRef, taskId: execution.task_id, executionId: execution.execution_id,
-    specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
-  await assert.rejects(dispatch('apply', 'finish-first', { from: incoming.revision }), error => error.code === 'WORKSPACE_REQUEST_ABORTED');
-  assert.equal(guest.installs, 0);
-  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 2);
+test('save still resolves inherited persisted conflict metadata without an apply route', async t => {
+  const f = await workspaceFixture(t);
+  await f.dispatch('status', 'initialize-conflicts');
+  const conflicts = [{ artifact_root: 'workspace-conflicts-original', paths: ['input.txt'], marker_labels: ['original-base', 'original-source'],
+    marker_lines: [{ path: 'input.txt', line: '<<<<<<< original-base', allowed_count: 0 }] }];
+  f.service.db.prepare('UPDATE execution_workspace_state SET conflicts_json = ? WHERE execution_id = ?')
+    .run(JSON.stringify(conflicts), f.execution.execution_id);
+  f.guest.files['workspace-conflicts-original/current/input.txt'] = Buffer.from('old alternative');
+  f.guest.files['input.txt'] = Buffer.from('<<<<<<< original-base\nunresolved\n');
+  await assert.rejects(f.dispatch('save', 'alternatives-remain', { resolved: true }), error => error.code === 'INVALID_CONTRACT');
+  delete f.guest.files['workspace-conflicts-original/current/input.txt'];
+  await assert.rejects(f.dispatch('save', 'markers-remain', { resolved: true }), error => error.code === 'INVALID_CONTRACT');
+  f.guest.files['input.txt'] = Buffer.from('explicitly chosen resolution');
+  const saved = await f.dispatch('save', 'resolved-inherited', { resolved: true });
+  assert.deepEqual(saved.conflicts, []);
+  const snapshot = await f.runtime.missionWorkspace.exportRevision({ workspaceId: 'workspace-default', revision: saved.revision });
+  assert.deepEqual(snapshot.conflicts, []);
+  assert.equal(snapshot.files['input.txt'], 'explicitly chosen resolution');
+  assert.equal(f.service.getExecution(f.execution.execution_id).workspace_input.revision, '0.1');
 });
 
 test('registered Judge CLI checks only a fixed public file and scopes durable results to its Mission', async t => {
@@ -1449,14 +1386,12 @@ test('Runtime shutdown rejects new Bot admission before persistence or provider 
   assert.equal(calls.length, 0);
 });
 
-test('soft closeout allows real CLI save publish finish and receipt replay but rejects new apply before capture', async t => {
+test('soft closeout allows real CLI save publish finish and receipt replay', async t => {
   const { service, execution, dispatch, command, guest } = await workspaceFixture(t);
   const saved = await dispatch('save', 'before-soft-save');
-  const applied = await dispatch('apply', 'before-soft-apply', { from: saved.revision });
   service.db.prepare('UPDATE executions SET handoff_deadline = ? WHERE execution_id = ?').run(new Date(Date.now() - 1).toISOString(), execution.execution_id);
   const captures = guest.captures;
-  assert.deepEqual(await dispatch('apply', 'before-soft-apply', { from: saved.revision }), applied);
-  await assert.rejects(dispatch('apply', 'new-soft-apply', { from: saved.revision }), error => error.code === 'NOT_ALLOWED' && error.details.phase === 'soft_closeout');
+  assert.deepEqual(await dispatch('save', 'before-soft-save'), saved);
   assert.equal(guest.captures, captures);
   guest.files['note.txt'] = Buffer.from('Existing result saved during closeout');
   assert.ok((await command('workspace', 'save', '--request-id', 'soft-save')).revision);
@@ -1464,23 +1399,6 @@ test('soft closeout allows real CLI save publish finish and receipt replay but r
   const finish = await command('task', 'finish', '--outcome', 'incomplete', '--request-id', 'soft-finish');
   assert.match(finish.notice, /结束请求 soft-finish 已持久受理.*不得再 save\/publish/);
   assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
-});
-
-test('apply snapshot crossing soft closeout cannot install newly selected input', async t => {
-  const { service, execution, dispatch, guest } = await workspaceFixture(t);
-  guest.before = async () => { service.db.prepare('UPDATE executions SET handoff_deadline = ? WHERE execution_id = ?').run(new Date(Date.now() - 1).toISOString(), execution.execution_id); };
-  await assert.rejects(dispatch('apply', 'cross-soft', { from: 'main' }), error => error.code === 'WORKSPACE_REQUEST_ABORTED' && error.details.cause_code === 'NOT_ALLOWED');
-  assert.equal(guest.installs, 0);
-});
-
-test('an apply already captured before soft closeout completes its original installation once', async t => {
-  const { service, execution, runtime, dispatch, guest } = await workspaceFixture(t);
-  const contribution = await runtime.missionWorkspace.save({ workspaceId: 'workspace-default', baseRevision: '0.1', requestId: 'incoming-soft', files: { 'input.txt': 'public project input', 'shared.txt': 'existing contribution' } });
-  guest.installHook = async () => { service.db.prepare('UPDATE executions SET handoff_deadline = ? WHERE execution_id = ?').run(new Date(Date.now() - 1).toISOString(), execution.execution_id); };
-  const result = await dispatch('apply', 'accepted-before-soft', { from: contribution.revision });
-  assert.equal(guest.files['shared.txt'].toString(), 'existing contribution');
-  assert.deepEqual(await dispatch('apply', 'accepted-before-soft', { from: contribution.revision }), result);
-  assert.equal(guest.installs, 1);
 });
 
 test('Mission stop policy permits original CLI save publish finish after a handoff reminder', async t => {
@@ -1492,7 +1410,6 @@ test('Mission stop policy permits original CLI save publish finish after a hando
     stateVersion: execution.state_version, fencingVersion: execution.fencing_version,
   }));
   assert.ok(service.getExecution(execution.execution_id).handoff_reminder_sent_at);
-  await assert.rejects(command('workspace', 'apply', '--from', '0.1', '--request-id', 'new-after-acceptance'), error => /NOT_ALLOWED/.test(error.stderr));
   assert.ok((await command('workspace', 'save', '--request-id', 'closeout-save')).revision);
   assert.ok((await command('material', 'publish', '--content', 'Existing useful result saved during Mission closeout', '--request-id', 'closeout-material')).material.material_id);
   const finished = await command('task', 'finish', '--outcome', 'incomplete', '--request-id', 'closeout-finish');

@@ -18,7 +18,7 @@ const EXPOSED_OPERATIONS = Object.freeze({
     'bot_exit',
     'task_list', 'task_view', 'task_create', 'task_link_material', 'task_finish',
     'task_status', 'task_take', 'task_feedback', 'task_revise', 'task_cancel', 'task_dependency_replace',
-    'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'workspace_public_apply',
+    'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history',
     'workspace_status', 'workspace_current_diff', 'workspace_save', 'workspace_merge', 'mission_get', 'mission_submit', 'mission_submission_get',
   ]),
   context: new Set(['read_materials', 'consume_materials', 'context_search_materials', 'context_get_material', 'context_publish_material', 'material_dispute', 'material_supersede', 'material_unsupersede']),
@@ -151,14 +151,13 @@ function serviceDispatch(serviceId, services, registry) {
         return { tools: registry.listTools(input?.service ?? null).filter(allowed) };
       }
     }
-    if (serviceId === 'task' && ['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'workspace_public_apply', 'workspace_save', 'workspace_merge'].includes(capability.operation)) {
+    if (serviceId === 'task' && ['workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history', 'workspace_save', 'workspace_merge'].includes(capability.operation)) {
       if (!services.missionWorkspace) {
         const error = new Error('Mission Workspace is unavailable');
         error.code = 'SERVICE_UNAVAILABLE';
         throw error;
       }
       if (capability.scope === 'mission-read') return dispatchMissionWorkspaceRead(services, capability.operation, input, envelope, { signal });
-      if (capability.operation === 'workspace_public_apply') throw Object.assign(new Error('Workspace apply requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
       if (capability.operation === 'workspace_save') throw Object.assign(new Error('Workspace save requires the authenticated Runtime Bridge'), { code: 'NOT_ALLOWED' });
       if (capability.operation === 'workspace_merge') throw Object.assign(new Error('Workspace merge requires authenticated Runtime integration'), { code: 'NOT_ALLOWED' });
     }

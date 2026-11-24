@@ -358,6 +358,8 @@ export class Runtime {
     return this.executionWorkspace.dispatch(operation, input, identity);
   }
 
+  // Only retained pre-retirement install requests can schedule these retries.
+  // New apply admission is absent; save recovery still runs at request/close boundaries.
   #scheduleWorkspaceReconcile(executionId, attempt = 0) {
     if (this.stopping || this.workspaceReconcileTimers.has(executionId)) return;
     const reconcile = async () => {

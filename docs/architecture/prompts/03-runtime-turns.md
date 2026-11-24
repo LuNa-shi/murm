@@ -14,9 +14,9 @@ Body SHA-256: `11354c574ae63980d2af9af6aa7730b36a000e71daa5e404789a3a856448295d`
 ````
 ## Soft closeout continuation
 
-Body SHA-256: `e35cff8aebd38330965d1e738767dd0d37296979d47e63b98df9f993402b92aa`
+Body SHA-256: `6869dc8ef66d3642bef6d89d2d44f7ac614265551d03d11b6245bcf09dddeb8f`
 
 ````text
 E <EXECUTION_ID> 接近 Execution 时间上限，收尾额度为 30000 ms。停止扩展，保存已有文件和研究内容，再按真实结果 finish。
-当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、apply 新输入、发起新 Judge 检查、Mission 验收或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。
+当前 Task/E 已进入软收尾窗口。停止扩展责任和发起新计算；仅保存已有有用文件、发布已有研究内容并调用 swarm task finish 给出真实 outcome。不要提出新 Task、发起新 Judge 检查、Mission 验收或 merge main。已受理请求使用原 ID 查询或重放，未确认持久成功的成果不能声明成功。
 ````

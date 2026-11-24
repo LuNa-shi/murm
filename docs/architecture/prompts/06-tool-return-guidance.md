@@ -11,7 +11,6 @@ These are repository-owned texts and deterministic examples, not transcripts of 
 | Source | When the fixed field can be visible |
 |---|---|
 | services-bridge.js | Capability-admission errors, invalid capability blocking, unavailable operation or malformed payload; the protected CLI prints the structured response into the native Bash result |
-| mission-workspace.js guidance | Written into ordinary conflict alternatives README during apply; available to the model only when its native file tools actually read that artifact. It is not a proactive prompt. |
 | workspace-contract.js remediation | Path normalization, forbidden/undeclared output, locked-input writes, missing required input or input-hash mismatch; setup-time failures are not guaranteed to reach an Agent tool call |
 | task-service.js action | Material-available notification payload, or invalid typed dependency error. Runtime renders a separate notification user message; the payload action is visible when the notification data itself is read/composed. |
 
@@ -34,7 +33,7 @@ Body SHA-256: `78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7`
 ````text
 Use exact capability IDs or operation names from available_capabilities; do not invent conceptual names. Register and verify the required Service before creating the Task if no listed capability is suitable.
 ````
-## action — src/agent/services-bridge.js:553
+## action — src/agent/services-bridge.js:547
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -43,7 +42,7 @@ Body SHA-256: `a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd`
 ````text
 call_list_tools_or_get_service_metadata
 ````
-## action — src/agent/services-bridge.js:560
+## action — src/agent/services-bridge.js:554
 
 Source: [src/agent/services-bridge.js](../../../src/agent/services-bridge.js). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -51,19 +50,6 @@ Body SHA-256: `7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e`
 
 ````text
 retry_with_the_registered_input_schema
-````
-## guidance — src/runtime/mission-workspace.js:10
-
-Source: [src/runtime/mission-workspace.js](../../../src/runtime/mission-workspace.js). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
-
-Body SHA-256: `18cebaa7bc8bb2d860f6fbfb457f2ff28866d9c9935ea78da8ef4c317c3e32db`
-
-````text
-Workspace apply has unresolved conflicts. The ordinary project tree contains Git's editable merge result.
-The base/current/incoming files here preserve the exact alternatives, including binary, rename and deletion conflicts.
-Resolve the intended ordinary project paths, remove this alternatives directory, then call swarm workspace save --resolved.
-Resolution records your decision; it does not establish correctness or replace a required check.
-
 ````
 ## remediation — src/runtime/workspace-contract.js:36
 
