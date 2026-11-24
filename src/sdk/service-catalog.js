@@ -133,7 +133,7 @@ const publicTaskTools = [
   },
   {
     name: 'task_list', service: 'task', operation: 'task_list', version: '1.0',
-    description: 'Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.',
+    description: 'Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.',
     scope: 'task-read', side_effect: false,
     parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, state: { type: 'string' }, states: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 16 }, available_only: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false },
   },
@@ -145,7 +145,7 @@ const publicTaskTools = [
   },
   {
     name: 'task_create', service: 'task', operation: 'task_create', version: '1.0',
-    description: 'Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.',
+    description: 'Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Trusted host/domain callers supply Tasks; this schema does not grant Bot admission. Optional base_revision pins input; otherwise take uses main.',
     scope: 'task-write', side_effect: true,
     parameters: {
       type: 'object',

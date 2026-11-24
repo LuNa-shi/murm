@@ -51,14 +51,13 @@ test('Bridge audit pairs physical dispatches independently of reused request IDs
   assert.equal(events.filter(event => event.event === 'bridge.response_sent' && event.operation_id === 'same-read').length, 2);
 });
 
-test('CLI through authenticated Bridges proposes several tasks and revises another Bot contract with history', async t => {
+test('CLI through authenticated Bridges reads host-supplied tasks and revises their contract with history', async t => {
   const { tasks, bot } = await fixture(t);
   const author = await bot('author');
   const editor = await bot('editor');
-  const proposal = ['--summary', 'Boundary lemma', '--gap', 'The fixed objective still lacks its boundary implication',
-    '--expected-output', 'A checked boundary lemma', '--acceptance-conditions', '["The implication has check evidence"]', '--priority', 'medium'];
-  const one = await author('task', 'propose', ...proposal, '--request-id', 'proposal-one');
-  const two = await author('task', 'propose', ...proposal, '--summary', 'Alternative argument', '--request-id', 'proposal-two');
+  const contract = { mission_id: 'mission:cli-contract', summary: 'Boundary lemma', gap: 'The fixed objective still lacks its boundary implication', expected_output: 'A checked boundary lemma', acceptance_conditions: ['The implication has check evidence'], priority: 'medium' };
+  const one = tasks.createTask(contract);
+  const two = tasks.createTask({ ...contract, summary: 'Alternative argument' });
   assert.notEqual(one.task.task_id, two.task.task_id);
   assert.equal(one.task.gap, 'The fixed objective still lacks its boundary implication');
   assert.equal(one.task.priority_level, 'medium');

@@ -236,59 +236,6 @@ test('taken Bot keeps its original Sandbox and closes before a successor can use
   assert.notEqual(next.bot.sandbox_id, bot.sandbox_id);
 });
 
-test('four real CLI Bot paths propose then take with overlapping E ownership and stop before Core reuse', { timeout: 45000 }, async t => {
-  const { service, runtime, manager, startSession } = await fixture(t, { maxWorkers: 4 });
-  const context = new ContextService(service.db, { taskService: service });
-  let started = 0, release;
-  const barrier = new Promise(resolve => { release = resolve; });
-  const lanes = await Promise.all([1, 2, 3, 4].map(async index => {
-    const coreId = `core-${index}`;
-    let session, environment;
-    const bridge = new ServicesBridge({ taskService: service, contextService: context, runtime, coreId,
-      registry: createBuiltinServiceRegistry({ taskService: service, contextService: context, missionWorkspace: runtime.missionWorkspace }),
-      onTake: result => runtime.bindAgentExecution(result.execution.execution_id, session, { coreId }),
-    });
-    await bridge.start(); t.after(() => bridge.stop());
-    const startedBot = await runtime.startBot({ missionId: 'mission:bots', coreId, maxLifetimeMs: 60000, startSession: async input => {
-      environment = bridge.startBotIdentity(input.bot.bot_id);
-      started += 1; if (started === 4) release(); await barrier;
-      session = await startSession(input); return session;
-    } });
-    const command = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], {
-      env: { PATH: process.env.PATH, ...environment }, timeout: 15000,
-    })).stdout);
-    return { index, coreId, bridge, session, bot: startedBot.bot, command };
-  }));
-  const initial = await Promise.all(lanes.map(lane => lane.command('task', 'list')));
-  assert.ok(initial.every(page => page.tasks.length === 0));
-  const proposals = await Promise.all(lanes.map(lane => lane.command('task', 'propose', '--summary', `Investigate the separate reproducible boundary for Core ${lane.index}`,
-    '--gap', `The Mission needs evidence for independent boundary ${lane.index}`, '--priority', 'medium',
-    '--expected-output', `An independently useful note for boundary ${lane.index}`, '--acceptance-conditions', '["Explain the boundary and evidence"]', '--request-id', `propose-${lane.index}`)));
-  const takes = await Promise.all(lanes.map((lane, index) => lane.command('task', 'take', proposals[index].task.task_id, '--request-id', `take-${lane.index}`)));
-  assert.equal(runtime.getActiveProcessCount(), 4);
-  assert.equal(new Set(lanes.map(lane => service.getBot(lane.bot.bot_id).sandbox_id)).size, 4);
-  assert.equal(new Set(takes.map(take => take.execution.execution_id)).size, 4);
-  for (const [index, take] of takes.entries()) {
-    assert.equal(take.execution.owner_ref, lanes[index].bot.bot_id);
-    assert.equal(take.execution.task_id, proposals[index].task.task_id);
-    assert.equal(service.getExecution(take.execution.execution_id).state, 'RUNNING');
-  }
-  const notes = await Promise.all(lanes.map(lane => lane.command('material', 'publish', '--content', `Controlled result for boundary ${lane.index}`, '--request-id', `note-${lane.index}`)));
-  for (const [index, note] of notes.entries()) assert.equal(note.material.producer_execution_id, takes[index].execution.execution_id);
-  await Promise.all(lanes.map(lane => lane.command('task', 'finish', '--outcome', 'incomplete', '--request-id', `finish-${lane.index}`)));
-  assert.equal(runtime.getActiveProcessCount(), 0);
-  assert.equal(manager.snapshot().executions.length, 0);
-  for (const lane of lanes) {
-    assert.equal(lane.session.closed, true);
-    assert.equal(service.getBot(lane.bot.bot_id).state, 'CLOSED');
-    assert.equal(runtime.getCoreStatus(lane.coreId).state, 'IDLE');
-  }
-  const successor = await runtime.startBot({ missionId: 'mission:bots', coreId: lanes[0].coreId, startSession });
-  assert.ok(!lanes.some(lane => lane.bot.bot_id === successor.bot.bot_id));
-  assert.ok(!lanes.some(lane => lane.session === successor.session));
-  assert.equal(successor.bot.execution_id, null);
-});
-
 for (const cause of ['selection-budget', 'shutdown']) test(`startup ${cause} stops a visible Session even when readiness never settles`, async (t) => {
   const { service, runtime, startSession } = await fixture(t);
   let visible;

@@ -50,8 +50,7 @@ test('swarm CLI exposes offline help at every level', async () => {
   assert.match(output, /Required: <task-id>/);
   assert.match(output, /--timeout-ms/);
   output = '';
-  await runSwarmCli(['task', 'propose', '--help'], { stdout });
-  assert.match(output, /--base-revision/);
+  assert.doesNotMatch(output, /task propose/);
   output = '';
   await runSwarmCli(['material', 'consume', '--help'], { stdout });
   assert.match(output, /--material-ids '\["M1"\]' --action integration --impact/);
@@ -70,7 +69,7 @@ test('swarm task command discovers a manifest and sends a typed JSON request', a
     if (request.url === '/v1/manifest') {
       response.setHeader('content-type', 'application/json');
       response.end(JSON.stringify({ ok: true, result: { service_id: 'task', endpoint: { url: `http://127.0.0.1:${server.address().port}` },
-        capabilities: ['task_view', 'task_create'].map(operation => ({ name: operation, operation, method: 'POST', path: `/v1/${operation}` })) } }));
+        capabilities: ['task_view'].map(operation => ({ name: operation, operation, method: 'POST', path: `/v1/${operation}` })) } }));
       return;
     }
     response.setHeader('content-type', 'application/json');
@@ -88,8 +87,8 @@ test('swarm task command discovers a manifest and sends a typed JSON request', a
     const invocation = requests.find((request) => request.url === '/v1/task_view');
     assert.equal(invocation.body.input.task_id, 'task-1');
     assert.equal(invocation.body.envelope.actor_ref.startsWith('cli:'), true);
-    await runSwarmCli(['task', 'propose', '--base-revision', '0.2'], { stdout: { write() {} } });
-    assert.equal(requests.find(request => request.url === '/v1/task_create').body.input.base_revision, '0.2');
+    await assert.rejects(runSwarmCli(['task', 'propose', '--base-revision', '0.2']), /unknown task command/);
+    assert.ok(!requests.some(request => request.url === '/v1/task_create'));
   } finally {
     if (previous === undefined) delete process.env.SWARMENV_TASK_SERVICE_URL;
     else process.env.SWARMENV_TASK_SERVICE_URL = previous;

@@ -1480,7 +1480,7 @@ export class TaskService {
     const cursor = more ? Buffer.from(JSON.stringify({ version: 1, query_hash: fingerprint, ceiling, after: last, started_at: startedAt })).toString('base64url') : null;
     return { tasks, scope, limit, returned: tasks.length, scanned, next_cursor: cursor, truncated: more,
       started_at: startedAt, read_at: now(), membership: 'state-and-availability-at-page-read', order: 'creation',
-      guidance: 'Read relevant continuation pages and Task detail before proposing or taking. New Tasks after this scan began require a fresh query.' };
+      guidance: 'Read relevant continuation pages and Task detail before taking. New Tasks after this scan began require a fresh query.' };
   }
 
   #viewTaskRecord(taskId, envelope, payload = {}) {

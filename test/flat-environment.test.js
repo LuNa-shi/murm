@@ -554,11 +554,8 @@ test('four current CLI discovery Bots take exclusive work and reuse only a physi
       assert.equal(stores.tasks.listMissionTasks({ mission_id: missionId }).length, 0);
       const pages = await Promise.all(initial.map(row => cli(row.botId, 'task', 'list')));
       assert.ok(pages.every(page => page.tasks.length === 0));
-      // Current Flat does not grant proposal creation. Preserve that boundary;
-      // host-supplied work exercises Slot ownership without inventing a grant.
-      await assert.rejects(cli(initial[0].botId, 'task', 'propose', '--summary', 'Unconfigured proposal',
-        '--gap', 'Unconfigured creation', '--expected-output', 'Result', '--acceptance-conditions', '["Explicit evidence"]', '--priority', 'medium',
-        '--request-id', 'no-default-propose'), error => /NOT_ALLOWED/.test(error.stderr));
+      await assert.rejects(cli(initial[0].botId, 'task', 'propose'),
+        error => /unknown task command: propose/.test(error.stderr));
       assert.equal(stores.tasks.listMissionTasks({ mission_id: missionId }).length, 0);
       const proposed = initial.map((row, index) => stores.tasks.createTask({ mission_id: missionId,
         summary: `Independent responsibility ${index}`, gap: `Missing reproducible contribution ${index}`,

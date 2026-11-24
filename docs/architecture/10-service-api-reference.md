@@ -30,12 +30,12 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `85645eff3a806b665f17111c2e922d4e5eacde56c2769ba440ba845bd87114d1` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `a488b6f08399f9afba69f927c2ce44efd8fef88249e302f05cb1e8c03cc34c99` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `90d436f090046de3e7171a45044efc8f78a1e20efad46741eabd62f2bbc15719` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `02416ed6f3c28313edaca0ddb945abbd37bc293e1841d46db9eade72a2581855` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `3a134d698933777ed2a42e4edf2c8a0a51fb9a6661dd9d8dc8ae588b1ec05ff4` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `cb014f632b97e2e525fce8920f7f36105a7684771e50fd06c3082db421e315b2` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 | [src/core/index.d.ts](../../src/core/index.d.ts) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
@@ -66,7 +66,6 @@ Bots use native Bash to invoke typed swarm commands. Registry declarations below
 | `task.mission_submission_get` | `task` | `mission_submission_get` |
 | `task.mission_submit` | `task` | `mission_submit` |
 | `task.task_cancel` | `task` | `task_cancel` |
-| `task.task_create` | `task` | `task_create` |
 | `task.task_dependency_replace` | `task` | `task_dependency_replace` |
 | `task.task_feedback` | `task` | `task_feedback` |
 | `task.task_finish` | `task` | `task_finish` |
@@ -257,7 +256,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 25 registered capabilities
+### Task Service: 24 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -280,7 +279,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "a980b68a35f88c552f458b5b1c86448c5327885131f4702f542ae7f7c4ac354e"
+  "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5"
 }
 ```
 
@@ -534,13 +533,13 @@ Record this Execution's durable decision and action for delivered feedback; anot
 
 #### task.task_list
 
-Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.
+Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.
 
 ```json
 {
   "name": "task_list",
   "operation": "task_list",
-  "description": "Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.",
+  "description": "Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -598,9 +597,9 @@ Search bounded Task summaries across states; follow next_cursor and read Task de
   "requires_binding": false,
   "scope": "task-read",
   "help": {
-    "when": "Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.",
+    "when": "Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.",
     "ref": "service://task/task_list",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_list",
@@ -664,155 +663,6 @@ Read a Task contract, gap and priority, dependencies, Executions and Materials. 
   },
   "method": "POST",
   "path": "/v1/task_view",
-  "errors": []
-}
-```
-
-#### task.task_create
-
-Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.
-
-```json
-{
-  "name": "task_create",
-  "operation": "task_create",
-  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "summary",
-      "gap",
-      "expected_output",
-      "acceptance_conditions",
-      "priority"
-    ],
-    "properties": {
-      "mission_id": {
-        "type": "string"
-      },
-      "summary": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 240
-      },
-      "gap": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 4000
-      },
-      "expected_output": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 4000
-      },
-      "acceptance_conditions": {
-        "oneOf": [
-          {
-            "type": "array",
-            "minItems": 1
-          },
-          {
-            "type": "object",
-            "minProperties": 1
-          }
-        ]
-      },
-      "priority": {
-        "oneOf": [
-          {
-            "type": "string",
-            "enum": [
-              "high",
-              "medium",
-              "low"
-            ]
-          },
-          {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 2
-          }
-        ]
-      },
-      "depends_on": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "input_material_refs": {
-        "type": "array",
-        "items": {
-          "type": "string",
-          "minLength": 1
-        },
-        "maxItems": 100
-      },
-      "workspace": {
-        "type": "object",
-        "description": "Compatibility input. If both workspace.revision and base_revision are supplied, they must match."
-      },
-      "base_revision": {
-        "type": "string",
-        "pattern": "^[0-9]+[.][0-9]+$"
-      },
-      "task_instructions": {
-        "type": "string"
-      },
-      "goal": {
-        "type": "string"
-      },
-      "required_capabilities": {
-        "type": "array",
-        "items": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "completion_contract": {
-        "type": "object"
-      },
-      "responsibility_key": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 256
-      },
-      "timebox_ms": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "task-write",
-  "help": {
-    "when": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.",
-    "ref": "service://task/task_create",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/task_create",
   "errors": []
 }
 ```
@@ -2909,6 +2759,127 @@ Exact repository bundle declaration. Loading the bundle additionally binds its d
 ### Internal catalog entries
 
 This section records catalog declarations used by trusted service composition but not exposed as Agent operations. It is not an authorization list for the Agent.
+
+#### Catalog task.task_create / task_create
+
+```json
+{
+  "name": "task_create",
+  "service": "task",
+  "operation": "task_create",
+  "version": "1.0",
+  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Trusted host/domain callers supply Tasks; this schema does not grant Bot admission. Optional base_revision pins input; otherwise take uses main.",
+  "scope": "task-write",
+  "side_effect": true,
+  "parameters": {
+    "type": "object",
+    "required": [
+      "summary",
+      "gap",
+      "expected_output",
+      "acceptance_conditions",
+      "priority"
+    ],
+    "properties": {
+      "mission_id": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      },
+      "gap": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "expected_output": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "acceptance_conditions": {
+        "oneOf": [
+          {
+            "type": "array",
+            "minItems": 1
+          },
+          {
+            "type": "object",
+            "minProperties": 1
+          }
+        ]
+      },
+      "priority": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          }
+        ]
+      },
+      "depends_on": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "input_material_refs": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxItems": 100
+      },
+      "workspace": {
+        "type": "object",
+        "description": "Compatibility input. If both workspace.revision and base_revision are supplied, they must match."
+      },
+      "base_revision": {
+        "type": "string",
+        "pattern": "^[0-9]+[.][0-9]+$"
+      },
+      "task_instructions": {
+        "type": "string"
+      },
+      "goal": {
+        "type": "string"
+      },
+      "required_capabilities": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "completion_contract": {
+        "type": "object"
+      },
+      "responsibility_key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "timebox_ms": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "additionalProperties": false
+  }
+}
+```
 
 #### Catalog workspace.workspace_get / get_workspace
 
