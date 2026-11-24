@@ -4,6 +4,8 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
+import { request } from 'node:http';
+import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { transport, controls } from './fixtures/flat-controller-backend.js';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
@@ -17,11 +19,21 @@ const {createRuntime}=await import('../src/core/index.js'); hooks.deregister();
 async function fixture(t,options={}) {
   const root=await mkdtemp(join(tmpdir(),'flat-controller-'));
   const stores=await createFlatTaskStores(root); transport.reset();controls.stopError=null;controls.destroyError=null;
-  const runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:{}}},services:new ServiceRegistry(),maxBots:options.capacity??2,outputDir:root});
+  let runtime, controller;
+  const services = new ServiceRegistry();
+  let publication;
+  if (options.onFinish) {
+    publication = createFlatPublicationServices({ runtime: () => runtime, taskService: stores.tasks,
+      contextService: stores.context, missionWorkspace: stores.workspace, missionId: stores.missionId,
+      workspaceId: stores.workspaceId, deadline: () => Date.now() + 60000,
+      onFinish(receipt) { options.onFinish(receipt); controller.notify(); } });
+    for (const registration of publication.registrations) services.registerService(registration);
+  }
+  runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:publication?{task:['task_finish']}:{}}},services,maxBots:options.capacity??2,outputDir:root});
   const accepted=id=>{transport.confirm(id,'started');transport.next=accepted;}; transport.next=accepted;
   const reads={beforeGet:null};
-  const controller=createFlatController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
-  t.after(async()=>{controls.stopError=null;controls.destroyError=null;await controller.close();await runtime.close();stores.close();await rm(root,{recursive:true,force:true});});
+  controller=createFlatController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
+  t.after(async()=>{controls.stopError=null;controls.destroyError=null;publication?.close();await controller.close();await runtime.close();stores.close();await rm(root,{recursive:true,force:true});});
   options.captureController?.(controller);
   await options.beforeStart?.(stores);
   await controller.start();
@@ -84,6 +96,52 @@ test('accepted finish is finalized after public stop and replacement starts a fr
   assert.equal(f.tasks.getTask(second.task_id).state,'OPEN');
 });
 
+
+test('accepted Bridge finish survives a disconnected caller and closes through the Flat controller', { timeout: 8000 }, async t => {
+  let client, finishReceipt;
+  const f = await fixture(t, { onFinish(receipt) {
+    finishReceipt = receipt;
+    assert.equal(f.tasks.getExecution(execution.execution_id).state, 'CLOSING');
+    assert.equal(f.tasks.getTask(f.task.task_id).state, 'RUNNING');
+    assert.equal(f.controller.snapshot().bots[0].released, false);
+    // The real HTTP caller disappears after durable admission, before reply.
+    client.destroy();
+  } });
+  const execution = f.take();
+  let closed = 0;
+  const unsubscribe = f.tasks.subscribeTaskEvents(event => {
+    if (event.kind === 'task_finish_closed' && event.execution_id === execution.execution_id) closed++;
+  });
+  t.after(unsubscribe);
+  const credentials = controls.credentials.get(f.bot.botId);
+  const url = new URL(credentials.environment.SWARMENV_BRIDGE_URL);
+  url.hostname = '127.0.0.1';
+  const disconnected = new Promise((resolve, reject) => {
+    client = request(new URL('/call', url), { method: 'POST', headers: {
+      authorization: `Bearer ${credentials.secretEnvironment.SWARMENV_BRIDGE_TOKEN}`,
+      'content-type': 'application/json',
+    } });
+    client.on('response', response => { response.resume(); reject(new Error('Caller must disconnect before receiving a finish reply')); });
+    client.on('error', error => { if (!finishReceipt) reject(error); });
+    client.on('close', resolve);
+    client.end(JSON.stringify({ service_id: 'task', operation: 'task_finish',
+      operation_id: 'finish-disconnected', payload: { outcome: 'done' } }));
+  });
+  t.after(() => client.destroy());
+  await disconnected;
+  // Join only queued host work; no tick, settled event or caller retry drives cleanup.
+  await f.controller.flush();
+  assert.equal(finishReceipt.requestId, 'finish-disconnected');
+  assert.equal(finishReceipt.executionId, execution.execution_id);
+  assert.equal(f.tasks.getTask(f.task.task_id).state, 'DONE');
+  assert.equal(f.tasks.getExecution(execution.execution_id).state, 'SUCCEEDED');
+  assert.equal(f.tasks.getBot(f.bot.botId).state, 'CLOSED');
+  assert.equal((await f.runtime.get(f.bot.botId)).status, 'closed');
+  assert.equal(f.controller.snapshot().bots[0].released, true);
+  assert.equal(closed, 1);
+  await f.controller.flush();
+  assert.equal(closed, 1);
+});
 
 test('execution unknown retains its Task owner and occupied Slot until stop reconciliation',async t=>{
   const f=await fixture(t);const execution=f.take();
