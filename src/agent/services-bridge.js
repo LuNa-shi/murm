@@ -129,7 +129,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, missionSubmission = createMissionSubmissionAccess(), actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
+  constructor({ taskService, contextService, runtime, missionSubmission = createMissionSubmissionAccess(), workspaceMerge = null, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.pendingCalls = new Set();
     this.pendingHandlers = new Set();
@@ -138,6 +138,7 @@ export class ServicesBridge {
     this.contextService = contextService;
     this.runtime = runtime;
     this.missionSubmission = missionSubmission;
+    this.workspaceMerge = workspaceMerge;
     this.actorRef = actorRef;
     this.coreId = coreId;
     this.taskId = taskId;
@@ -392,6 +393,7 @@ export class ServicesBridge {
   stop() {
     if (this.stopPromise) return this.stopPromise;
     this.stopping = true;
+    this.mergeClosing = this.workspaceMerge?.close();
     this.publicReadAbortController.abort(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge is stopping'));
     this.stopPromise = this.#stop();
     return this.stopPromise;
@@ -407,6 +409,8 @@ export class ServicesBridge {
     if (server) { server.close(); server.closeAllConnections?.(); }
     await Promise.allSettled([...this.pendingHandlers, ...this.pendingCalls]);
     await closed;
+    await this.mergeClosing;
+    return this.workspaceMerge?.close({ timeoutMs: 0 });
   }
 
   async #handle(request, response) {
@@ -586,7 +590,8 @@ export class ServicesBridge {
         }
         if (operation === 'workspace_merge') {
           const execution = this.executionId && this.taskService.getExecution(this.executionId);
-          const result = await this.runtime.mergeExecutionWorkspace(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution?.fencing_version, requestId: bridgeOperationId });
+          if (!this.workspaceMerge) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Workspace merge is not enabled');
+          const result = await this.workspaceMerge.merge(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: execution?.fencing_version, requestId: bridgeOperationId });
           assertIdentity();
           log({ event: 'bridge.complete', operation, operation_id: bridgeOperationId, ok: true, result });
           return { ...result, request_id: bridgeOperationId };

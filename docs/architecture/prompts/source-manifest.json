@@ -11,7 +11,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "80926849b0db6f2c718a35f92487a7160644274e845ab66592a87052a5b66504"
+      "sha256": "672e42350cf2556acada25f7f2f3960b274dba0f0e48f9799229f65d74bcd986"
     },
     {
       "path": "src/core/index.js",
@@ -91,7 +91,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "116421bdbc60d73a5e1147f04d37915bf19b396754ce6d95c83046df75b5cb67"
+      "sha256": "7bf1e47023f55ca98053cbef8e6262e3343bed0dbfa701286ef3ed4eb3320140"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -307,7 +307,7 @@
   "prompt_send_sites": [
     {
       "path": "src/runtime/runtime.js",
-      "line": 1054,
+      "line": 977,
       "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
     },
     {
@@ -336,13 +336,13 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 549,
+      "line": 553,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 556,
+      "line": 560,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -428,7 +428,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "f46bcfb5a3a1d1ef1bfe6994f30338d9a9e9c6157fd24beb28d75799f96f79b7"
+      "sha256": "6e9260f0bd3df0d3952fe37adc2d769497777f86aad2ea98e6d3f8834a33c638"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",

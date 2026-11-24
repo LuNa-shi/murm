@@ -1677,6 +1677,16 @@
         "docs/architecture/18-agensh-environment.md"
       ],
       "role": "Exclude default Agensh run evidence from packaged examples"
+    },
+    {
+      "path": "src/environments/flat/workspace-merge.js",
+      "category": "Mission acceptance and checker",
+      "chapters": [
+        "docs/architecture/05-workspace-continuity.md",
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md"
+      ],
+      "role": "Flat-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown"
     }
   ]
 }

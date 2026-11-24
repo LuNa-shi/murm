@@ -1,10 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
-import { assertNewExecutionWork } from '../task/execution-budget.js';
 import { buildBotNotification } from '../agent/bot-contract.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
-import { publishWorkspace } from './workspace-publication.js';
 
 function requireString(value, field) {
   if (typeof value !== 'string' || value.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
@@ -19,23 +17,15 @@ const DEFAULT_EXECUTION_TIMEOUT_MS = 60 * 60 * 1000;
 const DEFAULT_HANDOFF_REMINDER_MS = 55 * 60 * 1000;
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now(), onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, workspaceProjectCheck = false, coordinationPermissions = [], sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now(), onCoreEvent = null }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
-    // Public Workspace revisions and final submission are Runtime-owned.
+    // Retained Execution preparation uses the configured public Workspace.
     this.missionWorkspace = missionWorkspace;
     this.missionWorkspaceId = missionWorkspaceId;
     this.workspaceProjectCheck = workspaceProjectCheck;
     this.coordinationPermissions = Object.freeze([...coordinationPermissions]);
-    if (workspaceMergeChecker && (typeof workspaceMergeChecker.check !== 'function' ||
-        !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof workspaceMergeChecker.identity?.[key] === 'string' && workspaceMergeChecker.identity[key]) ||
-        !Number.isFinite(workspaceMergeChecker.timeoutMs) || workspaceMergeChecker.timeoutMs <= 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge checker requires fixed identity and a positive timeout');
-    }
-    this.workspaceMergeChecker = workspaceMergeChecker ? { identity: Object.freeze(structuredClone(workspaceMergeChecker.identity)),
-      timeoutMs: workspaceMergeChecker.timeoutMs, check: workspaceMergeChecker.check.bind(workspaceMergeChecker) } : null;
-    this.activeWorkspaceCheck = null;
     this.sandboxManager = sandboxManager;
     this.executionWorkspace = missionWorkspace && sandboxManager ? new ExecutionWorkspace({ taskService, contextService, workspace: missionWorkspace, sandboxManager,
       guard: (identity, options) => this.assertExecutionWorkspace(identity, options), onPending: id => this.#scheduleWorkspaceReconcile(id) }) : null;
@@ -290,7 +280,6 @@ export class Runtime {
   async waitForSettled() {
     for (;;) {
       const pending = [...this.pendingFailurePromises, ...this.pendingReleasePromises];
-      if (this.activeWorkspaceCheck) pending.push(this.activeWorkspaceCheck.promise);
       if (pending.length === 0) return;
       await Promise.allSettled(pending);
     }
@@ -333,7 +322,6 @@ export class Runtime {
    */
   async shutdown({ terminalState = 'FAILED', terminalReason = 'runtime_shutdown' } = {}) {
     this.stopping = true;
-    this.activeWorkspaceCheck?.controller.abort();
     for (const entry of this.workspaceReconcileTimers.values()) clearTimeout(entry.timer);
     this.workspaceReconcileTimers.clear();
     for (const timer of this.finishCleanupTimers.values()) clearTimeout(timer);
@@ -445,71 +433,6 @@ export class Runtime {
       pending.catch(() => {});
     }, 1000);
     this.workspaceReconcileTimers.set(executionId, entry);
-  }
-
-  async mergeExecutionWorkspace(input, identity) {
-    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => key !== 'from') || !/^\d+\.\d+$/.test(input.from ?? '')) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires --from a fixed public revision');
-    }
-    if (typeof identity.requestId !== 'string' || !identity.requestId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Merge requires a stable request ID');
-    const initial = this.assertExecutionWorkspace(identity, { receiptOnly: true });
-    const task = this.taskService.getTask(initial.task_id);
-    const requiredCheck = this.taskService.getMission(task.mission_id).merge_required_check;
-    const delivery = task.completion_contract?.workspace_delivery;
-    const deliveryCheck = delivery?.require_main ? delivery.check : null;
-    const adapter = this.workspaceMergeChecker;
-    const requirements = [requiredCheck, deliveryCheck].filter(value => value !== undefined && value !== null);
-    const unavailableCheck = requirements.some(requirement => !requirement || typeof requirement !== 'object' || Array.isArray(requirement) ||
-      !requirement.checker_ref || !requirement.checker_version || !adapter || Object.entries(requirement).some(([key, value]) => adapter.identity[key] !== value));
-    const checkPolicy = { policy_version: 'workspace-merge-v2', mission: requiredCheck ?? null,
-      task: { spec_version: task.spec_version, delivery_check: deliveryCheck ?? null }, configured: requirements.length ? adapter?.identity ?? null : null };
-    const guard = () => {
-      const execution = this.assertExecutionWorkspace(identity, { newWork: true });
-      assertNewExecutionWork(execution);
-      return execution;
-    };
-    return this.missionWorkspace.merge({ workspaceId: this.missionWorkspaceId, fromRevision: input.from,
-      requestId: `execution:${identity.executionId}:merge:${identity.requestId}`,
-      source: { operation: 'merge', mission_id: task.mission_id, task_id: task.task_id, execution_id: initial.execution_id, bot_id: initial.owner_ref, fencing_version: identity.fencingVersion },
-      checkPolicy, guard,
-      checker: unavailableCheck ? async () => { throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission or Task requires an unavailable trusted final-tree checker', { policy: checkPolicy }); } : requirements.length ? async plan => {
-        const execution = guard();
-        if (this.activeWorkspaceCheck) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Previous final-tree checker has not confirmed completion; use a new attempt after it settles');
-        const remaining = Math.min(adapter.timeoutMs, Date.parse(execution.handoff_deadline ?? execution.execution_deadline) - Date.now());
-        if (!Number.isFinite(remaining) || remaining <= 0) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'No final-tree check budget remains');
-        const controller = new AbortController();
-        const deadline = Date.now() + remaining;
-        // Timeout requests cancellation. The slot and shutdown join retain
-        // the checker until its promise confirms resource cleanup.
-        const check = Promise.resolve().then(() => adapter.check({
-          ...plan, signal: controller.signal, identity: adapter.identity,
-          source: { task_id: task.task_id, execution_id: initial.execution_id }, deadline,
-          startProcess: launch => this.taskService.withServiceLifecycleWrite(() => {
-            guard();
-            return launch();
-          }),
-        }));
-        const active = { controller, promise: check.finally(() => {
-          if (this.activeWorkspaceCheck === active) this.activeWorkspaceCheck = null;
-        }) };
-        this.activeWorkspaceCheck = active;
-        let timer;
-        try {
-          const result = await Promise.race([active.promise,
-            new Promise((_, reject) => { timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline')); controller.abort(); }, remaining); })]);
-          if (Date.now() >= deadline) throw new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline');
-          if (result?.check_mode === 'lean-module' || result?.scope === 'module') {
-            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires a complete check; module-scoped evidence is insufficient');
-          }
-          const checkedPaths = Array.isArray(result?.checked_paths) ? result.checked_paths : [];
-          return { verdict: result?.verdict, check_result_id: typeof result?.check_result_id === 'string' ? result.check_result_id.slice(0, 256) : null,
-            diagnostic: typeof result?.diagnostic === 'string' ? result.diagnostic.slice(0, 2048) : null,
-            ...(result?.check_mode === 'lean-project' ? { check_mode: result.check_mode, checked_count: checkedPaths.length, checked_paths: checkedPaths } : {}),
-            checked_tree: plan.tree, checker: adapter.identity, policy: checkPolicy };
-        } finally { clearTimeout(timer); }
-      } : null,
-      withPublication: publish => publishWorkspace(this.taskService.db, publish),
-    });
   }
 
   async #ensureSandbox(execution, workspace) {

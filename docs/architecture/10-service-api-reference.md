@@ -35,7 +35,7 @@ This section is generated from executable exports and checked against the source
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `80926849b0db6f2c718a35f92487a7160644274e845ab66592a87052a5b66504` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `672e42350cf2556acada25f7f2f3960b274dba0f0e48f9799229f65d74bcd986` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 | [src/core/index.d.ts](../../src/core/index.d.ts) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |

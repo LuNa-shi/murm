@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **178 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **179 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -34,7 +34,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [src/agent/bot-contract.js](../../src/agent/bot-contract.js) | Flat continuation and notification messages with Service directory projection | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `21d4f5103b2cec25d281a511a6c32a8193def26204c5a6dab08bc2af3bf52f7f` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `80926849b0db6f2c718a35f92487a7160644274e845ab66592a87052a5b66504` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `672e42350cf2556acada25f7f2f3960b274dba0f0e48f9799229f65d74bcd986` |
 
 ### Configuration and build (5)
 
@@ -102,14 +102,15 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/environments/shared/run-input.js](../../src/environments/shared/run-input.js) | Environment-owned exclusive idle Bot input wait and uncertain submission guard | [15-core-runtime](15-core-runtime.md) | `f88873c40ab74a4a673e2de07216770d1b442b229f1635548b7622d41de37f78` |
 | [src/environments/shared/run-report.js](../../src/environments/shared/run-report.js) | Environment host reporting with independent business, cleanup and save failures | [17-environment-reporting](17-environment-reporting.md) | `1f2188cc16fe4b4b6fc5168f1178de4cab6256eebfe4bdacea664fbde27b59bd` |
 | [src/runtime/docker-bot-network.js](../../src/runtime/docker-bot-network.js) | Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins | [02-execution](02-execution.md), [07-run-configuration](07-run-configuration.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `fece9e1daeaf52f57ac4d821abd0be86fdd94738995507a9412817eb1b268096` |
-| [src/runtime/runtime.js](../../src/runtime/runtime.js) | Registered Bot binding, physical resource ownership, process failure cleanup and fencing | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `116421bdbc60d73a5e1147f04d37915bf19b396754ce6d95c83046df75b5cb67` |
+| [src/runtime/runtime.js](../../src/runtime/runtime.js) | Registered Bot binding, physical resource ownership, process failure cleanup and fencing | [02-execution](02-execution.md), [05-workspace-continuity](05-workspace-continuity.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7bf1e47023f55ca98053cbef8e6262e3343bed0dbfa701286ef3ed4eb3320140` |
 
-### Mission acceptance and checker (7)
+### Mission acceptance and checker (8)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/lock-final-tree-checker.mjs](../../scripts/lock-final-tree-checker.mjs) | Trusted local checker lock generator with source provenance checks | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `7320052d24221f1018a029a774f1071dec2a75330cf9bed69f3d1d6444320c94` |
 | [src/environments/flat/mission-coordination.js](../../src/environments/flat/mission-coordination.js) | Flat-owned Task/Context/Mission acceptance assembly and host-bound Bridge submission projection | [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `781b1f9e56339599a9178353d183b6de37ad6465c737db10f4a89eb27c0d5a6e` |
+| [src/environments/flat/workspace-merge.js](../../src/environments/flat/workspace-merge.js) | Flat-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown | [05-workspace-continuity](05-workspace-continuity.md), [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `b6525c8eb0f395f636b725d823686c96853b6babf729361bd81dd5ecf1a6a8af` |
 | [src/judge/checker-process-limits.js](../../src/judge/checker-process-limits.js) | Verified systemd cgroup limits and process-tree cleanup ownership | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `8e3e8b2ecdc673faf8e58f1f094277c6beb3a135364c0fa360cd77e2f12a2957` |
 | [src/judge/final-tree-deployment.js](../../src/judge/final-tree-deployment.js) | Pinned source/artifact lock and production checker startup gate | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `95d1709d9aa0f24ff7c469b3bae233b4c800ec87fc3aa009b61c48ff73db7fbf` |
 | [src/judge/final-tree-proof.lean](../../src/judge/final-tree-proof.lean) | Trusted Comparator harness consuming inert proof exports | [04-services](04-services.md) | `2939da246ffbffbd737fbd67b1921e72ad11e50e0a6fc4d1ac2fd1bf9f997480` |
