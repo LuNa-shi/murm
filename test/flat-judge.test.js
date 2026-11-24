@@ -60,10 +60,33 @@ test('Core CLI checks an immutable public file through the configured Judge with
   assert.equal(result.workspace_input.workspace_id,f.workspaceId);assert.equal(result.workspace_input.revision,'0.1');
   assert.doesNotMatch(JSON.stringify(result),/private checker stream/);
   assert.deepEqual(await f.cli('judge','check','--revision','0.1','--path','input.txt','--request-id','fixed-check'),result);
+  assert.deepEqual(await f.cli('judge','result','--request-key','fixed-check'),result);
   assert.deepEqual(await f.cli('judge','result','--check-result-id',result.check_result_id),result);
   await assert.rejects(f.cli('judge','check','--revision','0.1','--path','input.txt','--request-id','fixed-check','--workspace-id','foreign-workspace'),error=>/CONFLICT/.test(error.stderr));
   assert.equal(f.checked.length,1);
   assert.equal(f.judge.getMissionCheckBudget(f.missionId).admitted_requests,1);
+});
+
+test('Judge request aliases preserve the exact containing Workspace tree',async t=>{
+  const f=await fixture(t);
+  const checked=await f.cli('judge','check','--revision','0.1','--path','input.txt','--request-id','first-tree');
+  const later=await f.workspace.save({workspaceId:f.workspaceId,baseRevision:'0.1',requestId:'second-tree',
+    files:{'input.txt':'fixed λ\n','sibling.txt':'changed surrounding tree\n'}});
+  const args=['judge','check','--revision',later.revision,'--path','input.txt'];
+  const second=await f.cli(...args,'--request-id','second-check');
+  assert.equal(second.workspace_input.git_tree,later.git_tree);
+  assert.equal(second.workspace_input.content_hash,checked.workspace_input.content_hash);
+  assert.notEqual(second.check_result_id,checked.check_result_id);
+  assert.notEqual(second.workspace_input.git_tree,checked.workspace_input.git_tree);
+  const alias=await f.cli(...args,'--request-id','alias-check');
+  const explicit=await f.cli(...args,'--request-id','explicit-check','--request-key','explicit-judge-alias');
+  assert.equal(alias.check_result_id,second.check_result_id);
+  assert.equal(explicit.check_result_id,second.check_result_id);
+  assert.deepEqual(await f.cli('judge','result','--request-key','alias-check'),second);
+  assert.deepEqual(await f.cli('judge','result','--request-key','explicit-judge-alias'),second);
+  await assert.rejects(f.cli('judge','check','--revision','0.1','--path','input.txt',
+    '--request-id','explicit-conflict','--request-key','explicit-judge-alias'),error=>/CONFLICT/.test(error.stderr));
+  assert.equal(f.checked.length,2);
 });
 
 for(const change of ['fence','deadline']) test(`Judge never starts if ${change} changes during immutable export`,async t=>{
@@ -101,6 +124,7 @@ test('Judge CLI refuses a result whose target Task belongs to another Mission',a
   const foreign=await f.judge.checkWorkspaceSource({source:{content:'Foreign input'},request_key:'foreign-check'},envelope());
   assert.equal(foreign.verdict,'PASS');
   await assert.rejects(f.cli('judge','result','--check-result-id',foreign.check_result_id),error=>/NOT_ALLOWED/.test(error.stderr));
+  await assert.rejects(f.cli('judge','result','--request-key','foreign-check'),error=>/NOT_ALLOWED/.test(error.stderr));
 });
 
 test('a cached Judge request cannot bypass a later Execution fence',async t=>{
@@ -115,6 +139,23 @@ test('a cached Judge request cannot bypass a later Execution fence',async t=>{
 test('Judge result lookup preserves the existing absent-result response',async t=>{
   const f=await fixture(t);
   assert.deepEqual(await f.cli('judge','result','--check-result-id','absent-result'),{ok:true,result:null});
+  assert.deepEqual(await f.cli('judge','result','--request-key','absent-key'),{ok:true,result:null});
+});
+
+test('Judge result lookup rechecks Mission deadline before falling back to an explicit key',async t=>{
+  const f=await fixture(t);
+  const dispatch=f.judge.dispatch.bind(f.judge);
+  let lookups=0;
+  f.judge.dispatch=async (operation,...args)=>{
+    const result=await dispatch(operation,...args);
+    if(operation==='get_check_result' && ++lookups===1) {
+      assert.equal(result,null);
+      f.expireMission();
+    }
+    return result;
+  };
+  await assert.rejects(f.cli('judge','result','--request-key','expired-key'),error=>/NOT_ALLOWED/.test(error.stderr));
+  assert.equal(lookups,1);
 });
 
 for(const closing of ['Flat close','Core revoke']) test(`a held Judge preflight cannot launch source after ${closing}`,async t=>{
