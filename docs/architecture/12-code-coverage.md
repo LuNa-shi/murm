@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **195 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **197 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -36,14 +36,15 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `672e42350cf2556acada25f7f2f3960b274dba0f0e48f9799229f65d74bcd986` |
 
-### Configuration and build (6)
+### Configuration and build (7)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [examples/hour-matrix/.npmignore](../../examples/hour-matrix/.npmignore) | Exclude private run evidence when the host is launched from inside the shipped hour example directory | [07-run-configuration](07-run-configuration.md), [21-hour-matrix](21-hour-matrix.md) | `660ac673c95cd10c1e9ae669285c65c0ff3089c8ab30880cddab0161b49a9537` |
 | [examples/lead-helper-environment/.npmignore](../../examples/lead-helper-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `d77bab7a6074d13ff59bdfa02e5ab933fc36e61d46b08a03856d989352faf678` |
 | [examples/notes-environment/.npmignore](../../examples/notes-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `d77186f09046a602cca36239b026d494de43b6af3598e359385fa14f7c73d463` |
-| [examples/subagents-environment/.npmignore](../../examples/subagents-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `fb35e517dca8537bd1c9a7e26e31c288e97e95649604eca6e6ee671ae6330f46` |
+| [examples/subagents-environment/.npmignore](../../examples/subagents-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `06988b9d7e8c5a42362079ad81aadf17b80c52ad95573a54da2b7911dfe81717` |
+| [examples/subagents-environment/hour-config.mjs](../../examples/subagents-environment/hour-config.mjs) | Explicit private native Subagents composition with byte-pinned workload, stable time-only owner and trusted lifetime/Session ports | [17-environment-reporting](17-environment-reporting.md), [21-hour-matrix](21-hour-matrix.md) | `7ed8dce6a9227f34b00f3b26178bb410d2bfa5382144d19dc8d58271c7a861c3` |
 | [src/judge/lean-module-verify.LICENSE.txt](../../src/judge/lean-module-verify.LICENSE.txt) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e` |
 | [src/judge/lean-module-verify.NOTICE.md](../../src/judge/lean-module-verify.NOTICE.md) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `d2fcbc82d70c3d3f71f75c612937eb4f9bd2c0d3ce3cbc31e3874046d8383b8d` |
 
@@ -109,7 +110,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [examples/subagents-environment/config.mjs](../../examples/subagents-environment/config.mjs) | Local subagents host model, resource and deadline configuration | [17-environment-reporting](17-environment-reporting.md) | `dd3f0bd2358628f7a2a736aca8f296e0d03a42a8c41e4090af7d4ab8efaf49f5` |
 | [examples/subagents-environment/controller.mjs](../../examples/subagents-environment/controller.mjs) | Bounded multi-source input queue, round snapshots, failure coalescing and shutdown receipts | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `f6fe1359170dde9f923220f8cd03feb0623d04973cb1d7e58e28b117993eeb6a` |
 | [examples/subagents-environment/hour-artifacts.mjs](../../examples/subagents-environment/hour-artifacts.mjs) | Post-close required export verification binding twelve child source/stdout/result records and four parent adoption records | [17-environment-reporting](17-environment-reporting.md) | `60a56f08089f43301da36ee954889fb6d59e46ef52d7e90c5c8f7100f8f74d39` |
-| [examples/subagents-environment/hour.mjs](../../examples/subagents-environment/hour.mjs) | Optional four-Bot subagents hour composition over actual public Core, time-only model owner and injected trusted lifetime/Session observations | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `3961dc6a19018281aa4240531c31ff9ab60eb291fa0d02539a351072cab2b95e` |
+| [examples/subagents-environment/hour.mjs](../../examples/subagents-environment/hour.mjs) | Optional four-Bot subagents hour composition over actual public Core, time-only model owner and injected trusted lifetime/Session observations | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `7d70777ed1bd7b3bb290b0a2f9c03a24a4e505e69f51c12f244f42d72d91b698` |
 | [examples/subagents-environment/main.mjs](../../examples/subagents-environment/main.mjs) | Subagents host Profiles, bounded three-to-eight-Bot Runtime, verified text adoption and whole-tree reporting | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `46f5e9b412a2cfd26d153685503234279f7c3a8ddcec62fd09e12de5b90addbc` |
 | [examples/subagents-environment/prompts.mjs](../../examples/subagents-environment/prompts.mjs) | Complete parent and child instructions and fixed initial text goal | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `2b56b23d2fc50bd56f131b8ee6b91b64095e1d057f17a33b821320005f1ddd5c` |
 | [examples/subagents-environment/stages.mjs](../../examples/subagents-environment/stages.mjs) | Optional four-group original-child identity and cumulative text adoption gate over actual controller admissions | [17-environment-reporting](17-environment-reporting.md) | `5e4d04a636811759c581fa60baa6355c502ad46469d8c909b5d3a1f267fdbbe3` |
@@ -162,10 +163,11 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/core-work-dir.mjs](../../scripts/core-work-dir.mjs) | Trusted Worker FileSeed installation, readback, versioned write grant and close coordination | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `0350bddb4beda3bef452a304cabdf4ebbcecfaec2de6f3c7c19fc1621ab2f316` |
 | [scripts/pi-rpc-submissions.mjs](../../scripts/pi-rpc-submissions.mjs) | Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6f1ef3246b57d438dde8d37fd427494c24fc0d875b099cf70e7d7c53ecd5a247` |
 
-### Runtime and orchestration (1)
+### Runtime and orchestration (2)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
+| [src/environments/endurance/native-session-observation.js](../../src/environments/endurance/native-session-observation.js) | Exact admitted sandbox ownership revalidation and bounded read-only Pi Session header observation through authoritative Execd endpoints | [17-environment-reporting](17-environment-reporting.md) | `8926acf41ac3cad37639c80bad832f35c126a20ee9a58a9089b02a0dfb419007` |
 | [src/environments/endurance/timed-upstream.js](../../src/environments/endurance/timed-upstream.js) | Opt-in private host time-only model forwarding and observed usage with bounded metadata and no logical token/request/concurrency admission | [21-hour-matrix](21-hour-matrix.md) | `4824584c89ec1c6e5bd986e9238a95b278c396f2dc20f2b370b99d4467b51edd` |
 
 ### Workspace and Sandbox (2)

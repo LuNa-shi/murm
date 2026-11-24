@@ -1825,6 +1825,23 @@
         "docs/architecture/21-hour-matrix.md"
       ],
       "role": "Opt-in private host time-only model forwarding and observed usage with bounded metadata and no logical token/request/concurrency admission"
+    },
+    {
+      "path": "examples/subagents-environment/hour-config.mjs",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Explicit private native Subagents composition with byte-pinned workload, stable time-only owner and trusted lifetime/Session ports"
+    },
+    {
+      "path": "src/environments/endurance/native-session-observation.js",
+      "category": "Runtime and orchestration",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Exact admitted sandbox ownership revalidation and bounded read-only Pi Session header observation through authoritative Execd endpoints"
     }
   ]
 }

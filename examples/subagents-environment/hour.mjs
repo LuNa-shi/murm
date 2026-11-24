@@ -15,7 +15,7 @@ const failure = code => Object.assign(new Error(code), {code});
 const hash = value => createHash('sha256').update(value).digest('hex');
 
 /** Actual Core composition. Injected clocks remain controlled evidence forever. */
-export async function runSubagentsHour({backend,image,model='default',outputDir,programming,admit,observeSessions,quota,budgets,exportLimit=16*1024**2,clock,waitForMs},signal) {
+export async function runSubagentsHour({backend,image,model='default',outputDir,programming,admit,observeSessions,quota,budgets,exportLimit=16*1024**2,clock,waitForMs,signal:ownerSignal},signal) {
   if (typeof programming?.prompt!=='function'||typeof programming?.verify!=='function'||typeof admit!=='function'||typeof observeSessions!=='function'||typeof quota?.receipt!=='function'||typeof quota?.close!=='function') throw failure('SUBAGENTS_HOUR_PREFLIGHT');
   const ownerUrl=quota.url;
   if(typeof ownerUrl!=='string'||!/^https?:\/\//.test(ownerUrl))throw failure('SUBAGENTS_HOUR_MODEL_OWNER');
@@ -23,7 +23,7 @@ export async function runSubagentsHour({backend,image,model='default',outputDir,
   if (Object.keys(limits).some(key=>!['setupMs','workMs','cleanupMs','recoveryMs','marginMs','turnMs'].includes(key)) || Object.values(limits).some(value=>!Number.isSafeInteger(value)||value<1||value>2147483647) || limits.setupMs>600_000||limits.workMs<HOUR||limits.workMs>3_900_000||limits.cleanupMs>600_000||limits.recoveryMs>300_000||limits.marginMs>120_000 || !Number.isSafeInteger(exportLimit)||exportLimit<1) throw failure('SUBAGENTS_HOUR_BUDGET_INVALID');
   const now=clock??(()=>performance.now()); let last=-Infinity;
   const time=()=>{const value=now();if(!Number.isFinite(value)||value<last||value<0)throw failure('SUBAGENTS_HOUR_CLOCK');last=value;return value;};
-  const life=new AbortController(),live=signal?AbortSignal.any([signal,life.signal]):life.signal;
+  const life=new AbortController(),live=AbortSignal.any([life.signal,...(signal?[signal]:[]),...(ownerSignal?[ownerSignal]:[])]);
   let runtime,stages,parentId,childIds,botIds,lifetime,sessions,started,ended,unavailable=false,closing=false,unsubscribe,timer,archives,quotaReceipt,cleanupDeadline,ownerDeadline;
   const evidence=[]; let report,closeFailure;
   const secrets=[backend?.sandbox?.apiKey,backend?.sandbox?.execdToken,...Object.values(backend?.models??{}).flatMap(row=>Object.values(row.upstream?.headers??{}))].filter(value=>typeof value==='string'&&value).flatMap(value=>[value,value.replace(/^(Bearer|Basic)\s+/i,'')]);
@@ -130,7 +130,8 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(resolve(process.argv[1])).hr
   const abort=new AbortController(),stop=()=>abort.abort();
   process.once('SIGINT',stop);process.once('SIGTERM',stop);
   try{
-    const config=(await import(pathToFileURL(resolve(process.argv[2])).href)).default;
+    const configured=(await import(pathToFileURL(resolve(process.argv[2])).href)).default;
+    const config=typeof configured==='function'?await configured({signal:abort.signal}):configured;
     const report=await runSubagentsHour(config,abort.signal);
     process.stdout.write(JSON.stringify({mode:report.mode,accepted:false,state:report.result?.state,businessFailure:report.businessFailure?.code??null,cleanupFailure:report.cleanupFailure?.code??null,reportSaveFailure:report.reportSaveFailure?.code??null,reportPath:report.reportPath})+'\n');
     process.exitCode=report.businessFailure||report.cleanupFailure||report.reportSaveFailure?1:0;
