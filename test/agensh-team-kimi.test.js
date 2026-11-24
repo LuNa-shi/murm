@@ -34,7 +34,7 @@ test('live phase instructions batch required work while preserving actual Board 
   assert.ok(liveBInitial.includes('initial batch') && liveBInitial.includes('proposal') && liveBInitial.includes('Board read belongs in your negotiated turn'));
   assert.ok(liveAUser.includes('one coherent Bash call'));
   assert.deepEqual({ inputs: liveTeamLimits.inputs, requests: liveTeamLimits.maxRequests, output: liveTeamLimits.maxOutputTokens },
-    { inputs: 5, requests: 20, output: 768 });
+    { inputs: 5, requests: 20, output: 1024 });
 });
 
 test('host checks exact immutable PR bytes before any merge, rejecting model claims and malformed content', () => {
@@ -81,24 +81,36 @@ test('unfiltered trusted event ingress hard bounds the whole native run to two k
 });
 
 function budget() {
-  return { forwarded: 20, maxRequests: 20, peakConcurrent: 2, maxConcurrent: 2, maxOutputTokens: 768, maxAggregateOutputTokens: 15360,
-    maxInputBytes: 128 * 1024, maxAggregateInputBytes: 512 * 1024, reservedInputBytes: 2000, rejectedArrivals: 0, reservedOutputTokens: 15360, deadlineReached: false,
-    requests: Array.from({ length: 20 }, () => ({ inputBytes: 100, status: 'complete', terminal: 'response.completed', maxOutputTokens: 768, usage: { inputTokens: 100, outputTokens: 25 } })) };
+  return { forwarded: 20, maxRequests: 20, peakConcurrent: 2, maxConcurrent: 2, maxOutputTokens: 1024, generationOutputTokens: 768, maxAggregateOutputTokens: 15360,
+    maxInputBytes: 128 * 1024, maxAggregateInputBytes: 512 * 1024, reservedInputBytes: 2000, rejectedArrivals: 0, reservedOutputTokens: 20480, observedOutputTokens: 500, settledOutputTokens: 500, outstandingOutputTokens: 0, committedOutputTokens: 500, deadlineReached: false,
+    requests: Array.from({ length: 20 }, () => ({ inputBytes: 100, status: 'complete', terminal: 'response.completed', maxOutputTokens: 1024, generationOutputTokens: 768, requestTargetOverrun: false, usage: { inputTokens: 100, outputTokens: 25 } })) };
 }
 test('live acceptance requires exact hard budgets and actual bounded provider usage', () => {
   assert.deepEqual(verifyLiveBudget(budget()), { requests: 20, inputTokens: 2000, outputTokens: 500 });
   for (const alter of [value => { value.forwarded = 21; }, value => { value.peakConcurrent = 3; }, value => { value.reservedOutputTokens++; },
-    value => { value.requests[0].usage = undefined; }, value => { value.requests[0].usage.outputTokens = 769; },
-    value => { value.requests[0].maxOutputTokens = 769; }, value => { value.requests[0].toolsDisabled = true; },
+    value => { value.requests[0].usage = undefined; }, value => { value.requests[0].usage.outputTokens = 1025; },
+    value => { value.requests[0].maxOutputTokens = 1025; }, value => { value.requests[0].toolsDisabled = true; },
     value => { value.requests[0].terminal = 'response.failed'; }]) {
     const value = budget(); alter(value); assert.throws(() => verifyLiveBudget(value));
   }
 });
 
+test('live budget accepts historical target overruns only with exact raw accounting', () => {
+  const value = budget();
+  value.requests[0].usage.outputTokens = 865;
+  value.requests[0].requestTargetOverrun = true;
+  value.observedOutputTokens = value.settledOutputTokens = value.committedOutputTokens = 1340;
+  assert.equal(verifyLiveBudget(value).outputTokens, 1340);
+  for (const change of [row => { row.outstandingOutputTokens = 1024; }, row => { row.committedOutputTokens++; },
+    row => { row.requests[0].requestTargetOverrun = false; }, row => { row.generationOutputTokens = 1024; }]) {
+    const invalid = structuredClone(value); change(invalid); assert.throws(() => verifyLiveBudget(invalid));
+  }
+});
+
 test('final budget validation preserves archive evidence and earlier failures', () => {
   const overage = budget();
-  overage.requests[7].usage.outputTokens = 865;
-  overage.failure = { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 8, maxOutputTokens: 768, outputTokens: 865 };
+  overage.requests[7].usage.outputTokens = 1025;
+  overage.failure = { code: 'LIVE_OUTPUT_LIMIT_EXCEEDED', number: 8, maxOutputTokens: 1024, outputTokens: 1025 };
   const archived = { binaryVerified: true, gitVerified: true };
   const completed = { failure: false, archived };
   recordLiveBudget(completed, overage);

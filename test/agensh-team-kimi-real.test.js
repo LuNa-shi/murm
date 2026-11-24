@@ -47,7 +47,9 @@ test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Cor
     stage = 'work';
     work = createWorkGate(180_000, 'ACTUAL_TEAM_WORK_EXPIRED', cleanup);
     upstream = await createCappedUpstream({ upstreamUrl, upstreamHeaders: headers, deadlineAt: work.deadlineAt,
-      maxRequests: 20, maxConcurrent: 2, maxOutputTokens: 768, maxAggregateOutputTokens: 15360, maxInputBytes: 128 * 1024, maxAggregateInputBytes: 512 * 1024,
+      maxRequests: liveTeamLimits.maxRequests, maxConcurrent: liveTeamLimits.maxConcurrent,
+      generationOutputTokens: liveTeamLimits.generationOutputTokens, maxOutputTokens: liveTeamLimits.maxOutputTokens,
+      maxAggregateOutputTokens: liveTeamLimits.maxAggregateOutputTokens, maxInputBytes: liveTeamLimits.maxInputBytes, maxAggregateInputBytes: liveTeamLimits.maxAggregateInputBytes,
       filename: 'unused-live-observation', marker: 'unused-live-marker', failFast: true, recordGeometry: true, onFailure: () => work.abort() });
     environment = await work.create(() => createAgenshTeam({ ...configuration, runId, image, secretValues: credentialValues, signal: work.signal, outputDir: join(directory, 'core'),
       prepare: async options => { facilities = await prepareAgenshFacilities(options); ingress = createLiveIngress(facilities.peers); return facilities; },

@@ -897,3 +897,104 @@ test('hosted redirect headers also fence as non-2xx without following another pr
   assert.equal(calls, 1); assert.equal(cap.receipt().failure.statusCode, 302);
   assert.equal(JSON.stringify(cap.receipt()).includes('private'), false);
 });
+
+test('separate generation target meters first trusted raw usage and releases only settled reservation', async t => {
+  const sent = []; let calls = 0;
+  const upstreamUrl = await localUpstream(t, async (request, response) => {
+    const chunks = []; for await (const chunk of request) chunks.push(chunk);
+    sent.push(JSON.parse(Buffer.concat(chunks))); calls++;
+    const event = { type: 'response.completed', response: { id: `local-${calls}`, model: 'k3', status: 'completed', usage: { input_tokens: 10, output_tokens: calls === 1 ? 865 : 786 } } };
+    response.end(`data: ${JSON.stringify(event)}\n\ndata: ${JSON.stringify(event)}\n\n`);
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, maxRequests: 3, maxConcurrent: 2,
+    generationOutputTokens: 768, maxOutputTokens: 1024, maxAggregateOutputTokens: 2000, failFast: true, filename: 'unused', marker: 'unused' });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [], max_output_tokens: 4096 }) });
+  await (await send()).text(); await (await send()).text();
+  const rejected = await send(); assert.equal(rejected.status, 429); await rejected.text();
+  assert.equal(calls, 2); assert.ok(sent.every(body => body.max_output_tokens === 768));
+  const receipt = cap.receipt();
+  assert.equal(receipt.failure, undefined);
+  assert.equal(receipt.reservedOutputTokens, 2048);
+  assert.equal(receipt.observedOutputTokens, 1651);
+  assert.equal(receipt.outstandingOutputTokens, 0);
+  assert.equal(receipt.committedOutputTokens, 1651);
+  assert.deepEqual(receipt.requests.map(row => [row.maxOutputTokens, row.generationOutputTokens, row.requestTargetOverrun]), [[1024,768,true],[1024,768,true]]);
+});
+
+test('separate generation target reserves the full hard allowance before concurrent dispatch', async t => {
+  let calls = 0;
+  const upstreamUrl = await localUpstream(t, (request, response) => { request.resume(); calls++; response.writeHead(200); response.write(':held\n\n'); });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, maxRequests: 3, maxConcurrent: 2,
+    generationOutputTokens: 768, maxOutputTokens: 1024, maxAggregateOutputTokens: 1536, failFast: true, filename: 'unused', marker: 'unused' });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const first = await send(); const held = first.text().catch(() => undefined);
+  const rejected = await send(); assert.equal(rejected.status,429); await rejected.text();
+  assert.equal(calls,1); assert.equal(cap.receipt().outstandingOutputTokens,1024);
+  assert.equal(cap.receipt().committedOutputTokens,1024);
+  await cap.close(); await held;
+});
+
+for (const output of [1025, undefined]) test(`separate target fails closed and preserves raw usage or unknown reservation: ${output}`, async t => {
+  let calls = 0;
+  const upstreamUrl = await localUpstream(t, (request, response) => {
+    request.resume(); calls++;
+    response.end(`data: ${JSON.stringify({ type:'response.completed',response:{id:'bounded',model:'k3',status:'completed',usage:{input_tokens:10,output_tokens:output}} })}\n\n`);
+  });
+  const cap = await createCappedUpstream({ upstreamUrl, deadlineAt: Date.now() + 5000, maxRequests: 3, maxConcurrent: 2,
+    generationOutputTokens: 768, maxOutputTokens: 1024, maxAggregateOutputTokens: 3072, failFast: true, filename: 'unused', marker: 'unused' });
+  t.after(() => cap.close());
+  const send = () => fetch(cap.url, { method:'POST',body:JSON.stringify({model:'k3',input:[]}) });
+  await (await send()).text().catch(() => undefined);
+  const later=await send(); assert.equal(later.status,400); await later.text();
+  const receipt=cap.receipt(); assert.equal(calls,1);
+  assert.equal(receipt.failure.code, output===undefined?'LIVE_TERMINAL_USAGE_INVALID':'LIVE_OUTPUT_LIMIT_EXCEEDED');
+  assert.equal(receipt.outstandingOutputTokens,1024);
+  assert.equal(receipt.observedOutputTokens,output??0);
+  assert.equal(receipt.settledOutputTokens,0);
+  assert.equal(receipt.requests[0].usage?.outputTokens,output);
+});
+
+test('separate target preserves the first trusted usage on conflict without releasing a second reservation', async t => {
+  let calls=0;
+  const upstreamUrl=await localUpstream(t,(request,response)=>{
+    request.resume();calls++;
+    const terminal=output=>`data: ${JSON.stringify({type:'response.completed',response:{id:'first',model:'k3',status:'completed',usage:{input_tokens:1,output_tokens:output}}})}\n\n`;
+    response.end(terminal(865)+terminal(786));
+  });
+  const cap=await createCappedUpstream({upstreamUrl,deadlineAt:Date.now()+5000,maxRequests:2,maxConcurrent:2,
+    generationOutputTokens:768,maxOutputTokens:1024,maxAggregateOutputTokens:2048,failFast:true,filename:'unused',marker:'unused'});
+  t.after(()=>cap.close());
+  const send=()=>fetch(cap.url,{method:'POST',body:JSON.stringify({model:'k3',input:[]})});
+  await (await send()).text().catch(()=>undefined);
+  const later=await send();assert.equal(later.status,400);await later.text();
+  const receipt=cap.receipt();assert.equal(calls,1);assert.equal(receipt.failure.code,'LIVE_TERMINAL_CONFLICT');
+  assert.equal(receipt.requests[0].usage.outputTokens,865);assert.equal(receipt.requests[0].terminalConflict.usage.outputTokens,786);
+  assert.equal(receipt.settledOutputTokens,865);assert.equal(receipt.observedOutputTokens,865);assert.equal(receipt.outstandingOutputTokens,0);
+});
+
+test('separate target permits twenty settled requests within the unchanged aggregate budget', async t => {
+  let calls=0;
+  const upstreamUrl=await localUpstream(t,(request,response)=>{
+    request.resume();calls++;
+    response.end(`data: ${JSON.stringify({type:'response.completed',response:{id:`finite-${calls}`,model:'k3',status:'completed',usage:{input_tokens:10,output_tokens:700}}})}\n\n`);
+  });
+  const cap=await createCappedUpstream({upstreamUrl,deadlineAt:Date.now()+5000,maxRequests:20,maxConcurrent:2,
+    generationOutputTokens:768,maxOutputTokens:1024,maxAggregateOutputTokens:15360,failFast:true,filename:'unused',marker:'unused'});
+  t.after(()=>cap.close());
+  const send=()=>fetch(cap.url,{method:'POST',body:JSON.stringify({model:'k3',input:[]})});
+  for(let i=0;i<20;i++) {const response=await send();assert.equal(response.status,200);await response.text();}
+  const receipt=cap.receipt();assert.equal(calls,20);assert.equal(receipt.failure,undefined);
+  assert.equal(receipt.reservedOutputTokens,20480);assert.equal(receipt.committedOutputTokens,14000);assert.equal(receipt.outstandingOutputTokens,0);
+  const excess=await send();assert.equal(excess.status,429);await excess.text();assert.equal(calls,20);
+});
+
+test('a split target requires the metered fail-closed mode and ordered finite thresholds', async t => {
+  for(const options of [{generationOutputTokens:768,maxOutputTokens:1024,failFast:false},
+    {generationOutputTokens:1025,maxOutputTokens:1024,failFast:true},
+    {generationOutputTokens:0,maxOutputTokens:1024,failFast:true}]) {
+    await assert.rejects(createCappedUpstream({upstreamUrl:'http://127.0.0.1:1/v1/responses',deadlineAt:Date.now()+1000,
+      filename:'unused',marker:'unused',...options}),{message:'LIVE_UPSTREAM_CONFIGURATION_INVALID'});
+  }
+});

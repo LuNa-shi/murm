@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 
 export const liveTeamLimits = Object.freeze({ setupMs: 180_000, workMs: 180_000, cleanupMs: 100_000,
-  bots: 2, inputs: 5, maxRequests: 20, maxConcurrent: 2, maxOutputTokens: 768, maxAggregateOutputTokens: 15_360, maxInputBytes: 128 * 1024, maxAggregateInputBytes: 512 * 1024 });
+  bots: 2, inputs: 5, maxRequests: 20, maxConcurrent: 2, generationOutputTokens: 768, maxOutputTokens: 1024, maxAggregateOutputTokens: 15_360, maxInputBytes: 128 * 1024, maxAggregateInputBytes: 512 * 1024 });
 export const liveMarkers = ['LIVE_T15_A', 'LIVE_T15_B', 'LIVE_T15_NEGOTIATE', 'LIVE_T15_CONFIRM', 'LIVE_T15_USER'];
 
 export const liveCommon = `This is a small real cooperation acceptance. Use actual Bash and swarm tools. Keep the final text brief. Never print credentials, environment dumps or raw configuration. Never merge, change main, create other Bots or send extra messages.
@@ -33,14 +33,21 @@ export function verifyLiveBudget(receipt) {
   assert.equal(receipt.maxRequests, 20); assert.equal(receipt.maxInputBytes, 128 * 1024);
   assert.ok(receipt.forwarded > 0 && receipt.forwarded <= liveTeamLimits.maxRequests);
   assert.ok(receipt.peakConcurrent <= 2 && receipt.maxConcurrent === 2);
-  assert.equal(receipt.maxOutputTokens, 768); assert.equal(receipt.maxAggregateOutputTokens, 15360);
-  assert.ok(receipt.reservedOutputTokens <= 15360 && !receipt.deadlineReached);
+  assert.equal(receipt.maxOutputTokens, 1024); assert.equal(receipt.generationOutputTokens, 768); assert.equal(receipt.maxAggregateOutputTokens, 15360);
+  assert.ok(receipt.committedOutputTokens <= 15360 && !receipt.deadlineReached);
+  assert.equal(receipt.outstandingOutputTokens, 0);
+  const rawOutputTokens = receipt.requests.reduce((sum, row) => sum + row.usage?.outputTokens, 0);
+  assert.equal(receipt.settledOutputTokens, rawOutputTokens);
+  assert.equal(receipt.observedOutputTokens, rawOutputTokens);
+  assert.equal(receipt.committedOutputTokens, rawOutputTokens);
   assert.equal(receipt.requests.length, receipt.forwarded);
   assert.equal(receipt.reservedOutputTokens, receipt.requests.reduce((sum, row) => sum + row.maxOutputTokens, 0));
   for (const row of receipt.requests) {
     assert.notEqual(row.toolsDisabled, true);
     assert.equal(row.status, 'complete'); assert.equal(row.terminal, 'response.completed');
-    assert.ok(row.maxOutputTokens > 0 && row.maxOutputTokens <= 768);
+    assert.equal(row.maxOutputTokens, 1024);
+    assert.ok(Number.isSafeInteger(row.generationOutputTokens) && row.generationOutputTokens > 0 && row.generationOutputTokens <= 768);
+    assert.equal(row.requestTargetOverrun, row.usage?.outputTokens > row.generationOutputTokens);
     assert.ok(Number.isSafeInteger(row.usage?.inputTokens) && row.usage.inputTokens >= 0);
     assert.ok(Number.isSafeInteger(row.usage?.outputTokens) && row.usage.outputTokens >= 0 && row.usage.outputTokens <= row.maxOutputTokens);
   }

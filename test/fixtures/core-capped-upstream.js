@@ -101,7 +101,7 @@ function terminalGeometry(response, model) {
 }
 
 export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, deadlineAt,
-  maxRequests = 8, maxOutputTokens = 4096, filename, marker, disableTools = false, failFast = false, onFailure = () => {}, recordGeometry = false,
+  maxRequests = 8, maxOutputTokens = 4096, generationOutputTokens = maxOutputTokens, filename, marker, disableTools = false, failFast = false, onFailure = () => {}, recordGeometry = false,
   maxConcurrent = maxRequests, maxAggregateOutputTokens = maxRequests * maxOutputTokens, maxInputBytes = 2 * 1024 ** 2, maxAggregateInputBytes = maxRequests * maxInputBytes }) {
   let target;
   try { target = new URL(upstreamUrl); } catch { throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID'); }
@@ -109,6 +109,8 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       !Number.isFinite(deadlineAt) || deadlineAt <= Date.now() || deadlineAt > Date.now() + 180_000 ||
       !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 20 ||
       !Number.isInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 4096 ||
+      !Number.isInteger(generationOutputTokens) || generationOutputTokens < 1 || generationOutputTokens > maxOutputTokens ||
+      (generationOutputTokens !== maxOutputTokens && !failFast) ||
       !Number.isInteger(maxConcurrent) || maxConcurrent < 1 || maxConcurrent > maxRequests ||
       !Number.isInteger(maxAggregateOutputTokens) || maxAggregateOutputTokens < 1 || maxAggregateOutputTokens > maxRequests * maxOutputTokens ||
       !Number.isInteger(maxInputBytes) || maxInputBytes < 1 || maxInputBytes > 2 * 1024 ** 2 ||
@@ -135,6 +137,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   const terminalObservations = new WeakMap();
   const rejectionReads = new Set();
   const tools = new Map();
+  let settledOutputTokens = 0, outstandingOutputTokens = 0;
   let forwarded = 0, reservedOutputTokens = 0, peakConcurrent = 0, reservedInputBytes = 0, rejectedArrivals = 0;
   function rejectAdmission(...args) { rejectedArrivals++; json(...args); }
   let arrivals = 0;
@@ -187,6 +190,12 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       if (typeof value.response?.id === 'string') record.responseId = value.response.id.slice(0, 256);
       if (validUsage && (!failFast || validEnvelope || outputExceeded)) {
         record.usage = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens };
+      }
+      if (validUsage) record.requestTargetOverrun = usage.output_tokens > record.generationOutputTokens;
+      if (failFast && validUsage && validEnvelope && !outputExceeded) {
+        // The terminal replay/conflict guard above admits this settlement once.
+        outstandingOutputTokens -= record.maxOutputTokens;
+        settledOutputTokens += usage.output_tokens;
       }
       if (recordGeometry) record.terminalGeometry = terminalGeometry(value.response, model);
       if (outputExceeded) {
@@ -255,14 +264,18 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     if (forwarded >= maxRequests) { rejectAdmission(response, 429, 'LIVE_REQUEST_CAP'); return; }
     if (active.size >= maxConcurrent) { rejectAdmission(response, 429, 'LIVE_CONCURRENCY_CAP'); return; }
     observeToolResults(body.input);
-    body.max_output_tokens = Math.min(body.max_output_tokens ?? maxOutputTokens, maxOutputTokens);
-    if (reservedOutputTokens + body.max_output_tokens > maxAggregateOutputTokens) { rejectAdmission(response, 429, 'LIVE_OUTPUT_BUDGET'); return; }
+    body.max_output_tokens = Math.min(body.max_output_tokens ?? generationOutputTokens, generationOutputTokens);
+    // A separated target is guidance only. Reserve the full host allowance
+    // before dispatch and release its difference only on first trusted usage.
+    const hardOutputTokens = generationOutputTokens === maxOutputTokens ? body.max_output_tokens : maxOutputTokens;
+    const committedOutputTokens = failFast && generationOutputTokens < maxOutputTokens ? settledOutputTokens + outstandingOutputTokens : reservedOutputTokens;
+    if (committedOutputTokens + hardOutputTokens > maxAggregateOutputTokens) { rejectAdmission(response, 429, 'LIVE_OUTPUT_BUDGET'); return; }
     if (disableTools) { delete body.tools; delete body.tool_choice; }
     const data = Buffer.from(JSON.stringify(body));
     if (data.length > maxInputBytes || reservedInputBytes + data.length > maxAggregateInputBytes) { rejectAdmission(response, 429, 'LIVE_INPUT_BUDGET'); return; }
     reservedInputBytes += data.length;
-    const number = ++forwarded; reservedOutputTokens += body.max_output_tokens;
-    const record = { ...(recordGeometry ? { geometry: requestGeometry(body.input), requestOptions: requestOptions(body) } : {}), number, inputBytes: data.length, status: 'dispatched', maxOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
+    const number = ++forwarded; reservedOutputTokens += hardOutputTokens; outstandingOutputTokens += hardOutputTokens;
+    const record = { ...(recordGeometry ? { geometry: requestGeometry(body.input), requestOptions: requestOptions(body) } : {}), number, inputBytes: data.length, status: 'dispatched', maxOutputTokens: hardOutputTokens, generationOutputTokens: body.max_output_tokens, ...(disableTools ? { toolsDisabled: true, toolsMode: 'omitted' } : {}) };
     records.push(record);
     const outgoingHeaders = { ...headers, 'content-type': 'application/json', accept: 'text/event-stream', 'content-length': data.length };
     for (const name of ['x-swarmenv-request-id', 'x-request-id', 'idempotency-key']) {
@@ -365,6 +378,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     } catch {
       transport(record, 'dispatch_error', true);
       record.status = 'dispatch_failed';
+      fenceUnmeteredTransport(record);
       json(response, 502, 'LIVE_UPSTREAM_FAILED');
     }
   });
@@ -379,7 +393,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   try { await once(server, 'listening'); } catch { clearTimeout(deadline); throw new Error('LIVE_PROXY_START_FAILED'); }
   return {
     url: `http://127.0.0.1:${server.address().port}/v1/responses`,
-    receipt() { return structuredClone({ arrivals, forwarded, maxRequests, maxOutputTokens, maxConcurrent, peakConcurrent, maxAggregateOutputTokens, reservedOutputTokens, maxInputBytes, maxAggregateInputBytes, reservedInputBytes, rejectedArrivals, deadlineReached, bashReturned, readVerified, ...(failure ? { failure } : {}), requests: records }); },
+    receipt() { return structuredClone({ arrivals, forwarded, maxRequests, maxOutputTokens, generationOutputTokens, observedOutputTokens: records.reduce((total, row) => total + (row.usage?.outputTokens ?? 0), 0), settledOutputTokens, outstandingOutputTokens, committedOutputTokens: settledOutputTokens + outstandingOutputTokens, maxConcurrent, peakConcurrent, maxAggregateOutputTokens, reservedOutputTokens, maxInputBytes, maxAggregateInputBytes, reservedInputBytes, rejectedArrivals, deadlineReached, bashReturned, readVerified, ...(failure ? { failure } : {}), requests: records }); },
     close() {
       if (closePromise) return closePromise;
       closing = true;
