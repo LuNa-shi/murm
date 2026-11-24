@@ -371,6 +371,7 @@ export async function createRuntime(options) {
       const bot = {
         info, profile: profiles.get(parameters.profile), controller: new AbortController(),
         activityClaims: new Set(), nativeExecuting: false, executionStopped: false, bindings: parameters.bindings, collect: parameters.collect,
+        executionEpoch: 0, interruptRequests: new Map(),
       };
       fileControls.register(bot, { writable: parameters.writable ?? bot.profile.writable,
         seeded: parameters.files !== undefined });
@@ -431,22 +432,28 @@ export async function createRuntime(options) {
       (status === undefined || statuses.includes(info.status))).map(botSnapshot);
   }
 
-  async function send(botId, input, options, caller = 'host') {
+  async function send(botId, input, options, caller = 'host', operation = 'send') {
     const requestId = options?.requestId;
     const mode = options?.mode === undefined ? 'steer' : options.mode;
-    if (!validId(requestId) || typeof input !== 'string' || !['steer', 'followUp'].includes(mode)) {
-      throw problem('INVALID_CONTRACT', 'send needs text, a requestId and a supported mode', 'send', botId, requestId);
+    const { source, steeringMode } = operation === 'steer' ? options : {};
+    if (!validId(requestId) || typeof input !== 'string' || !['steer', 'followUp'].includes(mode) ||
+        (source !== undefined && (typeof source !== 'string' || !source.trim() || source.length > 256)) ||
+        (steeringMode !== undefined && !['all', 'one-at-a-time'].includes(steeringMode))) {
+      throw problem('INVALID_CONTRACT', 'Input needs text, a requestId and valid delivery options', operation, botId, requestId);
     }
-    const bot = findBot(botId, 'send', requestId);
+    const bot = findBot(botId, operation, requestId);
+    const parameters = { input, mode, source, steeringMode };
     let request;
-    try { request = inputRequests.get(caller, botId, requestId, { input, mode }); }
-    catch (error) { throw problem(error.code, error.message, 'send', botId, requestId); }
+    try { request = inputRequests.get(caller, botId, requestId, parameters); }
+    catch (error) { throw problem(error.code, error.message, operation, botId, requestId); }
     if (!request) {
-      if (closing || !isLive(bot) || !fileControls.canSend(bot)) {
-        throw problem('NOT_ALLOWED', 'Bot is not accepting input', 'send', botId, requestId);
+      if (closing || !isLive(bot) || bot.interruption || !fileControls.canSend(bot)) {
+        throw problem('NOT_ALLOWED', 'Bot is not accepting input', operation, botId, requestId);
       }
       const inputId = randomUUID();
-      const identity = { botId, requestId: redactor.text(requestId), inputId, source: caller, mode };
+      const executionEpoch = bot.executionEpoch;
+      const identity = { botId, requestId: redactor.text(requestId), inputId, caller,
+        source: redactor.text(source) ?? caller, mode, steeringMode };
       records.record('input', { ...identity, state: 'registered' });
       const releaseActivity = () => {
         bot.activityClaims.delete(request);
@@ -454,15 +461,15 @@ export async function createRuntime(options) {
       };
       request = { inputId, input, mode, run: async () => {
         if (request.dispatched && bot.info.status === 'closed') return { inputId, status: 'unknown' };
-        if (!request.dispatched && (closing || !isLive(bot) || !fileControls.canSend(bot))) {
+        if (!request.dispatched && (closing || !isLive(bot) || executionEpoch !== bot.executionEpoch || !fileControls.canSend(bot))) {
           releaseActivity();
-          throw problem('NOT_ALLOWED', 'Bot stopped before input dispatch', 'send', botId, requestId);
+          throw problem('NOT_ALLOWED', 'Bot stopped before input dispatch', operation, botId, requestId);
         }
         const querying = request.dispatched === true;
         try {
           request.dispatched = true;
           records.record('input', { ...identity, state: querying ? 'receipt-query' : 'dispatched' });
-          const receipt = await backend.send(botId, input, { mode, inputId });
+          const receipt = await backend.send(botId, input, { mode, inputId, steeringMode, executionEpoch });
           if (receipt.status === 'accepted' && receipt.disposition === 'handled') releaseActivity();
           records.record('input', { ...identity, state: receipt.status, disposition: receipt.disposition,
             reason: receipt.reason, cursor: bot.info.cursor });
@@ -471,7 +478,7 @@ export async function createRuntime(options) {
           if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
             releaseActivity();
             records.record('input', { ...identity, state: 'rejected', error: errorInfo(error) });
-            throw problem(error.code, error.message, 'send', botId, requestId);
+            throw problem(error.code, error.message, operation, botId, requestId);
           }
           records.record('input', { ...identity, state: 'unknown', error: errorInfo(error) });
           return { inputId, status: 'unknown' };
@@ -479,7 +486,7 @@ export async function createRuntime(options) {
       } };
       bot.activityClaims.add(request);
       refreshActivity(bot);
-      inputRequests.reserve(caller, botId, requestId, { input, mode }, () => request);
+      inputRequests.reserve(caller, botId, requestId, parameters, () => request);
     }
     if (!request.result) {
       request.result = Promise.resolve().then(request.run).then(result => {
@@ -489,8 +496,46 @@ export async function createRuntime(options) {
     }
     const result = await observe(request.result);
     if (result === timedOut) records.record('input', { botId, requestId: redactor.text(requestId), inputId: request.inputId,
-      source: caller, mode, state: 'unknown', reason: 'host-wait-expired' });
+      caller, source: redactor.text(source) ?? caller, mode, steeringMode, state: 'unknown', reason: 'host-wait-expired' });
     return result === timedOut ? { inputId: request.inputId, status: 'unknown' } : structuredClone(result);
+  }
+
+  async function interrupt(botId, options) {
+    const requestId = options?.requestId;
+    const timeoutMs = bound(options, 'interrupt', botId);
+    if (!validId(requestId)) throw problem('INVALID_CONTRACT', 'interrupt requires a requestId', 'interrupt', botId, requestId);
+    const bot = findBot(botId, 'interrupt', requestId);
+    let request = bot.interruptRequests.get(requestId);
+    if (!request) {
+      if (closing || !isLive(bot)) throw problem('NOT_ALLOWED', 'Bot is not available to interrupt', 'interrupt', botId, requestId);
+      if (bot.interruption) throw problem('CONFLICT', 'A previous interrupt is unconfirmed', 'interrupt', botId, requestId);
+      request = { interruptId: randomUUID(), executionEpoch: ++bot.executionEpoch };
+      bot.interruptRequests.set(requestId, request);
+      bot.interruption = request;
+    }
+    const identity = { botId, requestId: redactor.text(requestId), interruptId: request.interruptId, executionEpoch: request.executionEpoch };
+    if (request.confirmed) return { interruptId: request.interruptId, status: 'interrupted' };
+    if (!request.work && !closing && isLive(bot)) {
+      records.record('interrupt', { ...identity, state: 'dispatched' });
+      request.work = Promise.resolve().then(async () => {
+        if (closing || !isLive(bot)) return;
+        const result = await backend.interrupt(botId, request);
+        if (result.status === 'interrupted' && isLive(bot)) {
+          request.confirmed = true;
+          bot.interruption = undefined;
+          bot.nativeExecuting = false;
+          bot.activityClaims.clear();
+          refreshActivity(bot);
+        }
+        records.record('interrupt', { ...identity, state: request.confirmed ? 'interrupted' : 'unknown' });
+      }).catch(error => {
+        records.record('interrupt', { ...identity, state: 'unknown', error: errorInfo(error) });
+      }).finally(() => { request.work = undefined; });
+    }
+    if (request.work && await observe(request.work, timeoutMs) === timedOut) {
+      records.record('interrupt', { ...identity, state: 'unknown', reason: 'host-wait-expired' });
+    }
+    return { interruptId: request.interruptId, status: request.confirmed ? 'interrupted' : 'unknown' };
   }
 
   function onEvent(handler) {
@@ -559,5 +604,11 @@ export async function createRuntime(options) {
     }]) : structuredClone(result);
   }
 
-  return Object.freeze({ id: runtimeId, spawn: input => spawn(input), get, list, send: (id, input, options) => send(id, input, options), onEvent, stop, close, files: fileControls.api });
+  return Object.freeze({
+    id: runtimeId, spawn: input => spawn(input), get, list,
+    start: (id, input, options) => send(id, input, { requestId: options?.requestId, mode: 'followUp' }, 'host', 'start'),
+    steer: (id, input, options) => send(id, input, { ...options, mode: 'steer' }, 'host', 'steer'),
+    send: (id, input, options) => send(id, input, options),
+    interrupt, onEvent, stop, close, files: fileControls.api,
+  });
 }

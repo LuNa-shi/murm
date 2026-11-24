@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
@@ -26,7 +26,7 @@ async function setup(t) {
   } }, services: new ServiceRegistry(), maxBots: 3, outputDir });
   t.after(async () => { await runtime.close(); await rm(outputDir, { recursive: true, force: true }); });
   const bot = await runtime.spawn({ profile: 'worker', requestId: 'spawn' });
-  return { runtime, bot };
+  return { runtime, bot, outputDir };
 }
 
 test('unknown input receipt can gain evidence without a second submission', async t => {
@@ -205,4 +205,69 @@ test('lists every registered Bot and filters by parent and observed status', asy
   assert.equal((await runtime.get(bot.id)).status, 'running');
   assert.deepEqual(await runtime.list({ status: 'starting' }), []);
   await assert.rejects(runtime.list({ status: 'pending' }), { code: 'INVALID_CONTRACT' });
+});
+
+test('start and steer share the compatible input ledger and audit the trusted host source', async t => {
+  const { runtime, bot, outputDir } = await setup(t);
+  transport.next = async id => transport.confirm(id, 'started');
+  const start = await runtime.start(bot.id, 'first phase', { requestId: 'start' });
+  assert.equal(start.disposition, 'started');
+  assert.deepEqual(await runtime.send(bot.id, 'first phase', { requestId: 'start', mode: 'followUp' }), start);
+  transport.next = async id => transport.confirm(id, 'queued');
+  const options = { requestId: 'push', source: 'external-message-service', steeringMode: 'all' };
+  const steer = await runtime.steer(bot.id, 'push now', options);
+  assert.equal(steer.disposition, 'queued');
+  assert.equal(transport.submissions.get(steer.inputId).steeringMode, 'all');
+  assert.deepEqual(await runtime.steer(bot.id, 'push now', options), steer);
+  await assert.rejects(runtime.steer(bot.id, 'push now', { ...options, source: 'different' }), { code: 'CONFLICT' });
+  await assert.rejects(runtime.steer(bot.id, 'push now', { ...options, steeringMode: 'one-at-a-time' }), { code: 'CONFLICT' });
+  await assert.rejects(runtime.steer(bot.id, 'bad mode', { requestId: 'bad', steeringMode: 'all-at-once' }), { code: 'INVALID_CONTRACT' });
+  await runtime.close();
+  const rows = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.ok(rows.some(row => row.type === 'input' && row.inputId === steer.inputId &&
+    row.state === 'accepted' && row.caller === 'host' && row.source === 'external-message-service' && row.steeringMode === 'all'));
+});
+
+test('interrupt fences new inputs until the old execution settles and replays the same receipt', async t => {
+  const { runtime, bot } = await setup(t);
+  transport.next = async id => transport.confirm(id, 'started');
+  await runtime.start(bot.id, 'old execution', { requestId: 'old' });
+  let finish;
+  transport.onInterrupt = () => new Promise(resolve => { finish = resolve; });
+  const observed = [];
+  runtime.onEvent(event => observed.push(event));
+  const first = runtime.interrupt(bot.id, { requestId: 'interrupt' });
+  await new Promise(resolve => setImmediate(resolve));
+  const repeat = runtime.interrupt(bot.id, { requestId: 'interrupt' });
+  await assert.rejects(runtime.interrupt(bot.id, { requestId: 'other-interrupt' }), { code: 'CONFLICT' });
+  await assert.rejects(runtime.start(bot.id, 'blocked execution', { requestId: 'new' }), { code: 'NOT_ALLOWED' });
+  transport.listeners.get(bot.id)({ type: 'settled', outcome: 'aborted' });
+  finish({ status: 'interrupted' });
+  const receipt = await first;
+  assert.equal(receipt.status, 'interrupted');
+  assert.deepEqual(await repeat, receipt);
+  assert.equal((await runtime.get(bot.id)).status, 'idle');
+  transport.next = async id => transport.confirm(id, 'started');
+  await runtime.start(bot.id, 'new execution', { requestId: 'new' });
+  assert.deepEqual(await runtime.interrupt(bot.id, { requestId: 'interrupt' }), receipt);
+  assert.equal((await runtime.get(bot.id)).status, 'running');
+  assert.equal(transport.interruptCalls.length, 1);
+  assert.equal(transport.submissions.size, 2);
+  assert.deepEqual(observed.map(x => [x.type, x.outcome]), [['settled', 'aborted']]);
+});
+
+test('an uncertain interrupt cannot reach a later execution and the same request can confirm the fence', async t => {
+  const { runtime, bot } = await setup(t);
+  transport.onInterrupt = async () => ({ status: 'unknown' });
+  const request = { requestId: 'lost-interrupt' };
+  const first = await runtime.interrupt(bot.id, request);
+  assert.equal(first.status, 'unknown');
+  await assert.rejects(runtime.steer(bot.id, 'too soon', { requestId: 'blocked' }), { code: 'NOT_ALLOWED' });
+  transport.onInterrupt = async () => ({ status: 'interrupted' });
+  const second = await runtime.interrupt(bot.id, request);
+  assert.equal(second.status, 'interrupted');
+  assert.equal(second.interruptId, first.interruptId);
+  assert.deepEqual(transport.interruptCalls.map(call => call.executionEpoch), [1, 1]);
+  await runtime.stop(bot.id);
+  assert.deepEqual(await runtime.interrupt(bot.id, request), second);
 });
