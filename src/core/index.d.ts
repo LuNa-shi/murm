@@ -13,6 +13,7 @@ export interface Profile {
   writable: boolean;
   services: Readonly<Record<string, readonly string[]>>;
   spawnProfiles?: readonly string[];
+  allowContextFork?: boolean;
   env?: Readonly<Record<string, string>>;
   network?: { allow: readonly string[] };
   collect?: CollectionSpec;
@@ -73,6 +74,7 @@ export interface GrantReceipt {
 }
 
 export interface SpawnOptions {
+  forkFrom?: string;
   requestId: string;
   profile: string;
   parentId?: string;

@@ -54,6 +54,9 @@ export function snapshotProfiles(profiles, models, registrations) {
       throw new TypeError(`Profile ${name} network must contain non-loopback IPv4 HTTP(S) origins`);
     }
     const collect = snapshotCollection(input.collect);
+    if (input.allowContextFork !== undefined && typeof input.allowContextFork !== 'boolean') {
+      throw new TypeError(`Profile ${name} has invalid allowContextFork`);
+    }
     if (input.spawnProfiles !== undefined && !strings(input.spawnProfiles)) {
       throw new TypeError(`Profile ${name} has invalid spawnProfiles`);
     }
@@ -76,9 +79,10 @@ export function snapshotProfiles(profiles, models, registrations) {
 
 export function snapshotSpawn(input, profiles, registrations) {
   if (!record(input) || !validId(input.requestId) || !profiles.has(input.profile) ||
-      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect'].includes(key)) ||
+      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect', 'forkFrom'].includes(key)) ||
       (input.writable !== undefined && typeof input.writable !== 'boolean') ||
-      (input.parentId !== undefined && !validId(input.parentId))) {
+      (input.parentId !== undefined && !validId(input.parentId)) ||
+      (input.forkFrom !== undefined && !validId(input.forkFrom))) {
     throw new TypeError('Invalid spawn request or unsupported spawn options');
   }
   validateEnvironment(input.secretEnv, 'secretEnv');

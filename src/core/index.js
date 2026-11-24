@@ -86,7 +86,7 @@ export async function createRuntime(options) {
     return bot && {
       profile: bot.info.profile, model: bot.profile.model, status: bot.info.status,
       unavailable: bot.fatal === true,
-      services: bot.profile.services, bindings: bot.bindings, parentId: bot.info.parentId, spawnProfiles: bot.profile.spawnProfiles,
+      services: bot.profile.services, bindings: bot.bindings, parentId: bot.info.parentId, spawnProfiles: bot.profile.spawnProfiles, allowContextFork: bot.profile.allowContextFork,
     };
   };
   let bridge, modelAccess, backend;
@@ -360,6 +360,9 @@ export async function createRuntime(options) {
       if (closing) throw problem('NOT_ALLOWED', 'Runtime is closing', 'spawn', undefined, requestId);
       if (parameters.parentId && !isLive(findBot(parameters.parentId, 'spawn', requestId))) {
         throw problem('NOT_ALLOWED', 'Parent Bot is unavailable', 'spawn', parameters.parentId, requestId);
+      }
+      if (parameters.forkFrom && !isLive(findBot(parameters.forkFrom, 'spawn', requestId))) {
+        throw problem('NOT_ALLOWED', 'Context fork source Bot is unavailable', 'spawn', parameters.forkFrom, requestId);
       }
       if ([...bots.values()].filter(bot => bot.info.status !== 'closed').length >= maxBots) {
         throw problem('CONFLICT', 'Runtime has no free Bot Slot', 'spawn', undefined, requestId);

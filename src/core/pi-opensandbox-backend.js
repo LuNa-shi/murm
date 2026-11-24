@@ -134,6 +134,13 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
   return {
     async spawn({ botId, profile, options = {}, signal, onEvent, onExecutionStart, recordAllocation }) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
+      let forkSession;
+      if (options.forkFrom !== undefined) {
+        const source = bots.get(options.forkFrom);
+        if (!source || source.stopping || source.exited || source.historyLost) throw Object.assign(new Error('Context Fork source is unavailable'), { code: 'NOT_ALLOWED' });
+        forkSession = await source.manager.coreSessionSnapshot(source.id);
+        if (source.stopping || source.exited || source.historyLost || signal?.aborted || closing) throw Object.assign(new Error('Context Fork source stopped during capture'), { code: 'NOT_ALLOWED' });
+      }
       const manager = new OpenSandboxManager({ ...config.sandbox, image: profile.image });
       const bot = { id: botId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
       bots.set(botId, bot);
@@ -160,12 +167,13 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       assertOpen();
       const model = config.models[profile.model];
       await manager.startAgent({ executionId: botId, command: 'pi',
-        args: ['--mode', 'rpc', '--session-dir', '/workspace/runtime/pi-session', '--session-id', randomUUID(),
+        args: ['--mode', 'rpc', '--session-dir', '/workspace/runtime/pi-session',
+          ...(forkSession ? ['--session', '/workspace/runtime/pi-session/fork.jsonl'] : ['--session-id', randomUUID()]),
           '--tools', 'read,write,edit,bash', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files',
           '--append-system-prompt', '/workspace/runtime/profile-prompt.txt', '--provider', model.provider, '--model', model.model],
         systemPrompt: profile.prompt, systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
-        files: options.files,
+        files: options.files, forkSession,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
         projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
