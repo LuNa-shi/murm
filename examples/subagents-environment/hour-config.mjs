@@ -31,7 +31,7 @@ export async function createSubagentsHourConfiguration({env=process.env,signal}=
   const upstreamUrl=required('UPSTREAM_URL');let upstreamHeaders;
   try{upstreamHeaders=JSON.parse(required('UPSTREAM_HEADERS_JSON'));}catch{throw fail('SUBAGENTS_HOUR_HEADERS_INVALID');}
   const host=get('HOST')??'172.17.0.1',lifecycle=get('LIFECYCLE_URL')??'http://127.0.0.1:8080/v1',apiKey=get('LIFECYCLE_TOKEN')??env.OPEN_SANDBOX_API_KEY,execdToken=get('EXECD_TOKEN')??env.SWARMENV_EXECD_ACCESS_TOKEN,endpointHost=get('ENDPOINT_HOST')??'127.0.0.1';
-  const budgets=Object.freeze({setupMs:600000,workMs:3900000,cleanupMs:180000,recoveryMs:300000,marginMs:120000,turnMs:180000});
+  const budgets=Object.freeze({setupMs:600000,workMs:3900000,cleanupMs:180000,recoveryMs:300000,marginMs:120000,turnMs:600000});
   const {turnMs,...phases}=budgets;
   const provider={baseUrl:lifecycle,headers:apiKey?{'OPEN-SANDBOX-API-KEY':apiKey}:{},endpointHost,execdToken,uncertaintyMs:1000};
   const observeSessions=createNativeSessionObserver({provider});

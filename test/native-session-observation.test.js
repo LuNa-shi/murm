@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import { createNativeSessionObserver, SESSION_OBSERVATION_COMMAND } from '../src/environments/endurance/native-session-observation.js';
 import { openSandboxBotKey, openSandboxRuntimeKey } from '../src/runtime/opensandbox-metadata.js';
 
-function fixture({mismatch=false,conflict=false,sse=false,mismatchAfter=false,missingTerminal=false,noAuth=false,localRoute=false}={}) {
+function fixture({mismatch=false,conflict=false,sse=false,mismatchAfter=false,missingTerminal=false,noAuth=false,localRoute=false,legacyFailure}={}) {
   const calls=[];let commandSeen=false;const runtimeId='actual-runtime';
   const resources=['a','b','c','d'].map((botId,index)=>({botId,sandboxId:`sandbox-${index}`,requestId:`spawn-${index}`,allocationSeq:index*4+3,readySeq:index*4+4,source:'host'}));
   const fetchImpl=async(input,options={})=>{
@@ -19,6 +19,12 @@ function fixture({mismatch=false,conflict=false,sse=false,mismatchAfter=false,mi
     const index=Number(url.pathname.split('/')[1].slice(8));
     const sessionId=`00000000-0000-0000-0000-${String(index).padStart(12,'0')}`;
     const stdout=JSON.stringify({sessionId,sessionFile:`2026-11-23T00-00-00Z_${conflict?'different':sessionId}.jsonl`});
+    if(sse==='execd-v1.1'){
+      const events=[{type:'init',text:'command'}, {type:'ping',text:''}, {type:'stdout',text:stdout}];
+      if(!missingTerminal)events.push({type:'execution_complete'});
+      if(legacyFailure)events.push(legacyFailure);
+      return new Response(events.map(value=>JSON.stringify(value)).join('\n')+'\n',{headers:{'content-type':'text/event-stream'}});
+    }
     if(sse)return new Response(`event: stdout\ndata: ${JSON.stringify({text:stdout})}\n\n${missingTerminal?'':'event: execution_complete\ndata: {"exit_code":0}\n\n'}`,{headers:{'content-type':'text/event-stream'}});
     return Response.json({stdout,stderr:'',exit_code:0});
   };
@@ -31,6 +37,25 @@ for(const sse of [false,true])test(`native observer binds exact admitted resourc
   assert.equal(fixture_.calls.length,16);
   assert.ok(fixture_.calls.every(row=>!row.url.includes('page')&&!['DELETE','PUT'].includes(row.method)));
   assert.equal(JSON.stringify(rows).includes('private-'),false);
+});
+
+test('native observer accepts the installed Execd JSON records with SSE media type',async()=>{
+  const f=fixture({sse:'execd-v1.1'});
+  const rows=await f.observe({...f,timeoutMs:1000});
+  assert.deepEqual(rows.map(row=>row.botId),['a','b','c','d']);
+  assert.equal(new Set(rows.map(row=>row.sessionId)).size,4);
+  assert.equal(f.calls.length,16);
+});
+
+test('legacy command still rejects a missing or repeated completion and a failure event',async()=>{
+  const missing=fixture({sse:'execd-v1.1',missingTerminal:true});
+  await assert.rejects(missing.observe({...missing,timeoutMs:1000}),{code:'NATIVE_SESSION_COMMAND_UNKNOWN'});
+  const repeated=fixture({sse:'execd-v1.1',legacyFailure:{type:'execution_complete'}});
+  await assert.rejects(repeated.observe({...repeated,timeoutMs:1000}),{code:'NATIVE_SESSION_COMMAND_UNKNOWN'});
+  const errored=fixture({sse:'execd-v1.1',missingTerminal:true,legacyFailure:{type:'error'}});
+  await assert.rejects(errored.observe({...errored,timeoutMs:1000}),{code:'NATIVE_SESSION_COMMAND_FAILED'});
+  const malformed=fixture({sse:'execd-v1.1',legacyFailure:42});
+  await assert.rejects(malformed.observe({...malformed,timeoutMs:1000}),{code:'NATIVE_SESSION_STREAM_INVALID'});
 });
 
 test('wrong provider owner prevents every sandbox command',async()=>{

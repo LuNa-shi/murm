@@ -6,7 +6,7 @@ import { createHourWindow, HOUR_MS } from '../shared/hour-window.js';
 import { validateHourBudgets, createHourRunModelGate, checkHourLifetime } from './policy.js';
 const fail = code => Object.assign(new Error(code), { code });
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-const releases = Object.freeze([0, 900_000, 1_800_000, 3_300_000]);
+const releases = Object.freeze([0, 900_000, 1_800_000, 2_700_000]);
 
 /** Four business groups retain twelve deliveries. Readiness is setup evidence,
  * never an extra delivery group or a substitute for an effective work window. */
@@ -75,7 +75,7 @@ export async function runLeadHelperHour({ options, workload, admit, quota, budge
     report = await runWithReport({ outputDir: options.outputDir, closeTimeoutMs: budgets.cleanupMs,
       redact: value => environment ? environment.redact(value) : value,
       async createRuntime() {
-        environment = await createLeadHelperEnvironment({ ...options, helperCount: 3, signal: combined,
+        environment = await createLeadHelperEnvironment({ ...options, helperCount: 3, includeGit: false, signal: combined,
           exportLimit: Math.min(options.exportLimit ?? 16 * 1024 ** 2, 16 * 1024 ** 2),
           turnTimeoutMs: budgets.turnMs, workTimeoutMs: Math.min(900_000, budgets.workMs), closeTimeoutMs: Math.min(60_000, budgets.cleanupMs) });
         const team = environment.snapshot().team;
@@ -96,7 +96,11 @@ export async function runLeadHelperHour({ options, workload, admit, quota, budge
         for (let stage = 0; stage < 4; stage++) {
           await pauseUntil(releases[stage]);
           if (monitor.elapsed() >= (stage + 1) * 900_000) throw fail('HOUR_STAGE_LATE');
-          const receipt = await environment.runStage({ ...stages[stage], signal: combined });
+          // Convert only the remaining trusted work-window duration to the
+          // Environment's monotonic clock; all actors share this one cutoff.
+          const remainingMs = Math.min((stage + 1) * 900_000, budgets.workMs) - monitor.elapsed();
+          const deadlineAtMs = performance.now() + remainingMs;
+          const receipt = await environment.runStage({ ...stages[stage], signal: combined, deadlineAtMs });
           if (await verifyStage(receipt) !== true) throw fail('HOUR_BUSINESS_UNCONFIRMED');
           await health();
           if (monitor.elapsed() >= (stage + 1) * 900_000) throw fail('HOUR_STAGE_LATE');

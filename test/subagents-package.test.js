@@ -26,6 +26,10 @@ const native=await createSubagentsHourConfiguration({env:{
 }});
 try {
  assert.equal(native.backend.modelGateway.maxOutputTokens,null);
+ assert.equal(native.budgets.turnMs,600000);
+ assert.equal(native.budgets.workMs,3900000);
+ assert.equal(native.backend.sandbox.timeoutSeconds,5160);
+ assert.equal(JSON.parse(await readFile(native.outputDir+"/configuration.json","utf8")).budgets.turnMs,600000);
  assert.equal(native.backend.models.default.upstream.url,native.quota.url);
  assert.equal(native.quota.receipt().forwarded,0);
  assert.equal(typeof native.observeSessions,'function');

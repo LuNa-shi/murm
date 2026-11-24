@@ -59,7 +59,7 @@
     },
     {
       "path": "examples/subagents-environment/hour.mjs",
-      "sha256": "969d19201bc86341f33d793d96238b20ba6fe0d011e452c5c1c1fdd59f63879a"
+      "sha256": "b1c78ad0079ba281b1cc2a65efd9470a6c79b4543590e9a918ea825ee0554665"
     },
     {
       "path": "examples/subagents-environment/main.mjs",
@@ -71,7 +71,7 @@
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
-      "sha256": "63748cfbbcaa76a6d49e503ab374fc72d6267a79cc588aef872e8eba3d9956c9"
+      "sha256": "50377172cdd46e4035e6819b989d57b6b16c76b6fe65324d3fe4d4d63985cde3"
     },
     {
       "path": "src/environments/agensh/index.js",
@@ -119,7 +119,7 @@
     },
     {
       "path": "src/environments/lead-helper/index.js",
-      "sha256": "33ef0625b9fa0f79457ee9fcefea54b50a5dfa062494799d4b8b19a1b9260f68"
+      "sha256": "b3ccfeac2e3f192a72fb9ff69ebf69328026aaa81009d58452b595346f11093f"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -219,13 +219,13 @@
       "path": "examples/subagents-environment/prompts.mjs",
       "anchor": "export const hourParentPrompt = ",
       "line": 21,
-      "sha256": "4fd9133458de210d45f760c27382fef87846bcff3da438644bded449a77ee17c"
+      "sha256": "c42da2b8aedbc36bf5f8646e59b042bf9844c994df0e6bc1d9d3ad478371c551"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
       "anchor": "export const hourChildPrompt = ",
       "line": 24,
-      "sha256": "bb32ad54a0aefd6668a748c5cc7b49e617ccb32e21678f6df1378287e67786cf"
+      "sha256": "a467a299b0077fce6c5009a00f5f6e41286d454314680f48cf01c1859e5d74d8"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
@@ -237,7 +237,7 @@
       "path": "examples/subagents-environment/prompts.mjs",
       "anchor": "export const hourStageInstructions = ",
       "line": 27,
-      "sha256": "79de7913d7226ec2cbee2d5fbe9a8388b64e7669b863ffb2fe21d47645665945"
+      "sha256": "c95eba0e0d934e03e929454d30fcee7b8b8c672dcec6a59c016b09a462f8cc30"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
@@ -582,7 +582,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "ace7cd759030a41a20b76dfba5c7c16d81eef558345912066e815d97ba9b8025"
+      "sha256": "1a54a1362b7cae04b7a915a2230233eddd1b8961056eee68667187fc8659b841"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
