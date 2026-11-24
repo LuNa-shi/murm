@@ -35,6 +35,8 @@ function sandboxExpiry(value) {
 export function createPiOpenSandboxBackend(config) {
   if (config?.isolation?.network !== 'local-docker') throw invalid('Pi/OpenSandbox requires local-docker isolation');
   httpUrl(config.sandbox?.lifecycleBaseUrl, 'sandbox.lifecycleBaseUrl');
+  const timeoutSeconds = config.sandbox.timeoutSeconds === undefined ? 3600 : config.sandbox.timeoutSeconds;
+  if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 60) throw invalid('sandbox.timeoutSeconds must be a safe integer of at least 60');
   if (typeof config.bridge?.host !== 'string' || !config.bridge.publicUrl?.includes('{port}')) throw invalid('Bridge host and publicUrl with {port} are required');
   httpUrl(config.bridge.publicUrl.replaceAll('{port}', '12345'), 'bridge.publicUrl');
   if (typeof config.modelGateway?.host !== 'string' || typeof config.modelGateway.advertiseHost !== 'string') throw invalid('Model gateway host and advertiseHost are required');
@@ -135,7 +137,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
         if (closing || bot.stopping || signal?.aborted) throw Object.assign(new Error('Bot startup is closing'), { code: 'NOT_ALLOWED' });
       };
       assertOpen();
-      const sandbox = await manager.ensureExecution({ executionId: botId, botId, projectQuotaRequired: true, cleanupOnFailure: false,
+      const sandbox = await manager.ensureExecution({ executionId: botId, botId, timeoutSeconds: config.sandbox.timeoutSeconds ?? 3600, projectQuotaRequired: true, cleanupOnFailure: false,
         metadata: { runtime_id: runtimeId }, onWorkerToken: token => registerPrivateValues([token]),
         onCreateDispatch: entry => recordAllocation({ state: 'allocation-dispatched', timeoutSeconds: entry.timeout_seconds }),
         onCreated: entry => recordAllocation({ state: 'allocation-observed', sandboxId: entry.sandbox_id,

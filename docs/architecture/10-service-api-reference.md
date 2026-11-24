@@ -40,7 +40,7 @@ This section is generated from executable exports and checked against the source
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 | [src/core/index.d.ts](../../src/core/index.d.ts) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
 | [src/core/services.d.ts](../../src/core/services.d.ts) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
-| [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `166e51de1b45cf32e17b0b62fdafecfe913521122450a125f3ece1c87cd267ed` |
+| [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `a7be8a60645987cb86dc5271cfd0f1be6005e43d523b7161abed9fa2fef569c9` |
 
 ### Exact built-in command operation surface
 
@@ -3419,6 +3419,8 @@ export interface PiOpenSandboxBackendConfig {
     endpointHost?: string;
     resourceLimits?: { cpu: string; memory: string };
     commandTimeoutMs?: number;
+    /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
+    timeoutSeconds?: number;
   };
   bridge: { host: string; publicUrl: string };
   modelGateway: {

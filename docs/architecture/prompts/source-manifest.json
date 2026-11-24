@@ -19,7 +19,7 @@
     },
     {
       "path": "src/core/pi-opensandbox-backend.js",
-      "sha256": "67ae3f402e339689b7729020057d58168523154f1a9956c661df8e73fbe34d3d"
+      "sha256": "53fa63cce388b1ce7d68487f665eb4a8aa2cdc24c47cb2eb5195705b3e8fbd43"
     },
     {
       "path": "scripts/opensandbox-agent-worker.mjs",

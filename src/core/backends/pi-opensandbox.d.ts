@@ -8,6 +8,8 @@ export interface PiOpenSandboxBackendConfig {
     endpointHost?: string;
     resourceLimits?: { cpu: string; memory: string };
     commandTimeoutMs?: number;
+    /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
+    timeoutSeconds?: number;
   };
   bridge: { host: string; publicUrl: string };
   modelGateway: {

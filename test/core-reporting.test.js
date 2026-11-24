@@ -10,7 +10,7 @@ const explicitSecret = 'explicit-test-secret\$[]';
 const upstreamSecret = 'test-upstream-bearer';
 const profileValue = 'configured-profile-value';
 
-async function fixture(t, hooks, { registrations = [], grants = {} } = {}) {
+async function fixture(t, hooks, { registrations = [], grants = {}, sandbox = {} } = {}) {
   const provider = await createLifecycleProvider(t, hooks);
   provider.allowDeletion();
   const { createRuntime } = await import('@swarmenv/core');
@@ -23,7 +23,7 @@ async function fixture(t, hooks, { registrations = [], grants = {} } = {}) {
     for (const registration of registrations) services.registerService(registration);
     return {
       backend: createPiOpenSandboxBackend({
-        sandbox: { lifecycleBaseUrl: provider.url, resourceLimits: { cpu: '1', memory: '1Gi' } },
+        sandbox: { lifecycleBaseUrl: provider.url, resourceLimits: { cpu: '1', memory: '1Gi' }, ...sandbox },
         bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
         modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1', requestTimeoutMs: 8000, maxOutputTokens: 256 },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses',
@@ -309,4 +309,28 @@ test('a failed Runtime summary write reports its pending save and a retry publis
   assert.equal(summary.status, 'closed');
   assert.equal(summary.config.models.default.maxOutputTokens, 256);
   assert.equal(summary.config.waiting.hostDefaultMs, 60_000);
+});
+
+
+test('frozen host lifetime reaches actual provider requests and never replaces actual expiry', async t => {
+  const requested = [];
+  const sandbox = { timeoutSeconds: 5100 };
+  const { makeRuntime } = await fixture(t, {
+    onCreate(id, body) { requested.push({ id, timeout: body.timeout }); },
+    createExpiresAt: id => id === 'fixture-1' ? '2099-01-03T08:00:00Z' : undefined,
+  }, { sandbox });
+  const runtime = await makeRuntime();
+  t.after(() => runtime.close());
+  sandbox.timeoutSeconds = 7200;
+  await assert.rejects(runtime.spawn({ requestId: 'guest-override', profile: 'worker', timeoutSeconds: 7200 }), { code: 'INVALID_CONTRACT' });
+  const first = await runtime.spawn({ requestId: 'configured', profile: 'worker' });
+  const second = await runtime.spawn({ requestId: 'same-frozen-config', profile: 'worker' });
+  const closed = await runtime.close();
+  const rows = (await readFile(closed.evidence.path, 'utf8')).trim().split('\n').map(JSON.parse).filter(row => row.type === 'spawn');
+  assert.deepEqual(requested.map(row => row.timeout), [5100, 5100]);
+  assert.deepEqual(rows.filter(row => row.state === 'allocation-dispatched').map(row => row.timeoutSeconds), [5100, 5100]);
+  assert.deepEqual(rows.filter(row => row.state === 'allocation-observed').map(row => [row.botId, row.sandboxId, row.expiresAt]), [
+    [first.id, requested[0].id, '2099-01-03T08:00:00.000Z'],
+    [second.id, requested[1].id, null],
+  ]);
 });
