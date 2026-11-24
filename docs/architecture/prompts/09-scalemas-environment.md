@@ -21,10 +21,10 @@ Search relevant shared content, visit the originals, perform useful work, and pu
 ````
 ## Exact input composition
 
-index is the fixed zero-based peer index; round is its zero-based serial cycle; question is the validated host question; cyclePrompt is the complete literal above. The host runInput helper sends this string once as followUp with a fresh per-peer cycle request ID.
+index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string once as followUp with a fresh per-peer cycle request ID.
 
-Body SHA-256: `413fbd1df277be812f95fca1f943dd1a3581827a19fd8df79834d4a7e7acd2f0`
+Body SHA-256: `8d397d35681b28e8057895eb650379c4c4f22b47c93cf99399f0be730e66f514`
 
 ````text
-scaleMAS peer=${peer.index} cycle=${round}\n${question}\n${cyclePrompt}
+scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}
 ````

@@ -30,6 +30,7 @@ export async function createAgenshTeam(options) {
   const secrets = [options.gitea?.adminToken, options.mattermost?.adminToken, ...(options.secretValues ?? [])].filter(value => typeof value === 'string' && value);
   const redact = value => { let bytes = JSON.stringify(value); for (const secret of [...secrets].sort((a, b) => b.length - a.length)) bytes = bytes.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(bytes); };
   const peers = new Map(); const routers = new Map(); const subscriptions = new Map(); const unsubscriptions = []; const pendingSources = new Set();
+  const stoppedPeers = new Set();
   let runtime, facilities, services, closing = false, closeWork, completed, fencedFailure;
   const hostStreamFailure = () => ['HOST_INPUT_FAILED', 'HOST_OUTPUT_FAILED'].includes(signal.reason?.code) ? signal.reason.code : undefined;
   const check = () => {
@@ -105,10 +106,20 @@ export async function createAgenshTeam(options) {
     for (const router of routers.values()) router.markReady();
     return Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getBot: runtime.get,
       currentPeers: () => ({ closing, peers: peerStates() }),
+      async stopPeer(key, { timeoutMs = 60_000 } = {}) {
+        if (closing || !peers.has(key)) throw fail('UNKNOWN_RECIPIENT');
+        if (!finite(timeoutMs)) throw new TypeError('Peer stop requires a finite wait');
+        // Fence this peer's event/input owners before stopping its Core Bot.
+        // Facility credentials and all cleanup ownership remain with team.close.
+        const end = performance.now() + timeoutMs;
+        stoppedPeers.add(key); routers.get(key).stop();
+        await bounded(() => subscriptions.get(key).stop(), timeoutMs, 'SOURCE_STOP_PENDING');
+        return runtime.stop(peers.get(key).id, { timeoutMs: Math.max(1, Math.floor(end - performance.now())) });
+      },
       kickoff(key, text) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).kickoff(text); },
       ingest(key, event) { if (closing || !routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).ingest(event); },
       wait(key, batchId, wait) { if (!routers.has(key)) throw fail('UNKNOWN_RECIPIENT'); return routers.get(key).wait(batchId, wait); },
-      poll: () => Promise.all([...subscriptions.values()].map(source => source.poll?.())),
+      poll: () => Promise.all([...subscriptions].filter(([key]) => !stoppedPeers.has(key)).map(([, source]) => source.poll?.())),
     });
   } catch (error) {
     const code = fencedFailure?.code ?? hostStreamFailure() ?? error.code ?? 'TEAM_START_FAILED';

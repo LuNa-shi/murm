@@ -35,7 +35,7 @@
     },
     {
       "path": "src/environments/scalemas/index.js",
-      "sha256": "b68afc97dcbaf5b81c42a84454355cf02d1e444f5cde40cb8c5998f06bcbeb62"
+      "sha256": "cecc5b308fb7199c8ce1267f898652db61107eab869131acaebfb3ab892ba557"
     },
     {
       "path": "src/environments/flat/controller.js",
@@ -71,7 +71,19 @@
     },
     {
       "path": "src/environments/agensh/team.js",
-      "sha256": "e86c572564cf01786f0194e04f5fa8899be4e01b41bb05ee9b3fb723b3068dc4"
+      "sha256": "8f45caa211ddca3f0841cdd8ebd04c52ee8d6b13e7f3cb127c4c16272d495a11"
+    },
+    {
+      "path": "src/environments/endurance/agensh-workload.js",
+      "sha256": "4f94ac2990b9145f102fa60ff558501076d72faad9d5d04a74e4ca492245268e"
+    },
+    {
+      "path": "src/environments/endurance/scalemas-workload.js",
+      "sha256": "a64f6a63222ff73da5f7628631ab5c335776a3f5a79f29ee20bc9b172225ffab"
+    },
+    {
+      "path": "src/environments/endurance/programming.js",
+      "sha256": "68dfb0159b2ce43d79688906f4d3473452d58d6604a7c52960e6be7b53813048"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",
@@ -204,8 +216,8 @@
     {
       "path": "src/environments/scalemas/index.js",
       "anchor": "runInput(core, peer.botId, `",
-      "line": 82,
-      "sha256": "413fbd1df277be812f95fca1f943dd1a3581827a19fd8df79834d4a7e7acd2f0"
+      "line": 87,
+      "sha256": "8d397d35681b28e8057895eb650379c4c4f22b47c93cf99399f0be730e66f514"
     },
     {
       "path": "src/environments/agensh/index.js",
@@ -254,6 +266,30 @@
       "anchor": "  return [`",
       "line": 23,
       "sha256": "8f943ea32b0291bed1fdbb8ecd6c55761fd81fb047587040bff06c185d1e063c"
+    },
+    {
+      "path": "src/environments/endurance/agensh-workload.js",
+      "anchor": "  function input(peer, stage) {",
+      "line": 30,
+      "sha256": "bbfde1eaeaf39ec0a940ec8d277719d2feff9fb7010435265ee8d8e1d5aeaa57"
+    },
+    {
+      "path": "src/environments/endurance/scalemas-workload.js",
+      "anchor": "    question:'",
+      "line": 17,
+      "sha256": "f38d43e888fc8db8e9b9854bcdd168f6f74efca4f4fb7eaff13a7a1364a864c5"
+    },
+    {
+      "path": "src/environments/endurance/scalemas-workload.js",
+      "anchor": "    questionForCycle(",
+      "line": 18,
+      "sha256": "644b629a436399869c806ccce656ebc0d5026cfec3027343ed8d1d78beb985ce"
+    },
+    {
+      "path": "src/environments/endurance/programming.js",
+      "anchor": "      return `",
+      "line": 12,
+      "sha256": "aca079a53f515daa6ec34c24e0b6ad91f2eb209ca784fe683c445c67a1faa574"
     },
     {
       "path": "src/environments/lead-helper/prompts.js",
@@ -305,6 +341,21 @@
     }
   ],
   "prompt_send_sites": [
+    {
+      "path": "src/environments/endurance/agensh-workload.js",
+      "line": 33,
+      "expression": "return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {\"peer\":\"${peer.key}\",\"stage\":${stage},\"n\":${n},\"square\":${n * n}} and exactly one trailing newline. Check its bytes, commit and push. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:\"FACT\",content:\"${fact}\"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Use one coherent Bash call per turn for the finite work. Board write fields are board_id,type,content; PR create fields are owner,repo,method:\"create\",title,head:WORK_BRANCH,base:\"main\". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;"
+    },
+    {
+      "path": "src/environments/endurance/programming.js",
+      "line": 10,
+      "expression": "const text = programming.prompt({ peer, stage });"
+    },
+    {
+      "path": "src/environments/endurance/scalemas-workload.js",
+      "line": 18,
+      "expression": "questionForCycle({peerIndex,round}) { return this.question + program.prompt(peerIndex, round); },"
+    },
     {
       "path": "src/runtime/runtime.js",
       "line": 977,
@@ -440,11 +491,15 @@
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
-      "sha256": "1e9a2c43161642ddcb5437471c97ee40623b1b183ab17b9fdb1324cfcfc2e109"
+      "sha256": "84d87dd89d3695f8327261b7fc5205918e2d2f7c98278e51640af06be3c7d84f"
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",
       "sha256": "85df612341d87eaaa44d13f658909226cccb08d332c34aecfe4fc591e642f055"
+    },
+    {
+      "path": "docs/architecture/prompts/13-hour-matrix.md",
+      "sha256": "79f7f34e23d655f98ac7392de4ce4cf9b94f72136abc394e90ff0a914ea7d767"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",

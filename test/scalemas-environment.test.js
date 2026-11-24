@@ -241,3 +241,65 @@ test('host cancellation fences further inputs and uses an independent cleanup wi
   assert.ok(f.prompts.length <= 3); assert.ok(report.peers.every(peer => peer.turns.length === 1));
   assert.equal(f.provider.allocations(), 3);
 });
+
+test('host observes real six-peer ready, started turns and owned stop receipts', async t => {
+  const f = await fixture(t);const seen=[];let identity;
+  const { runScaleMAS }=await import('../src/environments/scalemas/index.js');
+  const report=await runScaleMAS({backend:f.backend,runId:'host-observed',image:'fixture',outputDir:f.directory,question:'Fixed question',poolSize:6,maxRounds:2,workTimeoutMs:10000,turnTimeoutMs:1000,closeTimeoutMs:1000,
+    async onReady({runtime,peerIds}) {identity=runtime.id;assert.equal(peerIds.length,6);assert.equal(f.prompts.length,0);for(const id of peerIds)assert.equal((await runtime.get(id)).status,'idle');seen.push('ready');},
+    onCycle({botId,result,snapshot}) {assert.equal(seen[0],'ready');assert.equal(result.receipt.disposition,'started');assert.equal(result.settled.botId,botId);assert.equal(snapshot.runtimeId,identity);seen.push('turn');},
+    onPeerStop({botId,receipt,snapshot}) {assert.equal(receipt.botId,botId);assert.equal(receipt.execution,'stopped');assert.equal(snapshot.runtimeId,identity);seen.push('stop');},
+  });
+  assert.equal(report.businessFailure,null);assert.equal(seen.filter(x=>x==='turn').length,12);assert.equal(seen.filter(x=>x==='stop').length,6);
+});
+
+test('hour scaleMAS uses actual six-Bot CLI publication and post-stop adoption under a controlled clock', { timeout: 60_000 }, async t => {
+  const { createScaleMASArithmeticWorkload } = await import('../src/environments/endurance/scalemas-workload.js');
+  const { controlledHourQuota } = await import('./fixtures/hour-quota-owner.js');
+  const { writeFile } = await import('node:fs/promises');
+  let original, now = 0; const waiting = [], verifiedPrograms = [];
+  const budgets = { setupMs: 40_000, workMs: 3_900_000, turnMs: 20_000, cleanupMs: 5000, recoveryMs: 1000, marginMs: 100 };
+  async function cli(start, operation, input, requestId) {
+    const path = join(f.directory, `hour-${requestId}.json`); await writeFile(path, JSON.stringify(input));
+    const url = new URL(start.env.SWARMENV_BRIDGE_URL); url.hostname = '127.0.0.1';
+    const result = await execute(process.execPath, ['scripts/swarm.mjs', 'substrate', operation, '--input', path, '--request-id', requestId], {
+      cwd: process.cwd(), env: { ...process.env, ...start.env, ...start.secret_env, SWARMENV_BRIDGE_URL: url.href }, timeout: 5000,
+    }); return JSON.parse(result.stdout);
+  }
+  const f = await fixture(t, async ({ peer, cycle, starts, message }) => {
+    assert.ok(message.message.includes(`Controlled private CLI task ${peer}:${cycle}`));
+    const n = 17 * (peer + 1) + cycle;
+    const value = { peer, phase: cycle, n, square: n * n, programming: { answer: `${peer}:${cycle}` } }, references = [];
+    if (peer === 0 && cycle === 6) value.tag = 'hourproducerfinal';
+    if (peer !== 0 && cycle >= 4) {
+      const found = await cli(starts[peer], 'search', { query: 'hourproducerfinal', limit: 1 }, `search-${peer}-${cycle}`);
+      assert.ok(found.results.some(row => row.address === original.address));
+      const visited = await cli(starts[peer], 'visit', { address: original.address }, `visit-${peer}-${cycle}`);
+      value.adoptedSquare = JSON.parse(visited.content).square; value.sum = value.square + value.adoptedSquare;
+      references.push(visited.address);
+    }
+    const published = await cli(starts[peer], 'publish', { content: JSON.stringify(value), references }, `publish-${peer}-${cycle}`);
+    if (peer === 0 && cycle === 6) original = published;
+  });
+  const { runScaleMASHour } = await import('../src/environments/endurance/scalemas.js');
+  const report = await runScaleMASHour({ options: { backend: f.backend, runId: 'hour-controlled', image: 'fixture', outputDir: f.directory },
+    budgets, quota: controlledHourQuota(budgets), workload: createScaleMASArithmeticWorkload({ programming: {
+      prompt: ({peer,stage}) => `Controlled private CLI task ${peer}:${stage}`,
+      verify: ({peer,stage,submission}) => { assert.equal(submission.answer, `${peer}:${stage}`); verifiedPrograms.push([peer,stage]); return true; },
+    } }), clock: () => now,
+    admit: async ({ runtime, workMs }) => ({ runtimeId: runtime.id, workDeadlineAtMs: now + workMs + 100 }),
+    waitForMs(ms) {
+      const target = now + ms, pending = Promise.withResolvers(); waiting.push({ target, ...pending });
+      const count = target <= 2_700_000 ? 6 : 5;
+      if (waiting.length === count) { const rows = waiting.splice(0); assert.ok(rows.every(row => row.target === target)); now = target; for (const row of rows) row.resolve(); }
+      return pending.promise;
+    },
+  });
+  assert.equal(report.businessFailure ?? null, null);
+  assert.equal(report.accepted, false); assert.equal(report.result.state, 'controlled');
+  assert.equal(report.result.durationMs, 3_600_000); assert.equal(report.result.windows.length, 4);
+  assert.ok(report.result.windows.every(window => window.botIds.length >= 4));
+  assert.equal(report.result.handoff.kind, 'durable-collaboration-handoff');
+  assert.equal(report.cleanup.bots.length, 6); assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(verifiedPrograms.length, 42); assert.equal(f.prompts.length, 42); assert.equal(f.provider.allocations(), 6);
+});

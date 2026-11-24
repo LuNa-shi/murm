@@ -1350,7 +1350,8 @@
       "category": "Environment composition",
       "chapters": [
         "docs/architecture/19-scalemas-environment.md",
-        "docs/architecture/08-prompts.md"
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/21-hour-matrix.md"
       ],
       "role": "Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting"
     },
@@ -1495,7 +1496,8 @@
       "chapters": [
         "docs/architecture/18-agensh-environment.md",
         "docs/architecture/08-prompts.md",
-        "docs/architecture/17-environment-reporting.md"
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/21-hour-matrix.md"
       ],
       "role": "One Runtime with independently bound peers, exclusive routers and shared cleanup"
     },
@@ -1687,6 +1689,89 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "Flat-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown"
+    },
+    {
+      "path": "src/environments/shared/hour-window.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Bounded monotonic work-window evidence, participation deduplication and independent cleanup validation"
+    },
+    {
+      "path": "src/environments/endurance/policy.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Frozen hour budgets, stable quota-owner settlement and fresh targeted lifetime receipt validation"
+    },
+    {
+      "path": "src/environments/endurance/programming.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Bounded trusted programming prompt and submitted-payload verification port"
+    },
+    {
+      "path": "src/environments/endurance/agensh.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Actual eight-peer Agensh hour orchestration and independent final owner receipts"
+    },
+    {
+      "path": "src/environments/endurance/agensh-workload.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Pinned Git and Board business verification with stopped-publisher external-event adoption"
+    },
+    {
+      "path": "src/environments/endurance/scalemas.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Actual six-peer hour cycle scheduling and retained owner closure"
+    },
+    {
+      "path": "src/environments/endurance/scalemas-workload.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Immutable arithmetic/programming publication and ordered stopped-publisher adoption checks"
+    },
+    {
+      "path": "src/environments/endurance/matrix.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Serial frozen host configuration admission and honest incomplete matrix projection"
+    },
+    {
+      "path": "examples/hour-matrix/main.mjs",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Explicit host matrix CLI, private raw receipt persistence and bounded normal-output projection"
+    },
+    {
+      "path": "examples/hour-matrix/config.mjs",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Frozen actual Kimi/backend/resource configuration with independently supplied lifetime and quota authorities"
     }
   ]
 }

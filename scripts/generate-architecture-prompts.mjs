@@ -27,6 +27,7 @@ const sourcePaths = [
   'src/environments/flat/controller.js', 'src/environments/flat/environment.js',
   'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
   'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js', 'src/environments/agensh/team.js',
+  'src/environments/endurance/agensh-workload.js', 'src/environments/endurance/scalemas-workload.js', 'src/environments/endurance/programming.js',
   'test/fixtures/agensh-team-kimi.js', 'test/agensh-team-kimi-real.test.js',
   'src/environments/lead-helper/prompts.js', 'src/environments/lead-helper/index.js',
   'src/runtime/runtime.js',
@@ -157,7 +158,7 @@ output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
   + block('Peer Profile prompt', between(scaleMASPath, "export const peerPrompt = '", "';\n"))
   + block('Cycle instruction', between(scaleMASPath, "export const cyclePrompt = '", "';\n"))
   + block('Exact input composition', between(scaleMASPath, 'runInput(core, peer.botId, `', '`,\n'),
-    'index is the fixed zero-based peer index; round is its zero-based serial cycle; question is the validated host question; cyclePrompt is the complete literal above. The host runInput helper sends this string once as followUp with a fresh per-peer cycle request ID.'));
+    'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string once as followUp with a fresh per-peer cycle request ID.'));
 output('08-agensh-environment.md', header('Agensh peer and serial router prompts',
   'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper with explicit followUp. There are no mid-turn notices.')
   + block('Peer Profile prompt', between('src/environments/agensh/index.js', 'export const peerPrompt = `', '`;'))
@@ -169,6 +170,15 @@ output('08-agensh-environment.md', header('Agensh peer and serial router prompts
   + block('Opt-in hosted A external comment instructions', between('test/fixtures/agensh-team-kimi.js', 'export const liveAUser = `', '`;'))
   + block('Exact hosted initial composition', between('test/fixtures/agensh-team-kimi.js', '  return [`', '];'),
     'The host supplies two distinct provisioned peer usernames and a fresh 24-character seed. Only A receives the seed. The user comment names only A and appends liveAUser. Negotiation and agreement text are actual model-authored Mattermost posts, delivered by the normal authenticated subscription. The fixture injects no model tool program or terminal response.'));
+output('13-hour-matrix.md', header('Bounded hour business and programming prompts',
+  'These are frozen host workload templates. They are sent only through the real Agensh serial router or scaleMAS cycle entry; controlled tests do not establish actual hosted delivery. The optional external programming module is trusted operator input and its text is retained in private runtime evidence, not recoverable from these repository templates.')
+  + block('Agensh per-peer stage input', between('src/environments/endurance/agensh-workload.js', '  function input(peer, stage) {', '\n  async function verify('),
+    'peer/index come from the actual fixed provisioned team; stage is hour phase index plus one (0 baseline, 1 through 4 window work). Stage zero omits programming to preserve request headroom. For final B, the host targets the actual peer username in a real Gitea issue comment after A stop; other inputs use sole-router kickoff/user ingress.')
+  + block('scaleMAS frozen question', between('src/environments/endurance/scalemas-workload.js', "    question:'", "',\n"))
+  + block('scaleMAS per-cycle composition', between('src/environments/endurance/scalemas-workload.js', '    questionForCycle(', '\n    ready('),
+    'peerIndex is actual zero-based fixed pool order; round is the actual cycle from zero through six. The validated question is sent in the ordinary Core followUp with peer/cycle header and cyclePrompt.')
+  + block('Programming instructions appended to repository workload', between('src/environments/endurance/programming.js', '      return `', '`;'),
+    'peer and stage are trusted numeric host fields. text is the explicitly configured external programming prompt, validated as nonblank and at most 4096 UTF-8 bytes; the host verifier receives only the programming property read from the real committed/substrate JSON and never executes generated code.'));
 const leadHelperPath = 'src/environments/lead-helper/prompts.js';
 let leadHelperDoc = header('Fixed lead-helper role and turn instructions', 'Profiles stage lead/helper roles. The Environment serializes each round instruction with trusted host fields before exclusive followUp delivery; these are source templates, not a native transcript.');
 for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'helperInitialInstruction', 'leadAdjustmentInstruction', 'helperFollowupInstruction']) {

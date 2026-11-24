@@ -25,11 +25,11 @@ export function scaleMASPeerProfile({ image, model = 'default' }) {
 
 /** Fixed no-Task pool. Environment owns content and drivers; Core owns all Bots. */
 export async function runScaleMAS({ backend, runId, image, outputDir, question, model = 'default', poolSize = 3, maxRounds = 2,
-  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, beforeCycle }, signal) {
+  workTimeoutMs = 120_000, turnTimeoutMs = 30_000, closeTimeoutMs = 30_000, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle }, signal) {
   if (typeof outputDir !== 'string' || !outputDir || typeof question !== 'string' || !question.trim() || Buffer.byteLength(question) > 8192 ||
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
       ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal)) ||
-      (beforeCycle !== undefined && typeof beforeCycle !== 'function')) throw new TypeError('scaleMAS requires a question, image, output directory, two to 32 rounds, finite waits and an optional host beforeCycle function');
+      [beforeCycle, onReady, onCycle, onPeerStop, questionForCycle].some(hook => hook !== undefined && typeof hook !== 'function')) throw new TypeError('scaleMAS requires a question, image, output directory, two to 32 rounds, finite waits and an optional trusted host lifecycle functions');
   const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId, poolSize });
   const peers = [], events = [];
   const controller = new AbortController();
@@ -69,6 +69,8 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
             remaining(); substrate.bindPeer(bot.id);
             peers.push({ index, botId: bot.id, turns: [], failure: null, stop: null });
           }
+          if (onReady) await waitFor(Promise.resolve().then(() => onReady({ runtime:core, peerIds:peers.map(peer=>peer.botId), snapshot:substrate.snapshot() })),workSignal);
+          remaining();
           await Promise.all(peers.map(async peer => {
             try {
               for (let round = 0; round < maxRounds; round++) {
@@ -77,11 +79,15 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
                   await waitFor(Promise.resolve().then(() => beforeCycle({ peerIndex: peer.index, botId: peer.botId, round, signal: workSignal })), workSignal);
                   remaining();
                 }
+                const cycleQuestion = questionForCycle ? await waitFor(Promise.resolve().then(() =>
+                  questionForCycle({ peerIndex: peer.index, botId: peer.botId, round, signal: workSignal })), workSignal) : question;
+                if (typeof cycleQuestion !== 'string' || !cycleQuestion.trim() || Buffer.byteLength(cycleQuestion) > 8192) throw fail('SCALEMAS_QUESTION_INVALID');
                 const requestId = `${peer.botId}:cycle:${round}`;
                 const turn = { requestId, round }; peer.turns.push(turn);
-                const receipt = await runInput(core, peer.botId, `scaleMAS peer=${peer.index} cycle=${round}\n${question}\n${cyclePrompt}`,
+                const receipt = await runInput(core, peer.botId, `scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}`,
                   { requestId, timeoutMs: Math.min(turnTimeoutMs, remaining()), signal: workSignal });
                 Object.assign(turn, { inputId: receipt.inputId, outcome: receipt.settled.outcome, seq: receipt.settled.seq });
+                if(onCycle) await waitFor(Promise.resolve().then(()=>onCycle({peerIndex:peer.index,botId:peer.botId,round,result:receipt,snapshot:substrate.snapshot()})),workSignal);
               }
             } catch (error) {
               peer.failure = { code: error.code ?? 'PEER_WORK_FAILED', ...(error.requestId ? { requestId: error.requestId } : {}),
@@ -90,6 +96,10 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
               substrate.retirePeer(peer.botId);
               try { peer.stop = await core.stop(peer.botId, { timeoutMs: Math.max(1, Math.min(closeTimeoutMs, deadlineAt - Date.now())) }); }
               catch (error) { peer.stopFailure = { code: error.code ?? 'PEER_STOP_FAILED', cleanup: 'pending' }; }
+              if(onPeerStop && peer.stop) {
+                try { await waitFor(Promise.resolve().then(()=>onPeerStop({peerIndex:peer.index,botId:peer.botId,receipt:structuredClone(peer.stop),snapshot:substrate.snapshot()})),workSignal); }
+                catch(error) { peer.failure ??= {code:error.code ?? 'HOST_STOP_OBSERVATION_FAILED'}; }
+              }
             }
           }));
           if (workSignal.aborted || Date.now() >= deadlineAt) throw fail('SCALEMAS_WORK_ABORTED');

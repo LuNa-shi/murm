@@ -10,7 +10,7 @@ The flat domain services retain the Mission/Task/Execution/Material/Workspace co
 
 ## Reading map
 
-Read 00 first, then 07 for current entry points. Read 15–20 for the programmable Core and Environment flows, and 01–06 for shared and legacy domain mechanisms. Use 08–12 as full references and a review checklist.
+Read 00 first, then 07 for current entry points. Read 15–21 for the programmable Core and Environment flows, and 01–06 for shared and legacy domain mechanisms. Use 08–12 as full references and a review checklist.
 
 | Chapter | Questions it answers |
 |---|---|
@@ -34,6 +34,7 @@ Read 00 first, then 07 for current entry points. Read 15–20 for the programmab
 | [18 Single-peer Agensh Environment](18-agensh-environment.md) | How does one Core peer use separately bound Git, message and board accounts across continuous turns and retain private work? |
 | [19 Fixed scaleMAS peer pool](19-scalemas-environment.md) | How does a fixed pool publish immutable content, adopt ranked references and continue its Sessions without Tasks? |
 | [20 Fixed lead-helper Environment](20-lead-helper-environment.md) | How do Board transactions, restricted Git identities, direction adoption and cleanup work? |
+| [21 Bounded hour host matrix](21-hour-matrix.md) | How do real mode entry points, a stable quota owner, provider lifetime admission, business verification and sealed monotonic work windows compose without counting controlled preparation as an hour? |
 
 ## What complete means here
 
