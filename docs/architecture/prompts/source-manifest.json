@@ -39,7 +39,7 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "sha256": "be06be1f12237679fe4582f8a5222b62f182d988e2fcf0d40d41e13411405336"
+      "sha256": "c2261682f83c10fb89220dde7c77458b463790b3a1ee623e5628f97ab21b5093"
     },
     {
       "path": "src/environments/flat/environment.js",
@@ -123,7 +123,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "2f4bab497740adbce0e7c43d74415f6ffb6e89f23ef435b0f5effd350f339962"
+      "sha256": "f7d935db77da986d9549085cf48818fe5ec65c02b1bfd020f0af14a621c18eb3"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -466,7 +466,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 962,
+      "line": 922,
       "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
     },
     {
@@ -481,7 +481,7 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "line": 99,
+      "line": 100,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
@@ -588,7 +588,7 @@
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "a1b6ed5d07e716f9903d2464944fc9e6b4bbb74dfe92f71de6d99a1bfbd4895c"
+      "sha256": "0a815de85269141853ee57b599e1597dc04074a01ba9400648e000d63eef9e48"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",

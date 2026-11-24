@@ -61,7 +61,6 @@ export class Runtime {
       ? coreIds
       : Array.from({ length: Math.max(0, maxWorkers) }, (_, index) => `core-${index + 1}`);
     for (const coreId of configuredCoreIds) this.registerCore(coreId);
-    this.reminderPromises = new Map();
     this.pendingFailurePromises = new Set();
     this.pendingReleasePromises = new Set();
     this.resourceReleasePromises = new Map();
@@ -543,8 +542,8 @@ export class Runtime {
 
   /**
    * Reconcile durable Execution deadlines. The sweep is intentionally
-   * idempotent: the reminder is persisted before it is sent, and timeout is a
-   * durable Bot stop. Maintenance may call this on every poll.
+   * idempotent: timeout is a durable Bot stop. Handoff warnings are owned by
+   * the Flat controller. Maintenance may call this on every poll.
    */
   async sweepExecutionTimeouts(at = new Date(this.clock()), { executionIds = null } = {}) {
     const atDate = at instanceof Date ? at : new Date(at);
@@ -558,53 +557,14 @@ export class Runtime {
       if (!bot || !this.botBindings.has(bot.bot_id)) continue;
       const startedMs = Date.parse(execution.started_at ?? '');
       if (Number.isNaN(startedMs)) continue;
-      const reminderMs = Date.parse(execution.handoff_deadline ?? '') || startedMs + this.handoffReminderMs;
       const timeoutMs = Date.parse(execution.execution_deadline ?? '') || startedMs + this.executionTimeoutMs;
       if (atDate.getTime() >= timeoutMs) {
         const reason = Date.parse(bot.hard_deadline) <= atDate.getTime() ? 'bot-lifetime-budget' : 'execution-timebox';
         const result = await this.stopExecution(execution.execution_id, 'FAILED', reason);
         events.push({ kind: 'timeout', ...result });
-      } else if (atDate.getTime() >= reminderMs && !execution.handoff_reminder_sent_at) {
-        const reminder = await this.#sendHandoffReminder(execution.execution_id, atDate);
-        if (reminder) events.push(reminder);
       }
     }
     return events;
-  }
-
-  async #sendHandoffReminder(executionId, at) {
-    const inFlight = this.reminderPromises.get(executionId);
-    if (inFlight) return inFlight;
-    const promise = (async () => {
-      const execution = this.#getExecution(executionId);
-      if (!['CREATED', 'RUNNING'].includes(execution.state) || execution.handoff_reminder_sent_at) return null;
-      const marked = this.taskService.dispatch('record_handoff_reminder', {
-        reminded_at: new Date(at.getTime()).toISOString(),
-      }, this.#executionEnvelope(execution, `runtime:handoff-reminder:${executionId}:${execution.state_version}`));
-      const active = this.activeProcesses.get(executionId);
-      if (active) active.execution = marked.execution;
-      const task = this.taskService.getTask(execution.task_id);
-      let notification = null;
-      if (task?.mission_id && typeof this.taskService.enqueueNotification === 'function') {
-        notification = this.taskService.enqueueNotification({
-          deliveryKey: `handoff_warning:${executionId}:${marked.execution.execution_deadline ?? marked.execution.handoff_deadline ?? at.toISOString()}`,
-          missionId: task.mission_id,
-          recipientTaskId: task.task_id,
-          recipientExecutionId: executionId,
-          type: 'handoff_warning',
-          payload: { execution_id: executionId, deadline: marked.execution.execution_deadline ?? null },
-        });
-        if (active) await active.promptChain.catch(() => undefined);
-      }
-      this.logger?.append({ event: 'runtime.handoff_reminder', execution_id: executionId, handoff_deadline: marked.execution.handoff_deadline ?? null });
-      return { kind: 'handoff_reminder', execution: marked.execution, notification };
-    })();
-    this.reminderPromises.set(executionId, promise);
-    try {
-      return await promise;
-    } finally {
-      this.reminderPromises.delete(executionId);
-    }
   }
 
   heartbeat(executionId, payload = {}) {

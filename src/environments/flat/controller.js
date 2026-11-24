@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BOT_CONTINUATION_MESSAGE, buildBotContinuationMessage } from '../../agent/bot-contract.js';
+import { BOT_CONTINUATION_MESSAGE, buildBotContinuationMessage, buildBotNotification } from '../../agent/bot-contract.js';
 import { SwarmEnvError } from '../../errors.js';
 import { stableStringify } from '../../protocol/envelope.js';
 import { createFlatBotCoordinator } from './bot-coordinator.js';
@@ -76,7 +76,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       await applyStop(row,await runtime.stop(row.botId,{timeoutMs:stopTimeoutMs}));
     } catch(error) {row.cleanupError=info(error);record('stop-error-retains-slot',row);}
   }
-  async function submit(row,text,{source,requestId,mode='followUp',taskId,executionId,fence}={}) {
+  async function submit(row,text,{source,requestId,mode='followUp',taskId,executionId,fence,notificationId}={}) {
     const input={botId:row.botId,source,requestId,mode,taskId:taskId??null,executionId:executionId??null,fence:fence??null,status:'not_submitted'};
     inputs.push(input);
     if(closing || remaining()<=0 || row.uncertain || row.stopReason) {input.reason='controller-closed-or-input-unknown';return input;}
@@ -95,6 +95,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       finish('mission-stopped');
       return input;
     }
+    if(notificationId) taskService.recordNotificationAttempt(notificationId);
     try {
       const receipt=await runtime.send(row.botId,text,{requestId,mode});
       Object.assign(input,{status:receipt.status,receipt});
@@ -106,6 +107,38 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       record('input-failed',row,{source,requestId,status:input.status});
     }
     return input;
+  }
+  async function handoffWarning(row) {
+    const {owner,execution}=current(row),at=Date.now();
+    if(row.handoffWarning?.delivered || owner?.state!=='ACTIVE' || execution?.state!=='RUNNING' || row.stopReason ||
+      (!execution.handoff_reminder_sent_at && !(Date.parse(execution.handoff_deadline)<=at))) return;
+    // Persist the soft boundary first. Enqueue is independently idempotent, so
+    // a failed enqueue is recovered even when the reminder already exists.
+    const marked=execution.handoff_reminder_sent_at?execution:taskService.dispatch('record_handoff_reminder',
+      {reminded_at:new Date(at).toISOString()},executionEnvelope(execution,`flat:handoff-reminder:${execution.execution_id}`)).execution;
+    const notification=row.handoffNotification??=taskService.enqueueNotification({
+      deliveryKey:`handoff_warning:${marked.execution_id}:${marked.execution_deadline??marked.handoff_deadline}`,
+      missionId,recipientTaskId:marked.task_id,recipientExecutionId:marked.execution_id,type:'handoff_warning',
+      payload:{execution_id:marked.execution_id,deadline:marked.execution_deadline??null},
+    });
+    const receipt=taskService.listUnprocessedNotifications(marked.task_id,marked.execution_id)
+      .find(value=>value.notification_id===notification.notification_id);
+    if(!receipt || receipt.recipient_delivery?.delivered_at) {
+      if(row.handoffWarning) row.handoffWarning.delivered=true;
+      return;
+    }
+    // Preserve exact text and request identity across admission/receipt errors.
+    // Never reissue an unknown or definitively rejected input automatically.
+    const delivery=row.handoffWarning??={notificationId:notification.notification_id,
+      fence:marked.fencing_version,text:buildBotNotification(notification,{at}),requestId:`flat:handoff-warning:${marked.execution_id}:${notification.notification_id}`};
+    if(!delivery.input || delivery.input.status==='not_submitted') {
+      delivery.input=await submit(row,delivery.text,{source:'handoff-warning',requestId:delivery.requestId,
+        taskId:marked.task_id,executionId:marked.execution_id,fence:delivery.fence,notificationId:notification.notification_id});
+    }
+    if(['accepted','queued'].includes(delivery.input.status)) {
+      taskService.markNotificationDelivered(notification.notification_id,marked.execution_id);
+      delivery.delivered=true;
+    }
   }
   function canRefill() {
     if (closing || remaining() <= 0) return false;
@@ -173,8 +206,12 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       if(expired(owner,execution)) {await stop(row,'domain-deadline');continue;}
       if(at-row.lastActivityAt>=stallMs) {await stop(row,'stall-budget');continue;}
       if(owner?.state==='ACTIVE' && execution?.state==='RUNNING') {
-        try {taskService.dispatch('heartbeat',{},executionEnvelope(execution,`flat:heartbeat:${randomUUID()}`));}
-        catch(error) {row.failure=info(error);await stop(row,'lease-failed');}
+        try {
+          taskService.dispatch('heartbeat',{},executionEnvelope(execution,`flat:heartbeat:${randomUUID()}`));
+        }
+        catch(error) {row.failure=info(error);await stop(row,'lease-failed');continue;}
+        try {await handoffWarning(row);}
+        catch(error) {record('handoff-warning-pending',row,{error:{code:String(error?.code??'FLAT_HANDOFF_WARNING_PENDING').slice(0,64),message:String(error?.message??'Handoff warning remains pending').slice(0,512)}});}
       }
     }
     await refill();
