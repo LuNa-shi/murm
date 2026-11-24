@@ -1,7 +1,7 @@
 import { runScaleMAS } from '../scalemas/index.js';
 import { createHourWindow, HOUR_MS, WINDOW_MS } from '../shared/hour-window.js';
 import { setTimeout as delay } from 'node:timers/promises';
-import { validateHourBudgets, createHourQuotaGate, checkHourLifetime } from './policy.js';
+import { validateHourBudgets, createHourRunModelGate, checkHourLifetime } from './policy.js';
 const fail=code=>Object.assign(new Error(code),{code});
 
 /** Actual Environment entry: host observations come from the owned Core input,
@@ -9,7 +9,7 @@ const fail=code=>Object.assign(new Error(code),{code});
 export async function runScaleMASHour({options,workload,admit,quota,budgets,signal,clock,waitForMs}) {
   if(typeof workload?.cycle!=='function' || typeof admit!=='function' || typeof quota?.receipt!=='function' || typeof quota?.close!=='function')throw fail('HOUR_PREFLIGHT_GATE_MISSING');
   budgets = validateHourBudgets(budgets);
-  const checkQuota = createHourQuotaGate(quota, budgets);
+  const { check: checkQuota, maxConcurrentInputs } = createHourRunModelGate(quota, budgets);
   const rounds=workload.rounds??5;
   if(!Number.isInteger(rounds)||rounds<5||rounds>7)throw fail('HOUR_ROUND_LIMIT');
   const life=new AbortController(),combined=signal?AbortSignal.any([signal,life.signal]):life.signal;
@@ -41,7 +41,7 @@ export async function runScaleMASHour({options,workload,admit,quota,budgets,sign
   let report, closeFailure;
   try {
     checkQuota();
-    report=await runScaleMAS({...options,poolSize:6,maxConcurrentInputs:2,maxRounds:rounds,question:workload.question??options.question,
+    report=await runScaleMAS({...options,poolSize:6,maxConcurrentInputs,maxRounds:rounds,question:workload.question??options.question,
       questionForCycle: workload.questionForCycle?.bind(workload),
       workTimeoutMs:budgets.setupMs+HOUR_MS+budgets.cleanupMs,turnTimeoutMs:budgets.turnMs,closeTimeoutMs:budgets.cleanupMs,
       async onReady({runtime:core,peerIds:ids,snapshot}) {try{

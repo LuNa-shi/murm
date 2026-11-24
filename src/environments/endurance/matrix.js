@@ -2,8 +2,8 @@ import { runAgenshHour } from './agensh.js';
 import { runScaleMASHour } from './scalemas.js';
 import { HOUR_QUOTAS, validateHourBudgets } from './policy.js';
 
-export const HOUR_BUDGETS = Object.freeze({ setupMs: 600_000, workMs: 3_900_000,
-  turnMs: 120_000, cleanupMs: 600_000, recoveryMs: 300_000, marginMs: 120_000 });
+export const HOUR_BUDGETS = Object.freeze({ setupMs: 720_000, workMs: 4_200_000,
+  turnMs: 300_000, cleanupMs: 600_000, recoveryMs: 300_000, marginMs: 120_000 });
 const peerCounts = Object.freeze({ flat: 4, agensh: 8, scaleMAS: 6 });
 const runners = { agensh: runAgenshHour, scaleMAS: runScaleMASHour };
 const invalid = code => Object.assign(new Error(code), { code });

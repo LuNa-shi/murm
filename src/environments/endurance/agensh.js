@@ -1,7 +1,7 @@
 import { createAgenshTeam } from '../agensh/team.js';
 import { createHourWindow, HOUR_MS, WINDOW_MS } from '../shared/hour-window.js';
 import { setTimeout as delay } from 'node:timers/promises';
-import { validateHourBudgets, createHourQuotaGate, checkHourLifetime } from './policy.js';
+import { validateHourBudgets, createHourRunModelGate, checkHourLifetime } from './policy.js';
 
 const fail = code => Object.assign(new Error(code), { code });
 /** Frozen host workload owns upstream business verification; only actual router
@@ -9,7 +9,7 @@ const fail = code => Object.assign(new Error(code), { code });
 export async function runAgenshHour({ options, workload, admit, quota, budgets, signal, clock, waitForMs }) {
   if (typeof workload?.phase !== 'function' || typeof admit !== 'function' || typeof quota?.receipt !== 'function' || typeof quota?.close !== 'function') throw fail('HOUR_PREFLIGHT_GATE_MISSING');
   budgets = validateHourBudgets(budgets);
-  const checkQuota = createHourQuotaGate(quota, budgets);
+  const { check: checkQuota, maxConcurrentInputs } = createHourRunModelGate(quota, budgets);
   const controller=new AbortController();const life=signal?AbortSignal.any([signal,controller.signal]):controller.signal;
   let team,monitor,cleanup,result,businessFailure;
   const abort=()=>controller.abort();
@@ -32,8 +32,8 @@ export async function runAgenshHour({ options, workload, admit, quota, budgets, 
   };
   try {
     checkQuota();
-    team=await createAgenshTeam({...options,maxConcurrentInputs:2,peerKeys:['a','b','c','d','e','f','g','h'],signal:life,
-      router:{...options.router,workTimeoutMs:budgets.setupMs+HOUR_MS+budgets.cleanupMs,maxBatches:64,maxNudges:0,turnTimeoutMs:budgets.turnMs}});
+    team=await createAgenshTeam({...options,maxConcurrentInputs,peerKeys:['a','b','c','d','e','f','g','h'],signal:life,
+      router:{...options.router,workTimeoutMs:budgets.setupMs+HOUR_MS+budgets.cleanupMs,turnTimeoutMs:budgets.turnMs}});
     const peers=team.currentPeers().peers;
     if(peers.length!==8 || peers.some(peer=>!peer.router.ready || !peer.subscription?.ready || peer.unavailable))throw fail('HOUR_TEAM_NOT_READY');
     monitor=createHourWindow({runtimeId:team.id,mode:'agensh',botIds:peers.map(peer=>peer.botId),clock});

@@ -9,7 +9,6 @@ import { createAgenshServices } from '../src/environments/agensh/services.js';
 import { createSubstrateService } from '../src/environments/scalemas/substrate.js';
 import { scaleMASPeerProfile } from '../src/environments/scalemas/index.js';
 import { HOUR_BUDGETS } from '../src/environments/endurance/matrix.js';
-import { HOUR_QUOTAS } from '../src/environments/endurance/policy.js';
 import configuration from '../examples/hour-matrix/config.mjs';
 
 test('shipped hour configuration passes actual production Runtime/Profile validators without allocating or model requests', async t => {
@@ -24,7 +23,7 @@ test('shipped hour configuration passes actual production Runtime/Profile valida
   for (const [key,value] of Object.entries(settings)) { const name = `SWARMENV_HOUR_${key}`; previous.set(name, process.env[name]); process.env[name] = value; }
   t.after(() => { for (const [key,value] of previous) if (value === undefined) delete process.env[key]; else process.env[key] = value; });
   for (const mode of ['scaleMAS','agensh']) {
-    const ports = await configuration.configurations[mode]({mode, budgets:HOUR_BUDGETS, quotas:HOUR_QUOTAS});
+    const ports = await configuration.configurations[mode]({mode, budgets:HOUR_BUDGETS});
     let runtime, substrate;
     try {
       let services, profiles;
@@ -43,8 +42,7 @@ test('shipped hour configuration passes actual production Runtime/Profile valida
       runtime = await createRuntime({backend:ports.options.backend,outputDir:join(directory,mode),services,profiles,maxBots:mode==='agensh'?8:6});
       const close = await runtime.close({timeoutMs:1000});
       assert.equal(close.cleanup,'complete'); assert.deepEqual(close.bots,[]);
-      assert.equal(ports.quota.receipt().profile,'endurance'); assert.equal(ports.quota.receipt().forwarded,0);
-      assert.equal(ports.quota.receipt().frozenPolicy.maxRequests,96);
+      assert.equal(ports.quota.receipt().profile,'time_only'); assert.equal(ports.quota.receipt().forwarded,0);
     } finally { if(runtime)await runtime.close({timeoutMs:1000}); substrate?.close(); await ports.quota.close(); }
     assert.equal(ports.quota.receipt().closed,true);
   }

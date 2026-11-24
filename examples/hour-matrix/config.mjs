@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { createCappedUpstream } from '../../test/fixtures/core-capped-upstream.js';
+import { createTimedUpstreamMeter } from '../../src/environments/endurance/timed-upstream.js';
 import { createBoardLauncher } from '../../src/environments/agensh/board-process.js';
 import { prepareAgenshFacilities } from '../../src/environments/agensh/provision.js';
 import { createAgenshArithmeticWorkload } from '../../src/environments/endurance/agensh-workload.js';
@@ -17,7 +17,7 @@ const required = name => {
 
 /** No allocation or listener on import. Source/archive/Worker and this exact
  * configuration require independent review before the operator launches it. */
-async function create({ mode, budgets, quotas, signal }) {
+async function create({ mode, budgets, signal }) {
   let admitLifetime;
   try { ({ admitLifetime } = await import('../../test/fixtures/lifetime-host-observation.js')); }
   catch { throw Object.assign(new Error('Reviewed lifetime gate not installed'), { code: 'HOUR_INDEPENDENT_GATES_NOT_INSTALLED' }); }
@@ -33,20 +33,20 @@ async function create({ mode, budgets, quotas, signal }) {
   const phases = { ...budgets }; delete phases.turnMs;
   const controller = new AbortController();
   const life = signal ? AbortSignal.any([signal, controller.signal]) : controller.signal;
-  const quota = await createCappedUpstream({ profile: 'endurance', phases, upstreamUrl, upstreamHeaders,
-    ...quotas, deadlineAt: Date.now() + budgets.setupMs + budgets.workMs,
-    filename: 'unused-hour', marker: 'unused-hour', failFast: true, onFailure: () => controller.abort() });
+  const quota = await createTimedUpstreamMeter({ upstreamUrl, upstreamHeaders,
+    deadlineAt: Date.now() + budgets.setupMs + budgets.workMs,
+    onDeadline: () => controller.abort() });
   try {
     const runId = `hour-${mode.toLowerCase()}-${randomUUID().slice(0, 8)}`;
     const options = { runId, image, outputDir: resolve('experiments', runId),
       backend: createPiOpenSandboxBackend({
         sandbox: { lifecycleBaseUrl: lifecycle, endpointHost: setting('ENDPOINT_HOST') ?? '127.0.0.1', apiKey,
           timeoutSeconds: Math.ceil(Object.values(phases).reduce((a, b) => a + b, 0) / 1000) + 60,
-          resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 30_000 },
+          commandTimeoutMs: 30_000 },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-        modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: quotas.generationOutputTokens, requestTimeoutMs: 90_000 },
+        modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: null, requestTimeoutMs: 180_000 },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: quota.url, headers: {} } } },
-        isolation: { network: 'local-docker', disk: { bytes: 128 * 1024 ** 2, inodes: 8192 } },
+        isolation: { network: 'local-docker', disk: { bytes: 1024 ** 3, inodes: 65_536 } },
       }) };
     let workload;
     if (mode === 'agensh') {
@@ -61,7 +61,7 @@ async function create({ mode, budgets, quotas, signal }) {
         prepare: async parameters => { facilities = await prepareAgenshFacilities(parameters); return facilities; },
         router: { events: { pollIntervalMs: 10_000, maxPolls: 600 } },
       });
-      workload = createAgenshArithmeticWorkload({ getFacilities: () => facilities, adminToken: gitea.adminToken, programming });
+      workload = createAgenshArithmeticWorkload({ getFacilities: () => facilities, adminToken: gitea.adminToken, programming, parallel: true });
     } else workload = createScaleMASArithmeticWorkload({ programming });
     return { options, workload, quota, signal: life,
       admit: parameters => admitLifetime({ ...parameters, provider: { baseUrl: lifecycle,

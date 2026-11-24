@@ -75,11 +75,11 @@
     },
     {
       "path": "src/environments/endurance/agensh-workload.js",
-      "sha256": "4f94ac2990b9145f102fa60ff558501076d72faad9d5d04a74e4ca492245268e"
+      "sha256": "5237c1358f150805e9a1c783e80b2d5cdf3b1c2f07d94e322f22009a88484179"
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
-      "sha256": "afd0c7743b8140cfc1b3fe76a78e9ecf5c01e9de043a43d300686b3e61f98502"
+      "sha256": "f2c4e04f78747fe0a78e0cecca1310c0ecbca6fd3f51905eaa2cbf5d8ffb437a"
     },
     {
       "path": "src/environments/endurance/programming.js",
@@ -271,13 +271,13 @@
       "path": "src/environments/endurance/agensh-workload.js",
       "anchor": "  function input(peer, stage) {",
       "line": 30,
-      "sha256": "bbfde1eaeaf39ec0a940ec8d277719d2feff9fb7010435265ee8d8e1d5aeaa57"
+      "sha256": "d1e0ea1b43f93c0f906aae957af73e12a41dd210c1840131aa6ae83457e9d95a"
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
       "anchor": "    question:'",
       "line": 17,
-      "sha256": "a9823c29303715211a3e6a5fa73951abd8e9f79b5c4afbb825cca237e14d222a"
+      "sha256": "ca0a0a881f2ac59fb3f0852b3d57f809e469be560cb9b02543978285cfbafabe"
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
@@ -344,7 +344,7 @@
     {
       "path": "src/environments/endurance/agensh-workload.js",
       "line": 33,
-      "expression": "return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {\"peer\":\"${peer.key}\",\"stage\":${stage},\"n\":${n},\"square\":${n * n}} and exactly one trailing newline. Check its bytes, commit and push. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:\"FACT\",content:\"${fact}\"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Use one coherent Bash call per turn for the finite work. Board write fields are board_id,type,content; PR create fields are owner,repo,method:\"create\",title,head:WORK_BRANCH,base:\"main\". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;"
+      "expression": "return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {\"peer\":\"${peer.key}\",\"stage\":${stage},\"n\":${n},\"square\":${n * n}} and exactly one trailing newline. Check its bytes, commit and push. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:\"FACT\",content:\"${fact}\"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Board write fields are board_id,type,content; PR create fields are owner,repo,method:\"create\",title,head:WORK_BRANCH,base:\"main\". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;"
     },
     {
       "path": "src/environments/endurance/programming.js",
@@ -499,7 +499,7 @@
     },
     {
       "path": "docs/architecture/prompts/13-hour-matrix.md",
-      "sha256": "2c3021d810cd7bcca85c006e53f2164a97882ca78f94621c79c8bdd62b30f749"
+      "sha256": "5d8717168b979b049b5c1e109b0631bca6d6ae63adc3e02c1d3ff2622cd703ea"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",

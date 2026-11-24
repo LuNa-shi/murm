@@ -253,13 +253,17 @@ test('host observes real six-peer ready, started turns and owned stop receipts',
   assert.equal(report.businessFailure,null);assert.equal(seen.filter(x=>x==='turn').length,12);assert.equal(seen.filter(x=>x==='stop').length,6);
 });
 
-for (const failAtEnd of [false,'exit','fatal']) test(`hour scaleMAS ${failAtEnd ? `rejects a terminal survivor ${failAtEnd}` : 'uses actual six-Bot CLI publication and post-stop adoption'}`, { timeout: 60_000 }, async t => {
+for (const scenario of ['capped', 'natural', 'exit', 'fatal']) test(`hour scaleMAS ${scenario === 'exit' || scenario === 'fatal' ? `rejects a terminal survivor ${scenario}` : `uses actual six-Bot CLI publication and post-stop adoption in ${scenario} mode`}`, { timeout: 60_000 }, async t => {
+  const natural = scenario === 'natural', failAtEnd = ['exit','fatal'].includes(scenario) ? scenario : false;
   const { createScaleMASArithmeticWorkload } = await import('../src/environments/endurance/scalemas-workload.js');
   const { controlledHourQuota } = await import('./fixtures/hour-quota-owner.js');
   const { writeFile } = await import('node:fs/promises');
   let original, now = 0, activeInputs = 0, peakInputs = 0, injectingExit = false, observeExit;
   const exitSeen = Promise.withResolvers(); const waiting = [], verifiedPrograms = [];
   const budgets = { setupMs: 40_000, workMs: 3_900_000, turnMs: 20_000, cleanupMs: 5000, recoveryMs: 1000, marginMs: 100 };
+  const timeReceipt = { profile: 'time_only', deadlineAt: Date.now() + budgets.workMs + budgets.setupMs,
+    forwarded: 36, active: 0, closed: false, inputBytes: 99999, actualInputTokens: 10001, actualOutputTokens: 39999, unknownRequests: 1 };
+  const quota = natural ? { receipt: () => ({ ...timeReceipt }), async close() { timeReceipt.closed = true; } } : controlledHourQuota(budgets);
   async function cli(start, operation, input, requestId) {
     const path = join(f.directory, `hour-${requestId}.json`); await writeFile(path, JSON.stringify(input));
     const url = new URL(start.env.SWARMENV_BRIDGE_URL); url.hostname = '127.0.0.1';
@@ -287,7 +291,7 @@ for (const failAtEnd of [false,'exit','fatal']) test(`hour scaleMAS ${failAtEnd 
   });
   const { runScaleMASHour } = await import('../src/environments/endurance/scalemas.js');
   const report = await runScaleMASHour({ options: { backend: f.backend, runId: 'hour-controlled', image: 'fixture', outputDir: f.directory },
-    budgets, quota: controlledHourQuota(budgets), workload: createScaleMASArithmeticWorkload({ programming: {
+    budgets, quota, workload: createScaleMASArithmeticWorkload({ programming: {
       prompt: ({peer,stage}) => `Controlled private CLI task ${peer}:${stage}`,
       verify: ({peer,stage,submission}) => { assert.equal(submission.answer, `${peer}:${stage}`); verifiedPrograms.push([peer,stage]); return true; },
     } }), clock: () => now,
@@ -309,5 +313,6 @@ for (const failAtEnd of [false,'exit','fatal']) test(`hour scaleMAS ${failAtEnd 
   assert.ok(report.result.windows.every(window => window.botIds.length >= 4));
   assert.equal(report.result.handoff.kind, 'durable-collaboration-handoff');
   assert.equal(report.cleanup.bots.length, 6); assert.equal(report.cleanup.cleanup, 'complete');
-  assert.equal(peakInputs, 2); assert.equal(verifiedPrograms.length, 36); assert.equal(f.prompts.length, 36); assert.equal(f.provider.allocations(), 6);
+  assert.equal(peakInputs, natural ? 6 : 2); assert.equal(verifiedPrograms.length, 36); assert.equal(f.prompts.length, 36); assert.equal(f.provider.allocations(), 6);
+  if (natural) assert.equal(report.quota.unknownRequests, 1);
 });
