@@ -30,8 +30,36 @@ test('natural meter preserves wire bytes and admits concurrency and actual usage
   assert.equal(peak, 6); assert.ok(bodies.every(value => value === JSON.stringify(body)));
   const receipt = await meter.close();
   assert.equal(receipt.profile, 'time_only'); assert.equal(receipt.forwarded, 6); assert.equal(receipt.actualOutputTokens, 6666);
+  assert.equal(receipt.peakConcurrent, 6);
   assert.equal(receipt.actualInputTokens, 12); assert.equal(receipt.unknownRequests, 0); assert.equal(receipt.closed, true);
   assert.ok(!JSON.stringify(receipt).includes('private-controlled')); assert.ok(!JSON.stringify(receipt).includes('controlled'));
+});
+
+test('a provider rejection records only finite diagnostics while preserving both request and response', async t => {
+  const input = [
+    { type: 'reasoning', encrypted_content: 'do-not-record-reasoning' },
+    { type: 'function_call', call_id: 'do-not-record-id', arguments: 'do-not-record-arguments' },
+    { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: '' }] },
+    { type: 'function_call_output', call_id: 'do-not-record-id', output: 'do-not-record-tool-output' },
+  ];
+  const body = { model: 'k3', input, reasoning: { effort: 'medium' }, max_output_tokens: 98_000 };
+  const rejection = JSON.stringify({ error: { code: 'invalid_request_error', message: 'required reasoning_content missing. do-not-record-message' } });
+  const meter = await fixture(t, async (request, response) => {
+    const bytes = Buffer.from(JSON.stringify(body));
+    assert.equal(request.headers['content-length'], String(bytes.length));
+    const chunks = []; for await (const chunk of request) chunks.push(chunk);
+    assert.deepEqual(Buffer.concat(chunks), bytes);
+    response.writeHead(400, { 'content-type': 'application/json' });
+    response.end(rejection);
+  });
+  const response = await send(meter, body);
+  assert.equal(response.status, 400); assert.equal(await response.text(), rejection);
+  const receipt = await meter.close(), [record] = receipt.requests;
+  assert.equal(receipt.unknownRequests, 1);
+  assert.deepEqual(record.request, { messages: 1, reasoning: 1, calls: 1, results: 1, emptyAssistant: 1,
+    encryptedReasoning: 1, callIdsMatched: true, reasoningEffort: 'medium', maxOutputTokens: 98_000 });
+  assert.deepEqual(record.rejection, { code: 'invalid_request_error', hints: ['reasoning_content', 'missing'] });
+  assert.ok(!JSON.stringify(receipt).includes('do-not-record'));
 });
 
 test('unknown usage and conflicting replay stay visible while independent requests and provider errors continue normally', async t => {

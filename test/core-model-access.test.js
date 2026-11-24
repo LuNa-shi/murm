@@ -97,8 +97,15 @@ test('K3 tool continuation omits only the exact empty completed Pi message and p
     { type: 'message', role: 'assistant', id: 'msg_retained', status: 'completed', phase: 'final_answer',
       content: [{ type: 'output_text', text: 'A nonempty prior answer.', annotations: [] }] },
   ];
+  function addParallelTool(input, resultId = 'call_parallel') {
+    input.splice(3, 0, { type: 'function_call', id: 'fc_parallel', call_id: 'call_parallel',
+      name: 'read', arguments: '{"path":"work.txt"}', status: 'completed' });
+    input.splice(6, 0, { type: 'function_call_output', call_id: resultId, output: 'parallel-result' });
+  }
   const cases = [
     { name: 'only the empty item is omitted', remove: true },
+    { name: 'a complete parallel tool group omits the same empty item', remove: true, change: addParallelTool },
+    { name: 'an unmatched parallel tool group is not rewritten', reject: true, change: input => addParallelTool(input, 'different_parallel_call') },
     { name: 'a nonempty assistant item is retained', change: input => { input[3].content[0].text = 'Retain me.'; } },
     { name: 'unsupported annotations are not laundered by removal', deny: true, change: input => { input[3].content[0].annotations = [{ type: 'url_citation', url: 'https://example.invalid/retained' }]; } },
     { name: 'unsupported metadata is not laundered by removal', deny: true, change: input => { input[3].metadata = { source: 'retained' }; } },
@@ -125,13 +132,14 @@ test('K3 tool continuation omits only the exact empty completed Pi message and p
       assert.deepEqual(input, original, 'Invalid history remains rejected, never stripped into an admissible request');
       return;
     }
-    assert.deepEqual(f.requests[0].body.input, scenario.remove ? original.filter((_, index) => index !== 3) : original);
+    const retained = original.filter(item => item.id !== empty.id);
+    assert.deepEqual(f.requests[0].body.input, scenario.remove ? retained : original);
     assert.deepEqual(input, original, 'Client history must not be mutated');
     assert.equal(result.status, scenario.reject ? 502 : 200);
     if (scenario.remove) {
       assert.deepEqual(await f.call('native-tool-history', payload), result, 'The same original request replays its receipt');
       assert.equal(f.requests.length, 1);
-      assert.equal((await f.call('native-tool-history', { ...payload, input: original.filter((_, index) => index !== 3) })).status, 409,
+      assert.equal((await f.call('native-tool-history', { ...payload, input: retained })).status, 409,
         'Original client history, including the empty item, owns the stable request fingerprint');
       assert.equal(f.requests.length, 1);
     }

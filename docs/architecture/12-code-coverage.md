@@ -168,7 +168,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [src/environments/endurance/native-session-observation.js](../../src/environments/endurance/native-session-observation.js) | Exact admitted sandbox ownership revalidation and bounded read-only Pi Session header observation through authoritative Execd endpoints | [17-environment-reporting](17-environment-reporting.md) | `8926acf41ac3cad37639c80bad832f35c126a20ee9a58a9089b02a0dfb419007` |
-| [src/environments/endurance/timed-upstream.js](../../src/environments/endurance/timed-upstream.js) | Opt-in private host time-only model forwarding and observed usage with bounded metadata and no logical token/request/concurrency admission | [21-hour-matrix](21-hour-matrix.md) | `4824584c89ec1c6e5bd986e9238a95b278c396f2dc20f2b370b99d4467b51edd` |
+| [src/environments/endurance/timed-upstream.js](../../src/environments/endurance/timed-upstream.js) | Opt-in private host time-only model forwarding and observed usage with bounded metadata and no logical token/request/concurrency admission | [21-hour-matrix](21-hour-matrix.md) | `fadb6476a41bd79037ff73e65ab8fe7f353a84030e84f9986409ee46a9afb7a3` |
 
 ### Workspace and Sandbox (2)
 
@@ -257,7 +257,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/core/index.d.ts](../../src/core/index.d.ts) | Public Runtime, Bot and model policy declarations | [15-core-runtime](15-core-runtime.md) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
 | [src/core/index.js](../../src/core/index.js) | Runtime assembly, Bot admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `f7abae3e2a8928b38891c44b435b808cb47d7cd2dbd86b824cadb05ecef6b1cc` |
 | [src/core/input-ledger.js](../../src/core/input-ledger.js) | Runtime/caller/operation/target/request input identity and parameter conflict ledger | [15-core-runtime](15-core-runtime.md) | `f89e88e88b670628017c665bd0141694689d11e7fd93443b1618a09d5c1923ce` |
-| [src/core/model-access.js](../../src/core/model-access.js) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `59ea1fe880bd54b7413207cbf5fa49d7d828fbda0a2e94ac87f736cf80269cd3` |
+| [src/core/model-access.js](../../src/core/model-access.js) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `ff1a86072a4aa9fefedc4ea59ba0bb4eb4ad68ca3315d1651da93d4e10d875a4` |
 | [src/core/pi-opensandbox-backend.js](../../src/core/pi-opensandbox-backend.js) | Core backend lifecycle, Worker transport and confirmed cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `43df7111e6e59ce631e6b8cfe9b04a0fd0c73335a60992a76dc5f72b409f9bb0` |
 | [src/core/run-records.js](../../src/core/run-records.js) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `70d7b675b76f53c98d2e7c209a7a1daef8017aca63c55a0e18b474ffa7a157c8` |
 | [src/core/services.d.ts](../../src/core/services.d.ts) | Public Service registry, manifest and adapter declarations | [15-core-runtime](15-core-runtime.md) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |

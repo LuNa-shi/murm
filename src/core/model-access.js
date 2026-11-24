@@ -17,9 +17,17 @@ function isEmptyPiToolMessage(item, index, input) {
   const [part] = item.content;
   if (part?.type !== 'output_text' || part.text !== '' || !Array.isArray(part.annotations) || part.annotations.length !== 0 ||
       Object.keys(part).sort().join(',') !== 'annotations,text,type') return false;
-  const call = input[index - 1], result = input[index + 1];
-  return call?.type === 'function_call' && result?.type === 'function_call_output' &&
-    typeof call.call_id === 'string' && call.call_id.length > 0 && call.call_id === result.call_id;
+  const calls = new Set();
+  for (let previous = index - 1; input[previous]?.type === 'function_call'; previous--) {
+    const { call_id: id } = input[previous];
+    if (typeof id !== 'string' || !id || calls.has(id)) return false;
+    calls.add(id);
+  }
+  if (!calls.size) return false;
+  for (let following = index + 1; input[following]?.type === 'function_call_output'; following++) {
+    if (!calls.delete(input[following].call_id)) return false;
+  }
+  return calls.size === 0;
 }
 
 function kimiResponsesTransport(fetch) {
