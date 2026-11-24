@@ -11,7 +11,9 @@ export function createServiceTrace(outputDir, redact) {
   return {
     initialize() { return writeFile(path, '', { flag: 'wx', mode: 0o600 }); },
     record(entry) {
-      const line = JSON.stringify(redact({ ...entry, seq: ++sequence })) + '\n';
+      let line;
+      try { line = JSON.stringify(redact({ ...entry, seq: ++sequence })) + '\n'; }
+      catch (error) { failure ??= error; return; }
       writer = writer.then(() => appendFile(path, line, { mode: 0o600 })).catch(error => { failure ??= error; });
     },
     async flush() {

@@ -64,9 +64,15 @@ const hooks=registerHooks({load(url,context,nextLoad) {
 }});
 let createRuntime,ServiceRegistry,createPiOpenSandboxBackend;
 try {
- ({createRuntime}=await import('@swarmenv/core'));
- ({ServiceRegistry}=await import('@swarmenv/core/services'));
- ({createPiOpenSandboxBackend}=await import('@swarmenv/core/backends/pi-opensandbox'));
+ const core=await import('@swarmenv/core');
+ const services=await import('@swarmenv/core/services');
+ const backend=await import('@swarmenv/core/backends/pi-opensandbox');
+ assert.deepEqual(Object.keys(core),['createRuntime']);
+ assert.deepEqual(Object.keys(services),['ServiceRegistry','createHttpJsonAdapter','createInProcessAdapter']);
+ assert.deepEqual(Object.keys(backend),['createPiOpenSandboxBackend']);
+ ({createRuntime}=core);
+ ({ServiceRegistry}=services);
+ ({createPiOpenSandboxBackend}=backend);
 } finally {hooks.deregister()}
 const domainRoots=['src/task/','src/context/','src/judge/','src/environments/flat/'];
 assert.deepEqual([...loaded].filter(path=>path==='src/agent/bot-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
@@ -137,6 +143,11 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
 import { createRuntime, type Runtime } from '@swarmenv/core';
 import { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend, type PiOpenSandboxBackendConfig } from '@swarmenv/core/backends/pi-opensandbox';
+const coreExports: Record<keyof typeof import('@swarmenv/core'), true> = { createRuntime: true };
+const serviceExports: Record<keyof typeof import('@swarmenv/core/services'), true> = {
+  ServiceRegistry: true, createHttpJsonAdapter: true, createInProcessAdapter: true,
+};
+const backendExports: Record<keyof typeof import('@swarmenv/core/backends/pi-opensandbox'), true> = { createPiOpenSandboxBackend: true };
 const config: PiOpenSandboxBackendConfig = {
   sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' },
   bridge: { host: '127.0.0.1', publicUrl: 'http://127.0.0.1:{port}' },
@@ -145,7 +156,10 @@ const config: PiOpenSandboxBackendConfig = {
   isolation: { network: 'local-docker', disk: { bytes: 67108864, inodes: 4096 } },
 };
 const registry = new ServiceRegistry();
-const adapter = createInProcessAdapter({ invoke: request => ({ author: request.caller.botId }) });
+const adapter = createInProcessAdapter({
+  invoke: request => { request.assertAuthorized(); return { author: request.caller.botId }; },
+  exportState: ({ signal }) => { signal.throwIfAborted(); return { entries: [] }; },
+});
 registry.registerService({ manifest: { id: 'notes', title: 'Notes', purpose: 'Store notes', provider_version: '1',
   contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [] }, adapter });
 createHttpJsonAdapter({ token: 'host-only', timeoutMs: 1000 });
@@ -153,6 +167,12 @@ const runtime: Runtime = await createRuntime({ backend: createPiOpenSandboxBacke
   profiles: { reader: { prompt: 'Read', model: 'default', image: 'image', writable: false, services: {} } },
   services: registry, maxBots: 2, outputDir: './output' });
 const bot = await runtime.spawn({ requestId: 'spawn', profile: 'reader' });
+await runtime.list({ parentId: null, status: ['idle', 'starting'] });
+await runtime.start(bot.id, 'Read a note', { requestId: 'start' });
+await runtime.steer(bot.id, 'Read this too', { requestId: 'steer', source: 'mail', steeringMode: 'all' });
+await runtime.interrupt(bot.id, { requestId: 'interrupt', timeoutMs: 1000 });
+const files = await runtime.files.snapshot(bot.id, { requestId: 'snapshot', paths: ['note.txt'] });
+await runtime.spawn({ requestId: 'fork', profile: 'reader', forkFrom: bot.id, workspace: { mode: 'frozen-copy', files: files.files } });
 await runtime.send(bot.id, 'Read a note', { requestId: 'input', mode: 'followUp' });
 // @ts-expect-error Core accepts only documented input modes.
 await runtime.send(bot.id, 'Read a note', { requestId: 'invalid', mode: 'later' });

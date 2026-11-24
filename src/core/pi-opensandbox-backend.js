@@ -213,11 +213,14 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
         const fence = randomUUID();
         const paused = [];
         try {
-          await Promise.all(owners.map(async owner => {
+          const results = await Promise.allSettled(owners.map(async owner => {
             paused.push(owner);
             const reply = await owner.manager.coreFileOperation(owner.id, 'pause', { requestId: fence });
             if (reply?.paused !== true || reply.requestId !== fence) throw new Error('Shared writer fence was not confirmed');
           }));
+          if (results.some(result => result.status === 'rejected')) {
+            throw Object.assign(new Error('Shared workspace writers could not all be paused'), { code: 'WORKSPACE_BUSY' });
+          }
           return await fileOperation(botId, 'snapshot', input);
         } finally {
           await Promise.all(paused.map(owner => owner.manager.coreFileOperation(owner.id, 'resume', { requestId: fence }).catch(() => undefined)));
@@ -305,7 +308,6 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
     async *collectSession(botId) {
       const bot = bots.get(botId);
       if (!bot?.executionStopped) throw Object.assign(new Error('Session archive requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
-      if (!bot.started) { yield { type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 }; return; }
       yield* bot.manager.collectCoreSession(botId);
     },
     async *collect(botId, specification) {

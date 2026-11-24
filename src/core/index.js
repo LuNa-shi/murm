@@ -534,6 +534,7 @@ export async function createRuntime(options) {
       request = { interruptId: randomUUID(), executionEpoch: ++bot.executionEpoch };
       bot.interruptRequests.set(requestId, request);
       bot.interruption = request;
+      bridge.cancelBotCalls(botId);
     }
     const identity = { botId, requestId: redactor.text(requestId), interruptId: request.interruptId, executionEpoch: request.executionEpoch };
     if (request.confirmed) return { interruptId: request.interruptId, status: 'interrupted' };

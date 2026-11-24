@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
@@ -47,9 +47,10 @@ test('native running snapshots preserve random bytes and scoped shared workspace
 }, async t => {
   const image = process.env.SWARMENV_CORE_TEST_IMAGE; assert.ok(image);
   const bytes = randomBytes(64);
+  const randomText = `snapshot λ ${randomBytes(20).toString('hex')}\n`;
   const commands = new Map([
-    ['write', python(`import pathlib,time\npathlib.Path('random.bin').write_bytes(bytes.fromhex('${bytes.toString('hex')}'))\npathlib.Path('text.txt').write_text('snapshot λ\\n')\npathlib.Path('ready').write_text('ready')\ntime.sleep(4)`)],
-    ['read', python(`import pathlib\nassert pathlib.Path('random.bin').read_bytes().hex()=='${bytes.toString('hex')}'\nassert pathlib.Path('text.txt').read_text()=='snapshot λ\\n'\ntry:\n pathlib.Path('forbidden').write_text('bad')\n raise AssertionError('readonly mount was writable')\nexcept OSError as error:\n assert error.errno in (13,30)\nassert not pathlib.Path('/workspace/runtime/parent-only').exists()`)],
+    ['write', python(`import pathlib,time\npathlib.Path('random.bin').write_bytes(bytes.fromhex('${bytes.toString('hex')}'))\npathlib.Path('text.txt').write_text(${JSON.stringify(randomText)})\npathlib.Path('ready').write_text('ready')\ntime.sleep(4)`)],
+    ['read', python(`import pathlib\nassert pathlib.Path('random.bin').read_bytes().hex()=='${bytes.toString('hex')}'\nassert pathlib.Path('text.txt').read_text()==${JSON.stringify(randomText)}\ntry:\n pathlib.Path('forbidden').write_text('bad')\n raise AssertionError('readonly mount was writable')\nexcept OSError as error:\n assert error.errno in (13,30)\nassert not pathlib.Path('/workspace/runtime/parent-only').exists()`)],
     ['mark', python(`import pathlib\npathlib.Path('/workspace/runtime/parent-only').write_text('private')\npathlib.Path('shared').write_text('visible')`)],
     ['isolated', python(`import pathlib\nassert list(pathlib.Path('.').iterdir())==[]\nassert not pathlib.Path('/workspace/runtime/parent-only').exists()\npathlib.Path('private').write_text('own')`)],
     ['continue', python(`import pathlib\nassert pathlib.Path('shared').read_text()=='visible'\nassert pathlib.Path('/workspace/runtime/parent-only').read_text()=='private'\npathlib.Path('after-peer-stop').write_text('continued')`)],
@@ -91,6 +92,9 @@ test('native running snapshots preserve random bytes and scoped shared workspace
   }
   const a = await runtime();
   const writer = await a.spawn({ requestId: 'writer', profile: 'worker', workspace: { id: 'shared', mode: 'read-write' } });
+  const key = value => createHash('sha256').update(value).digest('hex');
+  const backing = join('/run/swarmenv-workspaces', key(a.id), key('shared'));
+  await access(backing);
   await turn(a, writer, 'mark');
   const reader = await a.spawn({ requestId: 'reader', profile: 'worker', workspace: { id: 'shared', mode: 'read-only' } });
   const running = turn(a, writer, 'write');
@@ -101,13 +105,16 @@ test('native running snapshots preserve random bytes and scoped shared workspace
   }
   assert.ok(capture); assert.equal((await a.get(writer.id)).status, 'running');
   assert.deepEqual(Buffer.from(capture.files['random.bin'].data, 'base64'), bytes);
-  assert.equal(Buffer.from(capture.files['text.txt'].data, 'base64').toString(), 'snapshot λ\n');
+  assert.equal(Buffer.from(capture.files['text.txt'].data, 'base64').toString(), randomText);
   report.snapshots.push({ version: capture.version, digest: capture.digest, binarySha256: createHash('sha256').update(bytes).digest('hex') });
   assert.deepEqual(await a.files.snapshot(reader.id, { requestId: capture.requestId, paths: ['ready', 'random.bin', 'text.txt'] }), capture);
   await running;
   await turn(a, reader, 'read');
   const frozen = await a.spawn({ requestId: 'frozen', profile: 'worker', workspace: { mode: 'frozen-copy', files: capture.files } });
   await a.stop(reader.id); await turn(a, writer, 'continue'); await turn(a, frozen, 'frozen');
+  await access(backing);
+  assert.equal((await a.stop(writer.id)).cleanup, 'complete');
+  await assert.rejects(access(backing), { code: 'ENOENT' });
   const b = await runtime();
   const other = await b.spawn({ requestId: 'same-name', profile: 'worker', workspace: { id: 'shared', mode: 'read-write' } });
   await turn(b, other, 'isolated');

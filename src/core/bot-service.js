@@ -39,6 +39,7 @@ const outputs = {
   ] } }, ['bot', 'initialInput']),
 };
 const jsonSnapshot = value => JSON.parse(JSON.stringify(value));
+const botStopView = ({ sessionArchive: _sessionArchive, ...receipt }) => receipt;
 const definitions = [
   ['spawn', 'Create a direct child using its Profile defaults; initialInput reports admission, not completion.', object({ profile: id, input: { type: 'string' }, mode, fork: { type: 'boolean' } }, ['profile'])],
   ['get', 'Inspect yourself or one direct child in this Runtime.', object({ bot_id: id }, ['bot_id'])],
@@ -98,8 +99,12 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }) 
     }
     const target = getBot(input.bot_id);
     if (!target || !(target.parentId === caller.botId || (operation !== 'stop' && input.bot_id === caller.botId))) deny('Target must be yourself or a direct child; stop requires a child');
-    if (operation === 'get') return jsonSnapshot(await get(input.bot_id));
+    if (operation === 'get') {
+      const snapshot = await get(input.bot_id);
+      if (snapshot.lastStop) snapshot.lastStop = botStopView(snapshot.lastStop);
+      return jsonSnapshot(snapshot);
+    }
     if (operation === 'send') return jsonSnapshot(await send(input.bot_id, input.input, { requestId, mode: input.mode }, source));
-    return jsonSnapshot(await stop(input.bot_id));
+    return jsonSnapshot(botStopView(await stop(input.bot_id)));
   } });
 }

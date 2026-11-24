@@ -167,8 +167,14 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
     });
   });
   const publicUrl = configuration.publicUrl.replaceAll('{port}', String(server.address().port)).replace(/\/$/, '');
+  function cancelBotCalls(botId) {
+    for (const [controller, callerId] of active) {
+      if (callerId === botId) controller.abort();
+    }
+  }
   return {
     publicUrl,
+    cancelBotCalls,
     credentialsForBot(botId) {
       const bot = getBot(botId);
       if (closing || !bot || bot.unavailable || ['exited', 'closing', 'closed'].includes(bot.status)) {
@@ -187,11 +193,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       const token = botTokens.get(botId);
       tokens.delete(token);
       botTokens.delete(botId);
-      if (abortActive) {
-        for (const [controller, callerId] of active) {
-          if (callerId === botId) controller.abort();
-        }
-      }
+      if (abortActive) cancelBotCalls(botId);
     },
     close,
   };

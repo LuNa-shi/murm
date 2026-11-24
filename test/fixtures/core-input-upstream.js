@@ -5,7 +5,7 @@ import { streamResponse } from './core-controlled-upstream.js';
 export async function createInputUpstream() {
   let count = 0;
   let failure;
-  const evidence = { persistedRead: false, bashCompleted: false, steerAtBoundary: false, followUpAfterCurrent: false };
+  const evidence = { persistedRead: false, bashCompleted: false, steerAtBoundary: false, followUpAfterCurrent: false, resumedAfterInterrupt: false };
   const tool = (name, args, id) => ({ type: 'function_call', name, id: `fc_${id}`, call_id: id, arguments: JSON.stringify(args) });
   const text = value => ({ type: 'message', id: `message_${count}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: value, annotations: [] }] });
   const server = createServer(async (request, response) => {
@@ -38,13 +38,28 @@ export async function createInputUpstream() {
           item = tool('bash', { command: "printf 'READY\\n' > busy-ready.txt; sleep 4; printf 'BUSY_DONE\\n' > busy-finished.txt; cat busy-finished.txt", timeout: 10 }, 'busy'); break;
         case 6:
           evidence.bashCompleted = result('busy') === 'BUSY_DONE\n';
-          evidence.steerAtBoundary = contents.includes('STEER_AT_TOOL_BOUNDARY');
+          evidence.steerAtBoundary = contents.includes('STEER_AT_TOOL_BOUNDARY_A') && contents.includes('STEER_AT_TOOL_BOUNDARY_B');
           if (!evidence.bashCompleted || !evidence.steerAtBoundary) throw new Error('busy_boundary_missing');
           item = text('CURRENT_RUN_DONE'); break;
         case 7:
           evidence.followUpAfterCurrent = contents.includes('FOLLOW_UP_AFTER_CURRENT') && contents.includes('CURRENT_RUN_DONE');
           if (!evidence.followUpAfterCurrent) throw new Error('follow_up_order_missing');
           item = text('BUSY_ROUND_OK'); break;
+        case 8: item = tool('bash', { command: "printf 'READY\n' > interrupt-ready.txt; sleep 15; touch stale.txt", timeout: 20 }, 'interrupted'); break;
+        case 9:
+          if (contents.includes('CANCEL_QUEUED_PHASE') || !contents.includes('RESUME_AFTER_INTERRUPT')) throw new Error('interrupt_queue_or_resume_wrong');
+          item = tool('bash', { command: "test ! -e stale.txt && cat persistent.txt", timeout: 5 }, 'resume'); break;
+        case 10:
+          evidence.resumedAfterInterrupt = result('resume') === 'PERSISTED_ONE\n';
+          if (!evidence.resumedAfterInterrupt) throw new Error('interrupt_did_not_preserve_workspace');
+          item = text('RESUMED_OK'); break;
+        case 11:
+          response.writeHead(200, { 'content-type': 'text/event-stream' });
+          response.end(`event: response.failed\ndata: ${JSON.stringify({ type: 'response.failed',
+            response: { id: 'scripted_failure', object: 'response', model: 'k3', status: 'failed', output: [],
+              error: { code: 'SCRIPTED_MODEL_FAILURE', message: 'SCRIPTED_MODEL_FAILURE' },
+              usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0 } } })}\n\n`);
+          return;
         default: throw new Error('request_cap');
       }
       response.writeHead(200, { 'content-type': 'text/event-stream' });

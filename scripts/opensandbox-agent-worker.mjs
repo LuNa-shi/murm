@@ -34,6 +34,7 @@ let initialized = !quotaRequired;
 if (initialized) await project.initialize();
 let everStarted = false;
 let stopping = null;
+let piLaunched = false;
 let writerGate = Promise.resolve();
 let child = null;
 let sessionPrivateValues = [];
@@ -210,6 +211,8 @@ async function startAgent(input) {
   if (project.closing) throw new Error('Bot stopped during startup');
   child = spawn('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), input.command, ...input.args],
     { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+  piLaunched = child.pid !== undefined;
+  child.stdout.setEncoding('utf8');
   child.stdout.on('data', processStdout);
   // Drain the private stderr pipe so a noisy process cannot block on it.
   child.stderr.resume();
@@ -328,6 +331,7 @@ async function botProcesses() {
 const heldWriters = new Set();
 let installHoldTimer = null;
 const snapshotHolds = new Map();
+const releasedSnapshotHolds = new Set();
 function releaseSnapshotHold(id) {
   clearTimeout(snapshotHolds.get(id));
   snapshotHolds.delete(id);
@@ -413,7 +417,7 @@ function controlCoreFiles(action, input) {
   return withBotPaused(async () => {
     try { return await coreWorkDir[action](input); }
     catch (error) {
-      if (error.code === 'OPERATION_UNKNOWN') project.beginClose();
+      if (action !== 'snapshot' && error.code === 'OPERATION_UNKNOWN') project.beginClose();
       throw error;
     }
   });
@@ -427,7 +431,7 @@ const server = createServer(async (request, response) => {
     if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request, 32 * 1024 ** 2)) }); return; }
     if (request.method === 'POST' && ['/core/files/collect', '/core/session/archive'].includes(url.pathname)) {
       const sessionArchive = url.pathname === '/core/session/archive';
-      if (!coreWorkDir || !executionStopped) throw Object.assign(new Error('Core collection requires confirmed stopped execution'), { code: 'NOT_ALLOWED' });
+      if (!executionStopped || (!sessionArchive && !coreWorkDir)) throw Object.assign(new Error('Core collection requires confirmed stopped execution'), { code: 'NOT_ALLOWED' });
       const requested = await body(request);
       const input = sessionArchive ? { paths: ['.'], includeGit: false, required: true, maxBytes: Number.MAX_SAFE_INTEGER } : requested;
       const controller = new AbortController();
@@ -436,6 +440,10 @@ const server = createServer(async (request, response) => {
       response.on('close', disconnected);
       response.writeHead(200, { 'content-type': 'application/x-ndjson' });
       try {
+        if (sessionArchive && !piLaunched) {
+          response.write(`${JSON.stringify({ type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 })}\n`);
+          return;
+        }
         for await (const record of collectCoreWorkDir(sessionArchive ? join(RUNTIME_DIR, 'pi-session') : PROJECT_DIR, input, { signal: controller.signal, maxEntries: collectionMaxEntries, timeoutMs: sessionArchive ? 600_000 : 20_000 })) {
           if (!response.write(`${JSON.stringify(record)}\n`)) await once(response, 'drain', { signal: controller.signal });
         }
@@ -459,11 +467,17 @@ const server = createServer(async (request, response) => {
       if (!child?.pid) throw Object.assign(new Error('Capture fence requires a live Bot'), { code: 'NOT_ALLOWED' });
       const pause = url.pathname.endsWith('/pause');
       send(response, 200, { ok: true, result: await withBotPaused(() => {
-        releaseSnapshotHold(requestId);
-        if (pause) snapshotHolds.set(requestId, setTimeout(() => {
+        if (pause) {
+          if (releasedSnapshotHolds.has(requestId)) throw Object.assign(new Error('Snapshot fence was already released'), { code: 'CONFLICT' });
+          if (!snapshotHolds.has(requestId)) snapshotHolds.set(requestId, setTimeout(() => {
+            releaseSnapshotHold(requestId);
+            releasedSnapshotHolds.add(requestId);
+            void withBotPaused(() => ({})).catch(() => undefined);
+          }, 90_000));
+        } else {
           releaseSnapshotHold(requestId);
-          void withBotPaused(() => ({})).catch(() => undefined);
-        }, 90_000));
+          releasedSnapshotHolds.add(requestId);
+        }
         return { requestId, paused: pause };
       }) });
       return;

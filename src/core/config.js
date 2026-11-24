@@ -98,7 +98,7 @@ export function snapshotSpawn(input, profiles, registrations) {
       snapshotFileSeed(workspace.files);
     } else if (!['read-only', 'read-write'].includes(workspace.mode) || !validId(workspace.id) ||
         Object.keys(workspace).some(key => !['mode', 'id'].includes(key)) ||
-        (workspace.mode === 'read-only' && input.writable === true)) {
+        (input.writable !== undefined && input.writable !== (workspace.mode === 'read-write'))) {
       throw new TypeError('Shared workspace requires an id and read-only or read-write mode');
     }
   }

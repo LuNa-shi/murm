@@ -183,7 +183,7 @@ function terminalMeter(model, onUsage) {
           const usage = event.response?.usage;
           if (event.response?.model !== model ||
               !integer(usage?.input_tokens) || !integer(usage?.output_tokens)) continue;
-          try { onUsage(usage.input_tokens, usage.output_tokens); } catch (error) { callback(error); return; }
+          try { onUsage(usage.input_tokens, usage.output_tokens, status); } catch (error) { callback(error); return; }
           overflow = true;
           break;
         }
@@ -432,7 +432,7 @@ export class ResponsesBudgetGateway {
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
     });
     const fingerprint = createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex');
-    let runtimeId, botId, receipt, cancelWatch, upstreamWork, trace, upstreamStatus, usage, failure;
+    let runtimeId, botId, receipt, cancelWatch, upstreamWork, trace, upstreamStatus, terminalStatus, usage, failure;
     const controller = new AbortController();
     const disconnect = () => controller.abort();
     let usageRecorded = false;
@@ -489,11 +489,12 @@ export class ResponsesBudgetGateway {
         throw new GatewayError(upstream.status === 429 ? 429 : 502, 'upstream_rejected');
       }
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
-      const meter = terminalMeter(this.policy.model, (inputTokens, outputTokens) => {
+      const meter = terminalMeter(this.policy.model, (inputTokens, outputTokens, status) => {
         this.db.prepare(`UPDATE runtime_model_attempts SET input_tokens = ?, output_tokens = ?, settled = 1
           WHERE runtime_id = ? AND bot_id = ? AND request_id = ? AND settled = 0`)
           .run(inputTokens, outputTokens, runtimeId, botId, requestId);
         usageRecorded = true;
+        terminalStatus = status;
         usage = { inputTokens, outputTokens };
       });
       const capture = new Transform({
@@ -527,8 +528,8 @@ export class ResponsesBudgetGateway {
       if (runtimeId && !receipt) this.db.prepare(`UPDATE runtime_model_attempts SET state = ?, reason = ?
         WHERE runtime_id = ? AND bot_id = ? AND request_id = ? AND state = 'pending'`)
         .run(usageRecorded ? 'completed' : 'unknown', reason, runtimeId, botId, requestId);
-      await trace?.finish({ endedAt: new Date().toISOString(), upstreamStatus, usage, reason,
-        state: failure ? 'failed' : usageRecorded ? 'completed' : 'unknown', error: failure });
+      await trace?.finish({ endedAt: new Date().toISOString(), upstreamStatus, usage, reason, terminalStatus,
+        state: failure || terminalStatus === 'failed' ? 'failed' : terminalStatus ?? 'unknown', error: failure });
     }
   }
 }
