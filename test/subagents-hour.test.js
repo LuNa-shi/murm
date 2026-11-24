@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { registerHooks } from 'node:module';
 import { transport } from './fixtures/core-bot-service-backend.js';
 import { configuration } from './fixtures/core-input-backend.js';
+import { hourParentPrompt, hourStageInstructions, hourChildPrompt } from '../examples/subagents-environment/prompts.mjs';
 import { verifySubagentsInputs } from '../examples/subagents-environment/hour-artifacts.mjs';
 const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./pi-opensandbox-backend.js'&&context.parentURL?.endsWith('/src/core/index.js'))return {url:new URL('./fixtures/subagents-hour-backend.js',import.meta.url).href,shortCircuit:true};
@@ -16,11 +17,18 @@ const hooks=registerHooks({resolve(specifier,context,next){
 const {runSubagentsHour}=await import('../examples/subagents-environment/hour.mjs');hooks.deregister();
 const hash=value=>createHash('sha256').update(value).digest('hex');
 
-async function setup(t,{changedSession=false,changedArchive=false,lateExit=false}={}) {
+async function setup(t,{changedSession=false,changedArchive=false,lateExit=false,queuedParent=false}={}) {
   transport.reset();transport.collectable=true;
   const outputDir=await mkdtemp(join(tmpdir(),'subagents-hour-'));t.after(()=>rm(outputDir,{recursive:true,force:true}));
   let tick=0,parentId,stageIndex,closed=false;const deadlineAt=Date.now()+6000000;
   const childIds=[],conclusions=[],files=new Map();let count=0;
+  let parentRunning=false;const parentQueue=[],yields=[];
+  function settleParent(output,kind) {
+    if(kind)yields.push(kind);
+    parentRunning=false;
+    transport.spawns.get(parentId).onEvent({type:'settled',outcome:'completed',output});
+    if(parentQueue.length){const next=parentQueue.shift();setImmediate(()=>next());}
+  }
   const keep=(id,path,text)=>{if(!files.has(id))files.set(id,new Map());files.get(id).set(path,text);};
   transport.onSpawn=options=>{if(!options.options.parentId)parentId=options.botId;};
   const call=async(operation,payload,operation_id)=>{
@@ -30,6 +38,16 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
   };
   function arm(){transport.next=async inputId=>{
     arm();const row=transport.submissions.get(inputId);
+    if(queuedParent&&row.botId===parentId&&parentRunning){
+      row.receipt={status:'accepted',disposition:'queued'};
+      parentQueue.push(()=>execute(row));return;
+    }
+    // Native send acknowledges before the model finishes its turn.
+    if(queuedParent&&row.botId===parentId){void execute(row);return;}
+    await execute(row);
+  };}
+  async function execute(row){
+    if(row.botId===parentId)parentRunning=true;
     if(row.botId!==parentId){
       const task=JSON.parse(row.input),source=`print(${task.peer+task.stage})\n`,answers=[task.peer+task.stage];
       const output=JSON.stringify({stage:task.stage,child:task.peer,programming:{task:`task-${task.stage}-${task.peer}`,sourceSha256:hash(source),answersSha256:hash(JSON.stringify(answers))}});
@@ -39,16 +57,18 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
       transport.spawns.get(row.botId).onEvent({type:'settled',outcome:'completed',output});
     }else if(row.input.startsWith('Prepare exactly')){
       for(let i=0;i<3;i++){const result=await call('spawn',{profile:'child'},`child-${i}`);assert.equal(result.initialInput,null);childIds.push(result.bot.id);}
-      transport.spawns.get(parentId).onEvent({type:'settled',outcome:'completed',output:JSON.stringify({children:childIds})});
+      settleParent(JSON.stringify({children:childIds}));
     }else if(row.input.startsWith('{"stage"')){
       const task=JSON.parse(row.input);stageIndex=task.stage;count=0;
       // This models natural parent-driven concurrent child admission, with no host semaphore.
       await Promise.all(childIds.map((id,peer)=>call('send',{bot_id:id,input:JSON.stringify({peer,stage:task.stage}),mode:'followUp'},`task-${task.stage}-${peer}`)));
+      if(queuedParent&&hourParentPrompt.includes('End the current turn immediately after dispatch')&&task.instructions.includes('End the current turn immediately after dispatch'))settleParent('Tasks dispatched.', 'dispatch');
     }else{
       const result=JSON.parse(row.input);count++;conclusions.push({childId:result.childId,eventSeq:result.eventSeq,quote:result.output});
-      if(count===3){const output=JSON.stringify({stage:stageIndex,summary:'Use all earlier concrete results.',conclusions});keep(parentId,`hour-results/stage-${stageIndex}.json`,output);transport.spawns.get(parentId).onEvent({type:'settled',outcome:'completed',output});}
+      if(count===3){const output=JSON.stringify({stage:stageIndex,summary:'Use all earlier concrete results.',conclusions});keep(parentId,`hour-results/stage-${stageIndex}.json`,output);settleParent(output,'final');}
+      else if(queuedParent&&hourParentPrompt.includes('End this turn immediately if fewer than three'))settleParent('Awaiting remaining child results.','incomplete');
     }
-  };}arm();
+  }arm();
   transport.onCollect=async function*(botId){
     const entries=[...(files.get(botId)??new Map())];
     const directories=new Set(['hour-results',...entries.filter(([path])=>path.includes('/')).map(([path])=>path.split('/')[0])]);
@@ -57,7 +77,7 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
     for(const [path,text]of entries){const bytes=Buffer.from(changedArchive&&path.endsWith('hour-program-3.py')?'changed source':text);totalBytes+=bytes.length;yield {type:'file',path,bytes:bytes.length,mode:0o644};yield {type:'chunk',data:bytes.toString('base64')};yield {type:'fileEnd',sha256:hash(bytes)};}
     yield {type:'end',totalBytes,fileCount:entries.length,directoryCount:directories.size};
   };
-  return {outputDir,getTick:()=>tick,options:{backend:{...configuration,sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'}},image:'test',outputDir,clock:()=>tick,waitForMs:async ms=>{tick+=ms;if(lateExit&&tick>=3600000)transport.spawns.get(parentId).onEvent({type:'exit',expected:false,reason:'controlled-last-wake'});},
+  return {outputDir,getTick:()=>tick,yields,options:{backend:{...configuration,sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'}},image:'test',outputDir,clock:()=>tick,waitForMs:async ms=>{tick+=ms;if(lateExit&&tick>=3600000)transport.spawns.get(parentId).onEvent({type:'exit',expected:false,reason:'controlled-last-wake'});},
     programming:{prompt:({peer,stage})=>`Implement finite task ${stage} for child ${peer}.`,verify:async({peer,stage,submission})=>submission?.task===`task-${stage}-${peer}`&&submission.sourceSha256===hash(`print(${peer+stage})\n`)&&submission.answersSha256===hash(JSON.stringify([peer+stage]))},
     quota:{url:configuration.models.default.upstream.url,receipt:()=>({profile:'time_only',deadlineAt,forwarded:1,active:0,closed,unknownRequests:1}),close:async()=>{closed=true;}},
     admit:async({runtime,botIds,workMs})=>({runtimeId:runtime.id,clockId:'controlled',observedAtMs:tick,workDeadlineAtMs:tick+workMs,stopAtMs:tick+workMs+600000,resources:botIds.map(botId=>({botId,sandboxId:'fixture-'+botId,expiresAtMs:Date.now()+6000000}))}),
@@ -114,4 +134,28 @@ test('model owner closure has a finite deadline and unknown closure remains a fa
   assert.equal(report.businessFailure.code,'SUBAGENTS_SESSION_CHANGED');
   assert.equal(report.modelOwnerFailure.code,'SUBAGENTS_MODEL_CLOSE_UNKNOWN');assert.equal(report.quota.closed,false);
   assert.ok(performance.now()-started<2000);
+});
+
+
+test('queued parent followUps require dispatch and incomplete turns to yield before exact final adoption',async t=>{
+  assert.match(hourChildPrompt,/raw JSON only/);
+  assert.match(hourParentPrompt,/raw JSON only/);
+  assert.match(hourStageInstructions,/raw JSON only/);
+  const {options,yields}=await setup(t,{queuedParent:true});options.budgets={turnMs:1000};
+  const report=await runSubagentsHour(options);
+  assert.equal(report.businessFailure,null,JSON.stringify(report));
+  assert.equal(report.cleanupFailure,null,JSON.stringify(report));
+  assert.deepEqual(yields,Array.from({length:4},()=>['dispatch','incomplete','incomplete','final']).flat());
+  assert.equal(report.routing.stages.length,4);
+  for(const stage of report.routing.stages){
+    assert.equal(stage.parent.settled.outcome,'completed');
+    assert.equal(JSON.parse(stage.parent.settled.output).conclusions.length,(stage.stage+1)*3);
+    assert.equal(stage.children.length,3);
+    assert.ok(stage.children.some(child=>child.receipt.disposition==='queued'));
+    assert.ok(stage.children.every(child=>['queued','started'].includes(child.receipt.disposition)));
+    for(const child of stage.children){
+      const exact=JSON.parse(stage.parent.settled.output).conclusions.find(row=>row.childId===child.result.childId&&row.eventSeq===child.result.eventSeq);
+      assert.equal(exact.quote,child.result.output);
+    }
+  }
 });

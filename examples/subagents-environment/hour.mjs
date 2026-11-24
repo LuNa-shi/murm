@@ -19,7 +19,7 @@ export async function runSubagentsHour({backend,image,model='default',outputDir,
   if (typeof programming?.prompt!=='function'||typeof programming?.verify!=='function'||typeof admit!=='function'||typeof observeSessions!=='function'||typeof quota?.receipt!=='function'||typeof quota?.close!=='function') throw failure('SUBAGENTS_HOUR_PREFLIGHT');
   const ownerUrl=quota.url;
   if(typeof ownerUrl!=='string'||!/^https?:\/\//.test(ownerUrl))throw failure('SUBAGENTS_HOUR_MODEL_OWNER');
-  const limits={setupMs:600_000,workMs:3_900_000,cleanupMs:180_000,recoveryMs:300_000,marginMs:120_000,turnMs:180_000,...budgets};
+  const limits={setupMs:600_000,workMs:3_900_000,cleanupMs:180_000,recoveryMs:300_000,marginMs:120_000,turnMs:600_000,...budgets};
   if (Object.keys(limits).some(key=>!['setupMs','workMs','cleanupMs','recoveryMs','marginMs','turnMs'].includes(key)) || Object.values(limits).some(value=>!Number.isSafeInteger(value)||value<1||value>2147483647) || limits.setupMs>600_000||limits.workMs<HOUR||limits.workMs>3_900_000||limits.cleanupMs>600_000||limits.recoveryMs>300_000||limits.marginMs>120_000 || !Number.isSafeInteger(exportLimit)||exportLimit<1) throw failure('SUBAGENTS_HOUR_BUDGET_INVALID');
   const now=clock??(()=>performance.now()); let last=-Infinity;
   const time=()=>{const value=now();if(!Number.isFinite(value)||value<last||value<0)throw failure('SUBAGENTS_HOUR_CLOCK');last=value;return value;};
