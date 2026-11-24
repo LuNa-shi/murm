@@ -174,6 +174,14 @@
       "role": "Pin and mount a bounded tmpfs in a verified Docker namespace"
     },
     {
+      "path": "scripts/mount-shared-workspace.py",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Trusted local Docker project mounts and shared tmpfs cleanup"
+    },
+    {
       "path": "scripts/opensandbox-agent-worker.mjs",
       "category": "runtime and execution",
       "chapters": [
@@ -1096,6 +1104,22 @@
       "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
     },
     {
+      "path": "src/core/service-trace.js",
+      "category": "observability and evidence",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Full Bridge operation trace and optional Service state snapshots"
+    },
+    {
+      "path": "src/core/public-services.js",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Curated runtime values at the public Services entry point"
+    },
+    {
       "path": "src/core/services.d.ts",
       "category": "programmable Core",
       "chapters": [
@@ -1119,6 +1143,14 @@
         "docs/architecture/15-core-runtime.md"
       ],
       "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
+    },
+    {
+      "path": "src/core/model-trace.js",
+      "category": "observability and evidence",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Full private model request and response trace writer"
     },
     {
       "path": "src/core/pi-opensandbox-backend.js",
@@ -1192,6 +1224,14 @@
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
       "role": "Trusted Worker FileSeed installation, readback, versioned write grant and close coordination"
+    },
+    {
+      "path": "scripts/core-session-fork.mjs",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Native Pi Session prefix, tool pairing and credential removal"
     },
     {
       "path": "scripts/core-collection.mjs",

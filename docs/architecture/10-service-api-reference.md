@@ -38,8 +38,8 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `cb014f632b97e2e525fce8920f7f36105a7684771e50fd06c3082db421e315b2` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
-| [src/core/index.d.ts](../../src/core/index.d.ts) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
-| [src/core/services.d.ts](../../src/core/services.d.ts) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
+| [src/core/index.d.ts](../../src/core/index.d.ts) | `6fb2f21e8cea573649f0fc49d20eb727be07a15175cece680bd979fcdc17ac26` |
+| [src/core/services.d.ts](../../src/core/services.d.ts) | `d722f0f41d75b82fe7b216a904f15703bf5f26069af12a3375a08049a3e3c94d` |
 | [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `bfb63428e06a323231e381d0f0a094f5759bd2d7fde0746db984f392400af88c` |
 
 ### Exact built-in command operation surface
@@ -3098,6 +3098,7 @@ export interface Profile {
   writable: boolean;
   services: Readonly<Record<string, readonly string[]>>;
   spawnProfiles?: readonly string[];
+  allowContextFork?: boolean;
   env?: Readonly<Record<string, string>>;
   network?: { allow: readonly string[] };
   collect?: CollectionSpec;
@@ -3151,13 +3152,26 @@ export interface PreparedFiles {
   readonly digest: string;
 }
 
+export interface FileSnapshot {
+  readonly botId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly digest: string;
+  readonly files: FileSeed;
+}
+
 export interface GrantReceipt {
   readonly botId: string;
   readonly version: number;
   readonly writable: true;
 }
 
+export type WorkspaceOptions =
+  | { id: string; mode: 'read-only' | 'read-write' }
+  | { mode: 'frozen-copy'; files: FileSeed };
+
 export interface SpawnOptions {
+  forkFrom?: string;
   requestId: string;
   profile: string;
   parentId?: string;
@@ -3165,6 +3179,7 @@ export interface SpawnOptions {
   files?: FileSeed;
   bindings?: Readonly<Record<string, string>>;
   secretEnv?: Readonly<Record<string, string>>;
+  workspace?: WorkspaceOptions;
   collect?: CollectionSpec;
 }
 
@@ -3185,11 +3200,18 @@ export interface ResourceError extends Error {
   details: readonly ErrorInfo[];
 }
 
+export type BotStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+
+export interface BotListFilter {
+  parentId?: string | null;
+  status?: BotStatus | readonly BotStatus[];
+}
+
 export interface BotInfo {
   id: string;
   profile: string;
   parentId?: string;
-  status: 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+  status: BotStatus;
   cursor: number;
   latestOutput?: string;
   lastError?: ErrorInfo;
@@ -3198,9 +3220,20 @@ export interface BotInfo {
 
 export type InputMode = 'steer' | 'followUp';
 
+export interface SteerOptions {
+  requestId: string;
+  source?: string;
+  steeringMode?: 'all' | 'one-at-a-time';
+}
+
 export type InputReceipt =
   | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
   | { inputId: string; status: 'unknown' };
+
+export interface InterruptReceipt {
+  interruptId: string;
+  status: 'interrupted' | 'unknown';
+}
 
 export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
 
@@ -3220,7 +3253,7 @@ export type BotEvent = { botId: string; seq: number } & (
 export interface PendingCleanup {
   kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
   id: string;
-  action: 'await-startup' | 'stop-execution' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
   error?: ErrorInfo;
   resourceKey?: string;
   sandboxId?: string;
@@ -3233,6 +3266,7 @@ export interface StopReceipt {
   execution: 'stopped' | 'unknown';
   cleanup: 'complete' | 'pending';
   artifacts: readonly string[];
+  sessionArchive?: string;
   errors: readonly ErrorInfo[];
   pending?: PendingCleanup;
 }
@@ -3251,11 +3285,16 @@ export interface Runtime {
   readonly id: string;
   spawn(options: SpawnOptions): Promise<BotInfo>;
   get(botId: string): Promise<BotInfo>;
+  list(filter?: BotListFilter): Promise<BotInfo[]>;
+  start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
+  steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
+  interrupt(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
   send(botId: string, input: string, options: { requestId: string; mode?: InputMode }): Promise<InputReceipt>;
   onEvent(handler: (event: BotEvent) => void): () => void;
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {
+    snapshot(botId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>;
     prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
     grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
   };
@@ -3290,6 +3329,8 @@ export interface ServiceCapability {
   output_schema: Record<string, unknown>;
   errors: readonly { code: string; retryable: boolean }[];
   path?: string;
+  /** Host-registered invocation deadline, 1..86400000 ms. Defaults to 30000. */
+  timeout_ms?: number;
 }
 
 export interface ServiceCaller {
@@ -3306,10 +3347,14 @@ export interface ServiceRequest {
   envelope: { operation_id: string; [key: string]: unknown };
   caller: ServiceCaller;
   signal: AbortSignal;
+  /** Check immediately before committing an effect after an asynchronous wait. */
+  assertAuthorized(): void;
 }
 
 export interface ServiceAdapter {
   invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
+  /** Optional bounded host-only snapshot called during Runtime close. */
+  exportState?(options: { signal: AbortSignal }): JsonValue | Promise<JsonValue>;
 }
 
 export class ServiceRegistry {

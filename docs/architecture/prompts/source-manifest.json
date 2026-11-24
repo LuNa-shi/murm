@@ -15,15 +15,15 @@
     },
     {
       "path": "src/core/index.js",
-      "sha256": "f7abae3e2a8928b38891c44b435b808cb47d7cd2dbd86b824cadb05ecef6b1cc"
+      "sha256": "2d32326a78ff3bf801ef8deefef02c2a29745400aa559ca65bb928f34733301d"
     },
     {
       "path": "src/core/pi-opensandbox-backend.js",
-      "sha256": "43df7111e6e59ce631e6b8cfe9b04a0fd0c73335a60992a76dc5f72b409f9bb0"
+      "sha256": "f17cc23f66414e0a772da9c1ab2d457dbfb71e8d8c6339c698a60df53fa8d1b6"
     },
     {
       "path": "scripts/opensandbox-agent-worker.mjs",
-      "sha256": "d6fa3cd1bf167acb2c1230c1be9ed051d156cde3abf03599ee8f14729729becf"
+      "sha256": "7470e8db72680d22d745f0fb72f98fa26a2205c958ccdb23a7f66c1388c69101"
     },
     {
       "path": "examples/notes-environment/main.mjs",
