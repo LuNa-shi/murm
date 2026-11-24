@@ -58,3 +58,44 @@ test('two trusted subscriptions route a directed repository comment once to its 
   assert.equal(delivered[1].length, 0);
   assert.equal(delivered[0][0].targetWorker, 'worker-one');
 });
+
+test('cancelling a subscription during ingestion prevents dispatch of remaining rows in that poll', async t => {
+  let comments = [];
+  const server = createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify(request.url.includes('/issues/comments') ? comments : { order: [], posts: {} }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const cancel = new AbortController();
+  const delivered = [];
+  const failures = [];
+  const source = await createAgenshEventSubscription({
+    facilities: {
+      endpoints: { gitea: origin, message: origin }, repository: { owner: 'owner', name: 'repo' }, channelId: 'channel',
+      peer: { gitea: { username: 'peer-fixed', accountId: '101', token: 'git-token' }, message: { accountId: 'mm-peer', token: 'mm-token' } },
+    },
+    mapping: { workerId: 'worker-fixed', botId: 'bot-fixed' },
+    signal: cancel.signal,
+    pollIntervalMs: 60_000,
+    onFailure: failure => failures.push(failure),
+    ingest(event) {
+      delivered.push(event.eventId);
+      cancel.abort();
+      return { batchId: `batch:${event.eventId}` };
+    },
+  });
+  t.after(() => source.stop());
+  comments = [
+    { id: 1, body: 'first row', user: { id: 102 } },
+    { id: 2, body: 'remaining row', user: { id: 102 } },
+  ];
+
+  await assert.rejects(source.poll(), { code: 'ROUTER_SOURCE_STOPPED' });
+  await source.stop();
+  assert.deepEqual(delivered, ['comment:1']);
+  assert.deepEqual(source.snapshot().records.map(record => record.eventId), delivered);
+  assert.deepEqual(failures, []);
+});

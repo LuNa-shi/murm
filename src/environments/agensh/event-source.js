@@ -53,6 +53,7 @@ export async function createAgenshEventSubscription({ facilities, mapping, inges
     inFlight = (async () => {
       try {
         for (const row of await read()) {
+          check();
           const id = `${row.source}:${row.eventId}`; if (seen.has(id)) continue;
           if (seen.size >= 1024) throw fail('ROUTER_SOURCE_EVENT_LIMIT');
           if (!row.self && !row.ignored && row.text) {
