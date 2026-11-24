@@ -42,6 +42,14 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
       { name: 'take', operation: 'task_take', description: 'Atomically reserve one Task, prepare fixed inputs and grant the current Bot write access', side_effect: 'write', idempotent: true,
         help: { when: 'Take selected work; retry an unknown result using the same request ID' }, errors: [{ code: 'CONFLICT', retryable: false }, { code: 'NOT_ALLOWED', retryable: false }], input_schema: { ...objectSchema({ task_id: taskId }), required: ['task_id'] }, output_schema: { type: 'object' } },
     ] };
+  function eligibleBot(botId, runtimeId) {
+    if (closing) denied('Flat Task Service is closing');
+    const bot = taskService.getBot(botId);
+    if (!bot || bot.mission_id !== missionId || bot.core_id === runtimeId || bot.sandbox_id || !['UNBOUND', 'ACTIVE'].includes(bot.state)) denied('Flat caller has no eligible registered Bot');
+    taskService.assertMissionResearchOpen(missionId);
+    taskService.assertBotDeadline(botId);
+    return bot;
+  }
   const adapter = { async invoke({ capability, input, caller, envelope, signal }) {
     const operation = capability?.operation;
     if (!operations.includes(operation) || !input || typeof input !== 'object' || Array.isArray(input)) invalid('Unsupported flat Task operation or payload');
@@ -59,9 +67,7 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     }
     if (closing) denied('Flat Task Service is closing');
     signal?.throwIfAborted();
-    const bot = taskService.getBot(caller.botId);
-    if (!bot || bot.mission_id !== missionId || bot.core_id === core.id || bot.sandbox_id || !['UNBOUND', 'ACTIVE'].includes(bot.state)) denied('Flat caller has no eligible registered Bot');
-    taskService.assertMissionResearchOpen(missionId); taskService.assertBotDeadline(bot.bot_id);
+    const bot = eligibleBot(caller.botId, core.id);
     const live = await core.get(bot.bot_id);
     if (!['idle', 'running'].includes(live.status) || live.profile !== profile || closing || signal?.aborted) denied('Core researcher is unavailable');
     const joined = requests.get(key);
@@ -69,6 +75,7 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
       if (joined.fingerprint !== fingerprint) throw new SwarmEnvError('CONFLICT', 'Flat request ID has different parameters');
       return structuredClone(await joined.work);
     }
+    eligibleBot(bot.bot_id, core.id);
     if (operation === 'task_list') return taskService.dispatch(operation, { ...input, mission_id: missionId }, makeEnvelope({ actorRef: bot.bot_id }));
     const task = taskService.getTask(input.task_id);
     if (!task || task.mission_id !== missionId) denied('Task does not belong to this Mission');
@@ -76,7 +83,7 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
       if (task.workspace?.workspace_id && task.workspace.workspace_id !== workspaceId) denied('Task Workspace belongs to another Environment');
       const snapshot = await missionWorkspace.exportRevision({ workspaceId, revision: task.workspace?.revision ?? 'main', signal });
       signal?.throwIfAborted();
-      if (closing) denied('Flat Task Service is closing');
+      eligibleBot(bot.bot_id, core.id);
       if (snapshot.mission_id !== missionId) denied('Preview Workspace belongs to another Mission');
       previews.set(bot.bot_id, { revision: snapshot.revision, workspace_id: workspaceId });
       return taskService.dispatch(operation, { task_id: task.task_id }, makeEnvelope({ actorRef: bot.bot_id, taskId: task.task_id }));

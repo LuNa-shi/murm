@@ -104,6 +104,44 @@ test('flat preview cancellation rejects an already admitted export before return
   await assert.rejects(pending, { code: 'PREVIEW_CANCELLED' });
 });
 
+for (const { reason, invalidate, botState } of [
+  { reason: 'domain Bot close', botState: 'CLOSING', invalidate(f, bot) { f.tasks.requestBotStop(bot.id, 'controlled-domain-stop'); } },
+  { reason: 'Mission stop', botState: 'UNBOUND', invalidate(f) { f.tasks.setMissionStopReader(() => true); } },
+  { reason: 'Bot hard deadline', botState: 'UNBOUND', invalidate(f, bot) {
+    f.tasks.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run('2000-01-01T00:00:00.000Z', bot.id);
+  } },
+]) test(`real Bridge rejects Task preview after ${reason} while Workspace export waits`, { timeout: 15_000 }, async t => {
+  let startup;
+  const f = await fixture(t, { onStart(body) { startup = body; } });
+  const bot = await f.spawn('domain-preview-close');
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const original = f.workspace.exportRevision.bind(f.workspace);
+  f.workspace.exportRevision = async options => {
+    const snapshot = await original(options);
+    entered.resolve();
+    await release.promise;
+    return snapshot;
+  };
+  const url = new URL(startup.env.SWARMENV_BRIDGE_URL);
+  url.hostname = '127.0.0.1';
+  const pending = fetch(`${url.origin}/call`, { method: 'POST',
+    headers: { authorization: `Bearer ${startup.secret_env.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ service_id: 'task', operation: 'task_view', operation_id: 'closing-preview', payload: { task_id: f.task.task_id } }),
+    signal: AbortSignal.timeout(5000) });
+  try {
+    await entered.promise;
+    invalidate(f, bot);
+    assert.equal((await f.runtime.get(bot.id)).status, 'idle');
+  } finally { release.resolve(); }
+  const response = await pending;
+  const body = await response.json();
+  assert.equal(response.status, 403);
+  assert.equal(body.error.code, 'NOT_ALLOWED');
+  assert.equal(f.tasks.getBot(bot.id).state, botState);
+  assert.equal(f.tasks.listExecutions(f.task.task_id).length, 0);
+});
+
 test('public Core CLI take pins verified Material and warns when main advances after a trusted preview', async t => {
   let startup, seed;
   const f = await fixture(t, { onStart(body) { startup = body; }, fileOperation(action, input) {
