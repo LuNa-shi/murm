@@ -153,7 +153,7 @@ export async function openPiOpenSandboxBackend(config, { runtimeId, bridge, mode
       if (versions.piVersion !== '1.3.0') throw invalid('Backend requires Pi 1.3.0');
       assertOpen();
       const model = config.models[profile.model];
-      await manager.startAgent({ agentMode: 'core', executionId: botId, command: 'pi',
+      await manager.startAgent({ executionId: botId, command: 'pi',
         args: ['--mode', 'rpc', '--session-dir', '/workspace/runtime/pi-session', '--session-id', randomUUID(),
           '--tools', 'read,write,edit,bash', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files',
           '--append-system-prompt', '/workspace/runtime/profile-prompt.txt', '--provider', model.provider, '--model', model.model],

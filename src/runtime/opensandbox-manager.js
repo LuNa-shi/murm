@@ -582,18 +582,13 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ agentMode = 'swarm', writable = false, files, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
-    let contract = { protocolVersion: 'swarmenv-core-v1', resources: [] };
-    if (agentMode !== 'core') {
-      const { agentContract } = await import('../agent/bot-contract.js');
-      contract = agentContract(agentMode);
-      if (resources === undefined) resources = contract.resources;
-    }
+  async startAgent({ writable = false, files, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
+    const contract = { protocolVersion: 'swarmenv-core-v1', resources: [] };
     const record = this.#record(executionId);
     const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }) => ({ path, sha256 })).sort((a, b) => a.path.localeCompare(b.path))) : null;
     const expectedVersion = files !== undefined || writable ? 1 : 0;
-    const expectedDigest = agentMode === 'core' && expectedVersion === 1 ? decodeFileSeed(files ?? {}).digest : undefined;
+    const expectedDigest = expectedVersion === 1 ? decodeFileSeed(files ?? {}).digest : undefined;
     if (signature(resources) !== signature(contract.resources)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
     if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
     if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
@@ -607,8 +602,8 @@ export class OpenSandboxManager {
     const workerHeaders = { authorization: `Bearer ${workerToken}` };
     await this.#waitWorker(endpoint, workerHeaders);
     beforeAgentStart?.();
-    if (agentMode === 'core') record.coreAgent = true;
-    if (agentMode === 'core') record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), starting: true };
+    record.coreAgent = true;
+    record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), starting: true };
     const startup = await this.#request(`${endpoint}/start`, {
       absolute: true,
       workerStart: true,
@@ -618,11 +613,10 @@ export class OpenSandboxManager {
         command: required(agentCommand, 'agent_command'),
         args,
         cwd,
-        env: envs(env, { allowSecrets: agentMode === 'core' }),
+        env: envs(env, { allowSecrets: true }),
         // Explicitly supplied secret values travel only over the authenticated
         // worker channel and are never included in a manager snapshot/log.
         secret_env: envs(secretEnvironment, { allowSecrets: true }),
-        session_dir: sessionDir,
         system_prompt: systemPrompt,
         system_prompt_path: systemPromptPath,
         resources,
@@ -647,7 +641,7 @@ export class OpenSandboxManager {
       throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
     }
     const fileReceipt = startup.body?.result?.project_files;
-    if (agentMode === 'core' && (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest)) {
+    if (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest) {
       throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
     record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt };

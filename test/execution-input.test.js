@@ -7,7 +7,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
-import { BOT_PROTOCOL_VERSION, BOT_RESOURCES } from '../src/agent/bot-contract.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 const run = promisify(execFile);
 
@@ -63,8 +62,9 @@ test('OpenSandbox Bot preparation transfers exact manifest bytes including allow
       if (request.method === 'DELETE') return new Response(null, { status: 404 });
       if (url.endsWith('/sandboxes')) return new Response('{"id":"sandbox:input"}');
       if (url.includes('/endpoints/')) return new Response('{"url":"http://execd.test"}');
-      if (url.endsWith('/health') || url.endsWith('/stop')) return new Response('{}');
-      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } }));
+      if (url.endsWith('/health')) return new Response('{}');
+      if (url.endsWith('/stop')) return new Response(JSON.stringify({ result: { stopped: true } }));
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'swarmenv-core-v1', resources: [] }, project_files: { version: 0, writable: false } } }));
       if (url.endsWith('/project/prepare')) {
         const input = JSON.parse(request.body);
         assert.deepEqual(input.manifest, snapshot.manifest);
@@ -80,7 +80,7 @@ test('OpenSandbox Bot preparation transfers exact manifest bytes including allow
   });
   await provider.ensureExecution({ executionId: 'execution-input', botId: 'execution-input' });
   t.after(() => provider.stopExecution('execution-input'));
-  await provider.startAgent({ executionId: 'execution-input', command: 'controlled' });
+  await provider.startAgent({ executionId: 'execution-input', command: 'pi', resources: [] });
   provider.bindBotExecution({ botId: 'execution-input', executionId: 'execution-input', bindingVersion: 1 });
   const copied = await provider.syncWorkspace({ executionId: 'execution-input', workspaceRef: workspace.workspace_ref, manifest: snapshot.manifest });
   assert.equal(copied.file_count, Object.keys(snapshot.files).length);

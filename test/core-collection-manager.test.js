@@ -25,7 +25,7 @@ async function fixture() {
       throw new Error('Unexpected fixture request');
     } });
   await manager.ensureExecution({ executionId: 'bot', botId: 'bot', cleanupOnFailure: false });
-  await manager.startAgent({ agentMode: 'core', executionId: 'bot', command: 'pi', args: [], writable: false, resources: [] });
+  await manager.startAgent({ executionId: 'bot', command: 'pi', args: [], writable: false, resources: [] });
   return { manager, setStopped: () => { stopped = true; }, deletions: () => deletions, setRecords: input => { records = input; } };
 }
 const consume = async stream => { const rows = []; for await (const row of stream) rows.push(row); return rows; };

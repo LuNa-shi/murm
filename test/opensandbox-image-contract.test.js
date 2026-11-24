@@ -4,7 +4,6 @@ import { createHash, randomUUID } from 'node:crypto';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import { agentContract, BOT_PROTOCOL_VERSION, BOT_RESOURCES } from '../src/agent/bot-contract.js';
 
 test('OpenSandbox image carries the direct Pi model catalog', async () => {
   const dockerfile = await readFile(new URL('../services/opensandbox-agent/Dockerfile', import.meta.url), 'utf8');
@@ -93,15 +92,14 @@ test('image probe cleanup reports a retained owned container after a failed remo
   });
 });
 
-test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contract', { skip: !agentImage, timeout: 45_000 }, async () => {
+test('built OpenSandbox image starts direct Pi with the Core prompt and empty resource contract', { skip: !agentImage, timeout: 45_000 }, async () => {
   const catalog = await readFile(new URL('../services/opensandbox-agent/pi-models.json', import.meta.url));
   const modelCatalogResource = { path: '/opt/swarmenv/pi-agent/models.json', sha256: createHash('sha256').update(catalog).digest('hex') };
   const probe = `
     import assert from 'node:assert/strict';
-    import { spawn } from 'node:child_process';
+    import { spawn, spawnSync } from 'node:child_process';
     import { createHash } from 'node:crypto';
-    import { lstat, readFile, realpath } from 'node:fs/promises';
-    import { dirname } from 'node:path';
+    import { readFile } from 'node:fs/promises';
     import { setTimeout as delay } from 'node:timers/promises';
 
     const input = JSON.parse(process.argv[1]);
@@ -120,7 +118,9 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
         assert.ok(Date.now() < startDeadline && worker.exitCode === null, 'worker did not become healthy');
         await delay(50);
       }
-      const response = await post('/start', { ...input, command: 'bash', args: ['-c', 'pi --version && swarm judge check --help && jq -n -e true && python3 -c "import json" && python --version && rg --version && curl --version && ! command -v lean && ! command -v lake && ! command -v elan'] });
+      const tools = spawnSync('setpriv', ['--reuid', '10001', '--regid', '10001', '--clear-groups', '--no-new-privs', '--bounding-set=-all', '--inh-caps=-all', '--ambient-caps=-all', '--', 'bash', '-c', 'swarm judge check --help && jq -n -e true && python3 -c "import json" && python --version && rg --version && curl --version && ! command -v lean && ! command -v lake && ! command -v elan'], { timeout: 5000 });
+      assert.equal(tools.status, 0, 'Image tools must run under the Bot UID');
+      const response = await post('/start', { command: 'pi', args: ['--version'], ...input });
       const started = await response.json();
       if (input.expect_rejection) {
         assert.equal(response.status, 400);
@@ -135,16 +135,8 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
       assert.deepEqual(started.result.contract, { version: input.contract_version, resources: input.resources });
       assert.deepEqual(started.result.model_catalog_resource, input.model_catalog_resource);
 
-      for (const { path, sha256 } of input.resources) {
-        const info = await lstat(path);
-        assert.ok(info.isFile() && info.uid === 0 && (info.mode & 0o022) === 0 && (info.mode & 0o004), path);
-        assert.equal(await realpath(path), path);
-        assert.equal(createHash('sha256').update(await readFile(path)).digest('hex'), sha256, path);
-        for (let parent = dirname(path); parent !== '/'; parent = dirname(parent)) {
-          const info = await lstat(parent);
-          assert.ok(info.isDirectory() && info.uid === 0 && (info.mode & 0o022) === 0 && (info.mode & 0o001), parent);
-        }
-      }
+      assert.deepEqual(started.result.project_files, { version: 0, writable: false });
+      assert.equal(await readFile('/workspace/runtime/profile-prompt.txt', 'utf8'), input.system_prompt);
       const exitDeadline = Date.now() + 5000;
       for (;;) {
         const replay = await post('/rpc', { type: 'get_state', since: 0 });
@@ -163,11 +155,13 @@ test('built OpenSandbox image starts Pi with the host-pinned immutable Bot contr
       worker.kill('SIGKILL');
     }
   `;
-  const contract = agentContract();
-  const input = { contract_version: contract.protocolVersion, resources: contract.resources, model_catalog_resource: modelCatalogResource };
+  const input = { contract_version: 'swarmenv-core-v1', resources: [], system_prompt: 'Fixed image startup role',
+    system_prompt_path: '/workspace/runtime/profile-prompt.txt', model_catalog_resource: modelCatalogResource };
   await runImageProbes([input,
     { ...input, expect_rejection: true, contract_version: 'swarm-bot-v1-draft.2' },
-    { ...input, expect_rejection: true, resources: contract.resources.map(resource => ({ ...resource, sha256: '0'.repeat(64) })) },
+    { ...input, expect_rejection: true, resources: [{ path: '/opt/swarmenv/src/agent/bot-contract/system.txt', sha256: '0'.repeat(64) }] },
+    { ...input, expect_rejection: true, command: 'bash' },
+    { ...input, expect_rejection: true, system_prompt_path: '/workspace/other-prompt.txt' },
   ].map(value => [probe, JSON.stringify(value)]));
 });
 

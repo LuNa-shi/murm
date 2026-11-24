@@ -3,7 +3,7 @@
 import { createServer } from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { readFile, writeFile, mkdir, chown, chmod, readdir, lstat, realpath, statfs } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chown, readdir, statfs } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
 import { CoreWorkDir } from './core-work-dir.mjs';
@@ -151,22 +151,8 @@ async function startAgent(input) {
     projectQuota = { bytes, inodes };
     collectionMaxEntries = Math.min(inodes, MAX_COLLECTION_ENTRIES);
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
-  const core = input.contract_version === 'swarmenv-core-v1';
-  if (core && (input.command !== 'pi' || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt`)) throw startupContractError('Core startup requires direct Pi and an explicit role prompt');
-  const expectedNames = core ? [] : ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
-  if ((!core && input.contract_version !== 'swarm-bot-v1-draft.3') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
-      new Set(input.resources.map(resource => resource?.path)).size !== expectedNames.length ||
-      !expectedNames.every(name => input.resources.some(resource => resource?.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw startupContractError('complete versioned Bot contract resources are required');
-  for (const resource of input.resources) {
-    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw startupContractError('unsupported Bot contract resource');
-    const info = await readPinnedStartupPath(lstat, resource.path);
-    if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) || !(info.mode & 0o004) || await readPinnedStartupPath(realpath, resource.path) !== resource.path) throw startupContractError('Bot contract resource must be immutable to the Bot');
-    for (let parent = dirname(resource.path); parent !== '/'; parent = dirname(parent)) {
-      const directory = await readPinnedStartupPath(lstat, parent);
-      if (!directory.isDirectory() || directory.uid !== 0 || (directory.mode & 0o022) || !(directory.mode & 0o001)) throw startupContractError('Bot contract parent must be protected and traversable');
-    }
-    const sha256 = createHash('sha256').update(await readPinnedStartupPath(readFile, resource.path)).digest('hex');
-    if (sha256 !== resource.sha256) throw startupContractError('Bot contract resource does not match the pinned version');
+  if (input.contract_version !== 'swarmenv-core-v1' || input.command !== 'pi' || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt` || !Array.isArray(input.resources) || input.resources.length !== 0) {
+    throw startupContractError('Core startup requires direct Pi, an explicit role prompt and an empty resource set');
   }
   if (project.closing) throw new Error('Bot stopped during resource validation');
   for (const path of ['home', 'tmp', 'pi-agent', 'pi-session']) {
@@ -179,11 +165,8 @@ async function startAgent(input) {
     await writeFile(input.system_prompt_path, input.system_prompt, { mode: 0o600 });
     await chown(input.system_prompt_path, BOT_UID, BOT_UID);
   }
-  let projectFiles;
-  if (core) {
-    coreWorkDir = new CoreWorkDir({ path: PROJECT_DIR, uid: BOT_UID, gid: BOT_UID, assertOpen: requireOpenWorkDir });
-    projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true });
-  }
+  coreWorkDir = new CoreWorkDir({ path: PROJECT_DIR, uid: BOT_UID, gid: BOT_UID, assertOpen: requireOpenWorkDir });
+  const projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true });
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;
   const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,

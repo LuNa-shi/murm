@@ -1,7 +1,6 @@
 import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from '../src/runtime/opensandbox-metadata.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
 import { ERROR_CODES } from '../src/errors.js';
 
@@ -137,8 +136,9 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
       if (url.endsWith('/sandboxes')) return response({ id: 'sbx-worker' }, { status: 202 });
       if (url.includes('/endpoints/44772')) return response({ url: 'http://execd.test/sbx-worker' });
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-worker' });
+      if (url === 'http://worker.test/sbx-worker/stop') return response({ result: { stopped: true } });
       if (url === 'http://worker.test/sbx-worker/health') return response({ ok: true });
-      if (url === 'http://worker.test/sbx-worker/start') return response({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } });
+      if (url === 'http://worker.test/sbx-worker/start') return response({ result: { contract: { version: 'swarmenv-core-v1', resources: [] }, project_files: { version: 0, writable: false } } });
       if (url === 'http://worker.test/sbx-worker/rpc') {
         const wrapper = JSON.parse(options.body);
         assert.equal(wrapper.since, 17);
@@ -150,11 +150,11 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
     },
   });
   await manager.ensureExecution({ executionId: 'e-worker', botId: 'e-worker' });
-  for (const options of [{ resources: null }, { agentMode: 'core' }, { agentMode: 'core', resources: null }]) {
+  for (const options of [{}, { resources: null }, { resources: [{ path: '/legacy/system.txt', sha256: '0'.repeat(64) }] }]) {
     await assert.rejects(manager.startAgent({ executionId: 'e-worker', command: 'pi', ...options }), { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
   }
   assert.equal(calls.some(call => call.url === 'http://worker.test/sbx-worker/start'), false);
-  const started = await manager.startAgent({ executionId: 'e-worker', command: 'pi', args: ['--mode', 'rpc'] });
+  const started = await manager.startAgent({ executionId: 'e-worker', command: 'pi', resources: [], args: ['--mode', 'rpc'] });
   assert.equal(started.worker_port, 44100);
   const sandboxCreate = calls.find((call) => call.url === 'http://sandbox.test/v1/sandboxes');
   const sandboxPayload = JSON.parse(sandboxCreate.options.body);
@@ -163,7 +163,7 @@ test('OpenSandbox starts an authenticated Agent worker through Execd', async () 
   const launch = calls.find((call) => call.url === 'http://worker.test/sbx-worker/start');
   assert.equal(launch.options.headers.authorization.startsWith('Bearer '), true);
   assert.deepEqual(JSON.parse(launch.options.body).args, ['--mode', 'rpc']);
-  assert.deepEqual(JSON.parse(launch.options.body).resources, BOT_RESOURCES);
+  assert.deepEqual(JSON.parse(launch.options.body).resources, []);
   const acknowledgement = await manager.agentRpc('e-worker', { type: 'prompt', id: 'original-input', message: 'fixed' }, { timeoutMs: 50, since: 17 });
   assert.equal(acknowledgement.response.id, 'original-input');
   await manager.stopExecution('e-worker');
@@ -180,13 +180,13 @@ test('OpenSandbox keeps explicit Agent secrets in the authenticated worker start
       if (url === 'http://execd.test/sbx-secret/command') return response({ command_id: 'worker-job', running: true });
       if (url.includes('/endpoints/44100')) return response({ url: 'http://worker.test/sbx-secret' });
       if (url === 'http://worker.test/sbx-secret/health') return response({ ok: true });
-      if (url === 'http://worker.test/sbx-secret/start') return response({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } });
+      if (url === 'http://worker.test/sbx-secret/start') return response({ result: { contract: { version: 'swarmenv-core-v1', resources: [] }, project_files: { version: 0, writable: false } } });
       if (url.includes('/sandboxes/sbx-secret')) return response({}, { status: options.method === 'DELETE' ? 204 : 404 });
       throw new Error(`unexpected URL: ${url}`);
     },
   });
   await manager.ensureExecution({ executionId: 'e-secret', botId: 'e-secret' });
-  await manager.startAgent({ executionId: 'e-secret', command: 'pi', secretEnvironment: { SWARMENV_TASK_SERVICE_TOKEN: 'secret-value' } });
+  await manager.startAgent({ executionId: 'e-secret', command: 'pi', resources: [], secretEnvironment: { SWARMENV_TASK_SERVICE_TOKEN: 'secret-value' } });
   const startCall = calls.find((call) => call.url === 'http://worker.test/sbx-secret/start');
   assert.equal(JSON.parse(startCall.options.body).secret_env.SWARMENV_TASK_SERVICE_TOKEN, 'secret-value');
   assert.equal(JSON.stringify(manager.snapshot()).includes('secret-value'), false);
@@ -308,7 +308,7 @@ test('Bot Sandbox is recorded before endpoint preparation and reused for its sol
   assert.equal(calls.filter(({ options }) => options.method === 'POST').length, 1);
 });
 
-for (const receipt of [null, { version: BOT_PROTOCOL_VERSION, resources: [] }, { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES.map(item => ({ ...item, sha256: '0'.repeat(64) })) }]) {
+for (const receipt of [null, { version: 'swarm-bot-v1-draft.3', resources: [] }, { version: 'swarmenv-core-v1', resources: [{ path: '/legacy/system.txt', sha256: '0'.repeat(64) }] }]) {
   test(`Agent startup refuses missing or mismatched worker contract attestation: ${receipt === null ? 'missing' : receipt.resources.length}`, async () => {
     const manager = createOpenSandboxManager({ lifecycleBaseUrl: 'http://provider.test', image: 'fixture', waitForExecdReady: false,
       fetchImpl: async (url, options) => {
@@ -316,14 +316,16 @@ for (const receipt of [null, { version: BOT_PROTOCOL_VERSION, resources: [] }, {
         if (url.endsWith('/sandboxes/sandbox-attestation')) return response({}, { status: 404 });
         if (url.endsWith('/sandboxes')) return response({ id: 'sandbox-attestation' }, { status: 202 });
         if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
+        if (url.endsWith('/stop')) return response({ result: { stopped: true } });
         if (url.endsWith('/health')) return response({ ok: true });
         if (url.endsWith('/start')) return response({ result: { pid: 123, contract: receipt } });
         throw new Error(`unexpected: ${url}`);
       },
     });
     await manager.ensureExecution({ executionId: 'B-attestation', botId: 'B-attestation' });
-    await assert.rejects(manager.startAgent({ executionId: 'B-attestation', command: 'pi' }), { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
-    assert.equal(manager.snapshot().executions[0].agent, undefined);
+    await assert.rejects(manager.startAgent({ executionId: 'B-attestation', command: 'pi', resources: [] }), { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
+    assert.equal(manager.coreResource('B-attestation').creation, 'created');
+    assert.equal(manager.coreResource('B-attestation').executionStopped, false);
     await manager.stopExecution('B-attestation');
     assert.equal(manager.snapshot().executions.length, 0);
   });
@@ -481,20 +483,22 @@ test('worker quota and exact catalog attestations are required when configured',
           return response({ id: 'sandbox-quota' }, { status: 202 });
         }
         if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
+        if (url.endsWith('/stop')) return response({ result: { stopped: true } });
         if (url.endsWith('/health')) return response({ ok: true });
         if (url.endsWith('/start')) {
           assert.deepEqual(JSON.parse(options.body).project_quota, quota);
           assert.deepEqual(JSON.parse(options.body).model_catalog_resource, modelCatalogResource);
-          return response({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES },
+          return response({ result: { contract: { version: 'swarmenv-core-v1', resources: [] },
             ...(variant === 'quota missing' ? {} : { project_quota: quota }),
+            project_files: { version: 0, writable: false },
             model_catalog_resource: variant === 'catalog mismatch' ? { ...modelCatalogResource, sha256: '0'.repeat(64) } : modelCatalogResource } });
         }
         throw new Error(`unexpected: ${url}`);
       },
     });
     await manager.ensureExecution({ executionId: 'B-quota', botId: 'B-quota', projectQuotaRequired: true });
-    await assert.rejects(manager.startAgent({ executionId: 'B-quota', command: 'pi' }), { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
-    const started = manager.startAgent({ executionId: 'B-quota', command: 'pi', projectQuota: quota, modelCatalogResource });
+    await assert.rejects(manager.startAgent({ executionId: 'B-quota', command: 'pi', resources: [] }), { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
+    const started = manager.startAgent({ executionId: 'B-quota', command: 'pi', resources: [], projectQuota: quota, modelCatalogResource });
     if (variant === 'accepted') await started;
     else await assert.rejects(started, { code: ERROR_CODES.BOT_STARTUP_CONTRACT });
     await manager.stopExecution('B-quota');
@@ -560,7 +564,8 @@ test('Core startup accepts explicitly classified nonsecret application environme
     fetchImpl: async (url, options) => {
       if (url.endsWith('/sandboxes')) return response({ id: 'core-env' });
       if (url.includes('/endpoints/')) return response({ url: 'http://worker.test' });
-      if (url.endsWith('/health')) return response({ ok: true });
+      if (url.endsWith('/stop')) return response({ result: { stopped: true } });
+        if (url.endsWith('/health')) return response({ ok: true });
       if (url.endsWith('/start')) {
         launch = JSON.parse(options.body);
         return response({ result: { contract: { version: 'swarmenv-core-v1', resources: [] }, project_files: { writable: false, version: 0 } } });
@@ -568,7 +573,7 @@ test('Core startup accepts explicitly classified nonsecret application environme
       throw new Error('Unexpected provider route');
     } });
   await manager.ensureExecution({ executionId: 'core-env', botId: 'core-env' });
-  await manager.startAgent({ executionId: 'core-env', agentMode: 'core', command: 'pi', resources: [],
+  await manager.startAgent({ executionId: 'core-env', command: 'pi', resources: [],
     env: { TOKENIZER: 'nonsecret-test-value' } });
   assert.equal(launch.env.TOKENIZER, 'nonsecret-test-value');
 });

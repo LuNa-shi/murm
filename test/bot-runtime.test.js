@@ -10,7 +10,6 @@ import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { createMissionCoordination } from '../src/runtime/mission-coordination.js';
 import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
-import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { stableStringify } from '../src/protocol/envelope.js';
 import { createHash } from 'node:crypto';
@@ -37,7 +36,8 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
       if (options.method === 'GET' && deletedSandboxes.has(url)) return new Response('{}', { status: 404 });
       if (url.endsWith('/sandboxes')) return new Response(JSON.stringify({ id: `sandbox:${++sandboxNumber}` }), { status: 202 });
       if (url.includes('/endpoints/')) return new Response(JSON.stringify({ url: 'http://execd.test' }));
-      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: BOT_PROTOCOL_VERSION, resources: BOT_RESOURCES } } }));
+      if (url.endsWith('/stop')) return new Response(JSON.stringify({ result: { stopped: true } }));
+      if (url.endsWith('/start')) return new Response(JSON.stringify({ result: { contract: { version: 'swarmenv-core-v1', resources: [] }, project_files: { version: 0, writable: false } } }));
       if (url.includes('/project/')) {
         const input = JSON.parse(options.body);
         return new Response(JSON.stringify({ result: { state: url.endsWith('/prepare') ? 'PREPARED' : 'ACTIVE', execution_id: input.execution_id, binding_version: input.binding_version } }));
@@ -52,7 +52,7 @@ async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceC
   t.after(async () => { await runtime.missionSubmissionStore?.stop({ missionId: 'mission:bots' }); await runtime.shutdown(); service.close(); await rm(root, { recursive: true, force: true }); });
   const startSession = async ({ bot, onSandboxCreated, beforeAgentStart }) => {
     const sandbox = await manager.ensureExecution({ executionId: bot.resource_key, botId: bot.bot_id, onCreated: onSandboxCreated });
-    await manager.startAgent({ executionId: bot.resource_key, command: 'controlled-session', args: [], beforeAgentStart });
+    await manager.startAgent({ executionId: bot.resource_key, command: 'pi', resources: [], args: [], beforeAgentStart });
     const session = new EventEmitter();
     session.closed = false;
     session.waitForReady = async () => {};
