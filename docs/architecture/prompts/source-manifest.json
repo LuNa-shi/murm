@@ -86,6 +86,10 @@
       "sha256": "68dfb0159b2ce43d79688906f4d3473452d58d6604a7c52960e6be7b53813048"
     },
     {
+      "path": "src/environments/endurance/lead-helper-workload.js",
+      "sha256": "edaa991d8c57baa530e917a8dacb6710e5b7c5e5912dd9fe219fbcf838f92946"
+    },
+    {
       "path": "test/fixtures/agensh-team-kimi.js",
       "sha256": "a9bfb493adbfc4255867aaceb95f4c55ada557b5192d00c5bdd9265c1a8ae116"
     },
@@ -99,7 +103,7 @@
     },
     {
       "path": "src/environments/lead-helper/index.js",
-      "sha256": "dd612393279ac609876504a66124b9f08b57c24bced348ae685e21b5a35358b6"
+      "sha256": "33ef0625b9fa0f79457ee9fcefea54b50a5dfa062494799d4b8b19a1b9260f68"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -286,6 +290,12 @@
       "sha256": "644b629a436399869c806ccce656ebc0d5026cfec3027343ed8d1d78beb985ce"
     },
     {
+      "path": "src/environments/endurance/lead-helper-workload.js",
+      "anchor": "  function stageInput(stage) {",
+      "line": 17,
+      "sha256": "646c667339f13e1ec50bf0b295330dc57c2db4d2f3f9ce240d23f2282bfaeb7d"
+    },
+    {
       "path": "src/environments/endurance/programming.js",
       "anchor": "      return `",
       "line": 12,
@@ -345,6 +355,11 @@
       "path": "src/environments/endurance/agensh-workload.js",
       "line": 33,
       "expression": "return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {\"peer\":\"${peer.key}\",\"stage\":${stage},\"n\":${n},\"square\":${n * n}} and exactly one trailing newline. Check its bytes, commit and push. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:\"FACT\",content:\"${fact}\"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Board write fields are board_id,type,content; PR create fields are owner,repo,method:\"create\",title,head:WORK_BRANCH,base:\"main\". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;"
+    },
+    {
+      "path": "src/environments/endurance/lead-helper-workload.js",
+      "line": 20,
+      "expression": "`Write only ${paths[role]} for this group's delivery. Its JSON must have exactly helper:${JSON.stringify(role)}, stage:${stage}, directionId (the current Board direction sequence), direction (its exact current text), and programming (the requested result). Read Board before claiming. Implement and run the task, retain its program and stdout files, then publish complete proof for the actual pushed JSON file and one task-scoped feedback note. Use one coherent Bash call for read/claim/program/test/Git/publish; finish briefly.${program.prompt(index, stage + 1)}`]));"
     },
     {
       "path": "src/environments/endurance/programming.js",
@@ -499,7 +514,7 @@
     },
     {
       "path": "docs/architecture/prompts/13-hour-matrix.md",
-      "sha256": "5d8717168b979b049b5c1e109b0631bca6d6ae63adc3e02c1d3ff2622cd703ea"
+      "sha256": "2f0de4f5c5e69d93e2a2f223c75435a171451b28ff37f532aefea77aeebe4e7d"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",

@@ -3,7 +3,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { createLeadHelperEnvironment } from '../lead-helper/index.js';
 import { runWithReport } from '../shared/run-report.js';
 import { createHourWindow, HOUR_MS } from '../shared/hour-window.js';
-import { validateHourBudgets, createHourQuotaGate, checkHourLifetime } from './policy.js';
+import { validateHourBudgets, createHourRunModelGate, checkHourLifetime } from './policy.js';
 const fail = code => Object.assign(new Error(code), { code });
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const releases = Object.freeze([0, 900_000, 1_800_000, 3_300_000]);
@@ -27,7 +27,7 @@ export async function runLeadHelperHour({ options, workload, admit, quota, budge
     for (const path of Object.values(input.paths)) { if (paths.has(path)) throw fail('HOUR_STAGE_PLAN_INVALID'); paths.add(path); }
   }
   budgets = validateHourBudgets(budgets);
-  const checkQuota = createHourQuotaGate(quota, budgets);
+  const { check: checkQuota } = createHourRunModelGate(quota, budgets);
   const life = new AbortController();
   const combined = signal ? AbortSignal.any([life.signal, signal]) : life.signal;
   const timer = setTimeout(() => life.abort(), budgets.setupMs);
@@ -70,7 +70,7 @@ export async function runLeadHelperHour({ options, workload, admit, quota, budge
       async createRuntime() {
         environment = await createLeadHelperEnvironment({ ...options, helperCount: 3, signal: combined,
           exportLimit: Math.min(options.exportLimit ?? 16 * 1024 ** 2, 16 * 1024 ** 2),
-          turnTimeoutMs: budgets.turnMs, workTimeoutMs: Math.min(120_000, budgets.workMs), closeTimeoutMs: Math.min(60_000, budgets.cleanupMs) });
+          turnTimeoutMs: budgets.turnMs, workTimeoutMs: Math.min(900_000, budgets.workMs), closeTimeoutMs: Math.min(60_000, budgets.cleanupMs) });
         const team = environment.snapshot().team;
         botIds = ['lead', 'helper1', 'helper2', 'helper3'].map(role => team[role]);
         monitor = createHourWindow({ runtimeId: environment.id, mode: 'lead-helper', botIds, clock });

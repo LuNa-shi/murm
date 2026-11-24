@@ -17,7 +17,7 @@ export async function createLeadHelperEnvironment(options) {
   const roles = leadHelperRoles(helperCount);
   const helperRoles = roles.slice(1);
   if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw new TypeError('Invalid lead-helper run configuration');
-  const turnTimeoutMs = bounded(options.turnTimeoutMs, 30_000, 120_000); const workTimeoutMs = bounded(options.workTimeoutMs, 120_000, 120_000);
+  const turnTimeoutMs = bounded(options.turnTimeoutMs, 30_000, 300_000); const workTimeoutMs = bounded(options.workTimeoutMs, 120_000, 900_000);
   const closeTimeoutMs = bounded(options.closeTimeoutMs, 30_000, 60_000);
   const resources = createOwnedResources(); const lifetime = new AbortController();
   const startup = AbortSignal.any([AbortSignal.timeout(120_000), ...(options.signal ? [options.signal] : [])]);

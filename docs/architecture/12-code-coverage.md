@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **192 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **194 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -47,15 +47,16 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/judge/lean-module-verify.LICENSE.txt](../../src/judge/lean-module-verify.LICENSE.txt) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e` |
 | [src/judge/lean-module-verify.NOTICE.md](../../src/judge/lean-module-verify.NOTICE.md) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `d2fcbc82d70c3d3f71f75c612937eb4f9bd2c0d3ce3cbc31e3874046d8383b8d` |
 
-### Environment acceptance host (10)
+### Environment acceptance host (11)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [examples/hour-matrix/config.mjs](../../examples/hour-matrix/config.mjs) | Frozen actual Kimi/backend/resource configuration with independently supplied lifetime and quota authorities | [21-hour-matrix](21-hour-matrix.md) | `d2870247bb8770ccd4d5ed68abad2f2f624a6f76826f3b06c065e8f302480080` |
+| [examples/hour-matrix/config.mjs](../../examples/hour-matrix/config.mjs) | Frozen actual Kimi/backend/resource configuration with independently supplied lifetime and quota authorities | [21-hour-matrix](21-hour-matrix.md) | `e8dcdf74f2840c03d3ee0ff1ace3fe6e42e417c32b5f2728f11a478a7a300338` |
 | [examples/hour-matrix/main.mjs](../../examples/hour-matrix/main.mjs) | Explicit host matrix CLI, private raw receipt persistence and bounded normal-output projection | [21-hour-matrix](21-hour-matrix.md) | `3754ff88632cd6d8f5f5471627f24f0cf18ab1296a9238dae5f18869b2adb940` |
 | [src/environments/endurance/agensh-workload.js](../../src/environments/endurance/agensh-workload.js) | Pinned Git and Board business verification with stopped-publisher external-event adoption | [21-hour-matrix](21-hour-matrix.md), [08-prompts](08-prompts.md) | `5237c1358f150805e9a1c783e80b2d5cdf3b1c2f07d94e322f22009a88484179` |
 | [src/environments/endurance/agensh.js](../../src/environments/endurance/agensh.js) | Actual eight-peer Agensh hour orchestration and independent final owner receipts | [21-hour-matrix](21-hour-matrix.md) | `4cb212ff8e2964ef16c7e536e4341900b711355e1eff5f3329282a8d66ff5075` |
-| [src/environments/endurance/matrix.js](../../src/environments/endurance/matrix.js) | Serial frozen host configuration admission and honest incomplete matrix projection | [21-hour-matrix](21-hour-matrix.md) | `446b93bdfd2672805858f508c859638a2bfaab076e3c1e7df554d171124d9503` |
+| [src/environments/endurance/lead-helper-workload.js](../../src/environments/endurance/lead-helper-workload.js) | Frozen per-helper programming tasks and current/pinned real Git artifact verification | [08-prompts](08-prompts.md), [20-lead-helper-environment](20-lead-helper-environment.md), [21-hour-matrix](21-hour-matrix.md) | `edaa991d8c57baa530e917a8dacb6710e5b7c5e5912dd9fe219fbcf838f92946` |
+| [src/environments/endurance/matrix.js](../../src/environments/endurance/matrix.js) | Serial frozen host configuration admission and honest incomplete matrix projection | [21-hour-matrix](21-hour-matrix.md) | `d7bca0fea2b6f6dfc0abe95ad4736ab46679f1d1b6c1e3e7308934c2490ac3eb` |
 | [src/environments/endurance/policy.js](../../src/environments/endurance/policy.js) | Frozen hour budgets, stable quota-owner settlement and fresh targeted lifetime receipt validation | [21-hour-matrix](21-hour-matrix.md) | `deb7ea06032f4ef1e0c56bdc4555c3220841de4dbe7a509cf1e95887a58a8c7a` |
 | [src/environments/endurance/programming.js](../../src/environments/endurance/programming.js) | Bounded trusted programming prompt and submitted-payload verification port | [21-hour-matrix](21-hour-matrix.md), [08-prompts](08-prompts.md) | `68dfb0159b2ce43d79688906f4d3473452d58d6604a7c52960e6be7b53813048` |
 | [src/environments/endurance/scalemas-workload.js](../../src/environments/endurance/scalemas-workload.js) | Immutable arithmetic/programming publication and ordered stopped-publisher adoption checks | [21-hour-matrix](21-hour-matrix.md), [08-prompts](08-prompts.md) | `f2c4e04f78747fe0a78e0cecca1310c0ecbca6fd3f51905eaa2cbf5d8ffb437a` |
@@ -76,7 +77,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [src/environments/shared/input-admission.js](../../src/environments/shared/input-admission.js) | Optional bounded FIFO actual-input admission shared across peer routers; cancellation and unknown-outcome queue fence | [18-agensh-environment](18-agensh-environment.md), [19-scalemas-environment](19-scalemas-environment.md), [21-hour-matrix](21-hour-matrix.md) | `e95281407b35435faf2b80e8b6ca5589639fb21c423eaaa0951ceecf582cb5bb` |
 
-### Environment integration (19)
+### Environment integration (20)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -94,9 +95,10 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/environments/agensh/router.js](../../src/environments/agensh/router.js) | Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md) | `363e245027de8681ab8a19f2b3be375e2aed3e16791bc277974087362872b8ea` |
 | [src/environments/agensh/services.js](../../src/environments/agensh/services.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `caa4ad5851286cb2d17c77d93280defa2d4c111ca1d5fd0dc05d3755e4ddecd1` |
 | [src/environments/agensh/team.js](../../src/environments/agensh/team.js) | One Runtime with independently bound peers, exclusive routers and shared cleanup | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md), [17-environment-reporting](17-environment-reporting.md), [21-hour-matrix](21-hour-matrix.md) | `1d93f478f9d580a99b55cb60fd091679fff3f7680d13a0f41470dce030685e3f` |
+| [src/environments/endurance/lead-helper.js](../../src/environments/endurance/lead-helper.js) | Four-Bot lead-helper setup, fixed four-stage hour schedule and shared owner/lifetime evidence | [20-lead-helper-environment](20-lead-helper-environment.md), [21-hour-matrix](21-hour-matrix.md) | `33deae0d29fb06ad0a813d64aef397a623dc18dfaa7eab30cd36d8a9bf31fcc7` |
 | [src/environments/lead-helper/board.js](../../src/environments/lead-helper/board.js) | Transactional durable Board, trusted caller ownership and proof acceptance | [20-lead-helper-environment](20-lead-helper-environment.md) | `41dd812d5bb06bd26a37f952abdeff10d93cc1f7aa0f7f3a6deb64846d522c5d` |
 | [src/environments/lead-helper/git.js](../../src/environments/lead-helper/git.js) | Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification | [20-lead-helper-environment](20-lead-helper-environment.md) | `b444fdab74d1ae3b0b3902407245b43cae633ea53244586da246578d5ab08419` |
-| [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive short or four-stage workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `dd612393279ac609876504a66124b9f08b57c24bced348ae685e21b5a35358b6` |
+| [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive short or four-stage workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `33ef0625b9fa0f79457ee9fcefea54b50a5dfa062494799d4b8b19a1b9260f68` |
 | [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [20-lead-helper-environment](20-lead-helper-environment.md), [08-prompts](08-prompts.md) | `4222770edeeb1941ef6a8a38bd36ebda9fd07ce795e1dc8d3e9a485607757132` |
 | [src/environments/lead-helper/team.js](../../src/environments/lead-helper/team.js) | Validates fixed lead-helper configuration and exact trusted team identity | [20-lead-helper-environment](20-lead-helper-environment.md) | `57b14611591fda7fdee80f7b86d9167cd6f57990547c27dc0a9f0625c394a3a4` |
 
@@ -179,7 +181,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `4df59886439e8e59ece335acfad45a528f5484c5de2d70a148e88d588dd38f6e` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `dfa8bc579a4004cee64d053e13e40b7a88be01e22db77988f28a7886aa6f7f3f` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `d2fe97a0bb760f5c96fd9a4b30a1a23dcde5e419a540121a55b87e82055369b8` |
 
 ### durable storage (3)
 

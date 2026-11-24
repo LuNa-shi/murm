@@ -81,12 +81,14 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     const result = await run(process.execPath, [new URL('../scripts/swarm.mjs', import.meta.url).pathname, 'board', operation, '--input', file, '--request-id', requestId ?? `${role}-${operation}-${++serial}`], { cwd: privateDirectories[role], env: { ...process.env, ...start.credentials.environment, ...start.credentials.secretEnvironment }, timeout: 10000 });
     return JSON.parse(result.stdout);
   };
-  let serial = 0;
+  let serial = 0, activeHelpers = 0, peakHelpers = 0;
   function arm() { transport.next = inputId => {
     const pending = (async () => {
     arm();
     const input = transport.submissions.get(inputId); const payload = JSON.parse(input.input); const role = Object.keys(team).find(role => team[role] === input.botId);
     assert.equal(input.mode, 'followUp');
+    const helperInput = payload.type === 'helper-initial' || payload.type === 'helper-followup';
+    if (helperInput) peakHelpers = Math.max(peakHelpers, ++activeHelpers);
     try {
       if (fixturePrograms) {
         const start = transport.spawns.get(input.botId);
@@ -122,7 +124,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
           await call(role, 'announce', { text: 'Implement basic checks', feedback_ids: [] });
           for (const helper of helpers) { await call(role, 'assign', { helper_id: team[helper], text: helper }); await call(role, 'create_subtask', { id: helper, title: 'Initial artifact', path: staged ? payload.paths[helper] : `${helper}.txt` }); }
         } else {
-          if (staged !== 'program-hour') assert.equal(payload.supplement, staged ? `Evidence stage ${payload.stage}` : 'Add explicit evidence');
+          if (!['program-hour', 'natural-hour'].includes(staged)) assert.equal(payload.supplement, staged ? `Evidence stage ${payload.stage}` : 'Add explicit evidence');
           await call(role, 'announce', { text: staged ? `Evidence direction ${payload.stage}` : 'Add explicit evidence based on public feedback', feedback_ids: staged && failure !== 'stale-feedback' ? payload.feedback_ids : state.notes.filter(row => !staged || row.subtask_id).map(row => row.seq), user_input_id: payload.user_input_id });
           for (const helper of helpers) await call(role, 'create_subtask', { id: staged ? `${helper}-stage-${payload.stage}` : `${helper}-next`, title: 'Adopt evidence direction', path: staged ? payload.paths[helper] : `${helper}-next.txt` });
         }
@@ -140,7 +142,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
         const text = next ? `Adopted ${state.directions.at(-1).text}\n` : `${role} actual initial delivery\n`;
         const path = staged ? payload.paths[role] : `${id}.txt`;
         let artifactText = text;
-        if (staged === 'program-hour') {
+        if (['program-hour', 'natural-hour'].includes(staged)) {
           assert.match(payload.task, /Write and run Python for value/);
           const source = `import json\nprint(json.dumps({'value': ${Number(role.slice(6)) + (payload.stage + 1) * 10}}))\n`;
           const sourcePath = join(privateDirectories[role], `hour-program-${payload.stage + 1}.py`);
@@ -159,23 +161,28 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
         await call(role, 'note', { subtask_id: id, text: next ? 'New direction adopted and verified' : 'Please require explicit evidence in the next direction' });
       }
       transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'completed', output: 'Public Board records contain evidence' });
-    } catch (error) { if (stopping) return; backgroundFailure = error; transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXTURE_FAILED', message: 'Deterministic fixture failed' } }); }
+    } catch (error) { if (stopping) return; backgroundFailure = error; transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXTURE_FAILED', message: 'Deterministic fixture failed' } }); } finally { if (helperInput) activeHelpers--; }
     })().finally(() => work.delete(pending));
     work.add(pending); return pending;
   }; } arm();
   if (failure === 'unknown') transport.onStop = botId => { if (botId === team.helper1) throw new Error('Controlled stop uncertainty'); };
   const configuration = { runId: 'test', outputDir: directory, image: 'test', backend: {}, ...(helperCount === 2 ? {} : { helperCount }), turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
     prepare: async () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors }) };
-  if (staged === 'hour' || staged === 'program-hour') {
+  if (['hour', 'program-hour', 'natural-hour'].includes(staged)) {
     const { runLeadHelperHour } = await import('../src/environments/endurance/lead-helper.js');
     const { controlledHourQuota } = await import('./fixtures/hour-quota-owner.js');
-    const budgets = { setupMs: 600000, workMs: 3900000, cleanupMs: 600000, recoveryMs: 300000, marginMs: 120000, turnMs: 120000 };
+    const budgets = { setupMs: 600000, workMs: 3900000, cleanupMs: 600000, recoveryMs: 300000, marginMs: 120000, turnMs: staged === 'natural-hour' ? 300000 : 120000 };
+    const deadlineAt = Date.now() + budgets.setupMs + budgets.workMs;
+    let meterClosed = false;
+    const meter = { receipt: () => ({ profile: 'time_only', deadlineAt, forwarded: 20, active: 0, inputBytes: 100,
+      actualInputTokens: 100, actualOutputTokens: 100, unknownRequests: 1, closed: meterClosed }),
+      close: async () => { meterClosed = true; } };
     let time = 0;
-    const report = await runLeadHelperHour({ options: configuration, budgets, quota: controlledHourQuota(budgets),
+    const report = await runLeadHelperHour({ options: configuration, budgets, quota: staged === 'natural-hour' ? meter : controlledHourQuota(budgets),
       clock: () => time, waitForMs: async ms => { time += ms; if (failure === 'hour-late' && time === 900000) time += 900000; },
       admit: async ({ runtime, workMs }) => ({ runtimeId: runtime.id, workDeadlineAtMs: time + workMs }),
       onReady: value => { environment = value; },
-      workload: staged === 'program-hour' ? (await import('../src/environments/endurance/lead-helper-workload.js')).createLeadHelperProgrammingWorkload({
+      workload: ['program-hour', 'natural-hour'].includes(staged) ? (await import('../src/environments/endurance/lead-helper-workload.js')).createLeadHelperProgrammingWorkload({
         getFacilities: () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, actors }), adminToken: 'fixture-host-token',
         programming: { prompt: ({peer, stage}) => `Write and run Python for value ${peer + 1 + stage * 10}.`,
           verify: ({peer, stage, submission}) => submission.value === peer + 1 + stage * 10 && typeof submission.source === 'string' },
@@ -197,6 +204,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     assert.deepEqual(report.result.stages.map(row => row.stage), [0,1,2,3]);
     assert.equal(report.result.stages[3].pinnedDeliveries.length, 12);
     assert.equal(report.cleanup.cleanup, 'complete');
+    if (staged === 'natural-hour') { assert.equal(peakHelpers, 3); assert.equal(report.result.quota.profile, 'time_only'); assert.equal(report.result.quota.unknownRequests, 1); }
     return;
   }
   const report = await runWithReport({ outputDir: directory, closeTimeoutMs: 1000, createRuntime: async () => {
@@ -314,3 +322,5 @@ test('hour lead-helper failed artifact verification closes the same team before 
 test('hour lead-helper refuses a group whose own fifteen-minute window was missed', t => scenario(t, 'hour-late', false, 3, 'hour'));
 
 test('hour lead-helper external tasks reach original helpers and verify actual Python results in fixed Git bytes', t => scenario(t, undefined, false, 3, 'program-hour'));
+
+test('natural hour lead-helper accepts time-only observations with unknown usage and retains twelve deliveries', t => scenario(t, undefined, false, 3, 'natural-hour'));
