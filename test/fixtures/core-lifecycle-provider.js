@@ -18,7 +18,7 @@ execute[promisify.custom] = (...args) => runCommand(...args);
 
 // Simulate only external infrastructure: provider/Worker HTTP and host OS commands.
 // Core, its backend, manager, admission state and cleanup are the actual modules.
-export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate, createExpiresAt, onRpc, allowHostGit = false } = {}) {
+export async function createLifecycleProvider(t, { fileOperation, onStart, onCollect, onStop, onCreate, createExpiresAt, onGet, onRpc, allowHostGit = false } = {}) {
   const resources = new Map();
   const records = [];
   const tables = new Map();
@@ -136,7 +136,10 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
       resources.delete(path.split('/').at(-1));
       return send({});
     }
-    if (path.startsWith('/sandboxes/') && request.method === 'GET') return send({}, resources.has(path.split('/').at(-1)) ? 200 : 404);
+    if (path.startsWith('/sandboxes/') && request.method === 'GET') {
+      const id = path.split('/').at(-1); const resource = resources.get(id);
+      return send(onGet && resource ? await onGet(id, resource, response) : {}, resource ? 200 : 404);
+    }
     return send({ message: 'Unrecognized fixture request' }, 400);
   });
   server.listen(0, '127.0.0.1');
