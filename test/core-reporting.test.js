@@ -260,6 +260,8 @@ test('cleanup of an unknown creation leaves a sibling Runtime live and owns only
       assert.equal(error.cleanup, 'pending');
       return true;
     });
+    await assert.rejects(failed.get(bot.id), { code: 'NOT_FOUND' });
+    await assert.rejects(failed.stop(bot.id), { code: 'NOT_FOUND' });
     const receipt = await failed.close();
     assert.equal(receipt.cleanup, 'complete');
     assert.equal(provider.allocations(), 2);

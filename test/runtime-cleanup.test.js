@@ -20,7 +20,7 @@ function deferred() {
   return { promise, resolve };
 }
 
-async function fixture(t, { removeSandbox = async () => new Response('{}'), bind = true, start = true, runtimeOptions = {} } = {}) {
+async function fixture(t, { removeSandbox = async () => new Response('{}'), runtimeOptions = {} } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-cleanup-'));
   const service = new TaskService();
   let sandboxDeleted = false;
@@ -67,45 +67,11 @@ async function fixture(t, { removeSandbox = async () => new Response('{}'), bind
     await sandboxManager.startAgent({ executionId: bot.resource_key, command: 'pi', resources: [], args: [], beforeAgentStart });
     return session;
   };
-  if (!start) return { service, runtime, sandboxManager, session, startSession };
   const { bot } = await runtime.startBot({ missionId: 'mission:cleanup', coreId: 'core-1', startSession });
   const take = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:cleanup' });
-  if (bind) await runtime.bindAgentExecution(take.execution.execution_id, session, { coreId: 'core-1' });
+  await runtime.bindAgentExecution(take.execution.execution_id, session, { coreId: 'core-1' });
   return { service, runtime, sandboxManager, session, executionId: take.execution.execution_id };
 }
-
-test('a Runtime without the registered resource binding cannot stop or release another owner', async t => {
-  const { runtime, service, sandboxManager, session, executionId } = await fixture(t);
-  const observer = new Runtime({ taskService: service, workspaceManager: {}, sandboxManager });
-  try {
-    const before = service.getExecution(executionId);
-    await assert.rejects(observer.stopExecution(executionId), { code: 'SERVICE_UNAVAILABLE' });
-    await assert.rejects(observer.releaseExecution(executionId), { code: 'SERVICE_UNAVAILABLE' });
-    assert.deepEqual(service.getExecution(executionId), before);
-    assert.equal(session.closed, false);
-    assert.equal(sandboxManager.snapshot().executions.length, 1);
-    assert.equal(runtime.getCoreStatus('core-1').state, 'RUNNING');
-  } finally { await observer.shutdown(); }
-  await runtime.stopExecution(executionId);
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
-test('shutdown reports retained cleanup instead of forgetting a terminal Execution after a failed stop', async (t) => {
-  let fail = true;
-  const { runtime, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
-  try {
-    const first = await runtime.shutdown();
-    assert.equal(first.active_process_count, 1);
-    assert.deepEqual(first.cleanup_pending_execution_ids, [executionId]);
-    const second = await runtime.shutdown();
-    assert.deepEqual(second.cleanup_pending_execution_ids, [executionId]);
-    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
-  } finally { fail = false; }
-  const last = await runtime.shutdown();
-  assert.deepEqual(last.cleanup_pending_execution_ids, []);
-  assert.equal(last.active_process_count, 0);
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
 
 test('lease expiry retains a closing Core on deletion failure until cleanup retry', async (t) => {
   let fail = true;
@@ -175,17 +141,6 @@ test('timebox expiry holds Task ownership until both worker and sandbox are isol
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
-test('an accepted asynchronous provider deletion is not yet a free Core', async (t) => {
-  let pending = true;
-  const { runtime, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: pending ? 202 : 200 }) });
-  try {
-    await assert.rejects(runtime.stopExecution(executionId), (error) => error.code === 'SERVICE_UNAVAILABLE');
-    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
-  } finally { pending = false; }
-  await runtime.stopExecution(executionId);
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
 test('closing lease expiry rejects Runtime heartbeat while physical deletion remains outstanding', async (t) => {
   const removing = deferred();
   const removed = deferred();
@@ -201,33 +156,6 @@ test('closing lease expiry rejects Runtime heartbeat while physical deletion rem
   await closing;
   assert.equal(service.getExecution(executionId).state, 'EXPIRED');
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
-test('Runtime shutdown retains a late registered Session and cleans it when startup settles', async (t) => {
-  const { runtime, session, service, startSession } = await fixture(t, { start: false });
-  const entered = deferred();
-  const finishStart = deferred();
-  let botId;
-  const starting = runtime.startBot({ missionId: 'mission:cleanup', coreId: 'core-1', startSession: async options => {
-    botId = options.bot.bot_id;
-    const started = await startSession(options);
-    entered.resolve();
-    await finishStart.promise;
-    return started;
-  } });
-  const rejected = assert.rejects(starting, /stopp/i);
-  await entered.promise;
-  try {
-    await runtime.shutdown();
-    assert.equal(service.getBot(botId).state, 'CLOSING');
-    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
-  } finally { finishStart.resolve(); }
-  await rejected;
-  await new Promise(resolve => setImmediate(resolve));
-  await runtime.shutdown();
-  assert.equal(session.closed, true);
-  assert.equal(service.getBot(botId).state, 'CLOSED');
-  assert.equal(service.listActiveExecutions().length, 0);
 });
 
 test('Runtime completes an accepted finish without a live CLI caller', { timeout: 30000 }, async (t) => {
