@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { runScaleMAS } from '../../src/environments/scalemas/index.js';
 
-export function runScaleMASExample(config, signal) {
+export async function runScaleMASExample(config, signal) {
+  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { runScaleMAS } = await import('../../src/environments/scalemas/index.js');
   return runScaleMAS({ ...config, backend: createPiOpenSandboxBackend(config.backend) }, signal);
 }
 
