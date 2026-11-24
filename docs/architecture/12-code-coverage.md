@@ -4,13 +4,13 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **204 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **183 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
 ## Scope and explicit boundaries
 
-In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`, `examples/scalemas-environment/.npmignore`, `examples/agensh-environment/.npmignore`, `examples/hour-matrix/.npmignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
+In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `package.json`, `npm-shrinkwrap.json`, `.env.example`, `.gitignore`, `.gitmodules`, `examples/notes-environment/.npmignore`, `examples/subagents-environment/.npmignore`, `examples/lead-helper-environment/.npmignore`, `examples/scalemas-environment/.npmignore`, `examples/agensh-environment/.npmignore`. Additional code/JSON files discovered outside excluded roots also fail the check until mapped.
 
 | Outside production coverage | Reason |
 |---|---|
@@ -36,52 +36,31 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `3a134d698933777ed2a42e4edf2c8a0a51fb9a6661dd9d8dc8ae588b1ec05ff4` |
 
-### Configuration and build (7)
+### Configuration and build (5)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [examples/hour-matrix/.npmignore](../../examples/hour-matrix/.npmignore) | Exclude private run evidence when the host is launched from inside the shipped hour example directory | [07-run-configuration](07-run-configuration.md), [21-hour-matrix](21-hour-matrix.md) | `660ac673c95cd10c1e9ae669285c65c0ff3089c8ab30880cddab0161b49a9537` |
 | [examples/lead-helper-environment/.npmignore](../../examples/lead-helper-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `d77bab7a6074d13ff59bdfa02e5ab933fc36e61d46b08a03856d989352faf678` |
 | [examples/notes-environment/.npmignore](../../examples/notes-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `d77186f09046a602cca36239b026d494de43b6af3598e359385fa14f7c73d463` |
 | [examples/subagents-environment/.npmignore](../../examples/subagents-environment/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `06988b9d7e8c5a42362079ad81aadf17b80c52ad95573a54da2b7911dfe81717` |
-| [examples/subagents-environment/hour-config.mjs](../../examples/subagents-environment/hour-config.mjs) | Explicit private native Subagents composition with byte-pinned workload, stable time-only owner and trusted lifetime/Session ports | [17-environment-reporting](17-environment-reporting.md), [21-hour-matrix](21-hour-matrix.md) | `7796dc2695985c9eb9a5226f6dc26fd7b02fa481fdd7597065603fe57788de49` |
 | [src/judge/lean-module-verify.LICENSE.txt](../../src/judge/lean-module-verify.LICENSE.txt) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e` |
 | [src/judge/lean-module-verify.NOTICE.md](../../src/judge/lean-module-verify.NOTICE.md) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `d2fcbc82d70c3d3f71f75c612937eb4f9bd2c0d3ce3cbc31e3874046d8383b8d` |
-
-### Environment acceptance host (14)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [examples/hour-matrix/config.mjs](../../examples/hour-matrix/config.mjs) | Frozen actual Kimi/backend/resource configuration with independently supplied lifetime and quota authorities | [21-hour-matrix](21-hour-matrix.md) | `e8dcdf74f2840c03d3ee0ff1ace3fe6e42e417c32b5f2728f11a478a7a300338` |
-| [examples/hour-matrix/main.mjs](../../examples/hour-matrix/main.mjs) | Explicit host matrix CLI, private raw receipt persistence and bounded normal-output projection | [21-hour-matrix](21-hour-matrix.md) | `3754ff88632cd6d8f5f5471627f24f0cf18ab1296a9238dae5f18869b2adb940` |
-| [src/environments/endurance/agensh-workload.js](../../src/environments/endurance/agensh-workload.js) | Pinned Git and Board business verification with stopped-publisher external-event adoption | [21-hour-matrix](21-hour-matrix.md), [08-prompts](08-prompts.md) | `5007ce60095704d0d02f66a44bcb98bdd08f07b0bc29129d172978c5685dbed1` |
-| [src/environments/endurance/agensh.js](../../src/environments/endurance/agensh.js) | Actual eight-peer Agensh hour orchestration and independent final owner receipts | [21-hour-matrix](21-hour-matrix.md) | `4cb212ff8e2964ef16c7e536e4341900b711355e1eff5f3329282a8d66ff5075` |
-| [src/environments/endurance/flat-hour.js](../../src/environments/endurance/flat-hour.js) | Four original Flat Executions across four work windows with actual finish/replacement and stopped-source adoption | [08-prompts](08-prompts.md), [17-environment-reporting](17-environment-reporting.md), [21-hour-matrix](21-hour-matrix.md) | `1dcf70b0e144b39c09fdb4e1fb01834f5254911fb7dc9f4a108e8e32b24723d0` |
-| [src/environments/endurance/flat-workload.js](../../src/environments/endurance/flat-workload.js) | Current-owner fixed publication and actual Material/programming proof verification | [08-prompts](08-prompts.md), [17-environment-reporting](17-environment-reporting.md), [21-hour-matrix](21-hour-matrix.md) | `ca9944faf51774b0efc00cf0c58c77a7d98670502bae68adc1f79da156741ce2` |
-| [src/environments/endurance/flat.js](../../src/environments/endurance/flat.js) | Four-slot host-preseeded fixed candidate Core/Bridge affirmative composition without live capture | [08-prompts](08-prompts.md), [17-environment-reporting](17-environment-reporting.md), [21-hour-matrix](21-hour-matrix.md) | `38c834436cc900f08aac2d5ea71aede02d4bc8719f5abb33dc5b616ae005a63e` |
-| [src/environments/endurance/lead-helper-workload.js](../../src/environments/endurance/lead-helper-workload.js) | Frozen per-helper programming tasks and current/pinned real Git artifact verification | [08-prompts](08-prompts.md), [20-lead-helper-environment](20-lead-helper-environment.md), [21-hour-matrix](21-hour-matrix.md) | `b6119a1017c636d8b7812d2e5066a9b5e81ce6d0583421cdf71188f4f3633916` |
-| [src/environments/endurance/matrix.js](../../src/environments/endurance/matrix.js) | Serial frozen host configuration admission and honest incomplete matrix projection | [21-hour-matrix](21-hour-matrix.md) | `d7bca0fea2b6f6dfc0abe95ad4736ab46679f1d1b6c1e3e7308934c2490ac3eb` |
-| [src/environments/endurance/policy.js](../../src/environments/endurance/policy.js) | Frozen hour budgets, stable quota-owner settlement and fresh targeted lifetime receipt validation | [21-hour-matrix](21-hour-matrix.md) | `deb7ea06032f4ef1e0c56bdc4555c3220841de4dbe7a509cf1e95887a58a8c7a` |
-| [src/environments/endurance/programming.js](../../src/environments/endurance/programming.js) | Bounded trusted programming prompt and submitted-payload verification port | [21-hour-matrix](21-hour-matrix.md), [08-prompts](08-prompts.md) | `95f1d0549e060c9cac7d6356345f5a78f22eca714357030df7e02ad59ae2a7e1` |
-| [src/environments/endurance/scalemas-workload.js](../../src/environments/endurance/scalemas-workload.js) | Immutable arithmetic/programming publication and ordered stopped-publisher adoption checks | [21-hour-matrix](21-hour-matrix.md), [08-prompts](08-prompts.md) | `421d9b0a1ac9cd0069e4263b5dcc2a385699267c7db329eb90378d7b7f542c1f` |
-| [src/environments/endurance/scalemas.js](../../src/environments/endurance/scalemas.js) | Actual six-peer hour cycle scheduling and retained owner closure | [21-hour-matrix](21-hour-matrix.md) | `14fd5c0674e1193bccd13452c85c2270b8f252ee8ef8f0828e66cac1e6a50ef4` |
-| [src/environments/shared/hour-window.js](../../src/environments/shared/hour-window.js) | Bounded monotonic work-window evidence, participation deduplication and independent cleanup validation | [21-hour-matrix](21-hour-matrix.md) | `439d3f1e74612d88be3b477c2f427128bbb35734fb536069cfa0b1cab0f90386` |
 
 ### Environment composition (3)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [src/environments/scalemas/collaboration-evidence.js](../../src/environments/scalemas/collaboration-evidence.js) | Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence | [19-scalemas-environment](19-scalemas-environment.md) | `b40aea5a53ff59c65ceaf4d95f1987a9c2af6b12988906276a34299cb89cda17` |
-| [src/environments/scalemas/index.js](../../src/environments/scalemas/index.js) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md), [21-hour-matrix](21-hour-matrix.md) | `cc77934afbcc6c73fae6f0c38873b8fdf0207687ecb0c57a7f99377a900db891` |
+| [src/environments/scalemas/index.js](../../src/environments/scalemas/index.js) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `cc77934afbcc6c73fae6f0c38873b8fdf0207687ecb0c57a7f99377a900db891` |
 | [src/environments/scalemas/substrate.js](../../src/environments/scalemas/substrate.js) | Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `bb76c986c99d57d4e14f6cc0ff9c121076ef7f374879c76be66df1813831686d` |
 
 ### Environment execution (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/environments/shared/input-admission.js](../../src/environments/shared/input-admission.js) | Optional bounded FIFO actual-input admission shared across peer routers; cancellation and unknown-outcome queue fence | [18-agensh-environment](18-agensh-environment.md), [19-scalemas-environment](19-scalemas-environment.md), [21-hour-matrix](21-hour-matrix.md) | `e95281407b35435faf2b80e8b6ca5589639fb21c423eaaa0951ceecf582cb5bb` |
+| [src/environments/shared/input-admission.js](../../src/environments/shared/input-admission.js) | Optional bounded FIFO actual-input admission shared across peer routers; cancellation and unknown-outcome queue fence | [18-agensh-environment](18-agensh-environment.md), [19-scalemas-environment](19-scalemas-environment.md) | `e95281407b35435faf2b80e8b6ca5589639fb21c423eaaa0951ceecf582cb5bb` |
 
-### Environment integration (20)
+### Environment integration (19)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -98,15 +77,14 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/environments/agensh/routed.js](../../src/environments/agensh/routed.js) | Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md) | `f69b54ff563430a31c39a937d837e2abf2a3af9cd35ee947a9698a9f79cf7aec` |
 | [src/environments/agensh/router.js](../../src/environments/agensh/router.js) | Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md) | `363e245027de8681ab8a19f2b3be375e2aed3e16791bc277974087362872b8ea` |
 | [src/environments/agensh/services.js](../../src/environments/agensh/services.js) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `caa4ad5851286cb2d17c77d93280defa2d4c111ca1d5fd0dc05d3755e4ddecd1` |
-| [src/environments/agensh/team.js](../../src/environments/agensh/team.js) | One Runtime with independently bound peers, exclusive routers and shared cleanup | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md), [17-environment-reporting](17-environment-reporting.md), [21-hour-matrix](21-hour-matrix.md) | `1d93f478f9d580a99b55cb60fd091679fff3f7680d13a0f41470dce030685e3f` |
-| [src/environments/endurance/lead-helper.js](../../src/environments/endurance/lead-helper.js) | Four-Bot lead-helper setup, fixed four-stage hour schedule and shared owner/lifetime evidence | [20-lead-helper-environment](20-lead-helper-environment.md), [21-hour-matrix](21-hour-matrix.md) | `fea09520b89189a0dc75d2d84fcd33b1a9d8cd77e51c6370fbc3efc38abc534c` |
+| [src/environments/agensh/team.js](../../src/environments/agensh/team.js) | One Runtime with independently bound peers, exclusive routers and shared cleanup | [18-agensh-environment](18-agensh-environment.md), [08-prompts](08-prompts.md), [17-environment-reporting](17-environment-reporting.md) | `1d93f478f9d580a99b55cb60fd091679fff3f7680d13a0f41470dce030685e3f` |
 | [src/environments/lead-helper/board.js](../../src/environments/lead-helper/board.js) | Transactional durable Board, trusted caller ownership and proof acceptance | [20-lead-helper-environment](20-lead-helper-environment.md) | `41dd812d5bb06bd26a37f952abdeff10d93cc1f7aa0f7f3a6deb64846d522c5d` |
 | [src/environments/lead-helper/git.js](../../src/environments/lead-helper/git.js) | Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification | [20-lead-helper-environment](20-lead-helper-environment.md) | `b444fdab74d1ae3b0b3902407245b43cae633ea53244586da246578d5ab08419` |
-| [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive short or four-stage workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `40b52c0cfec8a241ce2ea9f9de2593c475bf117fc2acee16f54b055132721220` |
+| [src/environments/lead-helper/index.js](../../src/environments/lead-helper/index.js) | Public Core fixed-team Environment, exclusive short or four-stage workflow and pending cleanup ownership | [20-lead-helper-environment](20-lead-helper-environment.md) | `bcc32c4f65e0b729d47479aafacfe55c5d71b560b482d402feb1c88035f0e7da` |
 | [src/environments/lead-helper/prompts.js](../../src/environments/lead-helper/prompts.js) | Lead/helper role and finite continuation instructions | [20-lead-helper-environment](20-lead-helper-environment.md), [08-prompts](08-prompts.md) | `4222770edeeb1941ef6a8a38bd36ebda9fd07ce795e1dc8d3e9a485607757132` |
 | [src/environments/lead-helper/team.js](../../src/environments/lead-helper/team.js) | Validates fixed lead-helper configuration and exact trusted team identity | [20-lead-helper-environment](20-lead-helper-environment.md) | `57b14611591fda7fdee80f7b86d9167cd6f57990547c27dc0a9f0625c394a3a4` |
 
-### Execution and control (25)
+### Execution and control (23)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -114,11 +92,9 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [examples/notes-environment/main.mjs](../../examples/notes-environment/main.mjs) | Installed-package Notes Environment Service, role prompts, input order, archive verification and saved-report CLI | [17-environment-reporting](17-environment-reporting.md) | `b66b97a021344dec9c30cf9bf10fc1c9fa61f176d65ed20feaffc386416c6d45` |
 | [examples/subagents-environment/config.mjs](../../examples/subagents-environment/config.mjs) | Local subagents host model, resource and deadline configuration | [17-environment-reporting](17-environment-reporting.md) | `dd3f0bd2358628f7a2a736aca8f296e0d03a42a8c41e4090af7d4ab8efaf49f5` |
 | [examples/subagents-environment/controller.mjs](../../examples/subagents-environment/controller.mjs) | Bounded multi-source input queue, round snapshots, failure coalescing and shutdown receipts | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `f6fe1359170dde9f923220f8cd03feb0623d04973cb1d7e58e28b117993eeb6a` |
-| [examples/subagents-environment/hour-artifacts.mjs](../../examples/subagents-environment/hour-artifacts.mjs) | Post-close required export verification binding twelve child source/stdout/result records and four parent adoption records | [17-environment-reporting](17-environment-reporting.md) | `2d336f77ca28b8b7b361c73c1d9b2ad493a4f61d0759d860aa3ea17e3cbf655b` |
-| [examples/subagents-environment/hour.mjs](../../examples/subagents-environment/hour.mjs) | Optional four-Bot subagents hour composition over actual public Core, time-only model owner and injected trusted lifetime/Session observations | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `e9fb01f0ee381db4e068f30674ef8d391e7a21fa0918baaf19b8dca66239cc9d` |
 | [examples/subagents-environment/main.mjs](../../examples/subagents-environment/main.mjs) | Subagents host Profiles, bounded three-to-eight-Bot Runtime, verified text adoption and whole-tree reporting | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `46f5e9b412a2cfd26d153685503234279f7c3a8ddcec62fd09e12de5b90addbc` |
-| [examples/subagents-environment/prompts.mjs](../../examples/subagents-environment/prompts.mjs) | Complete parent and child instructions and fixed initial text goal | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `ace46e60b65ca86182924f8a3fd817803658b0d3d712c60f195625a3c1910eca` |
-| [examples/subagents-environment/stages.mjs](../../examples/subagents-environment/stages.mjs) | Optional four-group original-child identity and cumulative text adoption gate over actual controller admissions | [17-environment-reporting](17-environment-reporting.md) | `95ad4739b60ccff7c797eeb9ee033e3b6e975f1c2ec02e0aa915feaebfcf4ce9` |
+| [examples/subagents-environment/prompts.mjs](../../examples/subagents-environment/prompts.mjs) | Complete parent and child instructions and fixed initial text goal | [17-environment-reporting](17-environment-reporting.md), [08-prompts](08-prompts.md) | `c061cefb7583f4431c82b5750d712bbfdb419a1305195b84adf52bc1166f7842` |
+| [examples/subagents-environment/stages.mjs](../../examples/subagents-environment/stages.mjs) | Optional four-group original-child identity and cumulative text adoption gate over actual controller admissions | [17-environment-reporting](17-environment-reporting.md) | `ff3708da9e1d3db1b2e67266bcf6efcebeb5238ae9ebdea73c4938f179417508` |
 | [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js) | Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [11-storage-reference](11-storage-reference.md), [15-core-runtime](15-core-runtime.md) | `4e0d76364251aafc56452c59d8b7665507448196233228afe906fc604acf9ce0` |
 | [src/environments/flat/bot-coordinator.js](../../src/environments/flat/bot-coordinator.js) | Trusted Core-returned flat Bot identity registration and readiness | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md) | `6f511fb7eeef1a9c78c0bd297477a926db842f15ee94a6d010a77068b62081bd` |
 | [src/environments/flat/controller.js](../../src/environments/flat/controller.js) | Flat serial discovery, continuation, directed feedback and stop-confirmed replacement policy | [02-execution](02-execution.md), [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `68b685192d05521dc8acd9c701a6deffc84ad0935d878e79939f1d1be9a304dc` |
@@ -170,13 +146,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/core-work-dir.mjs](../../scripts/core-work-dir.mjs) | Trusted Worker FileSeed installation, readback, versioned write grant and close coordination | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `0350bddb4beda3bef452a304cabdf4ebbcecfaec2de6f3c7c19fc1621ab2f316` |
 | [scripts/pi-rpc-submissions.mjs](../../scripts/pi-rpc-submissions.mjs) | Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6f1ef3246b57d438dde8d37fd427494c24fc0d875b099cf70e7d7c53ecd5a247` |
 
-### Runtime and orchestration (2)
-
-| Source | Responsibility | Architecture chapters | SHA-256 |
-|---|---|---|---|
-| [src/environments/endurance/native-session-observation.js](../../src/environments/endurance/native-session-observation.js) | Exact admitted sandbox ownership revalidation and bounded read-only Pi Session header observation through authoritative Execd endpoints | [17-environment-reporting](17-environment-reporting.md) | `9b8a77ac310a1224845d6c2a24ff28fd394e10bda8c3744a8e1db6875256593c` |
-| [src/environments/endurance/timed-upstream.js](../../src/environments/endurance/timed-upstream.js) | Opt-in private host time-only model forwarding and observed usage with bounded metadata and no logical token/request/concurrency admission | [21-hour-matrix](21-hour-matrix.md) | `fadb6476a41bd79037ff73e65ab8fe7f353a84030e84f9986409ee46a9afb7a3` |
-
 ### Workspace and Sandbox (2)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
@@ -191,7 +160,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `4df59886439e8e59ece335acfad45a528f5484c5de2d70a148e88d588dd38f6e` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `b4c832b47eb22cfcf87a78a60798bcb1ae250db647ea17795ed3db818e0c83cc` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `cdfab37acb9125654219e9c4b0ab632ff18abb6859a7dcc0ee4acfff6052b2e1` |
 
 ### durable storage (3)
 

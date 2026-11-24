@@ -47,3 +47,21 @@ Body SHA-256: `0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85`
 ````text
 Read the changed direction and new work; adopt that change in a new committed artifact and verified completion. Preserve all old owners and deliveries.
 ````
+## Staged corrective input composition and send
+
+The trusted host checker must explicitly return STAGE_CANDIDATE_REJECTED. Actual stage, helper role and attempt derive the fresh path and request ID; the original task and monotonic deadline remain fixed. No reference answer or new permission is supplied.
+
+Body SHA-256: `e2197961da212a83f1efa4cbbc229c169ad3bbaaa0394466d6bd4c73959f2f4b`
+
+````text
+ fixedPaths[role].replace(/\.[^.]+$/, `-correction-${++attempt}.json`);
+                  const subtaskId = `stage-${stage}-${role}-correction-${attempt}`;
+                  if (board.snapshot().subtasks.some(row => row.path === nextPath || row.id === subtaskId)) throw fail('STAGE_CORRECTION_CONFLICT');
+                  const correctionPaths = { ...fixedPaths, [role]: nextPath };
+                  const correctionTask = (fixedTasks?.[role] ?? '').replaceAll(fixedPaths[role], nextPath);
+                  await dispatch(role, `stage-${stage}-${role}-correction-${attempt}`, {
+                    type: 'helper-correction', stage, attempt, paths: correctionPaths, subtaskId,
+                    task: correctionTask,
+                    instruction: `${decision.correction} Preserve the rejected complete Board task and Git commit. Read the unchanged current direction, create a new subtask with id ${subtaskId} and path ${nextPath}, claim it yourself, and complete it with your corrected pushed delivery and a new task-scoped feedback note. Use only the existing Board capabilities; do not alter another task or direction.`,
+                  }, workSignal, deadlineAtMs);
+````

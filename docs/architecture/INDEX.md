@@ -34,7 +34,7 @@ Read 00 first, then 07 for current entry points. Read 15–21 for the programmab
 | [18 Single-peer Agensh Environment](18-agensh-environment.md) | How does one Core peer use separately bound Git, message and board accounts across continuous turns and retain private work? |
 | [19 Fixed scaleMAS peer pool](19-scalemas-environment.md) | How does a fixed pool publish immutable content, adopt ranked references and continue its Sessions without Tasks? |
 | [20 Fixed lead-helper Environment](20-lead-helper-environment.md) | How do Board transactions, restricted Git identities, direction adoption and cleanup work? |
-| [21 Bounded hour host matrix](21-hour-matrix.md) | How do real mode entry points, a stable quota owner, provider lifetime admission, business verification and sealed monotonic work windows compose without counting controlled preparation as an hour? |
+| [21 Native acceptance evidence boundary](21-hour-matrix.md) | Where are the five original long-run proofs retained, and which ordinary workflows remain after removing experiment-only runners? |
 
 ## What complete means here
 
