@@ -64,6 +64,7 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     const operation = capability?.operation;
     if (!enabledOperations.includes(operation) || !input || typeof input !== 'object' || Array.isArray(input)) invalid('Unsupported flat Task operation or payload');
     const coordination = enabledCoordination.includes(operation);
+    const replacement = operation === 'task_dependency_replace';
     const allowed = coordination ? Object.keys(capability.input_schema.properties) : operation === 'task_list' ? ['state', 'states', 'query', 'limit', 'cursor', 'available_only'] : ['task_id'];
     if (Object.keys(input).some(key => !allowed.includes(key)) || (operation !== 'task_list' && (typeof input.task_id !== 'string' || !input.task_id))) invalid('Flat Task payload cannot supply actor, owner, Execution or resource identity');
     const core = getRuntime();
@@ -81,7 +82,7 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     if (closing) denied('Flat Task Service is closing');
     signal?.throwIfAborted();
     const bot = eligibleBot(caller.botId, core.id);
-    const admittedExecution = bot.execution_id ? taskService.getExecution(bot.execution_id) : null;
+    const admittedExecution = replacement && bot.execution_id ? taskService.getExecution(bot.execution_id) : null;
     const live = await core.get(bot.bot_id);
     if (!['idle', 'running'].includes(live.status) || live.profile !== profile || closing || signal?.aborted) denied('Core researcher is unavailable');
     const coordinatedAfterAdmission = coordinationRequests.get(key);
@@ -99,7 +100,6 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
       assertAuthorized?.(); signal?.throwIfAborted();
       const current = eligibleBot(bot.bot_id, core.id);
       const until = missionDeadline();
-      const replacement = operation === 'task_dependency_replace';
       if (!Number.isFinite(until) || Date.now() >= until) denied('Task correction requires the current Mission budget');
       if (!replacement && (current.state !== 'UNBOUND' || current.execution_id)) denied('Task revision and cancellation require an UNBOUND Bot');
       if (replacement && !current.coordination_permissions.includes(operation)) denied('Bot lacks the registered dependency-replacement grant');
