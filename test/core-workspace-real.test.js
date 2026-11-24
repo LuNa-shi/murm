@@ -50,8 +50,26 @@ test('native running snapshots preserve random bytes and scoped shared workspace
   const randomText = `snapshot λ ${randomBytes(20).toString('hex')}\n`;
   const commands = new Map([
     ['write', python(`import pathlib,time\npathlib.Path('random.bin').write_bytes(bytes.fromhex('${bytes.toString('hex')}'))\npathlib.Path('text.txt').write_text(${JSON.stringify(randomText)})\npathlib.Path('ready').write_text('ready')\ntime.sleep(4)`)],
-    ['read', python(`import pathlib\nassert pathlib.Path('random.bin').read_bytes().hex()=='${bytes.toString('hex')}'\nassert pathlib.Path('text.txt').read_text()==${JSON.stringify(randomText)}\ntry:\n pathlib.Path('forbidden').write_text('bad')\n raise AssertionError('readonly mount was writable')\nexcept OSError as error:\n assert error.errno in (13,30)\nassert not pathlib.Path('/workspace/runtime/parent-only').exists()`)],
-    ['mark', python(`import pathlib\npathlib.Path('/workspace/runtime/parent-only').write_text('private')\npathlib.Path('shared').write_text('visible')`)],
+    ['read', python(`import hashlib,os,pathlib
+assert pathlib.Path('random.bin').read_bytes().hex()=='${bytes.toString('hex')}'
+assert pathlib.Path('text.txt').read_text()==${JSON.stringify(randomText)}
+try:
+ pathlib.Path('forbidden').write_text('bad')
+ raise AssertionError('readonly mount was writable')
+except OSError as error:
+ assert error.errno in (13,30)
+assert not pathlib.Path('/workspace/runtime/parent-only').exists()
+assert os.environ['WORKSPACE_PROFILE_MARKER']=='reader'
+assert os.environ['WORKSPACE_SECRET_MARKER']=='reader-credential'
+assert 'SWARMENV_WORKER_TOKEN' not in os.environ
+assert hashlib.sha256(os.environ['SWARMENV_BRIDGE_TOKEN'].encode()).hexdigest()!=pathlib.Path('writer-bridge-fingerprint').read_text()`)],
+    ['mark', python(`import hashlib,os,pathlib
+assert os.environ['WORKSPACE_PROFILE_MARKER']=='writer'
+assert os.environ['WORKSPACE_SECRET_MARKER']=='writer-credential'
+assert 'SWARMENV_WORKER_TOKEN' not in os.environ
+pathlib.Path('/workspace/runtime/parent-only').write_text('private')
+pathlib.Path('writer-bridge-fingerprint').write_text(hashlib.sha256(os.environ['SWARMENV_BRIDGE_TOKEN'].encode()).hexdigest())
+pathlib.Path('shared').write_text('visible')`)],
     ['isolated', python(`import pathlib\nassert list(pathlib.Path('.').iterdir())==[]\nassert not pathlib.Path('/workspace/runtime/parent-only').exists()\npathlib.Path('private').write_text('own')`)],
     ['continue', python(`import pathlib\nassert pathlib.Path('shared').read_text()=='visible'\nassert pathlib.Path('/workspace/runtime/parent-only').read_text()=='private'\npathlib.Path('after-peer-stop').write_text('continued')`)],
     ['frozen', python(`import pathlib\nassert pathlib.Path('random.bin').read_bytes().hex()=='${bytes.toString('hex')}'\nassert not pathlib.Path('after-peer-stop').exists()\npathlib.Path('only-frozen').write_text('private copy')`)],
@@ -100,7 +118,10 @@ test('native running snapshots preserve random bytes and scoped shared workspace
       modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 128 },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: provider.url, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
-    }), profiles: { worker: { prompt: 'Execute the fixed probe.', model: 'default', image, writable: true, services: {} } }, services: new ServiceRegistry(), maxBots: 4, outputDir });
+    }), profiles: Object.fromEntries(['worker', 'writer', 'reader'].map(name => [name, {
+      prompt: 'Execute the fixed probe.', model: 'default', image, writable: true, services: {},
+      env: { WORKSPACE_PROFILE_MARKER: name },
+    }])), services: new ServiceRegistry(), maxBots: 4, outputDir });
     runtimes.push(result); return result;
   }
   async function turn(runtime, bot, id) {
@@ -114,12 +135,14 @@ test('native running snapshots preserve random bytes and scoped shared workspace
     } finally { clearTimeout(timer); unsubscribe(); }
   }
   const a = await runtime();
-  const writer = await a.spawn({ requestId: 'writer', profile: 'worker', workspace: { id: 'shared', mode: 'read-write' } });
+  const writer = await a.spawn({ requestId: 'writer', profile: 'writer', workspace: { id: 'shared', mode: 'read-write' },
+    secretEnv: { WORKSPACE_SECRET_MARKER: 'writer-credential' } });
   const key = value => createHash('sha256').update(value).digest('hex');
   const backing = join('/run/swarmenv-workspaces', key(a.id), key('shared'));
   await access(backing);
   await turn(a, writer, 'mark');
-  const reader = await a.spawn({ requestId: 'reader', profile: 'worker', workspace: { id: 'shared', mode: 'read-only' } });
+  const reader = await a.spawn({ requestId: 'reader', profile: 'reader', workspace: { id: 'shared', mode: 'read-only' },
+    secretEnv: { WORKSPACE_SECRET_MARKER: 'reader-credential' } });
   const running = turn(a, writer, 'write');
   let capture;
   for (let index = 0; index < 40; index++) {
