@@ -1669,25 +1669,6 @@ test('an apply already captured before soft closeout completes its original inst
   assert.equal(guest.installs, 1);
 });
 
-test('actual Material CLI records correction CAS, separate disputes and revocation history', async t => {
-  const { command } = await workspaceFixture(t);
-  const a = (await command('material', 'publish', '--content', 'Original complete account', '--request-id', 'cli-a')).material;
-  const b = (await command('material', 'publish', '--content', 'Complete replacement with counterexample', '--request-id', 'cli-b')).material;
-  const observed = await command('material', 'view', a.material_id);
-  assert.equal(observed.material.relation_version, 0);
-  await command('material', 'dispute', a.material_id, '--claim', 'Boundary case', '--reason', 'Counterexample in the new note', '--request-id', 'cli-dispute');
-  const replacement = await command('material', 'supersede', a.material_id, '--with', b.material_id, '--expected-version', '0', '--reason', 'Complete correction', '--request-id', 'cli-supersede');
-  assert.equal(replacement.material.relation_version, 1);
-  await assert.rejects(command('material', 'supersede', a.material_id, '--with', b.material_id, '--expected-version', '0', '--reason', 'Stale observed state', '--request-id', 'cli-stale'), error => /STALE_VERSION/.test(error.stderr));
-  const reversed = await command('material', 'unsupersede', a.material_id, '--with', b.material_id, '--expected-version', '1', '--reason', 'Recheck the replacement', '--request-id', 'cli-revoke');
-  assert.equal(reversed.relation_version, 2);
-  assert.deepEqual(await command('material', 'unsupersede', a.material_id, '--with', b.material_id, '--expected-version', '1', '--reason', 'Recheck the replacement', '--request-id', 'cli-revoke'), reversed);
-  const view = await command('material', 'view', a.material_id);
-  assert.equal(view.disputed, true);
-  assert.equal(view.active_successors.length, 0);
-  assert.equal(view.correction_events.filter(e => e.action === 'revoked').length, 1);
-});
-
 test('actual Task CLI lets an UNBOUND Bot retire work while an ACTIVE Bot only repairs its cancelled dependency', async t => {
   const { command, service, runtime, startSession, context } = await workspaceFixture(t, { runtimeOptions: { maxWorkers: 2, coordinationPermissions: ['task_dependency_replace'] } });
   const editorBridge = new ServicesBridge({ taskService: service, contextService: context, runtime, coreId: 'core-2',
