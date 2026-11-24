@@ -106,3 +106,58 @@ test('foreground input failure remains first when output and execution cleanup a
   assert.ok(!records.some(row => ['waiting', 'queued', 'late'].includes(row.id)));
   assert.deepEqual(errors.trim().split('\n').map(JSON.parse), [{ code: 'HOST_OUTPUT_FAILED' }]);
 });
+
+for (const stream of ['stdin', 'stdout']) {
+  for (const { mode, stage } of [{ mode: 'agensh', stage: 'configuration' }, { mode: 'agensh', stage: 'first Bot startup' }, { mode: 'flat', stage: 'configuration' }]) {
+    test(`foreground ${mode} ${stream} failure during ${stage} saves its safe failure and closes admitted resources`, { timeout: 10_000 }, async t => {
+      const root = await mkdtemp(join(tmpdir(), 'foreground-startup-io-'));
+      t.after(() => rm(root, { recursive: true, force: true }));
+      const path = join(root, 'configuration.mjs');
+      const expectedCode = stream === 'stdin' ? 'HOST_INPUT_FAILED' : 'HOST_OUTPUT_FAILED';
+      const fail = `process.${stream}.emit('error', Object.assign(new Error('PRIVATE_STARTUP_IO'), { code: '${stream === 'stdin' ? 'EIO' : 'EPIPE'}' }));`;
+      await writeFile(path, `
+import configuration from ${JSON.stringify(new URL('./fixtures/foreground-host-configuration.mjs', import.meta.url).href)};
+import { transport } from ${JSON.stringify(new URL('./fixtures/core-bot-service-backend.js', import.meta.url).href)};
+${stage === 'configuration' ? `setTimeout(() => { ${fail} }, 5); await new Promise(resolve => setTimeout(resolve, 25));`
+  : `transport.onSpawn = async () => { ${fail} await new Promise(resolve => setTimeout(resolve, 25)); };`}
+export default { ...configuration, mode: ${JSON.stringify(mode)} };
+`);
+      const child = spawn(process.execPath, [`--redirect-warnings=${join(root, 'node-warnings.log')}`, 'scripts/run-environment.mjs', '--config', path], {
+        env: { ...process.env, FOREGROUND_TEST_OUTPUT: root }, stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      t.after(() => child.kill('SIGKILL'));
+      const stdout = [], stderr = [];
+      child.stdout.on('data', value => stdout.push(value)); child.stderr.on('data', value => stderr.push(value));
+      const [exit, signal] = await once(child, 'exit');
+      assert.equal(signal, null); assert.equal(exit, 1);
+      const diagnostic = Buffer.concat(stderr).toString();
+      assert.ok(!diagnostic.includes('PRIVATE_STARTUP_IO'), diagnostic);
+      const directories = (await readdir(root, { withFileTypes: true })).filter(entry => entry.isDirectory());
+      assert.equal(directories.length, 1, 'startup failure must retain one saved run');
+      const directory = join(root, directories[0].name);
+      const saved = JSON.parse(await readFile(join(directory, 'environment-report.json'), 'utf8'));
+      assert.equal(saved.businessFailure.code, expectedCode);
+      assert.equal(saved.cleanupFailure, null);
+      assert.ok(!JSON.stringify(saved).includes('PRIVATE_STARTUP_IO'));
+      if (stream === 'stdin') {
+        assert.equal(diagnostic, '');
+        const records = Buffer.concat(stdout).toString().trim().split('\n').map(JSON.parse);
+        assert.equal(records.length, 1); assert.equal(records[0].type, 'result');
+        assert.equal(records[0].businessFailureCode, expectedCode);
+        assert.equal(records[0].runtimeId, saved.runtimeId);
+        assert.equal(records[0].reportPath, join(directory, 'environment-report.json'));
+      } else {
+        assert.equal(Buffer.concat(stdout).toString(), '');
+        assert.deepEqual(diagnostic.trim().split('\n').map(JSON.parse), [{ code: expectedCode }]);
+      }
+      if (stage === 'configuration') {
+        assert.ok(!(await readdir(directory)).includes('runtime.json'));
+      } else {
+        const core = JSON.parse(await readFile(join(directory, 'runtime.json'), 'utf8'));
+        assert.equal(core.runtimeId, saved.runtimeId); assert.equal(core.status, 'closed');
+        assert.equal(core.cleanup, 'complete'); assert.equal(core.bots.length, 1);
+        assert.deepEqual(core.bots.map(bot => [bot.execution, bot.cleanup]), [['stopped', 'complete']]);
+      }
+    });
+  }
+}

@@ -6,10 +6,15 @@ const usage = 'node scripts/run-environment.mjs --config <host-module.mjs>';
 const args = process.argv.slice(2);
 const lifetime = new AbortController();
 const stop = () => lifetime.abort();
+const inputFailed = () => lifetime.abort(Object.assign(new Error('HOST_INPUT_FAILED'), { code: 'HOST_INPUT_FAILED' }));
+process.stdin.on('error', inputFailed);
 process.once('SIGINT', stop); process.once('SIGTERM', stop);
 // Own stdout through the final write callback, including asynchronous pipe errors.
 let outputFailure;
-const outputFailed = () => { outputFailure ??= Object.assign(new Error('HOST_OUTPUT_FAILED'), { code: 'HOST_OUTPUT_FAILED' }); };
+const outputFailed = () => {
+  outputFailure ??= Object.assign(new Error('HOST_OUTPUT_FAILED'), { code: 'HOST_OUTPUT_FAILED' });
+  lifetime.abort(outputFailure);
+};
 const diagnosticFailed = () => {};
 process.stdout.on('error', outputFailed);
 process.stderr.on('error', diagnosticFailed);
@@ -46,6 +51,7 @@ try {
   process.exitCode = invalid ? 2 : 1;
 } finally {
   process.stdin.pause(); process.stdin.unref?.();
+  process.stdin.removeListener('error', inputFailed);
   process.stdout.removeListener('error', outputFailed);
   process.stderr.removeListener('error', diagnosticFailed);
   process.removeListener('SIGINT', stop); process.removeListener('SIGTERM', stop);

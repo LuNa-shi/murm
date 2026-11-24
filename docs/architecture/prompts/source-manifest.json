@@ -92,7 +92,7 @@
     },
     {
       "path": "src/environments/agensh/team.js",
-      "sha256": "343293e9979c63e7e778813caaa4132a7758c7495012e85a28d3fe3a1ee8a6b5"
+      "sha256": "e86c572564cf01786f0194e04f5fa8899be4e01b41bb05ee9b3fb723b3068dc4"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.js",

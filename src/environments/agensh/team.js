@@ -31,7 +31,10 @@ export async function createAgenshTeam(options) {
   const redact = value => { let bytes = JSON.stringify(value); for (const secret of [...secrets].sort((a, b) => b.length - a.length)) bytes = bytes.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(bytes); };
   const peers = new Map(); const routers = new Map(); const subscriptions = new Map(); const unsubscriptions = []; const pendingSources = new Set();
   let runtime, facilities, services, closing = false, closeWork, completed, fencedFailure;
-  const check = () => { if (signal.aborted) throw fencedFailure ?? fail('ENVIRONMENT_START_ABORTED'); };
+  const hostStreamFailure = () => ['HOST_INPUT_FAILED', 'HOST_OUTPUT_FAILED'].includes(signal.reason?.code) ? signal.reason.code : undefined;
+  const check = () => {
+    if (signal.aborted) throw fencedFailure ?? fail(hostStreamFailure() ?? 'ENVIRONMENT_START_ABORTED');
+  };
   const peerStates = () => [...peers].map(([key, bot]) => ({ key, botId: bot.id, profile: bot.profile,
     router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() }));
   const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), resources: resources.snapshot(), peers: peerStates() });
@@ -108,8 +111,9 @@ export async function createAgenshTeam(options) {
       poll: () => Promise.all([...subscriptions.values()].map(source => source.poll?.())),
     });
   } catch (error) {
+    const code = fencedFailure?.code ?? hostStreamFailure() ?? error.code ?? 'TEAM_START_FAILED';
     const receipt = !runtime && error.cleanup === 'pending' ? { cleanup: 'pending' } : await close({ timeoutMs: options.closeTimeoutMs ?? 60_000 }).catch(() => ({ cleanup: 'pending' }));
-    throw Object.assign(new Error('Agensh team initialization failed'), { code: fencedFailure?.code ?? error.code ?? 'TEAM_START_FAILED', runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [...(fencedFailure?.details ?? []), snapshot(), redact(receipt)] });
+    throw Object.assign(new Error('Agensh team initialization failed'), { code, runtimeId: runtime?.id ?? error.runtimeId, cleanup: receipt.cleanup, details: [...(fencedFailure?.details ?? []), snapshot(), redact(receipt)] });
   } finally { signal.removeEventListener('abort', abortStartup); }
 }
 

@@ -27,7 +27,7 @@ export async function runForegroundEnvironment({ mode, options, timeoutMs = 120_
     const stopped = new Promise((resolve, reject) => {
       abort = () => {
         closing = true;
-        if (workSignal.reason?.code === 'AGENSH_TEAM_FENCED') reject(workSignal.reason);
+        if (['AGENSH_TEAM_FENCED', 'HOST_INPUT_FAILED', 'HOST_OUTPUT_FAILED'].includes(workSignal.reason?.code)) reject(workSignal.reason);
         else if (workSignal.reason === deadline.reason && deadline.aborted) reject(fail('HOST_WORK_TIMEOUT'));
         else resolve({ reason: 'host-stop' });
       };
