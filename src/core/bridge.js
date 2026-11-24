@@ -96,7 +96,11 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       active.set(controller, botId);
       instrumented = true;
       const result = await invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
-        envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService }, serviceTimeoutMs);
+        envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService,
+        assertAuthorized: () => {
+          const latest=live();
+          if(latest.profile!==caller.profile || !latest.services?.[body.service_id]?.includes(body.operation)) throw new SwarmEnvError('NOT_ALLOWED','Service caller authority was revoked');
+        } }, serviceTimeoutMs);
       reply(response, 200, { ok: true, result });
     } catch (error) {
       request.resume();

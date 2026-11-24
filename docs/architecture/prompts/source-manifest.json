@@ -11,7 +11,7 @@
     },
     {
       "path": "src/agent/services-bridge.js",
-      "sha256": "41974bc75084edca42e4188a71b91d48c94faa4689865ad26d0585a430216231"
+      "sha256": "3a6ba17fdb1bff8cb0ff2ea9e85f99e07d2a989e507b9269fb1780102fb2bfaf"
     },
     {
       "path": "src/core/index.js",
@@ -43,7 +43,7 @@
     },
     {
       "path": "src/environments/flat/environment.js",
-      "sha256": "f66eab597b1e331fc8a8483a666617c495eca3be2d8a1874b5b074133ac2b3d8"
+      "sha256": "fd4cb206f61d5d1d62e839f539823a275cb4c5380e734a13142d1554142b653b"
     },
     {
       "path": "examples/subagents-environment/main.mjs",
@@ -91,7 +91,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "33260177d6eea2994f306da86dd8024848d6812f046ba6327e7410e819ab29dd"
+      "sha256": "7bec10b5b19c5b567efc6227c79f9e99b702c0df218e02ca7ddcf37aea082029"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -307,7 +307,7 @@
   "prompt_send_sites": [
     {
       "path": "src/runtime/runtime.js",
-      "line": 1094,
+      "line": 1066,
       "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
     },
     {
@@ -324,25 +324,25 @@
   "fixed_instruction_fields": [
     {
       "path": "src/agent/services-bridge.js",
-      "line": 90,
+      "line": 91,
       "field": "action",
       "sha256": "a5e4874eff88bd459015734cb36e2d7e5cbb7a9312337c2df58750686d29a4f3"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 91,
+      "line": 92,
       "field": "hint",
       "sha256": "78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 546,
+      "line": 547,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 553,
+      "line": 554,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
     },
@@ -428,7 +428,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "ef554ab645f3bcad055b1804a0211dc0afcf37a7bd088dc091ab2f86f4bcd176"
+      "sha256": "b6b92d62e4d2002191fc86b0068b35f0d4470e024950a00b0b3c362eca0e68be"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",

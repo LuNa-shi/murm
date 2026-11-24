@@ -135,7 +135,7 @@ export function snapshotServiceRegistry(services) {
 }
 
 // One invocation only. Service business logic owns idempotency and retries.
-export async function invokeService(registration, { operation, input, envelope, caller, signal, recordService }, timeoutMs = 30_000) {
+export async function invokeService(registration, { operation, input, envelope, caller, signal, recordService, assertAuthorized }, timeoutMs = 30_000) {
   const { manifest, adapter } = registration;
   const capability = manifest.capabilities.find(item => item.operation === operation);
   const identity = { service_id: manifest.id, operation, operation_id: envelope.operation_id };
@@ -167,7 +167,8 @@ export async function invokeService(registration, { operation, input, envelope, 
     record('invocation', 'pending');
     const result = await Promise.race([Promise.resolve().then(() => {
       controller.signal.throwIfAborted();
-      return adapter.invoke({ manifest, capability, input: structuredClone(input), envelope: Object.freeze({ operation_id: envelope.operation_id }), caller: Object.freeze({ ...caller }), signal: controller.signal });
+      return adapter.invoke({ manifest, capability, input: structuredClone(input), envelope: Object.freeze({ operation_id: envelope.operation_id }), caller: Object.freeze({ ...caller }), signal: controller.signal,
+        assertAuthorized: () => { if(controller.signal.aborted) throw new SwarmEnvError('NOT_ALLOWED','Service caller authority was revoked'); assertAuthorized?.(); } });
     }), timeout]);
     if (!isJson(result) || !rules.output(result)) throw new SwarmEnvError('SERVICE_OUTPUT_INVALID', 'Service output violates its schema', { ...identity, request_outcome: capability.side_effect === 'write' ? 'unknown' : 'invalid_output' });
     record('settled', 'succeeded');

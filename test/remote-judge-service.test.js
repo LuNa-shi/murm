@@ -9,12 +9,13 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { TaskService } from '../src/task/task-service.js';
 import { RemoteJudgeService } from '../src/sdk/remote-judge-service.js';
+import { SwarmEnvError } from '../src/errors.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const fixtureManifest = { fixture_id: 'remote-judge', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
   problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'fixture',
   checker_ref: 'lean', checker_version: 'fixture', environment_ref: 'fixture' };
 
-for (const closeDuringPreflight of [false, true]) test(`independent Judge preserves lifecycle authority (close during preflight: ${closeDuringPreflight})`, { timeout: 15000 }, async t => {
+for (const closeDuringPreflight of [false, true, 'scoped']) test(`independent Judge preserves lifecycle authority (close during preflight: ${closeDuringPreflight})`, { timeout: 15000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'remote-judge-'));
   const tasks = new TaskService(join(root, 'task.sqlite'));
   const token = 'private-judge-coordinator-test-token';
@@ -46,12 +47,14 @@ for (const closeDuringPreflight of [false, true]) test(`independent Judge preser
   tasks.dispatch('start_execution', {}, env('start'));
   const input = { request_key: 'check:one', source: { workspace_id: 'workspace:one', revision: '0.1', path: 'Main.lean',
     git_commit: 'c'.repeat(40), git_tree: 'd'.repeat(40), content: 'example : True := by trivial' } };
-  const checking = judge.dispatch('workspace_check', input, env('check:one'));
+  let authorized=true;
+  const checking = judge.dispatch('workspace_check', input, env('check:one'),{assertAuthorized(){if(!authorized) throw new SwarmEnvError('NOT_ALLOWED','Caller authority revoked');}});
   if (closeDuringPreflight) {
     for (let attempt = 0; judge.getMissionCheckBudget('mission:one').preflight_process_starts !== 1; attempt++) {
       assert.ok(attempt < 100); await delay(10);
     }
-    tasks.dispatch('task_finish', { outcome: 'incomplete' }, env('finish'));
+    if(closeDuringPreflight==='scoped') authorized=false;
+    else tasks.dispatch('task_finish', { outcome: 'incomplete' }, env('finish'));
     const rejected = await checking;
     assert.equal(rejected.result_class, 'request_failure');
     assert.equal(judge.getMissionCheckBudget('mission:one').source_process_starts, 0);

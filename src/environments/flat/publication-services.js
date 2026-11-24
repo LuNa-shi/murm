@@ -1,4 +1,6 @@
 import { MISSION_WORKSPACE_READS } from './public-workspace-reads.js';
+import { prepareWorkspaceCheckSource } from './workspace-check-source.js';
+import { agentCheckResult } from '../../judge/check-result.js';
 import { ExecutionWorkspace } from '../../runtime/execution-workspace.js';
 import { SwarmEnvError } from '../../errors.js';
 import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
@@ -30,6 +32,10 @@ const definitions = {
     catalogCapability('list','read_materials','read'),
     capability('consume','consume_materials',object({material_ids:ids,action:{enum:['route','task','workspace','integration']},impact:text},['material_ids','action','impact'])),
   ],
+  judge:[
+    catalogCapability('check','workspace_check'),
+    {...catalogCapability('result','get_check_result','read'),output_schema:{type:['object','null']}},
+  ],
   task:[
     catalogCapability('link','task_link_material'),
     catalogCapability('finish','task_finish'),
@@ -38,11 +44,15 @@ const definitions = {
 
 /** Host composition only. Task policy and durable publication remain outside Core. */
 export function createFlatPublicationServices({ runtime, taskService, contextService, missionId, missionWorkspace, workspaceId,
-  profile='researcher', deadline, onFinish=()=>{}, snapshotProject }) {
+  profile='researcher', deadline, onFinish=()=>{}, snapshotProject, judgeService = null, workspaceProjectCheck = false }) {
   if (!runtime || !taskService || !contextService || !missionWorkspace || typeof missionId!=='string' || !missionId ||
       typeof workspaceId!=='string' || !workspaceId || typeof deadline!=='function' || typeof onFinish!=='function') fail('INVALID_CONTRACT','Flat publication requires trusted Runtime, stores and finite Mission budget');
+  if (typeof workspaceProjectCheck!=='boolean') fail('INVALID_CONTRACT','Flat Judge project mode must be boolean');
+  if (judgeService && (judgeService.taskService !== taskService || typeof judgeService.dispatch !== 'function')) fail('INVALID_CONTRACT','Flat Judge and Task authority must match');
   const getRuntime=()=>typeof runtime==='function'?runtime():runtime;
   const requests=new Map();
+  const judgeCalls=new Map();
+  const judgeStatus=()=>({cleanup:judgeCalls.size?'pending':'complete',pending:[...new Map([...judgeCalls.values()].map(({id,work,providerStarted,providerCompleted,...receipt})=>[id,structuredClone(receipt)])).values()]});
   let closing=false;
   function binding(caller, {write=true}={}) {
     const core=getRuntime();
@@ -87,7 +97,43 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     return workspace.dispatch(({workspace_save:'save',workspace_status:'status',workspace_current_diff:'diff'})[operation],input,
       {actorRef:current.bot.bot_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,fencingVersion:current.execution.fencing_version,requestId:id,signal});
   }
-  async function invoke(service,{capability:cap,input,caller,envelope,signal}) {
+  async function judgeOperation(operation,input,current,id,caller,signal,assertAuthorized,call) {
+    const execution=current.execution;
+    const assertCurrent=()=>{
+      assertAuthorized?.();
+      signal?.throwIfAborted();
+      const latest=binding(caller,{write:operation==='workspace_check'});
+      if(operation==='workspace_check' && (latest.execution?.workspace_input?.workspace_id!==workspaceId || taskService.getTask(latest.execution?.task_id)?.mission_id!==missionId)) fail('NOT_ALLOWED','Judge source is outside the current Flat Workspace binding');
+      if(latest.execution?.execution_id!==execution?.execution_id || latest.execution?.fencing_version!==execution?.fencing_version) fail('FENCED','Flat Judge binding changed');
+      return latest;
+    };
+    const guard=async()=>{
+      assertCurrent();
+      const live=await current.core.get(caller.botId);
+      if(!['idle','running'].includes(live.status) || live.profile!==profile) fail('NOT_ALLOWED','Core Bot is unavailable');
+      return assertCurrent();
+    };
+    let payload=input;
+    if(operation==='workspace_check') {
+      if(!execution) fail('NOT_ALLOWED','Judge checks require an active Execution');
+      const source=await prepareWorkspaceCheckSource(input,{workspace:missionWorkspace,workspaceId,projectCheck:workspaceProjectCheck,guard});
+      payload={source,request_key:input.request_key??id,
+        ...(!source.check_mode ? {source_attestation:{task_id:execution.task_id,execution_id:execution.execution_id,path:source.path,
+          revision:source.revision,workspace_revision:source.workspace_revision,workspace_id:source.workspace_id,content_hash:source.content_hash}}:{})};
+    }
+    const latest=await guard();
+    const envelope=latest.execution?{...executionEnvelope(latest.execution,id),actor_ref:caller.botId}:makeEnvelope({actorRef:caller.botId,operationId:id});
+    if(call) call.providerStarted=true;
+    const result=await judgeService.dispatch(operation,payload,envelope,{assertAuthorized:assertCurrent});
+    if(call) call.providerCompleted=true;
+    await guard();
+    if(result) {
+      const task=taskService.getTask(result.target_task_id);
+      if(!task || task.mission_id!==missionId) fail('NOT_ALLOWED','Judge result is outside the Bot Mission');
+    }
+    return agentCheckResult(result);
+  }
+  async function invoke(service,{capability:cap,input,caller,envelope,signal,assertAuthorized}) {
     const operation=cap.operation;
     if (!definitions[service]?.some(row=>row.operation===operation)) fail('INVALID_CONTRACT','Unknown flat publication operation');
     if (!input || typeof input!=='object' || Array.isArray(input) || ['actor_ref','owner_ref','bot_id','execution_id','fencing_version','spec_version','state_version'].some(key=>Object.hasOwn(input,key))) fail('INVALID_CONTRACT','Flat publication cannot supply trusted identity');
@@ -98,8 +144,9 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     const fingerprint=stableStringify({service,operation,input});
     const previous=requests.get(key);
     if (previous) {
+      // Judge owns durable replay; its caller must still pass current authority.
       if(previous.fingerprint!==fingerprint) fail('CONFLICT','Flat publication request has different parameters');
-      if(previous.work) return structuredClone(await previous.work);
+      if(previous.work && service!=='judge') return structuredClone(await previous.work);
     }
     const read=cap.side_effect==='read';
     const original=binding(caller,{write:!read});
@@ -111,28 +158,58 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     const joined=requests.get(key);
     if (joined) {
       if(joined.fingerprint!==fingerprint) fail('CONFLICT','Flat publication request has different parameters');
-      if(joined.work) return structuredClone(await joined.work);
+      if(joined.work && service!=='judge') return structuredClone(await joined.work);
+      if(service==='judge' && joined.pending) {
+        const reauthorize=()=>{
+          assertAuthorized?.();signal?.throwIfAborted();
+          const latest=binding(caller,{write:!read});
+          if(latest.execution?.execution_id!==joined.executionId || latest.execution?.fencing_version!==joined.fencingVersion) fail('FENCED','Flat Judge replay binding changed');
+        };
+        reauthorize();
+        const result=await joined.work;
+        reauthorize();
+        return structuredClone(result);
+      }
     }
     const id=`flat:publication:${inputFingerprint([core.id,caller.botId,envelope.operation_id])}`;
+    const call=service==='judge'?{id,requestId:envelope.operation_id,operation,botId:caller.botId,executionId:current.execution?.execution_id??null}:null;
     const work=Promise.resolve().then(()=>{
       signal?.throwIfAborted();
       const latest=binding(caller,{write:!read});
       if(latest.execution?.execution_id!==current.execution?.execution_id || latest.execution?.fencing_version!==current.execution?.fencing_version) fail('FENCED','Flat binding changed before publication');
       const domainEnvelope=latest.execution ? {...executionEnvelope(latest.execution,id),actor_ref:caller.botId}:makeEnvelope({actorRef:caller.botId,operationId:id});
-      const result=service==='workspace'?workspaceOperation(operation,input,latest,id,signal):service==='context'?contextService.dispatch(operation,input,domainEnvelope):taskService.dispatch(operation,input,domainEnvelope);
+      const result=service==='judge'?judgeOperation(operation,input,latest,id,caller,signal,assertAuthorized,call):service==='workspace'?workspaceOperation(operation,input,latest,id,signal):service==='context'?contextService.dispatch(operation,input,domainEnvelope):taskService.dispatch(operation,input,domainEnvelope);
       if(operation==='task_finish') onFinish({botId:caller.botId,executionId:latest.execution.execution_id,requestId:envelope.operation_id});
       return result;
     });
-    const request={fingerprint,work};
+    const request={fingerprint,work,pending:true,executionId:current.execution?.execution_id,fencingVersion:current.execution?.fencing_version};
     requests.set(key,request);
-    void work.catch(()=>{if(request.work===work) request.work=null;});
+    if(service==='judge') {
+      call.work=work;
+      judgeCalls.set(work,call);
+      void work.then(()=>{judgeCalls.delete(work);},error=>{
+        // An infrastructure timeout may leave the caller-owned provider unresolved.
+        if(call.providerStarted && !call.providerCompleted && !['NOT_ALLOWED','FENCED','INVALID_CONTRACT','CONFLICT','CHECKER_BUSY'].includes(error.code)) {
+          call.error={code:error.code??'JUDGE_OUTCOME_UNKNOWN',message:'Judge operation has no confirmed completion receipt'};
+        } else judgeCalls.delete(work);
+      });
+    }
+    void work.then(()=>{request.pending=false;},()=>{request.pending=false;if(request.work===work) request.work=null;});
     return structuredClone(await work);
   }
-  const registrations=Object.entries(definitions).map(([id,capabilities])=>({
+  const registrations=Object.entries(definitions).filter(([id])=>id!=='judge'||judgeService).map(([id,capabilities])=>({
     manifest:{id,title:`Flat ${id}`,purpose:'Publish and read durable flat results with actual Task ownership',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities},
     adapter:{invoke:request=>invoke(id,request)},
   }));
-  return {registrations, reconcileWorkspace:(executionId,options)=>workspace.reconcile(executionId,options), close(){closing=true;},
+  return {registrations, reconcileWorkspace:(executionId,options)=>workspace.reconcile(executionId,options), close(){closing=true;return judgeStatus();}, judgeStatus,
+    async waitForJudges({timeoutMs}={}) {
+      if(!Number.isFinite(timeoutMs)||timeoutMs<=0) fail('INVALID_CONTRACT','Judge close wait must be positive and finite');
+      if(!judgeCalls.size) return judgeStatus();
+      let timer;
+      try {await Promise.race([Promise.allSettled([...judgeCalls.values()].map(call=>call.work)),new Promise(resolve=>{timer=setTimeout(resolve,timeoutMs);})]);}
+      finally {clearTimeout(timer);}
+      return judgeStatus();
+    },
     composeTask(discovery) {
       const contribution=registrations.find(row=>row.manifest.id==='task');
       return {manifest:{...discovery.manifest,capabilities:[...discovery.manifest.capabilities,...contribution.manifest.capabilities]},

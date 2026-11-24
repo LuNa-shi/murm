@@ -12,10 +12,10 @@ import { createFlatModelAccessPolicy } from './model-access-policy.js';
  * callers must not substitute a legacy Runtime or model-supplied file payload. */
 export async function runFlatEnvironment({backend,model,image,prompt='Use the flat Services to discover, execute and truthfully finish Mission work.',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
-  capacity=2,snapshotProject,controller:controllerOptions={},handoff:handoffOptions={},drive,
+  capacity=2,snapshotProject,judgeService=null,workspaceProjectCheck=false,controller:controllerOptions={},handoff:handoffOptions={},drive,
   closeTimeoutMs=30_000,redact=value=>value,signal}) {
   if(signal!==undefined && !(signal instanceof AbortSignal)) throw new TypeError('Flat host signal must be an AbortSignal');
-  let runtime,controller,discovery,publication;
+  let runtime,controller,discovery,publication,closeDeadline;
   const result={};
   return runWithReport({outputDir,closeTimeoutMs,redact,
     async createRuntime() {
@@ -30,7 +30,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       if (workspace.mission_id !== missionId) throw new SwarmEnvError('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       taskService.contextService=contextService;
       discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:()=>deadlineAt});
-      publication=createFlatPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline:()=>deadlineAt,snapshotProject,
+      publication=createFlatPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline:()=>deadlineAt,snapshotProject,judgeService,workspaceProjectCheck,
         onFinish:()=>controller?.notify()});
       const services=new ServiceRegistry();
       services.registerService(publication.composeTask(discovery));
@@ -56,13 +56,22 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       if(signal?.aborted) aborted();
       return {id:runtime.id,async close(options) {
         signal?.removeEventListener('abort',aborted);
-        controller.halt();publication.close();
+        controller.halt();
+        closeDeadline=Date.now()+Math.min(closeTimeoutMs,options.timeoutMs);
+        const judgeStatus=publication.close();
+        if(judgeService) result.judge=judgeStatus;
         await discovery.close({timeoutMs:Math.min(closeTimeoutMs,options.timeoutMs)});
         return runtime.close(options);
       }};
     },
     async afterClose(receipt) {
-      try { await controller.reconcileClose(receipt); }
+      try {
+        await controller.reconcileClose(receipt);
+        if(judgeService) {
+          result.judge=await publication.waitForJudges({timeoutMs:Math.max(1,closeDeadline-Date.now()-1)});
+          if(result.judge.cleanup!=='complete') throw new SwarmEnvError('FLAT_JUDGE_CLEANUP_PENDING','Flat Judge operations have no confirmed completion receipt',result.judge);
+        }
+      }
       finally { Object.assign(result,controller.snapshot()); }
     },
     async run() {

@@ -1521,9 +1521,19 @@
       "chapters": [
         "docs/architecture/02-execution.md",
         "docs/architecture/15-core-runtime.md",
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/04-services.md"
+      ],
+      "role": "Flat trusted publication and optional fixed-revision Judge handoff with actual Core/Task authority"
+    },
+    {
+      "path": "src/environments/flat/workspace-check-source.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/04-services.md",
         "docs/architecture/17-environment-reporting.md"
       ],
-      "role": "Flat trusted Material/Task publication and explicitly injected stable Workspace snapshot adapter"
+      "role": "Shared fixed-public-revision Judge source preparation with caller-owned before/after authority guards"
     },
     {
       "path": "src/environments/flat/controller.js",

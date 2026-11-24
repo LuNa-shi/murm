@@ -5,6 +5,7 @@ import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { createBuiltinServiceRegistry, MISSION_WORKSPACE_READS } from '../sdk/builtin-registry.js';
 import { makeEnvelope, stableStringify } from '../protocol/envelope.js';
 import { AGENT_ROLES, buildCapabilityProfile } from './capability-profile.js';
+import { prepareWorkspaceCheckSource } from '../environments/flat/workspace-check-source.js';
 import { agentCheckResult } from '../judge/check-result.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 
@@ -686,7 +687,10 @@ export class ServicesBridge {
           : invocationPayload;
         if (operation === 'workspace_check') {
           if (!bot) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace checks require a registered Bot');
-          const source = await this.runtime.readWorkspaceCheckSource(payload, { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: currentExecution?.fencing_version });
+          const identity = { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: currentExecution?.fencing_version };
+          const source = await prepareWorkspaceCheckSource(payload, { workspace: this.runtime.missionWorkspace,
+            workspaceId: this.runtime.missionWorkspaceId, projectCheck: this.runtime.workspaceProjectCheck,
+            guard: () => this.runtime.assertExecutionWorkspace(identity) });
           if (['lean-project', 'lean-module'].includes(source.check_mode)) {
             assertIdentity(true);
             return this.#invokeRegistered(capability, { source, request_key: payload.request_key ?? bridgeOperationId }, bridgeOperationId);
