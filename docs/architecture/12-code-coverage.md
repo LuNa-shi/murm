@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **179 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **177 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -189,16 +189,14 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/observability/format.js](../../src/observability/format.js) | Human-facing time, IDs, state and value formatting | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `0155eabc9b55f5c1c2acf364133d051608037205ccb3815bb01a16146037a6b1` |
 | [src/observability/observation-projection.js](../../src/observability/observation-projection.js) | Shared observation projection for events, timelines and derived views | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7d27b0c3275abd90be78a41495db188f536db5c984d34490960dcf7a56714d4c` |
 
-### observation and analysis (7)
+### observation and analysis (5)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [scripts/prune-private-audit.mjs](../../scripts/prune-private-audit.mjs) | Operator deletion task for expired managed private audit directories | [06-observability-experiments](06-observability-experiments.md) | `52bf50b3f51814385c629a7a3cd0149e3dab133c8b6c188ec0181e3a49cbd0e5` |
 | [scripts/serve-observability.mjs](../../scripts/serve-observability.mjs) | Persistent observer, root/worktree/database discovery and metadata lifecycle | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `7f7766417950a2ff7e0cd079a6646640793534af1d7640ce5709503980512096` |
 | [src/observability/durable-event-log.js](../../src/observability/durable-event-log.js) | Append component NDJSON with raw/sanitized logging modes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `27fb12582bf7594ca5d739807462c0f65e6d304bf8557f39407100e296c23a50` |
 | [src/observability/observability-server.js](../../src/observability/observability-server.js) | HTTP routes, SSE, multi-store queries, reports and bounded operator reads | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `9290d1a2f0344293e954c39b895933785a24b918d18f3a78f8a82f40147e38b4` |
 | [src/observability/observation-store.js](../../src/observability/observation-store.js) | SQLite event/projection schema, visibility and multi-database collections | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `b2f03ce533d84621a645671e3f37ab327f5323d2068fcc8ba1c9d6c23b81f269` |
-| [src/observability/private-audit-retention.js](../../src/observability/private-audit-retention.js) | Exclusive private audit roots, run ownership markers, and retention sweep | [06-observability-experiments](06-observability-experiments.md) | `24db12c96e922624cefa1830921dc649778924a67f9936f9b407a5344f1ea0f2` |
 | [src/observability/workspace-provider.js](../../src/observability/workspace-provider.js) | Workspace inspection adapter for observation routes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5d315a97b03ceb2aad34df6229ef443290b69e91cc47c776c723b678c96ac56a` |
 
 ### private history (2)

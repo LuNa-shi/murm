@@ -199,14 +199,6 @@
       "role": "Immutable same-UID process inspection before changing paused project paths"
     },
     {
-      "path": "scripts/prune-private-audit.mjs",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md"
-      ],
-      "role": "Operator deletion task for expired managed private audit directories"
-    },
-    {
       "path": "scripts/review-mission.mjs",
       "category": "Mission and Task",
       "chapters": [
@@ -667,14 +659,6 @@
         "docs/architecture/07-run-configuration.md"
       ],
       "role": "SQLite event/projection schema, visibility and multi-database collections"
-    },
-    {
-      "path": "src/observability/private-audit-retention.js",
-      "category": "observation and analysis",
-      "chapters": [
-        "docs/architecture/06-observability-experiments.md"
-      ],
-      "role": "Exclusive private audit roots, run ownership markers, and retention sweep"
     },
     {
       "path": "src/observability/workspace-provider.js",
