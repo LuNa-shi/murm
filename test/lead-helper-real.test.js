@@ -6,7 +6,7 @@ import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes, createHash } from 'node:crypto';
 import { DatabaseSync } from 'node:sqlite';
-import { installNativeNotesExample } from './fixtures/notes-installed-package.js';
+import { createNativeEvidenceDirectory, installNativeNotesExample } from './fixtures/notes-installed-package.js';
 import { createLocalAgenshStack } from './fixtures/agensh-local-stack.js';
 import { createCleanupBudget } from './fixtures/agensh-deadline.js';
 import { createLeadHelperUpstream, adjustedDirection } from './fixtures/lead-helper-upstream.js';
@@ -19,10 +19,10 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
   skip: process.env.SWARMENV_LEAD_HELPER_REAL_TEST !== '1' && 'Two independent exact-pin reviews required before any facilities, sandbox or model start', timeout: 600_000,
 }, async () => {
   const image = process.env.SWARMENV_CORE_TEST_IMAGE; assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
+  const directory = await createNativeEvidenceDirectory('lead-helper');
   const installed = await installNativeNotesExample();
   const runId = `lead-${randomBytes(6).toString('hex')}`; const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const directory = join(process.cwd(), 'experiments', `lead-helper-${runId}`); await mkdir(directory, { recursive: true, mode: 0o700 });
-  const outputDir = join(installed.directory, 'output'); await mkdir(outputDir);
+  const outputDir = join(directory, 'output'); await mkdir(outputDir);
   const stack = await createLocalAgenshStack({ directory: join(directory, 'facilities'), advertiseHost: host, giteaOnly: true, setupMs: 180_000 });
   const cleanup = createCleanupBudget(80_000); let upstream; let child; let sessions; let report; let config; let failure; let expired = false; let stdout = ''; let stderrBytes = 0;
   const proof = { schemaVersion: 1, failure: true, package: installed.metadata, image, externalDirectory: installed.directory,
@@ -41,7 +41,7 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
       gitea: config.gitea, turnTimeoutMs: 30_000, workTimeoutMs: 120_000, closeTimeoutMs: 25_000, exportLimit: 8 * 1024 ** 2,
       backend: { sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: 512 }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } } };
-    const configPath = join(installed.directory, 'lead-helper-config.mjs'); await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.backend.sandbox.apiKey=process.env.SWARMENV_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
+    const configPath = join(directory, 'lead-helper-config.mjs'); await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.backend.sandbox.apiKey=process.env.SWARMENV_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
     const main = join(installed.directory, 'node_modules/@swarmenv/core/examples/lead-helper-environment/main.mjs');
     const outcome = await new Promise((resolve, reject) => {
       child = spawn(process.execPath, [main, configPath], { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -100,6 +100,7 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
     proof.failure ||= Boolean(failure) || expired || !empty || proof.facilityCleanup.cleanup !== 'complete';
     let body = JSON.stringify(proof, null, 2); for (const secret of [...stack.secrets, config?.gitea?.adminToken, process.env.SWARMENV_CORE_TEST_API_KEY].filter(Boolean)) body = body.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]');
     await writeFile(join(directory, 'acceptance.json'), body, { mode: 0o600 }); cleanup.dispose();
+    if (!proof.failure) await installed.close();
   }
   if (failure) throw failure;
   assert.equal(proof.failure, false);

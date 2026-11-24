@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, realpath, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 export const execute = promisify(execFile);
@@ -41,9 +41,48 @@ export async function preparePackageArchive(directory, { archive: frozenArchive,
   return { archive, sourceCommit, sourceDirty };
 }
 
-// Install the real archive: no checkout symlink, NODE_PATH or loader hooks.
-export async function installNotesExample(selection, { requireCleanCheckout = false } = {}) {
-  const directory = await mkdtemp(join(tmpdir(), 'swarmenv-notes-installed-'));
+// Native evidence is private and retained beneath the attempt, not OS temporary storage.
+export async function createNativeEvidenceDirectory(name) {
+  if (typeof name !== 'string' || !/^[a-z][a-z0-9-]*$/.test(name)) throw new TypeError('A native evidence name is required');
+  const root = join(process.cwd(), 'experiments');
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  return mkdtemp(join(root, `${name}-`));
+}
+
+// Reject real checkout ancestry, including linked worktrees and symlinked TMPDIRs.
+async function outsideCheckout(directory) {
+  let current = await realpath(directory);
+  for (;;) {
+    if (await lstat(join(current, '.git')).then(() => true, error => {
+      if (error.code === 'ENOENT') return false;
+      throw error;
+    })) return false;
+    const parent = dirname(current);
+    if (parent === current) return true;
+    current = parent;
+  }
+}
+
+// Install the real archive outside checkout ancestry: no symlink, NODE_PATH or loader hooks.
+export async function installNotesExample(selection, { requireCleanCheckout = false, parentDirectory } = {}) {
+  let parent;
+  if (parentDirectory !== undefined) {
+    if (typeof parentDirectory !== 'string' || !parentDirectory) throw Object.assign(new TypeError('A private installation parent directory is required'), { code: 'INVALID_INSTALL_PARENT' });
+    parent = resolve(parentDirectory);
+    const info = await lstat(parent).catch(() => null);
+    if (!info?.isDirectory() || info.uid !== process.getuid() || (info.mode & 0o777) !== 0o700) {
+      throw Object.assign(new Error('Installation parent must be an owned private directory'), { code: 'INVALID_INSTALL_PARENT' });
+    }
+    if (!await outsideCheckout(parent)) throw Object.assign(new Error('Installation parent must be outside source checkouts'), { code: 'INSTALL_PARENT_IN_CHECKOUT' });
+  } else {
+    for (const candidate of [...new Set(requireCleanCheckout ? ['/var/tmp', tmpdir(), '/tmp'] : [tmpdir(), '/var/tmp', '/tmp'])]) {
+      try { if (await outsideCheckout(candidate)) { parent = await realpath(candidate); break; } }
+      catch (error) { if (!['ENOENT', 'EACCES', 'ENOTDIR'].includes(error.code)) throw error; }
+    }
+    if (!parent) throw Object.assign(new Error('No external installation parent is available'), { code: 'INSTALL_PARENT_IN_CHECKOUT' });
+  }
+  if (process.env.HOME && !await outsideCheckout(process.env.HOME)) throw Object.assign(new Error('Installation HOME must be outside source checkouts'), { code: 'INSTALL_HOME_IN_CHECKOUT' });
+  const directory = await mkdtemp(join(parent, 'swarmenv-notes-installed-'));
   try {
     const { archive, sourceCommit, sourceDirty } = await preparePackageArchive(directory, selection, { requireCleanCheckout });
     await writeFile(join(directory, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
@@ -64,6 +103,6 @@ export async function installNotesExample(selection, { requireCleanCheckout = fa
 }
 
 // Native gates may consume an explicitly verified frozen archive or a clean checkout.
-export function installNativeNotesExample() {
-  return installNotesExample(undefined, { requireCleanCheckout: true });
+export function installNativeNotesExample({ parentDirectory } = {}) {
+  return installNotesExample(undefined, { requireCleanCheckout: true, parentDirectory });
 }

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
-import { installNativeNotesExample, execute } from './fixtures/notes-installed-package.js';
+import { createNativeEvidenceDirectory, installNativeNotesExample, execute } from './fixtures/notes-installed-package.js';
 import { createTeamUpstream, teamInputs, teamFact } from './fixtures/agensh-team-upstream.js';
 import { createDeadline, createCleanupBudget } from './fixtures/agensh-deadline.js';
 import { httpClient } from '../src/environments/agensh/http.js';
@@ -20,12 +20,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
 }, async () => {
   const image = process.env.SWARMENV_CORE_TEST_IMAGE;
   assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
-  const directory = join(process.cwd(), 'experiments', `agensh-installed-${randomBytes(8).toString('hex')}`);
-
-  await mkdir(directory, {
-    recursive: true,
-    mode: 0o700
-  });
+  const directory = await createNativeEvidenceDirectory('agensh-installed');
 
   const installed = await installNativeNotesExample();
   const root = join(installed.directory, 'node_modules/@swarmenv/core');

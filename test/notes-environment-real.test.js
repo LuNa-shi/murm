@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
-import { installNativeNotesExample } from './fixtures/notes-installed-package.js';
+import { createNativeEvidenceDirectory, installNativeNotesExample } from './fixtures/notes-installed-package.js';
 import { createNotesEnvironmentUpstream } from './fixtures/notes-environment-upstream.js';
 
 test('installed Notes Environment exchanges a native fact and retains the reader Session through its second turn', {
@@ -15,9 +15,9 @@ test('installed Notes Environment exchanges a native fact and retains the reader
 }, async t => {
   const image = process.env.SWARMENV_CORE_TEST_IMAGE;
   assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
+  const evidenceDir = await createNativeEvidenceDirectory('notes-environment');
   const installed = await installNativeNotesExample();
-  // Keep the external installation and receipts after a real attempt: they own
-  // reconciliation if cleanup is pending. The deterministic preflight removes its own directory.
+  // Retain the external consumer on uncertainty; durable inputs and outputs stay in evidenceDir.
   let child;
   let nativeSessions;
   const upstream = await createNotesEnvironmentUpstream({ onFailure: () => child?.kill('SIGTERM'),
@@ -32,9 +32,7 @@ test('installed Notes Environment exchanges a native fact and retains the reader
       else { assert.deepEqual(observed, nativeSessions); assert.ok(observed.some(item => item.sessionId === row.sessionId)); }
     } });
   t.after(() => upstream.close());
-  const evidenceDir = join(process.cwd(), 'experiments', `notes-environment-${Date.now()}`);
-  await mkdir(evidenceDir, { recursive: true, mode: 0o700 });
-  const outputDir = join(installed.directory, 'output');
+  const outputDir = join(evidenceDir, 'output');
   const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const config = {
     image, outputDir, turnTimeoutMs: 35_000, closeTimeoutMs: 25_000,
@@ -48,7 +46,7 @@ test('installed Notes Environment exchanges a native fact and retains the reader
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     },
   };
-  await writeFile(join(installed.directory, 'config.mjs'), `const config = ${JSON.stringify(config)};
+  await writeFile(join(evidenceDir, 'config.mjs'), `const config = ${JSON.stringify(config)};
 config.backend.sandbox.apiKey = process.env.SWARMENV_CORE_TEST_API_KEY;
 export default config;\n`, { mode: 0o600 });
   const proof = { package: installed.metadata, externalDirectory: installed.directory, image, failure: true };
@@ -62,9 +60,10 @@ export default config;\n`, { mode: 0o600 });
       runtimeIds.length !== 1 || Object.values(proof.resources).some(resource => !resource.empty);
     await writeFile(join(evidenceDir, 'acceptance.json'), JSON.stringify(proof, null, 2), { mode: 0o600 });
     assert.equal(proof.failure, false);
+    await installed.close();
   });
   const outcome = await new Promise((resolve, reject) => {
-    child = spawn(process.execPath, ['main.mjs', 'config.mjs'], { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, ['main.mjs', join(evidenceDir, 'config.mjs')], { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
     const timer = setTimeout(() => { expired = true; child.kill('SIGTERM'); }, 120_000);
     const hardTimer = setTimeout(() => { expired = true; child.kill('SIGKILL'); }, 150_000);
     child.stdout.on('data', data => {

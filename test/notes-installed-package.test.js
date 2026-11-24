@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { execute, installNotesExample } from './fixtures/notes-installed-package.js';
 
 const fixture = new URL('./fixtures/notes-installed-package.js', import.meta.url).href;
@@ -19,6 +19,64 @@ test('frozen archive requires an explicit SHA-256 and rejects changed bytes befo
       assert.equal(error.message,'Frozen package digest does not match'); return true;
     });`;
   await execute(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, PATH: '' }, timeout: 5000 });
+});
+
+test('explicit installation parents must be existing owned private directories before npm runs', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'notes-parent-guard-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const publicDirectory = join(root, 'public'); await mkdir(publicDirectory, { mode: 0o755 }); await chmod(publicDirectory, 0o755);
+  const file = join(root, 'file'); await writeFile(file, 'not a directory');
+  const link = join(root, 'link'); await symlink(root, link);
+  for (const parentDirectory of ['', join(root, 'missing'), publicDirectory, file, link]) {
+    await assert.rejects(installNotesExample({}, { parentDirectory }), { code: 'INVALID_INSTALL_PARENT' });
+  }
+  const script = `import assert from 'node:assert/strict';import {stat} from 'node:fs/promises';
+    import {createNativeEvidenceDirectory} from ${JSON.stringify(fixture)};
+    const a=await createNativeEvidenceDirectory('native-test'),b=await createNativeEvidenceDirectory('native-test');
+    assert.notEqual(a,b);for(const directory of [a,b]) {assert.ok(directory.startsWith(process.cwd()+'/experiments/native-test-'));assert.equal((await stat(directory)).mode & 0o777,0o700);}`;
+  await execute(process.execPath, ['--input-type=module', '-e', script], { cwd: root, timeout: 5000 });
+});
+
+test('checkout TMPDIR cannot make an external frozen consumer inherit checkout dependencies', { timeout: 30_000 }, async t => {
+  const root = await mkdtemp(join(tmpdir(), 'external-consumer-')); t.after(() => rm(root, { recursive: true, force: true }));
+  const checkout = join(root, 'checkout'); await mkdir(join(checkout, '.git'), { recursive: true });
+  const temp = join(checkout, 'temporary'); await mkdir(temp, { mode: 0o700 });
+  const dependency = `checkout-only-${Date.now()}`;
+  const poison = join(checkout, 'node_modules', dependency); await mkdir(poison, { recursive: true });
+  await writeFile(join(poison, 'package.json'), JSON.stringify({ name: dependency, type: 'module', exports: './index.js' }));
+  await writeFile(join(poison, 'index.js'), 'export default true;');
+  const packageRoot = join(root, 'package');
+  await mkdir(join(packageRoot, 'examples/notes-environment'), { recursive: true });
+  await mkdir(join(packageRoot, 'src/environments/shared'), { recursive: true });
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@swarmenv/core', version: '0.0.0-external', type: 'module', exports: './examples/notes-environment/main.mjs' }));
+  await writeFile(join(packageRoot, 'examples/notes-environment/main.mjs'), `import value from '${dependency}';export default value;`);
+  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/environments/shared/${name}.js`), '');
+  const archive = join(root, 'candidate.tgz'); await execute('tar', ['-czf', archive, 'package'], { cwd: root, timeout: 5000 });
+  const expectedSha256 = createHash('sha256').update(await readFile(archive)).digest('hex');
+  const script = `import assert from 'node:assert/strict';import {realpath,writeFile,readFile} from 'node:fs/promises';import {dirname,join} from 'node:path';
+    import {installNotesExample,installNativeNotesExample,createNativeEvidenceDirectory,execute} from ${JSON.stringify(fixture)};
+    const checkout=${JSON.stringify(checkout)},temp=${JSON.stringify(temp)};
+    await assert.rejects(installNotesExample(undefined,{parentDirectory:temp}),{code:'INSTALL_PARENT_IN_CHECKOUT'});
+    const originalHome=process.env.HOME;process.env.HOME=checkout;
+    try {await assert.rejects(installNativeNotesExample(),{code:'INSTALL_HOME_IN_CHECKOUT'});}finally{if(originalHome===undefined)delete process.env.HOME;else process.env.HOME=originalHome;}
+    const probe=join(temp,'probe.mjs');await writeFile(probe,${JSON.stringify("import value from '" + dependency + "';if(!value)throw new Error();")});
+    await execute(process.execPath,[probe],{cwd:temp});
+    const evidence=await createNativeEvidenceDirectory('separation');
+    for (const install of [()=>installNotesExample(),()=>installNativeNotesExample()]) {
+      const installed=await install();try {
+        assert.equal((await realpath(installed.directory)).startsWith(checkout+'/'),false);
+        assert.notEqual(dirname(installed.directory),temp);
+        await assert.rejects(execute(process.execPath,['--input-type=module','-e',"await import('@swarmenv/core')"],{cwd:installed.directory,env:installed.env}),error=>/ERR_MODULE_NOT_FOUND/.test(error.stderr));
+        const output=join(evidence,'synthetic-result.json');await writeFile(output,JSON.stringify({installation:installed.directory}));
+        assert.equal(JSON.parse(await readFile(output)).installation,installed.directory);
+      }finally{await installed.close();}
+    }`;
+  await execute(process.execPath, ['--input-type=module', '-e', script], { cwd: checkout, env: { ...process.env, TMPDIR: temp,
+    SWARMENV_TEST_PACKAGE_ARCHIVE: archive, SWARMENV_TEST_PACKAGE_SHA256: expectedSha256 }, timeout: 25_000 });
+  // Linked worktrees use a .git file; a symlinked TMPDIR must be checked by its real ancestry too.
+  await rm(join(checkout, '.git'), { recursive: true }); await writeFile(join(checkout, '.git'), 'gitdir: private-worktree-metadata');
+  const linkedTemp = join(root, 'linked-temp'); await symlink(temp, linkedTemp);
+  await execute(process.execPath, ['--input-type=module', '-e', script], { cwd: checkout, env: { ...process.env, TMPDIR: linkedTemp,
+    SWARMENV_TEST_PACKAGE_ARCHIVE: archive, SWARMENV_TEST_PACKAGE_SHA256: expectedSha256 }, timeout: 25_000 });
 });
 
 test('all external install gates honor the host frozen archive selection without packing a fallback', async t => {
@@ -51,6 +109,8 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   const bytes = await readFile(archive), expectedSha256 = createHash('sha256').update(bytes).digest('hex');
   const installed = await installNotesExample({ archive, expectedSha256 }); t.after(() => installed.close());
   assert.deepEqual(installed.metadata, { name: '@swarmenv/core', version: '0.0.0-frozen-fixture', sourceCommit: null, sourceDirty: null, sha256: expectedSha256 });
+  assert.equal(dirname(installed.directory), tmpdir());
+  assert.equal((await stat(installed.directory)).mode & 0o777, 0o700);
   assert.deepEqual(await readFile(join(installed.directory, 'frozen-package.tgz')), bytes);
   const result = await execute(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
@@ -64,8 +124,10 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   assert.equal(result.stderr, '');
   const selected = await execute(process.execPath, ['--input-type=module', '-e', `
 import assert from 'node:assert/strict'; import {installNativeNotesExample,execute} from ${JSON.stringify(fixture)};
-const installed=await installNativeNotesExample();
+const installed=await installNativeNotesExample({parentDirectory:${JSON.stringify(root)}});
 try {
+  assert.equal((await import('node:path')).dirname(installed.directory),${JSON.stringify(root)});
+  assert.equal((await (await import('node:fs/promises')).stat(installed.directory)).mode & 0o777,0o700);
   assert.equal(installed.metadata.sha256,process.env.SWARMENV_TEST_PACKAGE_SHA256);
   assert.equal(installed.metadata.sourceCommit,null); assert.equal(installed.metadata.sourceDirty,null);
   const result=await execute(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict'; import {marker} from '@swarmenv/core'; assert.equal(marker,'frozen-candidate');"],{cwd:installed.directory,env:installed.env,timeout:5000});
