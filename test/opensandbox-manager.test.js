@@ -2,7 +2,8 @@ import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from 
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
-import { createOpenSandboxManager, ERROR_CODES } from '../src/index.js';
+import { createOpenSandboxManager } from '../src/runtime/opensandbox-manager.js';
+import { ERROR_CODES } from '../src/errors.js';
 
 function response(body, { status = 200, contentType = 'application/json' } = {}) {
   const text = typeof body === 'string' ? body : JSON.stringify(body ?? {});

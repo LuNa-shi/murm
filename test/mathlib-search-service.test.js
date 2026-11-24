@@ -3,20 +3,15 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import {
-  AGENT_ROLES,
-  ServicesBridge,
-  ServiceRegistry,
-  createHttpJsonAdapter,
-  createMathlibSearchManifest,
-  createMathlibSearchService,
-  createServiceManifest,
-  createServiceHost,
-  buildCapabilityProfile,
-  makeEnvelope,
-  registerUserService,
-  createBuiltinServiceRegistry,
-} from '../src/index.js';
+import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
+import { ServicesBridge } from '../src/agent/services-bridge.js';
+import { ServiceRegistry } from '../src/sdk/service-registry.js';
+import { createHttpJsonAdapter } from '../src/sdk/service-adapter.js';
+import { createMathlibSearchManifest, createMathlibSearchService } from '../src/services/mathlib-search-service.js';
+import { createServiceManifest } from '../src/sdk/service-manifest.js';
+import { createServiceHost } from '../src/sdk/service-host.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
+import { registerUserService, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { botServiceDirectory } from '../src/agent/bot-contract.js';
 
 async function sourceFixture() {

@@ -2,15 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  ERROR_CODES,
-  ServiceRegistry,
-  SwarmEnvError,
-  createBuiltinServiceRegistry,
-  makeEnvelope,
-  loadServiceBundle,
-  resolveBundleDocument,
-} from '../src/index.js';
+import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { ServiceRegistry } from '../src/sdk/service-registry.js';
+import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
+import { loadServiceBundle, resolveBundleDocument } from '../src/sdk/service-bundle.js';
 
 const schema = {
   type: 'object',

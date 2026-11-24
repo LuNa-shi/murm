@@ -4,16 +4,12 @@ import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import {
-  ERROR_CODES,
-  JudgeService,
-  LeanChecker,
-  SwarmEnvError,
-  agentCheckResult,
-  makeEnvelope,
-  validateFixtureManifest,
-  createFixtureManifest,
-} from '../src/index.js';
+import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { JudgeService } from '../src/judge/judge-service.js';
+import { LeanChecker } from '../src/judge/lean-adapter.js';
+import { agentCheckResult } from '../src/judge/check-result.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
+import { validateFixtureManifest, createFixtureManifest } from '../src/judge/fixture.js';
 
 const fixtureSource = 'theorem fixture_truth : True := by trivial\n';
 

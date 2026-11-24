@@ -26,7 +26,7 @@ The shipped `.env.example` lists host variables consumed by the Notes configurat
 | `scripts/mathlib-search-service.mjs` | Optional HTTP search over configured upstream or mounted source. [Services](04-services.md#6-optional-mathlib-search) |
 | `scripts/serve-observability.mjs` | Existing event-store discovery, authenticated HTTP/SSE queries without a browser UI. [Observability](06-observability-experiments.md) |
 
-Public package exports resolve Core, Services and Pi/OpenSandbox backend. The legacy source barrel contains directly importable domain components. The benchmark runner, scheduling helpers, fixed configurations, mathematical datasets, Pass@K and historical report importer have been retired. Their version-bound implementations are preserved in [research](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9).
+Public package exports resolve Core, Services and Pi/OpenSandbox backend. Repository domain code and regression tests import internal components from their owning modules. The legacy domain source barrel, benchmark runner, scheduling helpers, fixed configurations, mathematical datasets, Pass@K and historical report importer have been retired. Their version-bound implementations are preserved in [research](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9).
 
 ## Startup, input and shutdown
 

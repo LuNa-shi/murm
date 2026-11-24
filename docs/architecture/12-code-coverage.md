@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **180 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **179 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -163,7 +163,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/storage/judge-schema.js](../../src/storage/judge-schema.js) | Checker health/request/result/operation SQL schema | [11-storage-reference](11-storage-reference.md), [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `7fceae1e3ec7c8c5c53e4c94313e5995898a71907a3a7c8b092cb727b3239142` |
 | [src/storage/schema.js](../../src/storage/schema.js) | Mission/Task/Execution/dependency/notification/operation SQL schema | [11-storage-reference](11-storage-reference.md), [03-mission-task](03-mission-task.md), [04-services](04-services.md) | `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595` |
 
-### launch and composition (15)
+### launch and composition (14)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -181,7 +181,6 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/environments/shared/foreground-commands.js](../../src/environments/shared/foreground-commands.js) | Serial JSON-line host commands and bounded status/input receipt projection | [17-environment-reporting](17-environment-reporting.md) | `2065b133d1f23ae135e2ef2e2d30cf13394180f6e3419a715083456808a04c3e` |
 | [src/environments/shared/foreground-host.js](../../src/environments/shared/foreground-host.js) | Shared foreground Environment driver using existing mode controllers and lifecycle reports | [17-environment-reporting](17-environment-reporting.md) | `7f11f2854de935e5f13c516d2aee4b3fee96b76a613d43d3b350c0316a25b318` |
 | [src/environments/shared/read-result.js](../../src/environments/shared/read-result.js) | Read saved Environment and Core receipts with expected identity and bounded normal-output projection | [17-environment-reporting](17-environment-reporting.md) | `99640d0f1709ff0777bc44c6c2f4edd48c4ad43c4791e88dfda5aa3bda17d06e` |
-| [src/index.js](../../src/index.js) | Source exports for domain services, Runtime, SDK and generic checker fixture contracts | [00-overview](00-overview.md), [07-run-configuration](07-run-configuration.md) | `60a0d97f256a6990f60beb20a978262400e68a4a07c9af79836c7e5d01b7f5a6` |
 
 ### observability and reporting (2)
 

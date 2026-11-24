@@ -502,15 +502,6 @@
       "role": "Shared structured error vocabulary and normalization"
     },
     {
-      "path": "src/index.js",
-      "category": "launch and composition",
-      "chapters": [
-        "docs/architecture/00-overview.md",
-        "docs/architecture/07-run-configuration.md"
-      ],
-      "role": "Source exports for domain services, Runtime, SDK and generic checker fixture contracts"
-    },
-    {
       "path": "src/judge/check-result.js",
       "category": "services and contracts",
       "chapters": [
