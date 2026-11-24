@@ -5,11 +5,11 @@ import { MissionWorkspace } from '../../src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../../src/runtime/workspace-manager.js';
 import { makeEnvelope } from '../../src/protocol/envelope.js';
 
-export async function createFlatTaskStores(root) {
+export async function createFlatTaskStores(root, { mergeRequiredCheck } = {}) {
   const tasks = new TaskService();
   const context = new ContextService(':memory:', { taskService: tasks });
   const missionId = 'mission:flat-take';
-  tasks.createMission({ mission_id: missionId, goal: 'Verify fixed flat handoff' }, makeEnvelope({ actorRef: 'host' }));
+  tasks.createMission({ mission_id: missionId, goal: 'Verify fixed flat handoff', ...(mergeRequiredCheck ? { merge_required_check: mergeRequiredCheck } : {}) }, makeEnvelope({ actorRef: 'host' }));
   const producer = tasks.createTask({ mission_id: missionId, gap: 'Provide fixed immutable input', priority: 'medium', summary: 'Fixture Material producer', expected_output: 'Fixed Material', acceptance_conditions: ['fixed content'] }, makeEnvelope({ actorRef: 'host' })).task;
   let produced = tasks.takeTask(producer.task_id, { owner_ref: 'producer', take_key: 'producer' }).execution;
   const envelope = () => makeEnvelope({ actorRef: 'producer', taskId: producer.task_id, executionId: produced.execution_id,

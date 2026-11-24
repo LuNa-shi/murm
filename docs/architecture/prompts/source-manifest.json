@@ -43,7 +43,7 @@
     },
     {
       "path": "src/environments/flat/environment.js",
-      "sha256": "fd4cb206f61d5d1d62e839f539823a275cb4c5380e734a13142d1554142b653b"
+      "sha256": "27b880c6f9a76a2793fd2fbe9bf972d406b3cde279ac54a730b6ad3844c8d5bd"
     },
     {
       "path": "examples/subagents-environment/main.mjs",

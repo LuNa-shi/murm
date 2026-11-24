@@ -1527,7 +1527,7 @@
         "docs/architecture/17-environment-reporting.md",
         "docs/architecture/04-services.md"
       ],
-      "role": "Flat trusted publication and optional fixed-revision Judge handoff with actual Core/Task authority"
+      "role": "Flat trusted publication, optional fixed-revision Judge and checked merge with actual Core/Task authority"
     },
     {
       "path": "src/environments/flat/workspace-check-source.js",
@@ -1687,7 +1687,8 @@
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
         "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Flat-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown"
     },

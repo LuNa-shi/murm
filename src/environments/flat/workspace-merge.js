@@ -2,7 +2,7 @@ import { ERROR_CODES, SwarmEnvError } from '../../errors.js';
 import { assertNewExecutionWork } from '../../task/execution-budget.js';
 import { publishWorkspace } from '../../runtime/workspace-publication.js';
 
-/** Own the final-tree checker and publication policy for one retained Bridge. */
+/** Own the final-tree checker and publication policy for one trusted Flat or retained Bridge composition. */
 export function createWorkspaceMergeService({ taskService, workspace, workspaceId, assertExecutionWorkspace, checker = null }) {
   if (!taskService || !workspace || typeof assertExecutionWorkspace !== 'function') throw new TypeError('Workspace merge requires trusted Task, Workspace and binding authority');
   if (checker && (typeof checker.check !== 'function' ||
@@ -58,6 +58,9 @@ export function createWorkspaceMergeService({ taskService, workspace, workspaceI
         const remaining = Math.min(adapter.timeoutMs, Date.parse(execution.handoff_deadline ?? execution.execution_deadline) - Date.now());
         if (!Number.isFinite(remaining) || remaining <= 0) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'No final-tree check budget remains');
         const controller = new AbortController();
+        const aborted = () => controller.abort();
+        identity.signal?.addEventListener('abort', aborted, { once: true });
+        if (identity.signal?.aborted) aborted();
         const deadline = Date.now() + remaining;
         // Timeout requests cancellation. The slot and shutdown join retain
         // the checker until its promise confirms resource cleanup.
@@ -70,6 +73,7 @@ export function createWorkspaceMergeService({ taskService, workspace, workspaceI
           }),
         }));
         const active = { controller, promise: check.finally(() => {
+          identity.signal?.removeEventListener('abort', aborted);
           if (activeCheck === active) activeCheck = null;
         }) };
         activeCheck = active;
@@ -92,5 +96,5 @@ export function createWorkspaceMergeService({ taskService, workspace, workspaceI
     });
   }
 
-  return { merge, close, waitForSettled };
+  return { merge, close, waitForSettled, status: () => ({ cleanup: activeCheck ? 'pending' : 'complete', pending_checks: activeCheck ? 1 : 0 }) };
 }
