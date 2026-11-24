@@ -9,6 +9,7 @@ import { transport } from './fixtures/core-bot-service-backend.js';
 import { configuration } from './fixtures/core-input-backend.js';
 import { hourParentPrompt, hourStageInstructions, hourChildPrompt } from '../examples/subagents-environment/prompts.mjs';
 import { verifySubagentsInputs } from '../examples/subagents-environment/hour-artifacts.mjs';
+import { readSubagentsStageResult } from '../examples/subagents-environment/stages.mjs';
 const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./pi-opensandbox-backend.js'&&context.parentURL?.endsWith('/src/core/index.js'))return {url:new URL('./fixtures/subagents-hour-backend.js',import.meta.url).href,shortCircuit:true};
   if(specifier==='./run-report.mjs'&&context.parentURL?.endsWith('/examples/subagents-environment/hour.mjs'))return {url:new URL('../src/environments/shared/run-report.js',import.meta.url).href,shortCircuit:true};
@@ -164,6 +165,13 @@ test('nonterminal JSON does not satisfy the stage verifier',async t=>{
   assert.equal(report.businessFailure.code,'STAGE_RESULT_INVALID');
   assert.equal(report.archives,undefined);
   assert.equal(report.quota.closed,true);
+});
+
+test('terminal JSON cannot be confused with an unfinished Markdown code block',()=>{
+  const result='{"stage":0}';
+  assert.throws(()=>readSubagentsStageResult(`Checked.\n\x60\x60\x60json\n${result}`));
+  assert.throws(()=>readSubagentsStageResult(`  ~~~json\n${result}`));
+  assert.deepEqual(readSubagentsStageResult(`Checked.\n${result}\n`),{payload:result,value:{stage:0}});
 });
 
 

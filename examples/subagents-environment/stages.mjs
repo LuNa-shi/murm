@@ -7,7 +7,7 @@ export function readSubagentsStageResult(output) {
   try { value = JSON.parse(payload); }
   catch (error) {
     const finalLine = payload.lastIndexOf('\n');
-    if (finalLine < 0) throw error;
+    if (finalLine < 0 || /^[ \t]*(?:`{3,}|~{3,})/m.test(payload.slice(0, finalLine))) throw error;
     payload = payload.slice(finalLine + 1).trimStart();
     value = JSON.parse(payload);
   }
