@@ -100,11 +100,18 @@ export interface ResourceError extends Error {
   details: readonly ErrorInfo[];
 }
 
+export type BotStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+
+export interface BotListFilter {
+  parentId?: string | null;
+  status?: BotStatus | readonly BotStatus[];
+}
+
 export interface BotInfo {
   id: string;
   profile: string;
   parentId?: string;
-  status: 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+  status: BotStatus;
   cursor: number;
   latestOutput?: string;
   lastError?: ErrorInfo;
@@ -166,6 +173,7 @@ export interface Runtime {
   readonly id: string;
   spawn(options: SpawnOptions): Promise<BotInfo>;
   get(botId: string): Promise<BotInfo>;
+  list(filter?: BotListFilter): Promise<BotInfo[]>;
   send(botId: string, input: string, options: { requestId: string; mode?: InputMode }): Promise<InputReceipt>;
   onEvent(handler: (event: BotEvent) => void): () => void;
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;

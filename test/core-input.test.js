@@ -183,3 +183,26 @@ test('older unknown keeps running until native settlement and late receipt evide
   assert.equal((await runtime.get(bot.id)).status, 'idle');
   assert.equal(transport.submissions.size, 2);
 });
+
+test('lists every registered Bot and filters by parent and observed status', async t => {
+  const { runtime, bot } = await setup(t);
+  const child = await runtime.spawn({ profile: 'worker', parentId: bot.id, requestId: 'child' });
+  const starting = runtime.spawn({ profile: 'worker', requestId: 'starting' });
+  let rows = await runtime.list();
+  assert.deepEqual(rows.map(row => row.status), ['idle', 'idle', 'starting']);
+  const third = await starting;
+  assert.deepEqual(await runtime.list({ parentId: bot.id }), [child]);
+  assert.deepEqual(await runtime.list({ parentId: null }), [bot, third]);
+  await runtime.send(bot.id, 'work', { requestId: 'list-work' });
+  transport.listeners.get(child.id)({ type: 'exit', expected: false, reason: 'exited' });
+  const stopping = runtime.stop(third.id);
+  const closing = (await runtime.list({ status: 'closing' }))[0];
+  assert.equal(closing.lastStop.cleanup, 'pending');
+  await stopping;
+  rows = await runtime.list({ status: ['running', 'exited', 'closed'] });
+  assert.deepEqual(rows.map(row => row.status), ['running', 'exited', 'closed']);
+  rows[0].status = 'closed';
+  assert.equal((await runtime.get(bot.id)).status, 'running');
+  assert.deepEqual(await runtime.list({ status: 'starting' }), []);
+  await assert.rejects(runtime.list({ status: 'pending' }), { code: 'INVALID_CONTRACT' });
+});

@@ -15,6 +15,7 @@ import { snapshotServiceRegistry } from './services.js';
 const defaultTimeoutMs = 60_000;
 const timedOut = Symbol('timed out');
 const liveStates = new Set(['idle', 'running']);
+const botStates = new Set(['starting', ...liveStates, 'exited', 'closing', 'closed']);
 const knownInputRejections = new Set(['INVALID_CONTRACT', 'NOT_ALLOWED', 'CONFLICT', 'NOT_FOUND']);
 
 function resourceError(code, message, context, { cleanup = 'complete', details = [] } = {}) {
@@ -408,9 +409,26 @@ export async function createRuntime(options) {
     return structuredClone(result);
   }
 
-  async function get(botId) {
-    const bot = findBot(botId, 'get');
+  function botSnapshot(bot) {
     return structuredClone({ ...bot.info, ...(bot.stopWork ? { lastStop: currentStop(bot) } : {}) });
+  }
+
+  async function get(botId) {
+    return botSnapshot(findBot(botId, 'get'));
+  }
+
+  async function list(filter = {}) {
+    if (!filter || typeof filter !== 'object' || Array.isArray(filter)) {
+      throw problem('INVALID_CONTRACT', 'list expects a Bot filter', 'list');
+    }
+    const { parentId, status } = filter;
+    const statuses = Array.isArray(status) ? status : status === undefined ? [] : [status];
+    if ((parentId != null && !validId(parentId)) || [...statuses].some(value => !botStates.has(value))) {
+      throw problem('INVALID_CONTRACT', 'list expects a valid parentId and Bot status', 'list');
+    }
+    return [...bots.values()].filter(({ info }) =>
+      (parentId === undefined || parentId === (info.parentId ?? null)) &&
+      (status === undefined || statuses.includes(info.status))).map(botSnapshot);
   }
 
   async function send(botId, input, options, caller = 'host') {
@@ -541,5 +559,5 @@ export async function createRuntime(options) {
     }]) : structuredClone(result);
   }
 
-  return Object.freeze({ id: runtimeId, spawn: input => spawn(input), get, send: (id, input, options) => send(id, input, options), onEvent, stop, close, files: fileControls.api });
+  return Object.freeze({ id: runtimeId, spawn: input => spawn(input), get, list, send: (id, input, options) => send(id, input, options), onEvent, stop, close, files: fileControls.api });
 }
