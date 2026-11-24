@@ -220,7 +220,7 @@ for (const registered of [false, true]) {
   });
 }
 
-test('Runtime retries a transient finish cleanup failure without CLI or benchmark assistance', { timeout: 30000 }, async (t) => {
+test('Runtime retries a transient finish cleanup failure without an operator retry', { timeout: 30000 }, async (t) => {
   let attempts = 0;
   const { service, runtime, executionId } = await fixture(t, {
     removeSandbox: async () => new Response('{}', { status: ++attempts === 1 ? 503 : 200 }),
@@ -232,9 +232,10 @@ test('Runtime retries a transient finish cleanup failure without CLI or benchmar
   service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: execution.owner_ref, taskId: execution.task_id,
     executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
   await closed.promise;
-  await runtime.waitForExecutionRelease(executionId, { timeoutMs: 10000 });
+  await runtime.waitForSettled();
   assert.equal(attempts, 2);
   assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
+  assert.equal(runtime.hasActiveExecution(executionId), false);
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
