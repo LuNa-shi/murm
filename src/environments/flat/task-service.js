@@ -1,9 +1,12 @@
 import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
 import { SwarmEnvError } from '../../errors.js';
 import { inputFingerprint } from './prepare-inputs.js';
+import { listTools } from '../../sdk/service-catalog.js';
 import { runFlatHandoff, stopFailedHandoff } from './task-handoff.js';
 
-const operations = ['task_list', 'task_view', 'task_take'];
+const coordinationOperations = ['task_revise', 'task_cancel'];
+const operations = ['task_list', 'task_view', 'task_take', ...coordinationOperations];
+const coordinationTools = listTools('task').filter(tool => coordinationOperations.includes(tool.operation));
 const invalid = message => { throw new SwarmEnvError('INVALID_CONTRACT', message); };
 const denied = message => { throw new SwarmEnvError('NOT_ALLOWED', message); };
 const objectSchema = properties => ({ type: 'object', properties, additionalProperties: false });
@@ -26,6 +29,7 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
   }
   let closing = false;
   const requests = new Map();
+  const coordinationRequests = new Map();
   const active = new Set();
   const previews = new Map();
   const getRuntime = () => typeof runtime === 'function' ? runtime() : runtime;
@@ -35,6 +39,7 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     ...(request.cleanupError ? { cleanupError: request.cleanupError } : {}), ...(request.intentError ? { intentError: request.intentError } : {}) });
   const manifest = { id: 'task', title: 'Flat Tasks', purpose: 'Discover and exclusively take fixed Mission work with controlled file handoff',
     provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [
+      ...coordinationTools.map(tool => ({ name: tool.operation.slice(5), operation: tool.operation, description: tool.description, side_effect: 'write', idempotent: true, help: { when: 'An UNBOUND Bot may correct unowned Mission work using observed versions' }, errors: [], input_schema: tool.parameters, output_schema: { type: 'object' } })),
       { name: 'list', operation: 'task_list', description: 'List this Mission Tasks while the project is readonly', side_effect: 'read', idempotent: true,
         help: { when: 'Discover work before taking a Task' }, errors: [], input_schema: objectSchema({ state: { type: 'string' }, query: { type: 'string', maxLength: 4000 }, states: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' }, available_only: { type: 'boolean' } }), output_schema: { type: 'object' } },
       { name: 'view', operation: 'task_view', description: 'Read a Task contract and current provenance in this Mission', side_effect: 'read', idempotent: true,
@@ -50,16 +55,19 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     taskService.assertBotDeadline(botId);
     return bot;
   }
-  const adapter = { async invoke({ capability, input, caller, envelope, signal }) {
+  const adapter = { async invoke({ capability, input, caller, envelope, signal, assertAuthorized }) {
     const operation = capability?.operation;
     if (!operations.includes(operation) || !input || typeof input !== 'object' || Array.isArray(input)) invalid('Unsupported flat Task operation or payload');
-    const allowed = operation === 'task_list' ? ['state', 'states', 'query', 'limit', 'cursor', 'available_only'] : ['task_id'];
+    const coordination = coordinationOperations.includes(operation);
+    const allowed = coordination ? Object.keys(capability.input_schema.properties) : operation === 'task_list' ? ['state', 'states', 'query', 'limit', 'cursor', 'available_only'] : ['task_id'];
     if (Object.keys(input).some(key => !allowed.includes(key)) || (operation !== 'task_list' && (typeof input.task_id !== 'string' || !input.task_id))) invalid('Flat Task payload cannot supply actor, owner, Execution or resource identity');
     const core = getRuntime();
     if (!core?.id || caller?.runtimeId !== core.id || caller.profile !== profile || typeof caller.botId !== 'string' ||
         typeof envelope?.operation_id !== 'string' || !envelope.operation_id || envelope.operation_id.length > 256) denied('Flat caller is not this Runtime researcher');
     const key = stableStringify([core.id, caller.botId, envelope.operation_id]);
     const fingerprint = stableStringify({ operation, input, profile: caller.profile });
+    const coordinated = coordinationRequests.get(key);
+    if (coordinated && coordinated !== fingerprint) throw new SwarmEnvError('CONFLICT', 'Flat request ID has different parameters');
     const previous = requests.get(key);
     if (previous) {
       if (previous.fingerprint !== fingerprint) throw new SwarmEnvError('CONFLICT', 'Flat request ID has different parameters');
@@ -70,6 +78,8 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     const bot = eligibleBot(caller.botId, core.id);
     const live = await core.get(bot.bot_id);
     if (!['idle', 'running'].includes(live.status) || live.profile !== profile || closing || signal?.aborted) denied('Core researcher is unavailable');
+    const coordinatedAfterAdmission = coordinationRequests.get(key);
+    if (coordinatedAfterAdmission && coordinatedAfterAdmission !== fingerprint) throw new SwarmEnvError('CONFLICT', 'Flat request ID has different parameters');
     const joined = requests.get(key);
     if (joined) {
       if (joined.fingerprint !== fingerprint) throw new SwarmEnvError('CONFLICT', 'Flat request ID has different parameters');
@@ -79,6 +89,18 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     if (operation === 'task_list') return taskService.dispatch(operation, { ...input, mission_id: missionId }, makeEnvelope({ actorRef: bot.bot_id }));
     const task = taskService.getTask(input.task_id);
     if (!task || task.mission_id !== missionId) denied('Task does not belong to this Mission');
+    if (coordination) {
+      assertAuthorized?.(); signal?.throwIfAborted();
+      const current = eligibleBot(bot.bot_id, core.id);
+      const until = missionDeadline();
+      if (current.state !== 'UNBOUND' || current.execution_id || !Number.isFinite(until) || Date.now() >= until) denied('Task correction requires a current UNBOUND Bot within its Mission budget');
+      const id = `flat:coordination:${inputFingerprint([core.id, bot.bot_id, envelope.operation_id])}`;
+      // Context-free trusted caller; the target Task is only a domain input.
+      // The domain owns durable replay, CAS and history. Replays repeat admission.
+      const result = taskService.dispatch(operation, input, makeEnvelope({ operationId: id, actorRef: bot.bot_id }));
+      coordinationRequests.set(key, fingerprint);
+      return result;
+    }
     if (operation === 'task_view') {
       if (task.workspace?.workspace_id && task.workspace.workspace_id !== workspaceId) denied('Task Workspace belongs to another Environment');
       const snapshot = await missionWorkspace.exportRevision({ workspaceId, revision: task.workspace?.revision ?? 'main', signal });
