@@ -36,9 +36,16 @@ export async function runLeadHelperHour({ options, workload, admit, quota, budge
   const admission = async () => checkHourLifetime(await admit({ runtime: environment, outputDir: options.outputDir, botIds,
     workMs: budgets.workMs, cleanupMs: budgets.cleanupMs, recoveryMs: budgets.recoveryMs, marginMs: budgets.marginMs, signal: combined }),
   { runtimeId: environment.id, botIds, workMs: budgets.workMs, now: clock ? clock() : performance.now(), controlled: clock !== undefined });
+  const checkEnvironment = ({ afterClose = false } = {}) => {
+    const state = environment.snapshot();
+    if (!state.board || state.boardReadFailure || state.boardFenceFailure ||
+        state.pendingBoardFailures?.length || state.inputUnknown?.length ||
+        Object.keys(state.board.failures ?? {}).length || !afterClose && state.board.fenced) throw fail('HOUR_PEER_UNAVAILABLE');
+  };
   const health = async () => {
-    combined.throwIfAborted(); checkQuota();
+    combined.throwIfAborted(); checkQuota(); checkEnvironment();
     for (const botId of botIds) if (!['idle', 'running'].includes((await environment.get(botId)).status)) throw fail('HOUR_PEER_UNAVAILABLE');
+    checkEnvironment();
   };
   const pauseUntil = async target => {
     while (monitor.elapsed() < target) {
@@ -113,7 +120,7 @@ export async function runLeadHelperHour({ options, workload, admit, quota, budge
     try { await quota.close(); } catch { quotaFailure = { code: 'HOUR_QUOTA_CLOSE_UNKNOWN' }; }
   }
   let result, businessFailure = report.businessFailure ?? report.cleanupFailure ?? report.reportSaveFailure ?? quotaFailure ?? null;
-  if (!businessFailure) try { result = { ...monitor.finish(report.cleanup), lifetime, quota: checkQuota({ final: true }), stages: receipts }; }
+  if (!businessFailure) try { checkEnvironment({ afterClose: true }); result = { ...monitor.finish(report.cleanup), lifetime, quota: checkQuota({ final: true }), stages: receipts }; }
   catch (error) { businessFailure = { code: error.code ?? 'HOUR_EVIDENCE_FAILED' }; }
   return { mode: 'lead-helper', runtimeId: environment?.id ?? report.runtimeId, accepted: false, result, businessFailure,
     cleanup: report.cleanup, reportSaveFailure: report.reportSaveFailure };

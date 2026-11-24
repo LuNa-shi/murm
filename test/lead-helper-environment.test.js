@@ -131,7 +131,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       } else {
         const state = await call(role, 'read'); const next = payload.type === 'helper-followup'; const id = staged && next ? `${role}-stage-${payload.stage}` : role + (next ? '-next' : '');
         const owned = await call(role, 'claim', { subtask_id: id, expected_revision: 0 });
-        if (failure && !['stale-feedback', 'pinned-corruption', 'hour-proof', 'hour-late'].includes(failure) && role === 'helper1' && !next) {
+        if (failure && !['stale-feedback', 'pinned-corruption', 'hour-proof', 'hour-late', 'last-fatal', 'last-exit', 'last-unknown'].includes(failure) && role === 'helper1' && !next) {
           if (failure === 'unknown') { input.receipt = { status: 'unknown' }; return; }
           if (failure === 'locked-failed') { lock = new DatabaseSync(join(directory, 'lead-helper-test', 'board.sqlite')); lock.exec('BEGIN IMMEDIATE'); }
           transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXED_FAILURE', message: 'Controlled failure' } }); return;
@@ -187,7 +187,14 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       close: async () => { meterClosed = true; } };
     let time = 0;
     const report = await runLeadHelperHour({ options: configuration, budgets, quota: staged === 'natural-hour' ? meter : controlledHourQuota(budgets),
-      clock: () => time, waitForMs: async ms => { time += ms; if (failure === 'hour-late' && time === 900000) time += 900000; },
+      clock: () => time, waitForMs: async ms => {
+        time += ms; if (failure === 'hour-late' && time === 900000) time += 900000;
+        if (time >= 3600000 && ['last-fatal', 'last-exit', 'last-unknown'].includes(failure)) {
+          const event = failure === 'last-fatal' ? { type: 'error', fatal: true, error: { code: 'CONTROLLED_FATAL', message: 'Controlled late fatal' } }
+            : failure === 'last-exit' ? { type: 'exit', expected: false } : { type: 'settled', outcome: 'unknown' };
+          transport.spawns.get(team.helper1).onEvent(event);
+        }
+      },
       admit: async ({ runtime, workMs }) => ({ runtimeId: runtime.id, workDeadlineAtMs: time + workMs }),
       onReady: value => { environment = value; },
       workload: ['program-hour', 'natural-hour'].includes(staged) ? (await import('../src/environments/endurance/lead-helper-workload.js')).createLeadHelperProgrammingWorkload({
@@ -200,6 +207,14 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       })), verify: receipt => failure !== 'hour-proof' && receipt.deliveries.length === 3 },
     });
     assert.equal(backgroundFailure, undefined, backgroundFailure?.stderr ?? String(backgroundFailure));
+    if (['last-fatal', 'last-exit', 'last-unknown'].includes(failure)) {
+      assert.equal(report.businessFailure?.code, 'HOUR_PEER_UNAVAILABLE');
+      assert.equal(report.result, undefined); assert.equal(report.cleanup.cleanup, 'complete');
+      assert.equal(environment.snapshot().board.fenced, true);
+      assert.equal(environment.snapshot().board.failures[team.helper1].code, 'BOT_FAILED');
+      assert.equal(transport.submissions.size, 20, 'all four groups finished before the final wake failed');
+      return;
+    }
     if (failure) {
       assert.equal(report.businessFailure.code, failure === 'hour-proof' ? 'HOUR_BUSINESS_UNCONFIRMED' : 'HOUR_STAGE_LATE');
       assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.result, undefined);
@@ -332,3 +347,5 @@ test('hour lead-helper refuses a group whose own fifteen-minute window was misse
 test('hour lead-helper external tasks reach original helpers and verify actual Python results in fixed Git bytes', t => scenario(t, undefined, false, 3, 'program-hour'));
 
 test('natural hour lead-helper accepts time-only observations with unknown usage and retains twelve deliveries', t => scenario(t, undefined, false, 3, 'natural-hour'));
+
+for (const event of ['fatal', 'exit', 'unknown']) test(`natural Lead last wake rejects ${event} after all twelve deliveries and retains Board failure`, t => scenario(t, `last-${event}`, false, 3, 'natural-hour'));
