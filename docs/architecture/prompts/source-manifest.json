@@ -35,7 +35,7 @@
     },
     {
       "path": "src/environments/scalemas/index.js",
-      "sha256": "129e320e3976c8b1b46d49b7c36d596ba595455c1c4f80d6583f912ca2641367"
+      "sha256": "8c236fb4956eb4ae1ebd2cb931abf610aa30284946fd857ee39aae9c13bf0940"
     },
     {
       "path": "src/environments/flat/controller.js",
@@ -95,11 +95,11 @@
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
-      "sha256": "f2c4e04f78747fe0a78e0cecca1310c0ecbca6fd3f51905eaa2cbf5d8ffb437a"
+      "sha256": "421d9b0a1ac9cd0069e4263b5dcc2a385699267c7db329eb90378d7b7f542c1f"
     },
     {
       "path": "src/environments/endurance/programming.js",
-      "sha256": "68dfb0159b2ce43d79688906f4d3473452d58d6604a7c52960e6be7b53813048"
+      "sha256": "95f1d0549e060c9cac7d6356345f5a78f22eca714357030df7e02ad59ae2a7e1"
     },
     {
       "path": "src/environments/endurance/lead-helper-workload.js",
@@ -259,9 +259,9 @@
     },
     {
       "path": "src/environments/scalemas/index.js",
-      "anchor": "runInput(core, peer.botId, `",
-      "line": 90,
-      "sha256": "8d397d35681b28e8057895eb650379c4c4f22b47c93cf99399f0be730e66f514"
+      "anchor": "                  const text = ",
+      "line": 99,
+      "sha256": "de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926"
     },
     {
       "path": "src/environments/agensh/index.js",
@@ -320,14 +320,20 @@
     {
       "path": "src/environments/endurance/scalemas-workload.js",
       "anchor": "    question:'",
-      "line": 17,
+      "line": 18,
       "sha256": "ca0a0a881f2ac59fb3f0852b3d57f809e469be560cb9b02543978285cfbafabe"
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
       "anchor": "    questionForCycle(",
-      "line": 18,
-      "sha256": "644b629a436399869c806ccce656ebc0d5026cfec3027343ed8d1d78beb985ce"
+      "line": 19,
+      "sha256": "e27e307f6f14be3a4548605ba2b17868445366d6fcb03e1b20e3f21ebdac6a75"
+    },
+    {
+      "path": "src/environments/endurance/scalemas-workload.js",
+      "anchor": "        return {correction:",
+      "line": 42,
+      "sha256": "efc25b14bb11f4c9b87a7c57928602eb546c80b116aac5b071b34041043e88dd"
     },
     {
       "path": "src/environments/endurance/lead-helper-workload.js",
@@ -437,8 +443,8 @@
     },
     {
       "path": "src/environments/endurance/scalemas-workload.js",
-      "line": 18,
-      "expression": "questionForCycle({peerIndex,round}) { return this.question + program.prompt(peerIndex, round); },"
+      "line": 19,
+      "expression": "questionForCycle({peerIndex,round}) { return this.question + program.prompt(peerIndex, round) +"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -580,7 +586,7 @@
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
-      "sha256": "84d87dd89d3695f8327261b7fc5205918e2d2f7c98278e51640af06be3c7d84f"
+      "sha256": "640287f6c755629bead26a55c6543e40b32069813a490a8f907e3f57125e2d9c"
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",
@@ -588,7 +594,7 @@
     },
     {
       "path": "docs/architecture/prompts/13-hour-matrix.md",
-      "sha256": "79b34d8643b6de564ab5129d9b1a06170167019787220512203c5cdb1c554832"
+      "sha256": "cd586f07b2dfdb0ec468139071b81d8c30d32fdc9e0f71eef09d7d18d45a9e8d"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",

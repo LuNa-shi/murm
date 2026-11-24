@@ -21,10 +21,11 @@ Search relevant shared content, visit the originals, perform useful work, and pu
 ````
 ## Exact input composition
 
-index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string once as followUp with a fresh per-peer cycle request ID.
+index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.
 
-Body SHA-256: `8d397d35681b28e8057895eb650379c4c4f22b47c93cf99399f0be730e66f514`
+Body SHA-256: `de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926`
 
 ````text
-scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}
+`scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}` +
+                    (attempt ? `\nCORRECTION_ATTEMPT_${attempt}: ${correction}` : '');
 ````

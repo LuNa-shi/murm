@@ -29,10 +29,20 @@ For every cycle publish exactly one self-contained JSON content record with fiel
 
 peerIndex is actual zero-based fixed pool order; round is the actual cycle from zero through five. The validated question is sent in the ordinary Core followUp with peer/cycle header and cyclePrompt.
 
-Body SHA-256: `644b629a436399869c806ccce656ebc0d5026cfec3027343ed8d1d78beb985ce`
+Body SHA-256: `e27e307f6f14be3a4548605ba2b17868445366d6fcb03e1b20e3f21ebdac6a75`
 
 ````text
-{peerIndex,round}) { return this.question + program.prompt(peerIndex, round); },
+{peerIndex,round}) { return this.question + program.prompt(peerIndex, round) +
+      (peerIndex !== 0 && round >= 4 && original ? `\nThe stopped publisher has a verified original at ${original.address}. For this cycle search its exact token ${JSON.parse(original.content).tag} with limit 8, visit that exact address and cite it. This verified token replaces the generic hourproducerfinal search token above.` : ''); },
+````
+## scaleMAS independent checker correction
+
+row.address is the actual rejected immutable publication; peerIndex, round and attempt are trusted controller fields. The text contains no oracle answers. A publisher correction supplies its attempt-specific producer token, later exposed to consumers only after verified publisher stop.
+
+Body SHA-256: `efc25b14bb11f4c9b87a7c57928602eb546c80b116aac5b071b34041043e88dd`
+
+````text
+`The independent checker rejected the programming result in your immutable publication ${row.address} for peer=${peerIndex} phase=${round}. Recheck the complete original task input and every case; inspect your actual program and stdout and fix the cause. No reference answer is supplied. Preserve the rejected publication and copy its source/stdout to distinct rejected-attempt filenames before editing; keep the final canonical program/stdout filenames for the corrected proof. Publish exactly one new corrected record for this same peer and phase using a fresh publication request ID; preserve all collaboration fields and actual citations. Retain corrected source and stdout for private collection.${peerIndex===0&&round===5 ? ` For this correction replace the producer tag with ${producerTag(attempt+1)}.` : ''}`,
 ````
 ## Lead-helper frozen four-group composition
 

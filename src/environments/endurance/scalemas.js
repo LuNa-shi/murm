@@ -17,6 +17,7 @@ export async function runScaleMASHour({options,workload,admit,quota,budgets,sign
   // Barriers retain rejection handlers even if a peer fails before awaiting them.
   baseline.promise.catch(()=>{});publisherStopped.promise.catch(()=>{});endCheck.promise.catch(()=>{});
   let monitor,runtime,peerIds,lifetime,publisherStop,opened=false,ended=false;
+  const publications={accepted:[],rejected:[]};
   const started=new Set(), arrivedAtEnd=new Set();let baselineCount=0, fatalEvent=false, publisherClosing=false, unsubscribe;
   const timer=setTimeout(()=>life.abort(),budgets.setupMs);
   const pause = async ms => {
@@ -57,6 +58,15 @@ export async function runScaleMASHour({options,workload,admit,quota,budgets,sign
       }catch(error){reject(error);}},
       async onCycle(context) {try{
         const verified=await workload.cycle({...context,publisherStop});
+        const identity={botId:context.botId,peer:context.peerIndex,phase:context.round,attempt:context.attempt??0,
+          requestId:context.requestId,inputId:context.result.inputId,settledSeq:context.result.settled.seq};
+        if(verified.correction){
+          const timeoutMs=context.round===0 ? budgets.turnMs : Math.floor(Math.min(context.round,4)*WINDOW_MS-monitor.elapsed());
+          publications.rejected.push({...identity,address:verified.rejected.reference,sha256:verified.rejected.sha256,code:verified.rejected.code});
+          if(timeoutMs<1)throw fail('HOUR_CORRECTION_WINDOW_CLOSED');
+          return {...verified,timeoutMs};
+        }
+        publications.accepted.push({...identity,address:verified.proof.reference,sha256:verified.proof.sha256});
         if(context.round===0){monitor.baseline(context.botId,context.result,verified.proof);baselineCount++;
           if(baselineCount===6){lifetime=await admission(budgets.workMs);monitor.open();opened=true;clearTimeout(timer);baseline.resolve();}}
         else if(context.round<=4)monitor.progress(context.botId,context.result,verified.proof);
@@ -82,6 +92,7 @@ export async function runScaleMASHour({options,workload,admit,quota,budgets,sign
   }finally{unsubscribe?.();clearTimeout(timer);life.abort();try{await quota.close();}catch{closeFailure={code:'HOUR_QUOTA_CLOSE_UNKNOWN'};}}
   let result,businessFailure=report.businessFailure ?? closeFailure,quotaReceipt;
   try { quotaReceipt=quota.receipt(); } catch { businessFailure ??= {code:'HOUR_QUOTA_RECEIPT_UNKNOWN'}; }
-  if(!businessFailure){try{if(!opened||started.size!==5)throw fail('HOUR_WINDOW_INCOMPLETE');result={...monitor.finish(report.cleanup),lifetime,quota:checkQuota({ final: true })};}catch(error){businessFailure={code:error.code??'HOUR_EVIDENCE_FAILED'};}}
-  return {mode:'scaleMAS',runtimeId:runtime?.id,accepted:false,result,businessFailure,quota:quotaReceipt,cleanup:report.cleanup,reportSaveFailure:report.reportSaveFailure};
+  if(!businessFailure){try{if(!opened||started.size!==5||publications.accepted.length!==6*rounds||
+      new Set(publications.accepted.map(row=>`${row.botId}:${row.phase}`)).size!==6*rounds)throw fail('HOUR_WINDOW_INCOMPLETE');result={...monitor.finish(report.cleanup),lifetime,quota:checkQuota({ final: true }),publications};}catch(error){businessFailure={code:error.code??'HOUR_EVIDENCE_FAILED'};}}
+  return {mode:'scaleMAS',runtimeId:runtime?.id,accepted:false,result,businessFailure,quota:quotaReceipt,publications,cleanup:report.cleanup,reportSaveFailure:report.reportSaveFailure};
 }

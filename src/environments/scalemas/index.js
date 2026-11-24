@@ -86,12 +86,39 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
                   questionForCycle({ peerIndex: peer.index, botId: peer.botId, round, signal: workSignal })), workSignal) : question;
                 if (typeof cycleQuestion !== 'string' || !cycleQuestion.trim() || Buffer.byteLength(cycleQuestion) > 8192) throw fail('SCALEMAS_QUESTION_INVALID');
                 const requestId = `${peer.botId}:cycle:${round}`;
-                const turn = { requestId, round }; peer.turns.push(turn);
-                const sendInput = () => runInput(core, peer.botId, `scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}`,
-                  { requestId, timeoutMs: Math.min(turnTimeoutMs, remaining()), signal: workSignal });
-                const receipt = await (admission ? admission.run(sendInput) : sendInput());
-                Object.assign(turn, { inputId: receipt.inputId, outcome: receipt.settled.outcome, seq: receipt.settled.seq });
-                if(onCycle) await waitFor(Promise.resolve().then(()=>onCycle({peerIndex:peer.index,botId:peer.botId,round,result:receipt,snapshot:substrate.snapshot()})),workSignal);
+                const turn = { requestId, round, attempts: [] }; peer.turns.push(turn);
+                // Correction is an explicit new input after a completed turn,
+                // sharing the original monotonic turn deadline rather than
+                // granting another turn budget. Unknown inputs never enter it.
+                let turnDeadline;
+                let correction, attempt = 0;
+                while (true) {
+                  if (turnDeadline !== undefined && turnDeadline - performance.now() < 1) throw fail('SCALEMAS_CORRECTION_WINDOW_CLOSED');
+                  const currentRequestId = attempt ? `${requestId}:correction:${attempt}` : requestId;
+                  const beforeSnapshot = substrate.snapshot();
+                  const text = `scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}` +
+                    (attempt ? `\nCORRECTION_ATTEMPT_${attempt}: ${correction}` : '');
+                  const sendInput = () => {
+                    turnDeadline ??= performance.now() + Math.min(turnTimeoutMs, remaining());
+                    const left = Math.floor(turnDeadline - performance.now());
+                    if(left < 1) throw fail('SCALEMAS_CORRECTION_WINDOW_CLOSED');
+                    return runInput(core, peer.botId, text,
+                      { requestId: currentRequestId, timeoutMs: Math.min(left, remaining()), signal: workSignal });
+                  };
+                  const receipt = await (admission ? admission.run(sendInput) : sendInput());
+                  const observed = { requestId: currentRequestId, inputId: receipt.inputId,
+                    outcome: receipt.settled.outcome, seq: receipt.settled.seq, attempt };
+                  turn.attempts.push(observed); Object.assign(turn, { inputId: observed.inputId, outcome: observed.outcome, seq: observed.seq });
+                  const decision = onCycle ? await waitFor(Promise.resolve().then(() => onCycle({ peerIndex: peer.index,
+                    botId: peer.botId, round, attempt, requestId: currentRequestId, result: receipt, beforeSnapshot, snapshot: substrate.snapshot() })), workSignal) : undefined;
+                  if (decision?.correction === undefined) break;
+                  if (typeof decision.correction !== 'string' || !decision.correction.trim() || Buffer.byteLength(decision.correction) > 4096 ||
+                      !finite(decision.timeoutMs)) throw fail('SCALEMAS_CORRECTION_INVALID');
+                  observed.rejected = structuredClone(decision.rejected);
+                  correction = decision.correction;
+                  turnDeadline = Math.min(turnDeadline, performance.now() + decision.timeoutMs);
+                  attempt++;
+                }
               }
             } catch (error) {
               peer.failure = { code: error.code ?? 'PEER_WORK_FAILED', ...(error.requestId ? { requestId: error.requestId } : {}),

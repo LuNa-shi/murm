@@ -15,7 +15,7 @@ const records = [ { type: 'file', path: 'result.txt', mode: 0o644, bytes: bytes.
   { type: 'end', totalBytes: bytes.length, fileCount: 1, directoryCount: 0 } ];
 async function fixture(t, onPrompt, hooks = {}) {
   const directory = await mkdtemp(join(tmpdir(), 'scalemas-')); t.after(() => rm(directory, { recursive: true, force: true }));
-  const starts = [], prompts = [];
+  const starts = [], prompts = [], sequences = new Map();
   const provider = await createLifecycleProvider(t, { onStart(body) { starts.push(body); }, onCollect: () => ({ records }),
     async onRpc(message) {
       if (message.type !== 'prompt') return { response: { id: message.id, success: true, command: message.type }, records: [] };
@@ -23,11 +23,12 @@ async function fixture(t, onPrompt, hooks = {}) {
       const match = /^scaleMAS peer=(\d) cycle=(\d)/.exec(message.message); assert.ok(match);
       const peer = Number(match[1]), cycle = Number(match[2]);
       const outcome = await onPrompt?.({ message, peer, cycle, starts });
+      const sequence = sequences.get(peer) ?? 0; sequences.set(peer, sequence + 3);
       if (outcome === 'unknown') return { response: { id: message.id, command: 'prompt', success: true } };
       return { response: { id: message.id, success: true, command: 'prompt', data: { disposition: 'started' } }, records: [
-        { worker_sequence: cycle * 3 + 1, type: 'agent_start' },
-        { worker_sequence: cycle * 3 + 2, type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'FIXED_DONE' }], stopReason: outcome === 'failed' ? 'error' : 'stop', ...(outcome === 'failed' ? { errorMessage: 'FIXED_PEER_FAILURE' } : {}) } },
-        { worker_sequence: cycle * 3 + 3, type: 'agent_settled' },
+        { worker_sequence: sequence + 1, type: 'agent_start' },
+        { worker_sequence: sequence + 2, type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'FIXED_DONE' }], stopReason: outcome === 'failed' ? 'error' : 'stop', ...(outcome === 'failed' ? { errorMessage: 'FIXED_PEER_FAILURE' } : {}) } },
+        { worker_sequence: sequence + 3, type: 'agent_settled' },
       ] };
     }, ...hooks }); provider.allowDeletion();
   const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
@@ -253,8 +254,8 @@ test('host observes real six-peer ready, started turns and owned stop receipts',
   assert.equal(report.businessFailure,null);assert.equal(seen.filter(x=>x==='turn').length,12);assert.equal(seen.filter(x=>x==='stop').length,6);
 });
 
-for (const scenario of ['capped', 'natural', 'exit', 'fatal']) test(`hour scaleMAS ${scenario === 'exit' || scenario === 'fatal' ? `rejects a terminal survivor ${scenario}` : `uses actual six-Bot CLI publication and post-stop adoption in ${scenario} mode`}`, { timeout: 60_000 }, async t => {
-  const natural = scenario === 'natural', failAtEnd = ['exit','fatal'].includes(scenario) ? scenario : false;
+for (const scenario of ['capped', 'natural', 'correction', 'publisher-correction', 'exit', 'fatal']) test(`hour scaleMAS ${scenario === 'exit' || scenario === 'fatal' ? `rejects a terminal survivor ${scenario}` : `uses actual six-Bot CLI publication and post-stop adoption in ${scenario} mode`}`, { timeout: 60_000 }, async t => {
+  const natural = ['natural', 'correction', 'publisher-correction'].includes(scenario), failAtEnd = ['exit','fatal'].includes(scenario) ? scenario : false;
   const { createScaleMASArithmeticWorkload } = await import('../src/environments/endurance/scalemas-workload.js');
   const { controlledHourQuota } = await import('./fixtures/hour-quota-owner.js');
   const { writeFile } = await import('node:fs/promises');
@@ -275,17 +276,18 @@ for (const scenario of ['capped', 'natural', 'exit', 'fatal']) test(`hour scaleM
     activeInputs++; peakInputs = Math.max(peakInputs, activeInputs);
     try {
     assert.ok(message.message.includes(`Controlled private CLI task ${peer}:${cycle}`));
+    const attempt = Number(/CORRECTION_ATTEMPT_(\d+)/.exec(message.message)?.[1] ?? 0);
     const n = 17 * (peer + 1) + cycle;
-    const value = { peer, phase: cycle, n, square: n * n, programming: { answer: `${peer}:${cycle}` } }, references = [];
-    if (peer === 0 && cycle === 5) value.tag = 'hourproducerfinal';
+    const value = { peer, phase: cycle, n, square: n * n, programming: { answer: ((scenario === 'correction' && peer === 2 && cycle === 3) || (scenario === 'publisher-correction' && peer === 0 && cycle === 5)) && attempt === 0 ? 'genuine-wrong' : `${peer}:${cycle}` } }, references = [];
+    if (peer === 0 && cycle === 5) value.tag = attempt ? `hourproducerfinalretry${attempt}` : 'hourproducerfinal';
     if (peer !== 0 && cycle >= 4) {
-      const found = await cli(starts[peer], 'search', { query: 'hourproducerfinal', limit: 1 }, `search-${peer}-${cycle}`);
+      const found = await cli(starts[peer], 'search', { query: JSON.parse(original.content).tag, limit: 8 }, `search-${peer}-${cycle}`);
       assert.ok(found.results.some(row => row.address === original.address));
       const visited = await cli(starts[peer], 'visit', { address: original.address }, `visit-${peer}-${cycle}`);
       value.adoptedSquare = JSON.parse(visited.content).square; value.sum = value.square + value.adoptedSquare;
       references.push(visited.address);
     }
-    const published = await cli(starts[peer], 'publish', { content: JSON.stringify(value), references }, `publish-${peer}-${cycle}`);
+    const published = await cli(starts[peer], 'publish', { content: JSON.stringify(value), references }, `publish-${peer}-${cycle}-${attempt}`);
     if (peer === 0 && cycle === 5) original = published;
     } finally { activeInputs--; }
   });
@@ -293,7 +295,7 @@ for (const scenario of ['capped', 'natural', 'exit', 'fatal']) test(`hour scaleM
   const report = await runScaleMASHour({ options: { backend: f.backend, runId: 'hour-controlled', image: 'fixture', outputDir: f.directory },
     budgets, quota, workload: createScaleMASArithmeticWorkload({ programming: {
       prompt: ({peer,stage}) => `Controlled private CLI task ${peer}:${stage}`,
-      verify: ({peer,stage,submission}) => { assert.equal(submission.answer, `${peer}:${stage}`); verifiedPrograms.push([peer,stage]); return true; },
+      verify: ({peer,stage,submission}) => { if(submission.answer !== `${peer}:${stage}`) return false; verifiedPrograms.push([peer,stage]); return true; },
     } }), clock: () => now,
     admit: async ({ runtime, workMs }) => {if(!observeExit)observeExit=runtime.onEvent(event=>{if(injectingExit&&(event.type==='exit'||(event.type==='error'&&event.fatal)))exitSeen.resolve();});return { runtimeId: runtime.id, workDeadlineAtMs: now + workMs + 100 };},
     async waitForMs(ms) {
@@ -313,6 +315,41 @@ for (const scenario of ['capped', 'natural', 'exit', 'fatal']) test(`hour scaleM
   assert.ok(report.result.windows.every(window => window.botIds.length >= 4));
   assert.equal(report.result.handoff.kind, 'durable-collaboration-handoff');
   assert.equal(report.cleanup.bots.length, 6); assert.equal(report.cleanup.cleanup, 'complete');
-  assert.equal(peakInputs, natural ? 6 : 2); assert.equal(verifiedPrograms.length, 36); assert.equal(f.prompts.length, 36); assert.equal(f.provider.allocations(), 6);
+  assert.equal(peakInputs, natural ? 6 : 2); assert.equal(verifiedPrograms.length, 36); assert.equal(f.prompts.length, ['correction','publisher-correction'].includes(scenario) ? 37 : 36); assert.equal(f.provider.allocations(), 6);
   if (natural) assert.equal(report.quota.unknownRequests, 1);
+  if (['correction','publisher-correction'].includes(scenario)) {
+    assert.equal(report.result.publications.accepted.length, 36); assert.equal(report.result.publications.rejected.length, 1);
+    const rejected = report.result.publications.rejected[0];
+    assert.equal(rejected.peer, scenario === 'correction' ? 2 : 0); assert.equal(rejected.phase, scenario === 'correction' ? 3 : 5); assert.equal(rejected.attempt, 0);
+    const corrected = report.result.publications.accepted.find(row => row.peer === rejected.peer && row.phase === rejected.phase);
+    assert.equal(corrected.botId, rejected.botId); assert.equal(corrected.attempt, 1);
+    assert.equal(typeof corrected.requestId, 'string'); assert.ok(Number.isSafeInteger(corrected.settledSeq)); assert.ok(corrected.settledSeq > rejected.settledSeq); assert.notEqual(corrected.requestId, rejected.requestId);
+    assert.notEqual(corrected.address, rejected.address); assert.notEqual(corrected.inputId, rejected.inputId);
+    const saved = JSON.parse(await readFile(join(f.directory, report.runtimeId, 'environment-report.json')));
+    assert.equal(saved.substrate.contents.length, 37);
+    assert.ok(saved.substrate.contents.some(row => row.address === rejected.address && JSON.parse(row.content).programming.answer === 'genuine-wrong'));
+  }
+});
+
+for (const mode of ['deadline', 'cancel', 'unknown']) test(`explicit same-Bot correction respects original ${mode} boundary`, async t => {
+  const controller = new AbortController(); let callbacks = 0;
+  const f = await fixture(t, ({ peer }) => mode === 'unknown' && peer === 0 ? 'unknown' : undefined);
+  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  const report = await runScaleMAS({ backend: f.backend, runId: `correction-${mode}`, image: 'fixture', outputDir: f.directory,
+    question: 'Fixed task; independently verify before accepting', maxRounds: 2, workTimeoutMs: 3000, turnTimeoutMs: 100, closeTimeoutMs: 1000,
+    async onCycle({ peerIndex, round }) {
+      if(peerIndex !== 0 || round !== 0) return;
+      callbacks++;
+      if(mode === 'deadline') await new Promise(resolve => setTimeout(resolve, 120));
+      if(mode === 'cancel') controller.abort();
+      return { correction: 'Recheck the complete task input and correct your own result. No reference answer supplied.', timeoutMs: 1000,
+        rejected: { reference: 'controlled', sha256: 'a'.repeat(64), code: 'CONTROLLED_REJECTION' } };
+    },
+  }, controller.signal);
+  assert.equal(f.provider.allocations(), 3); assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(f.prompts.filter(row => /^scaleMAS peer=0 /.test(row.message)).length, 1);
+  assert.equal(callbacks, mode === 'unknown' ? 0 : 1);
+  assert.ok(report.businessFailure);
+  if(mode === 'deadline') assert.equal(report.peers[0].failure.code, 'SCALEMAS_CORRECTION_WINDOW_CLOSED');
+  if(mode === 'unknown') assert.equal(report.peers[0].failure.code, 'input_unknown');
 });

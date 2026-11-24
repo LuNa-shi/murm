@@ -14,12 +14,18 @@ export function createProgrammingContract(programming) {
     async verify(peer, stage, value) {
       if (!programming) return;
       if (!Object.hasOwn(value, 'programming')) throw invalid();
-      let timer;
+      let timer, passed;
       try {
-        const passed = await Promise.race([Promise.resolve().then(() => programming.verify({ peer, stage, submission: value.programming })),
+        passed = await Promise.race([Promise.resolve().then(() => programming.verify({ peer, stage, submission: value.programming })),
           new Promise((_, reject) => { timer = setTimeout(() => reject(invalid()), 5000); })]);
-        if (passed !== true) throw invalid();
       } catch { throw invalid(); } finally { clearTimeout(timer); }
+      if (passed !== true) {
+        const error = invalid();
+        // Only an explicit negative verifier decision is correction evidence.
+        // Exceptions, timeouts and ambiguous return values remain fail closed.
+        if (passed === false) error.rejected = true;
+        throw error;
+      }
     },
   });
 }

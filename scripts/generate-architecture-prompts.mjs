@@ -161,8 +161,8 @@ output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
   'All three peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
   + block('Peer Profile prompt', between(scaleMASPath, "export const peerPrompt = '", "';\n"))
   + block('Cycle instruction', between(scaleMASPath, "export const cyclePrompt = '", "';\n"))
-  + block('Exact input composition', between(scaleMASPath, 'runInput(core, peer.botId, `', '`,\n'),
-    'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string once as followUp with a fresh per-peer cycle request ID.'));
+  + block('Exact input composition', between(scaleMASPath, '                  const text = ', '\n                  const sendInput'),
+    'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.'));
 output('08-agensh-environment.md', header('Agensh peer and serial router prompts',
   'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper with explicit followUp. There are no mid-turn notices.')
   + block('Peer Profile prompt', between('src/environments/agensh/index.js', 'export const peerPrompt = `', '`;'))
@@ -181,6 +181,8 @@ output('13-hour-matrix.md', header('Bounded hour business and programming prompt
   + block('scaleMAS frozen question', between('src/environments/endurance/scalemas-workload.js', "    question:'", "',\n"))
   + block('scaleMAS per-cycle composition', between('src/environments/endurance/scalemas-workload.js', '    questionForCycle(', '\n    ready('),
     'peerIndex is actual zero-based fixed pool order; round is the actual cycle from zero through five. The validated question is sent in the ordinary Core followUp with peer/cycle header and cyclePrompt.')
+  + block('scaleMAS independent checker correction', between('src/environments/endurance/scalemas-workload.js', '        return {correction:', '\n          rejected:'),
+    'row.address is the actual rejected immutable publication; peerIndex, round and attempt are trusted controller fields. The text contains no oracle answers. A publisher correction supplies its attempt-specific producer token, later exposed to consumers only after verified publisher stop.')
   + block('Lead-helper frozen four-group composition', between('src/environments/endurance/lead-helper-workload.js', '  function stageInput(stage) {', '\n  async function read('),
     'role is the trusted helper role; helper peer indices are zero-based 0–2 and programming stages are 1–4. Each supplied task is copied by the adapter before allocation and serialized only to that helper; the goal or supplement is serialized only to the original lead.')
 
