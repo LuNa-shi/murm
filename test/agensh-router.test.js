@@ -72,6 +72,83 @@ test('accepted admission alone does not dispatch next batch; cancellation after 
   assert.equal(before.batches[0].requestId, first.requestId); assert.ok(before.batches[0].inputId);
 });
 
+test('cancelling an unsent batch abandons its context read and releases the next Core input', async t => {
+  const reading = Promise.withResolvers();
+  const abandoned = Promise.withResolvers();
+  let reads = 0;
+  const f = await fixture(t, () => {}, { readContext({ signal }) {
+    if (++reads === 1) { reading.resolve(signal); return abandoned.promise; }
+    return 'SHARED_CONTEXT';
+  } });
+  const first = f.environment.kickoff('undispatched');
+  const next = f.environment.ingest(incoming('kept'));
+  const readSignal = await reading.promise;
+  const abort = new AbortController();
+  const waiting = f.environment.wait(first.batchId, { timeoutMs: 1000, signal: abort.signal });
+  const observer = f.environment.wait(first.batchId, { timeoutMs: 1000 });
+  void observer.catch(() => {});
+  try {
+    abort.abort();
+    await assert.rejects(waiting, { code: 'ROUTER_WAIT_ABORTED' });
+    assert.equal(readSignal.aborted, true);
+    const cancelled = await observer;
+    assert.equal(cancelled.state, 'cancelled');
+    assert.equal(cancelled.code, 'ROUTER_WAIT_ABORTED');
+    assert.equal(cancelled.requestId, first.requestId);
+    assert.equal(cancelled.inputId, undefined);
+    assert.equal((await f.environment.wait(next.batchId, { timeoutMs: 1500 })).state, 'completed');
+  } finally { abandoned.reject(new Error('old reader finished late')); }
+  const snapshot = f.environment.snapshot().router;
+  assert.equal(snapshot.fenced, false);
+  assert.equal(snapshot.batches[0].code, 'ROUTER_WAIT_ABORTED');
+  assert.equal(f.submitted(), 1);
+});
+
+test('cancelling queued work notifies another observer even while the active batch is held', async t => {
+  const context = Promise.withResolvers();
+  const f = await fixture(t, () => {}, { readContext: () => context.promise });
+  const first = f.environment.kickoff('still running');
+  const queued = f.environment.ingest(incoming('queued-cancel'));
+  const abort = new AbortController();
+  const waiting = f.environment.wait(queued.batchId, { timeoutMs: 1000, signal: abort.signal });
+  const observer = f.environment.wait(queued.batchId, { timeoutMs: 300 });
+  void observer.catch(() => {});
+  try {
+    abort.abort();
+    await assert.rejects(waiting, { code: 'ROUTER_WAIT_ABORTED' });
+    const cancelled = await observer;
+    assert.equal(cancelled.state, 'cancelled');
+    assert.equal(cancelled.code, 'ROUTER_WAIT_ABORTED');
+    assert.equal(f.submitted(), 0);
+  } finally { context.resolve('SHARED_CONTEXT'); }
+  assert.equal((await f.environment.wait(first.batchId, { timeoutMs: 1500 })).state, 'completed');
+  assert.equal(f.submitted(), 1);
+});
+
+test('host close cancels a context read before shutting down the event source', async t => {
+  const reading = Promise.withResolvers();
+  const sourceStopped = Promise.withResolvers();
+  let readSignal;
+  const f = await fixture(t, () => {}, {
+    readContext({ signal }) {
+      readSignal = signal;
+      reading.resolve();
+      return new Promise(() => {});
+    },
+    subscribe: async () => ({ ready: true, async stop() { sourceStopped.resolve(readSignal.aborted); } }),
+  });
+  const first = f.environment.kickoff('held context');
+  await reading.promise;
+  const closing = f.environment.close({ timeoutMs: 150 });
+  assert.equal(await sourceStopped.promise, true);
+  const cancelled = await f.environment.wait(first.batchId, { timeoutMs: 500 });
+  assert.equal(cancelled.state, 'cancelled');
+  assert.equal(cancelled.code, 'ROUTER_STOPPING');
+  await closing;
+  assert.equal(f.environment.snapshot().router.fenced, false);
+  assert.equal(f.submitted(), 0);
+});
+
 for (const disposition of ['unknown', 'queued', 'handled']) test(`${disposition} admission does not complete a batch or dispatch later work`, async t => {
   const f = await fixture(t, ({ message }) => ({ response: { id: message.id, command: 'prompt', success: true, ...(disposition === 'unknown' ? {} : { data: { disposition } }) }, records: [] }));
   const first = f.environment.kickoff('fixed'); f.environment.ingest(incoming('blocked'));

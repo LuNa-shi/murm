@@ -15,14 +15,19 @@ export function createAgenshRouter({ mapping, runInput, readContext, workTimeout
   const peerMapping = Object.freeze({ botId: mapping.botId, workerId: mapping.workerId });
   const rows = new Map(), queue = [], waiters = new Set(), events = [], seenEvents = new Set();
   const lifetime = new AbortController(); const deadlineAt = Date.now() + workTimeoutMs;
-  let ready = false, started = false, accepting = true, fenced = false, active, pumping = false;
+  let ready = false, started = false, accepting = true, fenced = false, active, activeContext, pumping = false;
   let closeReceipt; let order = 0; let nudgeTimer; let nudges = 0;
   const remaining = () => { const value = deadlineAt - Date.now(); if (value <= 0 || lifetime.signal.aborted) throw failure('ROUTER_WORK_EXPIRED'); return value; };
   const clone = value => structuredClone(value);
   const notify = () => { for (const check of [...waiters]) check(); };
+  function cancelUnsubmitted(row, code) {
+    row.state = 'cancelled'; row.code = code;
+    if (row === active) activeContext?.abort();
+  }
   function stop(reason = 'ROUTER_STOPPING') {
     accepting = false; clearTimeout(nudgeTimer);
-    for (const row of queue.splice(0)) { row.state = 'cancelled'; row.code = reason; }
+    for (const row of queue.splice(0)) cancelUnsubmitted(row, reason);
+    if (active?.state === 'context') cancelUnsubmitted(active, reason);
     notify();
   }
   const timer = setTimeout(() => { fence('ROUTER_WORK_EXPIRED'); lifetime.abort(); }, workTimeoutMs);
@@ -34,24 +39,30 @@ export function createAgenshRouter({ mapping, runInput, readContext, workTimeout
       while (accepting && queue.length) {
         const row = active = queue.shift(); row.state = 'context';
         try {
-          const contextSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(Math.min(contextTimeoutMs, remaining()))]);
+          activeContext = new AbortController();
+          const contextSignal = AbortSignal.any([activeContext.signal, lifetime.signal, AbortSignal.timeout(Math.min(contextTimeoutMs, remaining()))]);
           let contextAbort; let context;
-          try { context = await Promise.race([Promise.resolve().then(() => readContext({ signal: contextSignal })), new Promise((_, reject) => {
+          try { context = await Promise.race([Promise.resolve().then(() => {
+            contextSignal.throwIfAborted();
+            return readContext({ signal: contextSignal });
+          }), new Promise((_, reject) => {
             contextAbort = () => reject(failure('ROUTER_CONTEXT_FAILED'));
             contextSignal.addEventListener('abort', contextAbort, { once: true }); if (contextSignal.aborted) contextAbort();
           })]); } finally { contextSignal.removeEventListener('abort', contextAbort); }
+          if (row.state === 'cancelled') continue;
           if (typeof context !== 'string' || Buffer.byteLength(context) > 16 * 1024) throw failure('ROUTER_CONTEXT_INVALID');
-          remaining(); if (!accepting || row.state === 'cancelled') { row.state = 'cancelled'; row.code = 'ROUTER_STOPPING'; continue; }
+          remaining();
           row.context = context; row.state = 'submitted'; row.dispatchOrder = ++order;
           const input = `${routerInstruction}\n${JSON.stringify({ batchId: row.batchId, source: row.source, eventId: row.eventId, kind: row.kind, text: row.text, context })}`;
           const result = await runInput(input, { requestId: row.requestId, timeoutMs: Math.min(turnTimeoutMs, remaining()), signal: lifetime.signal });
           Object.assign(row, { state: 'completed', inputId: result.inputId, receipt: result.receipt, settled: clone(result.settled) });
         } catch (error) {
+          if (row.state === 'cancelled') continue;
           const uncertain = row.state === 'submitted' && !['input_failed', 'input_aborted', 'input_handled_without_model_run', 'wait_requires_idle_bot'].includes(error.code);
           Object.assign(row, { state: uncertain ? 'uncertain' : 'failed', code: error.code ?? 'ROUTER_BATCH_FAILED',
             ...(error.inputId ? { inputId: error.inputId } : {}), ...(error.receipt ? { receipt: clone(error.receipt) } : {}), ...(error.event ? { event: clone(error.event), ...(error.event.type === 'settled' ? { settled: clone(error.event) } : {}) } : {}) });
           fence(row.code);
-        } finally { active = undefined; notify(); }
+        } finally { activeContext = undefined; active = undefined; notify(); }
       }
     } finally {
       pumping = false; notify();
@@ -100,10 +111,11 @@ export function createAgenshRouter({ mapping, runInput, readContext, workTimeout
           const row = rows.get(batchId);
           if (row.state === 'submitted') { fence(code); lifetime.abort(); }
           else if (['queued', 'context'].includes(row.state)) {
-            row.state = 'cancelled'; row.code = code;
+            cancelUnsubmitted(row, code);
             const index = queue.indexOf(row); if (index >= 0) queue.splice(index, 1);
           }
           done(failure(code));
+          notify();
         };
         const aborted = () => cancel('ROUTER_WAIT_ABORTED');
         const check = () => { const row = rows.get(batchId); if (!['queued', 'context', 'submitted'].includes(row.state)) done(null, row); };

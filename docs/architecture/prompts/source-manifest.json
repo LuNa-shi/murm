@@ -84,7 +84,7 @@
     },
     {
       "path": "src/environments/agensh/router.js",
-      "sha256": "4fcd994645da9cc31643f7bdaa8da1e5d7011dd9ff3efc7fc8b9c34cb3f260fd"
+      "sha256": "363e245027de8681ab8a19f2b3be375e2aed3e16791bc277974087362872b8ea"
     },
     {
       "path": "src/environments/agensh/routed.js",
