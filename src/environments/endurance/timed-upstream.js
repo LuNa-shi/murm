@@ -8,6 +8,54 @@ const count = value => Number.isSafeInteger(value) && value >= 0;
 const fail = code => Object.assign(new Error(code), { code });
 const sum = (total, value) => total !== null && Number.isSafeInteger(total + value) ? total + value : null;
 
+function jsonObservation(limit, describe) {
+  let chunks = [], bytes = 0;
+  return {
+    add(chunk) {
+      if (!chunks) return;
+      bytes += chunk.length;
+      if (bytes > limit) chunks = null;
+      else chunks.push(chunk);
+    },
+    read() {
+      if (!chunks) return { observation: 'oversize' };
+      try { return describe(JSON.parse(Buffer.concat(chunks).toString('utf8'))); }
+      catch { return { observation: 'unavailable' }; }
+      finally { chunks = null; }
+    },
+  };
+}
+
+function requestShape(body) {
+  const dimensions = { messages: 0, reasoning: 0, calls: 0, results: 0, emptyAssistant: 0, encryptedReasoning: 0 };
+  const calls = new Set(), results = new Set();
+  for (const item of Array.isArray(body?.input) ? body.input : []) {
+    if (item?.type === 'function_call') { dimensions.calls++; calls.add(item.call_id); }
+    else if (item?.type === 'function_call_output') { dimensions.results++; results.add(item.call_id); }
+    else if (item?.type === 'reasoning') { dimensions.reasoning++; if (typeof item.encrypted_content === 'string') dimensions.encryptedReasoning++; }
+    else if (item?.type === 'message') {
+      dimensions.messages++;
+      if (item.role === 'assistant' && Array.isArray(item.content) && item.content.every(part => part?.type === 'output_text' && part.text === '')) dimensions.emptyAssistant++;
+    }
+  }
+  const effort = body?.reasoning?.effort;
+  return { ...dimensions,
+    callIdsMatched: !calls.has(undefined) && calls.size === dimensions.calls && results.size === dimensions.results && calls.size === results.size && [...calls].every(id => results.has(id)),
+    reasoningEffort: ['none','minimal','low','medium','high','xhigh','max'].includes(effort) ? effort : null,
+    maxOutputTokens: count(body?.max_output_tokens) ? body.max_output_tokens : null };
+}
+
+function rejectionShape(body) {
+  const error = body?.error;
+  const code = ['invalid_request_error','invalid_parameter','invalid_value','unsupported_parameter','context_length_exceeded','rate_limit_error','server_error','insufficient_quota'];
+  const vocabulary = ['reasoning_content','reasoning','encrypted_content','call_id','function_call_output','function_call','max_output_tokens','max_completion_tokens','content','input','tools','tool_choice','store','stream'];
+  const detail = [error?.param,error?.message].filter(value => typeof value === 'string').join(' ');
+  const hints = vocabulary.filter(field => new RegExp(`\\b${field}\\b`, 'i').test(detail));
+  if (/\b(?:missing|required)\b/i.test(detail)) hints.push('missing');
+  if (/\b(?:empty|non-empty)\b/i.test(detail)) hints.push('empty');
+  return { code: code.includes(error?.code) ? error.code : 'other', hints };
+}
+
 /** Private host transport owner. Bounds metadata storage, never model work.
  * It preserves request/response bytes and accounts only observed terminal usage. */
 export async function createTimedUpstreamMeter({ upstreamUrl, upstreamHeaders = {}, model = 'k3', deadlineAt, onDeadline = () => {}, onFailure = () => {} }) {
@@ -24,11 +72,11 @@ export async function createTimedUpstreamMeter({ upstreamUrl, upstreamHeaders = 
   } } catch { throw fail('TIMED_UPSTREAM_CONFIGURATION_INVALID'); }
   const deadline = performance.now() + deadlineAt - Date.now();
   const records = [], pending = new Set();
-  let forwarded = 0, inputBytes = 0, actualInputTokens = 0, actualOutputTokens = 0, unknownRequests = 0, conflicts = 0;
+  let forwarded = 0, peakConcurrent = 0, inputBytes = 0, actualInputTokens = 0, actualOutputTokens = 0, unknownRequests = 0, conflicts = 0;
   let stopping = false, closed = false, deadlineReached = false, closeWork, timer;
   const notify = (callback, value) => { try { callback(value); } catch { /* Observers cannot own transport teardown. */ } };
   const receipt = () => structuredClone({ profile: 'time_only', model, deadlineAt, deadlineReached, forwarded, active: pending.size,
-    inputBytes, actualInputTokens, actualOutputTokens, unknownRequests, conflicts, closed,
+    peakConcurrent, inputBytes, actualInputTokens, actualOutputTokens, unknownRequests, conflicts, closed,
     recordsTruncated: forwarded > records.length, requests: records });
   function finish(record, code) {
     if (record.finished) return;
@@ -71,15 +119,19 @@ export async function createTimedUpstreamMeter({ upstreamUrl, upstreamHeaders = 
     if (stopping || performance.now() >= deadline) { outgoing.writeHead(503); outgoing.end(); return; }
     if (incoming.method !== 'POST' || incoming.url !== '/v1/responses') { outgoing.writeHead(404); outgoing.end(); return; }
     const record = { number: ++forwarded, status: 'dispatched' };
-    if (records.length < 1024) records.push(record);
+    const retained = records.length < 1024;
+    if (retained) records.push(record);
+    const requestObservation = retained ? jsonObservation(512 * 1024, requestShape) : null;
     const upstream = (target.protocol === 'https:' ? httpsRequest : httpRequest)(target, { method: 'POST', headers: {
-      'content-type': incoming.headers['content-type'] ?? 'application/json', accept: 'text/event-stream', ...headers,
+      'content-type': incoming.headers['content-type'] ?? 'application/json', accept: 'text/event-stream',
+      ...(incoming.headers['content-length'] ? { 'content-length': incoming.headers['content-length'] } : {}), ...headers,
     } });
     let providerResponse, settled = false;
     const operation = { cancel() { upstream.destroy(); providerResponse?.destroy(); outgoing.destroy(); settle('TRANSPORT_CANCELLED'); } };
-    pending.add(operation);
+    pending.add(operation); peakConcurrent = Math.max(peakConcurrent, pending.size);
     function settle(code) { if (settled) return; settled = true; pending.delete(operation); finish(record, code); }
-    incoming.on('data', chunk => { inputBytes = sum(inputBytes, chunk.length); });
+    incoming.on('data', chunk => { inputBytes = sum(inputBytes, chunk.length); requestObservation?.add(chunk); });
+    if (requestObservation) incoming.on('end', () => { record.request = requestObservation.read(); });
     incoming.on('aborted', () => operation.cancel());
     incoming.on('error', () => operation.cancel());
     outgoing.on('close', () => { if (!outgoing.writableFinished) operation.cancel(); });
@@ -96,6 +148,11 @@ export async function createTimedUpstreamMeter({ upstreamUrl, upstreamHeaders = 
       outgoing.writeHead(response.statusCode, responseHeaders);
       response.on('error', () => { settle('UPSTREAM_TRANSPORT_UNKNOWN'); outgoing.destroy(); });
       response.on('aborted', () => { settle('UPSTREAM_TRANSPORT_UNKNOWN'); outgoing.destroy(); });
+      if (retained && response.statusCode >= 400) {
+        const rejected = jsonObservation(64 * 1024, rejectionShape);
+        response.on('data', chunk => rejected.add(chunk));
+        response.on('end', () => { record.rejection = rejected.read(); });
+      }
       const observer = meter(record);
       observer.on('end', () => settle());
       response.pipe(observer).pipe(outgoing);
