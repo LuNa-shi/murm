@@ -5,7 +5,8 @@ export function createInputLedger(runtimeId) {
   const key = (caller, target, requestId) => JSON.stringify([runtimeId, caller, 'send', target, requestId]);
   function get(caller, target, requestId, parameters) {
     const entry = entries.get(key(caller, target, requestId));
-    if (entry && (entry.input !== parameters.input || entry.mode !== parameters.mode)) {
+    if (entry && (entry.input !== parameters.input || entry.mode !== parameters.mode ||
+        entry.source !== parameters.source || entry.steeringMode !== parameters.steeringMode)) {
       throw Object.assign(new Error('send requestId already has different parameters'), { code: 'CONFLICT' });
     }
     return entry?.request;

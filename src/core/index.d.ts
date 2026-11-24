@@ -102,11 +102,18 @@ export interface ResourceError extends Error {
   details: readonly ErrorInfo[];
 }
 
+export type BotStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+
+export interface BotListFilter {
+  parentId?: string | null;
+  status?: BotStatus | readonly BotStatus[];
+}
+
 export interface BotInfo {
   id: string;
   profile: string;
   parentId?: string;
-  status: 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+  status: BotStatus;
   cursor: number;
   latestOutput?: string;
   lastError?: ErrorInfo;
@@ -115,9 +122,20 @@ export interface BotInfo {
 
 export type InputMode = 'steer' | 'followUp';
 
+export interface SteerOptions {
+  requestId: string;
+  source?: string;
+  steeringMode?: 'all' | 'one-at-a-time';
+}
+
 export type InputReceipt =
   | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
   | { inputId: string; status: 'unknown' };
+
+export interface InterruptReceipt {
+  interruptId: string;
+  status: 'interrupted' | 'unknown';
+}
 
 export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
 
@@ -168,6 +186,10 @@ export interface Runtime {
   readonly id: string;
   spawn(options: SpawnOptions): Promise<BotInfo>;
   get(botId: string): Promise<BotInfo>;
+  list(filter?: BotListFilter): Promise<BotInfo[]>;
+  start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
+  steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
+  interrupt(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
   send(botId: string, input: string, options: { requestId: string; mode?: InputMode }): Promise<InputReceipt>;
   onEvent(handler: (event: BotEvent) => void): () => void;
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
