@@ -7,6 +7,7 @@ import { runInput } from '../shared/run-input.js';
 import { runWithReport } from '../shared/run-report.js';
 const fail = code => Object.assign(new Error(code), { code });
 export const FLAT_STAGED_PROMPT = 'Use actual Flat Task Services to read and exclusively take one ready Task. Preserve this Task and Execution. After take, return briefly and wait for explicit host programming groups; do not finish until the host asks. Each group requires implementing/running the supplied program, inspecting and checking the public fixed candidate, publishing its new checked main revision and a new truthful Material, and linking evidence to your Task. Keep all program/stdout files until required export. Host-provided candidates are not your authored programs. Private workspace save/status/diff are unavailable.';
+export const FLAT_MISSING_MATERIAL_CORRECTION = '\nCORRECTION: Your preceding completed turn published no Material for its exact proofKey. Preserve all prior Materials and files. Complete this same stage and fixed candidate now, with the fresh proofKey above and fresh stable CLI request IDs. If this exact stage already produced a checked merge, inspect that actual revision and publish it rather than merging again; otherwise perform the original fixed merge. The verifier still requires the exact current owner and candidate provenance. Do not finish or change your Task/Execution. No expected programming answers are supplied.';
 
 /** Actual four-slot host composition. Time-only owner/lifetime are caller-owned
  * trusted ports. Test clock injection permanently produces controlled evidence. */
@@ -21,7 +22,7 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
   const now = clock ?? (() => performance.now());
   let owned, monitor, original, lifetime, publisher, replacement, unsubscribe, timer, ended = false, fatal = false;
   const settled = new Map(), planned = new Set(), latest = new Map();
-  const result = {}, proofs = [], admissions = [];
+  const result = {}, proofs = [], rejectedAttempts = [], admissions = [];
   timer = setTimeout(() => life.abort(), budgets.setupMs);
   const health = async () => {
     combined.throwIfAborted(); modelGate.check();
@@ -58,13 +59,45 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
   };
   const group = async (botId, peer, phase, adopted) => {
     const { execution, candidate } = binding(botId);
-    const proofKey = `flat-hour-${randomUUID()}`;
-    const input = workload.input({ peer, phase, proofKey, candidate: {...candidate,revision:candidate.stages[phase].revision}, adopted });
-    const receipt = await runInput(owned.runtime, botId, input, { requestId: `flat-group-${peer}-${phase}`, timeoutMs: budgets.turnMs, signal: combined });
-    const proof = await workload.verify({ owned, botId, peer, phase, proofKey, adopted });
-    if (owned.tasks.getBot(botId).execution_id !== execution.execution_id) throw fail('FLAT_HOUR_BINDING_CHANGED');
-    proofs.push({ botId, peer, phase, materialId: proof.reference, ...proof }); latest.set(botId, { materialId: proof.reference, ...proof });
-    return { receipt, proof };
+    const taskId=execution.task_id, executionId=execution.execution_id, fencingVersion=execution.fencing_version;
+    // One deadline covers the original turn and every correction, including
+    // trusted verification. Corrections never open another quarter window.
+    const startedAt = now();
+    const deadline = Math.min(startedAt + budgets.turnMs, startedAt + (phase + 1) * WINDOW_MS - monitor.elapsed());
+    const turn = new AbortController(), turnSignal = AbortSignal.any([combined, turn.signal]);
+    const timer = setTimeout(() => turn.abort(), Math.max(1, Math.ceil(deadline - now())));
+    const requireCurrent = () => {
+      turnSignal.throwIfAborted();
+      if(now() >= deadline)throw fail('FLAT_HOUR_GROUP_LATE');
+      const current=binding(botId).execution;
+      if(current.execution_id!==executionId||current.task_id!==taskId||current.owner_ref!==botId||current.fencing_version!==fencingVersion)throw fail('FLAT_HOUR_BINDING_CHANGED');
+    };
+    try {
+      for(let attempt=0;;attempt++) {
+        requireCurrent();
+        const proofKey = `flat-hour-${randomUUID()}`;
+        const requestId = `flat-group-${peer}-${phase}${attempt ? `-correction-${attempt}` : ''}`;
+        const input = workload.input({ peer, phase, proofKey, candidate: {...candidate,revision:candidate.stages[phase].revision}, adopted }) +
+          (attempt ? FLAT_MISSING_MATERIAL_CORRECTION : '');
+        requireCurrent();
+        const receipt = await runInput(owned.runtime, botId, input, { requestId, timeoutMs: Math.max(1,Math.ceil(deadline-now())), signal: turnSignal });
+        requireCurrent();
+        const identity = {botId,peer,phase,attempt,proofKey,requestId,inputId:receipt.inputId,settledSeq:receipt.settled.seq,executionId,fencingVersion};
+        let proof;
+        try { proof = await workload.verify({ owned, botId, peer, phase, proofKey, adopted, signal:turnSignal, deadlineAtMs:deadline }); }
+        catch(error) {
+          requireCurrent();
+          if(error.code!=='FLAT_PROGRAM_MATERIAL_MISSING'||error.executionId!==executionId||error.taskId!==taskId||error.fencingVersion!==fencingVersion||error.proofKey!==proofKey||typeof workload.verifyRejected!=='function')throw error;
+          rejectedAttempts.push({...identity,taskId,code:error.code});
+          continue;
+        }
+        requireCurrent();
+        await workload.verifyRejected?.({owned,rejected:rejectedAttempts});
+        requireCurrent();
+        proofs.push({ ...identity, materialId: proof.reference, ...proof }); latest.set(botId, { materialId: proof.reference, ...proof });
+        return { receipt, proof };
+      }
+    } finally { clearTimeout(timer); turn.abort(); }
   };
   const finish = async botId => {
     const current = latest.get(botId), { execution } = binding(botId);
@@ -120,9 +153,9 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
         const adopted = { botId: publisher, materialId: published.materialId, revision: published.revision, materialHash: published.materialHash };
         const handoff = await group(replacement, 4, 3, adopted);
         monitor.handoff({ kind: 'flat-stopped-owner-public-adoption', reference: handoff.proof.reference, sha256: handoff.proof.sha256 });
-        await pauseUntil(HOUR_MS); await health(); monitor.end(); ended = true;
+        await pauseUntil(HOUR_MS); await health(); await workload.verifyRejected?.({owned,rejected:rejectedAttempts}); monitor.end(); ended = true;
         await Promise.all([...original.slice(1), replacement].map(finish));
-        Object.assign(result, { proofs, publisher, replacement, lifetime, admissions, source: 'host-preseeded-public-revisions', liveCapture: false });
+        Object.assign(result, { proofs, rejectedAttempts, publisher, replacement, lifetime, admissions, source: 'host-preseeded-public-revisions', liveCapture: false });
         return result;
       },
       async afterClose(cleanup) {
@@ -139,5 +172,5 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
     clearTimeout(timer); unsubscribe?.(); life.abort();
     try { await quota.close(); } catch { closeFailure = { code: 'FLAT_HOUR_MODEL_CLOSE_UNKNOWN' }; }
   }
-  return { ...report, mode: 'flat', accepted: false, ...(closeFailure ? { cleanupFailure: closeFailure } : {}), quota: quota.receipt() };
+  return { ...report, mode: 'flat', accepted: false, rejectedAttempts:structuredClone(rejectedAttempts), ...(closeFailure ? { cleanupFailure: closeFailure } : {}), quota: quota.receipt() };
 }

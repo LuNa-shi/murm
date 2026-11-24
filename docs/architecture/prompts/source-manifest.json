@@ -51,11 +51,11 @@
     },
     {
       "path": "src/environments/endurance/flat-hour.js",
-      "sha256": "c3cbc517471871011a86599f830a2a6c69c00cb7f46fbcea75550482e5c84036"
+      "sha256": "1dcf70b0e144b39c09fdb4e1fb01834f5254911fb7dc9f4a108e8e32b24723d0"
     },
     {
       "path": "src/environments/endurance/flat-workload.js",
-      "sha256": "f8a61ce3a7b74f941940e1372b38a973201a5d0add6b4f2f1690c037e8735669"
+      "sha256": "ca9944faf51774b0efc00cf0c58c77a7d98670502bae68adc1f79da156741ce2"
     },
     {
       "path": "examples/subagents-environment/hour.mjs",
@@ -417,12 +417,18 @@
       "path": "src/environments/endurance/flat-workload.js",
       "anchor": "      return `",
       "line": 16,
-      "sha256": "89c8746a7fe5b18a678673e9796170203dfa1aceb139e026f3c6d0e7f67b941f"
+      "sha256": "4108bcc26476652a8bf1d1224d15371f4153d19296dddab6cd8eb2d6f1759c1c"
+    },
+    {
+      "path": "src/environments/endurance/flat-hour.js",
+      "anchor": "export const FLAT_MISSING_MATERIAL_CORRECTION = '",
+      "line": 10,
+      "sha256": "6098cf0e115249477285ed946ec19175d4d67e1116451545b5efd80eb84ce095"
     },
     {
       "path": "src/environments/endurance/flat-hour.js",
       "anchor": "input: `",
-      "line": 74,
+      "line": 107,
       "sha256": "261bdd3ae0a6284507cbc066c4c8890d362515be665ef74b6ce0b50b603f2230"
     },
     {
@@ -441,7 +447,7 @@
     {
       "path": "src/environments/endurance/flat-workload.js",
       "line": 16,
-      "expression": "return `FLAT_PROGRAM_GROUP peer=${peer} phase=${phase}. Keep your actual current Task and Execution. Complete this programming task and independently inspect the host candidate ${candidate.revision}. ${adopted ? 'Merge all fixed Task revisions listed below in order, each with a fresh stable request ID, and remember the last returned checked main_revision.' : `Merge --from ${candidate.revision} with a fresh stable request ID, obtain trusted whole-tree PASS and remember main_revision.`} If MAIN_MOVED, inspect current state and retry the merge with a new request ID; do not fabricate success. Publish exactly one Material whose content is JSON with exactly proofKey:${proofKey}, peer:${peer}, phase:${phase}, revision:the returned fixed main_revision, programming:the requested result${adopted ? ', adopted:{materialId,sourceSha256,answersSha256} copied from the original programming proof' : ''}. Link it to your Task with role experience. Do not finish the Task in this group. Keep executable source and stdout files for required export and wait for the next explicit host followUp.${adopted ? ` The original contributor has actually stopped. First merge each of your Task’s fixed public candidate revisions ${candidate.stages.map(stage=>stage.revision).join(', ')} in order, each with its own stable request ID, so the final whole-tree check covers your complete Task contract. Read Material ${adopted.materialId} and public revision ${adopted.revision} through their normal CLI routes, preserve the original, Use material consume with action task and a truthful impact to record the actual source consumption. Copy only its original materialId and programming sourceSha256/answersSha256 into adopted; these hashes are not supplied by the host.` : ''}${program.prompt(peer, phase + 1)}`;"
+      "expression": "return `FLAT_PROGRAM_GROUP peer=${peer} phase=${phase}. Keep your actual current Task and Execution. Complete this programming task and independently inspect the host candidate ${candidate.revision}. ${adopted ? 'Merge all fixed Task revisions listed below in order, each with a fresh stable request ID, and remember the last returned checked main_revision.' : `Merge --from ${candidate.revision} with a fresh stable request ID, obtain trusted whole-tree PASS and remember main_revision.`} If MAIN_MOVED, inspect current state and retry the merge with a new request ID; do not fabricate success. Publish exactly one Material whose content is JSON with exactly proofKey:${proofKey}, peer:${peer}, phase:${phase}, revision:the returned fixed main_revision, programming:the requested result${adopted ? ', adopted:{materialId,sourceSha256,answersSha256} copied from the original programming proof' : ''}. Link it to your Task with role experience. Do not finish the Task in this group. Keep executable source and stdout files for required export and wait for the next explicit host followUp.${adopted ? ` The original contributor has actually stopped. First merge each of your Task’s fixed public candidate revisions ${candidate.stages.map(stage=>stage.revision).join(', ')} in order, each with its own stable request ID, so the final whole-tree check covers your complete Task contract. Read Material ${adopted.materialId} and public revision ${adopted.revision} through their normal CLI routes, preserve the original, Use material consume with action task and a truthful impact to record the actual source consumption. Copy only its original materialId and programming sourceSha256/answersSha256 into adopted; these hashes are not supplied by the host.` : ''} Project-root file custody: write and retain the actual executable source at /workspace/project/hour-program-${phase+1}.py and its actual stdout at /workspace/project/hour-program-${phase+1}.stdout.json. Use these absolute paths or cd /workspace/project. Before publishing, confirm both are regular non-symlink files and derive sourceSha256 and parsed-JSON answersSha256 from those exact bytes. Retain all earlier stage pairs and preserve distinct rejected-attempt copies. Do not leave the only copy in another directory; final required Core export must contain every pair.${program.prompt(peer, phase + 1)}`;"
     },
     {
       "path": "src/environments/endurance/lead-helper-workload.js",
@@ -614,7 +620,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "5662af964f7e339dc388cdf1c536bbe6768ba24f601a2d8c925531640322791c"
+      "sha256": "b3b74c417378d188d7a4d4ca6ae698eb470a6336846420ce55145d9deca0364b"
     }
   ]
 }
