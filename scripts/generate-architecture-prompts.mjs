@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { parentPromptFor, initialGoalFor } from '../examples/subagents-environment/prompts.mjs';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
-import { BOT_SYSTEM_PROMPT, BOT_SKILLS, BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
+import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory } from '../src/agent/bot-contract.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
 
@@ -19,8 +19,7 @@ assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Us
 const check = args[0] === '--check';
 const sha256 = (text) => createHash('sha256').update(text).digest('hex');
 const sourcePaths = [
-  'src/agent/bot-contract.js', 'src/agent/bot-contract/system.txt',
-  ...BOT_SKILLS.map(skill => `src/agent/bot-contract/${skill.name}.md`),
+  'src/agent/bot-contract.js',
   'src/agent/capability-profile.js',
   'src/agent/services-bridge.js',
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
@@ -75,8 +74,6 @@ const extendedRegistry = createBuiltinServiceRegistry();
 extendedRegistry.registerService({ manifest: mathlibBundle.manifest, bundle: mathlibBundle, adapter: { invoke() { throw new Error('documentation never invokes services'); } } });
 const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, role: AGENT_ROLES.BOUND });
 
-output('01-system-identity.md', header('Complete stable identity instructions', 'The retained fixed system addendum below belongs to the former registered Bot resource contract and has no current startup caller. Phase 0005 Core stages the host-provided Profile.prompt verbatim under swarmenv-core-v1 with empty resources. Pi supplies its own native tool instructions.')
-  + block(`Registered Bot system addendum (${BOT_PROTOCOL_VERSION})`, BOT_SYSTEM_PROMPT));
 let toolsDoc = header('CLI directory and optional Service documentation', 'Core selects the four native tools read/write/edit/bash. The synthetic namespace directories below illustrate the retained botServiceDirectory projection; current startup discovery is composed by the Environment. Schemas and documentation are fetched through swarm service commands, not registered as separate Pi tools.');
 for (const [title, p] of [['Built-in Services', profile], ['With optional Mathlib Search', extendedProfile]]) toolsDoc += block(title, JSON.stringify(botServiceDirectory(p), null, 2));
 for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource. The directory example above shows its metadata and hash.');
@@ -86,10 +83,6 @@ let turnsDoc = header('Complete flat continuation messages', 'The flat controlle
 turnsDoc += block('Flat bound continuation', BOT_CONTINUATION_MESSAGE);
 turnsDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
 output('03-runtime-turns.md', turnsDoc);
-let skillDoc = header('Complete registered Bot skills', 'These retained repository files describe the former registered Bot skill contract, whose startup used explicit --skill paths and checked resource bytes and permissions. The current Worker rejects that contract and accepts only swarmenv-core-v1 with empty resources; these bodies do not establish current delivery or skill loading.');
-for (const skill of BOT_SKILLS) skillDoc += block(`${skill.name} (${skill.version})`, sources.get(`src/agent/bot-contract/${skill.name}.md`), `Guest path: ${skill.path}; file SHA-256: ${skill.sha256}`);
-output('08-bot-skills.md', skillDoc);
-
 let runtimeDoc = header('Complete Runtime notification messages', 'Runtime delivers buildBotNotification from bot-contract.js. Synthetic identifiers below illustrate the exact current body; actual delivery requires a live bound Session.');
 for (const notification_type of ['handoff_warning', 'material_available', 'dependency_satisfied']) runtimeDoc += block(notification_type, buildBotNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', material_id: '<MATERIAL_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', recipient_task_id: '<TASK_ID>', payload: { execution_id: '<EXECUTION_ID>', deadline: '2099-01-01T00:00:00.000Z' } }, { at: Date.parse('2098-12-31T23:59:30.000Z') }));
 output('04-runtime-messages.md', runtimeDoc);
@@ -198,7 +191,6 @@ for (const [index, line] of sources.get(flatControllerPath).split('\n').entries(
 }
 const manifest = {
   description: 'Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.',
-  bot_protocol_version: BOT_PROTOCOL_VERSION,
   sources: sourcePaths.map((path) => ({ path, sha256: sha256(sources.get(path)) })),
   extracted_spans: extracted,
   prompt_send_sites: sendSites,

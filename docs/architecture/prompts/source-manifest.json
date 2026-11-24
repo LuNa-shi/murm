@@ -1,30 +1,9 @@
 {
   "description": "Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.",
-  "bot_protocol_version": "swarm-bot-v1-draft.3",
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "894cabfee9c85c8f2b27beac0ca021a1b8e872f4bbadfc9278b17296e8a74c7d"
-    },
-    {
-      "path": "src/agent/bot-contract/system.txt",
-      "sha256": "b812832173ad5efd0fce7d36f13001a0a2f1db3efd137906ae58ad0f36a2c343"
-    },
-    {
-      "path": "src/agent/bot-contract/plan-task.md",
-      "sha256": "3cfae26c7423640d02b00402bd9dcbf6c6242935382ba1b889a0b7c3eae78ef6"
-    },
-    {
-      "path": "src/agent/bot-contract/use-material.md",
-      "sha256": "53ff58a3a35baee7f03bd08e65334b6195ab94463ceafc3e9a2faa5bc08ccf80"
-    },
-    {
-      "path": "src/agent/bot-contract/use-workspace.md",
-      "sha256": "9f7c8fed6b1f4b1607a0328ffca09a67a2e83b547552a0bf276f48ae8631dcae"
-    },
-    {
-      "path": "src/agent/bot-contract/finish-task.md",
-      "sha256": "cc3748aa4502013072a030fa84fe13f8cfaa82d6e1ea642661a5b6eeaeeb32a4"
+      "sha256": "21d4f5103b2cec25d281a511a6c32a8193def26204c5a6dab08bc2af3bf52f7f"
     },
     {
       "path": "src/agent/capability-profile.js",
@@ -436,20 +415,12 @@
   ],
   "generated_bodies": [
     {
-      "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "fc76fb6fc853954d0ee33e387b1601751478c8950fe9e9fe1e0462fab266cd84"
-    },
-    {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
       "sha256": "5f171bca77f960e64c53b43092604bcaa357f843bf9f8455ad1c45773b88cade"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
       "sha256": "dc41101cbd854afaa6b403a0cc8648201e1ec6b76a21155fad41169bc165a457"
-    },
-    {
-      "path": "docs/architecture/prompts/08-bot-skills.md",
-      "sha256": "91bdb2eefd675a25c6e6ad4395cca078e32d58a6cd31863d70e97c4d7b54d715"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",

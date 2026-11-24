@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **176 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **171 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -28,16 +28,11 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [.gitmodules](../../.gitmodules) | Pinned external Agensh source location and board schema attribution | [18-agensh-environment](18-agensh-environment.md) | `6160616b42057b75949236480e7505e9500561fd4d11194bb07bd5933b4d7a6c` |
 
-### Agent and prompts (8)
+### Agent and prompts (3)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
-| [src/agent/bot-contract.js](../../src/agent/bot-contract.js) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `894cabfee9c85c8f2b27beac0ca021a1b8e872f4bbadfc9278b17296e8a74c7d` |
-| [src/agent/bot-contract/finish-task.md](../../src/agent/bot-contract/finish-task.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `cc3748aa4502013072a030fa84fe13f8cfaa82d6e1ea642661a5b6eeaeeb32a4` |
-| [src/agent/bot-contract/plan-task.md](../../src/agent/bot-contract/plan-task.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `3cfae26c7423640d02b00402bd9dcbf6c6242935382ba1b889a0b7c3eae78ef6` |
-| [src/agent/bot-contract/system.txt](../../src/agent/bot-contract/system.txt) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `b812832173ad5efd0fce7d36f13001a0a2f1db3efd137906ae58ad0f36a2c343` |
-| [src/agent/bot-contract/use-material.md](../../src/agent/bot-contract/use-material.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `53ff58a3a35baee7f03bd08e65334b6195ab94463ceafc3e9a2faa5bc08ccf80` |
-| [src/agent/bot-contract/use-workspace.md](../../src/agent/bot-contract/use-workspace.md) | Versioned registered Bot contract, immutable skill resources and dynamic message composition | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `9f7c8fed6b1f4b1607a0328ffca09a67a2e83b547552a0bf276f48ae8631dcae` |
+| [src/agent/bot-contract.js](../../src/agent/bot-contract.js) | Flat continuation and notification messages with Service directory projection | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [07-run-configuration](07-run-configuration.md) | `21d4f5103b2cec25d281a511a6c32a8193def26204c5a6dab08bc2af3bf52f7f` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | Role-specific capability profile, binding requirements and tool directory | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | Authenticated per-Core tool endpoint, binding and lifecycle orchestration | [01-agent-core](01-agent-core.md), [08-prompts](08-prompts.md), [10-service-api-reference](10-service-api-reference.md) | `41974bc75084edca42e4188a71b91d48c94faa4689865ad26d0585a430216231` |
 
@@ -153,7 +148,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/check-architecture.mjs](../../scripts/check-architecture.mjs) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d02d9b9b352691cb9ceb00a820eb483562efa568aebebb9de7ef9ba98f8d233` |
 | [scripts/generate-architecture-api.mjs](../../scripts/generate-architecture-api.mjs) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `4df59886439e8e59ece335acfad45a528f5484c5de2d70a148e88d588dd38f6e` |
 | [scripts/generate-architecture-coverage.mjs](../../scripts/generate-architecture-coverage.mjs) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `733a14d4dce95ec2822e6966ef6ae4feb2ffca8d8f21e4cc1349047399b9cdf8` |
-| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `c38591ba71711bfa3ee8257eb8f162d7be43bf26c1b78d1dc824105eec0856b4` |
+| [scripts/generate-architecture-prompts.mjs](../../scripts/generate-architecture-prompts.mjs) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `ba73234cdd239e09e275cc325df8fb47198a93464293cd12b9f07a3733404863` |
 
 ### durable storage (3)
 

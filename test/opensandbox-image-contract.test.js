@@ -159,7 +159,7 @@ test('built OpenSandbox image starts direct Pi with the Core prompt and empty re
     system_prompt_path: '/workspace/runtime/profile-prompt.txt', model_catalog_resource: modelCatalogResource };
   await runImageProbes([input,
     { ...input, expect_rejection: true, contract_version: 'swarm-bot-v1-draft.2' },
-    { ...input, expect_rejection: true, resources: [{ path: '/opt/swarmenv/src/agent/bot-contract/system.txt', sha256: '0'.repeat(64) }] },
+    { ...input, expect_rejection: true, resources: [{ path: '/workspace/runtime/unexpected-resource.txt', sha256: '0'.repeat(64) }] },
     { ...input, expect_rejection: true, command: 'bash' },
     { ...input, expect_rejection: true, system_prompt_path: '/workspace/other-prompt.txt' },
   ].map(value => [probe, JSON.stringify(value)]));

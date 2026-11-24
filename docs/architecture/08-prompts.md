@@ -10,17 +10,13 @@ The installed Notes Environment gives the writer and reader their role prompts a
 
 The fixed scaleMAS Environment stages the same peer prompt for all three Bots and sends a peer/cycle header, the host question and the cycle instruction through the exclusive `runInput` helper. Its complete text and dynamic field provenance are in [scaleMAS prompts](prompts/09-scalemas-environment.md); [the Environment chapter](19-scalemas-environment.md) describes ordering and failure gates.
 
-## Existing flat and registered Bot paths
+## Flat messages and Core startup
 
-The retained registered Swarm Bot contract describes Pi's native `read`, `write`, `edit`, and `bash` tools and typed Swarm CLI calls through Bash. Current Core selects these native tools and stages the host's frozen Profile prompt; the retained versioned prompt resources do not define its startup input.
-
-## Resources and startup
-
-`agentContract` in [bot-contract.js](../../src/agent/bot-contract.js) still returns the retained registered Bot system addendum, protocol version and pinned resource hashes for `system.txt` and the four `plan-task`, `use-material`, `use-workspace`, and `finish-task` skills. It has no current startup caller. These files and their generated references preserve repository text; they do not establish that a Bot received or loaded it.
+[bot-contract.js](../../src/agent/bot-contract.js) composes the current Flat continuation, soft-closeout and domain notification messages and projects Service metadata into CLI namespaces. These helpers preserve Task/Execution guidance and authorization discovery; they do not assemble a system prompt or skill resources.
 
 The manager starts only `swarmenv-core-v1` with an explicit empty resource array. The Worker rejects former resource-based contracts and requires the direct `pi` command, Profile prompt text and the fixed Core prompt path. Core constructs native-tool and ambient-discovery flags; the Worker checks string arguments and stages the supplied prompt. Model-catalog hash/ownership checks and filesystem isolation remain separate guards. [Backend](16-pi-opensandbox-backend.md) explains this current path. Pi/provider-owned rendering remains outside the repository templates.
 
-The bundled legacy adapter, benchmark discovery builder and paper/local-tools message branches have been retired. The retained registered system and skill references below describe the former resource contract, including its historical loading instructions, rather than the current Worker send path. The public-Core flat controller's actual discovery and continuation composition is documented below.
+The former registered Bot startup helper, fixed system addendum and four skills have been removed after their callers migrated. Their original text and version-bound evidence remain in Git history and research revisions. Current generated references document the executable Flat and Environment compositions below.
 
 ## Continuations, notifications and lifecycle feedback
 
@@ -32,12 +28,10 @@ Bridge command responses include structured results/errors and lifecycle notices
 
 | Reference | Contents |
 |---|---|
-| [System addenda](prompts/01-system-identity.md) | Complete registered Bot resource text |
 | [CLI directory and provider documents](prompts/02-task-loop-and-tools.md) | Actual startup directory fixtures and available optional bundle documents |
 | [Runtime turns](prompts/03-runtime-turns.md) | Complete flat continuation and soft-closeout bodies |
 | [Runtime notifications](prompts/04-runtime-messages.md) | Exact current notification builder output |
 | [Tool-result guidance](prompts/06-tool-return-guidance.md) | Fixed executable hint/remediation/guidance fields and delivery conditions |
-| [Bot skills](prompts/08-bot-skills.md) | Complete immutable skill resources |
 | [Source manifest](prompts/source-manifest.json) | Source hashes, extraction anchors, send sites and generated-body hashes |
 
 `generate-architecture-prompts.mjs` runs offline with explicit synthetic identities and timestamps. It enumerates repository `.prompt` send sites and instruction fields and fails when an unlisted source introduces one. Run `npm run docs:generate`, inspect generated and explanatory changes, then `npm run docs:check`. Fingerprints establish source alignment, not actual delivery or compliance. Actual claims about what a Bot saw require private Session/RPC evidence. Public reports must not contain raw conversations, proof candidates, credentials or personal paths. Full model request replay also needs external Pi/provider context and compaction state, which this repository does not capture as a canonical request.

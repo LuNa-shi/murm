@@ -1,21 +1,4 @@
 import { isSoftCloseout } from '../task/execution-budget.js';
-import { readFileSync } from 'node:fs';
-import { createHash } from 'node:crypto';
-
-export const BOT_PROTOCOL_VERSION = 'swarm-bot-v1-draft.3';
-export const BOT_TOOL_NAMES = Object.freeze(['read', 'write', 'edit', 'bash']);
-const body = name => readFileSync(new URL(`./bot-contract/${name}`, import.meta.url), 'utf8');
-const hash = value => createHash('sha256').update(value).digest('hex');
-export const BOT_SYSTEM_PROMPT = body('system.txt').trimEnd();
-export const BOT_SYSTEM_HASH = hash(BOT_SYSTEM_PROMPT);
-export const BOT_SYSTEM_RESOURCE = Object.freeze({ path: '/opt/swarmenv/src/agent/bot-contract/system.txt', sha256: hash(body('system.txt')) });
-export const BOT_SKILLS = Object.freeze(['plan-task', 'use-material', 'use-workspace', 'finish-task'].map(name => {
-  const content = body(`${name}.md`);
-  return Object.freeze({ name, version: 'draft.3', path: `/opt/swarmenv/src/agent/bot-contract/${name}.md`,
-    description: content.match(/^description: (.+)$/m)[1], sha256: hash(content) });
-}));
-
-export const BOT_RESOURCES = Object.freeze([BOT_SYSTEM_RESOURCE, ...BOT_SKILLS.map(({ path, sha256 }) => Object.freeze({ path, sha256 }))]);
 
 export const BOT_CONTINUATION_MESSAGE = '继续当前 Task/E。先核对剩余预算、真实 Workspace 状态和新的 Material/检查反馈，再推进当前责任。需要收尾时先保存有用文件、发布有用 Material，再以真实 outcome 调用 swarm task finish；未保存、未确认或失败的操作不能声明成功。';
 
@@ -53,9 +36,4 @@ export function botServiceDirectory(profile) {
     });
   }
   return entries;
-}
-
-export function agentContract(mode = 'swarm') {
-  if (mode !== 'swarm') throw new TypeError('Unknown agent mode');
-  return { protocolVersion: BOT_PROTOCOL_VERSION, systemPrompt: BOT_SYSTEM_PROMPT, systemHash: BOT_SYSTEM_HASH, systemResource: BOT_SYSTEM_RESOURCE, skills: BOT_SKILLS, resources: BOT_RESOURCES };
 }

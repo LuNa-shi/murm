@@ -123,8 +123,7 @@ test('candidate package admits only declared distribution roots and retains exec
     'src/core/index.js', 'src/core/index.d.ts', 'src/core/services.js', 'src/core/services.d.ts',
     'src/core/backends/pi-opensandbox.js', 'src/core/backends/pi-opensandbox.d.ts',
     'scripts/swarm.mjs', 'scripts/opensandbox-agent-worker.mjs',
-    'services/opensandbox-agent/pi-models.json', 'src/agent/bot-contract/system.txt',
-    'src/agent/bot-contract/use-workspace.md', 'src/environments/shared/run-report.js',
+    'services/opensandbox-agent/pi-models.json', 'src/environments/shared/run-report.js',
     'examples/notes-environment/main.mjs', 'examples/subagents-environment/controller.mjs',
     'docs/architecture/source-map.json', 'test/fixtures/foreground-host-configuration.mjs',
   ];
