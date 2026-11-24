@@ -139,17 +139,29 @@ test('checked merge is explicitly opted in and source arguments cannot select mu
 });
 
 
-test('a timed-out checker retains ownership and cannot publish a late PASS',async t=>{
+test('a timed-out checker retains ownership across fresh requests and cannot publish a late PASS',async t=>{
   const release=Promise.withResolvers();
   const f=await fixture(t,{timeoutMs:20,async check(){await release.promise;}});
+  const merge=requestId=>f.cli('workspace','merge','--from',f.revisions[0].revision,'--request-id',requestId);
+  let settling;
   try {
-    await assert.rejects(f.cli('workspace','merge','--from',f.revisions[0].revision,'--request-id','timeout'),error=>/SERVICE_TIMEOUT/.test(error.stderr));
+    await assert.rejects(merge('timeout'),error=>/SERVICE_TIMEOUT/.test(error.stderr));
+    await assert.rejects(merge('timeout'),error=>/SERVICE_TIMEOUT/.test(error.stderr));
+    await assert.rejects(merge('fresh-blocked'),error=>/WORKSPACE_BUSY/.test(error.stderr));
+    assert.equal(f.checked.length,1);
     assert.equal(f.publication.mergeStatus().cleanup,'pending');
     assert.equal(f.publication.mergeStatus().pending_checks,1);
+    assert.equal((await f.workspace.get({workspaceId:f.workspaceId})).main_revision,'0.1');
     f.publication.close();
     assert.equal((await f.publication.waitForMerges({timeoutMs:10})).cleanup,'pending');
+    let settled=false;
+    settling=f.publication.waitForMerges({timeoutMs:1000}).then(receipt=>{settled=true;return receipt;});
+    await new Promise(resolve=>setImmediate(resolve));
+    assert.equal(settled,false);
   } finally {release.resolve();}
-  assert.equal((await f.publication.waitForMerges({timeoutMs:1000})).cleanup,'complete');
+  assert.equal((await settling).cleanup,'complete');
+  assert.equal((await f.publication.waitForMerges({timeoutMs:1000})).pending_checks,0);
+  assert.equal(f.checked.length,1);
   assert.equal((await f.workspace.get({workspaceId:f.workspaceId})).main_revision,'0.1');
 });
 
@@ -215,4 +227,36 @@ test('Core CLI merge rejects an abort-handler late PASS and replays timeout with
   assert.equal(f.checked.length, 1);
   assert.equal((await f.workspace.get({ workspaceId: f.workspaceId })).main_revision, '0.1');
   assert.equal((await f.publication.waitForMerges({ timeoutMs: 1000 })).cleanup, 'complete');
+});
+
+test('Core CLI merge recovers its Git result after SQLite confirmation loss without another check', async t => {
+  const f = await fixture(t);
+  const exec = f.tasks.db.exec.bind(f.tasks.db);
+  let failCommit = false;
+  let failed = false;
+  f.workspace.repository.fault = point => { if (point === 'after_intent') failCommit = true; };
+  f.tasks.db.exec = sql => {
+    if (sql === 'COMMIT' && failCommit) {
+      failCommit = false;
+      failed = true;
+      throw new Error('controlled SQLite confirmation loss');
+    }
+    return exec(sql);
+  };
+  const merge = () => f.cli('workspace', 'merge', '--from', f.revisions[0].revision, '--request-id', 'sql-confirmation');
+  try {
+    await assert.rejects(merge(), error => /WORKSPACE_RESULT_UNKNOWN/.test(error.stderr));
+    assert.equal(failed, true);
+  } finally {
+    f.workspace.repository.fault = null;
+    f.tasks.db.exec = exec;
+  }
+  const result = await merge();
+  assert.equal((await f.workspace.get({ workspaceId: f.workspaceId })).main_revision, result.main_revision);
+  assert.equal((await f.workspace.listRevisions({ workspaceId: f.workspaceId })).length, 4);
+  const published = await f.workspace.exportRevision({ workspaceId: f.workspaceId, revision: result.main_revision });
+  assert.equal(Buffer.from(published.files['a.txt']).toString(), 'first contribution\n');
+  assert.equal(result.check.checked_tree, published.git_tree);
+  assert.deepEqual(await merge(), result);
+  assert.equal(f.checked.length, 1);
 });
