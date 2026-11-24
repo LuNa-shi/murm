@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto';
 import { registerHooks } from 'node:module';
 import { transport } from './fixtures/core-bot-service-backend.js';
 import { configuration } from './fixtures/core-input-backend.js';
+import { verifySubagentsInputs } from '../examples/subagents-environment/hour-artifacts.mjs';
 const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./pi-opensandbox-backend.js'&&context.parentURL?.endsWith('/src/core/index.js'))return {url:new URL('./fixtures/subagents-hour-backend.js',import.meta.url).href,shortCircuit:true};
   if(specifier==='./run-report.mjs'&&context.parentURL?.endsWith('/examples/subagents-environment/hour.mjs'))return {url:new URL('../src/environments/shared/run-report.js',import.meta.url).href,shortCircuit:true};
@@ -32,7 +33,9 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
     if(row.botId!==parentId){
       const task=JSON.parse(row.input),source=`print(${task.peer+task.stage})\n`,answers=[task.peer+task.stage];
       const output=JSON.stringify({stage:task.stage,child:task.peer,programming:{task:`task-${task.stage}-${task.peer}`,sourceSha256:hash(source),answersSha256:hash(JSON.stringify(answers))}});
-      keep(row.botId,`hour-program-${task.stage}.py`,source);keep(row.botId,`hour-program-${task.stage}.stdout.json`,JSON.stringify(answers));keep(row.botId,`hour-results/stage-${task.stage}.json`,output);
+      const directory=task.peer===0?'':'programs/';
+      keep(row.botId,`${directory}hour-program-${task.stage}.py`,source);keep(row.botId,`${directory}hour-program-${task.stage}.stdout.json`,JSON.stringify(answers));keep(row.botId,`hour-results/stage-${task.stage}.json`,output);
+      if(task.peer===0)await new Promise(resolve=>setTimeout(resolve,10));
       transport.spawns.get(row.botId).onEvent({type:'settled',outcome:'completed',output});
     }else if(row.input.startsWith('Prepare exactly')){
       for(let i=0;i<3;i++){const result=await call('spawn',{profile:'child'},`child-${i}`);assert.equal(result.initialInput,null);childIds.push(result.bot.id);}
@@ -47,9 +50,12 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
     }
   };}arm();
   transport.onCollect=async function*(botId){
-    yield {type:'directory',path:'hour-results'};let totalBytes=0;const entries=[...(files.get(botId)??new Map())];
-    for(const [path,text]of entries){const bytes=Buffer.from(changedArchive&&path==='hour-program-3.py'?'changed source':text);totalBytes+=bytes.length;yield {type:'file',path,bytes:bytes.length,mode:0o644};yield {type:'chunk',data:bytes.toString('base64')};yield {type:'fileEnd',sha256:hash(bytes)};}
-    yield {type:'end',totalBytes,fileCount:entries.length,directoryCount:1};
+    const entries=[...(files.get(botId)??new Map())];
+    const directories=new Set(['hour-results',...entries.filter(([path])=>path.includes('/')).map(([path])=>path.split('/')[0])]);
+    for(const path of directories)yield {type:'directory',path};
+    let totalBytes=0;
+    for(const [path,text]of entries){const bytes=Buffer.from(changedArchive&&path.endsWith('hour-program-3.py')?'changed source':text);totalBytes+=bytes.length;yield {type:'file',path,bytes:bytes.length,mode:0o644};yield {type:'chunk',data:bytes.toString('base64')};yield {type:'fileEnd',sha256:hash(bytes)};}
+    yield {type:'end',totalBytes,fileCount:entries.length,directoryCount:directories.size};
   };
   return {outputDir,getTick:()=>tick,options:{backend:{...configuration,sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'}},image:'test',outputDir,clock:()=>tick,waitForMs:async ms=>{tick+=ms;if(lateExit&&tick>=3600000)transport.spawns.get(parentId).onEvent({type:'exit',expected:false,reason:'controlled-last-wake'});},
     programming:{prompt:({peer,stage})=>`Implement finite task ${stage} for child ${peer}.`,verify:async({peer,stage,submission})=>submission?.task===`task-${stage}-${peer}`&&submission.sourceSha256===hash(`print(${peer+stage})\n`)&&submission.answersSha256===hash(JSON.stringify([peer+stage]))},
@@ -64,6 +70,23 @@ test('controlled subagents hour retains all original peers, four quarters and re
   assert.equal(report.businessFailure,null,JSON.stringify(report));assert.equal(report.cleanupFailure,null,JSON.stringify(report));
   assert.equal(report.result.state,'controlled');assert.equal(report.result.durationMs,3600000);assert.equal(getTick(),3600000);
   assert.equal(report.result.evidence.length,4);assert.equal(report.archives.children.length,12);assert.equal(report.archives.parents.length,4);
+  const admissions=report.result.childAdmissions;
+  assert.equal(admissions.length,12);
+  assert.equal(new Set(admissions.map(row=>row.inputId)).size,12);
+  assert.notDeepEqual(report.result.childIds,report.routing.childIds);
+  assert.equal(report.archives.children.filter(row=>row.files.some(file=>file.path.startsWith('programs/'))).length,8);
+  for(const {stage,botId,inputId,forwardedToParentInputId} of admissions){
+    const group=report.result.evidence[stage];
+    assert.equal(transport.submissions.get(inputId).botId,botId);
+    assert.equal(transport.submissions.get(forwardedToParentInputId).botId,group.parent.botId);
+    const child=group.children.find(row=>row.botId===botId);
+    assert.equal(child.forwardedToParentInputId,forwardedToParentInputId);
+    assert.equal(Object.hasOwn(child,'inputId'),false);
+  }
+  const stages=structuredClone(report.routing.stages);
+  stages[0].children[0].receipt.inputId=admissions[0].inputId;
+  await assert.rejects(verifySubagentsInputs({outputDir:options.outputDir,runtimeId:report.runtimeId,
+    parentId:report.result.evidence[0].parent.botId,childIds:report.result.childIds,stages}),{code:'SUBAGENTS_INPUT_EVIDENCE_INVALID'});
   assert.equal(transport.spawns.size,4);assert.equal(report.quota.closed,true);assert.equal(report.quota.unknownRequests,1);
   assert.deepEqual(JSON.parse(await readFile(report.reportPath,'utf8')).quota,report.quota);
 });

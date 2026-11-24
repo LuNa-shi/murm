@@ -8,7 +8,7 @@ import { ServiceRegistry } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { runWithReport } from './run-report.mjs';
 import { createSubagentsStages } from './stages.mjs';
-import { verifySubagentsArchives } from './hour-artifacts.mjs';
+import { verifySubagentsArchives, verifySubagentsInputs } from './hour-artifacts.mjs';
 import { hourParentPrompt, hourChildPrompt, hourPrepareInput, hourStageInstructions } from './prompts.mjs';
 const HOUR = 3_600_000, RELEASES = [0,900_000,1_800_000,3_300_000];
 const failure = code => Object.assign(new Error(code), {code});
@@ -25,7 +25,7 @@ export async function runSubagentsHour({backend,image,model='default',outputDir,
   const time=()=>{const value=now();if(!Number.isFinite(value)||value<last||value<0)throw failure('SUBAGENTS_HOUR_CLOCK');last=value;return value;};
   const life=new AbortController(),live=AbortSignal.any([life.signal,...(signal?[signal]:[]),...(ownerSignal?[ownerSignal]:[])]);
   let runtime,stages,parentId,childIds,botIds,lifetime,sessions,started,ended,unavailable=false,closing=false,unsubscribe,timer,archives,quotaReceipt,cleanupDeadline,ownerDeadline;
-  const evidence=[]; let report,closeFailure;
+  const evidence=[]; let report,closeFailure,childAdmissions;
   const secrets=[backend?.sandbox?.apiKey,backend?.sandbox?.execdToken,...Object.values(backend?.models??{}).flatMap(row=>Object.values(row.upstream?.headers??{}))].filter(value=>typeof value==='string'&&value).flatMap(value=>[value,value.replace(/^(Bearer|Basic)\s+/i,'')]);
   const redact=value=>JSON.parse(JSON.stringify(value,(_key,item)=>typeof item==='string'?secrets.reduce((text,secret)=>text.replaceAll(secret,'[redacted]'),item):item));
   function meter(final=false) {
@@ -94,14 +94,20 @@ export async function runSubagentsHour({backend,image,model='default',outputDir,
           const input=JSON.stringify({stage,tasks,instructions:hourStageInstructions});
           const result=await stages.runStage({stage,input,timeoutMs:Math.min(limits.turnMs,started+(stage===3?HOUR:(stage+1)*900_000)-time()),signal:live,async verify({index,output}){let value;try{value=JSON.parse(output);}catch{return false;}return value.stage===stage&&value.child===index&&await programming.verify({peer:index,stage,submission:value.programming})===true;}});
           const atMs=time();if(Math.floor((atMs-started)/900_000)!==stage)throw failure('SUBAGENTS_STAGE_LATE');
-          evidence.push({stage,atMs,parent:{botId:parentId,inputId:result.parent.receipt.inputId,eventSeq:result.parent.settled.seq,sha256:hash(result.parent.settled.output)},children:result.children.map(row=>({botId:row.result.childId,eventSeq:row.result.eventSeq,inputId:row.receipt.inputId,sha256:hash(row.result.output)})),sessions:await sessionSnapshot()});
+          evidence.push({stage,atMs,parent:{botId:parentId,inputId:result.parent.receipt.inputId,eventSeq:result.parent.settled.seq,sha256:hash(result.parent.settled.output)},children:result.children.map(row=>({botId:row.result.childId,eventSeq:row.result.eventSeq,forwardedToParentInputId:row.receipt.inputId,sha256:hash(row.result.output)})),sessions:await sessionSnapshot()});
           await liveBots();
         }
         await pauseUntil(started+HOUR);await sessionSnapshot();await liveBots();ended=time();
         if(ended-started<HOUR||evidence.length!==4)throw failure('SUBAGENTS_HOUR_INCOMPLETE');
-        return {mode:'subagents',accepted:false,state:clock?'controlled':'work-verified',durationMs:ended-started,evidence,lifetime,sessions};
+        return {mode:'subagents',accepted:false,state:clock?'controlled':'work-verified',durationMs:ended-started,evidence,lifetime,sessions,childIds};
       },
-      async afterClose(cleanup){if(cleanup.cleanup!=='complete'||cleanup.bots.length!==4||cleanup.bots.some(row=>!botIds?.includes(row.botId)||row.execution!=='stopped'||row.cleanup!=='complete'))throw failure('SUBAGENTS_HOUR_CLEANUP_PENDING');if(ended!==undefined)archives=await verifySubagentsArchives({outputDir,runtimeId:runtime.id,parentId,childIds,stages:stages.report().stages,maxBytes:exportLimit,programming});},
+      async afterClose(cleanup){
+        if(cleanup.cleanup!=='complete'||cleanup.bots.length!==4||cleanup.bots.some(row=>!botIds?.includes(row.botId)||row.execution!=='stopped'||row.cleanup!=='complete'))throw failure('SUBAGENTS_HOUR_CLEANUP_PENDING');
+        if(ended===undefined)return;
+        const evidenceOptions={outputDir,runtimeId:runtime.id,parentId,childIds,stages:stages.report().stages};
+        childAdmissions=await verifySubagentsInputs(evidenceOptions);
+        archives=await verifySubagentsArchives({...evidenceOptions,maxBytes:exportLimit,programming});
+      },
     });
 
   } catch(error) {
@@ -115,7 +121,8 @@ export async function runSubagentsHour({backend,image,model='default',outputDir,
 
   }
   const result=redact({...report,mode:'subagents',accepted:false,archives,quota:quotaReceipt,modelOwnerFailure:closeFailure??null,businessFailure:report.businessFailure??closeFailure??null});
-  if(result.result&&!result.businessFailure&&!result.cleanupFailure&&archives)result.result.state=clock?'controlled':'work-and-cleanup-verified';
+  if(result.result&&childAdmissions)result.result.childAdmissions=childAdmissions;
+  if(result.result&&!result.businessFailure&&!result.cleanupFailure&&archives&&childAdmissions)result.result.state=clock?'controlled':'work-and-cleanup-verified';
   if(result.reportPath){
     const temporary=`${result.reportPath}.${randomUUID()}.tmp`;
     try{await writeFile(temporary,JSON.stringify(result,null,2)+'\n',{flag:'wx',mode:0o600});await rename(temporary,result.reportPath);}

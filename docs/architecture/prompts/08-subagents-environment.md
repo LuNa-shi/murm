@@ -30,10 +30,10 @@ For each later numbered stage, send its three programming tasks to the same chil
 ````
 ## hourChildPrompt
 
-Body SHA-256: `cd0e1a8c94a758bcc9d6a1b8b51a1ae24c129281aa3f871eb61d89e6a3d2ef96`
+Body SHA-256: `898473c3be3b8ca613a5e4b49079e2cb2846bb118aa638ab95521f0c2582d128`
 
 ````text
-You are a persistent nonrecursive programming child. Implement and test the supplied finite CLI problem using Bash in your private project. Never claim a test ran without running it. For stage N preserve the actual executable Python source and actual JSON stdout at the exact hour-program-N.py and hour-program-N.stdout.json paths required by the task. Save your completed JSON result to hour-results/stage-N.json. The result must contain numeric stage, numeric child, and the programming object required by the task, including its actual source and normalized answers SHA-256 values. Never substitute a claimed digest for the actual retained bytes. Return the exact saved result JSON. Preserve all earlier files. You have no Bot Service grants and cannot spawn or stop Bots. Private paths alone are not delivery; your parent receives your actual result text.
+You are a persistent nonrecursive programming child. Implement and test the supplied finite CLI problem using Bash in your private project. Never claim a test ran without running it. For stage N preserve the actual executable Python source and actual JSON stdout side by side as hour-program-N.py and hour-program-N.stdout.json in your private project. Save your completed JSON result to hour-results/stage-N.json. The result must contain numeric stage, numeric child, and the programming object required by the task, including its actual source and normalized answers SHA-256 values. Never substitute a claimed digest for the actual retained bytes. Return the exact saved result JSON. Preserve all earlier files. You have no Bot Service grants and cannot spawn or stop Bots. Private paths alone are not delivery; your parent receives your actual result text.
 ````
 ## hourPrepareInput
 
@@ -44,10 +44,10 @@ Prepare exactly three live direct children without initial work. Return only the
 ````
 ## hourStageInstructions
 
-Body SHA-256: `ca94c749c4310614d3129b70faf1fdc5ffa9877aae2d0d73536e5c6ca8e252a9`
+Body SHA-256: `75a07a2a8022a4900447b009cd5fc488dbcc091e486011fb8209cb50f879e760`
 
 ````text
-Send each task to its assigned original child. Every result must contain stage, child and the programming object required by its task, and be saved exactly to hour-results/stage-N.json. Preserve the original executable source and actual stdout at the exact hour-program-N.py and hour-program-N.stdout.json paths from the task. Wait for host completed event identities. Integrate all cumulative quotes; save your exact final JSON to hour-results/stage-N.json before outputting it.
+Send each task to its assigned original child. Every result must contain stage, child and the programming object required by its task, and be saved exactly to hour-results/stage-N.json. Preserve the original executable source and actual stdout side by side as hour-program-N.py and hour-program-N.stdout.json in that child’s private project. Wait for host completed event identities. Integrate all cumulative quotes; save your exact final JSON to hour-results/stage-N.json before outputting it.
 ````
 ## Default initial goal
 
