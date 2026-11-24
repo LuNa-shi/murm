@@ -25,7 +25,7 @@ async function stoppedCli(t, failure, cwd, { blockReport = false, businessFailur
     const fixture = new URL('test/fixtures/foreground-host-configuration.mjs', cwd).href;
     await writeFile(config, `import config from ${JSON.stringify(fixture)};\nconfig.options.router.workTimeoutMs = 1000;\nexport default config;\n`);
   }
-  const child = spawn(process.execPath, ['scripts/run-environment.mjs', '--config', config], {
+  const child = spawn(process.execPath, [`--redirect-warnings=${join(outputDir, 'node-warnings.log')}`, 'scripts/run-environment.mjs', '--config', config], {
     cwd, env: { ...process.env, FOREGROUND_TEST_OUTPUT: outputDir, FOREGROUND_TEST_CLEANUP_FAILURE: failure },
     stdio: ['pipe', 'pipe', 'pipe'],
   });

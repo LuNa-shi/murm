@@ -108,7 +108,7 @@ test('installed headless and CLI share configuration, directed input provenance 
   const configuration = join(root, 'test/fixtures/foreground-host-configuration.mjs');
   // This fixture substitutes the backend, while the installed CLI, host, router,
   // Core input ledger, report writer and result reader execute normally.
-  const child = spawn(process.execPath, [entry, '--config', configuration], {
+  const child = spawn(process.execPath, [`--redirect-warnings=${join(installed.directory, 'cli-node-warnings.log')}`, entry, '--config', configuration], {
     cwd: installed.directory,
     env: { ...installed.env, FOREGROUND_TEST_OUTPUT: outputDir },
     stdio: ['pipe', 'pipe', 'pipe'],
@@ -219,7 +219,7 @@ test('installed headless and CLI share configuration, directed input provenance 
     `const scenario = ${headlessScenario.toString()};`,
     'console.log(JSON.stringify(await scenario(configuration, runForegroundEnvironment)));',
   ].join('\n'));
-  const headlessProcess = await execute(process.execPath, [headlessEntry], {
+  const headlessProcess = await execute(process.execPath, [`--redirect-warnings=${join(installed.directory, 'headless-node-warnings.log')}`, headlessEntry], {
     cwd: installed.directory,
     env: { ...installed.env, FOREGROUND_TEST_OUTPUT: headlessOutput },
     timeout: 15_000,

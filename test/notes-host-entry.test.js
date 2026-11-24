@@ -7,7 +7,7 @@ import { installNotesExample, execute } from './fixtures/notes-installed-package
 test('installed Notes entry documents and inspects real failed Runtime receipts', { timeout: 210_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
   const options = { cwd: installed.directory, env: installed.env, timeout: 20_000 };
-  const run = (...args) => execute(process.execPath, ['main.mjs', ...args], options);
+  const run = (...args) => execute(process.execPath, [`--redirect-warnings=${join(installed.directory, 'node-warnings.log')}`, 'main.mjs', ...args], options);
   const help = await run('--help');
   assert.match(help.stdout, /--result <run-directory> --runtime-id <expected-id>/);
   const outputDir = join(installed.directory, 'failed-runs');

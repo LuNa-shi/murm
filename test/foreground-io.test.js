@@ -40,7 +40,8 @@ Object.defineProperty(process, 'stdin', { value: input });
 Object.defineProperty(process, 'stdout', { value: output });
 export default configuration;
 `);
-  const child = spawn(process.execPath, ['--import', path, 'scripts/run-environment.mjs', '--config', path], {
+  // Keep native runtime warnings available without mixing them into application diagnostics.
+  const child = spawn(process.execPath, [`--redirect-warnings=${join(root, 'node-warnings.log')}`, '--import', path, 'scripts/run-environment.mjs', '--config', path], {
     env: { ...process.env, FOREGROUND_TEST_OUTPUT: root, FOREGROUND_TEST_HOLD: '1', ...(cleanupFailure ? { FOREGROUND_TEST_CLEANUP_FAILURE: cleanupFailure } : {}) }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   t.after(() => child.kill('SIGKILL'));
