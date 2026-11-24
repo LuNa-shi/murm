@@ -154,4 +154,4 @@ Bot capacity is an independent host setting.
 
 ## Offline historical reconstruction
 
-The retained private history utilities independently reconstruct a current journaled service database or public Workspace at an explicit historical time into a new destination. Service reconstruction requires automatic-history coverage and returns `REPLAY_HISTORY_MISSING` when unavailable. Workspace immutable-revision reconstruction remains separate. They perform no Bot startup or model request. Experiment assembly, archived service-schema conversion and fresh-run ownership handoff have been removed. See [private history](13-historical-resume.md).
+The private database history reader reconstructs one current journaled service database at an explicit historical time into a new destination. It requires automatic-history coverage and returns `REPLAY_HISTORY_MISSING` when unavailable. Workspace retains its ordinary immutable revisions and committed publication records. The former timestamp-based Workspace copy utility has been retired alongside experiment assembly, archived service-schema conversion and fresh-run ownership handoff. See [private history](13-historical-resume.md).

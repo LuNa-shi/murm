@@ -1,6 +1,6 @@
-# 13. Private service and Workspace history
+# 13. Private service history and Workspace publication records
 
-The retained history modules record and reconstruct individual domain databases and public Workspace state. They are internal file-level utilities, not exports of the public Core package. The experiment importer, archived service-schema conversion and composed fresh-run handoff have been removed. These readers do not start Bots, issue model/checker requests, allocate resources or restore a running Environment.
+Persistent services retain transaction history for explicit offline database reads. Public Workspace writes retain immutable revisions, request receipts and committed publication events for inspection and interrupted-write recovery. The benchmark timestamp-based Workspace reconstruction utility has been retired with its callers. The database reader is an internal file-level utility. Its output is a new private database file, with the caller responsible for any later use.
 
 ## Service reader entry and failure boundary
 
@@ -68,31 +68,27 @@ existing raw-evidence retention rules still apply.
 
 An unjournaled database remains usable through its ordinary service API. Installing capture records a new compatible interval; it does not establish earlier history. The manual-review CLI's `show` command leaves an unjournaled database unchanged, while `decide` starts capture before its transaction. A cutoff before that capture boundary is rejected, and a covered later cutoff restores the committed decision through the journal.
 
-## Workspace history and main selection
+## Workspace publication records
 
-Every normal public Workspace commit now appends an immutable event under
+Every normal public Workspace commit appends an immutable event under
 `.swarm-history/`, including create, save, merge, freeze/unfreeze and request receipts.
+Each event records its sequence, predecessor, commit time and public Workspace record.
 The existing `.swarm-journal.json` remains the interrupted-write intent. Finishing
-that intent durably writes the event and history head; recovery preserves an event
-already written before a crash instead of duplicating it.
+that intent durably writes the event and history head. Recovery preserves an event
+already written before a crash instead of duplicating it, including its original
+commit time. Events in the same millisecond retain their sequence order.
 
-For recorded history, the Workspace reader selects the committed event prefix and its public
-Workspace record. It creates a new repository containing only the then-visible
-revisions and their reachable Git objects. Past unmerged saves remain available for
-Material references; future revisions and receipts are excluded. The new repository
-supports ordinary subsequent save and merge operations.
-
-For old Workspaces, immutable revision metadata and main's first-parent ancestry can
-identify an earlier main. A newer save is not necessarily main. This path reports
-that old revision timestamps describe creation rather than an independently recorded
-publication commit. Old freeze state and undated request attempts are handled as
-new-run ownership state, not guessed from the final Workspace record. Missing Git
-objects, ambiguous ancestry or missing committed history produce explicit errors.
-
-The standalone entry is `restoreWorkspaceAt({sourceRoot, destinationRoot, workspaceId, at})`. It requires a safe Workspace identifier, a separate new destination and a timezone-qualified timestamp. An unsettled publication intent, incomplete history, changed source or unavailable Git identity fails explicitly. It removes its partial output on failure. Workspace history is independent of SQLite capture; its immutable-revision fallback remains supported and does not revive service-schema conversion or experiment assembly.
+The current Workspace APIs read a named immutable revision or current main.
+Saving a new revision leaves main at its earlier revision until an explicit merge.
+`readWorkspaceHistory` reads the committed event chain and validates consecutive
+sequences, predecessor identity, monotonic timestamps and the final history head.
+A missing event or inconsistent head raises `REPLAY_HISTORY_INCOMPLETE`.
+Reading and recovering the current Workspace use its existing repository and
+publication intent. Historical experiment assembly and timestamp-selected copies
+are outside these entry points.
 
 ## Verification seams
 
-Real SQLite tests cover overwritten/deleted rows, binary data, transaction rollback, a cutoff during a transaction, replacement, quoted savepoints, prepared control statements and source preservation, including WAL sidecars. An unjournaled real Task database returns `REPLAY_HISTORY_MISSING`, leaves source bytes intact and leaves no destination or staging directory. Independent manual-review writer tests verify decisions before/after commit and the exact automatic-history boundary. Workspace tests cover save versus main, missing history, crash recovery, excluded future Git objects and new writes after restoration. These are offline deterministic checks, not evidence of active long-running collaboration.
+Real SQLite tests cover overwritten/deleted rows, binary data, transaction rollback, a cutoff during a transaction, replacement, quoted savepoints, prepared control statements and source preservation, including WAL sidecars. An unjournaled real Task database returns `REPLAY_HISTORY_MISSING`, leaves source bytes intact and leaves no destination or staging directory. Independent manual-review writer tests verify decisions before/after commit and the exact automatic-history boundary. Workspace publication tests cover save versus main, freeze/unfreeze receipts, ordered events, gaps and recovery after an event is written before its head. These deterministic checks establish record integrity and current-state recovery.
 
-Sources: [database history](../../src/replay/service-history.js), [Workspace history](../../src/replay/workspace-history.js), [database regressions](../../test/service-history.test.js), [manual-review regressions](../../test/replay-manual-review.test.js), [Workspace regressions](../../test/workspace-history.test.js).
+Sources: [database history](../../src/replay/service-history.js), [Workspace repository](../../src/runtime/workspace-repository.js), [database regressions](../../test/service-history.test.js), [manual-review regressions](../../test/replay-manual-review.test.js), [Workspace publication regressions](../../test/workspace-publication-history.test.js).

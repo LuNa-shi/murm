@@ -156,17 +156,16 @@ recorded impact. A merge records the source revision’s explicit uses, while pa
 direct revisions with `workspace history --all --material-id ID`, and inspect Material
 corrections and the affected files before deciding whether they require revalidation.
 
-## Historical public Workspace reconstruction
+## Public Workspace publication records
 
-Normal public writes automatically retain committed events in `.swarm-history/`,
-including the main pointer, public revision index, freezes and request receipts.
-The publication intent still provides crash recovery. For a quiescent source,
-`restoreWorkspaceAt` can select a time, copy the then-visible Git objects and
-public revisions into a new repository, and continue normal writes. Workspaces
-without committed history use recorded revision metadata and main's first-parent
-ancestry where sufficient; latest save is never treated as main by default. See
-[private history](13-historical-resume.md) for timestamp precision and evidence
-requirements. This standalone reader does not assemble or hand off an experiment.
+Normal public writes retain committed events in `.swarm-history/`, including
+the main pointer, public revision index, freezes and request receipts. The
+publication intent provides crash recovery. An interrupted event/head write
+preserves the published event identity and original time when the current
+Workspace is reopened. Ordinary reads select current main or an explicit
+immutable revision. The former benchmark utility for copying a Workspace at a
+historical timestamp has been retired. See [private history](13-historical-resume.md)
+for committed event validation and recovery.
 
 ## Lean projects across public revisions
 

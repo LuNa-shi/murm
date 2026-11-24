@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **177 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **176 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -199,12 +199,11 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/observability/observation-store.js](../../src/observability/observation-store.js) | SQLite event/projection schema, visibility and multi-database collections | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `b2f03ce533d84621a645671e3f37ab327f5323d2068fcc8ba1c9d6c23b81f269` |
 | [src/observability/workspace-provider.js](../../src/observability/workspace-provider.js) | Workspace inspection adapter for observation routes | [06-observability-experiments](06-observability-experiments.md), [07-run-configuration](07-run-configuration.md) | `5d315a97b03ceb2aad34df6229ef443290b69e91cc47c776c723b678c96ac56a` |
 
-### private history (2)
+### private history (1)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [src/replay/service-history.js](../../src/replay/service-history.js) | Automatic transaction-aware SQLite row history and source-preserving journal reconstruction | [13-historical-resume](13-historical-resume.md) | `b2032d143a44eb242f748ebd7050902333649062375062aab34a4cf3d6a45b61` |
-| [src/replay/workspace-history.js](../../src/replay/workspace-history.js) | Reconstruct past public main and reachable Git objects without modifying the source | [13-historical-resume](13-historical-resume.md) | `63b83b4bf2ff3a17d8b8983507c33b299df3348778a652f18a0eea5f1df4e29a` |
 
 ### programmable Core (17)
 
