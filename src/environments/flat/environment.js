@@ -1,3 +1,4 @@
+import { flatCoordinationPermissions } from './coordination-permissions.js';
 import { createRuntime } from '../../core/index.js';
 import { ServiceRegistry } from '../../core/services.js';
 import { SwarmEnvError } from '../../errors.js';
@@ -12,9 +13,10 @@ import { createFlatModelAccessPolicy } from './model-access-policy.js';
  * callers must not substitute a legacy Runtime or model-supplied file payload. */
 export async function runFlatEnvironment({backend,model,image,prompt='Use the flat Services to discover, execute and truthfully finish Mission work.',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
-  capacity=2,snapshotProject,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
+  capacity=2,coordinationPermissions=[],snapshotProject,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
   closeTimeoutMs=30_000,redact=value=>value,signal}) {
   if(signal!==undefined && !(signal instanceof AbortSignal)) throw new TypeError('Flat host signal must be an AbortSignal');
+  const permissions=flatCoordinationPermissions(coordinationPermissions);
   let runtime,controller,discovery,publication,closeDeadline;
   const result={};
   return runWithReport({outputDir,closeTimeoutMs,redact,
@@ -29,13 +31,13 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       readinessSignal.throwIfAborted();
       if (workspace.mission_id !== missionId) throw new SwarmEnvError('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       taskService.contextService=contextService;
-      discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:()=>deadlineAt});
+      discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:()=>deadlineAt,coordinationPermissions:permissions});
       publication=createFlatPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline:()=>deadlineAt,snapshotProject,judgeService,workspaceProjectCheck,workspaceMergeChecker,
         onFinish:()=>controller?.notify()});
       const services=new ServiceRegistry();
       services.registerService(publication.composeTask(discovery));
       for(const registration of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(registration);
-      const researcher=flatResearcherProfile({prompt,model,image});
+      const researcher=flatResearcherProfile({prompt,model,image,coordinationPermissions:permissions});
       researcher.services=Object.fromEntries([
         ['task',[...discovery.manifest.capabilities,...publication.registrations.find(row=>row.manifest.id==='task').manifest.capabilities].map(row=>row.operation)],
         ...publication.registrations.filter(row=>row.manifest.id!=='task').map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]),
@@ -43,7 +45,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       runtime=await createRuntime({backend,profiles:{researcher},services,maxBots:capacity,outputDir,
         modelAccessPolicy:createFlatModelAccessPolicy({runtimeId:()=>runtime?.id,taskService,missionId,deadline:()=>deadlineAt,isStopping:()=>controller?.snapshot().closing??false})});
       try {
-        controller=createFlatController({...controllerOptions,runtime,taskService,missionId,capacity,deadlineAt,afterStopped:(id,options)=>publication.reconcileWorkspace(id,options)});
+        controller=createFlatController({...controllerOptions,runtime,taskService,missionId,capacity,deadlineAt,coordinationPermissions:permissions,afterStopped:(id,options)=>publication.reconcileWorkspace(id,options)});
       } catch(error) {
         try {
           const receipt=await runtime.close({timeoutMs:closeTimeoutMs});

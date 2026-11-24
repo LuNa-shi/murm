@@ -12,7 +12,7 @@ const deny=message=>{throw new SwarmEnvError('NOT_ALLOWED',message);};
 
 /** One serialized source for discovery, continuation and directed user input.
  * Core owns resources; this controller owns only flat policy and domain cleanup. */
-export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,
+export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,coordinationPermissions=[],
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
   stopTimeoutMs=30_000,discoveryPrompt=FLAT_DISCOVERY_MESSAGE,
   continuationPrompt=BOT_CONTINUATION_MESSAGE,
@@ -21,7 +21,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
     ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() ||
     ![selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(x=>x>0) || heartbeatMs>10000 ||
     ![continuationLimit,discoveryLimit].every(x=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function' || (beforeInitialDispatch!==undefined && typeof beforeInitialDispatch!=='function') || typeof automaticContinuation!=='boolean' || typeof refillWhenNoReadyTask!=='boolean') throw new TypeError('Flat controller requires finite ordered work budgets and trusted Runtime/domain stores');
-  const coordinator=createFlatBotCoordinator({runtime,taskService,missionId});
+  const coordinator=createFlatBotCoordinator({runtime,taskService,missionId,coordinationPermissions});
   const bots=new Map(),feedbackRequests=new Map(),events=new Map();
   const inputs=[],decisions=[],failures=[];
   let admissionController;

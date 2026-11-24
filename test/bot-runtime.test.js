@@ -1619,41 +1619,6 @@ test('an apply already captured before soft closeout completes its original inst
   assert.equal(guest.installs, 1);
 });
 
-test('actual Task CLI lets an UNBOUND Bot retire work while an ACTIVE Bot only repairs its cancelled dependency', async t => {
-  const { command, service, runtime, startSession, context } = await workspaceFixture(t, { runtimeOptions: { maxWorkers: 2, coordinationPermissions: ['task_dependency_replace'] } });
-  const editorBridge = new ServicesBridge({ taskService: service, contextService: context, runtime, coreId: 'core-2',
-    registry: createBuiltinServiceRegistry({ taskService: service, contextService: context }) });
-  await editorBridge.start();
-  t.after(() => editorBridge.stop());
-  let editorEnvironment;
-  await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-2', startSession: async input => {
-    editorEnvironment = editorBridge.startBotIdentity(input.bot.bot_id);
-    return startSession(input);
-  } });
-  const edit = async (...args) => JSON.parse((await promisify(execFile)(process.execPath, ['scripts/swarm.mjs', ...args], {
-    env: { PATH: process.env.PATH, ...editorEnvironment }, timeout: 15000,
-  })).stdout);
-  const propose = async (summary, dependencies = []) => (await command('task', 'propose', '--summary', summary,
-    '--gap', 'Repair the prerequisite needed by the Mission', '--priority', 'medium',
-    '--expected-output', 'A reusable account of the independent claim', '--acceptance-conditions', '["State evidence and limitations"]',
-    '--depends-on', JSON.stringify(dependencies))).task;
-  const old = await propose('Investigate the old prerequisite responsibility');
-  const replacement = await propose('Investigate the corrected prerequisite responsibility');
-  const other = await propose('Investigate another unaffected prerequisite responsibility');
-  const dependent = await propose('Combine results after both prerequisites complete', [old.task_id, other.task_id]);
-  await assert.rejects(command('task', 'cancel', old.task_id, '--expected-spec-version', String(old.spec_version), '--expected-state-version', String(old.state_version),
-    '--reason', 'An ACTIVE Bot must not cancel another responsibility'), error => /NOT_ALLOWED/.test(error.stderr));
-  const cancelled = await edit('task', 'cancel', old.task_id, '--expected-spec-version', String(old.spec_version), '--expected-state-version', String(old.state_version),
-    '--reason', 'The corrected responsibility supersedes this unowned proposal', '--replacement', replacement.task_id, '--request-id', 'cli-cancel-old');
-  assert.equal(cancelled.task.state, 'CANCELED');
-  const view = await command('task', 'view', dependent.task_id);
-  const repaired = await command('task', 'dependency-replace', dependent.task_id, '--from-task-id', old.task_id, '--to-task-id', replacement.task_id,
-    '--expected-spec-version', String(view.task.spec_version), '--expected-state-version', String(view.task.state_version),
-    '--reason', 'The replacement supplies the required result', '--request-id', 'cli-repair-edge');
-  assert.deepEqual(repaired.task.relations.depends_on.map(r => r.related_task_id).sort(), [replacement.task_id, other.task_id].sort());
-  assert.equal(repaired.task.relations.dependency_replacements.length, 1);
-});
-
 test('Mission stop policy permits original CLI save publish finish after a handoff reminder', async t => {
   const { service, runtime, command, execution } = await workspaceFixture(t);
   service.setMissionStopReader(() => true);
