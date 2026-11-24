@@ -680,7 +680,18 @@ test('private Pi compaction and retry records preserve the registered Bot and ex
   session.emit('rpc', { type: 'compaction_end', result: null, aborted: false });
   session.emit('rpc', { type: 'auto_retry_end', success: false, finalError: 'context token length exceeded' });
   session.emit('rpc', { type: 'message_end', message: { errorMessage: 'context length' } });
+  const notice = service.enqueueNotification({ deliveryKey: `retained:${execution.execution_id}`, missionId: bot.mission_id,
+    recipientTaskId: task.task_id, recipientExecutionId: execution.execution_id, type: 'handoff_warning',
+    payload: { execution_id: execution.execution_id, deadline: before.execution_deadline } });
+  session.emit('rpc', { type: 'turn_end' });
+  session.emit('rpc', { type: 'auto_retry_end', success: true });
+  await new Promise(resolve => setImmediate(resolve));
   await runtime.waitForSettled();
+  const retainedNotice = service.listUnprocessedNotifications(task.task_id, execution.execution_id)
+    .find(row => row.notification_id === notice.notification_id);
+  assert.equal(retainedNotice.delivery_attempts, 0, 'Retired Runtime must not compete with the Environment input owner');
+  assert.equal(retainedNotice.recipient_delivery, null);
+  assert.equal(retainedNotice.handled_at, null);
   assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
   assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
   assert.equal(service.getExecution(execution.execution_id).workspace_revision, before.workspace_revision);

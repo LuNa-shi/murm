@@ -91,7 +91,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "da2f26ec8e3390ce7c18e20cb1025ee52330a2344e976ebf8f250b5186998431"
+      "sha256": "40c32828fbd310246d21ff3e0985357e1d7983978c093dcbccfa397d07e80377"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -312,11 +312,6 @@
   ],
   "prompt_send_sites": [
     {
-      "path": "src/runtime/runtime.js",
-      "line": 889,
-      "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
-    },
-    {
       "path": "examples/subagents-environment/controller.mjs",
       "line": 26,
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
@@ -412,11 +407,11 @@
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "0a815de85269141853ee57b599e1597dc04074a01ba9400648e000d63eef9e48"
+      "sha256": "7fb97723ab4a56b6ccba6beb1d23a6fadda4a47ad5e2c803d17a32e3925a9d79"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "475a387629a0023d1984b394cdfb4e11e0e1fb5bedb90729398c847b80b9fee2"
+      "sha256": "a0315e17997299510fe0b7cffbeb965e8a343e5ac64f681debb7e6af481b2b46"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
