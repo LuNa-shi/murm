@@ -23,7 +23,7 @@ Sources: [service catalog](../../src/sdk/service-catalog.js), [built-in Registry
 
 ## 2. One tool call, from Pi to durable state
 
-The Catalog metadata response includes role-filtered capabilities and the complete registered bundle documents, with their hashes, through `swarm service view <id>`. Startup carries references; it does not inject those bodies.
+The Catalog metadata response includes role-filtered capabilities and the complete registered bundle documents, with their hashes, through `swarm service view <id>`. The Environment owns discovery input and may include metadata references. Core does not automatically inject these documents or the retained registered Bot skills into startup.
 
 1. A registered Bot invokes the protected `swarm` CLI through native Pi Bash. The CLI sends the operation and payload to its authenticated Bridge `POST /call`.
 2. The Bridge validates its bearer token and a JSON object body, finds the capability in the **current** profile, and rejects ambiguous or unavailable operations. It refreshes cached profile data when the Registry revision changes. A Mission-bound call to a retired structural/lease operation is rejected even if an older catalog advertised it.

@@ -437,11 +437,11 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "60a68620147357a43492aabac06ecfea2de323b5197b3d57cc7ffb28ff8ef323"
+      "sha256": "fc76fb6fc853954d0ee33e387b1601751478c8950fe9e9fe1e0462fab266cd84"
     },
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "01ca90cb7c3b247b3136692b5cd4cd76684e9341d4b0ccc50bb53164a7412af1"
+      "sha256": "559412f34d144b77d3559396d240ae2b3766289b7f0c3502900b3e3ca7ea6ae6"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
@@ -449,7 +449,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-bot-skills.md",
-      "sha256": "48633e0a2782f8ad8ca0557974456a235123de53db6a71a0732e01e992c4803f"
+      "sha256": "91bdb2eefd675a25c6e6ad4395cca078e32d58a6cd31863d70e97c4d7b54d715"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",

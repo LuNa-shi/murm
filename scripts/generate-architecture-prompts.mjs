@@ -75,9 +75,9 @@ const extendedRegistry = createBuiltinServiceRegistry();
 extendedRegistry.registerService({ manifest: mathlibBundle.manifest, bundle: mathlibBundle, adapter: { invoke() { throw new Error('documentation never invokes services'); } } });
 const extendedProfile = buildCapabilityProfile({ registry: extendedRegistry, role: AGENT_ROLES.BOUND });
 
-output('01-system-identity.md', header('Complete stable identity instructions', 'The immutable Bot resources are the fixed repository system addendum. Phase 0005 Core stages the host-provided Profile.prompt verbatim. Pi supplies its own native tool instructions.')
+output('01-system-identity.md', header('Complete stable identity instructions', 'The retained fixed system addendum below belongs to the former registered Bot resource contract and has no current startup caller. Phase 0005 Core stages the host-provided Profile.prompt verbatim under swarmenv-core-v1 with empty resources. Pi supplies its own native tool instructions.')
   + block(`Registered Bot system addendum (${BOT_PROTOCOL_VERSION})`, BOT_SYSTEM_PROMPT));
-let toolsDoc = header('CLI directory and optional Service documentation', 'Bots receive the four native tools read/write/edit/bash. Startup contains the namespace directory below. Schemas and documentation are fetched through swarm service commands, not registered as separate Pi tools.');
+let toolsDoc = header('CLI directory and optional Service documentation', 'Core selects the four native tools read/write/edit/bash. The synthetic namespace directories below illustrate the retained botServiceDirectory projection; current startup discovery is composed by the Environment. Schemas and documentation are fetched through swarm service commands, not registered as separate Pi tools.');
 for (const [title, p] of [['Built-in Services', profile], ['With optional Mathlib Search', extendedProfile]]) toolsDoc += block(title, JSON.stringify(botServiceDirectory(p), null, 2));
 for (const path of ['services/mathlib-search/SKILL.md', 'services/mathlib-search/references/loogle.md']) toolsDoc += block(path, sources.get(path), 'Available through the authorized Service documentation resource; the startup message carries metadata and hashes, not this full body.');
 output('02-task-loop-and-tools.md', toolsDoc);
@@ -86,7 +86,7 @@ let turnsDoc = header('Complete flat continuation messages', 'The flat controlle
 turnsDoc += block('Flat bound continuation', BOT_CONTINUATION_MESSAGE);
 turnsDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
 output('03-runtime-turns.md', turnsDoc);
-let skillDoc = header('Complete registered Bot skills', 'Root-owned immutable image files. Pi receives explicit --skill paths with ambient discovery disabled; the four metadata entries are included in system context, and actual read-tool results carry the loaded bodies into subsequent model input. The worker verifies bytes and permissions before startup.');
+let skillDoc = header('Complete registered Bot skills', 'These retained repository files describe the former registered Bot skill contract, whose startup used explicit --skill paths and checked resource bytes and permissions. The current Worker rejects that contract and accepts only swarmenv-core-v1 with empty resources; these bodies do not establish current delivery or skill loading.');
 for (const skill of BOT_SKILLS) skillDoc += block(`${skill.name} (${skill.version})`, sources.get(`src/agent/bot-contract/${skill.name}.md`), `Guest path: ${skill.path}; file SHA-256: ${skill.sha256}`);
 output('08-bot-skills.md', skillDoc);
 

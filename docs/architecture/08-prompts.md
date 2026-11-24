@@ -12,13 +12,15 @@ The fixed scaleMAS Environment stages the same peer prompt for all three Bots an
 
 ## Existing flat and registered Bot paths
 
-The existing registered Swarm Bot contract uses Pi's native `read`, `write`, `edit`, and `bash` tools. Swarm operations are typed CLI calls made through Bash. Pi starts with the configured native tools and versioned prompt resources.
+The retained registered Swarm Bot contract describes Pi's native `read`, `write`, `edit`, and `bash` tools and typed Swarm CLI calls through Bash. Current Core selects these native tools and stages the host's frozen Profile prompt; the retained versioned prompt resources do not define its startup input.
 
 ## Resources and startup
 
-`agentContract` in [bot-contract.js](../../src/agent/bot-contract.js) returns the registered Bot system addendum, protocol version and pinned resource hashes: `system.txt` and the four `plan-task`, `use-material`, `use-workspace`, and `finish-task` skill resources. The OpenSandbox Worker validates resource bytes and permissions. The authenticated trusted caller supplies the command and string arguments, including native tool selection, ambient-discovery flags and system/skill paths. Current Core constructs its own flags and supplies its frozen Profile prompt under the separate Core contract. The system addendum appends to Pi's own system input; repository files cannot reconstruct Pi/provider-owned rendering.
+`agentContract` in [bot-contract.js](../../src/agent/bot-contract.js) still returns the retained registered Bot system addendum, protocol version and pinned resource hashes for `system.txt` and the four `plan-task`, `use-material`, `use-workspace`, and `finish-task` skills. It has no current startup caller. These files and their generated references preserve repository text; they do not establish that a Bot received or loaded it.
 
-The manager and Worker retain the immutable registered Bot resource set for trusted direct callers. The caller owns startup messages and any repeated inputs; the bundled legacy adapter has been retired. The former benchmark discovery builder and paper/local-tools message branches have been retired. The public-Core flat controller's actual discovery and continuation composition is documented below.
+The manager starts only `swarmenv-core-v1` with an explicit empty resource array. The Worker rejects former resource-based contracts and requires the direct `pi` command, Profile prompt text and the fixed Core prompt path. Core constructs native-tool and ambient-discovery flags; the Worker checks string arguments and stages the supplied prompt. Model-catalog hash/ownership checks and filesystem isolation remain separate guards. [Backend](16-pi-opensandbox-backend.md) explains this current path. Pi/provider-owned rendering remains outside the repository templates.
+
+The bundled legacy adapter, benchmark discovery builder and paper/local-tools message branches have been retired. The retained registered system and skill references below describe the former resource contract, including its historical loading instructions, rather than the current Worker send path. The public-Core flat controller's actual discovery and continuation composition is documented below.
 
 ## Continuations, notifications and lifecycle feedback
 
