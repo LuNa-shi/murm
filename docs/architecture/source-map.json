@@ -1552,7 +1552,7 @@
         "docs/architecture/17-environment-reporting.md",
         "docs/architecture/04-services.md"
       ],
-      "role": "Flat trusted publication and optional fixed-revision Judge handoff with actual Core/Task authority"
+      "role": "Flat trusted publication, optional fixed-revision Judge and checked merge with actual Core/Task authority"
     },
     {
       "path": "src/environments/flat/workspace-check-source.js",
@@ -1712,7 +1712,8 @@
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
         "docs/architecture/04-services.md",
-        "docs/architecture/07-run-configuration.md"
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Flat-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown"
     },
@@ -1774,6 +1775,36 @@
         "docs/architecture/08-prompts.md"
       ],
       "role": "Immutable arithmetic/programming publication and ordered stopped-publisher adoption checks"
+    },
+    {
+      "path": "src/environments/endurance/flat.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Four-slot host-preseeded fixed candidate Core/Bridge affirmative composition without live capture"
+    },
+    {
+      "path": "src/environments/endurance/flat-hour.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Four original Flat Executions across four work windows with actual finish/replacement and stopped-source adoption"
+    },
+    {
+      "path": "src/environments/endurance/flat-workload.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Current-owner fixed publication and actual Material/programming proof verification"
     },
     {
       "path": "src/environments/endurance/lead-helper-workload.js",

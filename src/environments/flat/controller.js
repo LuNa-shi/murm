@@ -16,14 +16,15 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
   stopTimeoutMs=30_000,discoveryPrompt=FLAT_DISCOVERY_MESSAGE,
   continuationPrompt=BOT_CONTINUATION_MESSAGE,
-  afterStopped=async()=>{} }) {
+  afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }) {
   if(!runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
     ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() ||
     ![selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(x=>x>0) || heartbeatMs>10000 ||
-    ![continuationLimit,discoveryLimit].every(x=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function') throw new TypeError('Flat controller requires finite ordered work budgets and trusted Runtime/domain stores');
+    ![continuationLimit,discoveryLimit].every(x=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function' || (beforeInitialDispatch!==undefined && typeof beforeInitialDispatch!=='function') || typeof automaticContinuation!=='boolean' || typeof refillWhenNoReadyTask!=='boolean') throw new TypeError('Flat controller requires finite ordered work budgets and trusted Runtime/domain stores');
   const coordinator=createFlatBotCoordinator({runtime,taskService,missionId});
   const bots=new Map(),feedbackRequests=new Map(),events=new Map();
   const inputs=[],decisions=[],failures=[];
+  let admissionController;
   let chain=Promise.resolve(),timer,deadlineTimer,started=false,closing=false,completion=null,generation=0;
   const complete=Promise.withResolvers();
   const remaining=()=>Math.max(0,deadlineAt-Date.now());
@@ -43,7 +44,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
   const missionTasks=()=>taskService.listTasks({missionId,states:['OPEN','RUNNING','BLOCKED','DONE','CANCELED'],availableOnly:false,scanAll:true,limit:100});
   function finish(reason,extra={}) {
     if(completion) return;
-    completion=reason; closing=true; clearInterval(timer); clearTimeout(deadlineTimer); unsubscribe();
+    completion=reason; closing=true; admissionController?.abort(); clearInterval(timer); clearTimeout(deadlineTimer); unsubscribe();
     record(reason,null,extra); complete.resolve(snapshot());
   }
   function current(row) {
@@ -124,17 +125,41 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
     }
     const tasks=missionTasks();
     if(tasks.length && tasks.every(task=>['DONE','CANCELED'].includes(task.state))) {finish('all-tasks-terminal',{tasks:tasks.map(task=>({taskId:task.task_id,state:task.state}))});return;}
+    const ready=tasks.filter(task=>task.state==='OPEN').length;
+    const awaitingDiscovery=[]; let spawned=0;
     for(let index=0;index<capacity;index++) {
       if([...bots.values()].some(row=>row.slot===index && !row.released)) continue;
       if (!canRefill()) return;
+      if(!refillWhenNoReadyTask && spawned>=ready) {record('refill-awaits-ready-task',null);break;}
       const serial=++generation,now=Date.now(),hard=Math.min(deadlineAt,now+hardBudgetMs),selection=Math.min(hard,now+selectionMs);
       if(selection<=now) return;
       const legacySlotId=`flat:slot:${index}`,requestId=`flat:spawn:${serial}`;
       const bot=await coordinator.spawn({legacySlotId,requestId,profile,writable:false,selectionDeadline:new Date(selection).toISOString(),hardDeadline:new Date(hard).toISOString()});
       const row={botId:bot.id,legacySlotId,slot:index,generation:serial,continuations:0,discoveries:1,lastActivityAt:Date.now(),released:false};
-      bots.set(bot.id,row);record('spawn-readonly-discovery',row);
+      bots.set(bot.id,row);spawned++;record('spawn-readonly-discovery',row);
       if(closing) await stop(row,'controller-closing');
+      else if(beforeInitialDispatch) awaitingDiscovery.push(row);
       else await submit(row,discoveryPrompt,{source:'discovery',requestId:`flat:discovery:${serial}:1`});
+    }
+    if(awaitingDiscovery.length && !closing) {
+      const gate=new AbortController(); admissionController=gate;
+      let deadline,aborted;
+      record('host-admission-start',null,{botIds:[...bots.values()].filter(row=>!row.released).map(row=>row.botId)});
+      try {
+        const cancelled=new Promise((_,reject)=>{
+          aborted=()=>reject(new SwarmEnvError('NOT_ALLOWED','Flat host admission was cancelled'));
+          gate.signal.addEventListener('abort',aborted,{once:true});
+          deadline=setTimeout(()=>gate.abort(),Math.max(1,remaining()));
+        });
+        await Promise.race([Promise.resolve().then(()=>{
+          gate.signal.throwIfAborted();
+          return beforeInitialDispatch({runtime,botIds:[...bots.values()].filter(row=>!row.released).map(row=>row.botId),signal:gate.signal});
+        }),cancelled]);
+        if(closing || remaining()<=0 || gate.signal.aborted) deny('Flat host admission expired');
+        record('host-admission-complete',null);
+        for(const row of awaitingDiscovery) await submit(row,discoveryPrompt,{source:'discovery',requestId:`flat:discovery:${row.generation}:1`});
+      } catch(error) {finish('host-admission-failed');throw error;}
+      finally {clearTimeout(deadline);gate.signal.removeEventListener('abort',aborted);if(admissionController===gate)admissionController=undefined;gate.abort();}
     }
   }
   async function reconcile() {
@@ -166,6 +191,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       if(owner?.state==='CLOSING'||execution?.state==='CLOSING') {await stop(row,'task-finish');await refill();return;}
       if(event.outcome!=='completed') {record('failed-turn-is-not-task-completion',row,{outcome:event.outcome});await stop(row,`turn-${event.outcome}`);await refill();return;}
       if(owner?.state==='ACTIVE'&&execution?.state==='RUNNING') {
+        if(!automaticContinuation) {record('awaiting-host-followup',row);return;}
         if(row.continuations>=continuationLimit) {await stop(row,'continuation-budget');await refill();return;}
         row.continuations++;record('unfinished-execution',row,{continuation:row.continuations});
         await submit(row,buildBotContinuationMessage(execution,{ordinary:continuationPrompt}),{source:'continuation',requestId:`flat:continue:${row.generation}:${row.continuations}`,taskId:execution.task_id,executionId:execution.execution_id,fence:execution.fencing_version});

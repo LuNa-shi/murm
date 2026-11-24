@@ -39,11 +39,23 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "sha256": "916f018037fd15ee4cd90f5f2362f702b77ec25ffa8f8351414fd536dedb6c9c"
+      "sha256": "0f1cb7b7e8d4b7fe02a0e2b93e4a34b0dbf8477d966871c5b182371cba328e8b"
     },
     {
       "path": "src/environments/flat/environment.js",
-      "sha256": "fd4cb206f61d5d1d62e839f539823a275cb4c5380e734a13142d1554142b653b"
+      "sha256": "27b880c6f9a76a2793fd2fbe9bf972d406b3cde279ac54a730b6ad3844c8d5bd"
+    },
+    {
+      "path": "src/environments/endurance/flat.js",
+      "sha256": "38c834436cc900f08aac2d5ea71aede02d4bc8719f5abb33dc5b616ae005a63e"
+    },
+    {
+      "path": "src/environments/endurance/flat-hour.js",
+      "sha256": "6069f6652d16c2da5461a6060b0efa33fb9a7e674684c7bce92f259215a80c6e"
+    },
+    {
+      "path": "src/environments/endurance/flat-workload.js",
+      "sha256": "d8341f698c5dee1c62e1d9600f2600ec6b4bc1a1f56d06acb481389a36fb7b15"
     },
     {
       "path": "examples/subagents-environment/hour.mjs",
@@ -372,6 +384,30 @@
       "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
     },
     {
+      "path": "src/environments/endurance/flat.js",
+      "anchor": "export const FLAT_FIXED_PROMPT = '",
+      "line": 16,
+      "sha256": "48de3fa5fa0d29655988b793e5a2c6348d83f2b332178c0a099b02ae284bdf93"
+    },
+    {
+      "path": "src/environments/endurance/flat-hour.js",
+      "anchor": "export const FLAT_STAGED_PROMPT = '",
+      "line": 9,
+      "sha256": "32c602533357fe555231eb8a63bfb6a92e14ac212f78e8b466a99097f6fadf2e"
+    },
+    {
+      "path": "src/environments/endurance/flat-workload.js",
+      "anchor": "      return `",
+      "line": 16,
+      "sha256": "eea7ef975385be6b0a879a4cf3d219ac4074ef5f9ce721729ff4f28f738d37fe"
+    },
+    {
+      "path": "src/environments/endurance/flat-hour.js",
+      "anchor": "input: `",
+      "line": 73,
+      "sha256": "261bdd3ae0a6284507cbc066c4c8890d362515be665ef74b6ce0b50b603f2230"
+    },
+    {
       "path": "src/environments/flat/controller.js",
       "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
       "line": 8,
@@ -383,6 +419,11 @@
       "path": "src/environments/endurance/agensh-workload.js",
       "line": 33,
       "expression": "return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {\"peer\":\"${peer.key}\",\"stage\":${stage},\"n\":${n},\"square\":${n * n}} and exactly one trailing newline. Check its bytes. Stage only the delivery with git add -- ${path} and check that it is the only staged path before committing and pushing. Leave program source, stdout and test files untracked for private collection. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:\"FACT\",content:\"${fact}\"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Board write fields are board_id,type,content; PR create fields are owner,repo,method:\"create\",title,head:WORK_BRANCH,base:\"main\". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;"
+    },
+    {
+      "path": "src/environments/endurance/flat-workload.js",
+      "line": 16,
+      "expression": "return `FLAT_PROGRAM_GROUP peer=${peer} phase=${phase}. Keep your actual current Task and Execution. Complete this programming task and independently inspect the host candidate ${candidate.revision}. Merge --from ${candidate.revision} with a fresh stable request ID, obtain trusted whole-tree PASS and remember main_revision. If MAIN_MOVED, inspect current state and retry the merge with a new request ID; do not fabricate success. Publish exactly one Material whose content is JSON with exactly proofKey:${proofKey}, peer:${peer}, phase:${phase}, revision:the returned fixed main_revision, programming:the requested result${adopted ? ', adopted:{materialId,sourceSha256,answersSha256} copied from the original programming proof' : ''}. Link it to your Task with role experience. Do not finish the Task in this group. Keep executable source and stdout files for required export and wait for the next explicit host followUp.${adopted ? ` The original contributor has actually stopped. First merge each of your Task’s fixed public candidate revisions ${candidate.stages.map(stage=>stage.revision).join(', ')} in order, each with its own stable request ID, so the final whole-tree check covers your complete Task contract. Read Material ${adopted.materialId} and public revision ${adopted.revision} through their normal CLI routes, preserve the original, Use material consume with action task and a truthful impact to record the actual source consumption. Copy only its original materialId and programming sourceSha256/answersSha256 into adopted; these hashes are not supplied by the host.` : ''}${program.prompt(peer, phase + 1)}`;"
     },
     {
       "path": "src/environments/endurance/lead-helper-workload.js",
@@ -416,7 +457,7 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "line": 98,
+      "line": 99,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
@@ -527,7 +568,7 @@
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "6e9260f0bd3df0d3952fe37adc2d769497777f86aad2ea98e6d3f8834a33c638"
+      "sha256": "a3b9acffad2196b897e8838ecda49a3eed15cba36dafcd485b036eb670db41e4"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
@@ -555,7 +596,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "4f04ad0762c325577345c95862b76e1f8369d6cd8fb42c4746c90bfad4eaeca8"
+      "sha256": "4370680e0993c2806423a9db25645d8d4327739ef3172350bc28a606b5dae62e"
     }
   ]
 }
