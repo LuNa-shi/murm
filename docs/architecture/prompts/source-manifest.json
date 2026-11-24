@@ -123,7 +123,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "f7d935db77da986d9549085cf48818fe5ec65c02b1bfd020f0af14a621c18eb3"
+      "sha256": "1477953d33390ae4e8775a974287ca49426a2358745ae27907a64d9bea07743d"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -466,7 +466,7 @@
     },
     {
       "path": "src/runtime/runtime.js",
-      "line": 922,
+      "line": 887,
       "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
     },
     {

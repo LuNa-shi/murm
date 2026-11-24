@@ -17,7 +17,7 @@ const DEFAULT_EXECUTION_TIMEOUT_MS = 60 * 60 * 1000;
 const DEFAULT_HANDOFF_REMINDER_MS = 55 * 60 * 1000;
 
 export class Runtime {
-  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, workspaceProjectCheck = false, coordinationPermissions = [], sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now(), onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, workspaceProjectCheck = false, coordinationPermissions = [], sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now() }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
@@ -48,7 +48,6 @@ export class Runtime {
     this.handoffReminderMs = handoffReminderMs;
     this.setRunDeadline(runDeadlineAt);
     this.clock = clock;
-    this.onCoreEvent = onCoreEvent;
     this.activeProcesses = new Map();
     this.botBindings = new Map();
     this.workspaceReconcileTimers = new Map();
@@ -269,41 +268,7 @@ export class Runtime {
     }
   }
 
-  /** Wait until Runtime no longer owns an Execution process. */
-  async waitForExecutionRelease(executionId, { timeoutMs = Number.POSITIVE_INFINITY, pollMs = 25, signal = null } = {}) {
-    const id = requireString(executionId, 'execution_id');
-    if (timeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(timeoutMs) || timeoutMs < 0)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timeoutMs must be non-negative or Infinity');
-    if (!Number.isFinite(pollMs) || pollMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'pollMs must be positive');
-    const startedAt = this.clock();
-    let current = this.taskService.getExecution(id);
-    while (this.activeProcesses.has(id) || ['CREATED', 'RUNNING', 'CLOSING'].includes(current?.state)) {
-      if (signal?.aborted) return { released: false, aborted: true, execution: current, elapsed_ms: this.clock() - startedAt };
-      if (timeoutMs !== Number.POSITIVE_INFINITY && this.clock() - startedAt >= timeoutMs) {
-        return { released: false, execution: current, elapsed_ms: this.clock() - startedAt };
-      }
-      await new Promise((resolve) => {
-        let settled = false;
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          signal?.removeEventListener('abort', onAbort);
-          resolve();
-        };
-        const onAbort = () => finish();
-        const timer = setTimeout(finish, pollMs);
-        signal?.addEventListener('abort', onAbort, { once: true });
-      });
-      current = this.taskService.getExecution(id);
-    }
-    return { released: true, execution: current, elapsed_ms: this.clock() - startedAt };
-  }
-
-  /**
-   * Stop every live process owned by this Runtime before its store is closed.
-   * The benchmark uses this seam for terminal cleanup so it never has to
-   * mutate Runtime ownership maps or recovery flags directly.
-   */
+  /** Stop every live process owned by this Runtime before its store is closed. */
   async shutdown({ terminalState = 'FAILED', terminalReason = 'runtime_shutdown' } = {}) {
     this.stopping = true;
     for (const entry of this.workspaceReconcileTimers.values()) clearTimeout(entry.timer);
@@ -1003,10 +968,8 @@ export class Runtime {
         const boundId = session.boundExecutionId;
         if (boundId) {
           void this.#handleSessionEvent(boundId, record).catch((error) => {
-            // EventEmitter does not observe rejected async listeners. Keep a
-            // provider/session timeout as durable Runtime evidence instead of
-            // allowing an unhandled rejection to terminate the benchmark
-            // before report and Execution cleanup can run.
+            // EventEmitter does not observe rejected async listeners. Retain
+            // provider and Session failures as Runtime evidence for cleanup.
             this.logger?.append({
               event: 'runtime.agent_event_error',
               execution_id: boundId,
@@ -1217,11 +1180,6 @@ export class Runtime {
     };
     const next = { ...current, ...patch, core_id: id, updated_at: new Date(this.clock()).toISOString() };
     this.coreStates.set(id, next);
-    try {
-      this.onCoreEvent?.({ kind: 'core_occupancy', ...next });
-    } catch {
-      // Observability cannot change Runtime ownership behavior.
-    }
   }
 
   /**

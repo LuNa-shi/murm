@@ -5,7 +5,9 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { setTimeout as delay } from 'node:timers/promises';
 import { TaskService } from '../src/task/task-service.js';
+import { ACTIVE_EXECUTION_STATES } from '../src/task/task-types.js';
 import { Runtime } from '../src/runtime/runtime.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
@@ -21,6 +23,14 @@ import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { startIndependentServices } from '../src/sdk/independent-services.js';
 import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
+
+async function assertExecutionReleased(runtime, service, executionId, timeoutMs) {
+  const deadline = performance.now() + timeoutMs;
+  while (runtime.hasActiveExecution(executionId) || ACTIVE_EXECUTION_STATES.includes(service.getExecution(executionId)?.state)) {
+    assert.ok(performance.now() < deadline, `Execution ${executionId} did not release within ${timeoutMs} ms`);
+    await delay(25);
+  }
+}
 
 async function fixture(t, runtimeOptions = {}, { persistent = false, acceptanceConditions = {}, mergeRequiredCheck = null, beforeFetch = null } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'swarm-bot-'));
@@ -564,7 +574,7 @@ test('Bot lifetime is fixed before take and caps the active Execution deadline',
   await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id });
   assert.ok(Date.parse(service.getExecution(execution.execution_id).execution_deadline) <= Date.parse(bot.hard_deadline));
   await new Promise(resolve => setTimeout(resolve, Math.max(1, Date.parse(bot.hard_deadline) - Date.now() + 100)));
-  await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 1_000 });
+  await assertExecutionReleased(runtime, service, execution.execution_id, 1_000);
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
   assert.equal(session.closed, true);
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'bot-lifetime-budget');
@@ -610,8 +620,7 @@ for (const [budget, selectionFirst] of [['bot-lifetime-budget', false], ['bot-li
     assert.equal(callbackOrder[0], selectionFirst ? 'selection' : 'hard');
     // The budget callback has fired; cleanup polling uses ordinary timers.
     t.mock.timers.reset();
-    const released = await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 5000 });
-    assert.equal(released.released, true);
+    await assertExecutionReleased(runtime, service, execution.execution_id, 5_000);
     assert.equal(preparationEntered, true, 'the deadline must interrupt a pending Workspace preparation');
     assert.equal(session.closed, true);
     const stopped = service.getExecution(execution.execution_id);
@@ -653,7 +662,7 @@ test('earlier Task hard deadline automatically stops a registered Bot without an
   const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a locally bounded question', expected_output: 'Note', acceptance_conditions: ['Note'], timebox_ms: 150 }, makeEnvelope({ actorRef: bot.bot_id })).task;
   const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'automatic-short-task' });
   await runtime.bindAgentExecution(execution.execution_id, session, { coreId: bot.core_id });
-  await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 1_000 });
+  await assertExecutionReleased(runtime, service, execution.execution_id, 1_000);
   assert.equal(session.closed, true);
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
   assert.equal(service.getExecution(execution.execution_id).terminal_reason, 'execution-timebox');
@@ -1638,7 +1647,7 @@ test('Bot CLI publishes, explicitly links, and cites a Material when finishing',
   const receipt = service.getExecutionFinish(execution.execution_id);
   assert.equal(receipt.outcome, 'done');
   assert.deepEqual(receipt.payload.material_ids, [material.material_id]);
-  await runtime.waitForExecutionRelease(execution.execution_id, { timeoutMs: 1_000 });
+  await assertExecutionReleased(runtime, service, execution.execution_id, 1_000);
   assert.equal(service.getTask(execution.task_id).state, 'DONE');
 });
 
