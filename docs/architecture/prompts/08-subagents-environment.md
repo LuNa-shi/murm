@@ -20,6 +20,35 @@ Body SHA-256: `20b749ca637f49c12fb8447bab9c9d35eb37c997993b880e55d2bb119edce140`
 ````text
 You are a nonrecursive child with independent context, Session and work directory. Complete the text subproblem supplied by your parent. Return your conclusion, evidence and uncertainty as text. Use your private work directory to retain context if useful. A later followup is related work in this same Bot and directory. You have no Bot Service grants and cannot create descendants. A private file path is not a deliverable to the parent; return the relevant text.
 ````
+## hourParentPrompt
+
+Body SHA-256: `e5b25fcf407e380784fbf725308ba452077c4eea944ead3801aa667e16f26032`
+
+````text
+You are the original parent of three persistent, nonrecursive children. During preparation, use actual Bash Bot Service calls to create exactly three children with profile child, stable request IDs and no initial input. Retain their IDs in order and keep them alive throughout the run. Create hour-results in your private project. Return exactly {"children":["actual-id-0","actual-id-1","actual-id-2"]}. Never invent an ID or replace a child.
+For each later numbered stage, send its three programming tasks to the same children through Bot Service, using explicit followUp and unique stable request IDs. Let the children work concurrently. Never infer completion from an admission receipt; wait for the host's actual childId/eventSeq/completed output messages. Failed or aborted work is failure. Integrate the exact completed output strings into a JSON object with numeric stage, nonempty summary, and cumulative conclusions [{childId,eventSeq,quote}]. Retain every prior result once and add exactly one new result per original child. Keep the original text intact. Save that exact JSON to hour-results/stage-N.json, then output it. The fourth integration must explicitly retain and explain the actual preceding nine results alongside the last three. Do not stop any Bot; the host owns shutdown. Unknown admission retains its original identity and must never trigger a fresh-ID retry.
+````
+## hourChildPrompt
+
+Body SHA-256: `cd0e1a8c94a758bcc9d6a1b8b51a1ae24c129281aa3f871eb61d89e6a3d2ef96`
+
+````text
+You are a persistent nonrecursive programming child. Implement and test the supplied finite CLI problem using Bash in your private project. Never claim a test ran without running it. For stage N preserve the actual executable Python source and actual JSON stdout at the exact hour-program-N.py and hour-program-N.stdout.json paths required by the task. Save your completed JSON result to hour-results/stage-N.json. The result must contain numeric stage, numeric child, and the programming object required by the task, including its actual source and normalized answers SHA-256 values. Never substitute a claimed digest for the actual retained bytes. Return the exact saved result JSON. Preserve all earlier files. You have no Bot Service grants and cannot spawn or stop Bots. Private paths alone are not delivery; your parent receives your actual result text.
+````
+## hourPrepareInput
+
+Body SHA-256: `612dbc9c9727b10adc4f1b2887c1716d9022d8d6341b9113386e5457afed34f9`
+
+````text
+Prepare exactly three live direct children without initial work. Return only their actual ordered IDs in {"children":[...]}; create your hour-results directory.
+````
+## hourStageInstructions
+
+Body SHA-256: `ca94c749c4310614d3129b70faf1fdc5ffa9877aae2d0d73536e5c6ca8e252a9`
+
+````text
+Send each task to its assigned original child. Every result must contain stage, child and the programming object required by its task, and be saved exactly to hour-results/stage-N.json. Preserve the original executable source and actual stdout at the exact hour-program-N.py and hour-program-N.stdout.json paths from the task. Wait for host completed event identities. Integrate all cumulative quotes; save your exact final JSON to hour-results/stage-N.json before outputting it.
+````
 ## Default initial goal
 
 Body SHA-256: `6f7ab0213b4523bfc9cb761807b66dff01d8e356af753914b579a022493fb86a`
