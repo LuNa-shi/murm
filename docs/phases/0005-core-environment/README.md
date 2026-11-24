@@ -42,7 +42,7 @@ Core 文档定义公共接口及其最低保证；Environment 文档在此保证
 - [#197](https://github.com/LuNa-shi/SwarmEnv/issues/197) 所记录的标准 Core 到 Flat 的生产 live capture 接线留待后续处理。本轮不要求新增在线读取私有 workDir 的公共 API，或将运行中的 Bot 文件经该接线保存为 Workspace revision。[#196](https://github.com/LuNa-shi/SwarmEnv/pull/196) 的相关接口与重试方案仍为延后草稿，不因本次范围调整成为已批准实现。
 - 五种 Example 的统一符合性核对留待后续。本轮不新增“全部五种 Example 同时满足统一核对表”的关闭门槛；已有模式的支持合同、各自有效的回归和实际证据继续保留。`subagents / scaleMAS / lead-helper` 的累计目标及 Q8 的最低组合不变。
 
-Flat 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、Materials、Git 与显式 artifact 路径按实际能力使用和记录。可信宿主注入仍须证明字节来源及当前 Bot/Task/Execution/fence，遵守原有权限、版本、幂等、租约、关闭和清理检查；不能用模型提供的任意文件载荷代替可信捕获。没有所需可信读取绑定的配置继续明确拒绝相关运行或操作，不因本次调整绕过 readiness 检查。预置或预发布的公共产物能够验证其实际发生的发布、读取、消费和清理，不能证明运行中私有文件已被生产 live capture 保存。接口确定性检查与真实模式运行仍分别记录，历史证据保留原有源码、安装包和配置 pin。
+Flat 现有宿主注入 `snapshotProject` 和已支持的公共 Workspace、Materials、Git 与显式 artifact 路径按实际能力使用和记录。可信宿主注入仍须证明字节来源及当前 Bot/Task/Execution/fence，遵守原有权限、版本、幂等、租约、关闭和清理检查；不能用模型提供的任意文件载荷代替可信捕获。未配置 `snapshotProject` 时，允许只装配当前可支持的 Flat 能力：从 Registry/Profile 及提示中省略依赖实时捕获的 `workspace save/status/current-diff`，保留公共 Workspace 读取及 Material/finish 等现有路径；相关提示须如实说明可用成果交接方式。不得使不可用的捕获操作进入执行，也不得因此放宽 Task 的 completion contract、领域 fence 或原有调用与收尾顺序。显式传入无效绑定仍须拒绝；声明启用捕获能力时，其可信绑定和 readiness 检查继续适用。预置或预发布的公共产物能够验证其实际发生的发布、读取、消费和清理，不能证明运行中私有文件已被生产 live capture 保存。接口确定性检查与真实模式运行仍分别记录，历史证据保留原有源码、安装包和配置 pin。
 
 本次只缩减上述两项本轮范围。Core 的 Q1–Q8、flat 的领域与生命周期正确性、agensh 的真实协作闭环、仓库外最小开发者示例和实际验收要求继续适用。文翔本人安装使用的验收、后续外部试用的启动条件及对外发布权限保持独立；本节不代表这些 gate 已通过，也不授权合并、关闭票或发布。受影响的记录为 #164、#176、#181–#185、#194、#196 与 #197，继续在原票/PR 中区分本轮完成、延后事项及剩余验收。
 

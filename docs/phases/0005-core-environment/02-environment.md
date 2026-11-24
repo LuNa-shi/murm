@@ -252,6 +252,8 @@ swarm workspace save --request-id save-1
 swarm task finish --input finish.json --request-id finish-1
 ```
 
+上述 `workspace save` 仅在配置可信捕获绑定时装配；无绑定的受限 Flat 从 Registry/Profile 和提示省略该操作及私有 status/current-diff，仍可使用公共 Workspace 读取、Material 发布和原合同允许的 finish。显式无效绑定拒绝，不将不可用命令冒充已接通能力。
+
 命令已有，沿用成果引用、revision 与 finish 合同。Bridge 注入可信 caller，flat adapter 查询领域关联，检查 Task provenance、归属、事务和排他 take；不接受 JSON 伪造身份。take adapter 原子认领后调用宿主 Runtime.files，模型不直接拥有 prepare/grant。
 
 ### 6.3 运行流程与关键接线
