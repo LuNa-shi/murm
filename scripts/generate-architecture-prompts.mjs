@@ -27,7 +27,7 @@ const sourcePaths = [
   'src/environments/flat/controller.js', 'src/environments/flat/environment.js',
   'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
   'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js', 'src/environments/agensh/team.js',
-  'src/environments/endurance/agensh-workload.js', 'src/environments/endurance/scalemas-workload.js', 'src/environments/endurance/programming.js',
+  'src/environments/endurance/agensh-workload.js', 'src/environments/endurance/scalemas-workload.js', 'src/environments/endurance/programming.js', 'src/environments/endurance/lead-helper-workload.js',
   'test/fixtures/agensh-team-kimi.js', 'test/agensh-team-kimi-real.test.js',
   'src/environments/lead-helper/prompts.js', 'src/environments/lead-helper/index.js',
   'src/runtime/runtime.js',
@@ -177,6 +177,9 @@ output('13-hour-matrix.md', header('Bounded hour business and programming prompt
   + block('scaleMAS frozen question', between('src/environments/endurance/scalemas-workload.js', "    question:'", "',\n"))
   + block('scaleMAS per-cycle composition', between('src/environments/endurance/scalemas-workload.js', '    questionForCycle(', '\n    ready('),
     'peerIndex is actual zero-based fixed pool order; round is the actual cycle from zero through five. The validated question is sent in the ordinary Core followUp with peer/cycle header and cyclePrompt.')
+  + block('Lead-helper frozen four-group composition', between('src/environments/endurance/lead-helper-workload.js', '  function stageInput(stage) {', '\n  async function read('),
+    'role is the trusted helper role; helper peer indices are zero-based 0–2 and programming stages are 1–4. Each supplied task is copied by the adapter before allocation and serialized only to that helper; the goal or supplement is serialized only to the original lead.')
+
   + block('Programming instructions appended to repository workload', between('src/environments/endurance/programming.js', '      return `', '`;'),
     'peer and stage are trusted numeric host fields. text is the explicitly configured external programming prompt, validated as nonblank and at most 4096 UTF-8 bytes; the host verifier receives only the programming property read from the real committed/substrate JSON and never executes generated code.'));
 const leadHelperPath = 'src/environments/lead-helper/prompts.js';

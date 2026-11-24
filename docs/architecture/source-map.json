@@ -1751,6 +1751,16 @@
       "role": "Immutable arithmetic/programming publication and ordered stopped-publisher adoption checks"
     },
     {
+      "path": "src/environments/endurance/lead-helper-workload.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/20-lead-helper-environment.md",
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Frozen per-helper programming tasks and current/pinned real Git artifact verification"
+    },
+    {
       "path": "src/environments/endurance/lead-helper.js",
       "category": "Environment integration",
       "chapters": [

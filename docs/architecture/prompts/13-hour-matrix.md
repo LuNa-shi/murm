@@ -34,6 +34,22 @@ Body SHA-256: `644b629a436399869c806ccce656ebc0d5026cfec3027343ed8d1d78beb985ce`
 ````text
 {peerIndex,round}) { return this.question + program.prompt(peerIndex, round); },
 ````
+## Lead-helper frozen four-group composition
+
+role is the trusted helper role; helper peer indices are zero-based 0–2 and programming stages are 1–4. Each supplied task is copied by the adapter before allocation and serialized only to that helper; the goal or supplement is serialized only to the original lead.
+
+Body SHA-256: `646c667339f13e1ec50bf0b295330dc57c2db4d2f3f9ce240d23f2282bfaeb7d`
+
+````text
+
+    const paths = Object.fromEntries(roles.map(role => [role, `hour-${role}-${stage}.json`]));
+    const tasks = Object.fromEntries(roles.map((role, index) => [role,
+      `Write only ${paths[role]} for this group's delivery. Its JSON must have exactly helper:${JSON.stringify(role)}, stage:${stage}, directionId (the current Board direction sequence), direction (its exact current text), and programming (the requested result). Read Board before claiming. Implement and run the task, retain its program and stdout files, then publish complete proof for the actual pushed JSON file and one task-scoped feedback note. Use one coherent Bash call for read/claim/program/test/Git/publish; finish briefly.${program.prompt(index, stage + 1)}`]));
+    if (Object.values(tasks).some(text => Buffer.byteLength(text) > 4096)) throw invalid();
+    const text = `LEAD_HELPER_STAGE_${stage}: Create exactly one new ready subtask for each supplied helper path. ${stage ? 'Read and cite exactly the prior three task feedback notes and this registered user supplement.' : 'Create an assignment for each trusted helper identity before work.'} Announce a new short single-line ASCII direction using letters, digits and spaces only; include stage ${stage}. Helpers receive their own frozen programming task directly from the host. Keep all existing owners, history and deliveries. Do not solve their programs or change main.`;
+    return { ...(stage ? { supplement: text } : { goal: text }), paths, tasks };
+  }
+````
 ## Programming instructions appended to repository workload
 
 peer and stage are trusted numeric host fields. text is the explicitly configured external programming prompt, validated as nonblank and at most 4096 UTF-8 bytes; the host verifier receives only the programming property read from the real committed/substrate JSON and never executes generated code.

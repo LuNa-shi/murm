@@ -133,16 +133,19 @@ export async function createLeadHelperEnvironment(options) {
         } catch (error) { stop(); error.details = [...(error.details ?? []), snapshot()]; throw error; }
         finally { stageActive = false; }
       },
-      async runStage({ goal, supplement, paths, signal } = {}) {
+      async runStage({ goal, supplement, paths, tasks, signal } = {}) {
         const stage = stages.length;
         const text = stage === 0 ? goal : supplement;
         if (closing || stageActive || stage >= 4 || helperCount !== 3 || workflowUsed && stage === 0 && !preparedStages ||
             typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 8192 ||
             (signal !== undefined && !(signal instanceof AbortSignal)) ||
+            (tasks !== undefined && (!tasks || Object.keys(tasks).length !== 3 || helperRoles.some(role => !Object.hasOwn(tasks, role) ||
+              typeof tasks[role] !== 'string' || !tasks[role].trim() || Buffer.byteLength(tasks[role]) > 4096))) ||
             !paths || Object.keys(paths).length !== 3 || helperRoles.some(role => !Object.hasOwn(paths, role) || typeof paths[role] !== 'string' ||
               paths[role].length > 256 || !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+$/.test(paths[role])) ||
             new Set(Object.values(paths)).size !== 3 || stages.some(prior => Object.values(paths).some(path => Object.values(prior.paths).includes(path)))) throw fail('INVALID_STAGE');
         const fixedPaths = structuredClone(paths);
+        const fixedTasks = tasks === undefined ? undefined : structuredClone(tasks);
         workflowUsed = true; stageActive = true;
         const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
         const send = (role, payload) => dispatch(role, `stage-${stage}-${role}`, { ...payload, stage, paths: fixedPaths }, workSignal);
@@ -163,15 +166,9 @@ export async function createLeadHelperEnvironment(options) {
                 !announced.subtasks.some(row => row.path === fixedPaths[role] && row.state === 'ready' && !row.owner && !before.subtasks.some(old => old.id === row.id)))) throw fail('STAGE_DIRECTION_INVALID');
           if (stage && (direction.text === previous.direction.text || direction.user_input_id !== `lead-stage-${stage}` ||
               direction.feedback_ids.length !== 3 || previous.feedback.some(note => !direction.feedback_ids.includes(note.seq)))) throw fail('DIRECTION_ADJUSTMENT_INVALID');
-          const results = [];
-          // The cumulative hour owner permits two concurrent model requests.
-          // Complete each pair of exclusive inputs before admitting the next.
-          for (let offset = 0; offset < helperRoles.length; offset += 2) {
-            results.push(...await Promise.allSettled(helperRoles.slice(offset, offset + 2).map(role => send(role, {
-              type: stage ? 'helper-followup' : 'helper-initial',
-              instruction: (stage ? helperFollowupInstruction : helperInitialInstruction) + ' Deliver only your supplied path and publish one new feedback note.' }))));
-            if (results.some(row => row.status === 'rejected')) break;
-          }
+          const results = await Promise.allSettled(helperRoles.map(role => send(role, {
+            type: stage ? 'helper-followup' : 'helper-initial', ...(fixedTasks ? { task: fixedTasks[role] } : {}),
+            instruction: (stage ? helperFollowupInstruction : helperInitialInstruction) + ' Deliver only your supplied path and publish one new feedback note.' })));
           if (results.some(row => row.status === 'rejected')) throw results.find(row => row.status === 'rejected').reason;
           const final = board.snapshot();
           const deliveries = helperRoles.map(role => final.subtasks.find(row => row.owner === team[role] && row.path === fixedPaths[role] &&

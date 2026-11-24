@@ -122,7 +122,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
           await call(role, 'announce', { text: 'Implement basic checks', feedback_ids: [] });
           for (const helper of helpers) { await call(role, 'assign', { helper_id: team[helper], text: helper }); await call(role, 'create_subtask', { id: helper, title: 'Initial artifact', path: staged ? payload.paths[helper] : `${helper}.txt` }); }
         } else {
-          assert.equal(payload.supplement, staged ? `Evidence stage ${payload.stage}` : 'Add explicit evidence');
+          if (staged !== 'program-hour') assert.equal(payload.supplement, staged ? `Evidence stage ${payload.stage}` : 'Add explicit evidence');
           await call(role, 'announce', { text: staged ? `Evidence direction ${payload.stage}` : 'Add explicit evidence based on public feedback', feedback_ids: staged && failure !== 'stale-feedback' ? payload.feedback_ids : state.notes.filter(row => !staged || row.subtask_id).map(row => row.seq), user_input_id: payload.user_input_id });
           for (const helper of helpers) await call(role, 'create_subtask', { id: staged ? `${helper}-stage-${payload.stage}` : `${helper}-next`, title: 'Adopt evidence direction', path: staged ? payload.paths[helper] : `${helper}-next.txt` });
         }
@@ -138,11 +138,23 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
         await assert.rejects(call(role, 'announce', { text: 'forged lead', feedback_ids: [] }));
         await assert.rejects(call(role, 'update_subtask', { subtask_id: other, expected_revision: 0, text: 'unauthorized' }));
         const text = next ? `Adopted ${state.directions.at(-1).text}\n` : `${role} actual initial delivery\n`;
-        const path = staged ? payload.paths[role] : `${id}.txt`; await writeFile(join(privateDirectories[role], path), text);
+        const path = staged ? payload.paths[role] : `${id}.txt`;
+        let artifactText = text;
+        if (staged === 'program-hour') {
+          assert.match(payload.task, /Write and run Python for value/);
+          const source = `import json\nprint(json.dumps({'value': ${Number(role.slice(6)) + (payload.stage + 1) * 10}}))\n`;
+          const sourcePath = join(privateDirectories[role], `hour-program-${payload.stage + 1}.py`);
+          await writeFile(sourcePath, source);
+          const output = (await run('python3', [sourcePath], { cwd: privateDirectories[role] })).stdout;
+          await writeFile(join(privateDirectories[role], `hour-program-${payload.stage + 1}.stdout.json`), output);
+          artifactText = JSON.stringify({ helper: role, stage: payload.stage, directionId: state.directions.at(-1).seq,
+            direction: state.directions.at(-1).text, programming: { source, ...JSON.parse(output) } }) + '\n';
+        }
+        await writeFile(join(privateDirectories[role], path), artifactText);
         const git = args => run('git', ['-C', privateDirectories[role], ...args], { env: { ...process.env, GIT_AUTHOR_NAME: role, GIT_COMMITTER_NAME: role, GIT_AUTHOR_EMAIL: `${role}@test.invalid`, GIT_COMMITTER_EMAIL: `${role}@test.invalid` } });
         await git(['add', path]); await git(['commit', '-m', id]); await git(['push', 'origin', role]);
         const commit = (await git(['rev-parse', 'HEAD'])).stdout.trim();
-        const delivery = { commit, path, bytes: Buffer.byteLength(text), sha256: createHash('sha256').update(text).digest('hex') };
+        const delivery = { commit, path, bytes: Buffer.byteLength(artifactText), sha256: createHash('sha256').update(artifactText).digest('hex') };
         await call(role, 'complete', { subtask_id: id, expected_revision: owned.revision, direction_id: state.directions.at(-1).seq, delivery });
         await call(role, 'note', { subtask_id: id, text: next ? 'New direction adopted and verified' : 'Please require explicit evidence in the next direction' });
       }
@@ -154,7 +166,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
   if (failure === 'unknown') transport.onStop = botId => { if (botId === team.helper1) throw new Error('Controlled stop uncertainty'); };
   const configuration = { runId: 'test', outputDir: directory, image: 'test', backend: {}, ...(helperCount === 2 ? {} : { helperCount }), turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
     prepare: async () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors }) };
-  if (staged === 'hour') {
+  if (staged === 'hour' || staged === 'program-hour') {
     const { runLeadHelperHour } = await import('../src/environments/endurance/lead-helper.js');
     const { controlledHourQuota } = await import('./fixtures/hour-quota-owner.js');
     const budgets = { setupMs: 600000, workMs: 3900000, cleanupMs: 600000, recoveryMs: 300000, marginMs: 120000, turnMs: 120000 };
@@ -163,7 +175,11 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       clock: () => time, waitForMs: async ms => { time += ms; if (failure === 'hour-late' && time === 900000) time += 900000; },
       admit: async ({ runtime, workMs }) => ({ runtimeId: runtime.id, workDeadlineAtMs: time + workMs }),
       onReady: value => { environment = value; },
-      workload: { stages: Array.from({ length: 4 }, (_, stage) => ({
+      workload: staged === 'program-hour' ? (await import('../src/environments/endurance/lead-helper-workload.js')).createLeadHelperProgrammingWorkload({
+        getFacilities: () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, actors }), adminToken: 'fixture-host-token',
+        programming: { prompt: ({peer, stage}) => `Write and run Python for value ${peer + 1 + stage * 10}.`,
+          verify: ({peer, stage, submission}) => submission.value === peer + 1 + stage * 10 && typeof submission.source === 'string' },
+      }) : { stages: Array.from({ length: 4 }, (_, stage) => ({
         ...(stage ? { supplement: `Evidence stage ${stage}` } : { goal: 'Deliver initial evidence' }),
         paths: Object.fromEntries(helpers.map(role => [role, `${role}-stage-${stage}.txt`])),
       })), verify: receipt => failure !== 'hour-proof' && receipt.deliveries.length === 3 },
@@ -226,7 +242,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       return;
     }
     const task = state.subtasks.find(row => row.id === 'helper1'); assert.equal(task.owner, team.helper1); if (failure === 'locked-failed') assert.ok(report.businessFailure.details.at(-1).pendingBoardFailures.some(row => row.botId === team.helper1 && row.code === 'input_failed')); else assert.ok(task.failure); assert.equal(task.state, 'claimed');
-    assert.equal(transport.submissions.size, staged ? 7 : helperCount + 1, 'No adjustment, replacement or resubmission after failure');
+    assert.equal(transport.submissions.size, staged ? 8 : helperCount + 1, 'No adjustment, replacement or resubmission after failure');
     if (failure === 'unknown') { assert.ok(report.cleanupFailure); assert.equal(report.cleanup.bots.find(row => row.botId === team.helper1).execution, 'unknown'); }
   } else {
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure)); assert.equal(report.cleanupFailure, null, JSON.stringify(report.cleanup));
@@ -296,3 +312,5 @@ test('hour lead-helper keeps four original Bots and twelve real Git deliveries u
 
 test('hour lead-helper failed artifact verification closes the same team before later groups', t => scenario(t, 'hour-proof', false, 3, 'hour'));
 test('hour lead-helper refuses a group whose own fifteen-minute window was missed', t => scenario(t, 'hour-late', false, 3, 'hour'));
+
+test('hour lead-helper external tasks reach original helpers and verify actual Python results in fixed Git bytes', t => scenario(t, undefined, false, 3, 'program-hour'));

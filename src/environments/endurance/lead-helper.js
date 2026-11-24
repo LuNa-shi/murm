@@ -22,6 +22,8 @@ export async function runLeadHelperHour({ options, workload, admit, quota, budge
     if (typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 8192 || !input.paths ||
         Object.keys(input.paths).length !== 3 || ['helper1', 'helper2', 'helper3'].some(role => !Object.hasOwn(input.paths, role) ||
           typeof input.paths[role] !== 'string' || input.paths[role].length > 200 || !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+$/.test(input.paths[role]))) throw fail('HOUR_STAGE_PLAN_INVALID');
+    if (input.tasks !== undefined && (!input.tasks || Object.keys(input.tasks).length !== 3 || ['helper1', 'helper2', 'helper3'].some(role =>
+      !Object.hasOwn(input.tasks, role) || typeof input.tasks[role] !== 'string' || !input.tasks[role].trim() || Buffer.byteLength(input.tasks[role]) > 4096))) throw fail('HOUR_STAGE_PLAN_INVALID');
     for (const path of Object.values(input.paths)) { if (paths.has(path)) throw fail('HOUR_STAGE_PLAN_INVALID'); paths.add(path); }
   }
   budgets = validateHourBudgets(budgets);

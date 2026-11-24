@@ -6,6 +6,8 @@ import { createTimedUpstreamMeter } from '../../src/environments/endurance/timed
 import { createBoardLauncher } from '../../src/environments/agensh/board-process.js';
 import { prepareAgenshFacilities } from '../../src/environments/agensh/provision.js';
 import { createAgenshArithmeticWorkload } from '../../src/environments/endurance/agensh-workload.js';
+import { prepareLeadHelperGit } from '../../src/environments/lead-helper/git.js';
+import { createLeadHelperProgrammingWorkload } from '../../src/environments/endurance/lead-helper-workload.js';
 import { createScaleMASArithmeticWorkload } from '../../src/environments/endurance/scalemas-workload.js';
 
 const setting = name => process.env[`SWARMENV_HOUR_${name}`];
@@ -62,6 +64,15 @@ async function create({ mode, budgets, signal }) {
         router: { events: { pollIntervalMs: 10_000, maxPolls: 600 } },
       });
       workload = createAgenshArithmeticWorkload({ getFacilities: () => facilities, adminToken: gitea.adminToken, programming, parallel: true });
+    } else if (mode === 'lead-helper') {
+      const gitea = { origin: required('GITEA_ORIGIN'), owner: required('GITEA_OWNER'), adminToken: required('GITEA_TOKEN') };
+      let facilities;
+      Object.assign(options, { gitea, helperCount: 3, exportLimit: 16 * 1024 ** 2,
+        secretValues: [gitea.adminToken, ...Object.values(upstreamHeaders)],
+        prepare: async parameters => { facilities = await prepareLeadHelperGit(parameters); return facilities; },
+      });
+      workload = createLeadHelperProgrammingWorkload({ getFacilities: () => facilities, adminToken: gitea.adminToken, programming });
+
     } else workload = createScaleMASArithmeticWorkload({ programming });
     return { options, workload, quota, signal: life,
       admit: parameters => admitLifetime({ ...parameters, provider: { baseUrl: lifecycle,
@@ -69,4 +80,4 @@ async function create({ mode, budgets, signal }) {
   } catch (error) { await quota.close(); throw error; }
 }
 
-export default { configurations: { agensh: create, scaleMAS: create } };
+export default { configurations: { agensh: create, scaleMAS: create, 'lead-helper': create } };
