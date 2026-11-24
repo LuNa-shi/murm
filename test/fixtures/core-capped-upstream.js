@@ -100,14 +100,33 @@ function terminalGeometry(response, model) {
   return geometry;
 }
 
-export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, deadlineAt,
+export async function createCappedUpstream(options) {
+  const { upstreamUrl, upstreamHeaders = {}, deadlineAt,
   maxRequests = 8, maxOutputTokens = 4096, generationOutputTokens = maxOutputTokens, filename, marker, disableTools = false, failFast = false, onFailure = () => {}, recordGeometry = false,
-  maxConcurrent = maxRequests, maxAggregateOutputTokens = maxRequests * maxOutputTokens, maxInputBytes = 2 * 1024 ** 2, maxAggregateInputBytes = maxRequests * maxInputBytes }) {
+  maxConcurrent = maxRequests, maxAggregateOutputTokens = maxRequests * maxOutputTokens, maxInputBytes = 2 * 1024 ** 2, maxAggregateInputBytes = maxRequests * maxInputBytes, profile = 'short', phases, ...extra } = options;
+  const createdAt = Date.now();
+  let phaseLimits, ownerDeadlineAt = deadlineAt;
+  const endurance = profile === 'endurance';
+  if (endurance) {
+    const bounds = { setupMs: [1, 600_000], workMs: [3_600_000, 3_900_000], cleanupMs: [1, 600_000], recoveryMs: [0, 300_000], marginMs: [1, 120_000] };
+    const explicit = ['maxRequests', 'maxConcurrent', 'generationOutputTokens', 'maxOutputTokens', 'maxAggregateOutputTokens', 'maxInputBytes', 'maxAggregateInputBytes', 'deadlineAt', 'failFast'];
+    if (Object.keys(extra).length || !explicit.every(key => Object.hasOwn(options, key) && options[key] !== undefined) || !failFast ||
+        !phases || typeof phases !== 'object' || Array.isArray(phases) || Object.keys(phases).length !== Object.keys(bounds).length ||
+        !Object.entries(bounds).every(([key, [low, high]]) => Object.hasOwn(phases, key) && Number.isSafeInteger(phases[key]) && phases[key] >= low && phases[key] <= high) ||
+        maxRequests > 256 || maxConcurrent > 4 || maxOutputTokens > 1024 || generationOutputTokens > 768 || generationOutputTokens >= maxOutputTokens ||
+        maxAggregateOutputTokens > 196_608 || maxAggregateInputBytes > 32 * 1024 ** 2 ||
+        deadlineAt < createdAt + phases.workMs || deadlineAt > createdAt + phases.setupMs + phases.workMs) {
+      throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID');
+    }
+    phaseLimits = Object.freeze({ ...phases });
+    ownerDeadlineAt = deadlineAt + phaseLimits.cleanupMs + phaseLimits.recoveryMs + phaseLimits.marginMs;
+  } else if (profile !== 'short' || phases !== undefined) throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID');
+
   let target;
   try { target = new URL(upstreamUrl); } catch { throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID'); }
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password || target.hash ||
-      !Number.isFinite(deadlineAt) || deadlineAt <= Date.now() || deadlineAt > Date.now() + 180_000 ||
-      !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > 20 ||
+      !Number.isFinite(deadlineAt) || deadlineAt <= Date.now() || (!endurance && deadlineAt > createdAt + 180_000) ||
+      !Number.isInteger(maxRequests) || maxRequests < 1 || maxRequests > (endurance ? 256 : 20) ||
       !Number.isInteger(maxOutputTokens) || maxOutputTokens < 1 || maxOutputTokens > 4096 ||
       !Number.isInteger(generationOutputTokens) || generationOutputTokens < 1 || generationOutputTokens > maxOutputTokens ||
       (generationOutputTokens !== maxOutputTokens && !failFast) ||
@@ -119,6 +138,8 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
       typeof recordGeometry !== 'boolean' || typeof failFast !== 'boolean' || typeof onFailure !== 'function' || typeof disableTools !== 'boolean' || typeof filename !== 'string' || !filename || typeof marker !== 'string' || !marker) {
     throw new Error('LIVE_UPSTREAM_CONFIGURATION_INVALID');
   }
+  const frozenPolicy = Object.freeze({ maxRequests, maxConcurrent, generationOutputTokens, maxOutputTokens,
+    maxAggregateOutputTokens, maxInputBytes, maxAggregateInputBytes, ...(phaseLimits ? { phases: phaseLimits } : {}) });
   const headers = { ...upstreamHeaders };
   const records = [];
   const transportStarted = performance.now();
@@ -141,7 +162,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   let forwarded = 0, reservedOutputTokens = 0, peakConcurrent = 0, reservedInputBytes = 0, rejectedArrivals = 0;
   function rejectAdmission(...args) { rejectedArrivals++; json(...args); }
   let arrivals = 0;
-  let closing = false;
+  let closing = false, listenerClosed = false;
   let deadlineReached = false;
   let bashReturned = false;
   let readVerified = false;
@@ -242,7 +263,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
   const server = createServer(async (request, response) => {
     arrivals++;
     if (failure) { rejectAdmission(response, 400, 'LIVE_RUN_FAILED'); return; }
-    if (closing || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
+    if (closing || deadlineReached || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
     if (request.method !== 'POST' || request.url !== '/v1/responses') { rejectAdmission(response, 404, 'LIVE_ROUTE_REJECTED'); return; }
     let body;
     try {
@@ -259,7 +280,7 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
         throw new Error('shape');
       }
     } catch { rejectAdmission(response, 400, 'LIVE_REQUEST_REJECTED'); return; }
-    if (closing || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
+    if (closing || deadlineReached || Date.now() >= deadlineAt) { rejectAdmission(response, 429, 'LIVE_WORK_DEADLINE'); return; }
     if (failure) { rejectAdmission(response, 400, 'LIVE_RUN_FAILED'); return; }
     if (forwarded >= maxRequests) { rejectAdmission(response, 429, 'LIVE_REQUEST_CAP'); return; }
     if (active.size >= maxConcurrent) { rejectAdmission(response, 429, 'LIVE_CONCURRENCY_CAP'); return; }
@@ -389,25 +410,30 @@ export async function createCappedUpstream({ upstreamUrl, upstreamHeaders = {}, 
     deadlineReached = true;
     active.forEach(request => { transport(requestRecords.get(request), 'work_expiry', true); request.destroy(); });
   }, Math.max(1, deadlineAt - Date.now()));
+  let ownerTimer;
+  function closeOwner() {
+    if (closePromise) return closePromise;
+    closing = true;
+    clearTimeout(deadline);
+    clearTimeout(ownerTimer);
+    // Record intent before destroy(): the later stream error can be caused by
+    // this close. Preserve an earlier independently observed termination.
+    records.forEach(record => transport(record, 'proxy_close', true));
+    active.forEach(request => request.destroy());
+    closePromise = (async () => {
+      // Preserve the first finite classification even if work cancellation closes the client.
+      if (failFast) await Promise.all([...rejectionReads]);
+      await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
+      listenerClosed = true;
+    })();
+    return closePromise;
+  }
   server.listen(0, '127.0.0.1');
   try { await once(server, 'listening'); } catch { clearTimeout(deadline); throw new Error('LIVE_PROXY_START_FAILED'); }
+  if (endurance) ownerTimer = setTimeout(() => { void closeOwner(); }, Math.max(1, ownerDeadlineAt - Date.now()));
   return {
     url: `http://127.0.0.1:${server.address().port}/v1/responses`,
-    receipt() { return structuredClone({ arrivals, forwarded, maxRequests, maxOutputTokens, generationOutputTokens, observedOutputTokens: records.reduce((total, row) => total + (row.usage?.outputTokens ?? 0), 0), settledOutputTokens, outstandingOutputTokens, committedOutputTokens: settledOutputTokens + outstandingOutputTokens, maxConcurrent, peakConcurrent, maxAggregateOutputTokens, reservedOutputTokens, maxInputBytes, maxAggregateInputBytes, reservedInputBytes, rejectedArrivals, deadlineReached, bashReturned, readVerified, ...(failure ? { failure } : {}), requests: records }); },
-    close() {
-      if (closePromise) return closePromise;
-      closing = true;
-      clearTimeout(deadline);
-      // Record intent before destroy(): the later stream error can be caused by
-      // this close. Preserve an earlier independently observed termination.
-      records.forEach(record => transport(record, 'proxy_close', true));
-      active.forEach(request => request.destroy());
-      closePromise = (async () => {
-        // Preserve the first finite classification even if work cancellation closes the client.
-        if (failFast) await Promise.all([...rejectionReads]);
-        await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
-      })();
-      return closePromise;
-    },
+    receipt() { return structuredClone({ profile, model: 'k3', createdAt, deadlineAt, ownerDeadlineAt, frozenPolicy, activeRequests: active.size, admissionClosed: closing, closed: listenerClosed, arrivals, forwarded, maxRequests, maxOutputTokens, generationOutputTokens, observedOutputTokens: records.reduce((total, row) => total + (row.usage?.outputTokens ?? 0), 0), settledOutputTokens, outstandingOutputTokens, committedOutputTokens: settledOutputTokens + outstandingOutputTokens, maxConcurrent, peakConcurrent, maxAggregateOutputTokens, reservedOutputTokens, maxInputBytes, maxAggregateInputBytes, reservedInputBytes, rejectedArrivals, deadlineReached, bashReturned, readVerified, ...(failure ? { failure } : {}), requests: records }); },
+    close: closeOwner,
   };
 }
