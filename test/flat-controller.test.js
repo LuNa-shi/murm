@@ -110,6 +110,55 @@ test('confirmed execution stop and pending cleanup release Task outcome but reta
   assert.equal(f.controller.snapshot().bots.length,2);
 });
 
+test('incomplete finish retains its owner through unknown stop and retries cleanup before Slot reuse', async t => {
+  const f = await fixture(t);
+  const execution = f.take();
+  const envelope = makeEnvelope({
+    operationId: 'incomplete-finish-cleanup', actorRef: f.bot.botId,
+    taskId: execution.task_id, executionId: execution.execution_id,
+    specVersion: execution.spec_version, stateVersion: execution.state_version,
+    fencingVersion: execution.fencing_version,
+  });
+  f.tasks.dispatch('task_finish', { outcome: 'incomplete', reason: 'Continue in a fresh Bot' }, envelope);
+
+  controls.stopError = Object.assign(new Error('Worker stop is unconfirmed'), { code: 'OPERATION_UNKNOWN' });
+  await f.controller.tick();
+  assert.equal(f.tasks.getExecution(execution.execution_id).state, 'CLOSING');
+  assert.equal(f.tasks.getTask(f.task.task_id).state, 'RUNNING');
+  assert.equal(f.tasks.listEligibleTasks().length, 0);
+  assert.equal(f.controller.snapshot().bots.length, 1);
+  assert.equal(f.controller.snapshot().bots[0].lastStop.execution, 'unknown');
+  assert.equal(f.controller.snapshot().bots[0].released, false);
+
+  controls.stopError = null;
+  controls.destroyError = new Error('Sandbox deletion is unconfirmed');
+  await f.controller.tick();
+  assert.equal(f.tasks.getExecution(execution.execution_id).state, 'HANDED_OFF');
+  assert.equal(f.tasks.getTask(f.task.task_id).state, 'OPEN');
+  assert.equal(f.tasks.getBot(f.bot.botId).state, 'CLOSING');
+  assert.equal(f.controller.snapshot().bots.length, 1);
+  assert.equal(f.controller.snapshot().bots[0].lastStop.execution, 'stopped');
+  assert.equal(f.controller.snapshot().bots[0].lastStop.cleanup, 'pending');
+  assert.equal(f.controller.snapshot().bots[0].released, false);
+
+  controls.destroyError = null;
+  await f.controller.tick();
+  const rows = f.controller.snapshot().bots;
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].released, true);
+  assert.equal(f.tasks.getBot(f.bot.botId).state, 'CLOSED');
+  assert.equal(rows[1].slot, rows[0].slot);
+  assert.notEqual(rows[1].botId, f.bot.botId);
+  const successor = f.tasks.takeTask(f.task.task_id, {
+    owner_ref: rows[1].botId, core_id: rows[1].legacySlotId, take_key: 'successor-after-cleanup',
+  }).execution;
+  await f.controller.tick();
+  assert.equal(f.tasks.getTask(f.task.task_id).state, 'RUNNING');
+  assert.equal(f.tasks.getActiveExecutionForCore(rows[1].legacySlotId).execution_id, successor.execution_id);
+  assert.equal(f.tasks.getExecution(execution.execution_id).state, 'HANDED_OFF');
+  assert.equal(f.controller.snapshot().bots.length, 2);
+});
+
 test('host close records intent for a still-unbound discovery Bot before finalizing its domain Slot',async t=>{
   const f=await fixture(t);
   assert.equal(f.tasks.getBot(f.bot.botId).state,'UNBOUND');
