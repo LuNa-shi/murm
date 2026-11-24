@@ -4,7 +4,7 @@ import { registerHooks } from 'node:module';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls } from './fixtures/flat-controller-backend.js';
@@ -22,13 +22,16 @@ const execute=promisify(execFile);
 const identity={checker_ref:'fixed-tree',checker_version:'1',environment_ref:'controlled'};
 async function fixture(t,options={}) {
   const root=await mkdtemp(join(tmpdir(),'flat-merge-'));
-  const stores=await createFlatTaskStores(root,{mergeRequiredCheck:identity});
+  const stores=await createFlatTaskStores(root,{mergeRequiredCheck:identity,persistent:options.persistent});
   stores.tasks.contextService=stores.context;
   let runtime;
   const checked=[];
   const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
   const publicationOptions={runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,missionId:stores.missionId,workspaceId:stores.workspaceId,deadline:()=>Date.now()+60000,
-    workspaceMergeChecker:options.disabled?null:{identity,timeoutMs:options.timeoutMs??5000,async check(plan) {checked.push(plan);await options.check?.(plan);return {verdict:options.verdict??'PASS',check_mode:'lean-project',checked_paths:['input.txt','a.txt','b.txt']};}}};
+    workspaceMergeChecker:options.disabled?null:{identity,timeoutMs:options.timeoutMs??5000,async check(plan) {
+      checked.push(plan);
+      return await options.check?.(plan) ?? {verdict:'PASS',check_mode:'lean-project',checked_paths:['input.txt','a.txt','b.txt']};
+    }}};
   const publication=createFlatPublicationServices(publicationOptions);
   const services=new ServiceRegistry();services.registerService(publication.composeTask(discovery));
   for(const row of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(row);
@@ -56,7 +59,7 @@ async function fixture(t,options={}) {
     revisions.push(await stores.workspace.save({workspaceId:stores.workspaceId,baseRevision:'0.1',files:{'input.txt':'fixed λ\n',[i?'b.txt':'a.txt']:i?'second contribution\n':'first contribution\n'},requestId:`published-${i}`,
       source:{operation:'save',mission_id:stores.missionId,task_id:execution.task_id,execution_id:execution.execution_id,bot_id:bots[i].id,fencing_version:execution.fencing_version}}));
   }
-  return {...stores,publication,publicationOptions,runtime,bots,revisions,checked,cli:(...args)=>cli(bots[0],...args),cliFor:cli};
+  return {...stores,root,publication,publicationOptions,runtime,bots,revisions,checked,cli:(...args)=>cli(bots[0],...args),cliFor:cli};
 }
 
 test('Core Bridge CLI checked merge integrates two fixed public contributors and replays its original result',async t=>{
@@ -114,19 +117,89 @@ test('cached merge and concurrent duplicate replay require the same current Exec
   await assert.rejects(attempt());
 });
 
-for(const change of ['MAIN_MOVED','freeze','failed check']) test(`checked merge preserves existing ${change} publication guard`,async t=>{
-  const entered=Promise.withResolvers(),release=Promise.withResolvers();
-  const f=await fixture(t,{verdict:change==='failed check'?'FAIL':'PASS',async check(){entered.resolve();await release.promise;}});
-  const attempt=f.cli('workspace','merge','--from',f.revisions[0].revision,'--request-id','publication-race').then(()=>({ok:true}),error=>({error}));
+for (const [change, code] of Object.entries({
+  'main advances': 'MAIN_MOVED',
+  'Mission freezes': 'MISSION_SUBMITTING',
+  'Mission freeze is released': 'MISSION_SUBMITTING',
+  'finish is accepted': 'NOT_ALLOWED',
+  'handoff reminder enters soft closeout': 'NOT_ALLOWED',
+})) test(`checked merge does not advance main when ${change} during checking`, async t => {
+  const entered = Promise.withResolvers(), release = Promise.withResolvers();
+  const f = await fixture(t, { async check() { entered.resolve(); await release.promise; } });
+  const source = f.revisions[0].revision;
+  const attempt = f.cli('workspace', 'merge', '--from', source, '--request-id', 'publication-race')
+    .then(() => ({ ok: true }), error => ({ error }));
   await entered.promise;
-  let expected='0.1';
+  let expected = '0.1';
   try {
-    if(change==='MAIN_MOVED') expected=(await f.workspace.merge({workspaceId:f.workspaceId,fromRevision:f.revisions[1].revision,requestId:'external-integrator'})).main_revision;
-    if(change==='freeze') await f.workspace.freeze({workspaceId:f.workspaceId,submissionId:'fixed-submit'});
-  } finally {release.resolve();}
-  const outcome=await attempt;assert.ok(outcome.error);
-  assert.match(outcome.error.stderr,change==='MAIN_MOVED'?/MAIN_MOVED/:change==='freeze'?/MISSION_SUBMITTING/:/final Workspace tree check failed/);
-  assert.equal((await f.workspace.get({workspaceId:f.workspaceId})).main_revision,expected);
+    if (code === 'MAIN_MOVED') {
+      expected = (await f.workspace.merge({ workspaceId: f.workspaceId, fromRevision: f.revisions[1].revision, requestId: 'external-integrator' })).main_revision;
+    } else if (code === 'MISSION_SUBMITTING') {
+      await f.workspace.freeze({ workspaceId: f.workspaceId, submissionId: 'fixed-submit' });
+      if (change === 'Mission freeze is released') await f.workspace.unfreeze({ workspaceId: f.workspaceId, submissionId: 'fixed-submit' });
+    } else if (change === 'finish is accepted') {
+      await f.cli('task', 'finish', '--outcome', 'incomplete', '--request-id', 'finish-before-merge');
+    } else {
+      const execution = f.tasks.getExecution(f.tasks.getBot(f.bots[0].id).execution_id);
+      f.tasks.dispatch('record_handoff_reminder', { reminded_at: new Date().toISOString() }, makeEnvelope({
+        actorRef: f.bots[0].id, taskId: execution.task_id, executionId: execution.execution_id,
+        specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version,
+      }));
+    }
+  } finally { release.resolve(); }
+  const outcome = await attempt;
+  assert.ok(outcome.error);
+  const error = JSON.parse(outcome.error.stderr);
+  assert.equal(error.code, code);
+  if (code === 'MAIN_MOVED') assert.deepEqual(error.details, {
+    observed_revision: '0.1', actual_revision: expected, source_revision: source,
+    service_id: 'workspace', operation: 'workspace_merge', operation_id: 'publication-race',
+  });
+  assert.equal((await f.workspace.get({ workspaceId: f.workspaceId })).main_revision, expected);
+  assert.equal((await f.workspace.listRevisions({ workspaceId: f.workspaceId })).length, expected === '0.1' ? 3 : 4);
+});
+
+test('Core CLI preserves pinned revisions and bounded diagnostics for a failed final tree', async t => {
+  const f = await fixture(t, { check: () => ({ verdict: 'FAIL', check_result_id: 'failed-tree', diagnostic: 'x'.repeat(4096) }) });
+  const source = f.revisions[0].revision;
+  await assert.rejects(f.cli('workspace', 'merge', '--from', source, '--request-id', 'failed-tree'), error => {
+    const result = JSON.parse(error.stderr);
+    assert.equal(result.code, 'NOT_ALLOWED');
+    assert.equal(result.message, 'final Workspace tree check failed');
+    assert.equal(result.details.main_revision, '0.1');
+    assert.equal(result.details.source_revision, source);
+    assert.equal(result.details.checked_tree, f.checked[0].tree);
+    assert.equal(result.details.check.check_result_id, 'failed-tree');
+    assert.equal(result.details.check.diagnostic, 'x'.repeat(2048));
+    return true;
+  });
+  assert.equal((await f.workspace.get({ workspaceId: f.workspaceId })).main_revision, '0.1');
+  assert.equal(f.checked.length, 1);
+});
+
+test('Core Bridge merge holds the cross-process Task lock through Git publication', async t => {
+  const f = await fixture(t, { persistent: true });
+  let attempted = false;
+  f.workspace.repository.fault = point => {
+    if (point !== 'after_intent') return;
+    attempted = true;
+    const writer = execFileSync(process.execPath, ['--input-type=module', '-e', `
+      import { DatabaseSync } from 'node:sqlite';
+      const db = new DatabaseSync(process.argv[1]);
+      db.exec('PRAGMA busy_timeout = 40');
+      try { db.exec('BEGIN IMMEDIATE'); console.log('incorrectly acquired'); db.exec('ROLLBACK'); }
+      catch (error) { console.log(error.errcode === 5 ? 'blocked' : error.message); }
+      finally { db.close(); }
+    `, join(f.root, 'state.sqlite')], { encoding: 'utf8', timeout: 5000 });
+    assert.equal(writer.trim(), 'blocked');
+  };
+  let merge;
+  try {
+    merge = await f.cli('workspace', 'merge', '--from', f.revisions[0].revision, '--request-id', 'locked-merge');
+  } finally { f.workspace.repository.fault = null; }
+  assert.equal(attempted, true);
+  assert.equal((await f.workspace.get({ workspaceId: f.workspaceId })).main_revision, merge.main_revision);
+  assert.equal((await f.workspace.exportRevision({ workspaceId: f.workspaceId, revision: merge.main_revision })).git_tree, merge.check.checked_tree);
 });
 
 test('checked merge is explicitly opted in and source arguments cannot select mutable or private input',async t=>{
@@ -218,7 +291,7 @@ test('fresh checker failure keeps its original cause when authority is also with
 
 test('Core CLI merge rejects an abort-handler late PASS and replays timeout without rechecking', async t => {
   const f = await fixture(t, { timeoutMs: 30, check({ signal }) {
-    return new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    return new Promise(resolve => signal.addEventListener('abort', () => resolve({ verdict: 'PASS' }), { once: true }));
   } });
   // The fixture returns its genuine PASS after the abort handler resolves.
   const merge = () => f.cli('workspace', 'merge', '--from', f.revisions[0].revision, '--request-id', 'late-pass');

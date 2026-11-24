@@ -5,8 +5,8 @@ import { MissionWorkspace } from '../../src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../../src/runtime/workspace-manager.js';
 import { makeEnvelope } from '../../src/protocol/envelope.js';
 
-export async function createFlatTaskStores(root, { mergeRequiredCheck } = {}) {
-  const tasks = new TaskService();
+export async function createFlatTaskStores(root, { mergeRequiredCheck, persistent = false } = {}) {
+  const tasks = new TaskService(persistent ? join(root, 'state.sqlite') : undefined);
   const context = new ContextService(':memory:', { taskService: tasks });
   const missionId = 'mission:flat-take';
   tasks.createMission({ mission_id: missionId, goal: 'Verify fixed flat handoff', ...(mergeRequiredCheck ? { merge_required_check: mergeRequiredCheck } : {}) }, makeEnvelope({ actorRef: 'host' }));
