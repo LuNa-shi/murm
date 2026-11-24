@@ -1,6 +1,6 @@
 import { createSubagentsController } from './controller.mjs';
 
-/** Read the hour result without changing the settled text used for routing and adoption. */
+/** Read the staged result without changing the settled text used for routing and adoption. */
 export function readSubagentsStageResult(output) {
   let payload = output.trim();
   let value;

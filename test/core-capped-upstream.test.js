@@ -998,3 +998,48 @@ test('a split target requires the metered fail-closed mode and ordered finite th
       filename:'unused',marker:'unused',...options}),{message:'LIVE_UPSTREAM_CONFIGURATION_INVALID'});
   }
 });
+
+// Clock rollback and cancellation remain ordinary short-proxy safety contracts.
+function shortClockConfiguration(upstreamUrl) {
+  return {upstreamUrl,deadlineAt:Date.now()+120000,filename:'unused',marker:'unused',failFast:true,
+    maxRequests:8,maxOutputTokens:1024};
+}
+test('expired dispatch admission stays closed when the wall clock rolls back', async t => {
+  const timers = [], schedule = globalThis.setTimeout;
+  t.mock.method(globalThis, 'setTimeout', (callback, ms, ...args) => {
+    const timer = schedule(callback, ms, ...args); if (ms > 100_000) timers.push(callback); return timer;
+  });
+  let calls = 0;
+  const url = await localUpstream(t, (request, response) => { request.resume(); calls++; response.end(); });
+  const owner = await createCappedUpstream(shortClockConfiguration(url)); t.after(() => owner.close());
+  timers[0]();
+  t.mock.method(Date, 'now', () => owner.receipt().createdAt);
+  const response = await fetch(owner.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  assert.equal(response.status, 429); await response.text();
+  assert.equal(calls, 0); assert.equal(owner.receipt().deadlineReached, true);
+});
+
+test('an observed wall-clock expiry latches before its timer and cancels an active peer', async t => {
+  let calls = 0;
+  const url = await localUpstream(t, (request, response) => { request.resume(); calls++; response.writeHead(200); response.write(':held\n\n'); });
+  const owner = await createCappedUpstream(shortClockConfiguration(url)); t.after(() => owner.close());
+  const send = () => fetch(owner.url, { method: 'POST', body: JSON.stringify({ model: 'k3', input: [] }) });
+  const peer = await send(); const cancelled = peer.text().catch(() => undefined);
+  const policy = owner.receipt(); let wallNow = policy.deadlineAt + 1;
+  t.mock.method(Date, 'now', () => wallNow);
+  const expired = await send(); assert.equal(expired.status, 429); await expired.text();
+  assert.equal(owner.receipt().deadlineReached, true);
+  await cancelled;
+  wallNow = policy.createdAt;
+  const rolledBack = await send(); assert.equal(rolledBack.status, 429); await rolledBack.text();
+  const receipt = owner.receipt(); assert.equal(calls, 1); assert.equal(receipt.forwarded, 1);
+  assert.equal(receipt.outstandingOutputTokens, 1024);
+  assert.equal(receipt.requests[0].transport.firstTermination.kind, 'work_expiry');
+});
+
+test('retired hour profile and expanded phase policy cannot fall through to short admission',async()=>{
+  const config=shortClockConfiguration('http://127.0.0.1:1/v1/responses');
+  for(const extra of [{profile:'endurance'},{phases:{workMs:3600000}},{deadlineAt:Date.now()+3600000},{maxRequests:21}]) {
+    await assert.rejects(createCappedUpstream({...config,...extra}),{message:'LIVE_UPSTREAM_CONFIGURATION_INVALID'});
+  }
+});

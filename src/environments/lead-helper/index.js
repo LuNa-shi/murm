@@ -190,7 +190,7 @@ export async function createLeadHelperEnvironment(options) {
                   const decision = await verifyCandidate(structuredClone(task), { stage, direction: structuredClone(direction), environment: snapshot(), signal: workSignal });
                   workSignal.throwIfAborted();
                   if (decision === true) break;
-                  if (typeof decision?.correction !== 'string' || !decision.correction.trim() || decision.rejected?.code !== 'HOUR_PROGRAMMING_INVALID') throw fail('STAGE_CANDIDATE_UNCONFIRMED');
+                  if (typeof decision?.correction !== 'string' || !decision.correction.trim() || decision.rejected?.code !== 'STAGE_CANDIDATE_REJECTED') throw fail('STAGE_CANDIDATE_UNCONFIRMED');
                   const input = structuredClone(inputs.findLast(row => row.botId === team[role]));
                   const rejection = { role, stage, attempt, task: structuredClone(task), input, ...structuredClone(decision.rejected) };
                   rejected.push(rejection); rejections.push(structuredClone(rejection));

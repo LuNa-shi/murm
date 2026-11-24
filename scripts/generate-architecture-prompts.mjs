@@ -24,10 +24,9 @@ const sourcePaths = [
   'src/agent/services-bridge.js',
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
-  'src/environments/flat/controller.js', 'src/environments/flat/environment.js', 'src/environments/endurance/flat.js', 'src/environments/endurance/flat-hour.js', 'src/environments/endurance/flat-workload.js',
-  'examples/subagents-environment/hour.mjs', 'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
+  'src/environments/flat/controller.js', 'src/environments/flat/environment.js',
+  'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
   'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js', 'src/environments/agensh/team.js',
-  'src/environments/endurance/agensh-workload.js', 'src/environments/endurance/scalemas-workload.js', 'src/environments/endurance/programming.js', 'src/environments/endurance/lead-helper-workload.js',
   'test/fixtures/agensh-team-kimi.js', 'test/agensh-team-kimi-real.test.js',
   'src/environments/lead-helper/prompts.js', 'src/environments/lead-helper/index.js',
   'src/runtime/runtime.js',
@@ -146,15 +145,11 @@ output('08-subagents-environment.md', header('Subagents Environment prompts',
   'The host stages Profile prompts verbatim. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in controller.mjs with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Bot Service requests.')
   + block('Parent Profile prompt', evaluate(between(subagentsPath, 'export const parentPrompt = ', ';\n')))
   + block('Child Profile prompt', evaluate(between(subagentsPath, 'export const childPrompt = ', ';\n')))
-  + ['hourParentPrompt','hourChildPrompt','hourPrepareInput','hourStageInstructions'].map(name=>block(name,evaluate(between(subagentsPath,`export const ${name} = `,';\n')))).join('')
   + block('Default initial goal', evaluate(between(subagentsPath, 'export const initialGoal = ', ';\n')))
   + [3, 4, 5, 6, 7].map(childCount => block(`Parent Profile prompt: ${childCount + 1} Bots`, parentPromptFor(childCount))
     + block(`Default initial goal: ${childCount + 1} Bots`, initialGoalFor(childCount))).join(''));
 for (const [index, line] of sources.get('examples/subagents-environment/controller.mjs').split('\n').entries()) {
   if (line.includes('await runtime.send(')) sendSites.push({ path: 'examples/subagents-environment/controller.mjs', line: index + 1, expression: line.trim() });
-}
-for (const [index, line] of sources.get('examples/subagents-environment/hour.mjs').split('\n').entries()) {
-  if (line.includes('()=>runtime.send(')) sendSites.push({ path: 'examples/subagents-environment/hour.mjs', line: index + 1, expression: line.trim() });
 }
 const scaleMASPath = 'src/environments/scalemas/index.js';
 output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
@@ -174,24 +169,6 @@ output('08-agensh-environment.md', header('Agensh peer and serial router prompts
   + block('Opt-in hosted A external comment instructions', between('test/fixtures/agensh-team-kimi.js', 'export const liveAUser = `', '`;'))
   + block('Exact hosted initial composition', between('test/fixtures/agensh-team-kimi.js', '  return [`', '];'),
     'The host supplies two distinct provisioned peer usernames and a fresh 24-character seed. Only A receives the seed. The user comment names only A and appends liveAUser. Negotiation and agreement text are actual model-authored Mattermost posts, delivered by the normal authenticated subscription. The fixture injects no model tool program or terminal response.'));
-output('13-hour-matrix.md', header('Bounded hour business and programming prompts',
-  'These are frozen host workload templates. They are sent only through the real Agensh serial router or scaleMAS cycle entry; controlled tests do not establish actual hosted delivery. The optional external programming module is trusted operator input and its text is retained in private runtime evidence, not recoverable from these repository templates.')
-  + block('Agensh per-peer stage input', between('src/environments/endurance/agensh-workload.js', '  function input(peer, stage) {', '\n  async function verify('),
-    'peer/index come from the actual fixed provisioned team; stage is hour phase index plus one (0 baseline, 1 through 4 window work). Stage zero omits programming to preserve request headroom. For final B, the host targets the actual peer username in a real Gitea issue comment after A stop; other inputs use sole-router kickoff/user ingress.')
-  + block('scaleMAS frozen question', between('src/environments/endurance/scalemas-workload.js', "    question:'", "',\n"))
-  + block('scaleMAS per-cycle composition', between('src/environments/endurance/scalemas-workload.js', '    questionForCycle(', '\n    ready('),
-    'peerIndex is actual zero-based fixed pool order; round is the actual cycle from zero through five. The validated question is sent in the ordinary Core followUp with peer/cycle header and cyclePrompt.')
-  + block('scaleMAS independent checker correction', between('src/environments/endurance/scalemas-workload.js', '        return {correction:', '\n          rejected:'),
-    'row.address is the actual rejected immutable publication; peerIndex, round and attempt are trusted controller fields. The text contains no oracle answers. A publisher correction supplies its attempt-specific producer token, later exposed to consumers only after verified publisher stop.')
-  + block('Lead-helper frozen four-group composition', between('src/environments/endurance/lead-helper-workload.js', '  function stageInput(stage) {', '\n  async function read('),
-    'role is the trusted helper role; helper peer indices are zero-based 0–2 and programming stages are 1–4. Each supplied task is copied by the adapter before allocation and serialized only to that helper; the goal or supplement is serialized only to the original lead.')
-  + block('Lead-helper explicit checker rejection instruction', between('src/environments/endurance/lead-helper-workload.js', '        return { correction:', '\n          rejected:'),
-    'Only strict false from the frozen programming verifier creates this instruction. It contains no expected answers; original task text remains the assigned source of requirements.')
-  + block('Lead-helper corrective input composition and send', between('src/environments/lead-helper/index.js', '                  const nextPath =', '\n                  final = board.snapshot();'),
-    'stage, role and attempt are trusted controller fields; fixedPaths/fixedTasks are the original copied host plan. nextPath and subtaskId are fresh derived addresses, and decision.correction comes from the host checker port above. The same helper receives this JSON through actual exclusive followUp only after the prior accepted input completed and its candidate was explicitly rejected. The original absolute deadline is reused. No expected answer or added Service grant is supplied.')
-
-  + block('Programming instructions appended to repository workload', between('src/environments/endurance/programming.js', '      return `', '`;'),
-    'peer and stage are trusted numeric host fields. text is the explicitly configured external programming prompt, validated as nonblank and at most 4096 UTF-8 bytes; the host verifier receives only the programming property read from the real committed/substrate JSON and never executes generated code.'));
 const leadHelperPath = 'src/environments/lead-helper/prompts.js';
 let leadHelperDoc = header('Fixed lead-helper role and turn instructions', 'Profiles stage lead/helper roles. The Environment serializes each round instruction with trusted host fields before exclusive followUp delivery; these are source templates, not a native transcript.');
 for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'helperInitialInstruction', 'leadAdjustmentInstruction', 'helperFollowupInstruction']) {
@@ -201,21 +178,12 @@ for (const name of ['leadPrompt', 'helperPrompt', 'initializeInstruction', 'help
   const delimiter = source[from + start.length];
   leadHelperDoc += block(name, between(leadHelperPath, start + delimiter, delimiter + ';'));
 }
+leadHelperDoc += block('Staged corrective input composition and send', between('src/environments/lead-helper/index.js', '                  const nextPath =', '\n                  final = board.snapshot();'), 'The trusted host checker must explicitly return STAGE_CANDIDATE_REJECTED. Actual stage, helper role and attempt derive the fresh path and request ID; the original task and monotonic deadline remain fixed. No reference answer or new permission is supplied.');
 output('08-lead-helper-environment.md', leadHelperDoc);
 const flatControllerPath = 'src/environments/flat/controller.js';
 output('08-flat-environment.md', header('Flat discovery and continuation prompts',
   'The host stages its researcher Profile prompt verbatim. After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. Continuation uses the current Execution and buildBotContinuationMessage to choose the ordinary or soft-closeout body documented in the retained Runtime turn reference. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller. The default Environment rejects missing trusted live Workspace snapshot readiness before Runtime allocation, so these templates alone establish no actual native delivery.')
   + block('Default researcher Profile prompt', between('src/environments/flat/environment.js', "prompt='", "',\n"))
-  + block('Host-preseeded public candidate researcher Profile', between('src/environments/endurance/flat.js', "export const FLAT_FIXED_PROMPT = '", "';"),
-    'This separate host-only affirmative harness grants public fixed reads/merge and Task/Material operations; it does not grant live private Workspace save/status/diff. Candidate revisions and completion contracts come from frozen trusted host files before Runtime allocation. The configured Profile is staged at spawn; discovery and subsequent continuation still follow the real Flat controller.')
-  + block('Natural-hour staged researcher Profile', between('src/environments/endurance/flat-hour.js', "export const FLAT_STAGED_PROMPT = '", "';"),
-    'The trusted host stages this Profile before discovery. The optional host-controlled continuation mode then sends four explicit program groups through actual Core followUp, preserving the same owned Execution. No private capture grant is added.')
-  + block('Natural-hour full programming group input', between('src/environments/endurance/flat-workload.js', '      return `', '`;'),
-    'peer/phase are fixed team/stage indices; proofKey is a fresh host correlation key; candidate revision/stages are frozen public host revisions. adopted names a genuinely stopped original Bot and its actual Material/revision. The original program hashes are deliberately absent from the host input and must be read through the ordinary Material route. program.prompt appends the independently frozen external task through createProgrammingContract; its full wrapper is in the hour prompt reference. The actual send is runInput on the current Bot and Execution. Finish feedback in flat-hour.js uses the latest verified revision and actual system-assigned Material ID.')
-  + block('Natural-hour omitted Material correction', between('src/environments/endurance/flat-hour.js', "export const FLAT_MISSING_MATERIAL_CORRECTION = '", "';"),
-    'Appended only after an actual completed exclusive input leaves zero Materials with its exact proofKey under the same ACTIVE owner Execution. The new group input supplies a fresh proofKey and request ID; the original turn and quarter deadline remain fixed. Multiple matching Materials, ownership/transport uncertainty and programming failure are not eligible.')
-  + block('Natural-hour final Task finish input', between('src/environments/endurance/flat-hour.js', 'input: `', '`, requestId:'),
-    'Sent as explicit controller followUp only after the latest actual group proof passes. current.revision and current.materialId are independently verified immutable main revision and actual system Material ID. The current trusted Execution supplies taskId; no host-authored model result is substituted.')
   + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
   + block('Default ordinary continuation', BOT_CONTINUATION_MESSAGE,
     'The host can override controller.continuationPrompt. The current Execution state and closeout timing determine whether buildBotContinuationMessage uses this ordinary body or the existing soft-closeout text. Task/Execution identity, deadlines and remaining budget come from the trusted domain stores.'));

@@ -46,22 +46,6 @@
       "sha256": "ea48d3652ba25b01490bf1f488f74aa013aac8996e5407d8b6dfaf7d58be141b"
     },
     {
-      "path": "src/environments/endurance/flat.js",
-      "sha256": "38c834436cc900f08aac2d5ea71aede02d4bc8719f5abb33dc5b616ae005a63e"
-    },
-    {
-      "path": "src/environments/endurance/flat-hour.js",
-      "sha256": "1dcf70b0e144b39c09fdb4e1fb01834f5254911fb7dc9f4a108e8e32b24723d0"
-    },
-    {
-      "path": "src/environments/endurance/flat-workload.js",
-      "sha256": "ca9944faf51774b0efc00cf0c58c77a7d98670502bae68adc1f79da156741ce2"
-    },
-    {
-      "path": "examples/subagents-environment/hour.mjs",
-      "sha256": "e9fb01f0ee381db4e068f30674ef8d391e7a21fa0918baaf19b8dca66239cc9d"
-    },
-    {
       "path": "examples/subagents-environment/main.mjs",
       "sha256": "46f5e9b412a2cfd26d153685503234279f7c3a8ddcec62fd09e12de5b90addbc"
     },
@@ -71,7 +55,7 @@
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
-      "sha256": "ace46e60b65ca86182924f8a3fd817803658b0d3d712c60f195625a3c1910eca"
+      "sha256": "c061cefb7583f4431c82b5750d712bbfdb419a1305195b84adf52bc1166f7842"
     },
     {
       "path": "src/environments/agensh/index.js",
@@ -90,22 +74,6 @@
       "sha256": "1d93f478f9d580a99b55cb60fd091679fff3f7680d13a0f41470dce030685e3f"
     },
     {
-      "path": "src/environments/endurance/agensh-workload.js",
-      "sha256": "5007ce60095704d0d02f66a44bcb98bdd08f07b0bc29129d172978c5685dbed1"
-    },
-    {
-      "path": "src/environments/endurance/scalemas-workload.js",
-      "sha256": "421d9b0a1ac9cd0069e4263b5dcc2a385699267c7db329eb90378d7b7f542c1f"
-    },
-    {
-      "path": "src/environments/endurance/programming.js",
-      "sha256": "95f1d0549e060c9cac7d6356345f5a78f22eca714357030df7e02ad59ae2a7e1"
-    },
-    {
-      "path": "src/environments/endurance/lead-helper-workload.js",
-      "sha256": "b6119a1017c636d8b7812d2e5066a9b5e81ce6d0583421cdf71188f4f3633916"
-    },
-    {
       "path": "test/fixtures/agensh-team-kimi.js",
       "sha256": "a9bfb493adbfc4255867aaceb95f4c55ada557b5192d00c5bdd9265c1a8ae116"
     },
@@ -119,7 +87,7 @@
     },
     {
       "path": "src/environments/lead-helper/index.js",
-      "sha256": "40b52c0cfec8a241ce2ea9f9de2593c475bf117fc2acee16f54b055132721220"
+      "sha256": "bcc32c4f65e0b729d47479aafacfe55c5d71b560b482d402feb1c88035f0e7da"
     },
     {
       "path": "src/runtime/runtime.js",
@@ -217,30 +185,6 @@
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
-      "anchor": "export const hourParentPrompt = ",
-      "line": 21,
-      "sha256": "ad581114c84abc5b0456a993dcc33c4d8bd8b522b68af1956f1dbff08fbd2e0f"
-    },
-    {
-      "path": "examples/subagents-environment/prompts.mjs",
-      "anchor": "export const hourChildPrompt = ",
-      "line": 24,
-      "sha256": "1e6d8e2db751f4d10e2669a3dff26a3ab880c6fbc3a8d8d34f60157654213fff"
-    },
-    {
-      "path": "examples/subagents-environment/prompts.mjs",
-      "anchor": "export const hourPrepareInput = ",
-      "line": 26,
-      "sha256": "9e71c97f1bacbd00a86c5282ff99cdc2ce9dd67f83830c95c94275eaa8d94c38"
-    },
-    {
-      "path": "examples/subagents-environment/prompts.mjs",
-      "anchor": "export const hourStageInstructions = ",
-      "line": 27,
-      "sha256": "fea349f641dacbfaaa5d37ac231a63b0c1c77f44e04a8c33affa066e2172252a"
-    },
-    {
-      "path": "examples/subagents-environment/prompts.mjs",
       "anchor": "export const initialGoal = ",
       "line": 6,
       "sha256": "1e96fc7dae086fcde47e0d5648f0ab79d43e74c4b8653f574ef05f6ad03cf2f6"
@@ -312,54 +256,6 @@
       "sha256": "8f943ea32b0291bed1fdbb8ecd6c55761fd81fb047587040bff06c185d1e063c"
     },
     {
-      "path": "src/environments/endurance/agensh-workload.js",
-      "anchor": "  function input(peer, stage) {",
-      "line": 30,
-      "sha256": "6c1270c622ebf39b9f880af36213649f51a5a40bb5fce6e672f05b75fd0c8128"
-    },
-    {
-      "path": "src/environments/endurance/scalemas-workload.js",
-      "anchor": "    question:'",
-      "line": 18,
-      "sha256": "ca0a0a881f2ac59fb3f0852b3d57f809e469be560cb9b02543978285cfbafabe"
-    },
-    {
-      "path": "src/environments/endurance/scalemas-workload.js",
-      "anchor": "    questionForCycle(",
-      "line": 19,
-      "sha256": "e27e307f6f14be3a4548605ba2b17868445366d6fcb03e1b20e3f21ebdac6a75"
-    },
-    {
-      "path": "src/environments/endurance/scalemas-workload.js",
-      "anchor": "        return {correction:",
-      "line": 42,
-      "sha256": "efc25b14bb11f4c9b87a7c57928602eb546c80b116aac5b071b34041043e88dd"
-    },
-    {
-      "path": "src/environments/endurance/lead-helper-workload.js",
-      "anchor": "  function stageInput(stage) {",
-      "line": 27,
-      "sha256": "ee568724d99a2c65b73c7a6a37074baa9f769dd94fd4ab0e95810ea25d17b231"
-    },
-    {
-      "path": "src/environments/endurance/lead-helper-workload.js",
-      "anchor": "        return { correction:",
-      "line": 79,
-      "sha256": "cbaf3ab9b85b1fcf34d8d2ce386653151ab402e20828f7fb12d9ba647216e2fa"
-    },
-    {
-      "path": "src/environments/lead-helper/index.js",
-      "anchor": "                  const nextPath =",
-      "line": 197,
-      "sha256": "e2197961da212a83f1efa4cbbc229c169ad3bbaaa0394466d6bd4c73959f2f4b"
-    },
-    {
-      "path": "src/environments/endurance/programming.js",
-      "anchor": "      return `",
-      "line": 12,
-      "sha256": "aca079a53f515daa6ec34c24e0b6ad91f2eb209ca784fe683c445c67a1faa574"
-    },
-    {
       "path": "src/environments/lead-helper/prompts.js",
       "anchor": "export const leadPrompt = `",
       "line": 1,
@@ -396,40 +292,16 @@
       "sha256": "0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85"
     },
     {
+      "path": "src/environments/lead-helper/index.js",
+      "anchor": "                  const nextPath =",
+      "line": 197,
+      "sha256": "e2197961da212a83f1efa4cbbc229c169ad3bbaaa0394466d6bd4c73959f2f4b"
+    },
+    {
       "path": "src/environments/flat/environment.js",
       "anchor": "prompt='",
       "line": 15,
       "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
-    },
-    {
-      "path": "src/environments/endurance/flat.js",
-      "anchor": "export const FLAT_FIXED_PROMPT = '",
-      "line": 16,
-      "sha256": "48de3fa5fa0d29655988b793e5a2c6348d83f2b332178c0a099b02ae284bdf93"
-    },
-    {
-      "path": "src/environments/endurance/flat-hour.js",
-      "anchor": "export const FLAT_STAGED_PROMPT = '",
-      "line": 9,
-      "sha256": "32c602533357fe555231eb8a63bfb6a92e14ac212f78e8b466a99097f6fadf2e"
-    },
-    {
-      "path": "src/environments/endurance/flat-workload.js",
-      "anchor": "      return `",
-      "line": 16,
-      "sha256": "4108bcc26476652a8bf1d1224d15371f4153d19296dddab6cd8eb2d6f1759c1c"
-    },
-    {
-      "path": "src/environments/endurance/flat-hour.js",
-      "anchor": "export const FLAT_MISSING_MATERIAL_CORRECTION = '",
-      "line": 10,
-      "sha256": "6098cf0e115249477285ed946ec19175d4d67e1116451545b5efd80eb84ce095"
-    },
-    {
-      "path": "src/environments/endurance/flat-hour.js",
-      "anchor": "input: `",
-      "line": 107,
-      "sha256": "261bdd3ae0a6284507cbc066c4c8890d362515be665ef74b6ce0b50b603f2230"
     },
     {
       "path": "src/environments/flat/controller.js",
@@ -440,31 +312,6 @@
   ],
   "prompt_send_sites": [
     {
-      "path": "src/environments/endurance/agensh-workload.js",
-      "line": 33,
-      "expression": "return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {\"peer\":\"${peer.key}\",\"stage\":${stage},\"n\":${n},\"square\":${n * n}} and exactly one trailing newline. Check its bytes. Stage only the delivery with git add -- ${path} and check that it is the only staged path before committing and pushing. Leave program source, stdout and test files untracked for private collection. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:\"FACT\",content:\"${fact}\"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Board write fields are board_id,type,content; PR create fields are owner,repo,method:\"create\",title,head:WORK_BRANCH,base:\"main\". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;"
-    },
-    {
-      "path": "src/environments/endurance/flat-workload.js",
-      "line": 16,
-      "expression": "return `FLAT_PROGRAM_GROUP peer=${peer} phase=${phase}. Keep your actual current Task and Execution. Complete this programming task and independently inspect the host candidate ${candidate.revision}. ${adopted ? 'Merge all fixed Task revisions listed below in order, each with a fresh stable request ID, and remember the last returned checked main_revision.' : `Merge --from ${candidate.revision} with a fresh stable request ID, obtain trusted whole-tree PASS and remember main_revision.`} If MAIN_MOVED, inspect current state and retry the merge with a new request ID; do not fabricate success. Publish exactly one Material whose content is JSON with exactly proofKey:${proofKey}, peer:${peer}, phase:${phase}, revision:the returned fixed main_revision, programming:the requested result${adopted ? ', adopted:{materialId,sourceSha256,answersSha256} copied from the original programming proof' : ''}. Link it to your Task with role experience. Do not finish the Task in this group. Keep executable source and stdout files for required export and wait for the next explicit host followUp.${adopted ? ` The original contributor has actually stopped. First merge each of your Task’s fixed public candidate revisions ${candidate.stages.map(stage=>stage.revision).join(', ')} in order, each with its own stable request ID, so the final whole-tree check covers your complete Task contract. Read Material ${adopted.materialId} and public revision ${adopted.revision} through their normal CLI routes, preserve the original, Use material consume with action task and a truthful impact to record the actual source consumption. Copy only its original materialId and programming sourceSha256/answersSha256 into adopted; these hashes are not supplied by the host.` : ''} Project-root file custody: write and retain the actual executable source at /workspace/project/hour-program-${phase+1}.py and its actual stdout at /workspace/project/hour-program-${phase+1}.stdout.json. Use these absolute paths or cd /workspace/project. Before publishing, confirm both are regular non-symlink files and derive sourceSha256 and parsed-JSON answersSha256 from those exact bytes. Retain all earlier stage pairs and preserve distinct rejected-attempt copies. Do not leave the only copy in another directory; final required Core export must contain every pair.${program.prompt(peer, phase + 1)}`;"
-    },
-    {
-      "path": "src/environments/endurance/lead-helper-workload.js",
-      "line": 30,
-      "expression": "`Write only ${paths[role]} for this group's delivery. Its JSON must have exactly helper:${JSON.stringify(role)}, stage:${stage}, directionId (the current Board direction sequence), direction (its exact current text), and programming (the requested result). Read Board before claiming. Implement and run the task, retain its program and stdout files. Stage only the delivery with git add -- ${paths[role]} and check that it is the only staged path before committing and pushing. Leave program source, stdout and test files untracked for private collection. Then publish complete proof for the actual pushed JSON file and one task-scoped feedback note. Use one coherent Bash call for read/claim/program/test/Git/publish; finish briefly.${program.prompt(index, stage + 1)}`]));"
-    },
-    {
-      "path": "src/environments/endurance/programming.js",
-      "line": 10,
-      "expression": "const text = programming.prompt({ peer, stage });"
-    },
-    {
-      "path": "src/environments/endurance/scalemas-workload.js",
-      "line": 19,
-      "expression": "questionForCycle({peerIndex,round}) { return this.question + program.prompt(peerIndex, round) +"
-    },
-    {
       "path": "src/runtime/runtime.js",
       "line": 887,
       "expression": "await active.session.prompt?.(buildBotNotification(notification), {"
@@ -473,11 +320,6 @@
       "path": "examples/subagents-environment/controller.mjs",
       "line": 26,
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
-    },
-    {
-      "path": "examples/subagents-environment/hour.mjs",
-      "line": 78,
-      "expression": "()=>runtime.send(parentId,hourPrepareInput,{requestId:'hour-prepare',mode:'followUp'}),limits.turnMs);"
     },
     {
       "path": "src/environments/flat/controller.js",
@@ -600,7 +442,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "b12dfc9c47b4b12bb54a570b37281d90e3c3fb6fd5016f8defa3216b664b01ed"
+      "sha256": "0a1dc59e762a790173b3be17550dd3ec10efb077a84c3b6584e7258ee997a3f9"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
@@ -611,16 +453,12 @@
       "sha256": "85df612341d87eaaa44d13f658909226cccb08d332c34aecfe4fc591e642f055"
     },
     {
-      "path": "docs/architecture/prompts/13-hour-matrix.md",
-      "sha256": "bd4e4b06b0b450df20dd242edf0e9340ae4e758d51a1c465ae180e45a814f3c5"
-    },
-    {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",
-      "sha256": "977aaf890c1e7ec6310d2115a259075637c23fba1bf2252001ee2d6b911e9404"
+      "sha256": "a3c8d2e5e65d9cd0ee7b434524b32201ccd1f193c8e41b46bbbac2bab64fdfbb"
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "b3b74c417378d188d7a4d4ca6ae698eb470a6336846420ce55145d9deca0364b"
+      "sha256": "4f04ad0762c325577345c95862b76e1f8369d6cd8fb42c4746c90bfad4eaeca8"
     }
   ]
 }
