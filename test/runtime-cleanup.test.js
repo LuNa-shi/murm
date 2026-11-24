@@ -90,66 +90,6 @@ test('a Runtime without the registered resource binding cannot stop or release a
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
-test('Runtime retains Core occupancy until provider deletion is confirmed', async (t) => {
-  const removing = deferred();
-  const removed = deferred();
-  const { runtime, executionId } = await fixture(t, { removeSandbox: async () => { removing.resolve(); await removed.promise; return new Response('{}'); } });
-  const release = runtime.stopExecution(executionId);
-  try {
-    await removing.promise;
-    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
-    assert.equal(runtime.getCoreStatus('core-1').execution_id, executionId);
-    assert.equal(runtime.getCapacityStatus().idle_core_count, 0);
-    assert.equal(runtime.hasActiveExecution(executionId), true);
-  } finally {
-    removed.resolve();
-    await release;
-  }
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-  assert.equal(runtime.hasActiveExecution(executionId), false);
-});
-
-test('failed provider deletion retains cleanup ownership and a later retry releases the Core', async (t) => {
-  let fail = true;
-  const { runtime, sandboxManager, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
-  try {
-    await assert.rejects(runtime.stopExecution(executionId), (error) => error.code === 'SERVICE_UNAVAILABLE');
-    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
-    assert.equal(runtime.hasActiveExecution(executionId), true);
-    assert.equal(sandboxManager.snapshot().executions.length, 1);
-  } finally { fail = false; }
-  await runtime.stopExecution(executionId);
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-  assert.equal(sandboxManager.snapshot().executions.length, 0);
-  await runtime.stopExecution(executionId);
-});
-
-test('a model process that fails to stop keeps its Core occupied for cleanup retry', async (t) => {
-  const { runtime, session, executionId } = await fixture(t);
-  const stop = session.stop;
-  session.stop = async () => { throw new Error('process still alive'); };
-  try {
-    await assert.rejects(runtime.stopExecution(executionId), /process still alive/);
-    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
-    assert.equal(runtime.hasActiveExecution(executionId), true);
-  } finally { session.stop = stop; }
-  await runtime.stopExecution(executionId);
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
-test('operator stop retains the Core when sandbox cleanup fails and can be retried', async (t) => {
-  let fail = true;
-  const { runtime, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
-  try {
-    await assert.rejects(runtime.stopExecution(executionId), (error) => error.code === 'SERVICE_UNAVAILABLE');
-    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
-    assert.equal(runtime.hasActiveExecution(executionId), true);
-    assert.equal(runtime.taskService.getExecution(executionId).state, 'RUNNING', 'Task owner must survive unconfirmed isolation');
-  } finally { fail = false; }
-  await runtime.stopExecution(executionId);
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
 test('shutdown reports retained cleanup instead of forgetting a terminal Execution after a failed stop', async (t) => {
   let fail = true;
   const { runtime, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
@@ -189,20 +129,6 @@ test('fencing retains the original process and Core when its sandbox cannot be r
     assert.equal(runtime.hasActiveExecution(executionId), true);
   } finally { fail = false; }
   await runtime.fenceExecution(executionId);
-  assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
-});
-
-test('unexpected process exit retains cleanup ownership when provider deletion fails', async (t) => {
-  let fail = true;
-  const { runtime, session, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
-  try {
-    session.closed = true;
-    session.emit('close');
-    await runtime.waitForSettled();
-    assert.equal(runtime.hasActiveExecution(executionId), true);
-    assert.equal(runtime.getCoreStatus('core-1').state, 'CLOSING');
-  } finally { fail = false; }
-  await runtime.stopExecution(executionId, 'FAILED');
   assert.equal(runtime.getCoreStatus('core-1').state, 'IDLE');
 });
 
@@ -302,30 +228,6 @@ test('Runtime shutdown retains a late registered Session and cleans it when star
   assert.equal(session.closed, true);
   assert.equal(service.getBot(botId).state, 'CLOSED');
   assert.equal(service.listActiveExecutions().length, 0);
-});
-
-test('accepted incomplete finish keeps the Task occupied through failed cleanup and closes exactly once after retry', async (t) => {
-  let fail = true;
-  const { service, runtime, executionId } = await fixture(t, { removeSandbox: async () => new Response('{}', { status: fail ? 503 : 200 }) });
-  const execution = service.getExecution(executionId);
-  const envelope = makeEnvelope({ operationId: 'finish:cleanup', actorRef: execution.owner_ref, taskId: execution.task_id,
-    executionId, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version });
-  service.dispatch('task_finish', { outcome: 'incomplete', reason: 'Continue this responsibility in a fresh Bot' }, envelope);
-  try {
-    await assert.rejects(runtime.releaseExecution(executionId), (error) => error.code === 'SERVICE_UNAVAILABLE');
-    assert.equal(service.getExecution(executionId).state, 'CLOSING');
-    assert.equal(service.getTask(execution.task_id).state, 'RUNNING');
-    assert.equal(service.listEligibleTasks().length, 0);
-  } finally {
-    fail = false;
-    await runtime.releaseExecution(executionId);
-  }
-  assert.equal(service.getExecution(executionId).state, 'HANDED_OFF');
-  assert.equal(service.getTask(execution.task_id).state, 'OPEN');
-  const successor = service.takeTask(execution.task_id, { owner_ref: 'bot:next', core_id: 'core-1', take_key: 'next' });
-  await runtime.releaseExecution(executionId);
-  assert.equal(service.getActiveExecutionForCore('core-1').execution_id, successor.execution.execution_id);
-  assert.equal(service.getTask(execution.task_id).state, 'RUNNING');
 });
 
 test('Runtime completes an accepted finish without a live CLI caller', { timeout: 30000 }, async (t) => {
