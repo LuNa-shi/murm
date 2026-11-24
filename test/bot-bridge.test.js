@@ -1,3 +1,4 @@
+import { createMissionSubmissionAccess } from '../src/environments/flat/mission-coordination.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { request as httpRequest } from 'node:http';
@@ -10,6 +11,7 @@ import { promisify } from 'node:util';
 import { TaskService } from '../src/task/task-service.js';
 import { ContextService } from '../src/context/context-service.js';
 import { ServicesBridge } from '../src/agent/services-bridge.js';
+import { ServiceRegistry } from '../src/sdk/service-registry.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
@@ -21,8 +23,8 @@ async function fixture(t, options = {}) {
   const bridge = new ServicesBridge({ taskService: service, contextService: context, runtime: {}, coreId: 'core-1', registry, ...options });
   await bridge.start();
   t.after(async () => { await bridge.stop(); service.close(); });
-  const start = id => {
-    service.registerBot({ botId: id, missionId: 'mission:auth', coreId: 'core-1', selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
+  const start = (id, coordinationPermissions = []) => {
+    service.registerBot({ botId: id, missionId: 'mission:auth', coreId: 'core-1', coordinationPermissions, selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
     const env = bridge.startBotIdentity(id);
     service.recordBotSandbox(id, { provider: 'controlled', sandboxId: `sandbox:${id}` });
     service.markBotReady(id);
@@ -45,7 +47,7 @@ test('the authenticated Bot Bridge gives actionable feedback for premature exit'
     assert.equal(receipt.ok, false);
     assert.equal(receipt.error.code, 'NOT_ALLOWED');
     assert.equal(receipt.error.details.phase, 'discovery_required');
-    assert.match(receipt.error.details.notice, /提出有可核验交付的新 Task/);
+    assert.match(receipt.error.details.notice, /已有 Task/);
     assert.equal(service.getBot('bot:discover-gap').state, 'UNBOUND');
   }
 });
@@ -77,23 +79,6 @@ test('a request authenticated before rotation cannot execute as the successor Bo
   assert.equal(service.getBot('bot:second').state, 'UNBOUND');
 });
 
-test('a queued Task proposal cannot acquire a successor Bot identity', async t => {
-  let entered;
-  let resume;
-  const queued = new Promise(resolve => { entered = resolve; });
-  const gate = new Promise(resolve => { resume = resolve; });
-  const { service, bridge, start, close } = await fixture(t, { taskCreateMutex: { run: async fn => { entered(); await gate; return fn(); } } });
-  start('bot:first');
-  const proposal = bridge.call({ operation: 'task_create', payload: { mission_id: 'mission:auth', gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect one independently useful question', expected_output: 'Note', acceptance_conditions: ['Reviewed'] } });
-  const rejected = assert.rejects(proposal, /credentials changed/);
-  await queued;
-  close('bot:first');
-  start('bot:second');
-  resume();
-  await rejected;
-  assert.equal(service.listMissionTasks({ mission_id: 'mission:auth' }).length, 0);
-});
-
 test('swarm bot exit uses the provisioned Bridge identity without an actor override', async t => {
   const { service, start } = await fixture(t);
   const env = start('bot:cli');
@@ -110,7 +95,7 @@ test('Bridge refuses an expired Bot credential before the cleanup timer runs', a
   start('bot:expired');
   service.db.prepare('UPDATE bots SET hard_deadline = ? WHERE bot_id = ?').run(new Date(Date.now() - 1).toISOString(), 'bot:expired');
   assert.equal(service.getBot('bot:expired').state, 'UNBOUND');
-  await assert.rejects(bridge.call({ operation: 'task_create', payload: { gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'A late proposal at the real Bridge boundary', expected_output: 'Note', acceptance_conditions: ['Note'] } }), /hard deadline elapsed/);
+  await assert.rejects(bridge.call({ operation: 'task_list', payload: {} }), /hard deadline elapsed/);
 });
 
 
@@ -125,14 +110,14 @@ test('Bridge withholds contribution binding until the activation and grant callb
   const binding = bridge.bindTake(taken);
   await started;
   try {
-    await assert.rejects(bridge.call({ operation: 'task_create', payload: { gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'A proposal before grant completes', expected_output: 'Note', acceptance_conditions: ['Note'] } }), /binding is still being prepared/);
+    await assert.rejects(bridge.call({ operation: 'task_list', payload: {} }), /binding is still being prepared/);
   } finally { release(); }
   await binding;
   assert.equal(bridge.bindingPending, false);
 });
 
 
-test('real swarm CLI discovers services, reads pinned public input, proposes and takes under its Bot binding', async t => {
+test('real swarm CLI discovers services, reads pinned public input and takes host-supplied work under its Bot binding', async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarm-cli-bot-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const workspace = new MissionWorkspace({ rootDir: root });
@@ -160,20 +145,12 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
     return JSON.parse(result.stdout);
   };
   assert.ok((await run('service', 'list')).services.some(item => item.service_id === 'task'));
-  assert.ok((await run('service', 'view', 'task')).capabilities.some(item => item.operation === 'task_create'));
+  assert.ok(!(await run('service', 'view', 'task')).capabilities.some(item => item.operation === 'task_create'));
   assert.equal((await run('mission', 'view')).mission_id, 'mission:auth');
   const file = await run('workspace', 'read', 'notes.txt', '--at', '0.1');
   assert.equal(file.content, 'x=y=z');
   assert.equal(file.revision, '0.1');
-  const proposalPath = join(root, 'proposal.json');
-  await writeFile(proposalPath, JSON.stringify({ gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Check one independently useful boundary', expected_output: 'A reproducible result', acceptance_conditions: ['Result is readable'] }));
-  const task = (await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-propose')).task;
-  assert.equal(task.mission_id, 'mission:auth');
-  assert.equal(task.contract_format, 'mission-gap-v1');
-  assert.equal(task.relations.depends_on.length, 0);
-  assert.equal(task.creation.actor_ref, 'bot:cli-flow');
-  assert.equal(task.creation.execution_id, null);
-  assert.deepEqual((await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-propose')).task, task);
+  const task = service.createTask({ mission_id: 'mission:auth', gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Check one independently useful boundary', expected_output: 'A reproducible result', acceptance_conditions: ['Result is readable'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
   const prior = service.takeTask(task.task_id, { owner_ref: 'agent:prior', core_id: 'core-prior', take_key: 'prior' }).execution;
   service.dispatch('stop_execution', { terminal_state: 'FAILED', reason: 'startup_failed' }, makeEnvelope({
     actorRef: prior.owner_ref, taskId: prior.task_id, executionId: prior.execution_id,
@@ -211,8 +188,7 @@ test('real swarm CLI discovers services, reads pinned public input, proposes and
     specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version }));
   assert.deepEqual(await run('material', 'publish', '--input', materialPath, '--request-id', 'cli-material'), published);
   assert.equal((await run('material', 'view', published.material.material_id)).material.content, published.material.content);
-  await writeFile(proposalPath, JSON.stringify({ gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect the replacement responsibility and its boundary', expected_output: 'A new bounded result', acceptance_conditions: ['Result is readable'] }));
-  const replacement = (await run('task', 'propose', '--input', proposalPath, '--request-id', 'cli-replacement')).task;
+  const replacement = service.createTask({ mission_id: 'mission:auth', gap: 'Validate the replacement boundary', priority: 'medium', summary: 'Inspect the replacement responsibility and its boundary', expected_output: 'A new bounded result', acceptance_conditions: ['Result is readable'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
   const finished = await run('task', 'finish', '--outcome', 'cancelled', '--reason', 'responsibility replaced', '--replacement', replacement.task_id, '--request-id', 'cli-finish');
   assert.equal(service.getExecutionFinish(taken.execution.execution_id).replacement_task_id, replacement.task_id);
   assert.equal(finished.execution.state, 'CLOSING');
@@ -292,7 +268,7 @@ test('same-ID take retry joins preparation while altered payload and other write
     result.execution = service.dispatch('start_execution', {}, makeEnvelope({ operationId: `activate:${e.execution_id}`, actorRef: e.owner_ref, taskId: e.task_id, executionId: e.execution_id, specVersion: e.spec_version, stateVersion: e.state_version, fencingVersion: e.fencing_version })).execution;
   } });
   start('bot:retry-preparing');
-  const task = (await bridge.call({ operation: 'task_create', payload: { gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect a slow preparation and retry boundary', expected_output: 'A result', acceptance_conditions: ['Verified'] } })).task;
+  const task = service.createTask({ mission_id: 'mission:auth', gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect a slow preparation and retry boundary', expected_output: 'A result', acceptance_conditions: ['Verified'] }, makeEnvelope({ actorRef: 'operator:test' })).task;
   const request = { operation: 'task_take', operation_id: 'slow-take', payload: { task_id: task.task_id } };
   const first = bridge.call(request);
   await started;
@@ -301,7 +277,7 @@ test('same-ID take retry joins preparation while altered payload and other write
     await assert.rejects(bridge.call({ ...request, service_id: 'bogus' }), { code: 'NOT_ALLOWED' });
     await assert.rejects(bridge.call({ ...request, capability_id: 'bogus.task_take' }), { code: 'NOT_ALLOWED' });
     await assert.rejects(bridge.call({ ...request, payload: { ...request.payload, take_key: 'changed' } }), /another payload/);
-    await assert.rejects(bridge.call({ operation: 'task_create', payload: {} }), /still being prepared/);
+    await assert.rejects(bridge.call({ operation: 'task_list', payload: {} }), /still being prepared/);
   } finally { release(); }
   assert.deepEqual(await retry, await first);
   assert.equal(activations, 1);
@@ -335,16 +311,23 @@ test('Bridge stop drains an admitted real HTTP call after its connection is gone
   const accepted = new Promise(resolve => { entered = resolve; });
   const held = new Promise(resolve => { release = resolve; });
   let completed = false;
-  const { service, bridge, start } = await fixture(t, { onWorkUnit: async ({ operation, result }) => {
-    if (operation !== 'task_create') return;
-    entered(); await held;
-    assert.equal(service.getTask(result.task.task_id).mission_id, 'mission:auth');
-    completed = true;
-  } });
+  t.after(() => release());
+  const { service, bridge, start } = await fixture(t);
+  const entry = bridge.registry.getService('task');
+  const invoke = entry.adapter.invoke.bind(entry.adapter);
+  entry.adapter = { async invoke(request) {
+    const result = await invoke(request);
+    if (request.capability.operation === 'task_list') {
+      entered(); await held;
+      assert.deepEqual(result.tasks, []);
+      completed = true;
+    }
+    return result;
+  } };
   const env = start('bot:admitted-stop');
   const req = httpRequest(`${env.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}` } });
   const disconnected = new Promise(resolve => { req.on('error', resolve); req.on('close', resolve); });
-  req.end(JSON.stringify({ operation: 'task_create', payload: { gap: 'Validate the specific boundary required by this test mission', priority: 'medium', summary: 'Inspect one independent research responsibility', expected_output: 'Readable note', acceptance_conditions: ['Answer the question'] } }));
+  req.end(JSON.stringify({ operation: 'task_list', payload: {} }));
   await accepted;
   let stopFinished = false;
   const stopping = bridge.stop().then(() => { stopFinished = true; });
@@ -456,18 +439,91 @@ test('Bridge stop cancels a public read queued after Registry authorization', as
   }
 });
 
-test('solver Bridge denies Task and Material services over the actual authenticated transport', async t => {
-  const { bridge, start } = await fixture(t, { agentMode: 'solver' });
-  const env = start('bot:solver');
-  for (const operation of ['task_list', 'task_view', 'task_create', 'task_take', 'task_finish', 'context_search_materials', 'context_publish_material', 'list_services']) {
-    const response = await fetch(`${env.SWARMENV_BRIDGE_URL}/call`, {
-      method: 'POST', headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ operation, payload: {}, control: true, agentMode: 'swarm' }),
-    });
-    const result = await response.json();
-    assert.equal(result.ok, false, operation);
-    assert.equal(result.error.code, 'NOT_ALLOWED', operation);
+
+test('Mission Bridge supplies trusted scope, rejects checker selection and returns the observed submission projection', async t => {
+  const calls = [];
+  const reads = [];
+  const observed = { submission_id: 'submission:fixed', state: 'pending', main_revision: '0.1', materials: [],
+    current: { active_submission_id: 'submission:fixed', merge_allowed: false }, notice: 'Fixed public submission observation' };
+  const { bridge, start } = await fixture(t, { missionSubmission: createMissionSubmissionAccess({ workspaceId: 'workspace:trusted', isStopped: () => false, store: {
+    async submit(input) { calls.push(input); return { submission_id: observed.submission_id }; },
+    async describe(input) {
+      reads.push(input);
+      return input.submissionId ? observed : { state: 'open', submissions: [observed] };
+    },
+  } }) });
+  const env = start('bot:coordinator', ['mission_submit']);
+  await assert.rejects(bridge.call({ operation: 'mission_submit', payload: {} }), { code: 'INVALID_CONTRACT' });
+  await assert.rejects(bridge.call({ operation: 'mission_submit', payload: { material_ids: [], checker: 'caller-selected' } }), { code: 'INVALID_CONTRACT' });
+  assert.equal(calls.length, 0);
+  const result = await bridge.call({ operation: 'mission_submit', operation_id: 'fixed-submit', payload: { material_ids: [] } });
+  assert.deepEqual(result, observed);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0], { missionId: 'mission:auth', workspaceId: 'workspace:trusted', actorRef: 'bot:coordinator',
+    taskId: null, executionId: null, materialIds: [], requestId: 'fixed-submit', fencingVersion: null });
+  assert.equal(reads[0].workspaceId, 'workspace:trusted');
+  assert.equal(reads[0].isStopped(), false);
+  assert.deepEqual(reads.map(({ workspaceId, isStopped, ...input }) => input), [{ missionId: 'mission:auth', submissionId: observed.submission_id }]);
+  const read = async payload => {
+    const response = await fetch(`${env.SWARMENV_BRIDGE_URL}/call`, { method: 'POST',
+      headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ operation: 'mission_submission_get', payload }) });
+    return { status: response.status, body: await response.json() };
+  };
+  assert.deepEqual((await read({})).body, { ok: true, result: { state: 'open', submissions: [observed] } });
+  assert.deepEqual((await read({ submission_id: observed.submission_id })).body, { ok: true, result: observed });
+  assert.deepEqual(reads.slice(1).map(({ workspaceId, isStopped, ...input }) => input), [
+    { missionId: 'mission:auth', submissionId: null },
+    { missionId: 'mission:auth', submissionId: observed.submission_id },
+  ]);
+  for (const payload of [{ mission_id: 'mission:foreign' },
+    { mission_id: 'mission:foreign', submission_id: observed.submission_id }]) {
+    const rejected = await read(payload);
+    assert.equal(rejected.status, 400);
+    assert.equal(rejected.body.error.code, 'NOT_ALLOWED');
   }
-  const profile = bridge.getCapabilityProfile();
-  assert.ok(profile.capabilities.every(c => !c.operation.startsWith('task_') && c.service_id !== 'context'));
+  assert.equal(reads.length, 3, 'Forged Mission scope must reject before any submission read');
+});
+
+test('Bot task creation is absent from discovery and rejected through raw and real CLI routes', async t => {
+  const { service, bridge, start } = await fixture(t);
+  const env = start('bot:no-proposal');
+  const payload = { summary: 'Unsupported guest proposal', gap: 'A concrete independent boundary', priority: 'medium', expected_output: 'A note', acceptance_conditions: ['Checked'] };
+  for (const route of [{}, { service_id: 'task' }, { capability_id: 'task.task_create' }, { service_id: 'task', capability_id: 'task.task_create' }]) {
+    const response = await fetch(`${env.SWARMENV_BRIDGE_URL}/call`, { method: 'POST', headers: { authorization: `Bearer ${env.SWARMENV_BRIDGE_TOKEN}`, 'content-type': 'application/json' }, body: JSON.stringify({ operation: 'task_create', payload, ...route }) });
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error.code, 'NOT_ALLOWED');
+  }
+  assert.ok(!bridge.getCapabilityProfile().capabilities.some(item => item.service_id === 'task' && item.operation === 'task_create'));
+  await assert.rejects(bridge.registry.invoke({ serviceId: 'task', capability: 'task_create', input: payload, envelope: makeEnvelope({ actorRef: 'bot:no-proposal' }), role: 'bound' }), { code: 'SERVICE_CAPABILITY_NOT_FOUND' });
+  for (const version of [undefined, '2']) {
+    const childEnv = { PATH: process.env.PATH, ...env, ...(version ? { SWARMENV_BRIDGE_CONTRACT_VERSION: version } : {}) };
+    for (const command of ['propose', 'task_create']) await assert.rejects(promisify(execFile)(process.execPath, ['scripts/swarm.mjs', 'task', command, '--summary', payload.summary], { env: childEnv, timeout: 10000 }), error => {
+      assert.match(error.stderr, /unknown task command/); return true;
+    });
+  }
+  assert.equal(service.listMissionTasks({ mission_id: 'mission:auth' }).length, 0);
+  const hosted = service.createTask({ mission_id: 'mission:auth', ...payload }, makeEnvelope({ actorRef: 'operator:test' })).task;
+  assert.equal((await bridge.call({ operation: 'task_view', payload: { task_id: hosted.task_id } })).task.task_id, hosted.task_id);
+});
+
+
+test('a stale Task registry cannot restore guest creation through a capability selector', async t => {
+  const { service, bridge, start } = await fixture(t);
+  start('bot:stale-registry');
+  const manifest = structuredClone(bridge.registry.getService('task').manifest);
+  const read = manifest.capabilities.find(item => item.operation === 'task_list');
+  manifest.capabilities.push({ ...read, name: 'task_create', operation: 'task_create', path: '/v1/task_create' });
+  delete manifest.manifest_hash;
+  let dispatches = 0;
+  const registry = new ServiceRegistry();
+  registry.registerService({ manifest, trusted: true, adapter: { invoke: async () => { dispatches++; return {}; } } });
+  const stale = new ServicesBridge({ taskService: service, contextService: bridge.contextService, runtime: {}, registry, actorRef: 'bot:stale-registry', coreId: 'core-1' });
+  t.after(() => stale.stop());
+  for (const operation of ['task_create', 'task_list']) await assert.rejects(stale.call({ operation, service_id: 'task', capability_id: 'task.task_create', payload: {} }), { code: 'NOT_ALLOWED' });
+  assert.equal(dispatches, 0);
+  registry.registerService({ manifest: { ...manifest, id: 'work-items', service_id: 'work-items', capabilities: [{ ...read, name: 'task_create', operation: 'task_create', context: [] }] }, adapter: { invoke: async () => ({ custom: true }) } });
+  assert.deepEqual(await stale.call({ operation: 'task_create', service_id: 'work-items', payload: {} }), { custom: true });
+  assert.equal(dispatches, 0);
+  assert.equal(service.listMissionTasks({ mission_id: 'mission:auth' }).length, 0);
 });

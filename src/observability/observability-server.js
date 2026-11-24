@@ -2,12 +2,9 @@ import { watch } from 'node:fs';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
-import { basename, dirname, extname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { basename, dirname, join } from 'node:path';
 import { once } from 'node:events';
 import { listServices, listTools } from '../sdk/service-catalog.js';
-
-const PUBLIC_ROOT = fileURLToPath(new URL('./public/', import.meta.url));
 
 export const OBSERVABILITY_AUTH_VERSION = 1;
 
@@ -63,16 +60,6 @@ function parseCursor(value, fallback = 0) {
 function parseKinds(value) {
   if (!value) return null;
   return value.split(',').map((kind) => kind.trim()).filter(Boolean);
-}
-
-function contentType(path) {
-  const extension = path === '/' ? '.html' : extname(path);
-  return {
-    '.html': 'text/html; charset=utf-8',
-    '.js': 'text/javascript; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.json': 'application/json; charset=utf-8',
-  }[extension] ?? 'application/octet-stream';
 }
 
 const DASHBOARD_SECRET_KEY = /(?:authorization|api[_-]?key|access[_-]?token|password|private[_-]?key|credential|bearer|cookie|secret|proof|formal[_-]?source|raw[_-]?transcript|task[_-]?instructions|(?:^|[_-])token(?:$|[_-]))/i;
@@ -158,9 +145,9 @@ const DETAIL_MAX_EVENTS = 10_000;
 const DETAIL_MAX_BYTES = 4_000_000;
 const OVERVIEW_MAX_EVENTS = 50_000;
 const OVERVIEW_MAX_BYTES = 4_000_000;
-// The dashboard is a live operational view. Keep the initial projection close
+// The overview is a live operational view. Keep the initial projection close
 // to the active window instead of replaying an entire historical run into the
-// server and browser. Detail endpoints remain available for historical reads.
+// server and client. Detail endpoints remain available for historical reads.
 const OVERVIEW_RECENT_EVENTS = 2_000;
 const TIMELINE_RECENT_EVENTS = 1_000;
 const OVERVIEW_ENTITY_SEEDS = 750;
@@ -478,16 +465,6 @@ function reportSummary(report) {
   };
 }
 
-async function readStatic(path) {
-  const safePath = path === '/' ? 'index.html' : path.slice(1);
-  if (!safePath || safePath.includes('..') || safePath.includes('\\')) return null;
-  try {
-    return await readFile(join(PUBLIC_ROOT, safePath));
-  } catch {
-    return null;
-  }
-}
-
 /**
  * Small local operator server for the Observation Store. It deliberately
  * keeps the HTTP surface read-only; Task and Context mutations stay behind
@@ -604,13 +581,7 @@ export class ObservabilityServer {
         await this.#api(url, response);
         return;
       }
-      const content = await readStatic(url.pathname);
-      if (!content) {
-        send(response, 404, { ok: false, error: { code: 'NOT_FOUND', message: 'unknown observability route' } });
-        return;
-      }
-      response.writeHead(200, { 'content-type': contentType(url.pathname), 'cache-control': 'no-store' });
-      response.end(content);
+      send(response, 404, { ok: false, error: { code: 'NOT_FOUND', message: 'unknown observability route' } });
     } catch (error) {
       if (!response.headersSent) send(response, 400, { ok: false, error: errorBody(error) });
       else response.end();

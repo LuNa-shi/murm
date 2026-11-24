@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { SwarmEnvError } from '../src/errors.js';
 import {
@@ -14,7 +16,7 @@ function sha256(value) {
 }
 
 async function withManager(run) {
-  const rootDir = await mkdtemp('/tmp/swarmenv-workspace-contract-');
+  const rootDir = await mkdtemp(join(tmpdir(), 'swarmenv-workspace-contract-'));
   const manager = new WorkspaceManager({ rootDir });
   try {
     return await run(manager, rootDir);

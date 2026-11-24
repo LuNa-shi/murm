@@ -192,14 +192,15 @@ export class JudgeService {
       .map((row) => ({ ...row, retryable: Boolean(row.retryable), evidence: parse(row.evidence_json) }));
   }
 
-  dispatch(operation, payload = {}, envelope) {
+  dispatch(operation, payload = {}, envelope, { assertAuthorized } = {}) {
+    assertAuthorized?.();
     validateEnvelope(envelope);
     if (operation === 'get_check_result') {
       if (payload.check_result_id) return this.getAgentCheckResult(required(payload.check_result_id, 'check_result_id'));
       if (payload.request_key) return agentCheckResult(this.getByRequestKey(required(payload.request_key, 'request_key')));
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'get_check_result requires check_result_id or request_key');
     }
-    if (operation === 'workspace_check') return this.checkWorkspaceSource(payload, envelope);
+    if (operation === 'workspace_check') return this.checkWorkspaceSource(payload, envelope, { assertAuthorized });
     if (operation !== 'submit_check_result') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unsupported Judge operation: ${operation}`);
     return this.#transaction(() => {
       const fingerprint = operationPayload(operation, payload, envelope);
@@ -223,7 +224,8 @@ export class JudgeService {
     executionId: payload.execution_id ?? `direct:${payload.target_task_id ?? 'workspace-check'}`,
     specVersion: payload.target_spec_version ?? 0,
     stateVersion: payload.state_version ?? 0,
-  })) {
+  }), { assertAuthorized } = {}) {
+    assertAuthorized?.();
     if (envelope && typeof envelope === 'object' && !envelope.actor_ref) {
       envelope = makeEnvelope({
         operationId: envelope.operation_id ?? randomUUID(),
@@ -293,7 +295,8 @@ export class JudgeService {
     const inputSnapshotHash = fixtureManifest.input_snapshot_hash ?? hash({
       fixture_id: fixtureManifest.fixture_id,
       problem_file_hash: fixtureManifest.problem_file_hash,
-      putnambench_commit: fixtureManifest.putnambench_commit,
+      // Keep the persisted hash format so valid legacy results remain reusable.
+      putnambench_commit: fixtureManifest.fixture_commit ?? fixtureManifest.putnambench_commit,
     });
     const task = {
       task_id: envelope.task_id,
@@ -347,7 +350,7 @@ export class JudgeService {
         ...(workspaceSourceRef ? { workspace_id: workspaceSourceRef.workspace_id, path: workspaceSourceRef.path, revision: workspaceSourceRef.revision } : {}),
       },
       fixture_manifest: fixtureManifest,
-    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref, envelope, project });
+    }, { operationId: envelope.operation_id, actorRef: envelope.actor_ref, envelope, project, assertAuthorized });
     return envelope.actor_ref?.startsWith('agent:') ? agentCheckResult(result) : result;
   }
 
@@ -386,7 +389,7 @@ export class JudgeService {
       tree_content_hash: snapshot.content_hash } };
   }
 
-  async #checkWorkspaceSourceRequest(input, { operationId = randomUUID(), actorRef = 'judge:lean', envelope: requestEnvelope, project = null } = {}) {
+  async #checkWorkspaceSourceRequest(input, { operationId = randomUUID(), actorRef = 'judge:lean', envelope: requestEnvelope, project = null, assertAuthorized } = {}) {
     this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: operationId, target_task_id: input?.target_task_id, workspace_source_id: input?.workspace_source_id });
     const normalized = this.#validateRequest(input);
     // E state versions can advance while the same immutable check is running
@@ -399,6 +402,7 @@ export class JudgeService {
       throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires the local Task lifecycle authority');
     }
     const authority = ({ newWork = false } = {}) => {
+      assertAuthorized?.();
       if (!publicInput && !registered) return;
       if (!this.taskService) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Public Judge admission requires Task lifecycle authority');
       const execution = this.taskService.getExecution(requestEnvelope.execution_id);

@@ -1,66 +1,97 @@
 {
   "description": "Offline source fingerprints and prompt extraction anchors; no actual run data. A hash match establishes source alignment, not delivery to an Agent.",
-  "bot_protocol_version": "swarm-bot-v1-draft.3",
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "eb63c71f1f576ac711bc0fde192db8bdb57cbf497f53b5130aafe214372d91ce"
-    },
-    {
-      "path": "src/agent/bot-contract/system.txt",
-      "sha256": "b812832173ad5efd0fce7d36f13001a0a2f1db3efd137906ae58ad0f36a2c343"
-    },
-    {
-      "path": "src/agent/bot-contract/solver-system.txt",
-      "sha256": "33ea49d9c46fc7402dac07ec040aed24da56dd4d92cb3b7e8fe7d1cdae0c445d"
-    },
-    {
-      "path": "src/agent/bot-contract/plan-task.md",
-      "sha256": "3cfae26c7423640d02b00402bd9dcbf6c6242935382ba1b889a0b7c3eae78ef6"
-    },
-    {
-      "path": "src/agent/bot-contract/use-material.md",
-      "sha256": "53ff58a3a35baee7f03bd08e65334b6195ab94463ceafc3e9a2faa5bc08ccf80"
-    },
-    {
-      "path": "src/agent/bot-contract/use-workspace.md",
-      "sha256": "9f7c8fed6b1f4b1607a0328ffca09a67a2e83b547552a0bf276f48ae8631dcae"
-    },
-    {
-      "path": "src/agent/bot-contract/finish-task.md",
-      "sha256": "cc3748aa4502013072a030fa84fe13f8cfaa82d6e1ea642661a5b6eeaeeb32a4"
+      "sha256": "c54511765c7121c0d4537e1557a562176faf4ad948ff059342a38c222b2e7570"
     },
     {
       "path": "src/agent/capability-profile.js",
       "sha256": "7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07"
     },
     {
-      "path": "src/agent/pi-adapter.js",
-      "sha256": "a3c709c8ff241a2d2feb46b78926c5305c18eb396e8446ee2301a0b8cbf06124"
-    },
-    {
       "path": "src/agent/services-bridge.js",
-      "sha256": "3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1"
+      "sha256": "cb014f632b97e2e525fce8920f7f36105a7684771e50fd06c3082db421e315b2"
     },
     {
-      "path": "src/agent/version-manifest.js",
-      "sha256": "e107aad797eff177bbfc2c64489381f690fb8f814e4d42413ddd70abb40af5f8"
+      "path": "src/core/index.js",
+      "sha256": "f7abae3e2a8928b38891c44b435b808cb47d7cd2dbd86b824cadb05ecef6b1cc"
     },
     {
-      "path": "src/agent/opensandbox-agent-adapter.js",
-      "sha256": "01b6adab2f010adf3e1261bf0b74d3ad1de096f3360de7202275bc0eb5a1b4b2"
+      "path": "src/core/pi-opensandbox-backend.js",
+      "sha256": "43df7111e6e59ce631e6b8cfe9b04a0fd0c73335a60992a76dc5f72b409f9bb0"
     },
     {
-      "path": "src/benchmark/putnam-runner.js",
-      "sha256": "7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63"
+      "path": "scripts/opensandbox-agent-worker.mjs",
+      "sha256": "d6fa3cd1bf167acb2c1230c1be9ed051d156cde3abf03599ee8f14729729becf"
+    },
+    {
+      "path": "examples/notes-environment/main.mjs",
+      "sha256": "b66b97a021344dec9c30cf9bf10fc1c9fa61f176d65ed20feaffc386416c6d45"
+    },
+    {
+      "path": "src/environments/shared/run-input.js",
+      "sha256": "f88873c40ab74a4a673e2de07216770d1b442b229f1635548b7622d41de37f78"
+    },
+    {
+      "path": "src/environments/scalemas/index.js",
+      "sha256": "cc77934afbcc6c73fae6f0c38873b8fdf0207687ecb0c57a7f99377a900db891"
+    },
+    {
+      "path": "src/environments/flat/controller.js",
+      "sha256": "c552fadf2e688b8d5e7b5579abd67912ee24a4351b119345990ac4ffc24e1342"
+    },
+    {
+      "path": "src/environments/flat/environment.js",
+      "sha256": "0e3f67ab671ba72a88f6355dd250776efbd43013611691de06aae4ecfe5df7fd"
+    },
+    {
+      "path": "examples/subagents-environment/main.mjs",
+      "sha256": "46f5e9b412a2cfd26d153685503234279f7c3a8ddcec62fd09e12de5b90addbc"
+    },
+    {
+      "path": "examples/subagents-environment/controller.mjs",
+      "sha256": "f6fe1359170dde9f923220f8cd03feb0623d04973cb1d7e58e28b117993eeb6a"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "sha256": "c061cefb7583f4431c82b5750d712bbfdb419a1305195b84adf52bc1166f7842"
+    },
+    {
+      "path": "src/environments/agensh/index.js",
+      "sha256": "2a100e2bf98e90689c70d64a7cdd760b02d0ce5a3e19167b81cd2cd08bad1937"
+    },
+    {
+      "path": "src/environments/agensh/router.js",
+      "sha256": "363e245027de8681ab8a19f2b3be375e2aed3e16791bc277974087362872b8ea"
+    },
+    {
+      "path": "src/environments/agensh/routed.js",
+      "sha256": "f69b54ff563430a31c39a937d837e2abf2a3af9cd35ee947a9698a9f79cf7aec"
+    },
+    {
+      "path": "src/environments/agensh/team.js",
+      "sha256": "1d93f478f9d580a99b55cb60fd091679fff3f7680d13a0f41470dce030685e3f"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "sha256": "a9bfb493adbfc4255867aaceb95f4c55ada557b5192d00c5bdd9265c1a8ae116"
+    },
+    {
+      "path": "test/agensh-team-kimi-real.test.js",
+      "sha256": "25c7f083078a04845aab8777fc63fb8437bfb41de4f1b3ee56b27e0276ee07d4"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "sha256": "4222770edeeb1941ef6a8a38bd36ebda9fd07ce795e1dc8d3e9a485607757132"
+    },
+    {
+      "path": "src/environments/lead-helper/index.js",
+      "sha256": "bcc32c4f65e0b729d47479aafacfe55c5d71b560b482d402feb1c88035f0e7da"
     },
     {
       "path": "src/runtime/runtime.js",
-      "sha256": "5c97a8ff436b86e21a8b55b5dd8860100b085aba5b896147766b99241be77fe6"
-    },
-    {
-      "path": "src/runtime/identity-task-loop.js",
-      "sha256": "dbaf8e0b032a77d4b1ab7510837f138ee07cf5769725efc932c7945dea90fcd9"
+      "sha256": "40c32828fbd310246d21ff3e0985357e1d7983978c093dcbccfa397d07e80377"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -68,15 +99,15 @@
     },
     {
       "path": "src/runtime/mission-workspace.js",
-      "sha256": "007b7db892e7450b80a7727e230e3da232577333c260ebcd6070b6eed5a7556c"
+      "sha256": "f7361fa46eb42926b7dae0c5c5d762f87e2df2dbe753572fab2ed7b6e07f2de0"
     },
     {
       "path": "src/sdk/service-catalog.js",
-      "sha256": "3eb4dbc87d69a3341886b9f9cab68daca531ae7ea0386b50c072473aebc4a98a"
+      "sha256": "90d436f090046de3e7171a45044efc8f78a1e20efad46741eabd62f2bbc15719"
     },
     {
       "path": "src/sdk/builtin-registry.js",
-      "sha256": "2c52545ba9179f809fb99070f7107704425fe944587da9fb61e14162195dd168"
+      "sha256": "02416ed6f3c28313edaca0ddb945abbd37bc293e1841d46db9eade72a2581855"
     },
     {
       "path": "src/sdk/service-bundle.js",
@@ -96,7 +127,7 @@
     },
     {
       "path": "src/task/task-service.js",
-      "sha256": "d0376ed0cbfa601807fe04c9eaee4e1ca8a58e016c0e50c3cb202aeeb661b5bb"
+      "sha256": "a80936319ad9cfdd0ceca51dbc9725ce1ba8ce0322443f45ac4af9468a9e7c8e"
     },
     {
       "path": "src/task/task-types.js",
@@ -117,69 +148,198 @@
   ],
   "extracted_spans": [
     {
-      "path": "src/benchmark/putnam-runner.js",
-      "anchor": "function selectionView(candidates) {\n  return ",
-      "line": 614,
-      "sha256": "81f0437fa4d01a37c25a3c73b6a9bf70396c753c1ed34162b1d108cd4d351d84"
+      "path": "examples/notes-environment/main.mjs",
+      "anchor": "const key = '",
+      "line": 10,
+      "sha256": "1372308bcd0c2a4bf0cce93a81833b1d747d74543ebfb743f7124eecabb21c67"
+    },
+    {
+      "path": "examples/notes-environment/main.mjs",
+      "anchor": "const inputText = Object.freeze(",
+      "line": 73,
+      "sha256": "6773660d227007f580e938b67335d3b93619e2253c501904ab14235c89534687"
+    },
+    {
+      "path": "examples/notes-environment/main.mjs",
+      "anchor": "writer: { ...common, prompt: '",
+      "line": 96,
+      "sha256": "940b9719824154d76eae72fa2febfaf972fe288cee3b71d3b6bbf8ae87bb2bcb"
+    },
+    {
+      "path": "examples/notes-environment/main.mjs",
+      "anchor": "reader: { ...common, prompt: '",
+      "line": 97,
+      "sha256": "c0f2900930e9feb73c9524e5ffb86c4b5dd6fe750b3cccf4948fabdbd413095a"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const parentPrompt = ",
+      "line": 1,
+      "sha256": "eeb33346515de001490e205f69348b3950b3b0fd9723298aa7ee509eb6113dc9"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const childPrompt = ",
+      "line": 4,
+      "sha256": "6d231a982c22cbe6ce5278839ff3a8658b07f9d1a1f63623decb7955b9431130"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const initialGoal = ",
+      "line": 6,
+      "sha256": "1e96fc7dae086fcde47e0d5648f0ab79d43e74c4b8653f574ef05f6ad03cf2f6"
+    },
+    {
+      "path": "src/environments/scalemas/index.js",
+      "anchor": "export const peerPrompt = '",
+      "line": 8,
+      "sha256": "7eec8ce7af8b62f501a2dd61909ba695955a3840e266d5a92734d2a92ab90d89"
+    },
+    {
+      "path": "src/environments/scalemas/index.js",
+      "anchor": "export const cyclePrompt = '",
+      "line": 9,
+      "sha256": "c783b6377a748f73ae5b941513f362f67a9ef7155f6da56671047e8af5182df4"
+    },
+    {
+      "path": "src/environments/scalemas/index.js",
+      "anchor": "                  const text = ",
+      "line": 99,
+      "sha256": "de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926"
+    },
+    {
+      "path": "src/environments/agensh/index.js",
+      "anchor": "export const peerPrompt = `",
+      "line": 8,
+      "sha256": "06c1eff12e00ec7944444e731069139aa9dc237f1bc6a5132f8d7d9f390699de"
+    },
+    {
+      "path": "src/environments/agensh/router.js",
+      "anchor": "export const routerInstruction = '",
+      "line": 7,
+      "sha256": "ebb4197c01fd6d34a6e1250d52a9ad95a47f84e5324e9eadb9ca58d8747a9eb3"
+    },
+    {
+      "path": "src/environments/agensh/router.js",
+      "anchor": "export const idleNudgeInput = '",
+      "line": 6,
+      "sha256": "4434a9725ae7dfe349ef64dbbacf6d10b80cc11e06828ee222e0c76f4eb33b0f"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "export const liveCommon = `",
+      "line": 8,
+      "sha256": "7612cdea42edeeb3f5e2f93996ba92ee614670d65729768f62e0d62211670d84"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "export const liveAInitial = `",
+      "line": 16,
+      "sha256": "6685c4f6bf8fc5a3134d068a66c1ceb61a21e96ff926350c6f34a659e6ee1eb2"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "export const liveBInitial = `",
+      "line": 17,
+      "sha256": "f3609ef2c289c8cfc29e10b64d21ee10bb4d710154650a94229db3aa37fe4f4e"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "export const liveAUser = `",
+      "line": 18,
+      "sha256": "849d20d51be7ea6591acceb7924326df64a3becd9b2b9d0f498b06a359e8e9d8"
+    },
+    {
+      "path": "test/fixtures/agensh-team-kimi.js",
+      "anchor": "  return [`",
+      "line": 23,
+      "sha256": "8f943ea32b0291bed1fdbb8ecd6c55761fd81fb047587040bff06c185d1e063c"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const leadPrompt = `",
+      "line": 1,
+      "sha256": "79e4899e9a404b291f5f179c838060cfbed8cc1026e034476f23ab6925d03b1a"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const helperPrompt = `",
+      "line": 2,
+      "sha256": "ccaadaa3e9dd80e07431a915eaa02d5f5fb3925750d40a2683b09abedf713f81"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const initializeInstruction = '",
+      "line": 3,
+      "sha256": "0bb76cfd2a5782258de1f2c0ac5304b1ab3761c2e5c59c5dbf9133267d6dccf2"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const helperInitialInstruction = '",
+      "line": 4,
+      "sha256": "655a5ce3f8cca7a5a32fa0cc01c843d16df7d1f622e2a4464151c67cd162cfc3"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const leadAdjustmentInstruction = '",
+      "line": 5,
+      "sha256": "b87643bf5ec03c1de13086039f771375d845f9ea0a81a6fb21b41ebd4b98bbde"
+    },
+    {
+      "path": "src/environments/lead-helper/prompts.js",
+      "anchor": "export const helperFollowupInstruction = '",
+      "line": 6,
+      "sha256": "0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85"
+    },
+    {
+      "path": "src/environments/lead-helper/index.js",
+      "anchor": "                  const nextPath =",
+      "line": 197,
+      "sha256": "e2197961da212a83f1efa4cbbc229c169ad3bbaaa0394466d6bd4c73959f2f4b"
+    },
+    {
+      "path": "src/environments/flat/environment.js",
+      "anchor": "prompt='",
+      "line": 15,
+      "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
+    },
+    {
+      "path": "src/environments/flat/environment.js",
+      "anchor": "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '",
+      "line": 12,
+      "sha256": "7ddd3c046642e46ad91153885ed29729e1d733c4c0f6420da7200f750ff28a4d"
+    },
+    {
+      "path": "src/environments/flat/controller.js",
+      "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
+      "line": 8,
+      "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
     }
   ],
   "prompt_send_sites": [
     {
-      "path": "src/agent/opensandbox-agent-adapter.js",
-      "line": 368,
-      "expression": "await session.prompt(agentPrompt, { timeoutMs: 30_000 });"
+      "path": "examples/subagents-environment/controller.mjs",
+      "line": 26,
+      "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     },
     {
-      "path": "src/benchmark/putnam-runner.js",
-      "line": 451,
-      "expression": "const response = await session.prompt(prompt, { timeoutMs: Math.min(timeoutMs, 30_000) });"
-    },
-    {
-      "path": "src/benchmark/putnam-runner.js",
-      "line": 715,
-      "expression": "const response = await session.prompt(message, { timeoutMs: Math.min(core.startConfig.options.turnTimeoutMs ?? 30_000, 30_000) });"
-    },
-    {
-      "path": "src/runtime/runtime.js",
-      "line": 1384,
-      "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : buildBotNotification(notification), {"
-    },
-    {
-      "path": "src/runtime/runtime.js",
-      "line": 1713,
-      "expression": "await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });"
+      "path": "src/environments/flat/controller.js",
+      "line": 100,
+      "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
   "fixed_instruction_fields": [
     {
       "path": "src/agent/services-bridge.js",
-      "line": 95,
-      "field": "action",
-      "sha256": "a5e4874eff88bd459015734cb36e2d7e5cbb7a9312337c2df58750686d29a4f3"
-    },
-    {
-      "path": "src/agent/services-bridge.js",
-      "line": 96,
-      "field": "hint",
-      "sha256": "78b0d192a0cf7b1c85211b38fdcc05b704665f974c6108666838d664cfa210c7"
-    },
-    {
-      "path": "src/agent/services-bridge.js",
-      "line": 571,
+      "line": 497,
       "field": "action",
       "sha256": "a2a04b7bedeb0f73ae1b76548cc829fe2073f1a3ada0e259f12652ea64fd08dd"
     },
     {
       "path": "src/agent/services-bridge.js",
-      "line": 578,
+      "line": 505,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
-    },
-    {
-      "path": "src/runtime/mission-workspace.js",
-      "line": 10,
-      "field": "guidance",
-      "sha256": "18cebaa7bc8bb2d860f6fbfb457f2ff28866d9c9935ea78da8ef4c317c3e32db"
     },
     {
       "path": "src/runtime/workspace-contract.js",
@@ -225,47 +385,63 @@
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1465,
+      "line": 1483,
       "field": "guidance",
-      "sha256": "2331ed3898810daacce352f5433d670aae5a8e9127527d6f6dbdd13c314fa95e"
+      "sha256": "7e00a9a0673a67a15ea3cc67a3ce0331614bdf9a024122bbf2821ad7cb98844f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1583,
+      "line": 1601,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.js",
-      "line": 1733,
+      "line": 1751,
       "field": "guidance",
       "sha256": "0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b"
     }
   ],
   "generated_bodies": [
     {
-      "path": "docs/architecture/prompts/01-system-identity.md",
-      "sha256": "9a46fe3066009bc4df5c57d89d1ac04f24313f0f9cb25fa899c5e989c30d47ba"
-    },
-    {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "01ca90cb7c3b247b3136692b5cd4cd76684e9341d4b0ccc50bb53164a7412af1"
+      "sha256": "5a5089df1131ec126e0cee3dd5df8911a922c5bd4b228d085269b299b406efcc"
     },
     {
-      "path": "docs/architecture/prompts/03-benchmark-turns.md",
-      "sha256": "c0072418c5b2e6d0c6b309fbd7bab9faf6f27a4cd6726cfd35356745aa21f270"
-    },
-    {
-      "path": "docs/architecture/prompts/08-bot-skills.md",
-      "sha256": "48633e0a2782f8ad8ca0557974456a235123de53db6a71a0732e01e992c4803f"
+      "path": "docs/architecture/prompts/03-runtime-turns.md",
+      "sha256": "5ae68d01dd659c7823ea94e928dc70dd3319c54583c57e688dbb8ad48b6d961b"
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "a1b6ed5d07e716f9903d2464944fc9e6b4bbb74dfe92f71de6d99a1bfbd4895c"
+      "sha256": "7fb97723ab4a56b6ccba6beb1d23a6fadda4a47ad5e2c803d17a32e3925a9d79"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "aa2dd8119e4e6cc15ef2aa70ea980ebaa6c4253dc13456dd58ef9622b4e94395"
+      "sha256": "a0315e17997299510fe0b7cffbeb965e8a343e5ac64f681debb7e6af481b2b46"
+    },
+    {
+      "path": "docs/architecture/prompts/07-notes-environment.md",
+      "sha256": "c3ceddc88245817507b0aa32c3de66771ea59e24dd9ad001ac333121beda56ca"
+    },
+    {
+      "path": "docs/architecture/prompts/08-subagents-environment.md",
+      "sha256": "0a1dc59e762a790173b3be17550dd3ec10efb077a84c3b6584e7258ee997a3f9"
+    },
+    {
+      "path": "docs/architecture/prompts/09-scalemas-environment.md",
+      "sha256": "640287f6c755629bead26a55c6543e40b32069813a490a8f907e3f57125e2d9c"
+    },
+    {
+      "path": "docs/architecture/prompts/08-agensh-environment.md",
+      "sha256": "85df612341d87eaaa44d13f658909226cccb08d332c34aecfe4fc591e642f055"
+    },
+    {
+      "path": "docs/architecture/prompts/08-lead-helper-environment.md",
+      "sha256": "a3c8d2e5e65d9cd0ee7b434524b32201ccd1f193c8e41b46bbbac2bab64fdfbb"
+    },
+    {
+      "path": "docs/architecture/prompts/08-flat-environment.md",
+      "sha256": "3e5e07faf5ce1d1144dc026b4e47b89e277e3add8a94a432f5df8ed65ff84e9c"
     }
   ]
 }

@@ -1,16 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  ERROR_CODES,
-  ServiceRegistry,
-  SwarmEnvError,
-  createBuiltinServiceRegistry,
-  makeEnvelope,
-  loadServiceBundle,
-  resolveBundleDocument,
-} from '../src/index.js';
+import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { ServiceRegistry } from '../src/sdk/service-registry.js';
+import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
+import { loadServiceBundle, resolveBundleDocument } from '../src/sdk/service-bundle.js';
 
 const schema = {
   type: 'object',
@@ -57,7 +54,7 @@ async function bundleDir(root, overrides = {}, { skill = '# Locked Research\n\nS
 }
 
 test('service bundle loads required docs and binds them to the manifest', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-bundle-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-bundle-'));
   try {
     const dir = await bundleDir(root);
     const bundle = await loadServiceBundle(dir, { rootDir: root });
@@ -93,7 +90,7 @@ test('service bundle loads required docs and binds them to the manifest', async 
 });
 
 test('service bundle rejects missing docs, traversal, and embedded credentials', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-bundle-invalid-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-bundle-invalid-'));
   try {
     const missingSkill = await bundleDir(root, {}, { skill: null });
     await assert.rejects(loadServiceBundle(missingSkill, { rootDir: root }), (error) => error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID);
@@ -112,7 +109,7 @@ test('service bundle rejects missing docs, traversal, and embedded credentials',
 });
 
 test('service bundle rejects a help ref that is not a bundle resource', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-bundle-ref-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-bundle-ref-'));
   try {
     const dir = await bundleDir(root, {
       capabilities: [{
@@ -127,8 +124,8 @@ test('service bundle rejects a help ref that is not a bundle resource', async ()
 });
 
 test('service bundle rejects a directory outside the configured service root', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-bundle-root-');
-  const outside = await mkdtemp('/tmp/swarmenv-bundle-outside-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-bundle-root-'));
+  const outside = await mkdtemp(join(tmpdir(), 'swarmenv-bundle-outside-'));
   try {
     const dir = await bundleDir(outside);
     await assert.rejects(loadServiceBundle(dir, { rootDir: root }), (error) => error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID);

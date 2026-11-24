@@ -1,29 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  ERROR_CODES,
-  JudgeService,
-  LeanChecker,
-  SwarmEnvError,
-  agentCheckResult,
-  makeEnvelope,
-  validateFixtureManifest,
-} from '../src/index.js';
+import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { JudgeService } from '../src/judge/judge-service.js';
+import { LeanChecker } from '../src/judge/lean-adapter.js';
+import { agentCheckResult } from '../src/judge/check-result.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
+import { validateFixtureManifest, createFixtureManifest } from '../src/judge/fixture.js';
+
+const fixtureSource = 'theorem fixture_truth : True := by trivial\n';
 
 const fixtureManifest = {
-  fixture_id: 'putnam-1966-a1',
-  putnambench_commit: 'a635813f5edf297d928f9bd5ef8324a26bdde09c',
-  problem_file: 'lean4/src/putnam_1966_a1.lean',
-  problem_file_hash: '4b1bd530669e71e5909398d54caddeb65eb33a708850e25ba4f1d7fc88ba0cad',
+  fixture_id: 'synthetic-truth',
+  putnambench_commit: '1111111111111111111111111111111111111111',
+  problem_file: 'lean4/src/input.lean',
+  problem_file_hash: '3fdfe56b91d9bf0b84a43d332dd95e372768df80f9921b8795981510e0b963a8',
   lean_toolchain: 'leanprover/lean4:v4.33.1',
   mathlib_version: '0df444a360eaa60ab8c11dca51a86af692955474',
   checker_ref: 'lean',
   checker_version: 'mvp-1',
-  environment_ref: 'putnambench-lean4@a635813f5edf297d928f9bd5ef8324a26bdde09c',
+  environment_ref: 'synthetic-lean4-fixture',
 };
 
 const targetTask = { task_id: 'task-proof', spec_version: 1, spec_hash: 'spec-hash' };
@@ -114,12 +114,66 @@ test('Agent CheckResult feedback redacts credentials from checker diagnostics', 
   assert.doesNotMatch(feedback.diagnostic_excerpt, /sk-test-secret-value-123456|eyJsecret-token-value|another-secret-value|user:password/);
 });
 
-test('fixture manifest locks PutnamBench commit, problem hash, Lean, Mathlib, checker, and environment', async () => {
-  validateFixtureManifest(fixtureManifest);
-  const source = await readFile('fixtures/putnam-1966-a1/putnam_1966_a1.lean');
-  assert.equal(source.length, 539);
-  assert.equal(fixtureManifest.problem_file_hash, '4b1bd530669e71e5909398d54caddeb65eb33a708850e25ba4f1d7fc88ba0cad');
-  assert.equal(fixtureManifest.putnambench_commit.length, 40);
+test('fixture manifest binds original source bytes and validates locked checker identity', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-original-fixture-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const problemFile = join(root, 'input.lean');
+  await writeFile(problemFile, fixtureSource);
+  const created = await createFixtureManifest({ fixtureId: fixtureManifest.fixture_id,
+    fixtureCommit: fixtureManifest.putnambench_commit, problemFile,
+    leanToolchain: fixtureManifest.lean_toolchain, mathlibVersion: fixtureManifest.mathlib_version,
+    checkerRef: fixtureManifest.checker_ref, checkerVersion: fixtureManifest.checker_version,
+    environmentRef: fixtureManifest.environment_ref });
+  assert.equal(created.problem_file_hash, fixtureManifest.problem_file_hash);
+  assert.equal(created.fixture_commit, fixtureManifest.putnambench_commit);
+  assert.equal(created.putnambench_commit, undefined);
+  const legacy = await createFixtureManifest({ fixtureId: fixtureManifest.fixture_id,
+    putnambenchCommit: fixtureManifest.putnambench_commit, problemFile,
+    leanToolchain: fixtureManifest.lean_toolchain, mathlibVersion: fixtureManifest.mathlib_version,
+    checkerRef: fixtureManifest.checker_ref, checkerVersion: fixtureManifest.checker_version,
+    environmentRef: fixtureManifest.environment_ref });
+  assert.deepEqual(legacy, created);
+  validateFixtureManifest(created);
+  assert.throws(() => validateFixtureManifest({ ...created, problem_file_hash: 'not-sha256' }), { code: 'INVALID_CONTRACT' });
+  assert.throws(() => validateFixtureManifest({ ...created, fixture_commit: 'not-a-commit' }), { code: 'INVALID_CONTRACT' });
+});
+
+test('Judge reopening reuses one fixture revision but checks a changed canonical revision', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-judge-fixture-revision-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { putnambench_commit: originalCommit, ...manifest } = fixtureManifest;
+  const checker = checkerWithPreflight({
+    check: async ({ fixtureManifest: boundManifest }) => ({
+      verdict: (boundManifest.fixture_commit ?? boundManifest.putnambench_commit) === originalCommit ? 'PASS' : 'FAIL',
+      evidence: { checker_started: true, exit_code: (boundManifest.fixture_commit ?? boundManifest.putnambench_commit) === originalCommit ? 0 : 1 },
+    }),
+  });
+  const results = [];
+  const revisions = [
+    { putnambench_commit: originalCommit },
+    { fixture_commit: originalCommit },
+    { fixture_commit: originalCommit },
+    { fixture_commit: '2'.repeat(40), putnambench_commit: originalCommit },
+  ];
+  for (const [index, revision] of revisions.entries()) {
+    const judge = new JudgeService(join(root, 'judge.sqlite'), {
+      checker, fixtureManifest: { ...manifest, ...revision },
+    });
+    try {
+      results.push(await judge.checkWorkspaceSource({
+        request_key: `fixture-revision-${index}`, source: { content: fixtureSource },
+      }, makeEnvelope({ operationId: `fixture-operation-${index}`, actorRef: 'trusted:host',
+        taskId: 'task-fixture', executionId: 'execution-fixture', specVersion: 1, stateVersion: 1 })));
+      await judge.waitForIdle();
+    } finally {
+      judge.close();
+    }
+  }
+  assert.equal(results[0].verdict, 'PASS');
+  assert.equal(results[1].check_result_id, results[0].check_result_id);
+  assert.equal(results[2].check_result_id, results[0].check_result_id);
+  assert.equal(results[3].verdict, 'FAIL');
+  assert.notEqual(results[3].check_result_id, results[0].check_result_id);
 });
 
 test('Lean checker returns PASS only for a clean zero exit and preserves failure evidence', async () => {
@@ -189,10 +243,10 @@ test('Checker result contract distinguishes source failure from a checker that n
 });
 
 test('Lean checker preflight reports an unavailable executable before proof checking', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-checker-missing-executable-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-missing-executable-'));
   const projectRoot = join(root, 'lean4');
-  const problemPath = join(projectRoot, 'src', 'putnam_1966_a1.lean');
-  const source = await readFile('fixtures/putnam-1966-a1/putnam_1966_a1.lean');
+  const problemPath = join(projectRoot, 'src', 'input.lean');
+  const source = fixtureSource;
   try {
     await mkdir(join(projectRoot, 'src'), { recursive: true });
     await writeFile(problemPath, source);
@@ -217,7 +271,7 @@ test('Lean checker preflight refuses an unbound fixture or an unknown toolchain 
   assert.equal(unbound.diagnostic_code, 'checker_input_binding_unverified');
   assert.equal(unbound.evidence.input_binding_verified, false);
 
-  const root = await mkdtemp('/tmp/swarmenv-checker-unknown-version-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-unknown-version-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = 'import Mathlib\ntheorem input : True := by trivial\n';
@@ -243,7 +297,7 @@ test('Lean checker preflight refuses an unbound fixture or an unknown toolchain 
 });
 
 test('Lean checker preflight binds the locked input, project cwd, and toolchain version', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-checker-preflight-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-checker-preflight-'));
   const projectRoot = join(root, 'lean4');
   const problemPath = join(projectRoot, 'src', 'input.lean');
   const source = 'import Mathlib\ntheorem input : True := by trivial\n';

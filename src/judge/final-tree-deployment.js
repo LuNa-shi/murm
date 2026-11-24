@@ -17,23 +17,9 @@ export const FINAL_TREE_SOURCE_PINS = Object.freeze({
   lean4export: '15f6055e299ad5b89345e533cc2192f4cc00f659',
   mathlib: '0df444a360eaa60ab8c11dca51a86af692955474',
 });
-export const OPENAI_MATH_SOURCE_PINS = Object.freeze({
-  lean: '4.34.1',
-  lean_commit: '5045d0056413266e57c625dcd7c365b10e377c52',
-  comparator: '3927ad383f208ae977c340a91c48ac9b497d2097',
-  lean4export: '15f6055e299ad5b89345e533cc2192f4cc00f659',
-  mathlib: 'd13f23b723b8a846827a245b89c10fc7d3f11612',
-});
-const fltContractPath = fileURLToPath(new URL('../../benchmarks/flt10/projection-contract.json', import.meta.url));
-const fltPins = Object.freeze({ ...FINAL_TREE_SOURCE_PINS,
-  mathlib: 'db584cd6d46c92f209a44c0f1c829460d327499d',
-  flt: 'aa2d8b34692b16c70f699536de0d8e75b9a3e9ef',
-});
 function sourcePins(configuration) {
-  if (configuration.benchmarkProfile == null) return FINAL_TREE_SOURCE_PINS;
-  if (['flt10-dag-v1', 'flt10-subtree-v1'].includes(configuration.benchmarkProfile)) return fltPins;
-  if (configuration.benchmarkProfile === 'openai-math-v1') return OPENAI_MATH_SOURCE_PINS;
-  throw failure('Unknown checker benchmark profile');
+  if (configuration.benchmarkProfile != null) throw failure('Benchmark profiles have been retired from the checker deployment');
+  return FINAL_TREE_SOURCE_PINS;
 }
 const hash = value => createHash('sha256').update(stableStringify(value)).digest('hex');
 const failure = message => new Error(message);
@@ -128,16 +114,6 @@ function selected(configuration) {
     ...(configuration.resources === undefined ? {} : { resources: { ...configuration.resources } }),
     ...(configuration.projectJobs === undefined ? {} : { projectJobs: configuration.projectJobs }),
     ...(configuration.projectChecks === undefined ? {} : { projectChecks: configuration.projectChecks }),
-    ...(configuration.benchmarkProfile == null ? {} : {
-      benchmarkProfile: configuration.benchmarkProfile,
-      ...(configuration.checkpoint === undefined ? {} : { checkpoint: configuration.checkpoint }),
-      ...(configuration.projectionRoot === undefined ? {} : { projectionRoot: configuration.projectionRoot }),
-      ...(configuration.benchmarkProfile === 'flt10-subtree-v1'
-        ? { foundationSha256: configuration.foundationSha256, requireCompleteProject: true }
-        : configuration.benchmarkProfile === 'openai-math-v1'
-          ? { requireCompleteProject: true, projectChecks: true }
-        : { preserveFixturePrefix: true }),
-    }),
   };
 }
 
@@ -165,8 +141,6 @@ async function artifacts(configuration, expected = null) {
     { label: 'systemd-run', path: '/usr/bin/systemd-run' },
     { label: 'systemctl', path: '/usr/bin/systemctl' },
     ...hostMounts.map((path, index) => ({ label: `host-library-${index}`, path, host: true, directory: true })),
-    ...(configuration.benchmarkProfile === 'flt10-dag-v1' ? [{ label: 'flt-contract', path: fltContractPath }] : []),
-    ...(configuration.benchmarkProfile === 'flt10-subtree-v1' ? [{ label: 'flt-foundation', path: join(configuration.projectionRoot, 'foundation-manifest.json') }] : []),
   ];
   if (expected && (!Array.isArray(expected) || expected.length !== roots.length)) {
     throw failure('Final-tree checker artifact set differs from its lock');
@@ -208,7 +182,7 @@ async function verifyVersion(leanRoot, bubblewrap = null, pins = FINAL_TREE_SOUR
 async function verifySources(configuration, sources) {
   const sourceRoots = {};
   const pins = sourcePins(configuration);
-  for (const key of ['comparator', 'lean4export', 'mathlib', ...(pins.flt ? ['flt'] : [])]) {
+  for (const key of ['comparator', 'lean4export', 'mathlib']) {
     const root = await canonical(sources?.[key], key);
     const { stdout } = await exec('/usr/bin/git', ['-C', root, 'rev-parse', 'HEAD'], { env: {}, timeout: 5000, maxBuffer: 4096 });
     const changes = await exec('/usr/bin/git', ['-C', root, 'status', '--porcelain', '--untracked-files=no'], { env: {}, timeout: 5000, maxBuffer: 64 * 1024 });
@@ -218,9 +192,7 @@ async function verifySources(configuration, sources) {
   const library = root => join(root, '.lake/build/lib/lean');
   const mathlibDependencies = JSON.parse(await readFile(join(sourceRoots.mathlib, 'lake-manifest.json'), 'utf8')).packages;
   const dependencyPins = {};
-  const projectionLibrary = pins.flt ? await verifyFltProjection(configuration, sourceRoots.flt) : null;
   for (const root of configuration.libraryRoots) {
-    if (root === projectionLibrary) continue;
     if (root === library(sourceRoots.mathlib)) continue;
     const match = mathlibDependencies.find(pkg => root === library(resolve(sourceRoots.mathlib, '..', pkg.name)));
     if (!match) throw failure('Checker dependency is not a pinned Mathlib package');
@@ -238,72 +210,6 @@ async function verifySources(configuration, sources) {
   return { sourceRoots, dependencyPins };
 }
 
-async function verifyFltProjection(configuration, sourceRoot) {
-  if (configuration.benchmarkProfile === 'flt10-subtree-v1') return verifyFltFoundation(configuration);
-  const contract = JSON.parse(await readFile(fltContractPath, 'utf8'))[configuration.checkpoint];
-  if (!contract || !Number.isInteger(configuration.checkpoint)) throw failure('Unknown FLT checkpoint');
-  const root = await canonical(configuration.projectionRoot, 'FLT projection');
-  const library = join(root, 'lib');
-  if (!configuration.libraryRoots.includes(library)) throw failure('FLT projection library is missing');
-  const expected = new Set();
-  for (const [path, expectedHash] of Object.entries(contract.sources)) {
-    const original = await readFile(join(sourceRoot, path));
-    const projected = await readFile(join(root, 'source', path));
-    if (!original.equals(projected) || createHash('sha256').update(projected).digest('hex') !== expectedHash) {
-      throw failure(`FLT definition differs from the pinned cut: ${path}`);
-    }
-    expected.add(path.replace(/\.lean$/, '.olean'));
-  }
-  const frontier = `FLT10/DAG_q${configuration.checkpoint}.lean`;
-  if (await readFile(join(root, 'source', frontier), 'utf8') !== contract.frontier) throw failure('FLT frontier differs from the pinned cut');
-  expected.add(frontier.replace(/\.lean$/, '.olean'));
-  async function visit(directory, prefix = '') {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = `${prefix}${entry.name}`;
-      if (entry.isDirectory()) await visit(join(directory, entry.name), `${path}/`);
-      else if (!entry.isFile() || !expected.delete(path)) throw failure(`Unexpected artifact in FLT projection: ${path}`);
-    }
-  }
-  await visit(library);
-  if (expected.size) throw failure('FLT projection lacks compiled safe modules');
-  return library;
-}
-
-async function verifyFltFoundation(configuration) {
-  const root = await canonical(configuration.projectionRoot, 'FLT foundation');
-  const bytes = await readFile(join(root, 'foundation-manifest.json'));
-  if (createHash('sha256').update(bytes).digest('hex') !== configuration.foundationSha256) {
-    throw failure('FLT foundation manifest differs from its configured digest');
-  }
-  const manifest = JSON.parse(bytes);
-  if (manifest.profile !== 'flt10-subtree-v1' || manifest.checkpoint !== configuration.checkpoint ||
-      !/^([1-9]0|100)$/.test(String(manifest.checkpoint)) ||
-      !manifest.sources || !Object.hasOwn(manifest.sources, 'FLTFoundation.lean')) {
-    throw failure('Invalid FLT root-only foundation manifest');
-  }
-  const library = join(root, 'lib');
-  if (!configuration.libraryRoots.includes(library)) throw failure('FLT foundation library is missing');
-  const expected = new Set();
-  for (const [path, sha] of Object.entries(manifest.sources)) {
-    if (!/^(?:FLTFoundation|Definitions\/[A-Za-z_][A-Za-z0-9_]*)\.lean$/.test(path) ||
-        !/^[a-f0-9]{64}$/.test(sha) || await realpath(join(root, 'source', path)) !== join(root, 'source', path) ||
-        createHash('sha256').update(await readFile(join(root, 'source', path))).digest('hex') !== sha) {
-      throw failure('FLT foundation source differs from its manifest');
-    }
-    expected.add(path.replace(/\.lean$/, '.olean'));
-  }
-  const visit = async (directory, prefix = '') => {
-    for (const entry of await readdir(directory, { withFileTypes: true })) {
-      const path = prefix + entry.name;
-      if (entry.isDirectory()) await visit(join(directory, entry.name), path + '/');
-      else if (!entry.isFile() || !expected.delete(path)) throw failure('Unexpected artifact in FLT root-only foundation');
-    }
-  };
-  await visit(library);
-  if (expected.size) throw failure('FLT root-only foundation lacks compiled modules');
-  return library;
-}
-
 /** Trusted operator tool. This attests to the supplied source/build deployments. */
 export async function createFinalTreeArtifactLock({ configuration, sources }) {
   const deployment = selected(configuration);
@@ -318,18 +224,6 @@ export async function createFinalTreeArtifactLock({ configuration, sources }) {
 
 export async function createLockedFinalTreeVerifier({ configuration, problem }) {
   const deployment = selected(configuration);
-  if (sourcePins(deployment).flt && problem?.checkpoint !== deployment.checkpoint) {
-    throw failure('FLT problem checkpoint does not match the locked projection');
-  }
-  if (deployment.benchmarkProfile === 'flt10-subtree-v1') {
-    const bytes = await readFile(join(deployment.projectionRoot, 'foundation-manifest.json'));
-    const foundation = JSON.parse(bytes);
-    if (createHash('sha256').update(bytes).digest('hex') !== deployment.foundationSha256 ||
-        foundation.target_sha256 !== problem.source_hash ||
-        foundation.declaration_name !== (problem.declaration_name ?? problem.id)) {
-      throw failure('FLT problem does not match the locked foundation target');
-    }
-  }
   const input = configuration.artifactLock;
   if (!input) throw failure('Trusted final-tree artifact lock is required');
   const lock = typeof input === 'string' ? JSON.parse(await readFile(await canonical(input, 'lock'), 'utf8')) : structuredClone(input);

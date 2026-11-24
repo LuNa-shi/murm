@@ -1,9 +1,10 @@
-import { agentContract, BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../agent/bot-contract.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
-import { openSandboxBotKey, openSandboxMissionKey } from './opensandbox-metadata.js';
+import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
+import { decodeFileSeed } from '../../scripts/core-file-seed.mjs';
+import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../../scripts/core-collection.mjs';
 
 const DEFAULT_EXECd_PORT = 44772;
 const DEFAULT_TIMEOUT_MS = 120_000;
@@ -247,12 +248,12 @@ export class OpenSandboxManager {
 
   async reconcileExecutions(options = {}) { return this.#reconcileExecutions(options); }
 
-  async #reconcileExecutions({ missionId, bots = [], timeoutMs = 30_000, onSandboxDiscovered = null } = {}, recoveringCreation = null) {
-    required(missionId, 'mission_id');
+  async #reconcileExecutions({ missionId, runtimeId, bots = [], timeoutMs = 30_000, onSandboxDiscovered = null } = {}, recoveringCreation = null) {
+    if (!runtimeId) required(missionId, 'mission_id');
     const owned = (key) => this.executions.has(key) ||
       (this.pendingCreations.has(key) && this.pendingCreations.get(key) !== recoveringCreation);
     const liveSandboxIds = new Set([...this.executions.values()].map((record) => record.sandboxId));
-    const targets = bots.filter((bot) => bot.mission_id === missionId && bot.bot_id && bot.resource_key &&
+    const targets = bots.filter((bot) => (runtimeId ? bot.runtime_id === runtimeId : bot.mission_id === missionId) && bot.bot_id && bot.resource_key &&
       (!bot.provider || bot.provider === 'opensandbox'));
     const deadline = Date.now() + timeout(timeoutMs);
     const remaining = () => {
@@ -281,8 +282,10 @@ export class OpenSandboxManager {
       }
     };
     const knownIds = new Set(targets.map((bot) => bot.sandbox_id).filter(Boolean));
-    const missionKey = openSandboxMissionKey(missionId);
-    const missionMismatch = metadata => metadata.mission_key && metadata.mission_key !== missionKey;
+    const ownerKey = runtimeId ? openSandboxRuntimeKey(runtimeId) : openSandboxMissionKey(missionId);
+    const missionMismatch = metadata => runtimeId
+      ? metadata.runtime_key !== ownerKey
+      : metadata.mission_key && metadata.mission_key !== ownerKey;
     for (const bot of targets) {
       if (owned(bot.resource_key)) {
         result.owned_bot_ids.push(bot.bot_id);
@@ -380,8 +383,8 @@ export class OpenSandboxManager {
     }
   }
 
-  async ensureExecution({ executionId, botId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null,
-    timeoutSeconds = 3600, projectQuotaRequired = false, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} } = {}) {
+  async ensureExecution({ executionId, botId = null, onCreateDispatch = null, onCreateRejected = null, onCreated = null, onWorkerToken,
+    timeoutSeconds = 3600, projectQuotaRequired = false, cleanupOnFailure = true, workspaceRef = null, bindingVersion = null, environment = {}, metadata = {} } = {}) {
     const id = required(executionId, 'execution_id');
     required(botId, 'bot_id');
     const existing = this.executions.get(id);
@@ -396,12 +399,13 @@ export class OpenSandboxManager {
     }
     const launchBody = { ...this.environment, ...envs(environment) };
     const { mission_id: configuredMission = null, mission_key: _missionKey, bot_id: _botId, bot_key: _botKey,
-      resource_key: _resourceKey, ...labels } = { ...this.metadata, ...metadata };
-    const creation = { bot_id: botId, resource_key: id, mission_id: configuredMission, inFlight: true, onCreated };
+      resource_key: _resourceKey, runtime_id: configuredRuntime = null, runtime_key: _runtimeKey, ...labels } = { ...this.metadata, ...metadata };
+    const creation = { bot_id: botId, resource_key: id, mission_id: configuredMission, runtime_id: configuredRuntime, inFlight: true, onCreated };
     if (creation) this.pendingCreations.set(id, creation);
     const workerToken = randomUUID();
     const workerEntrypoint = [...this.workerCommand, '--port', String(this.workerPort), ...(projectQuotaRequired ? ['--require-project-quota'] : [])];
     try {
+      onWorkerToken?.(workerToken);
       const admission = onCreateDispatch?.({ provider: 'opensandbox', timeout_seconds: timeoutSeconds });
       if (typeof admission?.then === 'function') await admission;
     } catch (error) {
@@ -419,6 +423,7 @@ export class OpenSandboxManager {
         ...(this.volumes.length > 0 ? { volumes: this.volumes } : {}),
         metadata: {
           ...labels,
+          ...(configuredRuntime ? { runtime_key: openSandboxRuntimeKey(configuredRuntime) } : {}),
           ...(configuredMission ? { mission_key: openSandboxMissionKey(configuredMission) } : {}),
           bot_key: openSandboxBotKey(botId), resource_key: openSandboxBotKey(id),
           ...(bindingVersion === null || bindingVersion === undefined ? {} : { binding_version: String(bindingVersion) }),
@@ -462,7 +467,7 @@ export class OpenSandboxManager {
       }
       if (!execdUrl) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return an Execd endpoint', { sandbox_id: sandboxId, port: this.execdPort });
     } catch (error) {
-      await this.stopExecution(id).catch((cleanupError) => {
+      if (cleanupOnFailure) await this.stopExecution(id).catch((cleanupError) => {
         this.logger?.({ event: 'sandbox.prepare_cleanup_error', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, error_class: cleanupError?.code ?? cleanupError?.name });
       });
       throw error;
@@ -472,7 +477,7 @@ export class OpenSandboxManager {
     try {
       if (this.waitForExecdReady) await this.#waitExecd(record);
     } catch (error) {
-      await this.stopExecution(id).catch(() => undefined);
+      if (cleanupOnFailure) await this.stopExecution(id).catch(() => undefined);
       throw error;
     }
     record.preparing = false;
@@ -577,15 +582,18 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ agentMode = 'swarm', executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, sessionDir = '/workspace/runtime/pi-session', systemPrompt = null, systemPromptPath = null, resources = BOT_RESOURCES, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
+  async startAgent({ writable = false, files, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null } = {}) {
+    const contract = { protocolVersion: 'swarmenv-core-v1', resources: [] };
     const record = this.#record(executionId);
     const signature = values => Array.isArray(values) && values.every(item => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
       ? JSON.stringify(values.map(({ path, sha256 }) => ({ path, sha256 })).sort((a, b) => a.path.localeCompare(b.path))) : null;
-    const contract = agentContract(agentMode);
+    const expectedVersion = files !== undefined || writable ? 1 : 0;
+    const expectedDigest = expectedVersion === 1 ? decodeFileSeed(files ?? {}).digest : undefined;
     if (signature(resources) !== signature(contract.resources)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
     if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
     if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
     if (record.agent) return { ...record.agent };
+    record.executionStopped = false;
     const workerToken = record.workerToken;
     if (typeof workerToken !== 'string' || workerToken.length === 0) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
     let endpoint = endpointForHost((await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}/endpoints/${this.workerPort}`, { method: 'GET', timeoutMs: 30_000 })).body, this.endpointHost);
@@ -594,6 +602,8 @@ export class OpenSandboxManager {
     const workerHeaders = { authorization: `Bearer ${workerToken}` };
     await this.#waitWorker(endpoint, workerHeaders);
     beforeAgentStart?.();
+    record.coreAgent = true;
+    record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), starting: true };
     const startup = await this.#request(`${endpoint}/start`, {
       absolute: true,
       workerStart: true,
@@ -603,15 +613,16 @@ export class OpenSandboxManager {
         command: required(agentCommand, 'agent_command'),
         args,
         cwd,
-        env: envs(env),
+        env: envs(env, { allowSecrets: true }),
         // Explicitly supplied secret values travel only over the authenticated
         // worker channel and are never included in a manager snapshot/log.
         secret_env: envs(secretEnvironment, { allowSecrets: true }),
-        session_dir: sessionDir,
         system_prompt: systemPrompt,
         system_prompt_path: systemPromptPath,
         resources,
         contract_version: contract.protocolVersion,
+        writable,
+        ...(files === undefined ? {} : { files }),
         ...(projectQuota ? { project_quota: projectQuota } : {}),
         ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}),
       },
@@ -628,6 +639,10 @@ export class OpenSandboxManager {
     }
     if (modelCatalogResource && signature([catalogReceipt]) !== signature([modelCatalogResource])) {
       throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
+    }
+    const fileReceipt = startup.body?.result?.project_files;
+    if (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest) {
+      throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
     record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
@@ -710,6 +725,25 @@ export class OpenSandboxManager {
 
   prepareBotProject({ executionId, manifest }) { return this.#projectCall(executionId, 'prepare', manifest); }
   grantBotProject({ executionId }) { return this.#projectCall(executionId, 'grant'); }
+
+  async coreFileOperation(executionId, action, input) {
+    const record = this.#record(executionId);
+    if (record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Bot Worker');
+    }
+    const response = await this.#request(`${record.agent.endpoint}/core/files/${action}`, {
+      absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
+      body: input, timeoutMs: 30_000, allowStatuses: [400],
+    });
+    if (response.status === 400) {
+      const { code, error } = response.body ?? {};
+      const recognized = ['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY', 'OPERATION_UNKNOWN'];
+      throw new SwarmEnvError(recognized.includes(code) ? code : 'OPERATION_UNKNOWN',
+        typeof error === 'string' ? error : 'Worker could not confirm the Core file operation');
+    }
+    return responseValue(response.body);
+  }
+
   snapshotBotProject({ executionId }) { return this.#projectCall(executionId, 'snapshot'); }
   installBotProject({ executionId, ...input }) { return this.#projectCall(executionId, 'install', undefined, input); }
   queryBotProjectInstall({ executionId, request_id }) {
@@ -721,40 +755,91 @@ export class OpenSandboxManager {
   confirmBotProjectInstall({ executionId, request_id, content_hash }) { return this.#projectCall(executionId, 'install-confirm', undefined, { request_id, content_hash }); }
 
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
-  async agentRpc(executionId, message, { timeoutMs = 600_000 } = {}) {
+  async agentRpc(executionId, message, { timeoutMs = 600_000, since } = {}) {
     const record = this.#record(executionId);
     if (!record.agent) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker is not started', { execution_id: executionId });
-    const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { message, timeout_ms: timeoutMs }, timeoutMs: timeoutMs + 10_000 });
+    const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { message, timeout_ms: timeoutMs, ...(since === undefined ? {} : { since }) }, timeoutMs: timeoutMs + 10_000 });
     return responseValue(response.body);
   }
 
-  async *agentEvents(executionId, { since = 0 } = {}) {
-    const record = this.#record(executionId);
-    if (!record.agent) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker is not started', { execution_id: executionId });
-    const response = await this.fetch(`${record.agent.endpoint}/events?since=${encodeURIComponent(Math.max(0, Number(since) || 0))}`, { method: 'GET', headers: { accept: 'text/event-stream', authorization: `Bearer ${record.agent.token}` } });
-    if (!response.ok || !response.body) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `Agent worker event stream failed with HTTP ${response.status}`, { status: response.status }, { retryable: true });
-    let buffer = '';
-    for await (const chunk of response.body) {
-      buffer += Buffer.from(chunk).toString('utf8');
-      for (const block of buffer.split(/\r?\n\r?\n/).slice(0, -1)) {
-        const data = block.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).trim()).join('\n');
-        if (data) yield jsonData(data);
-      }
-      buffer = buffer.includes('\n\n') ? buffer.slice(buffer.lastIndexOf('\n\n') + 2) : buffer;
-    }
-  }
-
-  async stopAgent(executionId, signal = 'SIGTERM') {
+  async stopAgent(executionId, signal = 'SIGTERM', { preserveWorker = false } = {}) {
     const record = this.executions.get(executionId);
-    if (!record?.agent) return false;
+    if (!record?.agent) return record?.executionStopped === true;
+    if (record.executionStopped) {
+      if (!preserveWorker) record.agent = null;
+      return true;
+    }
     const response = await this.#request(`${record.agent.endpoint}/stop`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { signal }, timeoutMs: 15_000 });
     const stopped = responseValue(response.body);
     if (stopped?.stopped === true && Array.isArray(stopped.project_installs) && record.boundExecutionId) {
       this.projectInstallReceipts.set(record.boundExecutionId, { bindingVersion: record.bindingVersion,
         receipts: stopped.project_installs.filter(receipt => receipt.execution_id === record.boundExecutionId && receipt.binding_version === record.bindingVersion) });
     }
-    record.agent = null;
+    if (stopped?.stopped !== true) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not confirm execution stopped');
+    record.executionStopped = true;
+    if (!preserveWorker) record.agent = null;
     return true;
+  }
+
+  coreResource(executionId) {
+    const record = this.executions.get(executionId);
+    const creation = this.pendingCreations.get(executionId);
+    return { resourceKey: record?.executionId ?? creation?.resource_key ?? executionId,
+      ...(record?.sandboxId || creation?.sandbox_id ? { sandboxId: record?.sandboxId ?? creation.sandbox_id } : {}),
+      creation: record ? 'created' : creation ? 'pending' : 'absent',
+      executionStopped: record?.executionStopped === true };
+  }
+
+  async *collectCoreFiles(executionId, input) {
+    const spec = snapshotCollectionSpec(input);
+    const record = this.#record(executionId);
+    if (!record.executionStopped || !record.coreAgent || !record.agent || record.stopPromise) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Bot and retained Worker');
+    }
+    const fingerprint = JSON.stringify(spec);
+    if (record.collectionSpec && record.collectionSpec !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot collection policy is immutable');
+    record.collectionSpec = fingerprint;
+    const controller = new AbortController();
+    const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), 30_000);
+    let response;
+    try {
+      response = await this.fetch(`${record.agent.endpoint}/core/files/collect`, { method: 'POST',
+        headers: { authorization: `Bearer ${record.agent.token}`, 'content-type': 'application/json', accept: 'application/x-ndjson' },
+        body: JSON.stringify(spec), signal: controller.signal, redirect: 'error' });
+      if (!response.ok || !response.body || response.headers.get('content-type')?.split(';')[0] !== 'application/x-ndjson') {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not return the bounded Core collection stream');
+      }
+      let pending = Buffer.alloc(0);
+      let ended = false;
+      for await (const chunk of response.body) {
+        let offset = 0;
+        const bytes = Buffer.from(chunk);
+        while (offset < bytes.length) {
+          controller.signal.throwIfAborted();
+          const newline = bytes.indexOf(10, offset);
+          const end = newline === -1 ? bytes.length : newline;
+          if (pending.length + end - offset > MAX_COLLECTION_LINE_BYTES) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record exceeds its line limit');
+          pending = Buffer.concat([pending, bytes.subarray(offset, end)]);
+          offset = end + (newline === -1 ? 0 : 1);
+          if (newline === -1) break;
+          if (ended) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection contains records after its final receipt');
+          let value;
+          try { value = JSON.parse(pending.toString('utf8')); } catch { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record is not valid JSON'); }
+          pending = Buffer.alloc(0);
+          if (value?.type === 'error') throw new SwarmEnvError(
+            ['INVALID_CONTRACT', 'NOT_ALLOWED', 'CONFLICT', 'SERVICE_UNAVAILABLE'].includes(value.code) ? value.code : ERROR_CODES.SERVICE_UNAVAILABLE,
+            typeof value.message === 'string' ? value.message : 'Worker collection failed');
+          if (!['directory', 'file', 'chunk', 'fileEnd', 'end'].includes(value?.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record type is invalid');
+          ended = value.type === 'end';
+          yield value;
+        }
+      }
+      if (!ended || pending.length) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker collection stream ended without a complete receipt');
+    } finally {
+      clearTimeout(deadline);
+      controller.abort();
+      if (response?.body && !response.body.locked) await response.body.cancel().catch(() => {});
+    }
   }
 
   async stopExecution(executionId) {
@@ -774,7 +859,12 @@ export class OpenSandboxManager {
   }
 
   async #deleteExecution(executionId, record) {
-    await this.stopAgent(executionId).catch(() => undefined);
+    if (record.coreAgent) {
+      if (!await this.stopAgent(executionId, 'SIGTERM', { preserveWorker: true })) {
+        throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Core deletion requires confirmed execution stop');
+      }
+    }
+    else await this.stopAgent(executionId).catch(() => undefined);
     const deadline = Date.now() + 30_000;
     await this.#confirmSandboxDeletion(record.sandboxId, () => Math.max(1, deadline - Date.now()));
     for (const [key, resource] of this.executions) if (resource === record) this.executions.delete(key);
@@ -783,7 +873,7 @@ export class OpenSandboxManager {
   }
 
   async #releaseUnknownCreation(creation) {
-    const result = await this.#reconcileExecutions({ missionId: creation.mission_id, bots: [creation],
+    const result = await this.#reconcileExecutions({ missionId: creation.mission_id, runtimeId: creation.runtime_id, bots: [creation],
       onSandboxDiscovered: async (bot, sandboxId) => {
         await bot.onCreated?.({ provider: 'opensandbox', bot_id: bot.bot_id, resource_key: bot.resource_key, sandbox_id: sandboxId });
         bot.sandbox_id = sandboxId;

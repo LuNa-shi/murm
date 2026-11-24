@@ -1,10 +1,7 @@
-import { randomUUID, createHash } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
-import { assertNewExecutionWork } from '../task/execution-budget.js';
-import { buildSolverContinuationMessage, BOT_COMPACTION_MESSAGE, buildBotNotification, buildBotContinuationMessage } from '../agent/bot-contract.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
-import { publishWorkspace } from './workspace-publication.js';
 
 function requireString(value, field) {
   if (typeof value !== 'string' || value.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
@@ -15,82 +12,22 @@ function operationId(prefix) {
   return `runtime:${prefix}:${randomUUID()}`;
 }
 
-const DEFAULT_WATCHDOG_TIMEOUT_MS = 120_000;
 const DEFAULT_EXECUTION_TIMEOUT_MS = 60 * 60 * 1000;
 const DEFAULT_HANDOFF_REMINDER_MS = 55 * 60 * 1000;
 
-const ACTIVE_SESSION_PHASES = new Set(['turn', 'provider_retry', 'compaction']);
-const providerRecovery = new WeakMap();
-
-function classifySessionFailure(record) {
-  if (record?.type === 'auto_retry_end' && record.success === false) {
-    return /context|token|length/i.test(String(record.finalError ?? record.errorMessage ?? '')) ? 'context_overflow' : 'provider_failure';
-  }
-  if (record?.type === 'compaction_end' && !record.result && !record.aborted) return 'compaction_failure';
-  if (record?.type === 'message_end') {
-    const message = record.message ?? {};
-    const error = String(message.errorMessage ?? message.error ?? '');
-    if (/context|token|length/i.test(error)) return 'context_overflow';
-  }
-  return null;
-}
-
-function finitePositive(value) {
-  return Number.isFinite(value) && value > 0 ? value : null;
-}
-
-function contextWindowRatio(record, session) {
-  const usage = record?.usage ?? record?.result?.usage ?? record?.data?.usage ?? record?.message?.usage ?? {};
-  const contextUsage = record?.contextUsage ?? record?.context_usage ?? record?.data?.contextUsage ?? null;
-  const contextWindow = finitePositive(
-    record?.context_window ?? record?.contextWindow ?? record?.model?.contextWindow ??
-    record?.data?.model?.contextWindow ?? contextUsage?.contextWindow ?? contextUsage?.context_window ??
-    session?.contextWindow,
-  );
-  const percent = Number.isFinite(contextUsage?.percent) ? contextUsage.percent : null;
-  const tokens = finitePositive(
-    record?.tokens ?? record?.token_count ?? record?.context_tokens ??
-    record?.input_tokens ?? record?.result?.tokensBefore ?? record?.result?.tokens_before ??
-    record?.tokensBefore ?? record?.tokens_before ?? contextUsage?.tokens ??
-    usage.tokens ?? usage.total_tokens ?? usage.totalTokens ?? usage.input_tokens ??
-    usage.prompt_tokens ?? usage.input,
-  );
-  if (contextWindow === null || tokens === null) {
-    // Pi 1.3.0's get_session_stats may report only a percentage; a percentage
-    // is still authoritative for the current window ratio.
-    if (percent !== null) return { ratio: percent / 100, tokens: null, context_window: contextWindow, percent };
-    return null;
-  }
-  return { ratio: tokens / contextWindow, tokens, context_window: contextWindow, ...(percent === null ? {} : { percent }) };
-}
-
 export class Runtime {
-  constructor({ agentMode = 'swarm', taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, missionSubmissionStore = null, workspaceProjectCheck = false, coordinationPermissions = [], workspaceMergeChecker = null, sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, maxCompactions = 3, handoffWindowRatio = 0.8, watchdogTimeoutMs = DEFAULT_WATCHDOG_TIMEOUT_MS, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now(), onCoreEvent = null }) {
+  constructor({ taskService, contextService, workspaceManager, missionWorkspace = null, missionWorkspaceId = null, workspaceProjectCheck = false, coordinationPermissions = [], sandboxManager = null, maxWorkers = 1, coreIds = null, runtimeGeneration = 1, actorRef = 'runtime:local', logger = null, finishCleanupRetryMs = 1000, maxFinishCleanupRetries = 3, executionTimeoutMs = DEFAULT_EXECUTION_TIMEOUT_MS, handoffReminderMs = DEFAULT_HANDOFF_REMINDER_MS, runDeadlineAt = null, clock = () => Date.now() }) {
     this.taskService = taskService;
     this.contextService = contextService;
     this.workspaceManager = workspaceManager;
-    // Public Workspace revisions and final submission are Runtime-owned.
+    // Retained Execution preparation uses the configured public Workspace.
     this.missionWorkspace = missionWorkspace;
     this.missionWorkspaceId = missionWorkspaceId;
     this.workspaceProjectCheck = workspaceProjectCheck;
-    this.missionSubmissionStore = missionSubmissionStore;
-    this.agentMode = agentMode;
     this.coordinationPermissions = Object.freeze([...coordinationPermissions]);
-    if (workspaceMergeChecker && (typeof workspaceMergeChecker.check !== 'function' ||
-        !['checker_ref', 'checker_version', 'environment_ref'].every(key => typeof workspaceMergeChecker.identity?.[key] === 'string' && workspaceMergeChecker.identity[key]) ||
-        !Number.isFinite(workspaceMergeChecker.timeoutMs) || workspaceMergeChecker.timeoutMs <= 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge checker requires fixed identity and a positive timeout');
-    }
-    this.workspaceMergeChecker = workspaceMergeChecker ? { identity: Object.freeze(structuredClone(workspaceMergeChecker.identity)),
-      timeoutMs: workspaceMergeChecker.timeoutMs, check: workspaceMergeChecker.check.bind(workspaceMergeChecker) } : null;
-    this.activeWorkspaceCheck = null;
     this.sandboxManager = sandboxManager;
-    if (sandboxManager) {
-      if (!providerRecovery.has(sandboxManager)) providerRecovery.set(sandboxManager, { owners: new Map(), tail: null });
-      this.providerRecovery = providerRecovery.get(sandboxManager);
-    }
     this.executionWorkspace = missionWorkspace && sandboxManager ? new ExecutionWorkspace({ taskService, contextService, workspace: missionWorkspace, sandboxManager,
-      guard: (identity, options) => this.#guardExecutionWorkspace(identity, options), onPending: id => this.#scheduleWorkspaceReconcile(id) }) : null;
+      guard: (identity, options) => this.assertExecutionWorkspace(identity, options), onPending: id => this.#scheduleWorkspaceReconcile(id) }) : null;
     if (missionWorkspace && missionWorkspaceId) {
       taskService.setWorkspaceDeliveryReader(({ missionId, workspaceId, revision }) => workspaceId === missionWorkspaceId
         ? missionWorkspace.readDeliveryRevision({ workspaceId, missionId, revision }) : null);
@@ -104,35 +41,24 @@ export class Runtime {
     this.finishCleanupRetryMs = finishCleanupRetryMs;
     this.maxFinishCleanupRetries = maxFinishCleanupRetries;
     this.finishCleanupTimers = new Map();
-    if (!Number.isInteger(maxCompactions) || maxCompactions < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maxCompactions must be a non-negative integer');
-    if (!Number.isFinite(handoffWindowRatio) || handoffWindowRatio <= 0 || handoffWindowRatio > 1) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffWindowRatio must be greater than 0 and at most 1');
-    this.maxCompactions = maxCompactions;
-    this.handoffWindowRatio = handoffWindowRatio;
-    this.watchdogTimeoutMs = watchdogTimeoutMs;
     if (!Number.isFinite(executionTimeoutMs) || executionTimeoutMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'executionTimeoutMs must be positive');
     if (!Number.isFinite(handoffReminderMs) || handoffReminderMs <= 0 || handoffReminderMs >= executionTimeoutMs) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffReminderMs must be positive and less than executionTimeoutMs');
     this.executionTimeoutMs = executionTimeoutMs;
     this.handoffReminderMs = handoffReminderMs;
     this.setRunDeadline(runDeadlineAt);
     this.clock = clock;
-    this.onCoreEvent = onCoreEvent;
     this.activeProcesses = new Map();
     this.botBindings = new Map();
     this.workspaceReconcileTimers = new Map();
     this.botStopPromises = new Map();
     this.coreStates = new Map();
-    // Compaction count belongs to the reusable identity/lane, not to one
-    // Execution. An ordinary Task handoff keeps the count; an explicit
-    // identity rotation resets it.
-    this.identityCompactionCounts = new Map();
     // Reusable identity Sessions remain owned by Runtime even while no
-    // Execution is bound. Shutdown/restart must stop them too.
+    // Execution is bound. Shutdown must stop them too.
     this.identitySessions = new Set();
     const configuredCoreIds = Array.isArray(coreIds)
       ? coreIds
       : Array.from({ length: Math.max(0, maxWorkers) }, (_, index) => `core-${index + 1}`);
     for (const coreId of configuredCoreIds) this.registerCore(coreId);
-    this.reminderPromises = new Map();
     this.pendingFailurePromises = new Set();
     this.pendingReleasePromises = new Set();
     this.resourceReleasePromises = new Map();
@@ -140,9 +66,6 @@ export class Runtime {
     this.stopping = false;
     this.executionStateUnsubscribe = typeof this.taskService?.subscribeExecutionState === 'function'
       ? this.taskService.subscribeExecutionState((event) => this.#onExecutionState(event))
-      : null;
-    this.notificationUnsubscribe = typeof this.taskService?.subscribeNotifications === 'function'
-      ? this.taskService.subscribeNotifications((notification) => this.#onNotification(notification))
       : null;
   }
 
@@ -156,7 +79,6 @@ export class Runtime {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot requires a Session factory and finite selection and lifetime limits');
     }
     if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
-    this.#refreshRecoveredCore(coreId);
     if (this.getCoreStatus(coreId)?.state !== 'IDLE' || this.taskService.getActiveExecutionForCore(coreId)) {
       throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core is occupied');
     }
@@ -166,7 +88,6 @@ export class Runtime {
     const bot = this.taskService.registerBot({ missionId, coreId, coordinationPermissions: this.coordinationPermissions, selectionDeadline: new Date(Math.min(startedAt + selectionTimeoutMs, hardDeadlineAt)).toISOString(), hardDeadline: new Date(hardDeadlineAt).toISOString() });
     const binding = { botId: bot.bot_id, coreId, session: null, starting: true, selectionTimer: null, hardTimer: null };
     this.botBindings.set(bot.bot_id, binding);
-    this.providerRecovery?.owners.set(bot.bot_id, this);
     this.#setCoreState(coreId, { state: 'STARTING', bot_id: bot.bot_id, execution_id: null, task_id: null });
     const controller = new AbortController();
     binding.cancelStartup = () => controller.abort(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped'));
@@ -294,7 +215,6 @@ export class Runtime {
     clearTimeout(this.finishCleanupTimers.get(botId));
     this.finishCleanupTimers.delete(botId);
     this.botBindings.delete(botId);
-    this.providerRecovery?.owners.delete(botId);
     if (this.getCoreStatus(binding.coreId)?.bot_id === botId) {
       this.#setCoreState(binding.coreId, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
     }
@@ -332,21 +252,6 @@ export class Runtime {
     return { ...state };
   }
 
-  listCoreStatus() {
-    return [...this.coreStates.values()].map((state) => ({ ...state }));
-  }
-
-  /** A Runtime capacity view that never performs Task selection. */
-  getCapacityStatus() {
-    const cores = this.listCoreStatus();
-    return {
-      core_count: this.maxWorkers,
-      active_core_count: cores.filter((core) => core.state === 'RUNNING').length,
-      idle_core_count: cores.filter((core) => core.state === 'IDLE').length,
-      cores,
-    };
-  }
-
   hasActiveExecution(executionId) {
     return this.activeProcesses.has(executionId);
   }
@@ -354,160 +259,14 @@ export class Runtime {
   async waitForSettled() {
     for (;;) {
       const pending = [...this.pendingFailurePromises, ...this.pendingReleasePromises];
-      if (this.activeWorkspaceCheck) pending.push(this.activeWorkspaceCheck.promise);
       if (pending.length === 0) return;
       await Promise.allSettled(pending);
     }
   }
 
-  /** Reconcile a Mission's durable Bot resources, without adopting an old Pi. */
-  async reconcileProviderExecutions({ missionId, timeoutMs = 30_000 } = {}) {
-    requireString(missionId, 'mission_id');
-    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new TypeError('Provider reconciliation requires a positive timeout');
-    const lane = this.providerRecovery;
-    if (!lane || typeof this.sandboxManager.reconcileExecutions !== 'function') {
-      return { provider: null, confirmed_bot_ids: [], closed_bot_ids: [], owned_bot_ids: [], pending: this.taskService.listRecoverableBots(missionId)
-        .map(bot => ({ bot_id: bot.bot_id, execution_id: bot.execution_id, reason: 'provider_reconciliation_unavailable' })) };
-    }
-    const deadline = Date.now() + timeoutMs;
-    const previous = lane.tail;
-    const recovery = Promise.resolve(previous).catch(() => undefined).then(() => {
-      const remaining = deadline - Date.now();
-      if (remaining <= 0) throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'Provider reconciliation queue timed out', {}, { retryable: true });
-      return this.#recoverProviderBots({ missionId, timeoutMs: remaining });
-    });
-    lane.tail = recovery;
-    this.pendingReleasePromises.add(recovery);
-    try { return await recovery; }
-    finally {
-      this.pendingReleasePromises.delete(recovery);
-      if (lane.tail === recovery) lane.tail = null;
-    }
-  }
-
-  async #recoverProviderBots({ missionId, timeoutMs }) {
-    const owned = bot => this.providerRecovery.owners.has(bot.bot_id) || this.sandboxManager.ownsBotResource?.(bot.resource_key);
-    const targets = [];
-    const ownedIds = [];
-    const pending = [];
-    const closedIds = [];
-    for (const bot of this.taskService.listRecoverableBots(missionId)) {
-      if (owned(bot)) { ownedIds.push(bot.bot_id); continue; }
-      const closing = this.taskService.requestBotStop(bot.bot_id, 'runtime_restart', { terminalState: bot.execution_id ? 'FENCED' : null });
-      targets.push(closing);
-      const core = this.getCoreStatus(bot.core_id);
-      if (core && (core.state === 'IDLE' || core.bot_id === bot.bot_id)) {
-        this.#setCoreState(bot.core_id, { state: 'CLOSING', bot_id: bot.bot_id, execution_id: bot.execution_id,
-          task_id: bot.execution_id ? this.#getExecution(bot.execution_id).task_id : null, session_id: null });
-      }
-    }
-    const noResource = new Set(targets.filter(bot => !bot.sandbox_id && !bot.execution_id &&
-      ['NOT_DISPATCHED', 'REJECTED'].includes(bot.sandbox_create_state)).map(bot => bot.bot_id));
-    for (const botId of noResource) {
-      await this.#finalizeRecoveredBot(botId);
-      closedIds.push(botId);
-    }
-    const providerTargets = targets.filter(bot => !noResource.has(bot.bot_id));
-    const result = providerTargets.length ? await this.sandboxManager.reconcileExecutions({ missionId, bots: providerTargets,
-      timeoutMs,
-      onSandboxDiscovered: (bot, sandboxId) => {
-        if (owned(bot) || this.taskService.getBot(bot.bot_id)?.state !== 'CLOSING') {
-          throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Recovery does not own the Bot');
-        }
-        return this.taskService.recordBotSandbox(bot.bot_id, { provider: 'opensandbox', sandboxId });
-      } }) : { provider: null, pending: [], confirmed_bot_ids: [], owned_bot_ids: [] };
-    const confirmed = new Set(result.confirmed_bot_ids ?? []);
-    pending.push(...(result.pending ?? []));
-    for (const bot of providerTargets) {
-      if (!confirmed.has(bot.bot_id) || owned(bot)) {
-        if (!pending.some(entry => entry.bot_id === bot.bot_id)) pending.push({ bot_id: bot.bot_id, execution_id: bot.execution_id, reason: 'resource_unconfirmed' });
-        continue;
-      }
-      try {
-        await this.#finalizeRecoveredBot(bot.bot_id);
-        closedIds.push(bot.bot_id);
-      } catch (error) {
-        pending.push({ bot_id: bot.bot_id, execution_id: bot.execution_id, reason: 'durable_cleanup_pending', error_class: error?.code ?? error?.name });
-      }
-    }
-    this.logger?.append({ event: 'runtime.provider_reconciled', mission_id: missionId, provider: result.provider ?? null,
-      closed_bot_count: closedIds.length, pending_count: pending.length });
-    return { ...result, pending, closed_bot_ids: closedIds, owned_bot_ids: [...new Set([...ownedIds, ...(result.owned_bot_ids ?? [])])] };
-  }
-
-  async #finalizeRecoveredBot(botId) {
-    const bot = this.taskService.getBot(botId);
-    if (bot.state === 'CLOSED') return;
-    if (bot.execution_id) {
-      const executionId = bot.execution_id;
-      await this.executionWorkspace?.reconcile(executionId, { closedConfirmed: true });
-      const execution = this.#getExecution(executionId);
-      if (execution.workspace_ref) {
-        const workspace = await this.workspaceManager.restoreWorkspace({ workspaceRef: execution.workspace_ref, executionId });
-        if (workspace.fencing_version < execution.fencing_version) {
-          await this.workspaceManager.fenceWorkspace({ workspaceRef: execution.workspace_ref, executionId,
-            fencingVersion: workspace.fencing_version, newFencingVersion: execution.fencing_version });
-        }
-        await this.workspaceManager.releaseWorkspace({ workspaceRef: execution.workspace_ref, executionId, fencingVersion: execution.fencing_version });
-      }
-      if (execution.finish) {
-        this.taskService.finalizeExecutionFinish(executionId, { fencingVersion: execution.fencing_version });
-      } else if (['CREATED', 'RUNNING'].includes(execution.state)) {
-        this.taskService.dispatch('stop_execution', { terminal_state: bot.stop_terminal_state ?? 'FENCED',
-          terminal_reason: bot.exit_reason ?? 'runtime_restart' }, this.#executionEnvelope(execution, operationId('recover-stop')));
-      }
-      this.sandboxManager.forgetBotProjectInstalls?.({ executionId });
-    }
-    this.taskService.finalizeBotClose(botId);
-    this.#refreshRecoveredCore(bot.core_id);
-  }
-
-  #refreshRecoveredCore(coreId) {
-    const core = this.getCoreStatus(coreId);
-    if (core?.state === 'CLOSING' && core.bot_id && !this.botBindings.has(core.bot_id) &&
-        this.taskService.getBot(core.bot_id)?.state === 'CLOSED') {
-      this.#setCoreState(coreId, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
-    }
-  }
-
-  /** Wait until Runtime no longer owns an Execution process. */
-  async waitForExecutionRelease(executionId, { timeoutMs = Number.POSITIVE_INFINITY, pollMs = 25, signal = null } = {}) {
-    const id = requireString(executionId, 'execution_id');
-    if (timeoutMs !== Number.POSITIVE_INFINITY && (!Number.isFinite(timeoutMs) || timeoutMs < 0)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timeoutMs must be non-negative or Infinity');
-    if (!Number.isFinite(pollMs) || pollMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'pollMs must be positive');
-    const startedAt = this.clock();
-    let current = this.taskService.getExecution(id);
-    while (this.activeProcesses.has(id) || ['CREATED', 'RUNNING', 'CLOSING'].includes(current?.state)) {
-      if (signal?.aborted) return { released: false, aborted: true, execution: current, elapsed_ms: this.clock() - startedAt };
-      if (timeoutMs !== Number.POSITIVE_INFINITY && this.clock() - startedAt >= timeoutMs) {
-        return { released: false, execution: current, elapsed_ms: this.clock() - startedAt };
-      }
-      await new Promise((resolve) => {
-        let settled = false;
-        const finish = () => {
-          if (settled) return;
-          settled = true;
-          clearTimeout(timer);
-          signal?.removeEventListener('abort', onAbort);
-          resolve();
-        };
-        const onAbort = () => finish();
-        const timer = setTimeout(finish, pollMs);
-        signal?.addEventListener('abort', onAbort, { once: true });
-      });
-      current = this.taskService.getExecution(id);
-    }
-    return { released: true, execution: current, elapsed_ms: this.clock() - startedAt };
-  }
-
-  /**
-   * Stop every live process owned by this Runtime before its store is closed.
-   * The benchmark uses this seam for terminal cleanup so it never has to
-   * mutate Runtime ownership maps or recovery flags directly.
-   */
+  /** Stop every live process owned by this Runtime before its store is closed. */
   async shutdown({ terminalState = 'FAILED', terminalReason = 'runtime_shutdown' } = {}) {
     this.stopping = true;
-    this.activeWorkspaceCheck?.controller.abort();
     for (const entry of this.workspaceReconcileTimers.values()) clearTimeout(entry.timer);
     this.workspaceReconcileTimers.clear();
     for (const timer of this.finishCleanupTimers.values()) clearTimeout(timer);
@@ -520,8 +279,6 @@ export class Runtime {
     const pendingStarts = [...this.startupPromises];
     this.executionStateUnsubscribe?.();
     this.executionStateUnsubscribe = null;
-    this.notificationUnsubscribe?.();
-    this.notificationUnsubscribe = null;
     const executionIds = [...this.activeProcesses.keys()];
     // A reusable identity Session is intentionally preserved on a normal
     // release, but shutdown owns every live process. Capture them before the
@@ -569,27 +326,7 @@ export class Runtime {
     return { active_process_count: this.activeProcesses.size, cleanup_pending_execution_ids: [...this.activeProcesses.keys()], cleanup_pending_session_count: this.identitySessions.size, cleanup_pending_bot_ids: [...this.botBindings.keys()] };
   }
 
-  async listPublicWorkspaceFiles({ workspaceId, revision = undefined, path = '' } = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.files({ workspaceId: requireString(workspaceId, 'workspace_id'), revision, prefix: path });
-  }
-
-  async readPublicWorkspaceFile({ workspaceId, revision = undefined, path, maxBytes = 1_000_000 } = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.read({ workspaceId: requireString(workspaceId, 'workspace_id'), revision, path, maxBytes });
-  }
-
-  async searchPublicWorkspace({ workspaceId, revision = undefined, query, path = '', maxResults = 100 } = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.search({ workspaceId: requireString(workspaceId, 'workspace_id'), revision, query, prefix: path, maxResults });
-  }
-
-  async savePublicWorkspaceRevision(input = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.save(input);
-  }
-
-  #guardExecutionWorkspace({ actorRef, taskId, executionId, fencingVersion }, { receiptOnly = false, newWork = false } = {}) {
+  assertExecutionWorkspace({ actorRef, taskId, executionId, fencingVersion }, { receiptOnly = false, newWork = false } = {}) {
     const execution = this.taskService.getExecution(executionId);
     if (newWork && execution) this.taskService.assertMissionResearchOpen(this.taskService.getTask(execution.task_id)?.mission_id);
     const bot = this.taskService.getBot(actorRef);
@@ -615,34 +352,8 @@ export class Runtime {
     return this.executionWorkspace.dispatch(operation, input, identity);
   }
 
-  async readWorkspaceCheckSource(input, identity) {
-    this.#guardExecutionWorkspace(identity);
-    const allowed = new Set(['workspace_id', 'revision', 'path', 'request_key', 'check_mode']);
-    const checkMode = input?.check_mode ?? 'lean-project';
-    const hasPath = input?.path !== undefined;
-    if (!input || !['lean-project', 'lean-module'].includes(checkMode) ||
-        (checkMode === 'lean-module' && (!this.workspaceProjectCheck || !hasPath || typeof input.path !== 'string' || !input.path.endsWith('.lean'))) ||
-        Object.keys(input).some(key => !allowed.has(key)) || !/^\d+\.\d+$/.test(input.revision ?? '') ||
-        (!hasPath && !this.workspaceProjectCheck) ||
-        (hasPath && (typeof input.path !== 'string' || !input.path || input.path.startsWith('/') || input.path.includes('\\') || input.path.split('/').some(part => !part || part === '.' || part === '..')))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, this.workspaceProjectCheck
-        ? 'Judge check requires a fixed public revision and a valid optional file path; save the project first'
-        : 'Judge check requires a fixed public revision and path; save the project first');
-    }
-    if (input.workspace_id !== undefined && input.workspace_id !== this.missionWorkspaceId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge input must belong to the Bot Mission Workspace');
-    if (this.workspaceProjectCheck) return { workspace_id: this.missionWorkspaceId, revision: input.revision,
-      ...(hasPath ? { path: input.path } : {}), check_mode: checkMode };
-    const snapshot = await this.missionWorkspace.exportRevision({ workspaceId: this.missionWorkspaceId, revision: input.revision });
-    this.#guardExecutionWorkspace(identity);
-    if (!Object.hasOwn(snapshot.files, input.path)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Judge file is unavailable at the fixed public revision');
-    const bytes = Buffer.from(snapshot.files[input.path]);
-    const content = bytes.toString('utf8');
-    if (!Buffer.from(content).equals(bytes) || bytes.includes(0)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Configured source checker requires a complete UTF-8 text file');
-    return { workspace_id: snapshot.workspace_id, revision: snapshot.revision, workspace_revision: snapshot.revision,
-      path: input.path, content, content_hash: createHash('sha256').update(bytes).digest('hex'),
-      git_commit: snapshot.git_commit, git_tree: snapshot.git_tree, tree_content_hash: snapshot.content_hash };
-  }
-
+  // Only retained pre-retirement install requests can schedule these retries.
+  // New apply admission is absent; save recovery still runs at request/close boundaries.
   #scheduleWorkspaceReconcile(executionId, attempt = 0) {
     if (this.stopping || this.workspaceReconcileTimers.has(executionId)) return;
     const reconcile = async () => {
@@ -667,92 +378,6 @@ export class Runtime {
       pending.catch(() => {});
     }, 1000);
     this.workspaceReconcileTimers.set(executionId, entry);
-  }
-
-  async mergeExecutionWorkspace(input, identity) {
-    if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => key !== 'from') || !/^\d+\.\d+$/.test(input.from ?? '')) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires --from a fixed public revision');
-    }
-    if (typeof identity.requestId !== 'string' || !identity.requestId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Merge requires a stable request ID');
-    const initial = this.#guardExecutionWorkspace(identity, { receiptOnly: true });
-    const task = this.taskService.getTask(initial.task_id);
-    const requiredCheck = this.taskService.getMission(task.mission_id).merge_required_check;
-    const delivery = task.completion_contract?.workspace_delivery;
-    const deliveryCheck = delivery?.require_main ? delivery.check : null;
-    const adapter = this.workspaceMergeChecker;
-    const requirements = [requiredCheck, deliveryCheck].filter(value => value !== undefined && value !== null);
-    const unavailableCheck = requirements.some(requirement => !requirement || typeof requirement !== 'object' || Array.isArray(requirement) ||
-      !requirement.checker_ref || !requirement.checker_version || !adapter || Object.entries(requirement).some(([key, value]) => adapter.identity[key] !== value));
-    const checkPolicy = { policy_version: 'workspace-merge-v2', mission: requiredCheck ?? null,
-      task: { spec_version: task.spec_version, delivery_check: deliveryCheck ?? null }, configured: requirements.length ? adapter?.identity ?? null : null };
-    const guard = () => {
-      const execution = this.#guardExecutionWorkspace(identity, { newWork: true });
-      assertNewExecutionWork(execution);
-      return execution;
-    };
-    return this.missionWorkspace.merge({ workspaceId: this.missionWorkspaceId, fromRevision: input.from,
-      requestId: `execution:${identity.executionId}:merge:${identity.requestId}`,
-      source: { operation: 'merge', mission_id: task.mission_id, task_id: task.task_id, execution_id: initial.execution_id, bot_id: initial.owner_ref, fencing_version: identity.fencingVersion },
-      checkPolicy, guard,
-      checker: unavailableCheck ? async () => { throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission or Task requires an unavailable trusted final-tree checker', { policy: checkPolicy }); } : requirements.length ? async plan => {
-        const execution = guard();
-        if (this.activeWorkspaceCheck) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Previous final-tree checker has not confirmed completion; use a new attempt after it settles');
-        const remaining = Math.min(adapter.timeoutMs, Date.parse(execution.handoff_deadline ?? execution.execution_deadline) - Date.now());
-        if (!Number.isFinite(remaining) || remaining <= 0) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'No final-tree check budget remains');
-        const controller = new AbortController();
-        const deadline = Date.now() + remaining;
-        // Timeout requests cancellation. The slot and shutdown join retain
-        // the checker until its promise confirms resource cleanup.
-        const check = Promise.resolve().then(() => adapter.check({
-          ...plan, signal: controller.signal, identity: adapter.identity,
-          source: { task_id: task.task_id, execution_id: initial.execution_id }, deadline,
-          startProcess: launch => this.taskService.withServiceLifecycleWrite(() => {
-            guard();
-            return launch();
-          }),
-        }));
-        const active = { controller, promise: check.finally(() => {
-          if (this.activeWorkspaceCheck === active) this.activeWorkspaceCheck = null;
-        }) };
-        this.activeWorkspaceCheck = active;
-        let timer;
-        try {
-          const result = await Promise.race([active.promise,
-            new Promise((_, reject) => { timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline')); controller.abort(); }, remaining); })]);
-          if (Date.now() >= deadline) throw new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline');
-          if (result?.check_mode === 'lean-module' || result?.scope === 'module') {
-            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires a complete check; module-scoped evidence is insufficient');
-          }
-          const checkedPaths = Array.isArray(result?.checked_paths) ? result.checked_paths : [];
-          return { verdict: result?.verdict, check_result_id: typeof result?.check_result_id === 'string' ? result.check_result_id.slice(0, 256) : null,
-            diagnostic: typeof result?.diagnostic === 'string' ? result.diagnostic.slice(0, 2048) : null,
-            ...(result?.check_mode === 'lean-project' ? { check_mode: result.check_mode, checked_count: checkedPaths.length, checked_paths: checkedPaths } : {}),
-            checked_tree: plan.tree, checker: adapter.identity, policy: checkPolicy };
-        } finally { clearTimeout(timer); }
-      } : null,
-      withPublication: publish => publishWorkspace(this.taskService.db, publish),
-    });
-  }
-
-  async mergePublicWorkspaceRevision(input = {}) {
-    if (!this.missionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission Workspace is not enabled');
-    return this.missionWorkspace.merge(input);
-  }
-
-  async submitMission(input = {}) {
-    if (!this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
-    return this.missionSubmissionStore.submit(input);
-  }
-
-  async describeMissionSubmission({ missionId, submissionId = null }) {
-    if (!this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
-    return this.missionSubmissionStore.describe({ missionId, submissionId, workspaceId: this.missionWorkspaceId,
-      isStopped: () => this.stopping || this.clock() >= (this.runDeadlineAt ?? Infinity) || this.taskService.isMissionStopped(missionId) });
-  }
-
-  async finishMissionSubmission(input = {}) {
-    if (!this.missionSubmissionStore) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
-    return this.missionSubmissionStore.finish(input);
   }
 
   async #ensureSandbox(execution, workspace) {
@@ -864,9 +489,6 @@ export class Runtime {
       }
       if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during startup');
       this.#registerActiveProcess(current, workspace, boundSession, { coreId: selectedCoreId });
-      // Selection already started the Bot turn. Deliver pending Task notices
-      // after that turn settles using the existing Session queue.
-      this.#queuePendingNotifications(this.activeProcesses.get(current.execution_id));
       return { execution: current, workspace, session: boundSession };
     } catch (error) {
       await this.stopExecution(executionId, 'FAILED', 'bind_prepare_failed');
@@ -878,8 +500,8 @@ export class Runtime {
 
   /**
    * Reconcile durable Execution deadlines. The sweep is intentionally
-   * idempotent: the reminder is persisted before it is sent, and timeout is a
-   * durable Bot stop. Maintenance may call this on every poll.
+   * idempotent: timeout is a durable Bot stop. Handoff warnings are owned by
+   * the Flat controller. Maintenance may call this on every poll.
    */
   async sweepExecutionTimeouts(at = new Date(this.clock()), { executionIds = null } = {}) {
     const atDate = at instanceof Date ? at : new Date(at);
@@ -893,79 +515,14 @@ export class Runtime {
       if (!bot || !this.botBindings.has(bot.bot_id)) continue;
       const startedMs = Date.parse(execution.started_at ?? '');
       if (Number.isNaN(startedMs)) continue;
-      const reminderMs = Date.parse(execution.handoff_deadline ?? '') || startedMs + this.handoffReminderMs;
       const timeoutMs = Date.parse(execution.execution_deadline ?? '') || startedMs + this.executionTimeoutMs;
       if (atDate.getTime() >= timeoutMs) {
         const reason = Date.parse(bot.hard_deadline) <= atDate.getTime() ? 'bot-lifetime-budget' : 'execution-timebox';
         const result = await this.stopExecution(execution.execution_id, 'FAILED', reason);
         events.push({ kind: 'timeout', ...result });
-      } else if (atDate.getTime() >= reminderMs && !execution.handoff_reminder_sent_at) {
-        const reminder = await this.#sendHandoffReminder(execution.execution_id, atDate);
-        if (reminder) events.push(reminder);
       }
     }
     return events;
-  }
-
-  async #sendHandoffReminder(executionId, at) {
-    const inFlight = this.reminderPromises.get(executionId);
-    if (inFlight) return inFlight;
-    const promise = (async () => {
-      const execution = this.#getExecution(executionId);
-      if (!['CREATED', 'RUNNING'].includes(execution.state) || execution.handoff_reminder_sent_at) return null;
-      const marked = this.taskService.dispatch('record_handoff_reminder', {
-        reminded_at: new Date(at.getTime()).toISOString(),
-      }, this.#executionEnvelope(execution, `runtime:handoff-reminder:${executionId}:${execution.state_version}`));
-      const active = this.activeProcesses.get(executionId);
-      if (active) active.execution = marked.execution;
-      const task = this.taskService.getTask(execution.task_id);
-      let notification = null;
-      if (task?.mission_id && typeof this.taskService.enqueueNotification === 'function') {
-        notification = this.taskService.enqueueNotification({
-          deliveryKey: `handoff_warning:${executionId}:${marked.execution.execution_deadline ?? marked.execution.handoff_deadline ?? at.toISOString()}`,
-          missionId: task.mission_id,
-          recipientTaskId: task.task_id,
-          recipientExecutionId: executionId,
-          type: 'handoff_warning',
-          payload: { execution_id: executionId, deadline: marked.execution.execution_deadline ?? null },
-        });
-        if (active) await active.promptChain.catch(() => undefined);
-      }
-      this.logger?.append({ event: 'runtime.handoff_reminder', execution_id: executionId, handoff_deadline: marked.execution.handoff_deadline ?? null });
-      return { kind: 'handoff_reminder', execution: marked.execution, notification };
-    })();
-    this.reminderPromises.set(executionId, promise);
-    try {
-      return await promise;
-    } finally {
-      this.reminderPromises.delete(executionId);
-    }
-  }
-
-  getSessionHealth(executionId) {
-    const active = this.activeProcesses.get(executionId);
-    if (!active) return null;
-    return {
-      execution_id: executionId,
-      session_id: active.session?.sessionId ?? null,
-      phase: active.closing ? 'closing' : active.phase,
-      last_event_at: Number.isFinite(active.lastEventAt) ? new Date(active.lastEventAt).toISOString() : null,
-      last_heartbeat_at: active.lastHeartbeatAt ? new Date(active.lastHeartbeatAt).toISOString() : null,
-      last_completed_turn_at: active.lastCompletedTurnAt ? new Date(active.lastCompletedTurnAt).toISOString() : null,
-      last_productive_at: Number.isFinite(active.lastProductiveAt) ? new Date(active.lastProductiveAt).toISOString() : null,
-      last_failure_class: active.lastFailureClass,
-    };
-  }
-
-  async sweepWatchdog(at = new Date(this.clock())) {
-    const recovered = [];
-    for (const [executionId, active] of [...this.activeProcesses.entries()]) {
-      const execution = this.taskService.getExecution(executionId);
-      if (active.closing || !execution || execution.state !== 'RUNNING' || ACTIVE_SESSION_PHASES.has(active.phase)) continue;
-      if (at.getTime() - active.lastProductiveAt < this.watchdogTimeoutMs) continue;
-      recovered.push(await this.#handleSessionFailure(executionId, 'watchdog_stall'));
-    }
-    return recovered.filter(Boolean);
   }
 
   heartbeat(executionId, payload = {}) {
@@ -976,7 +533,6 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (active) {
       active.execution = result.execution;
-      active.lastHeartbeatAt = this.clock();
     }
     return result;
   }
@@ -986,7 +542,7 @@ export class Runtime {
     const bot = this.taskService.getBot(execution.owner_ref);
     if (!bot) return;
     if (bot.state !== 'CLOSED' && !this.botBindings.has(bot.bot_id)) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot requires scoped provider reconciliation before release');
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot has no in-process resource owner; isolation remains unconfirmed');
     }
     const intent = this.taskService.requestBotStop(bot.bot_id, reason, { terminalState, leaseExpiredAt });
     if (!intent) return null;
@@ -1014,9 +570,8 @@ export class Runtime {
     let execution = this.#getExecution(executionId);
     const active = this.activeProcesses.get(executionId);
     if (active) {
-      // Drain ownership writes before fencing/releasing the Workspace.
+      // Close admission before fencing/releasing the Workspace.
       active.closing = true;
-      await this.#drainCompactionFollowup(active);
       execution = this.#getExecution(executionId);
     }
     await this.#stopExecutionResources(executionId);
@@ -1053,13 +608,12 @@ export class Runtime {
     const bot = this.taskService.getBot(this.#getExecution(id).owner_ref);
     const retainedBot = bot ? this.botBindings.get(bot.bot_id) : null;
     if (bot && bot.state !== 'CLOSED' && !retainedBot) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot requires scoped provider reconciliation before release');
+      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot has no in-process resource owner; isolation remains unconfirmed');
     }
     if (retainedBot) retainedBot.closing = true;
     if (active) {
       active.closing = true;
       if (this.#canUpdateExecutionCore(active.coreId, this.#getExecution(id))) this.#setCoreState(active.coreId, { state: 'CLOSING' });
-      await this.#drainCompactionFollowup(active);
       await this.#releaseSessionBinding(active, id);
     }
     if (retainedBot?.session && retainedBot.session !== active?.session) {
@@ -1112,7 +666,6 @@ export class Runtime {
       clearTimeout(this.botBindings.get(bot.bot_id)?.selectionTimer);
       clearTimeout(this.botBindings.get(bot.bot_id)?.hardTimer);
       this.botBindings.delete(bot.bot_id);
-      this.providerRecovery?.owners.delete(bot.bot_id);
       if (this.getCoreStatus(bot.core_id)?.bot_id === bot.bot_id) this.#setCoreState(bot.core_id, { state: 'IDLE', bot_id: null, execution_id: null, task_id: null, session_id: null });
     }
     // Retain the binding and Core on any cleanup failure. A retry must still
@@ -1136,7 +689,6 @@ export class Runtime {
       activeBeforeFence.closing = true;
       this.#setCoreState(activeBeforeFence.coreId, { state: 'CLOSING' });
     }
-    await this.#drainCompactionFollowup(activeBeforeFence);
     await this.#stopExecutionResources(executionId);
     await this.executionWorkspace?.reconcile(executionId, { closedConfirmed: true });
     execution = this.#getExecution(executionId);
@@ -1182,41 +734,6 @@ export class Runtime {
     return expired;
   }
 
-  async restart() {
-    this.runtimeGeneration += 1;
-    // Capture reusable identity Sessions before fenceExecution detaches them;
-    // an explicit Runtime restart must actually replace the processes.
-    const ownedSessions = new Set([...this.activeProcesses.values()].map((active) => active.session).filter(Boolean));
-    for (const session of this.identitySessions) ownedSessions.add(session);
-    for (const botId of this.botBindings.keys()) {
-      const bot = this.taskService.getBot(botId);
-      if (bot.execution_id) continue;
-      this.taskService.requestBotStop(botId, 'runtime_restart');
-      this.botBindings.get(botId)?.cancelStartup?.();
-      await this.releaseBot(botId);
-    }
-    for (const id of this.activeProcesses.keys()) {
-      if (!['CREATED', 'RUNNING'].includes(this.#getExecution(id).state)) await this.releaseExecution(id);
-    }
-    for (const execution of this.taskService.listActiveExecutions()) {
-      if (execution.state === 'RUNNING' || execution.state === 'CREATED') {
-        const bot = this.taskService.getBot(execution.owner_ref);
-        if (!bot || !this.botBindings.has(bot.bot_id)) continue;
-        await this.fenceExecution(execution.execution_id, { reason: 'runtime_restart' });
-      }
-    }
-    for (const session of ownedSessions) {
-      this.identitySessions.add(session);
-      await session.stop?.();
-      if (session.closed === false) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot process stop was not confirmed');
-      this.identitySessions.delete(session);
-    }
-    const provider_recovery = [];
-    const missions = new Set(this.taskService.listRecoverableBots?.().map(bot => bot.mission_id));
-    for (const missionId of missions) provider_recovery.push(await this.reconcileProviderExecutions({ missionId }));
-    return { runtime_generation: this.runtimeGeneration, active_executions: this.taskService.listActiveExecutions(), provider_recovery };
-  }
-
   #getExecution(executionId) {
     const execution = this.taskService.getExecution(requireString(executionId, 'execution_id'));
     if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
@@ -1241,16 +758,6 @@ export class Runtime {
       });
       return false;
     }
-  }
-
-  recordBotWorkspacePreview({ botId, session, workspace }) {
-    const retained = this.botBindings.get(botId);
-    const bot = this.taskService.getBot(botId);
-    if (!retained || retained.session !== session || retained.closing || bot?.state !== 'UNBOUND' ||
-        workspace.mission_id !== bot.mission_id || workspace.workspace_id !== this.missionWorkspaceId) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace preview requires the current unbound Bot');
-    }
-    retained.workspacePreview = { workspace_id: workspace.workspace_id, revision: workspace.main_revision };
   }
 
   async #prepareWorkspace(execution, workspaceRef = null) {
@@ -1286,23 +793,12 @@ export class Runtime {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task Workspace inputs must belong to the Bot Mission');
     }
     if (publicSnapshot) {
-      const preview = this.botBindings.get(registeredBot.bot_id)?.workspacePreview ?? null;
       if (execution.input_material_refs.length && typeof this.contextService?.readTakeMaterialInputs !== 'function') {
         throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Task input Materials require the authoritative Context Service');
       }
       publicSnapshot.material_inputs = this.contextService?.readTakeMaterialInputs?.({
         missionId: registeredBot.mission_id, materialIds: execution.input_material_refs,
       }) ?? [];
-      publicSnapshot.preview = preview;
-      publicSnapshot.preview_changed = preview ? preview.revision !== publicSnapshot.revision : null;
-      publicSnapshot.reread_required = publicSnapshot.preview_changed === true;
-      if (publicSnapshot.reread_required) {
-        const diff = await this.missionWorkspace.diff({ workspaceId: publicSnapshot.workspace_id,
-          from: preview.revision, to: publicSnapshot.revision, limit: 20 });
-        publicSnapshot.reread_notice = `E ${execution.execution_id} 的初始输入是 ${publicSnapshot.revision}，不同于预览 ${preview.revision}。/workspace/project 已按实际输入准备，请重读受影响内容。`;
-        publicSnapshot.preview_diff = { from: diff.from.revision, to: diff.to.revision, changes: diff.changes,
-          truncated: Boolean(diff.next_cursor), next_cursor: diff.next_cursor };
-      }
     }
     const workspace = await this.workspaceManager.createWorkspace({
       executionId: execution.execution_id,
@@ -1341,86 +837,6 @@ export class Runtime {
     throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'could not persist Workspace reference after concurrent updates');
   }
 
-  #onNotification(notification) {
-    if (!notification || notification.delivered_at) return;
-    for (const [executionId, active] of this.activeProcesses.entries()) {
-      if (active.closing || !active.session) continue;
-      if (notification.recipient_execution_id && notification.recipient_execution_id !== executionId) continue;
-      if (active.execution.task_id !== notification.recipient_task_id) continue;
-      this.#deliverNotification(active, notification);
-    }
-  }
-
-  #deliverNotification(active, notification) {
-    if (!active || active.closing || !active.session) return Promise.resolve();
-    if (!active?.notificationPromises) active.notificationPromises = new Map();
-    const existing = active.notificationPromises.get(notification.notification_id);
-    if (existing) return existing;
-    const queuedAt = this.clock();
-    const delivery = active.promptChain.catch(() => undefined).then(async () => {
-      if (active.closing) return;
-      const current = this.taskService.getExecution(active.execution.execution_id);
-      if (!current || !['CREATED', 'RUNNING'].includes(current.state)) return;
-      if (typeof active.session.waitForSettled === 'function') {
-        try {
-          await active.session.waitForSettled({ timeoutMs: 5_000 });
-        } catch (error) {
-          // Some Pi provider-retry paths emit turn_end/auto_retry_end but no
-          // agent_settled. Once that boundary is durable, the follow-up is
-          // safe to send; otherwise defer and retry at the next boundary.
-          if (!active.lastTurnEndedAt || active.lastTurnEndedAt < queuedAt) {
-            this.logger?.append({
-              event: 'runtime.notification_delivery_deferred',
-              execution_id: current.execution_id,
-              notification_id: notification.notification_id,
-              error_class: error?.code ?? error?.name ?? 'settled_timeout',
-            });
-            return;
-          }
-        }
-      }
-      this.taskService.recordNotificationAttempt?.(notification.notification_id);
-      try {
-        await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(this.#getExecution(active.execution.execution_id)) : buildBotNotification(notification), {
-          timeoutMs: 30_000,
-          streamingBehavior: 'followUp',
-        });
-        this.taskService.markNotificationDelivered?.(notification.notification_id, current.execution_id);
-        this.logger?.append({ event: 'runtime.notification_delivered', execution_id: current.execution_id, notification_id: notification.notification_id, notification_type: notification.notification_type });
-      } catch (error) {
-        this.logger?.append({ event: 'runtime.notification_delivery_error', execution_id: current.execution_id, notification_id: notification.notification_id, notification_type: notification.notification_type, error_class: error?.code ?? error?.name ?? 'prompt_error' });
-      }
-    });
-    active.promptChain = delivery.catch(() => undefined);
-    active.notificationPromises.set(notification.notification_id, delivery);
-    delivery.finally(() => {
-      if (active.notificationPromises.get(notification.notification_id) === delivery) {
-        active.notificationPromises.delete(notification.notification_id);
-      }
-    }).catch(() => undefined);
-    return delivery;
-  }
-
-  #queuePendingNotifications(active) {
-    if (!active) return;
-    const notifications = this.taskService.listUnprocessedNotifications?.(
-      active.execution.task_id,
-      active.execution.execution_id,
-    ) ?? [];
-    for (const notification of notifications) {
-      // At-least-once means once per recipient Execution, not once per turn.
-      // A notification already delivered to this Execution stays unhandled
-      // until task_feedback; re-prompting it at every turn_end (r13: 344
-      // prompts for 3 notifications) reads to the Agent as new evidence.
-      if (notification.recipient_delivery?.delivered_at) continue;
-      this.#deliverNotification(active, notification);
-    }
-  }
-
-  #identityKey(coreId, execution) {
-    return coreId ?? execution?.core_id ?? execution?.owner_ref ?? execution?.execution_id ?? 'identity';
-  }
-
   // A Bot owns one Session; release confirms its stop before freeing capacity.
   async #releaseSessionBinding(active, executionId) {
     if (!active?.session) return;
@@ -1433,30 +849,13 @@ export class Runtime {
   }
 
   #registerActiveProcess(execution, workspace, session, { coreId = null } = {}) {
-    const nowMs = this.clock();
     const active = {
       session,
       execution,
       workspace,
       coreId,
-      phase: 'idle',
-      lastEventAt: nowMs,
-      lastHeartbeatAt: null,
-      lastCompletedTurnAt: null,
-      lastTurnEndedAt: null,
-      lastProductiveAt: nowMs,
-      lastFailureClass: null,
       failurePromise: null,
       closing: false,
-      identityId: session.sessionId ?? randomUUID(),
-      compactionCount: this.identityCompactionCounts.get(this.#identityKey(coreId, execution)) ?? 0,
-      compactionFollowupPromise: null,
-      rotationPromise: null,
-      // Initial and follow-up prompts share one queue.  Pi can accept a
-      // follow-up while a turn is active, but two concurrent prompt calls
-      // would reorder lifecycle notifications and Agent work.
-      promptChain: Promise.resolve(),
-      notificationPromises: new Map(),
     };
     this.activeProcesses.set(execution.execution_id, active);
     this.#setCoreState(coreId, {
@@ -1476,23 +875,6 @@ export class Runtime {
     if (session.identitySession === true) this.identitySessions.add(session);
     if (session.__swarmenvRuntimeBound !== true) {
       session.__swarmenvRuntimeBound = true;
-      session.on('rpc', (record) => {
-        const boundId = session.boundExecutionId;
-        if (boundId) {
-          void this.#handleSessionEvent(boundId, record).catch((error) => {
-            // EventEmitter does not observe rejected async listeners. Keep a
-            // provider/session timeout as durable Runtime evidence instead of
-            // allowing an unhandled rejection to terminate the benchmark
-            // before report and Execution cleanup can run.
-            this.logger?.append({
-              event: 'runtime.agent_event_error',
-              execution_id: boundId,
-              record_type: record?.type ?? null,
-              error_class: error?.code ?? error?.name ?? 'agent_event_error',
-            });
-          });
-        }
-      });
       session.on('processError', () => {
         const boundId = session.boundExecutionId;
         if (boundId) void this.#handleSessionFailure(boundId, 'process_error').catch(() => undefined);
@@ -1548,7 +930,6 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (!active) return;
     active.closing = true;
-    await this.#drainCompactionFollowup(active);
     await this.#stopExecutionResources(executionId);
     const execution = this.taskService.getExecution(executionId);
     await this.#releaseSessionBinding(active, executionId);
@@ -1571,193 +952,6 @@ export class Runtime {
     // reusable slot look idle while the sibling Session is still exiting.
     await this.releaseExecution(executionId);
     this.logger?.append({ event: 'runtime.execution_fenced_released', execution_id: executionId });
-  }
-
-  async #handleSessionEvent(executionId, record) {
-    if (this.stopping) return;
-    const active = this.activeProcesses.get(executionId);
-    if (!active || active.closing) return;
-    active.lastEventAt = this.clock();
-    // Session events are handled concurrently. A start record bumps the
-    // phase epoch synchronously, so a completion whose handler resumes after
-    // an await cannot reset a newer turn/retry/compaction to idle (r15:
-    // turn_end awaiting get_session_stats let the watchdog fence a Session
-    // that was streaming the next reply).
-    const startsPhase = record.type === 'turn_start' || record.type === 'auto_retry_start' || record.type === 'compaction_start';
-    if (startsPhase) {
-      active.phaseEpoch = (active.phaseEpoch ?? 0) + 1;
-      active.phase = record.type === 'turn_start' ? 'turn' : record.type === 'auto_retry_start' ? 'provider_retry' : 'compaction';
-    }
-    const phaseEpoch = active.phaseEpoch ?? 0;
-    this.logger?.append({ event: 'runtime.agent_event', execution_id: executionId, record_type: record.type, phase: active.phase });
-    let usage = contextWindowRatio(record, active.session);
-    // Pi's stream usage uses camelCase fields (`totalTokens`, `usage.input`)
-    // and its authoritative window measurement is get_session_stats. Query it
-    // at turn/compaction boundaries; never substitute zero for an unavailable
-    // measurement.
-    if ((record.type === 'turn_end' || record.type === 'compaction_end') && typeof active.session.getSessionStats === 'function') {
-      try {
-        const stats = await active.session.getSessionStats({ timeoutMs: 5_000 });
-        const measured = contextWindowRatio(stats ?? {}, active.session);
-        if (measured) usage = { ...measured, source: 'get_session_stats' };
-      } catch {
-        // Older/mock adapters may not implement the command. Keep the
-        // event-derived value or null; unknown is handled conservatively.
-      }
-    }
-    if (record.type === 'compaction_start') {
-      this.logger?.append({
-        event: 'runtime.compaction_started', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.agentMode === 'solver' ? null : this.maxCompactions,
-        context_window: usage?.context_window ?? active.session.contextWindow ?? null,
-        window_ratio: usage?.ratio ?? null, usage_source: usage ? 'event' : 'unknown',
-      });
-      // Swarm bounds compactions before replacing an identity. An independent
-      // solver retains the same sample/Session until its existing hard deadline.
-      // For Swarm the fourth compaction is prohibited at the adapter boundary.  A
-      // start record is the earliest portable signal before Pi mutates its
-      // context; fence/restart the identity immediately instead of waiting
-      // for a later report to discover that the limit was crossed.
-      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions) {
-        await this.#rotateIdentity(executionId, {
-          reason: 'compaction_limit',
-          windowRatio: usage?.ratio ?? null,
-          usageSource: usage ? 'event' : 'unknown',
-        });
-        return;
-      }
-    }
-    if (record.type === 'turn_end') {
-      active.lastCompletedTurnAt = this.clock();
-      active.lastTurnEndedAt = active.lastCompletedTurnAt;
-    }
-    const completedProductiveEvent = record.type === 'turn_end' ||
-      (record.type === 'tool_execution_end' && record.isError !== true) ||
-      (record.type === 'compaction_end' && Boolean(record.result)) ||
-      (record.type === 'auto_retry_end' && record.success === true);
-    if (completedProductiveEvent) {
-      active.lastProductiveAt = this.clock();
-      if ((active.phaseEpoch ?? 0) === phaseEpoch) active.phase = 'idle';
-      if (record.type === 'auto_retry_end' && record.success === true) active.lastTurnEndedAt = active.lastProductiveAt;
-    }
-    // Provider-retry paths may emit a completed turn boundary without ever
-    // emitting Pi's agent_settled record. Retry pending notifications at each
-    // such boundary instead of leaving them starved behind one stale Promise.
-    if (record.type === 'turn_end' || (record.type === 'auto_retry_end' && record.success === true)) {
-      this.#queuePendingNotifications(active);
-    }
-    if (record.type === 'compaction_end' && record.result && !record.aborted) {
-      active.compactionCount += 1;
-      this.identityCompactionCounts.set(this.#identityKey(active.coreId, active.execution), active.compactionCount);
-      const estimatedTokensAfter = record.result?.estimatedTokensAfter ?? record.result?.estimated_tokens_after ?? null;
-      const postCompactionUsage = estimatedTokensAfter !== null && estimatedTokensAfter !== undefined
-        ? contextWindowRatio({ ...record, tokens: estimatedTokensAfter, result: { ...record.result, tokensBefore: undefined, tokens_before: undefined } }, active.session)
-        : usage ?? contextWindowRatio(record.result, active.session);
-      this.logger?.append({
-        event: 'runtime.compaction_completed', execution_id: executionId, identity_id: active.identityId,
-        compaction_count: active.compactionCount, max_compactions: this.agentMode === 'solver' ? null : this.maxCompactions,
-        context_window: postCompactionUsage?.context_window ?? active.session.contextWindow ?? null,
-        window_ratio: postCompactionUsage?.ratio ?? null,
-        usage_source: postCompactionUsage ? 'event' : 'unknown',
-      });
-      // Queue one follow-up after each successful compaction and the current turn.
-      this.#queueCompactionFollowup(active);
-      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions && !postCompactionUsage) {
-        await this.#rotateIdentity(executionId, {
-          reason: 'compaction_window_unknown', usageSource: 'unknown', windowRatio: null,
-        });
-        return;
-      }
-      if (this.agentMode !== 'solver' && active.compactionCount >= this.maxCompactions && postCompactionUsage?.ratio >= this.handoffWindowRatio) {
-        await this.#rotateIdentity(executionId, {
-          reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: postCompactionUsage.ratio,
-        });
-        return;
-      }
-    }
-    if (this.agentMode !== 'solver' && record.type === 'turn_end' && active.compactionCount >= this.maxCompactions) {
-      if (!usage) {
-        this.logger?.append({ event: 'runtime.compaction_window_unknown', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, action: 'continue_until_boundary' });
-      } else if (usage.ratio >= this.handoffWindowRatio) {
-        await this.#rotateIdentity(executionId, {
-          reason: 'compaction_window_threshold', usageSource: 'event', windowRatio: usage.ratio,
-        });
-        return;
-      }
-    }
-    const failureClass = classifySessionFailure(record);
-    if (failureClass) {
-      active.lastFailureClass = failureClass;
-      await this.#handleSessionFailure(executionId, failureClass);
-    }
-  }
-
-  #queueCompactionFollowup(active) {
-    const executionId = active.execution.execution_id;
-    // Serialize compaction follow-up in event order; public saves remain explicit.
-    const previous = active.compactionFollowupPromise ?? Promise.resolve();
-    const run = previous.catch(() => undefined).then(async () => {
-      try {
-        if (typeof active.session.waitForSettled === 'function') {
-          await active.session.waitForSettled({ timeoutMs: 30_000 });
-        }
-        const current = this.#getExecution(executionId);
-        if (!['CREATED', 'RUNNING'].includes(current.state)) return { status: 'not_applicable', execution: current };
-        const bot = this.taskService.getBot(current.owner_ref);
-        if (bot) {
-          if (bot.state !== 'ACTIVE' || bot.execution_id !== executionId) return { status: 'not_applicable', execution: current };
-          this.taskService.assertBotDeadline(bot.bot_id);
-          // Pi's private compaction is not a public Workspace save. In the
-          // Bot path, only the explicit stable-snapshot API can publish files.
-          if (!active.closing && !active.rotationPromise) {
-            await active.session.prompt?.(this.agentMode === 'solver' ? buildSolverContinuationMessage(current) : buildBotContinuationMessage(current, { ordinary: BOT_COMPACTION_MESSAGE }), { timeoutMs: 30_000, streamingBehavior: 'followUp' });
-          }
-          this.logger?.append({ event: 'runtime.bot_compaction_recorded', execution_id: executionId, compaction_count: active.compactionCount, public_save: false });
-          return { status: 'not_saved', execution: current };
-        }
-        return { status: 'not_applicable', execution: current };
-      } catch (error) {
-        this.logger?.append({ event: 'runtime.compaction_followup_failed', execution_id: executionId, identity_id: active.identityId, compaction_count: active.compactionCount, error_class: error?.code ?? error?.name ?? 'followup_failed' });
-        return { status: 'followup_failed', error_class: error?.code ?? error?.name ?? 'followup_failed' };
-      }
-    });
-    const queued = run.finally(() => {
-      if (active.compactionFollowupPromise === queued) active.compactionFollowupPromise = null;
-    });
-    active.compactionFollowupPromise = queued;
-    return queued;
-  }
-
-  async #drainCompactionFollowup(active) {
-    if (!active?.compactionFollowupPromise) return;
-    await active.compactionFollowupPromise.catch(() => undefined);
-  }
-
-  async #rotateIdentity(executionId, { reason, windowRatio = null, usageSource = 'unknown' } = {}) {
-    const active = this.activeProcesses.get(executionId);
-    if (!active) return null;
-    if (active.rotationPromise) return active.rotationPromise;
-    const previousIdentity = active.identityId;
-    const previousCompactions = active.compactionCount;
-    const rotation = (async () => {
-      // A rotation raised at compaction_start must stop promptly; do not wait
-      // for a new `agent_settled` event from the compaction that is being
-      // aborted.  A successful compaction already queued its follow-up,
-      // and only that in-flight follow-up is awaited here.
-      if (active.compactionFollowupPromise) await active.compactionFollowupPromise.catch(() => undefined);
-      this.logger?.append({
-        event: 'runtime.identity_rotation_started', execution_id: executionId,
-        old_identity_id: previousIdentity, compaction_count: previousCompactions,
-        reason, window_ratio: windowRatio, usage_source: usageSource,
-      });
-      return this.stopExecution(executionId, 'HANDED_OFF', 'compaction_rotation');
-    })();
-    active.rotationPromise = rotation;
-    try {
-      return await rotation;
-    } finally {
-      active.rotationPromise = null;
-    }
   }
 
   async #processExit(executionId) {
@@ -1787,7 +981,6 @@ export class Runtime {
     const active = this.activeProcesses.get(executionId);
     if (!active) return null;
     if (active.failurePromise) return active.failurePromise;
-    active.lastFailureClass = failureClass;
     const failurePromise = (async () => {
       this.#prepareBotExecutionStop(executionId, 'FAILED', failureClass);
       this.#startFinishCleanup(executionId);
@@ -1870,11 +1063,6 @@ export class Runtime {
     };
     const next = { ...current, ...patch, core_id: id, updated_at: new Date(this.clock()).toISOString() };
     this.coreStates.set(id, next);
-    try {
-      this.onCoreEvent?.({ kind: 'core_occupancy', ...next });
-    } catch {
-      // Observability cannot change Runtime ownership behavior.
-    }
   }
 
   /**

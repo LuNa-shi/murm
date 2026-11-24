@@ -82,7 +82,13 @@ export function createManualMissionChecker({ database, checkerVersion, environme
     timeoutMs,
     async check({ submission, deadline, signal }) {
       while (!signal.aborted && Date.now() < deadline) {
-        const row = find.get(submission.mission_id, submission.submission_id);
+        let row;
+        try { row = find.get(submission.mission_id, submission.submission_id); }
+        catch (error) {
+          // The owner CLI may briefly hold a competing ledger write lock.
+          // Retry only SQLite contention, within this same cutoff and signal.
+          if (error.code !== 'ERR_SQLITE_ERROR' || !Number.isInteger(error.errcode) || ![5, 6].includes(error.errcode & 255)) throw error;
+        }
         const decision = row && JSON.parse(row.document);
         if (decision && decision.snapshot.snapshot_fingerprint === submission.snapshot_fingerprint) {
           return { verdict: decision.verdict, check_result_id: decision.review_id };

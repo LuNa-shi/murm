@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { execFile as defaultExecFile } from 'node:child_process';
 import { mkdir, mkdtemp, lstat, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { promisify } from 'node:util';
 import { dirname, isAbsolute, join, relative as pathRelative, resolve } from 'node:path';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
@@ -14,7 +12,6 @@ import {
 
 const META_DIR = '.swarm';
 const META_FILE = 'workspace.json';
-const execFile = promisify(defaultExecFile);
 
 function hash(value) {
   return createHash('sha256').update(stableStringify(value)).digest('hex');
@@ -48,18 +45,6 @@ function safeDirectoryPath(relativePath) {
 
 function contentEntry(content) {
   return { content_hash: textHash(content), bytes: Buffer.byteLength(content) };
-}
-
-async function git(workspaceRef, args, options = {}) {
-  try {
-    const result = await execFile('git', ['-C', workspaceRef, ...args], {
-      timeout: options.timeout ?? 30_000,
-      maxBuffer: 2 * 1024 * 1024,
-    });
-    return String(result.stdout ?? '').trim();
-  } catch (error) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, `Workspace Git operation failed: ${error.message}`, { args }, { cause: error });
-  }
 }
 
 async function exists(path) {

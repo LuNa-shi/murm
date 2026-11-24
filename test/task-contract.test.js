@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { makeEnvelope, SwarmEnvError, TaskService, ERROR_CODES } from '../src/index.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
+import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
+import { TaskService } from '../src/task/task-service.js';
 
 function env() {
   const service = new TaskService(new DatabaseSync(':memory:'));

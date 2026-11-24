@@ -31,7 +31,7 @@ async function fixture(t) {
     tasks.markBotReady(id);
     return async (...args) => {
       const { stdout } = await exec(process.execPath, ['scripts/swarm.mjs', ...args], {
-        cwd: process.cwd(), env: { ...process.env, ...env, SWARMENV_AGENT_MODE: 'swarm' }, timeout: 10_000,
+        cwd: process.cwd(), env: { ...process.env, ...env }, timeout: 10_000,
       });
       return JSON.parse(stdout);
     };
@@ -51,14 +51,13 @@ test('Bridge audit pairs physical dispatches independently of reused request IDs
   assert.equal(events.filter(event => event.event === 'bridge.response_sent' && event.operation_id === 'same-read').length, 2);
 });
 
-test('CLI through authenticated Bridges proposes several tasks and revises another Bot contract with history', async t => {
+test('CLI through authenticated Bridges reads host-supplied tasks and revises their contract with history', async t => {
   const { tasks, bot } = await fixture(t);
   const author = await bot('author');
   const editor = await bot('editor');
-  const proposal = ['--summary', 'Boundary lemma', '--gap', 'The fixed objective still lacks its boundary implication',
-    '--expected-output', 'A checked boundary lemma', '--acceptance-conditions', '["The implication has check evidence"]', '--priority', 'medium'];
-  const one = await author('task', 'propose', ...proposal, '--request-id', 'proposal-one');
-  const two = await author('task', 'propose', ...proposal, '--summary', 'Alternative argument', '--request-id', 'proposal-two');
+  const contract = { mission_id: 'mission:cli-contract', summary: 'Boundary lemma', gap: 'The fixed objective still lacks its boundary implication', expected_output: 'A checked boundary lemma', acceptance_conditions: ['The implication has check evidence'], priority: 'medium' };
+  const one = tasks.createTask(contract);
+  const two = tasks.createTask({ ...contract, summary: 'Alternative argument' });
   assert.notEqual(one.task.task_id, two.task.task_id);
   assert.equal(one.task.gap, 'The fixed objective still lacks its boundary implication');
   assert.equal(one.task.priority_level, 'medium');
@@ -94,7 +93,7 @@ test('CLI process preserves service retryability and request diagnostic fields',
   await once(server, 'listening');
   t.after(() => server.close());
   await assert.rejects(exec(process.execPath, ['scripts/swarm.mjs', 'workspace', 'save', '--request-id', 'save-original'], {
-    env: { ...process.env, SWARMENV_AGENT_MODE: 'swarm', SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'fixture' },
+    env: { ...process.env, SWARMENV_BRIDGE_URL: `http://127.0.0.1:${server.address().port}`, SWARMENV_BRIDGE_TOKEN: 'fixture' },
   }), error => {
     const result = JSON.parse(error.stderr.trim());
     assert.equal(result.retryable, false);

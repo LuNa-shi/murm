@@ -7,6 +7,25 @@ import test from 'node:test';
 import { ObservationStore } from '../src/observability/observation-store.js';
 import { ObservabilityServer } from '../src/observability/observability-server.js';
 
+test('Observer keeps its read-only API available while retired browser routes return JSON not found', async t => {
+  const store = new ObservationStore();
+  const server = new ObservabilityServer({ observationStore: store });
+  t.after(async () => { await server.stop(); store.close(); });
+  const { url } = await server.start();
+  for (const path of ['/', '/index.html', '/app.js', '/styles.css', '/client/main.jsx']) {
+    const response = await fetch(`${url}${path}`);
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('content-type'), 'application/json; charset=utf-8');
+    assert.equal((await response.json()).error.code, 'NOT_FOUND');
+  }
+  assert.equal((await fetch(`${url}/health`)).status, 200);
+  const services = await fetch(`${url}/api/services`).then(response => response.json());
+  assert.ok(services.services.length > 0);
+  const write = await fetch(`${url}/api/experiments`, { method: 'POST' });
+  assert.equal(write.status, 405);
+  assert.equal((await write.json()).error.code, 'METHOD_NOT_ALLOWED');
+});
+
 test('ObservabilityServer serves experiment queries and reconstructs Core execution segments', async () => {
   const store = new ObservationStore();
   store.registerExperiment({ experimentId: 'run-http' });
@@ -43,25 +62,6 @@ test('ObservabilityServer serves experiment queries and reconstructs Core execut
   const executionDetail = await fetch(`${url}/api/experiments/run-http/execution-detail?execution_id=exec-1`).then((response) => response.json());
   assert.equal(executionDetail.observed_events, 5);
   assert.equal(executionDetail.events.length, 4);
-  const staticResponse = await fetch(`${url}/`);
-  assert.equal(staticResponse.headers.get('content-type'), 'text/html; charset=utf-8');
-  assert.equal(staticResponse.headers.get('content-disposition'), null);
-  const staticPage = await staticResponse.text();
-  assert.match(staticPage, /id="root"/);
-  assert.match(staticPage, /src="\/app\.js"/);
-  assert.match(staticPage, /localStorage\.getItem\('swarmenv-theme'\)/);
-  const [appResponse, stylesResponse] = await Promise.all([
-    fetch(`${url}/app.js`),
-    fetch(`${url}/styles.css`),
-  ]);
-  assert.equal(appResponse.status, 200);
-  assert.equal(stylesResponse.status, 200);
-  const [appSource, stylesSource] = await Promise.all([appResponse.text(), stylesResponse.text()]);
-  assert.match(appSource, /createRoot/);
-  assert.match(appSource, /EventSource/);
-  assert.match(appSource, /Core activity/);
-  assert.match(stylesSource, /\.trace-span/);
-  assert.match(stylesSource, /\.data-table/);
   await server.stop();
   store.close();
 });

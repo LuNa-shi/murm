@@ -3,35 +3,22 @@ import { createServer } from 'node:http';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
-export const RESPONSES_BUDGET_SCHEMA_SQL = `
-      CREATE TABLE IF NOT EXISTS responses_budget_policies (
-        mission_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
+export const CORE_MODEL_SCHEMA_SQL = `
+      CREATE TABLE IF NOT EXISTS runtime_model_policies (
+        runtime_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
       );
-      CREATE TABLE IF NOT EXISTS responses_budget_attempts (
-        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
-        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
-        cost INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0,
-        state TEXT NOT NULL, reason TEXT, receipt BLOB,
-        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
-        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
-        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
-        PRIMARY KEY (mission_id, bot_id, request_id)
-      );
-      CREATE TABLE IF NOT EXISTS responses_timed_attempts (
-        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+      CREATE TABLE IF NOT EXISTS runtime_model_attempts (
+        runtime_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
         phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
         output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
         upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
         upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
-        PRIMARY KEY (mission_id, bot_id, request_id)
+        PRIMARY KEY (runtime_id, bot_id, request_id)
       );
-      CREATE INDEX IF NOT EXISTS responses_budget_scope
-        ON responses_budget_attempts (mission_id, bot_id, phase);
     `;
 
-const metrics = ['requests', 'inputTokens', 'outputTokens', 'cost'];
 const phases = ['selection', 'work', 'closeout'];
 const maximumBodyBytes = 8 * 1024 * 1024;
 const maximumEventBytes = 8 * 1024 * 1024;
@@ -164,51 +151,17 @@ function upstreamPolicy(upstream) {
   return policy;
 }
 
-function timedPolicy(upstream, { maxOutputTokens = 32_768, requestTimeoutMs = 120_000 } = {}) {
-  if (!integer(maxOutputTokens, 16) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
-    throw new TypeError('Timed Responses gateway requires a finite request timeout and output-token cap');
+export const defaultTimedResponsesLimits = Object.freeze({ maxOutputTokens: 32_768, requestTimeoutMs: 120_000 });
+
+function timedPolicy(upstream, { maxOutputTokens = defaultTimedResponsesLimits.maxOutputTokens,
+  requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs }) {
+  if ((maxOutputTokens !== null && !integer(maxOutputTokens, 16)) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
+    throw new TypeError('Timed Responses gateway requires a finite request timeout and a valid output-token policy');
   }
   return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs };
 }
 
-function contractFor(upstream) {
-  const contract = upstream?.contract;
-  if (!object(contract) || typeof contract.costUnit !== 'string' || !contract.costUnit ||
-      typeof contract.boundEvidence !== 'string' || !contract.boundEvidence.trim() ||
-      !integer(contract.maxInputTokens, 1) || !integer(contract.maxOutputTokens, 16) ||
-      !integer(contract.maxFanout, 1) || !integer(contract.inputCostPerToken) ||
-      !integer(contract.outputCostPerToken) || !integer(contract.fixedAttemptCost) ||
-      !integer(contract.requestTimeoutMs, 1) || contract.requestTimeoutMs > 2_147_483_647) {
-    throw new TypeError('A complete trusted Responses upstream budget contract is required');
-  }
-  const policy = {
-    ...upstreamPolicy(upstream),
-    costUnit: contract.costUnit, boundEvidence: contract.boundEvidence,
-    maxInputTokens: contract.maxInputTokens,
-    maxOutputTokens: contract.maxOutputTokens,
-    maxFanout: contract.maxFanout,
-    inputCostPerToken: contract.inputCostPerToken,
-    outputCostPerToken: contract.outputCostPerToken,
-    fixedAttemptCost: contract.fixedAttemptCost,
-    requestTimeoutMs: contract.requestTimeoutMs,
-  };
-  if (!Object.values(reserve(policy, policy.maxOutputTokens)).every(value => integer(value))) {
-    throw new TypeError('Responses upstream budget exceeds safe integer range');
-  }
-  return policy;
-}
-
-// Rates are undiscounted upper bounds, in integer host-configured units. The
-// provider contract bounds all attempts attributable to one upstream HTTP POST.
-function reserve(policy, maxOutputTokens) {
-  const inputTokens = policy.maxInputTokens * policy.maxFanout;
-  const outputTokens = maxOutputTokens * policy.maxFanout;
-  const cost = inputTokens * policy.inputCostPerToken + outputTokens * policy.outputCostPerToken +
-    policy.fixedAttemptCost * policy.maxFanout;
-  return { requests: 1, inputTokens, outputTokens, cost };
-}
-
-function terminalMeter(policy, budget, maxOutputTokens, onUsage) {
+function terminalMeter(model, onUsage) {
   let buffer = '';
   let overflow = false;
   const decoder = new TextDecoder();
@@ -228,18 +181,9 @@ function terminalMeter(policy, budget, maxOutputTokens, onUsage) {
           const status = terminalStatuses.get(event?.type);
           if (!status || event.response?.status !== status) continue;
           const usage = event.response?.usage;
-          if (event.response?.model !== policy.model ||
-              !integer(usage?.input_tokens) || (budget && usage.input_tokens > policy.maxInputTokens) ||
-              !integer(usage?.output_tokens) || (budget && usage.output_tokens > maxOutputTokens)) continue;
-          let accounting = { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens, cost: null };
-          if (budget) {
-            // Keep all other possible upstream attempts reserved.
-            const inputTokens = budget.inputTokens - policy.maxInputTokens + usage.input_tokens;
-            const outputTokens = budget.outputTokens - maxOutputTokens + usage.output_tokens;
-            accounting = { inputTokens, outputTokens, cost: inputTokens * policy.inputCostPerToken +
-              outputTokens * policy.outputCostPerToken + policy.fixedAttemptCost * policy.maxFanout };
-          }
-          try { onUsage(accounting); } catch (error) { callback(error); return; }
+          if (event.response?.model !== model ||
+              !integer(usage?.input_tokens) || !integer(usage?.output_tokens)) continue;
+          try { onUsage(usage.input_tokens, usage.output_tokens); } catch (error) { callback(error); return; }
           overflow = true;
           break;
         }
@@ -276,39 +220,25 @@ export class ResponsesBudgetGateway {
   #working = new Set();
   #controllers = new Map();
   #stopPromise;
-  #attempts;
-
-  constructor({ db, upstream, limits, timeBounds, validateBot, withLifecycleWrite = commit => commit(), fetchImpl = globalThis.fetch } = {}) {
+  constructor({ db, upstream, timeBounds, validateBot, withLifecycleWrite = commit => commit(), fetchImpl = globalThis.fetch } = {}) {
     if (!db?.prepare || typeof validateBot !== 'function' || typeof fetchImpl !== 'function') {
       throw new TypeError('Database, synchronous Bot authority, and fetch are required');
     }
+    if (!object(timeBounds)) throw new TypeError('Runtime Responses access requires time bounds');
+    if (upstream?.contract !== undefined) throw new TypeError('Runtime Responses access does not accept an upstream contract');
     this.db = db;
     if (typeof withLifecycleWrite !== 'function') throw new TypeError('Lifecycle write boundary must be synchronous');
     this.validateBot = validateBot;
     this.withLifecycleWrite = withLifecycleWrite;
     this.fetch = fetchImpl;
-    const timed = timeBounds !== undefined;
-    if (timed && (upstream?.contract !== undefined || limits !== undefined)) {
-      throw new TypeError('Timed and financial Responses policies are mutually exclusive');
-    }
-    this.policy = Object.freeze(timed ? timedPolicy(upstream, timeBounds) : contractFor(upstream));
-    this.#attempts = timed ? 'responses_timed_attempts' : 'responses_budget_attempts';
+    this.policy = Object.freeze(timedPolicy(upstream, timeBounds));
     this.headers = new Headers(upstream.headers);
     this.headers.set('accept', 'text/event-stream');
     this.headers.set('content-type', 'application/json');
     for (const name of ['host', 'content-length', 'connection', 'transfer-encoding']) this.headers.delete(name);
-    this.limits = timed ? null : Object.freeze(Object.fromEntries(['mission', 'bot', 'selection', 'closeout'].map(scope => {
-      const limit = Object.fromEntries(metrics.map(metric => [metric, limits?.[scope]?.[metric]]));
-      if (!Object.values(limit).every(value => integer(value))) {
-        throw new TypeError(`Explicit finite Responses limits are required for ${scope}`);
-      }
-      return [scope, Object.freeze(limit)];
-    })));
-    if (this.limits && metrics.some(metric => this.limits.closeout[metric] > this.limits.mission[metric])) {
-      throw new TypeError('Responses closeout reserve exceeds the Mission limit');
-    }
-    this.pin = createHash('sha256').update(JSON.stringify([this.policy, this.limits])).digest('hex');
-    db.exec(RESPONSES_BUDGET_SCHEMA_SQL);
+    // Use the existing Runtime policy encoding for ledgers opened with the same settings.
+    this.pin = createHash('sha256').update(JSON.stringify([this.policy, null])).digest('hex');
+    db.exec(CORE_MODEL_SCHEMA_SQL);
   }
 
   async start({ host = '127.0.0.1', port = 0 } = {}) {
@@ -346,12 +276,12 @@ export class ResponsesBudgetGateway {
     return { port: address.port, baseUrl: `http://${hostname}:${address.port}/v1` };
   }
 
-  issueToken({ missionId, botId }) {
-    if (this.#closing || typeof missionId !== 'string' || !missionId || typeof botId !== 'string' || !botId) {
-      throw new Error('A live gateway and a trusted Mission/Bot binding are required');
+  issueToken({ runtimeId, botId } = {}) {
+    if (this.#closing || typeof runtimeId !== 'string' || !runtimeId || typeof botId !== 'string' || !botId) {
+      throw new Error('A live gateway and a trusted Runtime/Bot binding are required');
     }
     const token = randomBytes(32).toString('base64url');
-    this.#tokens.set(token, { missionId, botId });
+    this.#tokens.set(token, { runtimeId, botId });
     return token;
   }
 
@@ -363,21 +293,12 @@ export class ResponsesBudgetGateway {
     return revoked;
   }
 
-  observedUsage(missionId) {
+  observedUsage(runtimeId) {
     return this.db.prepare(`SELECT COUNT(*) AS requests, COUNT(input_tokens) AS requests_with_usage,
       COUNT(*) FILTER (WHERE state = 'unknown') AS unknown_requests,
       COUNT(*) FILTER (WHERE state = 'pending') AS pending_requests,
       SUM(input_tokens) AS observed_input_tokens, SUM(output_tokens) AS observed_output_tokens
-      FROM responses_timed_attempts WHERE mission_id = ?`).get(missionId);
-  }
-
-  totals({ missionId, botId = null, phase = null }) {
-    return this.db.prepare(`
-      SELECT COUNT(*) AS requests, COALESCE(SUM(input_tokens), 0) AS inputTokens,
-        COALESCE(SUM(output_tokens), 0) AS outputTokens, COALESCE(SUM(cost), 0) AS cost
-      FROM responses_budget_attempts WHERE mission_id = ?
-        AND (? IS NULL OR bot_id = ?) AND (? IS NULL OR phase = ?)
-    `).get(missionId, botId, botId, phase, phase);
+      FROM runtime_model_attempts WHERE runtime_id = ?`).get(runtimeId);
   }
 
   stop() {
@@ -391,28 +312,29 @@ export class ResponsesBudgetGateway {
         else resolve();
       })) : Promise.resolve();
     this.#server?.closeAllConnections();
-    this.#stopPromise = closed.then(() => Promise.allSettled([...this.#working])).then(() => undefined);
+    this.#stopPromise = closed.then(() => Promise.allSettled([...this.#working])).then(() => undefined)
+      .catch(error => { this.#stopPromise = undefined; throw error; });
     return this.#stopPromise;
   }
 
-  #admit(token, requestId, fingerprint, budget) {
+  #admit(token, requestId, fingerprint) {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       const binding = !this.#closing && this.#tokens.get(token);
       if (!binding) throw new GatewayError(401, 'invalid_bot_credential');
-      const { missionId, botId } = binding;
+      const { runtimeId, botId } = binding;
       let authority;
-      try { authority = this.validateBot({ missionId, botId }); }
+      try { authority = this.validateBot(binding); }
       catch { throw new GatewayError(403, 'bot_not_admitted'); }
       const phase = authority?.phase;
       const authorityDeadline = authority?.deadline ?? Date.now() + this.policy.requestTimeoutMs;
       if (!Number.isFinite(authorityDeadline) || authorityDeadline <= Date.now()) throw new GatewayError(403, 'bot_deadline_elapsed');
       if (!phases.includes(phase)) throw new GatewayError(403, 'bot_not_admitted');
-      this.db.prepare('INSERT OR IGNORE INTO responses_budget_policies VALUES (?, ?)').run(missionId, this.pin);
-      if (this.db.prepare('SELECT policy_digest FROM responses_budget_policies WHERE mission_id = ?')
-        .get(missionId).policy_digest !== this.pin) throw new GatewayError(409, 'budget_policy_changed');
-      const prior = this.db.prepare(`SELECT fingerprint, state, receipt, deadline_ms FROM ${this.#attempts}
-        WHERE mission_id = ? AND bot_id = ? AND request_id = ?`).get(missionId, botId, requestId);
+      this.db.prepare('INSERT OR IGNORE INTO runtime_model_policies VALUES (?, ?)').run(runtimeId, this.pin);
+      if (this.db.prepare('SELECT policy_digest FROM runtime_model_policies WHERE runtime_id = ?')
+        .get(runtimeId).policy_digest !== this.pin) throw new GatewayError(409, 'budget_policy_changed');
+      const prior = this.db.prepare(`SELECT fingerprint, state, receipt, deadline_ms FROM runtime_model_attempts
+        WHERE runtime_id = ? AND bot_id = ? AND request_id = ?`).get(runtimeId, botId, requestId);
       if (prior) {
         if (prior.fingerprint !== fingerprint) throw new GatewayError(409, 'request_payload_conflict');
         if (!prior.receipt) {
@@ -422,14 +344,12 @@ export class ResponsesBudgetGateway {
         this.db.exec('COMMIT');
         return { ...binding, receipt: prior.receipt };
       }
-      if (budget) this.#assertBudget(missionId, botId, phase, budget);
       const startedAt = Date.now();
       const deadline = Math.min(authorityDeadline, startedAt + this.policy.requestTimeoutMs);
-      this.db.prepare(`INSERT INTO ${this.#attempts}
-        (mission_id, bot_id, request_id, phase, fingerprint, input_tokens, output_tokens, cost, state, started_at_ms, deadline_ms)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`)
-        .run(missionId, botId, requestId, phase, fingerprint, budget?.inputTokens ?? null, budget?.outputTokens ?? null, budget?.cost ?? null,
-          startedAt, deadline);
+      this.db.prepare(`INSERT INTO runtime_model_attempts
+        (runtime_id, bot_id, request_id, phase, fingerprint, state, started_at_ms, deadline_ms)
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)`)
+        .run(runtimeId, botId, requestId, phase, fingerprint, startedAt, deadline);
       this.db.exec('COMMIT');
       return { ...binding, deadline, authority };
     } catch (error) {
@@ -438,23 +358,26 @@ export class ResponsesBudgetGateway {
     }
   }
 
-  #watchAuthority({ token, missionId, botId, deadline, authority, controller }) {
+  #watchAuthority({ token, deadline, authority, controller }) {
     let hardDeadline = deadline;
     let timer;
+    const originalLease = authority?.lease;
     const arm = current => {
-      const nextCheck = authority.executionId
-        ? Math.min(hardDeadline, current.leaseDeadline, Date.now() + executionAuthorityCheckMs)
-        : hardDeadline;
+      const nextCheck = Math.min(hardDeadline, current?.lease?.expiresAt ?? Infinity, Date.now() + executionAuthorityCheckMs);
       timer = setTimeout(check, Math.max(0, nextCheck - Date.now()));
     };
     const check = () => {
       if (controller.signal.aborted) return;
       try {
-        if (Date.now() < hardDeadline && this.#tokens.has(token) && authority.executionId) {
-          const current = this.validateBot({ missionId, botId });
+        const binding = this.#tokens.get(token);
+        if (Date.now() < hardDeadline && binding) {
+          const current = this.validateBot(binding);
+          const lease = current?.lease;
           const at = Date.now();
-          if (current?.executionId === authority.executionId && current.fencingVersion === authority.fencingVersion &&
-              at < current.leaseDeadline && at < current.deadline) {
+          const sameLease = originalLease
+            ? lease?.key === originalLease.key && lease.version === originalLease.version && at < lease.expiresAt
+            : !lease;
+          if (current && sameLease && at < current.deadline) {
             hardDeadline = Math.min(hardDeadline, current.deadline);
             if (at < hardDeadline) {
               arm(current);
@@ -463,32 +386,12 @@ export class ResponsesBudgetGateway {
           }
         }
       } catch {
-        // Unavailable Task authority cannot keep an admitted request alive.
+        // Unavailable authority cannot keep an admitted request alive.
       }
       controller.abort();
     };
     arm(authority);
     return () => clearTimeout(timer);
-  }
-
-  #assertBudget(missionId, botId, phase, budget) {
-    const applicable = [
-      [this.limits.mission, this.totals({ missionId })],
-      [this.limits.bot, this.totals({ missionId, botId })],
-    ];
-    if (phase !== 'closeout') {
-      const missionWork = Object.fromEntries(metrics.map(metric =>
-        [metric, this.limits.mission[metric] - this.limits.closeout[metric]]));
-      const total = this.totals({ missionId });
-      const closeout = this.totals({ missionId, phase: 'closeout' });
-      const work = Object.fromEntries(metrics.map(metric => [metric, total[metric] - closeout[metric]]));
-      applicable.push([missionWork, work]);
-    }
-    if (phase === 'selection') applicable.push([this.limits.selection, this.totals({ missionId, botId, phase })]);
-    if (phase === 'closeout') applicable.push([this.limits.closeout, this.totals({ missionId, phase })]);
-    if (applicable.some(([limit, totals]) => metrics.some(metric => budget[metric] > limit[metric] - totals[metric]))) {
-      throw new GatewayError(429, 'responses_budget_exhausted');
-    }
   }
 
   async #handle(request, response) {
@@ -518,14 +421,15 @@ export class ResponsesBudgetGateway {
     catch { throw new GatewayError(400, 'invalid_json'); }
     if (!validPayload(body, this.policy.model)) throw new GatewayError(400, 'unsupported_responses_request');
     if (response.destroyed || request.aborted) return;
-    const maxOutputTokens = Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
-    const budget = this.limits ? reserve(this.policy, maxOutputTokens) : null;
+    const maxOutputTokens = this.policy.maxOutputTokens === null ? body.max_output_tokens
+      : Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
     const payload = {
-      ...body, model: this.policy.model, stream: true, store: false, max_output_tokens: maxOutputTokens,
+      ...body, model: this.policy.model, stream: true, store: false,
+      ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
     };
     const fingerprint = createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex');
-    let missionId, botId, receipt, cancelWatch, upstreamWork;
+    let runtimeId, botId, receipt, cancelWatch, upstreamWork;
     const controller = new AbortController();
     const disconnect = () => controller.abort();
     let usageRecorded = false;
@@ -533,12 +437,11 @@ export class ResponsesBudgetGateway {
     let receiptBytes = 0;
     const receiptChunks = [];
     try {
-      // Admission, its durable budget reservation and synchronous upstream
-      // dispatch share the Task lifecycle writer window. Settlement never
-      // holds that lock while waiting on external IO.
+      // Record admission and dispatch in the same lifecycle writer window.
+      // Release that lock before waiting on the upstream.
       this.withLifecycleWrite(() => {
-        const admission = this.#admit(token, requestId, fingerprint, budget);
-        ({ missionId, botId, receipt } = admission);
+        const admission = this.#admit(token, requestId, fingerprint);
+        ({ runtimeId, botId, receipt } = admission);
         if (receipt) return;
         this.#controllers.set(controller, token);
         cancelWatch = this.#watchAuthority({ ...admission, token, controller });
@@ -558,8 +461,8 @@ export class ResponsesBudgetGateway {
       const upstream = await upstreamWork;
       const upstreamId = upstream.headers.get('x-request-id');
       if (upstreamId && /^[A-Za-z0-9_.:-]{1,256}$/.test(upstreamId)) {
-        this.db.prepare(`UPDATE ${this.#attempts} SET upstream_request_id = ?
-          WHERE mission_id = ? AND bot_id = ? AND request_id = ?`).run(upstreamId, missionId, botId, requestId);
+        this.db.prepare(`UPDATE runtime_model_attempts SET upstream_request_id = ?
+          WHERE runtime_id = ? AND bot_id = ? AND request_id = ?`).run(upstreamId, runtimeId, botId, requestId);
       }
       const contentTypeValid = /^text\/event-stream(?:;|$)/i.test(upstream.headers.get('content-type') ?? '');
       const rejectionKind = !upstream.ok ? 'non_2xx' : !upstream.body ? 'missing_body'
@@ -567,21 +470,21 @@ export class ResponsesBudgetGateway {
       const retryAfter = upstream.headers.get('retry-after') ?? '';
       // Only bounded delta-seconds are retained; dates and arbitrary header text are discarded.
       const retryAfterSeconds = /^\d{1,5}$/.test(retryAfter) && Number(retryAfter) <= 86400 ? Number(retryAfter) : null;
-      this.db.prepare(`UPDATE ${this.#attempts} SET upstream_status = ?, upstream_content_type_valid = ?,
+      this.db.prepare(`UPDATE runtime_model_attempts SET upstream_status = ?, upstream_content_type_valid = ?,
         upstream_body_present = ?, upstream_rejection_kind = ?, upstream_retry_after_seconds = ?
-        WHERE mission_id = ? AND bot_id = ? AND request_id = ?`)
+        WHERE runtime_id = ? AND bot_id = ? AND request_id = ?`)
         .run(upstream.status, Number(contentTypeValid), Number(Boolean(upstream.body)), rejectionKind,
-          retryAfterSeconds, missionId, botId, requestId);
+          retryAfterSeconds, runtimeId, botId, requestId);
       if (rejectionKind) {
         reason = 'upstream_http_error';
         await upstream.body?.cancel();
         throw new GatewayError(upstream.status === 429 ? 429 : 502, 'upstream_rejected');
       }
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
-      const meter = terminalMeter(this.policy, budget, maxOutputTokens, usage => {
-        this.db.prepare(`UPDATE ${this.#attempts} SET input_tokens = ?, output_tokens = ?, cost = ?, settled = 1
-          WHERE mission_id = ? AND bot_id = ? AND request_id = ? AND settled = 0`)
-          .run(usage.inputTokens, usage.outputTokens, usage.cost, missionId, botId, requestId);
+      const meter = terminalMeter(this.policy.model, (inputTokens, outputTokens) => {
+        this.db.prepare(`UPDATE runtime_model_attempts SET input_tokens = ?, output_tokens = ?, settled = 1
+          WHERE runtime_id = ? AND bot_id = ? AND request_id = ? AND settled = 0`)
+          .run(inputTokens, outputTokens, runtimeId, botId, requestId);
         usageRecorded = true;
       });
       const capture = new Transform({
@@ -595,9 +498,9 @@ export class ResponsesBudgetGateway {
       await pipeline(Readable.fromWeb(upstream.body), meter, capture, response, { signal: controller.signal });
       reason = usageRecorded ? (stableId ? 'receipt_too_large' : null) : 'no_trusted_terminal_usage';
       if (usageRecorded && receiptChunks.length) {
-        this.db.prepare(`UPDATE ${this.#attempts} SET state = 'completed', receipt = ?
-          WHERE mission_id = ? AND bot_id = ? AND request_id = ?`)
-          .run(Buffer.concat(receiptChunks), missionId, botId, requestId);
+        this.db.prepare(`UPDATE runtime_model_attempts SET state = 'completed', receipt = ?
+          WHERE runtime_id = ? AND bot_id = ? AND request_id = ?`)
+          .run(Buffer.concat(receiptChunks), runtimeId, botId, requestId);
       }
     } finally {
       cancelWatch?.();
@@ -608,9 +511,9 @@ export class ResponsesBudgetGateway {
         const started = await Promise.resolve(upstreamWork).catch(() => undefined);
         if (started?.body && !started.bodyUsed) await started.body.cancel().catch(() => undefined);
       }
-      if (missionId && !receipt) this.db.prepare(`UPDATE ${this.#attempts} SET state = ?, reason = ?
-        WHERE mission_id = ? AND bot_id = ? AND request_id = ? AND state = 'pending'`)
-        .run(usageRecorded ? 'completed' : 'unknown', reason, missionId, botId, requestId);
+      if (runtimeId && !receipt) this.db.prepare(`UPDATE runtime_model_attempts SET state = ?, reason = ?
+        WHERE runtime_id = ? AND bot_id = ? AND request_id = ? AND state = 'pending'`)
+        .run(usageRecorded ? 'completed' : 'unknown', reason, runtimeId, botId, requestId);
     }
   }
 }

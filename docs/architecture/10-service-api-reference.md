@@ -1,6 +1,6 @@
 # 10. Complete Service and capability reference
 
-This is the exact repository-controlled API declaration inventory for the implementation pinned in [Architecture INDEX](INDEX.md). It is meant to be read with [04 Services](04-services.md): the declarations say which fields are advertised, while the narrative explains how requests actually change durable state, when Runtime intervenes, and what failures mean.
+This inventory lists the repository-controlled API declarations for this tree. The services chapter explains request handling, durable state changes, Runtime intervention and failure behavior. [Services](04-services.md) · [Source coverage](12-code-coverage.md)
 
 A JSON Schema in a manifest is a declared contract. This implementation validates manifest shape at registration and passes input schemas to Pi, but the Registry/HTTP host do **not** run a general JSON Schema validator on every input or output. Domain handlers perform their own validation. In particular, an empty Runtime output schema or the built-in “any JSON value” output schema is not a complete description of the result. The narrative and storage reference supply the missing implementation detail.
 
@@ -30,15 +30,17 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `3eb4dbc87d69a3341886b9f9cab68daca531ae7ea0386b50c072473aebc4a98a` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `2c52545ba9179f809fb99070f7107704425fe944587da9fb61e14162195dd168` |
+| [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `90d436f090046de3e7171a45044efc8f78a1e20efad46741eabd62f2bbc15719` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `02416ed6f3c28313edaca0ddb945abbd37bc293e1841d46db9eade72a2581855` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |
-| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `3cdc8ab73c6faab9416ba06377402d1539160108a54b11aa6af48c5e6b4977c1` |
-| [src/benchmark/putnam-runner.js](../../src/benchmark/putnam-runner.js) | `7a4359b7b114287cae3589d568e71939b3188ca3929596e3781faa6af26e7c63` |
+| [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `cb014f632b97e2e525fce8920f7f36105a7684771e50fd06c3082db421e315b2` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
+| [src/core/index.d.ts](../../src/core/index.d.ts) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
+| [src/core/services.d.ts](../../src/core/services.d.ts) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
+| [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `bfb63428e06a323231e381d0f0a094f5759bd2d7fde0746db984f392400af88c` |
 
 ### Exact built-in command operation surface
 
@@ -64,7 +66,6 @@ Bots use native Bash to invoke typed swarm commands. Registry declarations below
 | `task.mission_submission_get` | `task` | `mission_submission_get` |
 | `task.mission_submit` | `task` | `mission_submit` |
 | `task.task_cancel` | `task` | `task_cancel` |
-| `task.task_create` | `task` | `task_create` |
 | `task.task_dependency_replace` | `task` | `task_dependency_replace` |
 | `task.task_feedback` | `task` | `task_feedback` |
 | `task.task_finish` | `task` | `task_finish` |
@@ -76,7 +77,6 @@ Bots use native Bash to invoke typed swarm commands. Registry declarations below
 | `task.task_view` | `task` | `task_view` |
 | `task.workspace_current_diff` | `task` | `workspace_current_diff` |
 | `task.workspace_merge` | `task` | `workspace_merge` |
-| `task.workspace_public_apply` | `task` | `workspace_public_apply` |
 | `task.workspace_public_diff` | `task` | `workspace_public_diff` |
 | `task.workspace_public_files` | `task` | `workspace_public_files` |
 | `task.workspace_public_history` | `task` | `workspace_public_history` |
@@ -256,7 +256,7 @@ List all named Service tools or only the tools owned by one Service.
 }
 ```
 
-### Task Service: 26 registered capabilities
+### Task Service: 24 registered capabilities
 
 Exact normalized built-in manifest metadata:
 
@@ -279,7 +279,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "8a15810bfe35a42b7b8868ab6c336acf82bcc1b249081217a2ba8142bda30b0c"
+  "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5"
 }
 ```
 
@@ -533,13 +533,13 @@ Record this Execution's durable decision and action for delivered feedback; anot
 
 #### task.task_list
 
-Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.
+Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.
 
 ```json
 {
   "name": "task_list",
   "operation": "task_list",
-  "description": "Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.",
+  "description": "Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.",
   "input_schema": {
     "type": "object",
     "properties": {
@@ -597,9 +597,9 @@ Search bounded Task summaries across states; follow next_cursor and read Task de
   "requires_binding": false,
   "scope": "task-read",
   "help": {
-    "when": "Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.",
+    "when": "Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.",
     "ref": "service://task/task_list",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_list",
@@ -663,155 +663,6 @@ Read a Task contract, gap and priority, dependencies, Executions and Materials. 
   },
   "method": "POST",
   "path": "/v1/task_view",
-  "errors": []
-}
-```
-
-#### task.task_create
-
-Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.
-
-```json
-{
-  "name": "task_create",
-  "operation": "task_create",
-  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "summary",
-      "gap",
-      "expected_output",
-      "acceptance_conditions",
-      "priority"
-    ],
-    "properties": {
-      "mission_id": {
-        "type": "string"
-      },
-      "summary": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 240
-      },
-      "gap": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 4000
-      },
-      "expected_output": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 4000
-      },
-      "acceptance_conditions": {
-        "oneOf": [
-          {
-            "type": "array",
-            "minItems": 1
-          },
-          {
-            "type": "object",
-            "minProperties": 1
-          }
-        ]
-      },
-      "priority": {
-        "oneOf": [
-          {
-            "type": "string",
-            "enum": [
-              "high",
-              "medium",
-              "low"
-            ]
-          },
-          {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 2
-          }
-        ]
-      },
-      "depends_on": {
-        "type": "array",
-        "items": {
-          "type": "string"
-        }
-      },
-      "input_material_refs": {
-        "type": "array",
-        "items": {
-          "type": "string",
-          "minLength": 1
-        },
-        "maxItems": 100
-      },
-      "workspace": {
-        "type": "object",
-        "description": "Compatibility input. If both workspace.revision and base_revision are supplied, they must match."
-      },
-      "base_revision": {
-        "type": "string",
-        "pattern": "^[0-9]+[.][0-9]+$"
-      },
-      "task_instructions": {
-        "type": "string"
-      },
-      "goal": {
-        "type": "string"
-      },
-      "required_capabilities": {
-        "type": "array",
-        "items": {
-          "type": "string",
-          "minLength": 1
-        }
-      },
-      "completion_contract": {
-        "type": "object"
-      },
-      "responsibility_key": {
-        "type": "string",
-        "minLength": 1,
-        "maxLength": 256
-      },
-      "timebox_ms": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "task-write",
-  "help": {
-    "when": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.",
-    "ref": "service://task/task_create",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/task_create",
   "errors": []
 }
 ```
@@ -1802,60 +1653,6 @@ Search text in an immutable Mission Workspace revision before a Task is taken.
   },
   "method": "POST",
   "path": "/v1/workspace_public_search",
-  "errors": []
-}
-```
-
-#### task.workspace_public_apply
-
-Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.
-
-```json
-{
-  "name": "workspace_public_apply",
-  "operation": "workspace_public_apply",
-  "description": "Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
-  "input_schema": {
-    "type": "object",
-    "required": [
-      "from"
-    ],
-    "properties": {
-      "from": {
-        "type": "string"
-      }
-    },
-    "additionalProperties": false
-  },
-  "output_schema": {
-    "type": [
-      "object",
-      "array",
-      "string",
-      "number",
-      "boolean",
-      "null"
-    ]
-  },
-  "audience": [
-    "bound",
-    "recovery"
-  ],
-  "side_effect": "write",
-  "idempotent": false,
-  "context": [
-    "task",
-    "execution"
-  ],
-  "requires_binding": false,
-  "scope": "execution-write",
-  "help": {
-    "when": "Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.",
-    "ref": "service://task/workspace_public_apply",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
-  },
-  "method": "POST",
-  "path": "/v1/workspace_public_apply",
   "errors": []
 }
 ```
@@ -2963,6 +2760,127 @@ Exact repository bundle declaration. Loading the bundle additionally binds its d
 
 This section records catalog declarations used by trusted service composition but not exposed as Agent operations. It is not an authorization list for the Agent.
 
+#### Catalog task.task_create / task_create
+
+```json
+{
+  "name": "task_create",
+  "service": "task",
+  "operation": "task_create",
+  "version": "1.0",
+  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Trusted host/domain callers supply Tasks; this schema does not grant Bot admission. Optional base_revision pins input; otherwise take uses main.",
+  "scope": "task-write",
+  "side_effect": true,
+  "parameters": {
+    "type": "object",
+    "required": [
+      "summary",
+      "gap",
+      "expected_output",
+      "acceptance_conditions",
+      "priority"
+    ],
+    "properties": {
+      "mission_id": {
+        "type": "string"
+      },
+      "summary": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 240
+      },
+      "gap": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "expected_output": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4000
+      },
+      "acceptance_conditions": {
+        "oneOf": [
+          {
+            "type": "array",
+            "minItems": 1
+          },
+          {
+            "type": "object",
+            "minProperties": 1
+          }
+        ]
+      },
+      "priority": {
+        "oneOf": [
+          {
+            "type": "string",
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2
+          }
+        ]
+      },
+      "depends_on": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "input_material_refs": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        },
+        "maxItems": 100
+      },
+      "workspace": {
+        "type": "object",
+        "description": "Compatibility input. If both workspace.revision and base_revision are supplied, they must match."
+      },
+      "base_revision": {
+        "type": "string",
+        "pattern": "^[0-9]+[.][0-9]+$"
+      },
+      "task_instructions": {
+        "type": "string"
+      },
+      "goal": {
+        "type": "string"
+      },
+      "required_capabilities": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "completion_contract": {
+        "type": "object"
+      },
+      "responsibility_key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 256
+      },
+      "timebox_ms": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "additionalProperties": false
+  }
+}
+```
+
 #### Catalog workspace.workspace_get / get_workspace
 
 ```json
@@ -3156,6 +3074,290 @@ This section records catalog declarations used by trusted service composition bu
   "SERVICE_VERSION_MISMATCH": "SERVICE_VERSION_MISMATCH",
   "SERVICE_TIMEOUT": "SERVICE_TIMEOUT"
 }
+```
+
+### Phase 0005 Core public declarations
+
+These are the declarations exposed by the private checkout package. [Core Runtime](15-core-runtime.md) describes the executable contracts and limits.
+
+#### src/core/index.d.ts
+
+```ts
+import type { ServiceRegistry } from './services.js';
+
+declare const backendBrand: unique symbol;
+
+export interface Backend {
+  readonly [backendBrand]: true;
+}
+
+export interface Profile {
+  prompt: string;
+  model: string;
+  image: string;
+  writable: boolean;
+  services: Readonly<Record<string, readonly string[]>>;
+  spawnProfiles?: readonly string[];
+  env?: Readonly<Record<string, string>>;
+  network?: { allow: readonly string[] };
+  collect?: CollectionSpec;
+}
+
+export interface ModelCaller {
+  readonly runtimeId: string;
+  readonly botId: string;
+  readonly profile: string;
+  readonly model: string;
+}
+
+export interface ModelPermit {
+  phase: 'selection' | 'work' | 'closeout';
+  deadlineAt: number;
+  lease?: { key: string; version: number; expiresAt: number };
+}
+
+export interface ModelAccessPolicy {
+  authorize(caller: ModelCaller): ModelPermit | null;
+  withCommit<T>(commit: () => T): T;
+}
+
+export interface CreateRuntimeOptions {
+  backend: Backend;
+  profiles: Readonly<Record<string, Profile>>;
+  services: ServiceRegistry;
+  maxBots: number;
+  outputDir: string;
+  modelAccessPolicy?: ModelAccessPolicy;
+}
+
+export interface FileEntry {
+  encoding: 'utf8' | 'base64';
+  data: string;
+  mode?: 0o644 | 0o755;
+}
+
+export type FileSeed = Readonly<Record<string, FileEntry>>;
+
+export interface CollectionSpec {
+  paths: readonly string[];
+  includeGit: boolean;
+  maxBytes: number;
+  required: boolean;
+}
+
+export interface PreparedFiles {
+  readonly botId: string;
+  readonly version: number;
+  readonly digest: string;
+}
+
+export interface GrantReceipt {
+  readonly botId: string;
+  readonly version: number;
+  readonly writable: true;
+}
+
+export interface SpawnOptions {
+  requestId: string;
+  profile: string;
+  parentId?: string;
+  writable?: boolean;
+  files?: FileSeed;
+  bindings?: Readonly<Record<string, string>>;
+  secretEnv?: Readonly<Record<string, string>>;
+  collect?: CollectionSpec;
+}
+
+export interface ErrorInfo {
+  code: string;
+  message: string;
+  retryable: boolean;
+}
+
+export interface ResourceError extends Error {
+  code: string;
+  operation: string;
+  runtimeId?: string;
+  botId?: string;
+  requestId?: string;
+  cleanup: 'complete' | 'pending';
+  reportPath?: string;
+  details: readonly ErrorInfo[];
+}
+
+export interface BotInfo {
+  id: string;
+  profile: string;
+  parentId?: string;
+  status: 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+  cursor: number;
+  latestOutput?: string;
+  lastError?: ErrorInfo;
+  lastStop?: StopReceipt;
+}
+
+export type InputMode = 'steer' | 'followUp';
+
+export type InputReceipt =
+  | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
+  | { inputId: string; status: 'unknown' };
+
+export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
+
+/** Built-in bot.spawn Service result, distinct from host Runtime.spawn. */
+export interface BotSpawnReceipt {
+  bot: BotInfo;
+  initialInput: BotInitialInputResult;
+}
+
+export type BotEvent = { botId: string; seq: number } & (
+  | { type: 'output'; text: string }
+  | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
+  | { type: 'error'; error: ErrorInfo; fatal: boolean }
+  | { type: 'exit'; reason: string; expected: boolean }
+);
+
+export interface PendingCleanup {
+  kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
+  id: string;
+  action: 'await-startup' | 'stop-execution' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  error?: ErrorInfo;
+  resourceKey?: string;
+  sandboxId?: string;
+  creation?: 'created' | 'pending' | 'absent';
+  executionStopped?: boolean;
+}
+
+export interface StopReceipt {
+  botId: string;
+  execution: 'stopped' | 'unknown';
+  cleanup: 'complete' | 'pending';
+  artifacts: readonly string[];
+  errors: readonly ErrorInfo[];
+  pending?: PendingCleanup;
+}
+
+export interface CloseReceipt {
+  bots: readonly StopReceipt[];
+  cleanup: 'complete' | 'pending';
+  errors: readonly ErrorInfo[];
+  pending: readonly PendingCleanup[];
+  outputDir: string;
+  reportPath?: string;
+  evidence: { path?: string; recorded: number; lost: number; pending: number };
+}
+
+export interface Runtime {
+  readonly id: string;
+  spawn(options: SpawnOptions): Promise<BotInfo>;
+  get(botId: string): Promise<BotInfo>;
+  send(botId: string, input: string, options: { requestId: string; mode?: InputMode }): Promise<InputReceipt>;
+  onEvent(handler: (event: BotEvent) => void): () => void;
+  stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
+  close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
+  readonly files: {
+    prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
+    grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
+  };
+}
+
+export function createRuntime(options: CreateRuntimeOptions): Promise<Runtime>;
+```
+
+#### src/core/services.d.ts
+
+```ts
+export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+
+export interface ServiceManifest {
+  id: string;
+  title: string;
+  purpose: string;
+  provider_version: string;
+  contract_version: '2';
+  endpoint: { transport: 'in-process' } | { transport: 'http-json'; url: string };
+  capabilities: readonly ServiceCapability[];
+}
+
+export interface ServiceCapability {
+  name: string;
+  operation: string;
+  description: string;
+  side_effect: 'read' | 'write';
+  idempotent: boolean;
+  help: { when: string; ref?: string };
+  input_schema: Record<string, unknown>;
+  output_schema: Record<string, unknown>;
+  errors: readonly { code: string; retryable: boolean }[];
+  path?: string;
+}
+
+export interface ServiceCaller {
+  runtimeId: string;
+  botId: string;
+  profile: string;
+  binding?: string;
+}
+
+export interface ServiceRequest {
+  manifest: ServiceManifest;
+  capability: ServiceCapability;
+  input: JsonValue;
+  envelope: { operation_id: string; [key: string]: unknown };
+  caller: ServiceCaller;
+  signal: AbortSignal;
+}
+
+export interface ServiceAdapter {
+  invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
+}
+
+export class ServiceRegistry {
+  registerService(registration: { manifest: ServiceManifest; adapter: ServiceAdapter }): void;
+}
+
+export function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
+
+/** Host-only Service credential; HTTP Service must authenticate this connection before trusting caller. */
+export function createHttpJsonAdapter(options?: { token?: string; timeoutMs?: number; fetchImpl?: typeof fetch }): ServiceAdapter;
+```
+
+#### src/core/backends/pi-opensandbox.d.ts
+
+```ts
+import type { Backend } from '../index.js';
+
+export interface PiOpenSandboxBackendConfig {
+  sandbox: {
+    lifecycleBaseUrl: string;
+    apiKey?: string;
+    execdToken?: string;
+    endpointHost?: string;
+    resourceLimits?: { cpu: string; memory: string };
+    commandTimeoutMs?: number;
+    /** Sandbox creation lifetime in seconds; safe integer >= 60, default 3600. Provider limits also apply. */
+    timeoutSeconds?: number;
+  };
+  bridge: { host: string; publicUrl: string };
+  modelGateway: {
+    host: string;
+    advertiseHost: string;
+    requestTimeoutMs?: number;
+    /** null preserves provider/Pi output parameters without a host token clamp. */
+    maxOutputTokens?: number | null;
+  };
+  models: Readonly<Record<string, {
+    provider: string;
+    model: string;
+    upstream: { url: string; headers: Readonly<Record<string, string>> };
+  }>>;
+  isolation: {
+    network: 'local-docker';
+    disk: { bytes: number; inodes: number };
+  };
+}
+
+export function createPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig): Backend;
 ```
 
 <!-- END GENERATED REFERENCE -->

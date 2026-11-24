@@ -1,16 +1,9 @@
 .env
 node_modules/
 
-# Durable raw experiment evidence stays on disk but is kept out of Git because
-# it may contain candidate source, proof text, transcripts, or checker output.
-experiments/**/state/
-experiments/**/logs/
-experiments/**/workspaces/
-experiments/.observability/
-experiments/**/observability.sqlite
-
-# Generated semantic experiment reports remain local and may contain private metadata.
-experiments/**/analysis/
+# Private experiment evidence and reports remain local. Historical runs are on research.
+/experiments/
+/reports/
 
 # Linked development checkouts live inside the primary repository.
 /.worktree/

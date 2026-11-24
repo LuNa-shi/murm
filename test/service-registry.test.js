@@ -1,20 +1,16 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
-import {
-  ContextService,
-  ERROR_CODES,
-  JudgeService,
-  ServiceRegistry,
-  SwarmEnvError,
-  TaskService,
-  builtInServiceManifest,
-  createBuiltinServiceRegistry,
-  createHttpJsonAdapter,
-  createServiceHost,
-  createServiceManifest,
-  makeEnvelope,
-} from '../src/index.js';
+import { ContextService } from '../src/context/context-service.js';
+import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { JudgeService } from '../src/judge/judge-service.js';
+import { ServiceRegistry } from '../src/sdk/service-registry.js';
+import { TaskService } from '../src/task/task-service.js';
+import { builtInServiceManifest, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
+import { createHttpJsonAdapter } from '../src/sdk/service-adapter.js';
+import { createServiceHost } from '../src/sdk/service-host.js';
+import { createServiceManifest } from '../src/sdk/service-manifest.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
 
 function schema(properties = {}) {
   return { type: 'object', properties, additionalProperties: false };

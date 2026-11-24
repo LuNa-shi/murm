@@ -133,7 +133,7 @@ const publicTaskTools = [
   },
   {
     name: 'task_list', service: 'task', operation: 'task_list', version: '1.0',
-    description: 'Search bounded Task summaries across states; follow next_cursor and read Task detail before proposing new work.',
+    description: 'Search bounded Task summaries across states; follow next_cursor and read Task detail before taking work.',
     scope: 'task-read', side_effect: false,
     parameters: { type: 'object', properties: { mission_id: { type: 'string' }, query: { type: 'string' }, state: { type: 'string' }, states: { type: 'array', items: { type: 'string' }, minItems: 1, maxItems: 16 }, available_only: { type: 'boolean' }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' } }, additionalProperties: false },
   },
@@ -145,7 +145,7 @@ const publicTaskTools = [
   },
   {
     name: 'task_create', service: 'task', operation: 'task_create', version: '1.0',
-    description: 'Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. UNBOUND and ACTIVE Bots may propose; proposing does not require taking it. Optional base_revision pins input; otherwise take uses main.',
+    description: 'Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Trusted host/domain callers supply Tasks; this schema does not grant Bot admission. Optional base_revision pins input; otherwise take uses main.',
     scope: 'task-write', side_effect: true,
     parameters: {
       type: 'object',
@@ -306,12 +306,6 @@ const publicMissionWorkspaceTools = [
     description: 'Search text in an immutable Mission Workspace revision before a Task is taken.',
     scope: 'mission-read', side_effect: false, capability: 'mission-workspace',
     parameters: { type: 'object', required: ['workspace_id', 'query'], properties: { workspace_id: { type: 'string' }, revision: { type: 'string' }, path: { type: 'string' }, query: { type: 'string', maxLength: 1024 }, max_results: { type: 'integer', minimum: 1, maximum: 500 }, cursor: { type: 'string' } }, additionalProperties: false },
-  },
-  {
-    name: 'workspace_public_apply', service: 'task', operation: 'workspace_public_apply', version: '1.0',
-    description: 'Apply a fixed public revision by three-way merge into the current E, retaining conflicts and parents.',
-    scope: 'execution-write', side_effect: true, capability: 'mission-workspace',
-    parameters: { type: 'object', required: ['from'], properties: { from: { type: 'string' } }, additionalProperties: false },
   },
   {
     name: 'workspace_save', service: 'task', operation: 'workspace_save', version: '1.0',

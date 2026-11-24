@@ -623,10 +623,12 @@ export class TaskService {
   }
 
   /** Runtime-only registration; no model capability may invent a Bot identity. */
-  registerBot({ botId = `bot:${randomUUID()}`, missionId, coreId, selectionDeadline, hardDeadline = selectionDeadline, coordinationPermissions = [] }) {
+  registerBot({ botId = `bot:${randomUUID()}`, missionId, coreId, legacySlotId = coreId, selectionDeadline, hardDeadline = selectionDeadline, coordinationPermissions = [] }) {
     requireString(botId, 'bot_id');
     requireString(missionId, 'mission_id');
-    requireString(coreId, 'core_id');
+    requireString(legacySlotId, 'legacySlotId');
+    if (coreId !== undefined && coreId !== legacySlotId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Conflicting legacy capacity identities');
+    coreId = legacySlotId;
     if (!Array.isArray(coordinationPermissions) || [...coordinationPermissions].some(permission => !COORDINATION_PERMISSIONS.has(permission))) {
       throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Unknown Mission coordination grant');
     }
@@ -705,6 +707,22 @@ export class TaskService {
       const bot = this.assertBotStartupAllowed(botId);
       if (!bot.sandbox_id) {
         throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup is not eligible to become ready');
+      }
+      const readyAt = now();
+      this.db.prepare("UPDATE bots SET state = 'UNBOUND', ready_at = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
+        .run(readyAt, readyAt, botId);
+      return this.getBot(botId);
+    });
+  }
+
+  /** Trusted flat host confirms Core spawn readiness. Provider resources remain Core-owned. */
+  markCoreBotReady(botId) {
+    return this.#transaction(() => {
+      const current = this.getBot(botId);
+      if (current?.state === 'UNBOUND' && !current.sandbox_id) return current;
+      const bot = this.assertBotStartupAllowed(botId);
+      if (bot.sandbox_id || bot.sandbox_create_state !== 'NOT_DISPATCHED') {
+        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core readiness cannot adopt legacy sandbox resources');
       }
       const readyAt = now();
       this.db.prepare("UPDATE bots SET state = 'UNBOUND', ready_at = ?, state_version = state_version + 1, updated_at = ? WHERE bot_id = ?")
@@ -1462,7 +1480,7 @@ export class TaskService {
     const cursor = more ? Buffer.from(JSON.stringify({ version: 1, query_hash: fingerprint, ceiling, after: last, started_at: startedAt })).toString('base64url') : null;
     return { tasks, scope, limit, returned: tasks.length, scanned, next_cursor: cursor, truncated: more,
       started_at: startedAt, read_at: now(), membership: 'state-and-availability-at-page-read', order: 'creation',
-      guidance: 'Read relevant continuation pages and Task detail before proposing or taking. New Tasks after this scan began require a fresh query.' };
+      guidance: 'Read relevant continuation pages and Task detail before taking. New Tasks after this scan began require a fresh query.' };
   }
 
   #viewTaskRecord(taskId, envelope, payload = {}) {

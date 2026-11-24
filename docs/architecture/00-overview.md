@@ -15,7 +15,7 @@ Services Bridge + Capability Profile
         └── Catalog/Registry   manifests, tools, documentation and hashes
 ```
 
-The benchmark runner owns the outer run, Core slots and finalization. For a registered Bot, Bridge resolves Judge input from a saved numeric revision in the public Mission Workspace. File checks select a path; project checks export the complete revision. Unsaved guest edits are not checker input. Judge persists a CheckResult; the runner records its observation separately from the fenced response delivered to the Bot. Task finish, main merge and fixed-input Mission acceptance are separate decisions. Runtime owns process/session lifecycle and cleanup. Task, Context and Judge own their respective durable facts. Agents choose research actions; Runtime does not choose a mathematical route.
+The Environment host owns its collaboration policy, capacity and finalization. The programmable Core owns Bot resources and input delivery. Flat adds Mission, Task and Execution authority through its Service adapters. For a registered Bot, Bridge resolves Judge input from a saved numeric revision in the public Mission Workspace. File checks select a path; project checks export the complete revision. Unsaved guest edits are not checker input. Judge persists a CheckResult and the Service records its operation result before the fenced response is delivered to the Bot. Task finish, main merge and fixed-input Mission acceptance are separate decisions. Runtime owns process/session lifecycle and cleanup. Task, Context and Judge own their respective durable facts. Agents choose research actions; Runtime does not choose a mathematical route.
 
 ## The three boundaries a reader must keep separate
 
@@ -49,7 +49,7 @@ Bot starts unbound with an empty protected guest project
   → Agent reads/publishes/consumes Material and edits the guest project
   → Agent explicitly saves a public revision
   → Agent may check that fixed revision through Judge
-  → Judge persists the result; the runner records diagnostic evidence
+  → Judge persists the result and its fixed input identity
   → Agent may merge a fixed public revision into main under Runtime guards
   → an authorized live Bot may separately submit fixed main and selected Materials
     for trusted Mission acceptance (independent of Task completion)
@@ -58,9 +58,9 @@ Bot starts unbound with an empty protected guest project
   → a fresh Bot may continue from public state
 ```
 
-The **Mission Task contract** is the only benchmark and Agent Task model. The benchmark CLI has no Task-model selector, and the Agent/SDK surface exposes Mission Tasks, relations, Materials and Runtime-owned Execution lifecycle facts without Root/Child structure operations. Bots use the read, write, edit and bash tools, with the typed `swarm` CLI routed through their authenticated Bridge to Task, Material, Judge and Workspace operations. They do not receive a second set of domain-native tools.
+The **Mission Task contract** defines flat domain responsibilities. The Agent/SDK surface exposes Mission Tasks, relations, Materials and Runtime-owned Execution lifecycle facts without Root/Child structure operations. Bots use the read, write, edit and bash tools, with the typed `swarm` CLI routed through their authenticated Bridge to Task, Material, Judge and Workspace operations. They do not receive a second set of domain-native tools.
 
-Within the benchmark path, `TaskController` observes eligible work and signals idle `IdentityTaskLoop`s; the Agent chooses its Task through `task_take`. Controller and Runner do not select the mathematical research route. See `src/benchmark/putnam-runner.js`, `src/runtime/task-controller.js`, and `src/runtime/identity-task-loop.js`.
+The Phase 0005 flat controller owns discovery, continuation and directed feedback while the public Core owns Bot allocation and stop. The legacy domain Runtime remains directly callable. The old TaskController, IdentityTaskLoop and benchmark composition have been removed; flat owns dependency repair and discovery. The [Core Runtime](15-core-runtime.md), [flat integration](02-execution.md), and [Environment host](17-environment-reporting.md#foreground-environment-control) describe the current paths.
 
 ## Current implementation versus acceptance
 

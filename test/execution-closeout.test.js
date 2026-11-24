@@ -63,30 +63,6 @@ test('public Judge admission fails closed when it cannot share Task lifecycle au
   assert.deepEqual(counts, { preflight: 0, check: 0 });
 });
 
-for (const boundary of ['soft', 'closing']) test(`actual continuation dispatch rereads ${boundary} phase after Session readiness`, async t => {
-  const { runTurn } = await import('../src/benchmark/putnam-runner.js');
-  const { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE } = await import('../src/agent/bot-contract.js');
-  const { tasks, task, envelope, closeout } = fixture(t);
-  let ready, release;
-  const entering = new Promise(resolve => { ready = resolve; });
-  const held = new Promise(resolve => { release = resolve; });
-  const sent = [];
-  const session = { rpcRecords: [], waitForReady: async () => { ready(); await held; }, prompt: async text => { sent.push(text); return { data: { disposition: 'handled' } }; } };
-  const core = { index: 1, taskId: task.task_id, executionId: envelope('read').execution_id, session, runtime: { taskService: tasks },
-    parallelism: { beginAgentTurn() {}, endAgentTurn() {}, recordTurnTime() {} }, turnStartedAt: Date.now(), turns: 0, errors: [], toolEvents: [], turnDurationsMs: [], turnIntervalMs: 0 };
-  const running = runTurn(core, BOT_CONTINUATION_MESSAGE, 1000);
-  await entering;
-  if (boundary === 'soft') closeout();
-  else { tasks.requestBotStop('bounded', 'controlled-stop', { terminalState: 'FAILED' }); assert.equal(tasks.getExecution(core.executionId).state, 'RUNNING'); }
-  release(); await running;
-  if (boundary === 'soft') {
-    assert.equal(sent.length, 1);
-    assert.ok(sent[0].startsWith(`E ${core.executionId} 接近 Execution 时间上限，收尾额度为 `));
-    assert.ok(sent[0].endsWith(BOT_SOFT_CLOSEOUT_MESSAGE));
-  } else assert.deepEqual(sent, []);
-  assert.deepEqual(core.errors, []);
-});
-
 test('late lifecycle rejection does not accuse an unexamined source of cheating', async t => {
   let entered, release;
   const entering = new Promise(resolve => { entered = resolve; });

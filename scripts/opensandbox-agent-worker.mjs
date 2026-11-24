@@ -3,9 +3,13 @@
 import { createServer } from 'node:http';
 import { randomUUID, createHash } from 'node:crypto';
 import { spawn, spawnSync } from 'node:child_process';
-import { readFile, writeFile, mkdir, chown, readdir, lstat, realpath, statfs } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, chown, readdir, statfs } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { SandboxProject, BOT_UID, PROJECT_DIR, RUNTIME_DIR } from './sandbox-project.mjs';
+import { CoreWorkDir } from './core-work-dir.mjs';
+import { collectCoreWorkDir, MAX_COLLECTION_ENTRIES } from './core-collection.mjs';
+import { once } from 'node:events';
+import { createPiRpcSubmissions } from './pi-rpc-submissions.mjs';
 
 const argv = process.argv.slice(2);
 function option(name, fallback = null) {
@@ -17,6 +21,9 @@ const token = option('--token', process.env.SWARMENV_WORKER_TOKEN) ?? randomUUID
 if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('worker port must be an integer from 1 to 65535');
 
 const project = new SandboxProject();
+let coreWorkDir;
+let executionStopped = false;
+let collectionMaxEntries = MAX_COLLECTION_ENTRIES;
 const quotaRequired = argv.includes('--require-project-quota');
 const catalogPath = '/opt/swarmenv/pi-agent/models.json';
 const filesystemPolicy = '/opt/swarmenv/bot-filesystem-policy';
@@ -32,10 +39,10 @@ let stdoutBuffer = '';
 let sequence = 0;
 const records = [];
 const MAX_RECORDS = 2_048;
-const subscribers = new Set();
-const pending = new Map();
-const rpcResults = new Map();
-const MAX_RPC_RESULTS = 256;
+const rpcSubmissions = createPiRpcSubmissions({ write(message) {
+  if (!child?.stdin?.writable) throw Object.assign(new Error('worker Agent is not running'), { code: 'NOT_ALLOWED' });
+  child.stdin.write(`${JSON.stringify(message)}\n`);
+} });
 
 function authorized(request) {
   return request.headers.authorization === `Bearer ${token}`;
@@ -63,12 +70,7 @@ function publish(record) {
   const value = { ...record, worker_sequence: ++sequence };
   records.push(value);
   if (records.length > MAX_RECORDS) records.splice(0, records.length - MAX_RECORDS);
-  for (const response of subscribers) response.write(`data: ${JSON.stringify(value)}\n\n`);
-  if (value.type === 'response' && value.id && pending.has(value.id)) {
-    const waiters = pending.get(value.id);
-    pending.delete(value.id);
-    for (const waiter of waiters) waiter(value);
-  }
+  rpcSubmissions.observe(value);
   return value;
 }
 
@@ -102,6 +104,10 @@ function processStdout(chunk) {
 
 function startupContractError(message) {
   return Object.assign(new Error(message), { code: 'BOT_STARTUP_CONTRACT' });
+}
+
+function requireOpenWorkDir() {
+  if (project.closing) throw Object.assign(new Error('Bot workDir is closing'), { code: 'NOT_ALLOWED' });
 }
 
 async function readPinnedStartupPath(operation, path) {
@@ -141,22 +147,10 @@ async function startAgent(input) {
     await project.initialize();
     initialized = true;
     projectQuota = { bytes, inodes };
+    collectionMaxEntries = Math.min(inodes, MAX_COLLECTION_ENTRIES);
   } else if (input.project_quota) throw startupContractError('Worker must start in quota enforcement mode');
-  const solver = input.contract_version === 'swarm-solver-v1';
-  const expectedNames = solver ? ['solver-system.txt'] : ['system.txt', 'plan-task.md', 'use-material.md', 'use-workspace.md', 'finish-task.md'];
-  if ((!solver && input.contract_version !== 'swarm-bot-v1-draft.3') || !Array.isArray(input.resources) || input.resources.length !== expectedNames.length ||
-      new Set(input.resources.map(resource => resource?.path)).size !== expectedNames.length ||
-      !expectedNames.every(name => input.resources.some(resource => resource?.path === `/opt/swarmenv/src/agent/bot-contract/${name}`))) throw startupContractError('complete versioned Bot contract resources are required');
-  for (const resource of input.resources) {
-    if (!/^\/opt\/swarmenv\/src\/agent\/bot-contract\/(solver-system\.txt|system\.txt|(?:plan-task|use-material|use-workspace|finish-task)\.md)$/.test(resource.path ?? '')) throw startupContractError('unsupported Bot contract resource');
-    const info = await readPinnedStartupPath(lstat, resource.path);
-    if (!info.isFile() || info.uid !== 0 || (info.mode & 0o022) || !(info.mode & 0o004) || await readPinnedStartupPath(realpath, resource.path) !== resource.path) throw startupContractError('Bot contract resource must be immutable to the Bot');
-    for (let parent = dirname(resource.path); parent !== '/'; parent = dirname(parent)) {
-      const directory = await readPinnedStartupPath(lstat, parent);
-      if (!directory.isDirectory() || directory.uid !== 0 || (directory.mode & 0o022) || !(directory.mode & 0o001)) throw startupContractError('Bot contract parent must be protected and traversable');
-    }
-    const sha256 = createHash('sha256').update(await readPinnedStartupPath(readFile, resource.path)).digest('hex');
-    if (sha256 !== resource.sha256) throw startupContractError('Bot contract resource does not match the pinned version');
+  if (input.contract_version !== 'swarmenv-core-v1' || input.command !== 'pi' || typeof input.system_prompt !== 'string' || input.system_prompt_path !== `${RUNTIME_DIR}/profile-prompt.txt` || !Array.isArray(input.resources) || input.resources.length !== 0) {
+    throw startupContractError('Core startup requires direct Pi, an explicit role prompt and an empty resource set');
   }
   if (project.closing) throw new Error('Bot stopped during resource validation');
   for (const path of ['home', 'tmp', 'pi-agent', 'pi-session']) {
@@ -169,6 +163,8 @@ async function startAgent(input) {
     await writeFile(input.system_prompt_path, input.system_prompt, { mode: 0o600 });
     await chown(input.system_prompt_path, BOT_UID, BOT_UID);
   }
+  coreWorkDir = new CoreWorkDir({ path: PROJECT_DIR, uid: BOT_UID, gid: BOT_UID, assertOpen: requireOpenWorkDir });
+  const projectFiles = await coreWorkDir.initialize({ files: input.files, writable: input.writable === true });
   const suppliedEnv = { ...(input.env ?? {}), ...(input.secret_env ?? {}) };
   delete suppliedEnv.SWARMENV_WORKER_TOKEN;
   const agentEnvironment = { PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', LANG: 'C.UTF-8', ...suppliedEnv,
@@ -187,49 +183,37 @@ async function startAgent(input) {
   child = spawn('setpriv', [...unprivileged, ...(quotaRequired ? [filesystemPolicy] : []), input.command, ...input.args],
     { cwd, env: agentEnvironment, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
   child.stdout.on('data', processStdout);
-  child.stderr.on('data', (chunk) => { for (const response of subscribers) response.write(`event: stderr\ndata: ${JSON.stringify({ text: chunk.toString() })}\n\n`); });
+  // Drain the private stderr pipe so a noisy process cannot block on it.
+  child.stderr.resume();
   child.on('error', (error) => publish({ type: 'worker_error', message: error.message }));
   child.on('close', (code, signal) => {
     publish({ type: 'worker_exit', code, signal });
-    for (const response of subscribers) response.end();
-    subscribers.clear();
     child = null;
   });
   return { pid: child.pid, contract: { version: input.contract_version, resources: input.resources },
     ...(projectQuota ? { project_quota: projectQuota } : {}),
+    ...(projectFiles ? { project_files: projectFiles } : {}),
     ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}) };
 }
 
 async function rpc(input) {
   const message = input?.message ?? input;
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('worker RPC message must be an object');
-  // Transport recovery asks for the bounded record history that accumulated
-  // while the SSE endpoint was unavailable.  Keep this read local to the
-  // worker so the caller can replay from an explicit sequence without
+  // Core polls bounded Worker history from an explicit sequence without
   // sending a synthetic command to Pi.
   if (message.type === 'get_state' && Number.isFinite(Number(message.since))) {
     const since = Math.max(0, Number(message.since));
     return { records: records.filter((record) => record.worker_sequence > since) };
   }
-  if (!child?.stdin?.writable) throw new Error('worker Agent is not running');
-  const id = message.id ?? null;
-  if (id && rpcResults.has(id)) return rpcResults.get(id);
+  if (message.type === 'get_rpc_result') {
+    return { ...rpcSubmissions.query(message.id), records: records.filter(record => record.worker_sequence > Number(message.since ?? 0)) };
+  }
   const beforeSequence = sequence;
-  child.stdin.write(`${JSON.stringify(message)}\n`);
-  if (!id) return { records: records.filter((record) => record.worker_sequence > beforeSequence) };
-  const response = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      const waiters = pending.get(id) ?? [];
-      pending.set(id, waiters.filter((waiter) => waiter !== resolve));
-      reject(new Error(`timed out waiting for Pi RPC response: ${message.type ?? 'command'}`));
-    }, Number(input.timeout_ms ?? 600_000));
-    const waiter = (record) => { clearTimeout(timer); resolve(record); };
-    pending.set(id, [...(pending.get(id) ?? []), waiter]);
-  });
-  const result = { records: records.filter((record) => record.worker_sequence > beforeSequence), response };
-  rpcResults.set(id, result);
-  if (rpcResults.size > MAX_RPC_RESULTS) rpcResults.delete(rpcResults.keys().next().value);
-  return result;
+  if (input.since !== undefined && (!Number.isSafeInteger(input.since) || input.since < 0)) {
+    throw Object.assign(new Error('Worker replay cursor must be a nonnegative integer'), { code: 'INVALID_CONTRACT' });
+  }
+  const result = await rpcSubmissions.submit(message, Number(input.timeout_ms ?? 600_000));
+  return { ...result, records: records.filter(record => record.worker_sequence > (input.since ?? beforeSequence)) };
 }
 
 async function botProcesses() {
@@ -311,11 +295,25 @@ function stopBot() {
       if (Date.now() >= deadline) throw new Error('Bot descendant stop was not confirmed');
       await new Promise(resolve => setTimeout(resolve, 10));
     }
-    if (!initialized) return { stopped: true, project_installs: [] };
+    if (!initialized) { executionStopped = true; return { stopped: true, project_installs: [] }; }
+    await coreWorkDir?.drain();
     await project.close();
+    executionStopped = true;
     return { stopped: true, project_installs: await project.installReceipts() };
   })().catch(error => { stopping = null; throw error; });
   return stopping;
+}
+
+function controlCoreFiles(action, input) {
+  requireOpenWorkDir();
+  if (!coreWorkDir || !child?.pid) throw Object.assign(new Error('Core file control requires a live Core Bot'), { code: 'NOT_ALLOWED' });
+  return withBotPaused(async () => {
+    try { return await coreWorkDir[action](input); }
+    catch (error) {
+      if (error.code === 'OPERATION_UNKNOWN') project.beginClose();
+      throw error;
+    }
+  });
 }
 
 const server = createServer(async (request, response) => {
@@ -323,7 +321,36 @@ const server = createServer(async (request, response) => {
   try {
     if (request.method === 'GET' && url.pathname === '/health') { send(response, 200, { ok: true, pid: child?.pid ?? null }); return; }
     if (!authorized(request)) { send(response, 401, { ok: false, error: 'worker authorization required' }); return; }
-    if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/start') { send(response, 200, { ok: true, result: await startAgent(await body(request, 32 * 1024 ** 2)) }); return; }
+    if (request.method === 'POST' && url.pathname === '/core/files/collect') {
+      if (!coreWorkDir || !executionStopped) throw Object.assign(new Error('Core collection requires confirmed stopped execution'), { code: 'NOT_ALLOWED' });
+      const input = await body(request);
+      const controller = new AbortController();
+      const deadline = setTimeout(() => { controller.abort(); response.destroy(); }, 25_000);
+      const disconnected = () => controller.abort();
+      response.on('close', disconnected);
+      response.writeHead(200, { 'content-type': 'application/x-ndjson' });
+      try {
+        for await (const record of collectCoreWorkDir(PROJECT_DIR, input, { signal: controller.signal, maxEntries: collectionMaxEntries })) {
+          if (!response.write(`${JSON.stringify(record)}\n`)) await once(response, 'drain', { signal: controller.signal });
+        }
+      } catch (error) {
+        if (!response.destroyed) response.write(`${JSON.stringify({ type: 'error', code: error.code ?? 'SERVICE_UNAVAILABLE', message: error.message })}\n`);
+      } finally {
+        clearTimeout(deadline);
+        response.off('close', disconnected);
+        response.end();
+      }
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/core/files/prepare') {
+      send(response, 200, { ok: true, result: await controlCoreFiles('prepare', await body(request, 32 * 1024 ** 2)) });
+      return;
+    }
+    if (request.method === 'POST' && url.pathname === '/core/files/grant') {
+      send(response, 200, { ok: true, result: await controlCoreFiles('grant', await body(request)) });
+      return;
+    }
     if (url.pathname.startsWith('/project/') && !initialized) throw new Error('Bot workspace is not initialized');
     if (request.method === 'POST' && url.pathname === '/project/prepare') { send(response, 200, { ok: true, result: await project.prepare(await body(request, 32 * 1024 * 1024)) }); return; }
     if (request.method === 'POST' && url.pathname === '/project/grant') { const input = await body(request); send(response, 200, { ok: true, result: await withBotPaused(() => project.grant(input)) }); return; }
@@ -337,17 +364,9 @@ const server = createServer(async (request, response) => {
       send(response, 200, { ok: true, result: await stopBot() });
       return;
     }
-    if (request.method === 'GET' && url.pathname === '/events') {
-      response.writeHead(200, { 'content-type': 'text/event-stream; charset=utf-8', 'cache-control': 'no-cache', connection: 'keep-alive' });
-      subscribers.add(response);
-      const since = Number.parseInt(url.searchParams.get('since') ?? '0', 10) || 0;
-      for (const record of records) if (record.worker_sequence > since) response.write(`data: ${JSON.stringify(record)}\n\n`);
-      request.on('close', () => subscribers.delete(response));
-      return;
-    }
     send(response, 404, { ok: false, error: 'unknown worker route' });
   } catch (error) {
-    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'BOT_STARTUP_CONTRACT'].includes(error.code) ? { code: error.code } : {}),
+    if (!response.writableEnded) send(response, 400, { ok: false, error: error.message, ...(['WORKSPACE_BUSY', 'WORKSPACE_RESULT_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED', 'INVALID_CONTRACT', 'BOT_STARTUP_CONTRACT', 'CONFLICT', 'NOT_ALLOWED', 'OPERATION_UNKNOWN'].includes(error.code) ? { code: error.code } : {}),
       ...(['dirty', 'active_writer'].includes(error.applyBlocker) ? { apply_blocker: error.applyBlocker } : {}) });
   }
 });

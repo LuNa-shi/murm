@@ -10,11 +10,56 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { DatabaseSync } from 'node:sqlite';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { MissionSubmissionStore } from '../src/runtime/mission-submission.js';
+import { createManualMissionChecker } from '../src/runtime/manual-mission-review.js';
 
 const exec = promisify(execFile);
 const cli = fileURLToPath(new URL('../scripts/review-mission.mjs', import.meta.url));
 const identity = { checker_ref: 'manual-operator', checker_version: 'review-policy-1', environment_ref: 'owner-review' };
 const input = { missionId: 'mission:first', workspaceId: 'workspace-first', actorRef: 'bot:first', materialIds: [], requestId: 'manual-1' };
+
+async function checkerFixture(t) {
+  const directory = await mkdtemp(join(tmpdir(), 'manual-review-writer-'));
+  const file = join(directory, 'review.sqlite');
+  const database = new DatabaseSync(file);
+  const checker = createManualMissionChecker({ database, checkerVersion: 'fixed', environmentRef: 'local', timeoutMs: 1000 });
+  const writer = new DatabaseSync(file);
+  t.after(async () => { writer.close(); database.close(); await rm(directory, { recursive: true, force: true }); });
+  const submission = { mission_id: 'mission', submission_id: 'submission', snapshot_fingerprint: 'fixed' };
+  return { database, writer, checker, submission };
+}
+
+test('manual checker preserves its original wait across a competing owner-local SQLite writer', async t => {
+  const { writer, checker, submission } = await checkerFixture(t);
+  const decision = { timely: true, snapshot: { snapshot_fingerprint: 'fixed' }, verdict: 'PASS', review_id: 'review' };
+  writer.exec('BEGIN EXCLUSIVE');
+  writer.prepare('INSERT INTO mission_manual_reviews VALUES (?, ?, ?, ?)').run('mission', 'submission', 'request', JSON.stringify(decision));
+  const result = checker.check({ submission, deadline: Date.now() + 1000, signal: new AbortController().signal });
+  // Attach immediately so an incorrect immediate rejection is observable.
+  const outcome = result.then(value => ({ value }), error => ({ error }));
+  await delay(30);
+  writer.exec('COMMIT');
+  assert.deepEqual(await outcome, { value: { verdict: 'PASS', check_result_id: 'review' } });
+});
+
+for (const end of ['deadline', 'cancellation']) {
+  test(`manual checker contention remains bounded by the original ${end}`, async t => {
+    const { writer, checker, submission } = await checkerFixture(t);
+    writer.exec('BEGIN EXCLUSIVE');
+    const controller = new AbortController();
+    const timer = end === 'cancellation' ? setTimeout(() => controller.abort(), 20) : null;
+    t.after(() => clearTimeout(timer));
+    await assert.rejects(checker.check({ submission, deadline: Date.now() + (end === 'deadline' ? 40 : 1000), signal: controller.signal }), { code: 'SERVICE_TIMEOUT' });
+    writer.exec('ROLLBACK');
+  });
+}
+
+test('manual checker does not retry non-contention SQLite faults', async t => {
+  const { database, checker, submission } = await checkerFixture(t);
+  database.exec('DROP TABLE mission_manual_reviews');
+  await assert.rejects(checker.check({ submission, deadline: Date.now() + 1000, signal: new AbortController().signal }), {
+    code: 'ERR_SQLITE_ERROR', errcode: 1,
+  });
+});
 
 async function fixture(t, timeoutMs = 5000) {
   const directory = await mkdtemp(join(tmpdir(), 'manual-mission-review-'));

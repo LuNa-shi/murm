@@ -14,13 +14,14 @@ This is the entry point to current maintained documentation. Historical design d
 | How is a substantial next stage designed? | [phases/INDEX.md](phases/INDEX.md) | Phase 0005 is authoritative target design; other entries are versioned Issue attachments. Progress and evidence remain in Issue/PR |
 | Which engineering workflow applies? | **Installed Matt Pocock engineering skills** + [AGENTS.md](../AGENTS.md) | `/to-spec`, optional `/to-tickets`, `/implement`, `/implement-spec`, `/tdd`, `/code-review`, `/pr` |
 | Where is Matt skills configuration? | [agents/issue-tracker.md](agents/issue-tracker.md), [agents/domain.md](agents/domain.md), [agents/triage-labels.md](agents/triage-labels.md) | Issue tracker, domain and triage setup |
+| How are Phase 0005 contracts and migration regressions verified? | [Core / Environment verification contract](workflows/core-environment-verification.md) | Pinned baseline observations, public seams and requirements-to-ticket cross-reference; execution evidence stays on Issue/PR |
 | How does the current system run in detail? | [architecture/INDEX.md](architecture/INDEX.md) | Complete implementation manual, full prompts, interfaces, state and source coverage |
 | What are the SwarmEnv-specific working rules? | [workflows/development.md](workflows/development.md), [workflows/experiment.md](workflows/experiment.md) | Repo conventions, verification and experiment boundaries |
 | Where are formal experiments? | [experiments/INDEX.md](experiments/INDEX.md) | Run IDs, evidence and report template |
 | Why was a major design decision made? | [adr/INDEX.md](adr/INDEX.md) | Decision rationale |
-| How are tools operated? | [operations/benchmark.md](operations/benchmark.md), [operations/observability.md](operations/observability.md) | Operational references |
+| How are tools operated? | [operations/observability.md](operations/observability.md) | Operational references |
 
-Root [GLOSSARY.md](../GLOSSARY.md) defines the Mission/Task/Bot/Execution/Material/Workspace vocabulary shared by the approved [Phase 02 design](phases/0002-task-material-workspace/01-model-and-runtime.md) and current implementation. Architecture explains the registered Bot path and explicitly labels retained compatibility APIs. The [experiment-analysis skill](../.codex/skills/experiment-analysis/SKILL.md) reconstructs experimental evidence.
+Root [GLOSSARY.md](../GLOSSARY.md) defines the Mission/Task/Bot/Execution/Material/Workspace vocabulary shared by the approved [Phase 02 design](phases/0002-task-material-workspace/01-model-and-runtime.md) and current implementation. Architecture explains the registered Bot path and explicitly labels retained compatibility APIs. Historical experimental reconstruction guidance is preserved in the [research tree](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/.codex/skills/experiment-analysis/SKILL.md).
 
 ## Authority and lifecycle
 

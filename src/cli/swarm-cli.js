@@ -11,30 +11,24 @@ function operationTimeoutMs(operation, explicit) {
   return parseScalar(explicit) ?? (configured === undefined ? DEFAULT_REQUEST_TIMEOUT_MS : Number(configured));
 }
 const COMMAND_OPERATIONS = Object.freeze({
-  solution: { submit: 'mission_submit', status: 'mission_submission_get' },
   'mathlib-search': { search: 'mathlib_search' },
   bot: { exit: 'bot_exit' },
-  task: { list: 'task_list', view: 'task_view', propose: 'task_create', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', revise: 'task_revise', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
+  task: { list: 'task_list', view: 'task_view', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', revise: 'task_revise', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
   material: { list: 'read_materials', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials', dispute: 'material_dispute', supersede: 'material_supersede', unsupersede: 'material_unsupersede' },
-  workspace: { view: 'workspace_public_view', history: 'workspace_public_history', status: 'workspace_status', diff: 'workspace_current_diff', apply: 'workspace_public_apply', files: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
+  workspace: { view: 'workspace_public_view', history: 'workspace_public_history', status: 'workspace_status', diff: 'workspace_current_diff', files: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
   mission: { view: 'mission_get', submit: 'mission_submit', 'submission view': 'mission_submission_get' },
   judge: { check: 'workspace_check', result: 'get_check_result' },
 });
 const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'request-id', 'timeout-ms']);
-const TASK_PROPOSAL_HELP = `Propose an independently useful responsibility with --input <file> or --stdin. Required: summary (short title, 1-240 trimmed characters), gap (specific Mission problem/use, 1-4000), expected_output (deliverable, 1-4000), acceptance_conditions (nonempty array/object), priority (high, medium or low). Mission, creator and time come from the service.
-High: evidence supports earlier investment; medium: a clear use without stronger urgency; low: a more distant or less urgent option. Priority is advice, not a take restriction. Multiple proposals are allowed during selection; ACTIVE Bots can also propose. Take existing work directly when it fits. Optional --base-revision pins a public input revision. Other optional inputs and dependencies are described by service metadata; a dependency means work must wait, not just that results are related.
-Example:
-  printf '%s\\n' '{"summary":"Check boundary case","gap":"The current argument leaves the boundary case undecided","expected_output":"A reproducible boundary result","acceptance_conditions":["The result includes a reproducible check"],"priority":"medium"}' | swarm task propose --stdin --request-id propose-boundary`;
 const WORKSPACE_FILES_HELP = 'List public paths. Use --at R (main is allowed), an optional positional path prefix, --limit or --cursor. Example: swarm workspace files --at 0.1 --limit 20';
 const COMMAND_HELP = Object.freeze({
-  bot: { exit: 'End an unbound Bot with no pending take after the selection budget expires. Use --reason selection-budget. For an open Mission with selection time left, inspect the public gap and propose work if no Task fits. The Core is released after cleanup.' },
+  bot: { exit: 'End an unbound Bot with no pending take after the selection budget expires. Use --reason selection-budget. For an open Mission with selection time left, inspect current public state and existing Tasks within the selection budget. The Core is released after cleanup.' },
   task: {
     list: `Search Task summaries using --query, --limit (1-100) and --cursor. Omit the state filter to include all states, use --state for one state, or pass a quoted JSON array to --states.
   swarm task list --state ready
   swarm task list --states '["ready","running","blocked","done","canceled"]'
-Candidate summaries include gap and priority; inspect their relevance and choose freely. Follow next_cursor even after an empty page, then view Task details before proposing or taking. Creation order is stable within a scan; state and readiness are live at each page.`,
+Candidate summaries include gap and priority; inspect their relevance and choose freely. Follow next_cursor even after an empty page, then view Task details before taking. Creation order is stable within a scan; state and readiness are live at each page.`,
     view: 'Required: <task-id> (or --task-id). Read a Task contract, gap, priority, versions, dependencies, Materials and Executions. Use --contract-history-after-version and --contract-history-limit (1-100) to continue contract_history_page.next_after_version.',
-    propose: TASK_PROPOSAL_HELP,
     take: 'Take an eligible Task by its positional ID. Example: swarm task take T1 --request-id take-t1 (replace T1 with the returned task_id). The result includes the Execution and pinned inputs. If the response is unknown, reuse the same request ID with the same Task.',
     link: `Link a published Material to a Task. Provide --task-id, --material-id and --role (input, response, handoff, or experience).
 Plan to create the link during an active Execution, before soft closeout.
@@ -71,7 +65,6 @@ Replace M1 with an actual Material ID. After an unknown response, reuse the same
     files: WORKSPACE_FILES_HELP,
     read: 'Read one public file by its positional path. Use --at R (main is allowed) and optional --max-bytes. Example: swarm workspace read notes.txt --at 0.1 (choose a path from workspace files).',
     search: 'Search public paths and UTF-8 text at --at R; paginate with --max-results and --cursor.',
-    apply: 'Apply a fixed public revision into the current E using --from revision or main. Save dirty work first; reuse --request-id after an unknown response.',
     save: 'Save the actual current E project as a stable public revision. Use --resolved only after resolving recorded conflicts and removing their alternatives. Use --material-ids for recorded Workspace uses. No file, identity or lineage arguments. Reuse --request-id after an unknown response.',
     merge: 'Merge --from a fixed public revision; Runtime pins main, checks the combined tree when configured, and conditionally advances main. For a configured 3-minute project check, use --timeout-ms 210000 to wait for its response. After response loss, repeat the same --from and --request-id to recover the original operation; do not assume the merge failed or start a new request.',
   },
@@ -91,7 +84,7 @@ Use a stable --request-id. After a lost response, use swarm judge result --reque
 });
 
 function usage(scope = 'top', commandName = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  task list|view|propose|revise|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  bot spawn|get|send|stop     Core direct-child control when granted\n  task list|view|revise|take|link|finish|feedback|cancel|dependency-replace\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|files|read|search|save|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
   if (commandName && COMMAND_HELP[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${COMMAND_HELP[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${operationTimeoutMs(COMMAND_OPERATIONS[scope]?.[commandName] ?? commandName)})\n  --help                     Show this command help`;
   return `Usage: swarm ${scope} <command> [options]\n\nUse --input file or --stdin for a complete JSON payload. Task and Material IDs and file paths use the documented positional arguments.\nBot identity always comes from the protected Bridge binding.\nUse "swarm ${scope} <command> --help" for command-specific parameters.`;
@@ -227,7 +220,13 @@ async function request(url, { method = 'GET', token = null, body = undefined, ti
 }
 
 async function manifest(service) {
-  if (process.env.SWARMENV_BRIDGE_URL) return bridgeCall('get_service_metadata', { service: transportService(service) });
+  if (process.env.SWARMENV_BRIDGE_URL) {
+    if (service === 'bot') {
+      try { return await bridgeCall('get_service_metadata', { service: 'bot' }); }
+      catch (error) { if (error.code !== 'NOT_ALLOWED') throw error; }
+    }
+    return bridgeCall('get_service_metadata', { service: transportService(service) });
+  }
   service = transportService(service);
   const endpoint = configuredEndpoint(service);
   if (!endpoint?.url) throw new Error(`no endpoint configured for ${service}; set ${envName(service)}`);
@@ -302,15 +301,26 @@ function commandInput(service, command, options, args, input) {
 }
 
 async function invoke(service, commandName, options, args = []) {
+  if (process.env.SWARMENV_BRIDGE_URL && service === 'bot' && ['spawn', 'get', 'send', 'stop'].includes(commandName)) {
+    const metadata = await manifest('bot');
+    if (metadata.id !== 'bot' || !metadata.capabilities.some(item => item.operation === commandName)) throw new Error(`service bot does not advertise capability ${commandName}`);
+    const input = { ...(await inputFrom(options)), ...flagInput(options) };
+    if (args.length > (commandName === 'spawn' ? 0 : 1)) throw new Error('unexpected positional arguments');
+    if (args.length) {
+      if (input.bot_id !== undefined && input.bot_id !== args[0]) throw new Error('conflicting bot_id');
+      input.bot_id = args[0];
+    }
+    if (input.text !== undefined) {
+      if (input.input !== undefined && input.input !== input.text) throw new Error('conflicting input');
+      input.input = input.text; delete input.text;
+    }
+    return bridgeCall(commandName, input, options, 'bot');
+  }
   if (Object.hasOwn(COMMAND_OPERATIONS, service) && !Object.hasOwn(COMMAND_OPERATIONS[service], commandName)) {
     throw new Error(`unknown ${service} command: ${commandName}`);
   }
   let operation = COMMAND_OPERATIONS[service]?.[commandName] ?? commandName;
   const input = commandInput(service, commandName, options, args, { ...(await inputFrom(options)), ...flagInput(options) });
-  if (service === 'solution' && commandName === 'submit') {
-    if (Object.keys(input).length) throw new Error('solution submit accepts no input fields');
-    input.material_ids = [];
-  }
   if (service === 'workspace' && commandName === 'diff' && (input.from !== undefined || input.to !== undefined)) {
     if (typeof input.from !== 'string' || typeof input.to !== 'string' || !input.from || !input.to) throw new Error('public Workspace diff requires both --from and --to');
     operation = 'workspace_public_diff';
@@ -321,7 +331,10 @@ async function invoke(service, commandName, options, args = []) {
       if (!metadata.capabilities?.some(item => item.operation === operation || item.name === operation)) throw new Error(`service ${service} does not advertise capability ${operation}`);
       return bridgeCall(operation, input, options, transportService(service));
     }
-    return bridgeCall(operation, input, options);
+    // Core supplies this reserved routing hint with the protected connection.
+    // Legacy Bridges retain their operation-only request and one delivery.
+    return bridgeCall(operation, input, options,
+      process.env.SWARMENV_BRIDGE_CONTRACT_VERSION === '2' ? transportService(service) : undefined);
   }
   const provider = await manifest(service);
   const capability = provider.capabilities?.find((candidate) => candidate.operation === operation || candidate.name === operation);
@@ -336,16 +349,16 @@ async function invoke(service, commandName, options, args = []) {
 
 export async function runSwarmCli(argv = process.argv.slice(2), { stdout = process.stdout } = {}) {
   const { positionals, options } = parseArgs(argv);
-  if (process.env.SWARMENV_AGENT_MODE === 'solver') {
-    const allowed = { workspace: ['view', 'history', 'status', 'diff', 'files', 'read', 'search', 'save', 'merge'], judge: ['check', 'result'], solution: ['submit', 'status'], 'mathlib-search': ['search'] };
-    const [service, command] = positionals;
-    if (service && (!allowed[service] || (command && !allowed[service].includes(command)))) throw new Error('Command unavailable in solver mode');
-    if (options.help || !service || !command) {
-      stdout.write('Solver tools: swarm workspace view|history|status|diff|files|read|search|save|merge; swarm judge check|result; swarm solution submit|status; swarm mathlib-search search --query <query>. Use --json and stable --request-id for writes.\n');
-      return 0;
-    }
-  }
   if (positionals[0] === 'context') throw new Error('unknown command group: context');
+  if ((options.help || (positionals[0] === 'bot' && !positionals[1])) && positionals[0] && positionals[0] !== 'service' && (!COMMAND_OPERATIONS[positionals[0]] || (positionals[0] === 'bot' && (!positionals[1] || ['spawn', 'get', 'send', 'stop'].includes(positionals[1])))) && process.env.SWARMENV_BRIDGE_URL) {
+    const provider = await manifest(positionals[0]);
+    if (positionals[0] === 'bot' && !positionals[1] && provider.id !== 'bot') { stdout.write(usage('bot') + '\n'); return 0; }
+    const capabilities = positionals[1] ? provider.capabilities.filter(item => item.operation === positionals[1] || item.name === positionals[1]) : provider.capabilities;
+    if (!capabilities.length) throw new Error('Service does not advertise this operation');
+    stdout.write(`Usage: swarm ${positionals[0]} <operation> [--input file | --stdin | --field value] [--request-id id]\n${provider.purpose}\n`);
+    for (const capability of capabilities) stdout.write(`${capability.operation}: ${capability.description}\n${capability.help.when}\nside_effect=${capability.side_effect}; idempotent=${capability.idempotent}\nInput schema: ${JSON.stringify(capability.input_schema)}\nOutput schema: ${JSON.stringify(capability.output_schema)}\nErrors: ${JSON.stringify(capability.errors)}\n`);
+    return 0;
+  }
   if (options.help) {
     if (positionals[0] === 'mission' && positionals[1] === 'submission') {
       stdout.write('Usage: swarm mission submission view [id] [--json]\nWithout an ID, read current Mission state and its submissions. With an ID, read that submission and its fixed inputs.\n');

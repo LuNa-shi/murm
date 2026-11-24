@@ -198,7 +198,7 @@ M1–M6 不要求自动判断新版是否保留了所有有效知识。04 §4.1 
 | Candidate / Workspace | 普通文件引用 helper 正确；公开仓库与旧 E Workspace 并存，实际实验主要走后者。 | 检查全部 manifest、CLI、Bridge、Runtime、schema 和显示；后继只用公开 revision，不能把旧本地 revision 贴上新名。 |
 | 旧数据库与部署版本 | Task/Context 构造器仍 ALTER 旧 schema；存在兼容读取，但未建立完整“旧运行只读、新 Mission 显式起点”的部署验收。 | 08 §6 要求固定 schema、CLI/API、prompt、skills、checker/provider 与镜像版本；阻止旧 writer 写新运行。导入需保留原来源和不完整状态，不能把旧 SATISFIED/CLOSED 自动视为新 done。 |
 | Dashboard 与报告 | `src/observability/observability-server.js:1120–1127` 仍从 execution.workspace_ref 恢复旧 WorkspaceManager；当前文件不接入 MissionWorkspace/SubmissionStore。Material 投影保留 supersedes 字段，不能代替纠错关系观察；报告保留 root/child 等旧统计。 | 需要 Mission 首页、Bot 阅读/关闭时间线、公开 revision/parents/冻结与材料更正视图。服务是权威，SSE/缓存/报告落后要标示，不从旧投影驱动状态。UI 的全部组件和实际 served assets 需随后逐页验收；本次未声称浏览器覆盖完成。 |
-| 分析器的身份与指标 | `src/analysis/experiment-analysis.js:989,1009` 使用目录名推导 E；formal24 的 fresh 目录导致生成分析重复计算。身份循环 take 计数、Judge 计数和实际数据库也不一致。 | 输入 schema 与稳定 ID 映射必须校验；缺记录记 unknown，不能补零。统计分开 Bot、Session、E、请求、缓存复用和独立检查；修复分析器后回算同一批证据。 |
+| 分析器的身份与指标 | [固定版本分析器](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/src/analysis/experiment-analysis.js#L989-L1009) 使用目录名推导 E；formal24 的 fresh 目录导致生成分析重复计算。身份循环 take 计数、Judge 计数和实际数据库也不一致。 | 输入 schema 与稳定 ID 映射必须校验；缺记录记 unknown，不能补零。统计分开 Bot、Session、E、请求、缓存复用和独立检查；修复分析器后回算同一批证据。 |
 | 文档与隐私 | GLOSSARY、Architecture 入口、source-map baseline 有漂移；历史实验资料还需按现行脱敏规则逐项检查。 | 本审计不把全部旧文档都判为活动模型，但读者入口必须说明当前行为及未完成迁移。原始会话、证明、凭据、状态库及私有绝对路径不进入本报告或知识接续。真实 observer 网络可达与权限需 E2 验证。 |
 
 上述扫描不是“仓库以后绝无旧字符串”的证明。完成清理应有从默认入口及兼容入口出发的可达性证据、拒写回归和准确手册；关键词检索只能帮助找位置。

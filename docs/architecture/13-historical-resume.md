@@ -1,64 +1,17 @@
-# 13. Continue an experiment from a historical time
+# 13. Private service history and Workspace publication records
 
-Historical continuation takes a finished experiment and a time selected after that
-experiment ended. It reconstructs the public research data at that time, then starts
-four fresh Core loops using the ordinary runner. The input consists of the original
-experiment directory and `--at`; no operator snapshot call or preselected checkpoint
-is required. [Issue #149](https://github.com/LuNa-shi/SwarmEnv/issues/149) owns this scope.
-
-## Entry and startup order
-
-The existing benchmark CLI accepts `--resume-from <experiment-directory>` together
-with `--at <ISO timestamp with timezone>`. Supply one existing `--problem`, the
-original compatible problem/checker deployment, and a new `--experiment-dir`.
-The source must have completion metadata and, when managed private audit was used,
-its cleanup completion record. Completed, operator-stopped and failed runs with a
-recorded research start and end can supply a historical Mission. A run that failed
-before admission has no selectable research interval. The selected time must be inside that experiment's
-recorded interval. Pass@K is not a historical continuation mode.
-
-The CLI resolves the output paths before reserving the run. The runner repeats this
-check before preflight and before writing an unavailable-project report. The run,
-reports and named report files must be physically separate from the source. The
-project's state, log and working directories must be fresh. Existing symlinks are
-resolved, dangling output links are rejected and existing output files with
-multiple hard links are rejected. A path conflict raises `REPLAY_DESTINATION_CONFLICT`.
-The observer's writable paths are checked when observation is enabled.
-
-Before opening live services, `prepareExperimentResume` creates a temporary project
-directory beside the new destination. It reconstructs `project.sqlite`,
-`context.sqlite`, `judge.sqlite` and `mission-workspace/`. It checks the original
-problem identity, Mission binding, file/input hash and public cross-service
-references. The completed directory is published by rename; failures remove the
-temporary output. Source and destination must be separate and existing destinations
-are rejected.
-
-The runner then opens the reconstructed services, retains the Mission, Task,
-Material and Workspace IDs, and skips initial Mission/Workspace seeding. It checks
-the final verifier identity against the original Mission. It starts the normal four
-Core loops with new Bot/Execution/sandbox identities and credentials. Private Pi
-conversations and unfinished private computation are not loaded. New Bots read the
-public history through the existing service tools.
-
-Offline reconstruction, checker and provider preflight, service startup and Bridge
-setup run within `setup_elapsed_ms`. Successful admission sets `started_at` and
-starts a full new Mission timebox. Per-Bot provisioning and research consume that
-window. A failure before admission has no research start or elapsed research time.
-The new run has a fresh model-budget database and new checker admission budgets;
-existing proof/check results remain research data. No historical provider resource
-is adopted, stopped or deleted by this import.
+Persistent Task, Context and Judge stores retain private before/after row history alongside their business state. Public Workspace writes retain immutable revisions, request receipts and committed publication events for inspection and interrupted-write recovery. The former benchmark timestamp-selected database and Workspace copy utilities have been retired. Operators inspect the original stores and fixed result identities through the current read entry points.
 
 ## Automatic database history
 
 Persistent Task, Context and Judge constructors enable recording after their schema
 setup. The `replay_*` tables live in the same private SQLite database as the service.
 In-memory fixtures can opt in explicitly. Observation projections and live
-ownership/delivery tables are excluded; the fresh-run handoff resets those runtime
-records. Adding a runtime-only table does not move the public history boundary.
+ownership/delivery tables are excluded. Adding one of those runtime-only tables
+leaves the existing public-table recording interval intact.
 Task initializes the manual-review table before enabling capture. The separate
 `review-mission.mjs decide` writer also installs transaction tracking; `show` stays
-read-only. A public table without capture makes journal reconstruction fail with
-its table name, rather than silently carrying its final values into the past.
+read-only. A new public table enters capture when its service installs history after schema setup. The table catalog records that interval independently.
 
 | Table | Meaning |
 |---|---|
@@ -76,158 +29,44 @@ such as finish finalization and dependent-Task reconciliation are included.
 The connection records explicit transaction completion, including prepared control
 statements and savepoint transactions. It allocates a transaction marker only when
 the first write occurs; read-only transactions remain reads. Compound `exec` input
-uses SQLite's own parsed statement boundaries. Ordinary autocommit statements use
-SQLite's statement-stable timestamp. Timestamps have millisecond precision. A cutoff
-includes all recorded commits at or before that time, with sequence establishing
-order within a database. A transaction cannot be split by choosing a time between
-its individual row writes. Nested savepoints are tracked in order. A name reused
+uses SQLite's own parsed statement boundaries. An anchored scan stops at the first
+executable token. When the tail contains only whitespace, separators or comments,
+the wrapper delegates it to SQLite's native exec. This avoids Node 22's finalized
+empty-statement handles. SQLite still validates
+the complete tail, so invalid SQL and closed connections raise their native errors.
+Ordinary autocommit statements use
+SQLite's statement-stable timestamp. Timestamps have millisecond precision,
+with sequence establishing event order within a database. Every explicit
+transaction's surviving row events share its recorded commit boundary. Nested savepoints are tracked in order. A name reused
 by an inner savepoint resolves to that inner scope on release or rollback. If a
 commit fails while SQLite keeps the transaction open, a later repair and successful
 retry retain the original transaction marker.
 
-The offline reader copies the finished source's database, WAL and rollback-journal
-files into temporary storage before opening SQLite. Source files must stay stable
-during this copy. SQLite recovery and backup operate only on the temporary copy, so
-even the original shared-memory sidecar remains untouched. For a covered time,
-it undoes later row changes in reverse
-sequence. It verifies table shapes, capture coverage and transaction boundaries.
-Capture is removed before the offline rewrite; the new live service starts its own
-recording interval. A schema change begins a new exact-history interval rather than
-silently interpreting older row images using different columns.
+Reinstalling capture records the current table schema and enabled triggers. If a table's schema changes, installation clears that table's incompatible row images and starts its next recording interval. Other tables keep their existing intervals. Invalid domains, installation inside a transaction, a reserved history column or a table lacking a stable row identity fail explicitly. Installation runs its trigger and catalog writes in one transaction and rolls back on error.
 
-This history is private run data, not a sanitized observation log. Keep the source
-databases and referenced file objects while historical continuation is needed; the
-existing raw-evidence retention rules still apply.
+This history contains private row payloads. Its database and sidecars follow the service's owner-private storage policy and remain subject to the raw-evidence retention rules. The manual-review CLI checks the canonical directory, regular file, owner, mode and link count before opening the database. Its `show` command opens read-only. Its `decide` command installs capture on its own connection before recording the decision transaction. An unjournaled owner-local database therefore acquires history only when an actual write installs capture. Previously recorded business rows keep their current values.
 
-## Existing experiments without the new history tables
+## Workspace publication records
 
-The importer also understands the existing service receipts and immutable records.
-It does not reject an old experiment solely because `replay_*` is absent.
-
-- Task operation receipts retain command inputs and results, including original IDs.
-  Contract revisions and finish intents supplement them. A finish becomes a completed
-  Task fact at `closed_at`, not merely when its request was accepted. Historical
-  dependency facts determine blocked/open status. A post-cutoff mutation receipt
-  excludes the corresponding new Task contract even when its row timestamp
-  precedes T.
-- Context retains immutable Material bodies and attachment bytes. Relation events
-  and operation receipts restore supersession, dispute and revocation at the selected
-  time. Successful publication, consumption or correction receipts establish when
-  the Material (including a replacement) was known to exist. An earlier recorded
-  use remains sufficient when the original publication receipt is missing and only
-  a later repeat survives. The importer reports an ambiguous receipt-less reference
-  with its table and ID. Corrections and consumption also use their own operation
-  receipts as a lower bound on visibility.
-- Judge result receipts identify when a verdict existed. A check requested before
-  the cutoff but completed afterwards cannot bring its later PASS into the restored
-  state.
-- Mission submission records retain creation and completion times. Acceptance after
-  the cutoff must not stop an earlier continuation; acceptance already present at
-  the cutoff remains a completed Mission. Without an independently recorded preparation
-  time, an old request completed after the cutoff retains only its initial request
-  metadata; its final Workspace/Material selection and result are not imported.
-
-The importer projects recorded facts; it never resends old commands to live services
-or reruns model/checker calls to recreate their outcomes. It checks required evidence
-and fails with an entity/table-specific history error when it cannot support a
-historical value. Final database values are not substitutes for missing old values.
-
-### Loading current services from reconstructed data
-
-The importer first projects or rewinds each service at T, then examines the schema
-in the staging copy. Current `task_records` and current Material tables can be used
-directly. The supported pre-cleanup format identifies Task records with
-`modern_task_records` and Materials with `source_task` and `source_execution`.
-The converter rebuilds the affected tables using the current schema in one local
-transaction and verifies foreign keys before commit. The archived Judge schema is
-compatible. `services.<domain>.schema_conversion` in `resume.json` records whether
-conversion occurred and any adjustments.
-
-Task IDs, specification hashes and bound checker identities survive conversion.
-The importer recomputes the duplicate-proposal key from the restored contract,
-using the historical summary as the trusted-owner default for a missing gap.
-Task prerequisites become `depends_on` relations. An old proposal-origin relation
-is omitted from the new dependency set. The importer records state mappings,
-including archived Task `CANCELLED` to current `CANCELED` and `SATISFIED` to
-`DONE`. Unfinished ownership then goes through handoff. An unsupported Task state,
-active structural dependency on a Material or CheckResult, or retired completion
-requirement fails with `REPLAY_SCHEMA_INCOMPATIBLE` and the affected entity.
-
-Material content, hashes, attachment bytes and correction history survive. The
-converter maps archived producer fields to `producer_task_id` and
-`producer_execution_id`. Archived classification and evidence fields are stored
-under `provenance.historical_metadata` in the converted database. Current public
-views expose the current Material contract. Where an archived value has no
-recoverable history, the projector returns the table and entity in its error.
-Legacy receipts use their recorded times. They have no independent SQLite commit
-timestamp for the interval between the final receipt and commit.
-
-## Workspace history and main selection
-
-Every normal public Workspace commit now appends an immutable event under
+Every normal public Workspace commit appends an immutable event under
 `.swarm-history/`, including create, save, merge, freeze/unfreeze and request receipts.
+Each event records its sequence, predecessor, commit time and public Workspace record.
 The existing `.swarm-journal.json` remains the interrupted-write intent. Finishing
-that intent durably writes the event and history head; recovery preserves an event
-already written before a crash instead of duplicating it.
+that intent durably writes the event and history head. Recovery preserves an event
+already written before a crash instead of duplicating it, including its original
+commit time. Events in the same millisecond retain their sequence order.
 
-For recorded history, the importer selects the committed event prefix and its public
-Workspace record. It creates a new repository containing only the then-visible
-revisions and their reachable Git objects. Past unmerged saves remain available for
-Material references; future revisions and receipts are excluded. The new repository
-supports ordinary subsequent save and merge operations.
-
-For old Workspaces, immutable revision metadata and main's first-parent ancestry can
-identify an earlier main. A newer save is not necessarily main. This path reports
-that old revision timestamps describe creation rather than an independently recorded
-publication commit. Old freeze state and undated request attempts are handled as
-new-run ownership state, not guessed from the final Workspace record. Missing Git
-objects, ambiguous ancestry or missing committed history produce explicit errors.
-
-## Fresh-run handoff
-
-After reconstructing the historical facts, the importer performs a separately
-recorded handoff in the destination:
-
-- Old Bots no longer occupy Cores, and unfinished Executions no longer own Tasks.
-  Their public provenance remains. Accepted finish intents can be finalized as part
-  of this handoff; this is recorded as a new import action, not backdated to the cutoff.
-- Completed/cancelled Tasks and real dependency blocking remain. Services recompute
-  eligibility using the restored public facts before new takes.
-- In-flight checks/submissions with no historical terminal result are marked as
-  interrupted. Old peer phases, gates, notifications and observer delivery state
-  are not replayed into live provider calls. Every private Execution Workspace
-  request and state row is cleared, including previously completed save receipts.
-  Public files and their public receipts come from the restored Workspace. Checker
-  environment preflight starts fresh.
-- An already accepted Mission is rejected as a continuation starting point. Its
-  acceptance is not silently removed.
-
-The public reconstruction and this operational handoff are distinct in `resume.json`.
-That private file records the source, requested time, per-service history mode,
-Workspace history selection, inherited counts, warnings and changes made for fresh
-ownership. The report includes inherited Tasks under `protocol.initial_task_count`;
-`run.dynamic_task_count` and `run.progress_evidence.proposed_task_count` count new
-proposals. `project.task_count` is the Mission total. Inherited Materials and newly
-published Materials have separate counts. Consumption by a historical Execution
-is counted in `inherited_material_consumption_count`. The current run's consumption
-list and count cover new Executions, including their use of inherited Materials. The start event is
-`mission_resumed_from_history`.
+The current Workspace APIs read a named immutable revision or current main.
+Saving a new revision leaves main at its earlier revision until an explicit merge.
+`readWorkspaceHistory` reads the committed event chain and validates consecutive
+sequences, predecessor identity, monotonic timestamps and the final history head.
+A missing event or inconsistent head raises `REPLAY_HISTORY_INCOMPLETE`.
+Reading and recovering the current Workspace use its existing repository and
+publication intent. Historical experiment assembly and timestamp-selected copies
+are outside these entry points.
 
 ## Verification seams
 
-The automatic-history tests cover overwritten/deleted rows, binary data, transaction
-rollback, a cutoff during a transaction, replacement, quoted savepoints, prepared
-control statements and source preservation. Legacy tests exercise real Task/Context/
-Judge APIs before reconstructing their old-format outputs. Workspace tests cover
-save versus main, missing history, crash recovery, excluded future Git objects and
-new writes after restoration. Resume integration tests reconstruct a completed
-fixture and bind four distinct new Executions on the four Cores. Each Bot can read
-the inherited Material. A zero-timebox runner probe checks independent-service
-composition and new-run accounting without model calls. Paid research outcomes require a separately authorized run.
+Real SQLite tests inspect typed before/after images, binary attachments, 64-bit integers, transaction markers, rollbacks, shadowed savepoints, prepared control statements, replacement and primary-key changes. A failed commit followed by repair keeps a single committed transaction boundary. Read-only transactions and empty SQL tails keep SQLite's ordinary behavior. Service constructors install capture automatically, runtime-only tables stay excluded, and schema changes clear only incompatible row history. Independent owner-local manual-review CLI tests verify a complete committed decision image, current Mission acceptance, read-only `show`, and capture installed by `decide`. Workspace publication tests cover save versus main, freeze/unfreeze receipts, ordered events, gaps and recovery after an event is written before its head.
 
-Sources: [database history](../../src/replay/service-history.js),
-[legacy projector](../../src/replay/legacy-service-state.js),
-[schema conversion](../../src/replay/resume-schema.js),
-[Workspace replay](../../src/replay/workspace-history.js),
-[resume preparation](../../src/replay/resume-experiment.js),
-[runner](../../src/benchmark/putnam-runner.js).
+Sources: [database history](../../src/replay/service-history.js), [Workspace repository](../../src/runtime/workspace-repository.js), [database regressions](../../test/service-history.test.js), [manual-review regressions](../../test/replay-manual-review.test.js), [Workspace publication regressions](../../test/workspace-publication-history.test.js).

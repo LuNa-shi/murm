@@ -1,6 +1,6 @@
 # 11. Durable records, process state and complete schemas
 
-This chapter separates persisted facts from live-process state, and provides every exported SQLite schema for the implementation pinned in [Architecture INDEX](INDEX.md). A restarted process can reconstruct facts that were committed to a database; it does not automatically recreate an in-memory Pi process, bound Core, pending callback or Sandbox job.
+This chapter lists the exported SQLite schemas for this tree. A restarted process can reconstruct committed facts from the database. Pi processes, bound Core state, pending callbacks and sandbox jobs have separate lifecycle and recovery rules. [Source coverage](12-code-coverage.md) · [Execution and recovery](02-execution.md)
 
 ## Ownership and persistence map
 
@@ -12,10 +12,11 @@ This chapter separates persisted facts from live-process state, and provides eve
 | MissionWorkspace | Public Mission Git repository, immutable numeric revisions, main, merge/freeze receipts and index | Unsaved guest edits and live checker work |
 | Workspace Manager | File content plus `.swarm/workspace.json`, revision/checkpoint metadata; local Git commits/refs are separate filesystem history | Live process working memory and unsaved shell edits |
 | Observation Store | Experiment registry, ordered events, operator payload, redacted Agent payload and payload hash | SSE connections, event-emitter subscriptions, server caches and client projection |
+| Core model gateway | Runtime policy pin, Bot request attempts, observed usage, bounded HTTP diagnostics and eligible replay receipts | Bot credentials and live HTTP transport |
 | Registry/Bridge | Manifest/profile hashes can be recorded in run metadata; source/bundle files define defaults | Registered adapters, readiness cache, Bridge token, current binding, deferred lifecycle callback |
 | Sandbox | Registered Bots publish files through explicit public save; compatibility paths retain checkpoint/progress | Container/process state, background job handles; cleanup and saving are separate steps |
 
-Production uses `project.sqlite` for Task/Mission/Workspace coordination, `context.sqlite` for Material state, `judge.sqlite` for diagnostic checking and `model-budget.sqlite` for model admission. The formal CLI injects a separate persistent observation database; only the library fallback colocates observations with Task. Each service owns its connection/schema. Independent peers exchange explicit HTTP commands and receipts. The Task-owned durable gate orders revocation against Context commit and actual Judge spawn; unknown outcomes remain fenced until exact reconciliation. Resource-unit ownership survives Judge crashes independently of the in-memory checker promise. Current service compositions use the configured local or independent service boundaries. See [Services](04-services.md#independent-contextjudge-deployment) for order, bounds and cleanup.
+Production uses `project.sqlite` for Task/Mission/Workspace coordination, `context.sqlite` for Material state, and `judge.sqlite` for diagnostic checking. Core creates one owner-private SQLite ledger per configured model alias under the Runtime's `model-access` directory. The alias's SHA-256 determines its filename. Each service owns its connection and schema. Independent peers exchange explicit HTTP commands and receipts. The Task-owned durable gate orders revocation against Context commit and actual Judge spawn. Unknown outcomes remain fenced until exact reconciliation. Resource-unit ownership survives Judge crashes independently of the in-memory checker promise. Current service compositions use the configured local or independent service boundaries. See [Services](04-services.md#independent-contextjudge-deployment) for order, bounds and cleanup.
 
 The Task-owned `service_commit_gate` holds one unresolved exact command and digest; `service_commit_events` retains notification delivery work. Context owns `context_peer_receipts` for terminal gate outcomes. Judge owns `judge_peer_phases` for one-shot phase/generation receipts. The private `judge-checker-resources.ndjson` ledger names only allocated/settled systemd resources and is fsynced before launch. These are recovery records, not new research entities.
 
@@ -64,7 +65,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Automatic service history
 
-Source: [src/replay/service-history.js](../../src/replay/service-history.js); source SHA-256: `3ae15de790367396c5890c2ba97e2e2607e4bf1d3d9467cae3116158332bf67a`.
+Source: [src/replay/service-history.js](../../src/replay/service-history.js); source SHA-256: `135cc4ffcaa4a0995c094cbe92e7fae116e7726bbe30c81c915989546dca9c28`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS replay_tables (
@@ -136,36 +137,24 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 );
 ```
 
-### Model budget gateway
+### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `ec5f264aedaccd2d2e86a542bb0e5b5d69c757ce7d7075c194343c48baabb76b`.
+Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `4e0d76364251aafc56452c59d8b7665507448196233228afe906fc604acf9ce0`.
 
 ```sql
-CREATE TABLE IF NOT EXISTS responses_budget_policies (
-        mission_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS runtime_model_policies (
+        runtime_id TEXT PRIMARY KEY, policy_digest TEXT NOT NULL
       );
-      CREATE TABLE IF NOT EXISTS responses_budget_attempts (
-        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
-        phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER NOT NULL, output_tokens INTEGER NOT NULL,
-        cost INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0,
-        state TEXT NOT NULL, reason TEXT, receipt BLOB,
-        started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
-        upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
-        upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
-        PRIMARY KEY (mission_id, bot_id, request_id)
-      );
-      CREATE TABLE IF NOT EXISTS responses_timed_attempts (
-        mission_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
+      CREATE TABLE IF NOT EXISTS runtime_model_attempts (
+        runtime_id TEXT NOT NULL, bot_id TEXT NOT NULL, request_id TEXT NOT NULL,
         phase TEXT NOT NULL, fingerprint TEXT NOT NULL, input_tokens INTEGER,
         output_tokens INTEGER, cost INTEGER CHECK(cost IS NULL), settled INTEGER NOT NULL DEFAULT 0,
         state TEXT NOT NULL, reason TEXT, receipt BLOB,
         started_at_ms INTEGER NOT NULL, deadline_ms INTEGER NOT NULL, upstream_request_id TEXT,
         upstream_status INTEGER, upstream_content_type_valid INTEGER, upstream_body_present INTEGER,
         upstream_rejection_kind TEXT, upstream_retry_after_seconds INTEGER,
-        PRIMARY KEY (mission_id, bot_id, request_id)
+        PRIMARY KEY (runtime_id, bot_id, request_id)
       );
-      CREATE INDEX IF NOT EXISTS responses_budget_scope
-        ON responses_budget_attempts (mission_id, bot_id, phase);
 ```
 
 ### Mission submission coordinator
@@ -205,7 +194,7 @@ CREATE TABLE IF NOT EXISTS mission_final_check_policies (
 
 ### Owner-local manual Mission review
 
-Source: [src/runtime/manual-mission-review.js](../../src/runtime/manual-mission-review.js); source SHA-256: `91bd77a9dcf425b1bd201c60924856944ad4e69baf99c40dab4e2b039c120d58`.
+Source: [src/runtime/manual-mission-review.js](../../src/runtime/manual-mission-review.js); source SHA-256: `89b60230346c38dbf73a86e277950448385383f2e66ed3452518ea3d7d36d4bd`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_manual_reviews (
@@ -222,7 +211,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `5ad931cde9a7cbdab349a7c39a1ce1c8091834c8650d0ae20d81535e0be8172c`.
+Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `949e13fe701ffcf693bfba1409fadcd80460fb21119f4de52a404931ee79922a`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -776,7 +765,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `d0376ed0cbfa601807fe04c9eaee4e1ca8a58e016c0e50c3cb202aeeb661b5bb`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `a80936319ad9cfdd0ceca51dbc9725ce1ba8ce0322443f45ac4af9468a9e7c8e`.
 
 #### mission_final_check_active
 

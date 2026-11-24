@@ -40,6 +40,7 @@ export class RemoteJudgeService {
   async #lifecycle(input) {
     const call = this.calls.get(input.call_id);
     if (!call) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge stage does not belong to an admitted coordinator request');
+    call.assertAuthorized?.();
     if (input.action === 'queue_status' && input.generation === this.generation) {
       const execution = this.taskService.getExecution(call.envelope.execution_id);
       return { authority: captureServiceAuthority(this.taskService,
@@ -52,6 +53,7 @@ export class RemoteJudgeService {
     const key = `${input.sequence}:${input.phase}`;
     if (call.stages.has(key)) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Judge phase cannot be started twice');
     const admission = this.gate.acquire(() => {
+      call.assertAuthorized?.();
       const execution = this.taskService.getExecution(call.envelope.execution_id);
       const envelope = { ...call.envelope, state_version: execution?.state_version ?? call.envelope.state_version };
       return { service: 'judge', call_id: input.call_id, generation: this.generation, phase: input.phase,
@@ -69,17 +71,18 @@ export class RemoteJudgeService {
     return { completed: true };
   }
   setDependencyEventSink(listener) { this.dependencyEventSink = listener; }
-  dispatch(operation, input, envelope) {
+  dispatch(operation, input, envelope, { assertAuthorized } = {}) {
+    assertAuthorized?.();
     if (operation === 'get_check_result') return Promise.resolve(this.command({
       method: 'dispatch', args: [operation, input, envelope], call_id: randomUUID(), authority: captureServiceAuthority(this.taskService, envelope, { provenance: false, workspace: true }),
     }).result);
     if (operation !== 'workspace_check') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unsupported remote Judge operation');
-    const work = this.#check(operation, input, envelope);
+    const work = this.#check(operation, input, envelope, assertAuthorized);
     this.activeChecks.add(work);
     void work.finally(() => this.activeChecks.delete(work)).catch(() => {});
     return work;
   }
-  async #check(operation, input, envelope) {
+  async #check(operation, input, envelope, assertAuthorized) {
     const call_id = randomUUID();
     this.logger?.append({ event: 'judge.start', service: 'judge', operation_id: envelope.operation_id, target_task_id: envelope.task_id, transport: 'http-json' });
     let project = null;
@@ -88,8 +91,9 @@ export class RemoteJudgeService {
       const snapshot = await this.readProjectRevision({ workspaceId: input.source.workspace_id, revision: input.source.revision });
       project = { ...snapshot, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]) => [path, Buffer.from(bytes).toString('base64')])) };
     }
+    assertAuthorized?.();
     const authority = captureServiceAuthority(this.taskService, envelope, { provenance: false, workspace: true });
-    this.calls.set(call_id, { envelope, stages: new Set() });
+    this.calls.set(call_id, { envelope, assertAuthorized, stages: new Set() });
     try {
       const { result } = await callCoordinatorPeer({ url: this.url, token: this.token, actorRef: 'service:coordinator',
         operation: 'domain_command', timeoutMs: this.timeoutMs, input: { method: 'dispatch', args: [operation, input, envelope], call_id, authority, project } });

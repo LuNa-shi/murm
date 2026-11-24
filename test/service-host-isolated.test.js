@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
 import net from 'node:net';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 async function freePort() {
@@ -89,7 +90,7 @@ test('built-in service image includes the checker git dependency and prebuild en
 });
 
 test('service-host isolated mode owns one service database and HTTP manifest', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-isolated-service-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-isolated-service-'));
   const port = await freePort();
   const child = spawn(process.execPath, ['scripts/service-host.mjs'], {
     cwd: process.cwd(),
@@ -125,7 +126,7 @@ test('service-host isolated mode owns one service database and HTTP manifest', a
 });
 
 test('isolated hosts remain discoverable while Context fails closed without Mission authority, including after restart', async () => {
-  const root = await mkdtemp('/tmp/swarmenv-isolated-services-');
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-isolated-services-'));
   const ports = { task: await freePort(), context: await freePort(), judge: await freePort(), catalog: await freePort() };
   const urls = Object.fromEntries(Object.entries(ports).map(([id, port]) => [id, `http://127.0.0.1:${port}`]));
   const services = [];

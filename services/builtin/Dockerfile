@@ -4,7 +4,7 @@ WORKDIR /app
 RUN apt-get update \
   && apt-get install --no-install-recommends --yes ca-certificates git curl util-linux \
   && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json ./
+COPY package.json npm-shrinkwrap.json ./
 RUN npm ci --omit=dev --ignore-scripts
 COPY src ./src
 COPY scripts/service-host.mjs ./scripts/service-host.mjs

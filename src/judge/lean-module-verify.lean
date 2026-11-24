@@ -1,6 +1,13 @@
 /-
-The import/replay sequence follows LeanChecker.replayFromImports, distributed
-with Lean under Apache 2.0, copyright 2023 Kim Morrison and Sebastian Ullrich.
+Copyright (c) 2023 Kim Morrison. All rights reserved.
+Released under Apache 2.0 license as described in the file LICENSE.
+Authors: Kim Morrison, Sebastian Ullrich
+
+Modified in SwarmEnv: the import/replay sequence is adapted from
+LeanChecker.replayFromImports in Lean v4.33.1. This driver adds explicit input
+paths, frontend completion binding verification and JSON/axiom reporting.
+The exact upstream license is in lean-module-verify.LICENSE.txt; pinned source
+and modification details are in lean-module-verify.NOTICE.md.
 
 Recheck a locally elaborated module in a fresh process. Imported extensions and
 initializers are disabled. Only this module's safe declarations are replayed.

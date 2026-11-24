@@ -5,7 +5,6 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
-import { BOT_RESOURCES, BOT_PROTOCOL_VERSION } from '../src/agent/bot-contract.js';
 import { DockerBotDisk } from '../src/runtime/docker-bot-disk.js';
 import { openSandboxMissionKey, openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
 
@@ -15,8 +14,8 @@ const sandboxId = `disk-probe-${randomUUID()}`;
 const name = `sandbox-${sandboxId}`;
 const bot = { mission_id: 'mission:disk', bot_id: 'bot:disk', resource_key: 'bot:disk-resource' };
 const catalog = JSON.parse(await readFile(new URL('../services/opensandbox-agent/pi-models.json', import.meta.url)));
-const { assertBenchmarkModelPair } = await import('../src/agent/bot-model-access.js');
-const modelCatalogResource = await assertBenchmarkModelPair({ provider: 'gpt_proxy', model: catalog.providers.gpt_proxy.models[0].id, command: 'pi' });
+const { assertShippedModelPair } = await import('../src/agent/model-catalog.js');
+const modelCatalogResource = await assertShippedModelPair({ provider: 'gpt_proxy', model: catalog.providers.gpt_proxy.models[0].id });
 const request = async (route, payload) => JSON.parse((await docker('exec', name, 'node', '-e', `
   const [path, data] = process.argv.slice(1);
   const request = { headers: { authorization: 'Bearer diskprobe' } };
@@ -54,8 +53,14 @@ try {
     try { assert.equal((await request('/health')).ok, true); break; }
     catch (error) { if (attempt === 19) throw error; }
   }
-  const result = await request('/start', { command: '/bin/bash', args: ['-c', script], contract_version: BOT_PROTOCOL_VERSION,
-    resources: BOT_RESOURCES, project_quota: projectQuota, model_catalog_resource: modelCatalogResource });
+  await docker('exec', name, 'node', '-e', `
+    const fs = require('node:fs');
+    fs.mkdirSync('/opt/swarmenv/probe-bin', { recursive: true });
+    fs.writeFileSync('/opt/swarmenv/probe-bin/pi', '#!/bin/bash\\nexec /bin/bash "$@"\\n', { mode: 0o555 });
+  `);
+  const result = await request('/start', { command: 'pi', args: ['-c', script], contract_version: 'swarmenv-core-v1',
+    resources: [], system_prompt: 'Controlled filesystem policy probe', system_prompt_path: '/workspace/runtime/profile-prompt.txt',
+    env: { PATH: '/opt/swarmenv/probe-bin:/usr/local/bin:/usr/bin:/bin' }, project_quota: projectQuota, model_catalog_resource: modelCatalogResource });
   assert.equal(result.ok, true, JSON.stringify(result));
   assert.deepEqual(result.result.project_quota, projectQuota);
   assert.deepEqual(result.result.model_catalog_resource, modelCatalogResource);

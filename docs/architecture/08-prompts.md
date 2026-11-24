@@ -1,48 +1,44 @@
 # Prompts and model-visible instructions
 
-The current execution path has two immutable contracts: registered Swarm Bot and independent solver. Both use Pi's native `read`, `write`, `edit`, and `bash` tools. Swarm operations are typed CLI calls made through Bash. No Service-specific Pi tools, extension registration, SDK composition or Runtime bind-time prompt wrapper is loaded.
+## Phase 0005 Core
 
-## Resources and startup
+The generic backend uses the host's complete `Profile.prompt` verbatim. The trusted Worker writes it to `/workspace/runtime/profile-prompt.txt` and starts native Pi with `--append-system-prompt` pointing to that file. Pi provides the original tool instructions for `read`, `write`, `edit`, and `bash`. This path disables ambient extensions, skills, prompt templates and context files. Bot creation performs startup and readiness calls. A subsequent host `send` passes the entire supplied input string as the Pi RPC `prompt` message with the selected `steer` or `followUp` behavior. Core adds no template text to the Profile prompt or input. [Core Runtime](15-core-runtime.md) explains host assembly and [Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) explains the actual launch and send paths.
 
-`agentContract` in [bot-contract.js](../../src/agent/bot-contract.js) chooses the system addendum, protocol version and pinned resource hashes. Normal Bot mode includes `system.txt` and the four `plan-task`, `use-material`, `use-workspace`, and `finish-task` skill resources. Solver mode includes `solver-system.txt` and no Swarm skills. The OpenSandbox worker validates resource bytes and permissions, disables ambient resource discovery, and launches Pi with explicit native tools, system and skill paths. The system addenda append to Pi's own system input; repository files cannot reconstruct Pi/provider-owned rendering.
+Custom Service instructions reach a generic Bot when it runs `swarm service view <id>` or `swarm <service> [<operation>] --help` through native Bash. The Bridge derives the visible capabilities from the frozen Profile.services and registered manifest. The CLI composes the usage line with the chosen Service ID, manifest purpose, each allowed operation's description/help.when, side_effect/idempotent, serialized input/output schemas and declared errors. This is command output returned through Pi's Bash result, not an extra system prompt or independent model turn. Unrequested metadata is not automatically inserted into Profile.prompt. The full composition is in `src/cli/swarm-cli.js` and the actual dispatch/authorization path is described in [Core Runtime](15-core-runtime.md).
 
-A normal Session starts UNBOUND. After readiness, the benchmark sends `buildBotStartupMessage` with the durable Bot/Core/Session identity, Mission goal and acceptance conditions, Workspace main preview, budgets/deadlines, project boundary, available CLI Service directory and an explicitly incomplete eligible Task page. Values come from current Task/Runtime/Workspace state. The preview does not grant a writable Execution directory. Take prepares the actual pinned revision and returns its identity; when that differs from preview, the response requires rereading. Task-local instructions and completion contracts are ordinary public Task state, not a second system prompt. Repeated discovery refreshes state and marks the message as continued selection.
+The installed Notes Environment gives the writer and reader their role prompts at spawn. It sends one publication input to the writer. After the host verifies the write, it sends a retrieval input to the reader, verifies the read and sends a follow-up on the same reader. Each input uses explicit `followUp` through the host helper. The fixed key is `core-service-boundary`. The configured source observation is `review-input.json`, provided at spawn and read through native tools. The writer additionally receives `note-request.json` containing the fixed key and the observation as a JSON string field; its publication input explicitly uses `--input note-request.json` to preserve that field type. Notes exposes put only to the writer and get only to the reader. The complete role and turn text is generated from the host example. [Notes prompts](prompts/07-notes-environment.md)
 
-The startup directory contains CLI namespace names, permission summaries, manifests and documentation references from the configured Registry. Full optional Service documentation enters context when the Bot fetches it using Service metadata/help commands. Full skill text enters context when read through Pi's skill/native read path. Resource presence, a manifest hash or a composed example does not prove the model read its body.
+The fixed scaleMAS Environment stages the same peer prompt for all three Bots and sends a peer/cycle header, the host question and the cycle instruction through the exclusive `runInput` helper. Its complete text and dynamic field provenance are in [scaleMAS prompts](prompts/09-scalemas-environment.md); [the Environment chapter](19-scalemas-environment.md) describes ordering and failure gates.
+
+## Flat messages and Core startup
+
+[bot-contract.js](../../src/agent/bot-contract.js) composes the current Flat continuation, soft-closeout and domain notification messages and projects Service metadata into CLI namespaces. These helpers preserve Task/Execution guidance and authorization discovery; they do not assemble a system prompt or skill resources.
+
+The manager starts only `swarmenv-core-v1` with an explicit empty resource array. The Worker rejects former resource-based contracts and requires the direct `pi` command, Profile prompt text and the fixed Core prompt path. Core constructs native-tool and ambient-discovery flags; the Worker checks string arguments and stages the supplied prompt. Model-catalog hash/ownership checks and filesystem isolation remain separate guards. [Backend](16-pi-opensandbox-backend.md) explains this current path. Pi/provider-owned rendering remains outside the repository templates.
+
+The former registered Bot startup helper, fixed system addendum and four skills have been removed after their callers migrated. Their original text and version-bound evidence remain in Git history and research revisions. Current generated references document the executable Flat and Environment compositions below.
 
 ## Continuations, notifications and lifecycle feedback
 
-The benchmark only sends another bound turn after rereading the current Session, Bot, Execution, Mission stop gate and deadlines. Ordinary continuation uses `BOT_CONTINUATION_MESSAGE`; a reached soft-closeout boundary substitutes the closeout notice and `BOT_SOFT_CLOSEOUT_MESSAGE`. The same phase selection applies after compaction. Compaction is not a Workspace save, Material publication or Task delivery.
-
-Runtime delivers Task notifications to a live bound Session using `buildBotNotification`. Handoff warnings name the Execution and remaining deadline allowance. Material notifications identify producer, Material and notification IDs and require reading and explicit feedback. Dependency updates direct the Bot to inspect Task state. None grants ownership, establishes correctness or completes the current Task. Notification delivery can fail if the Session has closed; durable public state remains the authority on later reads.
+The Flat controller composes its durable handoff warning using `buildBotNotification` and admits it through its serialized `followUp` input path. It fixes the exact text and request identity before asynchronous admission; the Execution/deadline and notification ID come from durable Task state. The retained Runtime no longer dispatches Task notification inputs. The builder retains Material/dependency formatting, but the current Flat host has no automatic send path for those two variants. Handoff warnings name the Execution and remaining deadline allowance. Material notifications identify producer, Material and notification IDs and require reading and explicit feedback. Dependency updates direct the Bot to inspect Task state. None grants ownership, establishes correctness or completes the current Task. Controller admission can reject a stopped Bot; durable public state remains the authority on later reads.
 
 Bridge command responses include structured results/errors and lifecycle notices. Native Bash carries these back into the model conversation; the Bridge does not create a separate turn for a tool response. Workspace conflicts also write an ordinary README artifact: it becomes model input only when read. Judge results carry actual checker diagnostics; successful request transport is not proof acceptance. Fixed guidance fields are catalogued separately from dynamic Task, Material, provider and checker content.
-
-On historical continuation, the runner reads the restored Mission, Task page and public main for each fresh Bot. Its startup message sets `project.input_policy` to `original locked formalization and public research state reconstructed at the selected historical time`. A replacement Bot follows the same discovery send path. [Historical continuation](13-historical-resume.md)
-
-For the opted-in Seymour paper round, the launcher supplies the fixed `project.local_lean_tools` discovery field to every Bot. Its text is `After taking a Task, run lean-check --swarmenv-workspace PATH.lean to compile a module in your current project. Search /opt/mathlib-source/Mathlib with rg, and use #check in a local Lean file for exact signatures. The local check supplies feedback. Use swarm for shared Workspace and final Mission submission.` The launcher records the same text in the private launch inputs. The field is absent from ordinary launches.
-
-With `OPENAI_MATH_SEYMOUR_MATCHED_BRIEF=1`, the single-project Seymour paper launcher sets the Mission goal to `Prove the original Lean theorem in <problem_file> in the shared Workspace. Formalize the supplied manuscript in benchmark/paper.pdf (text in benchmark/paper.txt). The pinned Lean libraries are available offline through lean-check. Work autonomously, split work as you discover it, and merge checked Lean sources to main.` The target path comes from the verified fixture. The launcher records the rendered goal in `launch-inputs.json`. The runner stores it in the Mission and includes the Mission in every discovery prompt, including for replacement Bots. The discovery input policy names the pinned public manuscript. The initial Task list is empty, and Bots propose and take responsibilities through the existing Task flow.
 
 ## Complete text and reproducible source inventory
 
 | Reference | Contents |
 |---|---|
-| [System addenda](prompts/01-system-identity.md) | Complete Bot and solver resource text |
 | [CLI directory and provider documents](prompts/02-task-loop-and-tools.md) | Actual startup directory fixtures and available optional bundle documents |
-| [Benchmark turns](prompts/03-benchmark-turns.md) | Complete synthetic startup, continuation, compaction and notification bodies |
-| [Runtime notifications](prompts/04-runtime-messages.md) | Exact current notification builder output |
+| [Runtime turns](prompts/03-runtime-turns.md) | Complete flat continuation and soft-closeout bodies |
+| [Runtime notifications](prompts/04-runtime-messages.md) | Exact notification builder output and current versus unsent variants |
 | [Tool-result guidance](prompts/06-tool-return-guidance.md) | Fixed executable hint/remediation/guidance fields and delivery conditions |
-| [Bot skills](prompts/08-bot-skills.md) | Complete immutable skill resources |
 | [Source manifest](prompts/source-manifest.json) | Source hashes, extraction anchors, send sites and generated-body hashes |
 
 `generate-architecture-prompts.mjs` runs offline with explicit synthetic identities and timestamps. It enumerates repository `.prompt` send sites and instruction fields and fails when an unlisted source introduces one. Run `npm run docs:generate`, inspect generated and explanatory changes, then `npm run docs:check`. Fingerprints establish source alignment, not actual delivery or compliance. Actual claims about what a Bot saw require private Session/RPC evidence. Public reports must not contain raw conversations, proof candidates, credentials or personal paths. Full model request replay also needs external Pi/provider context and compaction state, which this repository does not capture as a canonical request.
 
 ## Phase-sensitive bound follow-up
 
-Both benchmark continuation paths call `buildBotContinuationMessage`; `runTurn` rereads the original E after `waitForReady` and replaces any earlier ordinary body if the durable soft boundary has been reached. A changed Session/E, stopping Core, non-RUNNING E, durable Bot other than ACTIVE or with a different E, or elapsed Bot hard deadline prevents the send. Registered compaction follow-up uses the same phase selector with the normal compaction text as its ordinary body. The selector reads only `handoff_deadline`, `handoff_reminder_sent_at` and current time; no model-written field decides the phase. The generated benchmark-message reference includes the complete closeout body. It directs save/publish/finish, forbids new proposals/apply/check/merge, and distinguishes accepted request replay from new work. It does not claim OS enforcement from a prompt alone.
-
-Trusted startup context includes the Bot’s actual `coordination_permissions`. Service-directory prose advertises the implemented Mission submission, checked merge and narrow correction/Task repair routes, with the applicable grants for submission, merge and Material correction. Open unowned Task revise/cancel instead use the UNBOUND and version guards described above. A soft-closeout continuation explicitly prohibits new Mission acceptance work as well as Judge/apply/merge work. Actual continuation dispatch also checks the durable Mission stop gate after Session readiness, so accepted Missions do not receive another research turn.
+The public-Core flat controller calls `buildBotContinuationMessage` using the Execution's durable handoff deadline and reminder state for an unfinished active Execution after a settled turn. Its identity, lease, fence, deadline and stop guards remain controller/domain responsibilities. The generated runtime-turn reference contains the complete fixed body. Closeout instructions direct save, publish and finish, and domain guards enforce which new contributions remain allowed.
 
 ## Lifecycle and result feedback
 
@@ -51,133 +47,83 @@ The registered Bot Bridge sends Chinese `notice` fields on the same CLI response
 | Branch | Input evidence and delivery |
 |---|---|
 | Take race, unknown response, changed initial revision | The Task claim supplies the competing Execution/quota outcome. The CLI assigns and transmits a stable request ID before the HTTP call, and reports that ID when the outcome is unclear. A successful take compares the recorded preview with the revision that actually prepared the directory. |
-| Contribution rejected, selection expired, hard stop | The Bridge combines its authorized operation profile with the durable Bot/E state and deadline. The Task Service rejects early exit in an open Mission with remaining time. The Bridge returns the `discovery_required` phase and guidance to diagnose the public gap and propose work. Once the selection deadline elapses, an unbound Bot without a pending take can use the budget-exit path. A live request may receive the hard-stop response if the connection still exists. |
-| Save failure, dirty apply, conflicted apply | The response names a definitive Workspace save failure, or uses `dirty`/`active_writer` from a rejected apply before project replacement. Installed conflicts use the source revision and returned conflict paths. |
+| Contribution rejected, selection expired, hard stop | The Bridge combines its authorized operation profile with the durable Bot/E state and deadline. The Task Service rejects early exit in an open Mission with remaining time. The Bridge returns the `discovery_required` phase and guidance to inspect current public state and existing Tasks within the selection budget. Once the selection deadline elapses, an unbound Bot without a pending take can use the budget-exit path. A live request may receive the hard-stop response if the connection still exists. |
+| Save failure | The response names a definitive Workspace save failure and rejects claiming private files as delivered. Active-project apply guidance and conflict-alternative README production have been retired; legacy persisted install recovery sends no new model instruction. |
 | Merge check failure or moved main | The merge error carries the pinned main/source revision and checked-tree diagnostic, or the observed and actual main revisions from the failed compare-and-swap. The message includes the corresponding bounded recovery steps. |
 | Mission submission | The submit and submission-view responses include the fixed submitted revision and Material IDs, the durable verdict and, on failure, the observed current main and freeze owner. See [Mission submission](03-mission-task.md). |
 | Soft closeout and finish | The soft-closeout body names the E and the milliseconds remaining against its persisted deadline at composition. It is available in an already scheduled continuation or handoff notification. A finish response identifies the durable request and E admitted to closing before physical release. |
 
 The `use-workspace` skill directs ordinary local-proposition iteration to save a fixed revision and select `--check-mode lean-module --path P`. It explains that P selects a complete module and its dependencies, rather than an individual declaration within a multi-declaration file, and permits independently useful lemmas/definitions to be organized in imported modules. A revision-only call still requests full-project diagnostics; a full-mode path binds Task delivery evidence. Local receipts do not satisfy a full delivery requirement. It explains imports under the locked source directory, actual module coverage, warnings and the separate Mission proof check. The skill remains an image resource discovered through the existing manifest and sent through the existing skill-read path; it does not grant new authority or require a particular research decomposition. The command help distinguishes deployments with project checking from compatibility source-only deployments.
 
-### FLT10 Mission context
+### Flat take preview notice
 
-The benchmark runner retains the ordinary Swarm Mission goal template
-`Solve ${problem.id} through independent, shared Task work.` Explicit solver mode uses
-`Solve ${problem.id} independently.` Both append the same optional instruction pointer. When `instructions_path` is configured it appends ` Read ${config.instructions_path} for the benchmark task and input contract.` This goal enters the same Mission
-and discovery context paths described above. The README is verified public
-Workspace input and explains the pinned original target, proof-placeholder
-restriction, complete compressed statement graph queries and safe definition
-references. It is not automatically expanded into every turn. No ContextSwarm
-Agent prompt, collaboration policy or scheduler instruction is imported.
-
-## Root-only benchmark task instructions
-
-The generic Mission goal appends `Read <instructions_path> for the benchmark
-task and input contract.` only when the benchmark config supplies that path.
-The value is validated during config loading. The startup composer includes the
-Mission goal in its ordinary discovery message; no new model send path or Core
-role assignment is introduced. The README body is delivered only if the Bot
-reads the corresponding Workspace file, and that read is ordinary tool evidence.
-For `flt10-subtree-v1`, the complete repository-controlled body is
-[the root-only task instruction file](../../benchmarks/flt10/subtree-instructions.md).
-Preparation replaces the single `{{target_path}}` field with the configured
-checkpoint path (`q20/Target.lean` for Q20) before hashing the public README. It permits new
-definitions/lemmas/modules, explains the existing save/check/integrate workflow,
-and states final correctness constraints without listing a decomposition.
-
-The complete root-only README template is:
-
-```markdown
-# Formal proof project
-
-Prove the target theorem in `{{target_path}}`. Its original mathematical statement
-and the supplied foundation are fixed. The initial proof contains `sorry`; this
-makes the starting project elaboratable but is not a completed proof.
-
-You may develop your own definitions, intermediate lemmas and Lean modules in
-the target directory and its subdirectories. Import those modules from the
-root proof as needed. Use public Mathlib and the supplied foundation; readable
-foundation source is under `benchmark/foundation/`. The Judge provides the
-pinned compiled dependencies. The Bot does not have a local Lean installation.
-
-Use Task to coordinate responsibilities and Material to share explanations,
-evidence and references to exact Workspace revisions and paths. Save your code
-before asking Judge to check a revision. Incomplete intermediate revisions can
-be used for diagnostics. Integrate the needed files into Workspace main before
-Mission submission; source compilation alone is not final acceptance.
-
-Final acceptance checks the unchanged mathematical target against its trusted
-challenge, checks proof assumptions, and replays the proof through the kernel.
-The final project must have no remaining proof holes or extra axioms. Private
-answers, previous runs and external network access are unavailable. There is no
-prescribed decomposition, list of helper lemmas or assignment of Core roles.
-```
-
-## Pass@K prompt delivery
-
-The generated [system reference](prompts/01-system-identity.md) includes the complete independent solver addendum, and [benchmark reference](prompts/03-benchmark-turns.md) includes its continuation and soft-closeout text. The adapter selects these only for explicit solver mode and verifies the pinned worker resource. Swarm's skills are not loaded. After the host binds the real Execution, the initial user prompt appends JSON containing `problem` and `target_path` from the verified fixture, the fixed `/workspace/project` path and the group deadline from run state. These are actual send inputs, using the same verified immutable resource contract. The next ordinary turns and compaction follow-up reuse solver continuation; soft closeout substitutes save-only guidance. No Task/Material tool instructions are sent by these solver paths.
-
-The Workspace skill also distinguishes the default 30-second CLI HTTP wait from the checker execution limit. Its 630000 ms example assumes an already-ready preflight, no queue wait and a ten-minute source allowance; queue/cold-preflight time is additional, and no client timeout extends lifecycle deadlines. This text is included through the same protected skill read path.
-
-## Native Agensh math team
-
-The pinned Agensh entrypoint renders its upstream collaboration template with worker identity, team size, channel and the four math fragments (focus, objective, work_cycle, delivery). The native router sends kickoff, idle and budget reminders through the ProgramBench lifecycle. The brief receives TASK, REPO, Mattermost IDs and TARGET_FILE from the verified seed. PAPER_BRIEF is empty by default. With the pinned Seymour paper it expands to ` Formalize the supplied manuscript in benchmark/paper.pdf (text in benchmark/paper.txt).` Snapshot text does not establish delivery. The native session archives and router state record actual turns. [Upstream template](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/prompts/agents.txt)
-
-### deadline_45m
+`src/environments/flat/prepare-inputs.js` composes one additional tool-result notice only when a host-recorded Task view preview differs from the authoritative public revision selected during take:
 
 ```text
-@all **45 minutes left.** Concentrate on integrating and checking existing work on the default branch. Land the open PRs; report any blockers.
+Execution ${execution.execution_id} starts from ${snapshot.revision}, different from preview ${preview.revision}; reread the affected project files.
 ```
 
-### deadline_5m
+The Execution ID comes from TaskService's accepted reservation; selected revision comes from MissionWorkspace.exportRevision; preview revision comes from the same trusted Bot's earlier Task view. Flat stores the notice with immutable Workspace input provenance. On successful take it travels through the Service-v2 response and original Bash tool result; it is not independently injected as a model message. Core prepare/grant consumes only canonical file bytes and never composes this notice. `flatResearcherProfile` forwards the host-supplied prompt unchanged and supplies readonly resource defaults; it adds no repository prompt template.
+
+### Flat controller messages
+
+The [generated flat reference](prompts/08-flat-environment.md) extracts the complete defaults from the Environment/controller sources and records their fingerprints and public send site.
+
+`src/environments/flat/controller.js` owns its default discovery input, sent only after coordinator domain readiness through public `Runtime.send` with explicit `followUp`:
 
 ```text
-@all **5 minutes left.** Merge ready work, verify the original theorem on main and report the final state.
+Read public Tasks and take suitable work. Continue in this Session after take.
 ```
 
-### delivery
+The default researcher Profile prompt in `src/environments/flat/environment.js` supplies the base text during Core assembly.
 
 ```text
-Commit the Lean sources to main. From the directory containing the original theorem, run lean-check Helper.lean before checking a module that imports Helper. Keep generated .olean files out of Git. The final checker rebuilds from source and checks the fixed declaration.
+Use the flat Services to discover, execute and truthfully finish Mission work.
 ```
 
-### focus
+Hosts can replace the base Profile text, discovery input or ordinary continuation through the host and controller settings. Without a trusted `snapshotProject`, the host appends the [generated Profile guidance](prompts/08-flat-environment.md) to either base prompt, omits private Workspace save and observation operations from the Profile, and selects the Material-oriented defaults for ordinary continuation, soft closeout and the handoff warning. The persisted Execution supplies the phase and the warning deadline. A host ordinary-continuation override still applies before soft closeout. The controller rechecks Task state and remaining budget before its public followUp send. Directed user text passes through the same controller with the chosen mode and request ID. For the complete default text in each case, see the generated Flat reference.
+
+The built-in Core Bot Service adds no child startup prompt or business result template. Its manifest help describes child admission, initialInput and pending cleanup; the Bridge exposes only permitted capabilities and the CLI renders the discovered text and schemas. Parent-supplied `input` goes unchanged through the shared Core input ledger with default steer or explicit followUp, after child identity/parentId and backend events are installed. The target Profile supplies the child's existing system prompt composition. Core does not copy the parent conversation, bindings or secretEnv, and does not automatically send child output back to a parent. See [built-in Bot control](15-core-runtime.md#built-in-bot-control).
+
+## Public-Core Agensh peer
+
+`createAgenshEnvironment` installs the following complete Profile prompt before spawn. It is passed through the ordinary Core Worker/native Pi system-prompt path. It is not a turn input.
 
 ```text
-proving the original theorem
+You are one Agensh peer in a persistent private project directory. Work only on your unique WORK_BRANCH. Use Bash and swarm Service commands; discover each operation with swarm <service> <operation> --help. Clone RUN_REPOSITORY into the current project root (git clone "$RUN_REPOSITORY" .), then preserve this checkout across turns. Use your native Git credential helper; never print or persist credentials. Read the run issue, publish useful facts and detailed evidence to the shared board, and notify the run channel. Board CLAIM is a soft coordination note, not an exclusive Task lease. Follow-ups and configured idle-work batches arrive only after your current turn settles. There are no mid-turn notices or native automatic continuation. Do not merge or change main. Follow the fixed acceptance input and report actual results.
 ```
 
-### idle
+The nonsecret dynamic environment fields come from the successfully prepared run: RUN_REPOSITORY is its credential-free Gitea repository URL; WORK_BRANCH is `peer-${runId}`; GITEA_USERNAME and all Git author/committer name/email fields derive from the provisioned peer username. RUN_OWNER/RUN_REPO/RUN_ISSUE identify the fixed run repository and issue; RUN_CHANNEL/RUN_BOARD identify its actual channel and board. Only the peer Git token is supplied as secretEnv; it is not composed into a prompt. Core supplies its regular v2 Bash discovery/tool guidance.
 
-```text
-Inspect current main and the live board, find an open proof obligation and choose the next piece of work.
-```
+The opt-in controlled acceptance explicitly sends these two complete turn inputs, in order after each accepted/started/completed wait: `FIXED_AGENSH_PEER_FIRST` and `FIXED_AGENSH_PEER_SECOND`. The local fixture in `test/fixtures/agensh-peer-upstream.js` supplies fixed Bash function calls and final outputs `PEER_1_OK` / `PEER_2_OK`; these are controlled verification responses, not evidence of hosted model reasoning. Ordinary hosts supply their own explicit runInput text, which is not reconstructed from this template. No extra startup, queue, nudge, rejection, continuation or mid-turn notice prompt is added by this Environment. Shared runInput errors remain host-side errors; Core lifecycle/CLI error responses retain their documented paths.
 
-### idle_delivery
+### Serial Agensh router batch composition
 
-```text
-Verify and merge completed work on the default branch, resolve integration issues and report blockers. Keep the current scope.
-```
+The routed entrypoint adds a separate host-owned input path; the direct T13 entrypoint still forwards only the host's explicit text. [Complete generated peer/router texts](prompts/08-agensh-environment.md) preserve the Profile prompt, serial batch instruction and optional idle nudge. `createAgenshRouter` composes each actual turn as the complete `routerInstruction`, a newline, and JSON `{batchId,source,eventId,kind,text,context}`. `batchId` derives from the host-ingested source/event/target identity. Source text is the targeted host input, a newly observed Gitea comment or Mattermost post, or the fixed configured nudge. Context is the run board's current rendered view for the trusted worker, read immediately before that batch. All dynamic fields are data; no upstream identity or credential is interpolated into the instruction. The router calls the existing Environment runInput helper, which explicitly sends followUp to the same native Session. Failed readiness or context loading sends no batch. Unknown/cancelled submission fences subsequent sends; its diagnostics stay host-side. No independent notification or busy-steer channel is added.
 
-### objective
+The team entrypoint in `src/environments/agensh/team.js` composes the same complete peer Profile prompt for every `peer-<key>` Profile and the same serial instruction for each peer's exclusive router. Dynamic `WORK_BRANCH` now comes from the selected provisioned peer's branch, with the original single-peer `peer-<runId>` fallback. Repository, channel and board fields are shared; worker identity, account author fields, bindings and secret Git environment remain peer-specific. All identities and subscriptions are installed before kickoff. Targeted upstream text and current board rendering enter only the selected router's JSON batch; its call through shared runInput sends explicit followUp to that Bot's original Session. The team adds no independent prompt, continuation or failure text. The opt-in two-peer fixture supplies fixed stage markers and controlled Bash responses, described in the Environment chapter; these are verification inputs rather than ordinary production prompts or hosted model evidence.
 
-```text
-Prove the original declaration in the seeded Lean file. New helper modules can be added under the directory containing the declaration. Keep the original statement and trusted assumptions. The external checker grades the delivered main tree.
-```
+The T14 opt-in controlled native test uses fixed texts `T14_FIXED_KICKOFF`, `T14_FIXED_EXTERNAL`, and `T14_FIXED_USER`. The middle text is posted to the actual run PR and discovered through the HTTP subscription. The third marker is prefixed by the provisioned peer username in an actual Mattermost mention, discovered by that same subscription. Its three scripted Bash calls and outputs `ROUTER_1_OK`/`ROUTER_2_OK`/`ROUTER_3_OK` are local fixture responses, not hosted reasoning. The gate disables nudges; bounded nudge behavior is checked deterministically.
 
-### task_brief
+## Subagents host and round-result inputs
 
-```text
-Prove the original Lean theorem in ${TARGET_FILE} in ${REPO}.${PAPER_BRIEF} The pinned Lean libraries are available offline through lean-check. Work autonomously, split work as you discover it, and merge checked Lean sources to main. Mattermost team ${MM_TEAM_ID}, channel pbench-task ${TASK_CHANNEL_ID}.
-```
+The [subagents prompts](prompts/08-subagents-environment.md) contain the complete default parent/child Profile text and every four-to-eight-Bot parent prompt/default goal variant. The host-frozen `childCount` selects `parentPromptFor` and, if no goal is supplied, `initialGoalFor`; count 2 preserves the original texts verbatim. The host stages those role prompts without composing a shared conversation. It sends configured `goal` and up to four `supplements` through the controller with fresh `user-N` identities and explicit `followUp`. The parent creates child input and followup text through native Bash Bot Service calls, subject to Profile and direct-child authorization; those future model-authored strings are not repository templates.
 
-### work_cycle
+The controller receives Core events synchronously and copies each event before enqueueing work. A child result body is `JSON.stringify({childId, eventSeq, outcome, output?, error?, failure?})`. IDs and sequence come from the event, the relationship from public `runtime.get`, and output/error from that round's event snapshot. Fatal/exit fallback uses outcome `failed` and `failure` equal to `error` or `exit`. Those messages are actually submitted through `runtime.send(parentId, body, {requestId: child-result:<botId>:<seq>, mode: followUp})`. The delivery record separates accepted/unknown admission from settled parent text; multi-source parent events never prove completion of one specific input. Closing or unknown admission retains undelivered results and sends no replacement message. The final checked text preserves references and quotes from `childCount + 1` delivered child snapshots covering all configured children and one original child followup. Each parent settled observation freezes which deliveries had already been dispatched; a late accepted receipt may confirm that eligible send, while future dispatches cannot qualify the old text. This ordering rule does not establish which parent input a turn completed. Provider/Pi prompt additions and private native transcripts remain outside the generated repository reference.
 
-```text
-1. Read the current main and explore an open mathematical question.
-2. Announce the area you are taking as a CLAIM on the shared context board.
-3. Start from current main and develop the proof or a reusable lemma.
-4. Run lean-check on the changed modules and their dependents. Check the actual premises of each statement.
-5. Push, open a PR and merge to main. If refused, merge latest main into your branch, re-check and push again.
-6. Share a PATCH_SUMMARY with files, idea and evidence on the board, then choose the next area.
-```
+## Fixed lead-helper instructions
+
+The lead and helper Profile prompts and four fixed round instructions are fully reproduced in [the generated lead-helper reference](prompts/08-lead-helper-environment.md). The Environment serializes each instruction with the host goal/supplement or actual helper IDs and invokes the shared exclusive followUp helper. Helpers must read the public direction and keep permanent owner identities; the lead converts actual read feedback and the trusted user input into a public adjustment. This path has no busy steer, dynamic expansion or implicit continuation. See [the complete Environment flow](20-lead-helper-environment.md).
+
+
+The separate opt-in genuine Kimi cooperation fixture adds host-authored acceptance goals documented in the [complete generated Agensh prompts](prompts/08-agensh-environment.md). A's initial input combines liveCommon, liveAInitial, B's trusted username and a fresh seed; B's combines liveCommon, liveBInitial and A's username, omitting that seed. The external Gitea comment names A and appends liveAUser. Subsequent negotiation/agreement messages are model-authored upstream data. The normal router wraps these texts with its existing serial instruction and JSON identity; its injected context is only a fixed reminder to use Board Services, preserving the explicit seed-read check. These test-owned instructions do not change the production Profile or router prompt, and the fixture supplies no Bash function calls or final model responses.
+
+## Staged host workload composition
+
+scaleMAS obtains an optional `questionForCycle({peerIndex,botId,round,signal})` from the trusted host, validates a nonblank string of at most 8192 UTF-8 bytes, and sends it as `cycleQuestion` between the actual peer/cycle header and the unchanged `cyclePrompt`. Its default remains the static host question. This changes no Service grants or automatic turns. The separately supplied programming module controls only its task text and host validation; its exact source/hash and actual delivery belong to the reviewed run's private evidence. The host never executes model-supplied program source.
+
+The optional lead-helper `runStage` path uses the same four source round instructions with these complete suffixes: initial lead: ` Use exactly the supplied role-to-path map for this stage.`; later lead: ` Cite exactly the previous stage feedback_ids and use the supplied new role-to-path map.`; each helper: ` Deliver only your supplied path and publish one new feedback note.` The host serializes `stage` (0–3) and its copied role-to-path `paths` map in every payload, adds actual helper Bot IDs and the host goal only to initialization, and adds the host supplement, registered `lead-stage-N` user identity and the preceding three verified task-feedback note sequences only to later lead inputs. Helpers receive the initial or followup source instruction according to the group number. These payloads are sent through the same `runInput` explicit followUp route, under unique `stage-N-role` request IDs, only after the stage admission and prior-direction guards. The configured system prompts and native tool discovery remain the generated lead/helper texts; no instruction is injected during the host's idle wait. Stage receipts record actual input acceptance and settlement identities separately from these composed templates.
+
+The optional lead-helper setup path sends each original role a `prepare-stage` JSON input with `ready_note` equal to `Ready for staged workload: RUNTIME_ID:ROLE:BOT_ID`, using actual host-bound values, and the complete instruction: `Read the public Board, verify your own trusted role and Bot identity, then publish exactly ready_note as a public unscoped Board note. Do not claim work or create an artifact. This is setup only.` Each unique `prepare-stage-role` request uses the same explicit followUp helper and finite stage signal. The host accepts only actual new Board reads/notes from that Bot; no setup text is counted as a business delivery.
+
+The generated lead-helper reference reproduces the complete staged corrective input composition. Only an explicit STAGE_CANDIDATE_REJECTED checker response enables this path after a helper input has completed. The original helper receives the original task with the derived new delivery path substituted, plus trusted stage, attempt, subtask ID and path map. Its instruction preserves the rejected task/Git/source/stdout, supplies no reference answer, and uses existing create/claim/complete operations. The exclusive followUp request ID is `stage-S-helperR-correction-N`; it keeps the original absolute stage cutoff. Unknown, queued, failed, malformed and checker-unavailable paths do not create a correction. Actual rejected/accepted admissions are retained separately from these source templates.

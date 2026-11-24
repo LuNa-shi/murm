@@ -36,7 +36,7 @@ An explicit request to invoke a skill permits its normal in-scope operations; it
 ## Verification, evidence, and closeout
 
 - Pin the implementation commit; validate affected Agent/Bridge/Service/Runtime paths, authorization, idempotency, fencing, checker integrity, privacy, and cleanup as relevant. Run focused tests and, for code changes when available, `npm test` and `git diff --check`. Report skipped checks honestly.
-- Formal research runs follow [the experiment workflow](docs/workflows/experiment.md) and [experiment-analysis skill](.codex/skills/experiment-analysis/SKILL.md). Ordinary in-scope tests and diagnostic probes do not require an EXP ID or individual report.
+- Formal research runs follow [the experiment workflow](docs/workflows/experiment.md) and [historical evidence guidance](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/.codex/skills/experiment-analysis/SKILL.md). Ordinary in-scope tests and diagnostic probes do not require an EXP ID or individual report.
 - At meaningful milestones, link commits, tests/probes, PR review findings, real-run evidence, and remaining gaps **to the GitHub Issue/PR**; the Issue/PR remains the record of progress. Do not require human review after every debugging iteration.
 - Update affected [Architecture](docs/architecture/INDEX.md) in the implementation PR, ready for review with the code. Reconcile the complete affected flow at Issue/stage closeout; documentation is part of completion. Never describe an unverified proposal as accepted or a passing tool call as scientific progress.
 - Use plain **Results / Analysis / Next steps** in formal research reporting. Keep observations distinct from interpretations and unapproved recommendations.

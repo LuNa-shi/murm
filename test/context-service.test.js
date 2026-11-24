@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TaskService, ContextService, makeEnvelope } from '../src/index.js';
+import { TaskService } from '../src/task/task-service.js';
+import { ContextService } from '../src/context/context-service.js';
+import { makeEnvelope } from '../src/protocol/envelope.js';
 
 function fixture(t) {
   const tasks = new TaskService();

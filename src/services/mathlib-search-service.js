@@ -186,7 +186,7 @@ export function createMathlibSearchManifest({
       // unbound identity may inspect service help but must not run searches.
       requires_binding: true,
       help: {
-        when: 'Use before proposing a proof or API research Task; search by a declaration name or Lean type pattern and verify the result in the locked project.',
+        when: 'Use when investigating a proof or API research route; search by a declaration name or Lean type pattern and verify the result in the locked project.',
         ref: 'service://mathlib-search/skill',
         text: [
           'Purpose: find Lean/Mathlib declarations in the locked project.',
