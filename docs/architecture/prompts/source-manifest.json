@@ -59,7 +59,7 @@
     },
     {
       "path": "examples/subagents-environment/hour.mjs",
-      "sha256": "8b52a1f317ea53f2d8a307c22ff9b777cfa129fb7d443648b06348429df7ece9"
+      "sha256": "198a2fa18a8f141483420e4285fa65f501c3887778817cfd5aec919f6880a24d"
     },
     {
       "path": "examples/subagents-environment/main.mjs",

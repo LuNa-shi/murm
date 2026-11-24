@@ -97,7 +97,7 @@ export async function runSubagentsHour({backend,image,model='default',outputDir,
             return {childId,child:peer,prompt};
           });
           const input=JSON.stringify({stage,tasks,instructions:hourStageInstructions});
-          const result=await stages.runStage({stage,input,timeoutMs:Math.min(limits.turnMs,started+(stage===3?HOUR:(stage+1)*900_000)-time()),signal:live,
+          const result=await stages.runStage({stage,input,timeoutMs:Math.floor(Math.min(limits.turnMs,started+(stage===3?HOUR:(stage+1)*900_000)-time())),signal:live,
             async verify({index,output}){
               let value;
               try{({value}=readSubagentsStageResult(output));}catch{return false;}
