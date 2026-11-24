@@ -21,6 +21,7 @@ const capability = (name, operation, input_schema, side_effect='write') => ({nam
 // Preserve the published domain input contracts while Core supplies trusted identity.
 const catalogSchemas = new Map(listTools().map(tool => [tool.operation, tool.parameters]));
 const catalogCapability = (name, operation, sideEffect='write') => capability(name, operation, catalogSchemas.get(operation), sideEffect);
+const liveWorkspaceOperations = new Set(['workspace_save','workspace_status','workspace_current_diff']);
 const definitions = {
   workspace:[
     catalogCapability('merge','workspace_merge'),
@@ -251,7 +252,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       // A fresh adapter can learn a different durable Workspace fingerprint
       // only by dispatching. Its rejected candidate must not shadow that
       // original request when the caller retries the correct operation.
-      if(service==='workspace' && ['workspace_save','workspace_status','workspace_current_diff'].includes(operation) &&
+      if(service==='workspace' && liveWorkspaceOperations.has(operation) &&
           error instanceof WorkspaceRequestMismatchError && requests.get(key)===request) requests.delete(key);
     });
     const result=await work;
@@ -262,7 +263,8 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     return structuredClone(result);
   }
   const registrations=Object.entries(definitions).filter(([id])=>id!=='judge'||judgeService).map(([id,capabilities])=>({
-    manifest:{id,title:`Flat ${id}`,purpose:'Publish and read durable flat results with actual Task ownership',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(cap=>cap.operation!=='workspace_merge'||merge)},
+    manifest:{id,title:`Flat ${id}`,purpose:'Publish and read durable flat results with actual Task ownership',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(({operation})=>
+      (operation!=='workspace_merge'||merge) && (!liveWorkspaceOperations.has(operation)||typeof snapshotProject==='function'))},
     adapter:{invoke:request=>invoke(id,request)},
   }));
   return {registrations, reconcileWorkspace:(executionId,options)=>workspace.reconcile(executionId,options), close(){closing=true;if(merge) void merge.close({timeoutMs:0});return judgeStatus();}, judgeStatus, mergeStatus,

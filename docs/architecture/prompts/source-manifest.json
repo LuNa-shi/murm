@@ -3,7 +3,7 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.js",
-      "sha256": "38617fc1f22fbdf4b0b8cdd02b3d58f571e3063064fc5135e6e6103acc768247"
+      "sha256": "c54511765c7121c0d4537e1557a562176faf4ad948ff059342a38c222b2e7570"
     },
     {
       "path": "src/agent/capability-profile.js",
@@ -39,11 +39,11 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "sha256": "68b685192d05521dc8acd9c701a6deffc84ad0935d878e79939f1d1be9a304dc"
+      "sha256": "c552fadf2e688b8d5e7b5579abd67912ee24a4351b119345990ac4ffc24e1342"
     },
     {
       "path": "src/environments/flat/environment.js",
-      "sha256": "ea48d3652ba25b01490bf1f488f74aa013aac8996e5407d8b6dfaf7d58be141b"
+      "sha256": "0e3f67ab671ba72a88f6355dd250776efbd43013611691de06aae4ecfe5df7fd"
     },
     {
       "path": "examples/subagents-environment/main.mjs",
@@ -304,6 +304,12 @@
       "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
     },
     {
+      "path": "src/environments/flat/environment.js",
+      "anchor": "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '",
+      "line": 12,
+      "sha256": "7ddd3c046642e46ad91153885ed29729e1d733c4c0f6420da7200f750ff28a4d"
+    },
+    {
       "path": "src/environments/flat/controller.js",
       "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
       "line": 8,
@@ -435,7 +441,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "4f04ad0762c325577345c95862b76e1f8369d6cd8fb42c4746c90bfad4eaeca8"
+      "sha256": "3e5e07faf5ce1d1144dc026b4e47b89e277e3add8a94a432f5df8ed65ff84e9c"
     }
   ]
 }

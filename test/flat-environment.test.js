@@ -18,19 +18,39 @@ const hooks=registerHooks({resolve(specifier,context,next){
 }});
 const {runFlatEnvironment}=await import('../src/environments/flat/environment.js');hooks.deregister();
 
-test('flat host refuses unsupported live Workspace binding before creating any Runtime or Bot',async t=>{
+test('Flat can finish with a public Material when no live Workspace capture is configured', async t => {
   const root=await mkdtemp(join(tmpdir(),'flat-environment-'));
   const stores=await createFlatTaskStores(root);
   t.after(async()=>{stores.close();await rm(root,{recursive:true,force:true});});
+  transport.reset(); controls.credentials.clear(); controls.stopError=null; controls.destroyError=null;
+  const accept=id=>{transport.confirm(id,'started');transport.next=accept;}; transport.next=accept;
+  let materialId;
   const report=await runFlatEnvironment({...stores,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
-    outputDir:root,deadlineAt:Date.now()+10000,backend:{},model:'default',image:'fixture'});
-  assert.equal(report.businessFailure.code,'SERVICE_NOT_READY');
-  assert.equal(report.cleanup,null);
-  assert.equal(report.result,null);
-  assert.ok(report.reportPath);
-  const saved=JSON.parse(await readFile(report.reportPath,'utf8'));
-  assert.equal(saved.businessFailure.code,'SERVICE_NOT_READY');
-  assert.equal(stores.tasks.listExecutions(stores.task.task_id).length,0);
+    outputDir:root,deadlineAt:Date.now()+10000,backend:{},model:'default',image:'fixture',capacity:1,
+    async drive(controller) {
+      const [{botId}]=controller.snapshot().bots;
+      const credentials=controls.credentials.get(botId);
+      const env={...process.env,...credentials.environment,...credentials.secretEnvironment};
+      const bridge=new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname='127.0.0.1'; env.SWARMENV_BRIDGE_URL=bridge.origin;
+      const cli=async (...args)=>JSON.parse((await promisify(execFile)(process.execPath,['scripts/swarm.mjs',...args],{env,timeout:5000})).stdout);
+      const manifest=await cli('service','view','workspace');
+      assert.deepEqual(manifest.capabilities.map(row=>row.name),['view','read','files']);
+      const workspace=await cli('workspace','view');
+      assert.equal(workspace.workspace_id,stores.workspaceId);
+      await cli('task','take',stores.task.task_id,'--request-id','take');
+      await assert.rejects(cli('workspace','save','--request-id','unavailable'),error=>JSON.parse(error.stderr).code==='NOT_ALLOWED');
+      const material=await cli('material','publish','--content','Fixed public observation','--request-id','publish');
+      materialId=material.material.material_id;
+      await cli('task','link','--task-id',stores.task.task_id,'--material-id',materialId,'--role','experience','--request-id','link');
+      try { await cli('task','finish','--outcome','done','--material-ids',JSON.stringify([materialId]),'--request-id','finish'); }
+      catch(error) { assert.ok(stores.tasks.listExecutions(stores.task.task_id)[0].finish, 'A lost reply must have a durable finish'); }
+      await controller.tick();
+    }});
+  assert.equal(report.businessFailure,null,JSON.stringify(report.businessFailure));
+  assert.equal(report.cleanup.cleanup,'complete');
+  assert.equal(stores.tasks.getTask(stores.task.task_id).state,'DONE');
+  assert.equal(stores.context.getMaterial(materialId).content,'Fixed public observation');
+  assert.equal((await stores.workspace.listRevisions({workspaceId:stores.workspaceId})).length,1);
 });
 
 test('flat close retains physical cleanup and reconciles remaining Bots after one domain write fails', async t => {

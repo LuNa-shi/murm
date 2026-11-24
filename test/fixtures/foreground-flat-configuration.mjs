@@ -23,10 +23,6 @@ export default { mode: 'flat', timeoutMs: 15_000, options: {
   workspaceManager: stores.manager, missionId: stores.missionId, workspaceId: stores.workspaceId,
   outputDir, backend: {}, model: 'default', image: 'fixture', capacity: 1,
   deadlineAt: Date.now() + 15_000, closeTimeoutMs: 1000,
-  snapshotProject: async () => {
-    await writeFile(join(outputDir, 'unexpected-snapshot'), 'called');
-    throw new Error('This controlled feedback fixture must never capture a live Workspace');
-  },
   controller: { automaticContinuation: false, async beforeInitialDispatch({ botIds }) {
     const botId = botIds[0];
     const credentials = controls.credentials.get(botId);

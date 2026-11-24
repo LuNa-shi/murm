@@ -75,13 +75,13 @@ The [generated flat reference](prompts/08-flat-environment.md) extracts the comp
 Read public Tasks and take suitable work. Continue in this Session after take.
 ```
 
-The default researcher Profile prompt in `src/environments/flat/environment.js` is passed verbatim during Core assembly:
+The default researcher Profile prompt in `src/environments/flat/environment.js` supplies the base text during Core assembly.
 
 ```text
 Use the flat Services to discover, execute and truthfully finish Mission work.
 ```
 
-Hosts can explicitly replace these texts through the Profile prompt/controller settings. Continuation reuses the full `BOT_CONTINUATION_MESSAGE` and `buildBotContinuationMessage` already documented here: the current Execution controls ordinary versus soft-closeout wording and dynamic deadline text. The controller rechecks Task state and remaining budget before its public followUp send. Directed user text is host-supplied and passes through that same controller with the chosen mode/request ID; it is not a repository-owned template. Missing snapshot readiness prevents this Environment from sending any input. These are composed/send-path descriptions, not evidence of a native closed-loop run.
+Hosts can replace the base Profile text, discovery input or ordinary continuation through the host and controller settings. Without a trusted `snapshotProject`, the host appends the [generated Profile guidance](prompts/08-flat-environment.md) to either base prompt, omits private Workspace save and observation operations from the Profile, and selects the Material-oriented defaults for ordinary continuation, soft closeout and the handoff warning. The persisted Execution supplies the phase and the warning deadline. A host ordinary-continuation override still applies before soft closeout. The controller rechecks Task state and remaining budget before its public followUp send. Directed user text passes through the same controller with the chosen mode and request ID. For the complete default text in each case, see the generated Flat reference.
 
 The built-in Core Bot Service adds no child startup prompt or business result template. Its manifest help describes child admission, initialInput and pending cleanup; the Bridge exposes only permitted capabilities and the CLI renders the discovered text and schemas. Parent-supplied `input` goes unchanged through the shared Core input ledger with default steer or explicit followUp, after child identity/parentId and backend events are installed. The target Profile supplies the child's existing system prompt composition. Core does not copy the parent conversation, bindings or secretEnv, and does not automatically send child output back to a parent. See [built-in Bot control](15-core-runtime.md#built-in-bot-control).
 

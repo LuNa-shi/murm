@@ -9,22 +9,22 @@ import { createFlatPublicationServices } from './publication-services.js';
 import { createFlatController } from './controller.js';
 import { createFlatModelAccessPolicy } from './model-access-policy.js';
 
-/** Trusted host entry point. Domain stores remain caller-owned and readable.
- * The live snapshot dependency currently has no supported public Core binding;
- * callers must not substitute a legacy Runtime or model-supplied file payload. */
+export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Bot 工作目录中。';
+
+/** Trusted host entry point. Domain stores remain caller-owned and readable. */
 export async function runFlatEnvironment({backend,model,image,prompt='Use the flat Services to discover, execute and truthfully finish Mission work.',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
   capacity=2,coordinationPermissions=[],missionCoordination=null,snapshotProject,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
   closeTimeoutMs=30_000,redact=value=>value,signal}) {
   if(signal!==undefined && !(signal instanceof AbortSignal)) throw new TypeError('Flat host signal must be an AbortSignal');
   const permissions=flatCoordinationPermissions(coordinationPermissions);
+  const workspaceSaveAvailable=typeof snapshotProject==='function';
   let runtime,controller,discovery,publication,mission,closeDeadline;
   const result={};
   return runWithReport({outputDir,closeTimeoutMs,redact,
     async createRuntime() {
       signal?.throwIfAborted();
-      // Do not allocate a partly functional team and claim Workspace publication.
-      if(typeof snapshotProject!=='function') throw new SwarmEnvError('SERVICE_NOT_READY','Flat live Workspace publication has no supported trusted Core snapshot binding');
+      if(snapshotProject!==undefined && !workspaceSaveAvailable) throw new SwarmEnvError('INVALID_CONTRACT','Flat snapshotProject must be a trusted function when supplied');
       if(contextService?.taskService!==taskService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Context and Task authority must match');
       if(taskService.contextService && taskService.contextService!==contextService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Task Material authority does not match');
       const readinessSignal = AbortSignal.any([AbortSignal.timeout(closeTimeoutMs), ...(signal ? [signal] : [])]);
@@ -43,7 +43,8 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
           coordinationPermissions:permissions,deadline:()=>deadlineAt});
         services.registerService(mission);
       }
-      const researcher=flatResearcherProfile({prompt,model,image,coordinationPermissions:permissions});
+      const researcherPrompt = workspaceSaveAvailable ? prompt : `${prompt}\n\n${FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT}`;
+      const researcher=flatResearcherProfile({prompt:researcherPrompt,model,image,coordinationPermissions:permissions});
       researcher.services=Object.fromEntries([
         ['task',[...discovery.manifest.capabilities,...publication.registrations.find(row=>row.manifest.id==='task').manifest.capabilities].map(row=>row.operation)],
         ...publication.registrations.filter(row=>row.manifest.id!=='task').map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]),
@@ -52,7 +53,8 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       runtime=await createRuntime({backend,profiles:{researcher},services,maxBots:capacity,outputDir,
         modelAccessPolicy:createFlatModelAccessPolicy({runtimeId:()=>runtime?.id,taskService,missionId,deadline:()=>deadlineAt,isStopping:()=>controller?.snapshot().closing??false})});
       try {
-        controller=createFlatController({...controllerOptions,runtime,taskService,missionId,capacity,deadlineAt,coordinationPermissions:permissions,afterStopped:(id,options)=>publication.reconcileWorkspace(id,options)});
+        controller=createFlatController({...controllerOptions,runtime,taskService,missionId,capacity,deadlineAt,coordinationPermissions:permissions,
+          workspaceSaveAvailable,afterStopped:(id,options)=>publication.reconcileWorkspace(id,options)});
       } catch(error) {
         try {
           const receipt=await runtime.close({timeoutMs:closeTimeoutMs});

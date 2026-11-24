@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { BOT_CONTINUATION_MESSAGE, buildBotContinuationMessage, buildBotNotification } from '../../agent/bot-contract.js';
+import { buildBotContinuationMessage, buildBotNotification } from '../../agent/bot-contract.js';
 import { SwarmEnvError } from '../../errors.js';
 import { stableStringify } from '../../protocol/envelope.js';
 import { createFlatBotCoordinator } from './bot-coordinator.js';
@@ -15,7 +15,7 @@ const deny=message=>{throw new SwarmEnvError('NOT_ALLOWED',message);};
 export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,coordinationPermissions=[],
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
   stopTimeoutMs=30_000,discoveryPrompt=FLAT_DISCOVERY_MESSAGE,
-  continuationPrompt=BOT_CONTINUATION_MESSAGE,
+  continuationPrompt,workspaceSaveAvailable=true,
   afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }) {
   if(!runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
     ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() ||
@@ -130,7 +130,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
     // Preserve exact text and request identity across admission/receipt errors.
     // Never reissue an unknown or definitively rejected input automatically.
     const delivery=row.handoffWarning??={notificationId:notification.notification_id,
-      fence:marked.fencing_version,text:buildBotNotification(notification,{at}),requestId:`flat:handoff-warning:${marked.execution_id}:${notification.notification_id}`};
+      fence:marked.fencing_version,text:buildBotNotification(notification,{at,workspaceSaveAvailable}),requestId:`flat:handoff-warning:${marked.execution_id}:${notification.notification_id}`};
     if(!delivery.input || delivery.input.status==='not_submitted') {
       delivery.input=await submit(row,delivery.text,{source:'handoff-warning',requestId:delivery.requestId,
         taskId:marked.task_id,executionId:marked.execution_id,fence:delivery.fence,notificationId:notification.notification_id});
@@ -236,7 +236,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
         if(!automaticContinuation) {record('awaiting-host-followup',row);return;}
         if(row.continuations>=continuationLimit) {await stop(row,'continuation-budget');await refill();return;}
         row.continuations++;record('unfinished-execution',row,{continuation:row.continuations});
-        await submit(row,buildBotContinuationMessage(execution,{ordinary:continuationPrompt}),{source:'continuation',requestId:`flat:continue:${row.generation}:${row.continuations}`,taskId:execution.task_id,executionId:execution.execution_id,fence:execution.fencing_version});
+        await submit(row,buildBotContinuationMessage(execution,{ordinary:continuationPrompt,workspaceSaveAvailable}),{source:'continuation',requestId:`flat:continue:${row.generation}:${row.continuations}`,taskId:execution.task_id,executionId:execution.execution_id,fence:execution.fencing_version});
       } else if(owner?.state==='UNBOUND') {
         if(row.discoveries>=discoveryLimit) {await stop(row,'discovery-budget');await refill();return;}
         row.discoveries++;record('selection-still-open',row);

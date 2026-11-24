@@ -104,11 +104,14 @@ test('foreground status follows Core activity and exposes only the latest error 
   assert.equal(report.cleanup.cleanup, 'complete');
 });
 
-test('flat host without production capture saves its readiness failure and admits zero Bots', async t => {
+test('flat host rejects an invalid snapshot binding before allocating any Bot', async t => {
   const config = await configuration(t);
+  config.options.snapshotProject = true;
   let entered = false;
   const report = await runForegroundEnvironment({ ...config, mode: 'flat' }, async () => { entered = true; });
-  assert.equal(report.businessFailure.code, 'SERVICE_NOT_READY'); assert.equal(report.cleanup, null);
+  assert.equal(report.businessFailure.code, 'INVALID_CONTRACT');
+  assert.match(report.businessFailure.message, /snapshotProject/);
+  assert.equal(report.cleanup, null);
   assert.equal(entered, false); assert.equal(transport.spawns.size, 0);
 });
 
