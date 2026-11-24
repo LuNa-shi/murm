@@ -1,5 +1,20 @@
 import { createSubagentsController } from './controller.mjs';
 
+/** Read the hour result without changing the settled text used for routing and adoption. */
+export function readSubagentsStageResult(output) {
+  let payload = output.trim();
+  let value;
+  try { value = JSON.parse(payload); }
+  catch (error) {
+    const finalLine = payload.lastIndexOf('\n');
+    if (finalLine < 0) throw error;
+    payload = payload.slice(finalLine + 1).trimStart();
+    value = JSON.parse(payload);
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('Stage result must be a JSON object');
+  return { payload, value };
+}
+
 /** Optional four-group text adoption gate. The caller owns Runtime lifetime and close. */
 export async function createSubagentsStages(runtime, parentId, { childIds } = {}) {
   if (!Array.isArray(childIds) || childIds.length !== 3 || childIds.some(id => typeof id !== 'string' || !id || id === parentId) || new Set(childIds).size !== 3) throw new TypeError('Stages require three original child identities');
@@ -25,7 +40,7 @@ export async function createSubagentsStages(runtime, parentId, { childIds } = {}
           const user = deliveries.find(row => row.kind === 'user' && row.requestId === requestId && row.receipt?.status === 'accepted' && typeof row.receipt.inputId === 'string');
           if (!user) return false;
           let final;
-          try { final = JSON.parse(event.output); } catch { return false; }
+          try { final = verify ? readSubagentsStageResult(event.output).value : JSON.parse(event.output); } catch { return false; }
           if (final?.stage !== stage || typeof final.summary !== 'string' || !final.summary.trim() || !Array.isArray(final.conclusions) || final.conclusions.length !== history.length + 3) return false;
           const remaining = [...final.conclusions];
           // Every historical identity and byte string must survive unchanged exactly once.

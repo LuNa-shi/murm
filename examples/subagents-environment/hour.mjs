@@ -7,7 +7,7 @@ import { createRuntime } from '@swarmenv/core';
 import { ServiceRegistry } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
 import { runWithReport } from './run-report.mjs';
-import { createSubagentsStages } from './stages.mjs';
+import { createSubagentsStages, readSubagentsStageResult } from './stages.mjs';
 import { verifySubagentsArchives, verifySubagentsInputs } from './hour-artifacts.mjs';
 import { hourParentPrompt, hourChildPrompt, hourPrepareInput, hourStageInstructions } from './prompts.mjs';
 const HOUR = 3_600_000, RELEASES = [0,900_000,1_800_000,3_300_000];
@@ -97,7 +97,13 @@ export async function runSubagentsHour({backend,image,model='default',outputDir,
             return {childId,child:peer,prompt};
           });
           const input=JSON.stringify({stage,tasks,instructions:hourStageInstructions});
-          const result=await stages.runStage({stage,input,timeoutMs:Math.min(limits.turnMs,started+(stage===3?HOUR:(stage+1)*900_000)-time()),signal:live,async verify({index,output}){let value;try{value=JSON.parse(output);}catch{return false;}return value.stage===stage&&value.child===index&&await programming.verify({peer:index,stage,submission:value.programming})===true;}});
+          const result=await stages.runStage({stage,input,timeoutMs:Math.min(limits.turnMs,started+(stage===3?HOUR:(stage+1)*900_000)-time()),signal:live,
+            async verify({index,output}){
+              let value;
+              try{({value}=readSubagentsStageResult(output));}catch{return false;}
+              return value.stage===stage&&value.child===index&&await programming.verify({peer:index,stage,submission:value.programming})===true;
+            },
+          });
           const atMs=time();if(Math.floor((atMs-started)/900_000)!==stage)throw failure('SUBAGENTS_STAGE_LATE');
           evidence.push({stage,atMs,parent:{botId:parentId,inputId:result.parent.receipt.inputId,eventSeq:result.parent.settled.seq,sha256:hash(result.parent.settled.output)},children:result.children.map(row=>({botId:row.result.childId,eventSeq:row.result.eventSeq,forwardedToParentInputId:row.receipt.inputId,sha256:hash(row.result.output)})),sessions:await sessionSnapshot()});
           await liveBots();

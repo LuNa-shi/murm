@@ -17,7 +17,8 @@ const hooks=registerHooks({resolve(specifier,context,next){
 const {runSubagentsHour}=await import('../examples/subagents-environment/hour.mjs');hooks.deregister();
 const hash=value=>createHash('sha256').update(value).digest('hex');
 
-async function setup(t,{changedSession=false,changedArchive=false,lateExit=false,queuedParent=false,verbatimTasks=false}={}) {
+async function setup(t,{changedSession=false,changedArchive=false,lateExit=false,queuedParent=false,verbatimTasks=false,
+  narratedResults=false,childTrailer=false}={}) {
   transport.reset();transport.collectable=true;
   const outputDir=await mkdtemp(join(tmpdir(),'subagents-hour-'));t.after(()=>rm(outputDir,{recursive:true,force:true}));
   let tick=0,parentId,stageIndex,closed=false;const deadlineAt=Date.now()+6000000;
@@ -60,7 +61,12 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
       const directory=task.peer===0?'':'programs/';
       keep(row.botId,`${directory}hour-program-${task.stage}.py`,source);keep(row.botId,`${directory}hour-program-${task.stage}.stdout.json`,JSON.stringify(answers));keep(row.botId,`hour-results/stage-${task.stage}.json`,output);
       if(task.peer===0)await new Promise(resolve=>setTimeout(resolve,10));
-      transport.spawns.get(row.botId).onEvent({type:'settled',outcome:'completed',output});
+      let completed=output;
+      if(task.peer===1&&task.stage===0){
+        if(childTrailer)completed=`${output}\nThe result is above.`;
+        else if(narratedResults)completed=`The requested files were saved.\n\n${output}`;
+      }
+      transport.spawns.get(row.botId).onEvent({type:'settled',outcome:'completed',output:completed});
     }else if(row.input.startsWith('Prepare exactly')){
       for(let i=0;i<3;i++){const result=await call('spawn',{profile:'child'},`child-${i}`);assert.equal(result.initialInput,null);childIds.push(result.bot.id);}
       settleParent(JSON.stringify({children:childIds}));
@@ -71,7 +77,8 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
       if(queuedParent&&hourParentPrompt.includes('End the current turn immediately after dispatch')&&task.instructions.includes('End the current turn immediately after dispatch'))settleParent('Tasks dispatched.', 'dispatch');
     }else{
       const result=JSON.parse(row.input);count++;conclusions.push({childId:result.childId,eventSeq:result.eventSeq,quote:result.output});
-      if(count===3){const output=JSON.stringify({stage:stageIndex,summary:'Use all earlier concrete results.',conclusions});keep(parentId,`hour-results/stage-${stageIndex}.json`,output);settleParent(output,'final');}
+      if(count===3){const output=JSON.stringify({stage:stageIndex,summary:'Use all earlier concrete results.',conclusions});keep(parentId,`hour-results/stage-${stageIndex}.json`,output);
+        settleParent(narratedResults&&stageIndex===1?`I retained the original results.\n\n${output}`:output,'final');}
       else if(queuedParent&&hourParentPrompt.includes('End this turn immediately if fewer than three'))settleParent('Awaiting remaining child results.','incomplete');
     }
   }arm();
@@ -136,6 +143,29 @@ test('verbatim Bot Service task forwarding retains the specific stage and child 
   }
 });
 
+test('terminal JSON is checked and archived while earlier narration remains in the original adoption quote',async t=>{
+  const {options}=await setup(t,{narratedResults:true,verbatimTasks:true});options.budgets={turnMs:1000};
+  const report=await runSubagentsHour(options);
+  assert.equal(report.businessFailure,null,JSON.stringify({businessFailure:report.businessFailure}));
+  assert.equal(report.cleanupFailure,null);
+  const stage=report.routing.stages[0];
+  const narrated=stage.children[1].result;
+  assert.match(narrated.output,/^The requested files were saved\.\n\n\{/);
+  assert.equal(stage.conclusions.find(row=>row.childId===narrated.childId).quote,narrated.output);
+  assert.equal(report.routing.stages[3].conclusions.find(row=>row.childId===narrated.childId).quote,narrated.output);
+  assert.match(report.routing.stages[1].parent.settled.output,/^I retained the original results\.\n\n\{/);
+  assert.equal(report.archives.children.length,12);
+  assert.equal(report.archives.parents.length,4);
+});
+
+test('nonterminal JSON does not satisfy the stage verifier',async t=>{
+  const {options}=await setup(t,{childTrailer:true});options.budgets={turnMs:1000};
+  const report=await runSubagentsHour(options);
+  assert.equal(report.businessFailure.code,'STAGE_RESULT_INVALID');
+  assert.equal(report.archives,undefined);
+  assert.equal(report.quota.closed,true);
+});
+
 
 test('late unexpected exit cannot be hidden by planned whole-tree stop',async t=>{
   const {options}=await setup(t,{lateExit:true});const report=await runSubagentsHour(options);
@@ -158,9 +188,9 @@ test('model owner closure has a finite deadline and unknown closure remains a fa
 
 
 test('queued parent followUps require dispatch and incomplete turns to yield before exact final adoption',async t=>{
-  assert.match(hourChildPrompt,/raw JSON only/);
-  assert.match(hourParentPrompt,/raw JSON only/);
-  assert.match(hourStageInstructions,/raw JSON only/);
+  assert.match(hourChildPrompt,/last nonempty line/);
+  assert.match(hourParentPrompt,/last nonempty line/);
+  assert.match(hourStageInstructions,/last nonempty line/);
   const {options,yields}=await setup(t,{queuedParent:true});options.budgets={turnMs:1000};
   const report=await runSubagentsHour(options);
   assert.equal(report.businessFailure,null,JSON.stringify(report));

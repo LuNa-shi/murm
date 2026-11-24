@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { join, posix } from 'node:path';
+import { readSubagentsStageResult } from './stages.mjs';
 const invalid = () => Object.assign(new Error('SUBAGENTS_ARCHIVE_INVALID'), { code: 'SUBAGENTS_ARCHIVE_INVALID' });
 const hash = value => createHash('sha256').update(value).digest('hex');
 const identity = value => typeof value === 'string' && /^[A-Za-z0-9_:-][A-Za-z0-9_.:-]{0,127}$/.test(value);
@@ -89,13 +90,14 @@ export async function verifySubagentsArchives({ outputDir, runtimeId, parentId, 
     const children=[],parents=[];
     for (const [stage,entry] of stages.entries()) {
       if (entry.stage!==stage || entry.children.length!==3) throw invalid();
-      const parent=await content(parentId,`hour-results/stage-${stage}.json`,entry.parent.settled.output);
+      const parentResult=readSubagentsStageResult(entry.parent.settled.output);
+      const parent=await content(parentId,`hour-results/stage-${stage}.json`,parentResult.payload);
       const {content: parentContent, ...parentProof}=parent; parents.push(parentProof);
       for (const [peer,childId] of childIds.entries()) {
         const delivery=entry.children.find(row=>row.result.childId===childId);
         if (!delivery) throw invalid();
-        const delivered=await content(childId,`hour-results/stage-${stage}.json`,delivery.result.output);
-        const value=JSON.parse(delivered.content);
+        const {payload,value}=readSubagentsStageResult(delivery.result.output);
+        const delivered=await content(childId,`hour-results/stage-${stage}.json`,payload);
         if (value.stage!==stage || value.child!==peer || !value.programming) throw invalid();
         const digests=Object.hasOwn(value.programming,'sourceSha256');
         let sourcePath=`hour-results/stage-${stage}.py`, stdoutPath=`hour-results/stage-${stage}.stdout.json`;
