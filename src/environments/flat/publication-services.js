@@ -9,6 +9,8 @@ import { inputFingerprint, executionEnvelope } from './prepare-inputs.js';
 import { listTools } from '../../sdk/service-catalog.js';
 
 const fail = (code, message) => { throw new SwarmEnvError(code, message); };
+const publicationRequestId = (runtimeId, botId, requestId) =>
+  `flat:publication:${inputFingerprint([runtimeId,botId,requestId])}`;
 const text = { type:'string', minLength:1, maxLength:4000 };
 const ids = { type:'array', items:text, maxItems:100, uniqueItems:true };
 const object = (properties, required=[]) => ({type:'object', properties, required, additionalProperties:false});
@@ -132,6 +134,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       if(!['idle','running'].includes(live.status) || live.profile!==profile) fail('NOT_ALLOWED','Core Bot is unavailable');
       return assertCurrent();
     };
+    const lookupByKey=operation==='get_check_result' && input.request_key && !input.check_result_id;
     let payload=input;
     if(operation==='workspace_check') {
       if(!execution) fail('NOT_ALLOWED','Judge checks require an active Execution');
@@ -139,11 +142,18 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       payload={source,request_key:input.request_key??id,
         ...(!source.check_mode ? {source_attestation:{task_id:execution.task_id,execution_id:execution.execution_id,path:source.path,
           revision:source.revision,workspace_revision:source.workspace_revision,workspace_id:source.workspace_id,content_hash:source.content_hash}}:{})};
+    } else if(lookupByKey) {
+      payload={...input,request_key:publicationRequestId(caller.runtimeId,caller.botId,input.request_key)};
     }
     const latest=await guard();
     const envelope=latest.execution?{...executionEnvelope(latest.execution,id),actor_ref:caller.botId}:makeEnvelope({actorRef:caller.botId,operationId:id});
     if(call) call.providerStarted=true;
-    const result=await judgeService.dispatch(operation,payload,envelope,{assertAuthorized:assertCurrent});
+    let result=await judgeService.dispatch(operation,payload,envelope,{assertAuthorized:assertCurrent});
+    if(lookupByKey && result===null) {
+      // Explicit Judge keys are stored as supplied. Only fall back on a confirmed miss.
+      await guard();
+      result=await judgeService.dispatch(operation,input,envelope,{assertAuthorized:assertCurrent});
+    }
     if(call) call.providerCompleted=true;
     await guard();
     if(result) {
@@ -191,7 +201,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
         return structuredClone(result);
       }
     }
-    const id=`flat:publication:${inputFingerprint([core.id,caller.botId,envelope.operation_id])}`;
+    const id=publicationRequestId(core.id,caller.botId,envelope.operation_id);
     const call=service==='judge'?{id,requestId:envelope.operation_id,operation,botId:caller.botId,executionId:current.execution?.execution_id??null}:null;
     const work=Promise.resolve().then(()=>{
       signal?.throwIfAborted();
