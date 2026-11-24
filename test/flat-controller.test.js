@@ -388,6 +388,10 @@ test('settled discovery after selection deadline stops the old Bot before any fu
   assert.equal(snapshot.bots[0].released,true);
   assert.equal(snapshot.inputs.filter(row=>row.botId===f.bot.botId).length,1);
   assert.equal(snapshot.bots.length,2);
+  assert.equal(f.tasks.getBot(f.bot.botId).state,'CLOSED');
+  assert.equal((await f.runtime.get(f.bot.botId)).status,'closed');
+  assert.equal(f.tasks.listExecutions(f.task.task_id).length,0);
+  assert.equal(f.tasks.getBot(snapshot.bots[1].botId).execution_id,null);
 });
 
 test('unknown input prevents resend but does not suppress the original Bot hard deadline',async t=>{
