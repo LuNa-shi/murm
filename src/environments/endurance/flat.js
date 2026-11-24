@@ -31,11 +31,14 @@ export async function createFlatAffirmativeEnvironment({ backend, image, model =
   const frozen = structuredClone(candidates);
   const mergeChecker = { identity: structuredClone(checker.identity), timeoutMs: checker.timeoutMs, check: checker.check.bind(checker) };
   for (const candidate of frozen) {
-    if (typeof candidate.summary !== 'string' || !candidate.summary.trim() || candidate.summary.length > 4000 ||
-        !candidate.files || typeof candidate.files !== 'object' || Array.isArray(candidate.files) ||
-        !Object.keys(candidate.files).length || Object.keys(candidate.files).length > 32 ||
-        Object.entries(candidate.files).some(([path, value]) => !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+$/.test(path) ||
+    if (candidate.laterFiles !== undefined && (!Array.isArray(candidate.laterFiles) || candidate.laterFiles.length !== 3)) throw invalid();
+    for (const files of [candidate.files, ...(candidate.laterFiles ?? [])]) {
+      if (typeof candidate.summary !== 'string' || !candidate.summary.trim() || candidate.summary.length > 4000 ||
+        !files || typeof files !== 'object' || Array.isArray(files) ||
+        !Object.keys(files).length || Object.keys(files).length > 32 ||
+        Object.entries(files).some(([path, value]) => !/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*\.[A-Za-z0-9]+$/.test(path) ||
           typeof value !== 'string' || Buffer.byteLength(value) > 128 * 1024)) throw invalid();
+    }
   }
   const directory = join(resolve(outputDir), `flat-fixed-${randomUUID()}`);
   await mkdir(directory, { recursive: true, mode: 0o700 });
@@ -68,14 +71,21 @@ export async function createFlatAffirmativeEnvironment({ backend, image, model =
     tasks.createMission({ mission_id: missionId, goal: 'Independently verify and integrate fixed host-provided public candidates', merge_required_check: mergeChecker.identity }, host());
     const created = await workspace.create({ missionId, workspaceId: 'flat-fixed-public', initialFiles: { 'README.txt': 'Host-provided fixed candidates; no private live capture.\n' } });
     for (const [index, candidate] of frozen.entries()) {
-      const saved = await workspace.save({ workspaceId: created.workspace_id, baseRevision: created.main_revision, files: candidate.files, source: 'host-fixed-candidate', requestId: `candidate-${index}` });
+      const stages=[];
+      for(const [phase,files] of [candidate.files,...(candidate.laterFiles??[])].entries()) {
+        const saved=await workspace.save({workspaceId:created.workspace_id,baseRevision:created.main_revision,files,source:'host-fixed-candidate',requestId:`candidate-${index}-${phase}`});
+        stages.push({revision:saved.revision,paths:Object.keys(files)});
+      }
+      const saved=stages[0];
+      const paths=[...new Set(stages.flatMap(stage=>stage.paths))];
       const task = tasks.createTask({ mission_id: missionId, gap: candidate.summary, priority: 'medium', summary: candidate.summary,
+        timebox_ms: Math.max(1, Math.floor(deadlineAt - Date.now())),
         expected_output: `Inspect fixed candidate ${saved.revision}. Merge --from ${saved.revision}; publish and link truthful evidence; finish --workspace-revision with the returned fixed main_revision.`,
         acceptance_conditions: ['Trusted whole-tree checker PASS', 'Current Execution owns final checked main publication', 'Linked truthful Material'],
         workspace: { workspace_id: created.workspace_id, revision: saved.revision },
-        completion_contract: { required_materials: [{ role: 'experience', min_count: 1 }], workspace_delivery: { paths: Object.keys(candidate.files), require_main: true, check: mergeChecker.identity } },
+        completion_contract: { required_materials: [{ role: 'experience', min_count: 1 }], workspace_delivery: { paths, require_main: true, check: mergeChecker.identity } },
       }, host()).task;
-      records.push({ taskId: task.task_id, revision: saved.revision, paths: Object.keys(candidate.files) });
+      records.push({ taskId: task.task_id, revision: saved.revision, paths, stages });
     }
     discovery = createFlatTaskService({ runtime: () => runtime, taskService: tasks, contextService: context, missionWorkspace: workspace,
       workspaceManager: manager, missionId, workspaceId: created.workspace_id, missionDeadline: () => deadlineAt,

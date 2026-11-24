@@ -1762,6 +1762,26 @@
       "role": "Four-slot host-preseeded fixed candidate Core/Bridge affirmative composition without live capture"
     },
     {
+      "path": "src/environments/endurance/flat-hour.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Four original Flat Executions across four work windows with actual finish/replacement and stopped-source adoption"
+    },
+    {
+      "path": "src/environments/endurance/flat-workload.js",
+      "category": "Environment acceptance host",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Current-owner fixed publication and actual Material/programming proof verification"
+    },
+    {
       "path": "src/environments/endurance/matrix.js",
       "category": "Environment acceptance host",
       "chapters": [

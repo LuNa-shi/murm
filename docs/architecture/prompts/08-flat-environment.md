@@ -21,6 +21,33 @@ Body SHA-256: `48de3fa5fa0d29655988b793e5a2c6348d83f2b332178c0a099b02ae284bdf93`
 ````text
 Use public Flat Tasks. Read each Task contract, take one ready Task, inspect its fixed candidate revision, and check and merge it. Publish truthful evidence as a Material, link it to the Task, then finish with the checked main revision. Preserve stable request IDs; retry MAIN_MOVED with a new request ID only after re-reading public state. Do not claim you authored the host candidate. Private workspace save/status/diff are unavailable.
 ````
+## Natural-hour staged researcher Profile
+
+The trusted host stages this Profile before discovery. The optional host-controlled continuation mode then sends four explicit program groups through actual Core followUp, preserving the same owned Execution. No private capture grant is added.
+
+Body SHA-256: `32c602533357fe555231eb8a63bfb6a92e14ac212f78e8b466a99097f6fadf2e`
+
+````text
+Use actual Flat Task Services to read and exclusively take one ready Task. Preserve this Task and Execution. After take, return briefly and wait for explicit host programming groups; do not finish until the host asks. Each group requires implementing/running the supplied program, inspecting and checking the public fixed candidate, publishing its new checked main revision and a new truthful Material, and linking evidence to your Task. Keep all program/stdout files until required export. Host-provided candidates are not your authored programs. Private workspace save/status/diff are unavailable.
+````
+## Natural-hour full programming group input
+
+peer/phase are fixed team/stage indices; proofKey is a fresh host correlation key; candidate revision/stages are frozen public host revisions. adopted names a genuinely stopped original Bot and its actual Material/revision. The original program hashes are deliberately absent from the host input and must be read through the ordinary Material route. program.prompt appends the independently frozen external task through createProgrammingContract; its full wrapper is in the hour prompt reference. The actual send is runInput on the current Bot and Execution. Finish feedback in flat-hour.js uses the latest verified revision and actual system-assigned Material ID.
+
+Body SHA-256: `eea7ef975385be6b0a879a4cf3d219ac4074ef5f9ce721729ff4f28f738d37fe`
+
+````text
+FLAT_PROGRAM_GROUP peer=${peer} phase=${phase}. Keep your actual current Task and Execution. Complete this programming task and independently inspect the host candidate ${candidate.revision}. Merge --from ${candidate.revision} with a fresh stable request ID, obtain trusted whole-tree PASS and remember main_revision. If MAIN_MOVED, inspect current state and retry the merge with a new request ID; do not fabricate success. Publish exactly one Material whose content is JSON with exactly proofKey:${proofKey}, peer:${peer}, phase:${phase}, revision:the returned fixed main_revision, programming:the requested result${adopted ? ', adopted:{materialId,sourceSha256,answersSha256} copied from the original programming proof' : ''}. Link it to your Task with role experience. Do not finish the Task in this group. Keep executable source and stdout files for required export and wait for the next explicit host followUp.${adopted ? ` The original contributor has actually stopped. First merge each of your Task’s fixed public candidate revisions ${candidate.stages.map(stage=>stage.revision).join(', ')} in order, each with its own stable request ID, so the final whole-tree check covers your complete Task contract. Read Material ${adopted.materialId} and public revision ${adopted.revision} through their normal CLI routes, preserve the original, Use material consume with action task and a truthful impact to record the actual source consumption. Copy only its original materialId and programming sourceSha256/answersSha256 into adopted; these hashes are not supplied by the host.` : ''}${program.prompt(peer, phase + 1)}
+````
+## Natural-hour final Task finish input
+
+Sent as explicit controller followUp only after the latest actual group proof passes. current.revision and current.materialId are independently verified immutable main revision and actual system Material ID. The current trusted Execution supplies taskId; no host-authored model result is substituted.
+
+Body SHA-256: `261bdd3ae0a6284507cbc066c4c8890d362515be665ef74b6ce0b50b603f2230`
+
+````text
+Finish your actual Task now with outcome done, workspace_revision ${current.revision} and material_ids [${JSON.stringify(current.materialId)}]. Use the existing linked experience Material and a stable request ID.
+````
 ## Default discovery input
 
 Body SHA-256: `6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8`

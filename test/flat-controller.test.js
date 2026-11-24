@@ -408,3 +408,21 @@ test('closing Flat cancels a held pre-discovery admission and never sends late i
   release.resolve(); await closing;
   assert.equal(transport.submissions.size,0);
 });
+
+test('host-controlled Flat keeps the same running Execution after settle and accepts explicit followUp', async t => {
+  const f=await fixture(t,{automaticContinuation:false}); const execution=f.take();
+  f.settle();await f.controller.flush();
+  assert.equal(f.controller.snapshot().inputs.length,1);
+  assert.equal(f.tasks.getExecution(execution.execution_id).state,'RUNNING');
+  const sent=await f.controller.feedback({taskId:f.task.task_id,input:'Next frozen programming group',requestId:'host-group-1',mode:'followUp'});
+  assert.equal(sent.status,'accepted');assert.equal(sent.botId,f.bot.botId);
+  assert.equal(f.tasks.getBot(f.bot.botId).execution_id,execution.execution_id);
+});
+
+test('optional ready-task refill does not create idle discovery Bots for work already owned', async t => {
+  const f=await fixture(t,{capacity:4,refillWhenNoReadyTask:false,beforeStart(stores){
+    stores.tasks.takeTask(stores.task.task_id,{owner_ref:'existing-owner',take_key:'existing-owned'});
+  }});
+  assert.equal(f.controller.snapshot().bots.length,0);
+  assert.equal(transport.submissions.size,0);
+});
