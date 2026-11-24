@@ -9,11 +9,11 @@ test('OpenSandbox image carries the direct Pi model catalog', async () => {
   const dockerfile = await readFile(new URL('../services/opensandbox-agent/Dockerfile', import.meta.url), 'utf8');
   assert.match(dockerfile, /COPY --chown=0:0 services\/opensandbox-agent\/pi-models\.json \/opt\/swarmenv\/pi-agent\/models\.json/);
   assert.match(dockerfile, /PI_CODING_AGENT_DIR=/);
-  assert.match(dockerfile, /chmod 0555 \/opt\/swarmenv\/scripts\/swarm\.mjs/);
+  assert.match(dockerfile, /chmod 0555 \/opt\/swarmenv\/dist\/scripts\/swarm\.mjs/);
   assert.match(dockerfile, /mkdir -p \/workspace/);
-  assert.match(dockerfile, /COPY --chown=0:0 src \/opt\/swarmenv\/src/);
+  assert.match(dockerfile, /COPY --from=typescript-build --chown=0:0 \/build\/dist \/opt\/swarmenv\/dist/);
   assert.match(dockerfile, /chmod 0755 \/opt\/swarmenv\s/);
-  assert.match(dockerfile, /chmod -R u=rwX,go=rX \/opt\/swarmenv\/src\s/);
+  assert.match(dockerfile, /chmod -R u=rwX,go=rX \/opt\/swarmenv\/dist\s/);
 });
 
 const agentImage = process.env.SWARMENV_TEST_AGENT_IMAGE;

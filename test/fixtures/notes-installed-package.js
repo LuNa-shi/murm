@@ -6,7 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 export const execute = promisify(execFile);
-const repository = resolve(import.meta.dirname, '../..');
+const repository = resolve(import.meta.dirname, '../../..');
 
 // Select and snapshot the actual package before audits or installation consume it.
 export async function preparePackageArchive(directory, { archive: frozenArchive, expectedSha256 } = {

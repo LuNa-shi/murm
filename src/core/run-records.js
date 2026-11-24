@@ -3,7 +3,10 @@ import { appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { defaultTimedResponsesLimits } from '../agent/responses-budget-gateway.js';
 import { getAdapterMetadata } from './services.js';
-import packageInfo from '../../package.json' with { type: 'json' };
+import { readFileSync } from 'node:fs';
+import { findPackageJSON } from 'node:module';
+
+const packageInfo = JSON.parse(readFileSync(findPackageJSON(import.meta.url), 'utf8'));
 
 const queueLimit = 4096;
 const queueBytesLimit = 8 * 1024 ** 2;

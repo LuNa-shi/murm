@@ -20,7 +20,7 @@ import { MANUAL_MISSION_REVIEW_SCHEMA_SQL } from '../src/runtime/manual-mission-
 import { MISSION_SUBMISSION_SCHEMA_SQL } from '../src/runtime/mission-submission.js';
 import { SERVICE_HISTORY_SCHEMA_SQL } from '../src/replay/service-history.js';
 
-const root = fileURLToPath(new URL('../', import.meta.url));
+const root = fileURLToPath(new URL('../../', import.meta.url));
 const check = process.argv.includes('--check');
 if (process.argv.slice(2).some((arg) => arg !== '--check')) throw new Error('Usage: node scripts/generate-architecture-api.mjs [--check]');
 const hash = (value) => createHash('sha256').update(value).digest('hex');

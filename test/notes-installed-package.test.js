@@ -173,7 +173,7 @@ test('npm pack excludes private experiment and report trees before traversing un
   await Promise.all(volumes.map(volume => mkdir(volume, { recursive: true })));
   await writeFile(join(root, 'package.json'), JSON.stringify({ name: 'private-evidence-boundary', version: '1.0.0' }));
   await writeFile(join(root, 'index.js'), 'export const included = true;\n');
-  await writeFile(join(root, '.gitignore'), await readFile(new URL('../.gitignore', import.meta.url)));
+  await writeFile(join(root, '.gitignore'), await readFile(new URL('../../.gitignore', import.meta.url)));
   for (const volume of volumes) {
     await writeFile(join(volume, 'private.bin'), 'PRIVATE_PACKAGE_PROBE\n');
     await chmod(volume, 0);
@@ -188,8 +188,8 @@ test('npm pack excludes private experiment and report trees before traversing un
 test('candidate package admits only declared distribution roots and retains executable resources', async t => {
   const root = await mkdtemp(join(tmpdir(), 'package-declared-boundary-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  await writeFile(join(root, 'package.json'), await readFile(new URL('../package.json', import.meta.url)));
-  await writeFile(join(root, '.gitignore'), await readFile(new URL('../.gitignore', import.meta.url)));
+  await writeFile(join(root, 'package.json'), await readFile(new URL('../../package.json', import.meta.url)));
+  await writeFile(join(root, '.gitignore'), await readFile(new URL('../../.gitignore', import.meta.url)));
   const resources = [
     'src/core/index.js', 'src/core/index.d.ts', 'src/core/services.js', 'src/core/services.d.ts',
     'src/core/backends/pi-opensandbox.js', 'src/core/backends/pi-opensandbox.d.ts',

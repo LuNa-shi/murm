@@ -18,7 +18,9 @@
     "examples/subagents-environment/.npmignore",
     "examples/lead-helper-environment/.npmignore",
     "examples/scalemas-environment/.npmignore",
-    "examples/agensh-environment/.npmignore"
+    "examples/agensh-environment/.npmignore",
+    "tsconfig.json",
+    ".dockerignore"
   ],
   "excluded": [
     {
@@ -40,6 +42,10 @@
     {
       "path": "third_party/agensh",
       "reason": "Pinned external Agensh source. The public-Core Environment documents the native board protocol and schema provenance at its local integration boundary."
+    },
+    {
+      "path": "dist/",
+      "reason": "Generated output from TypeScript and accompanying runtime assets. The inventory fingerprints the source inputs."
     }
   ],
   "files": [
@@ -1723,6 +1729,30 @@
         "docs/architecture/19-scalemas-environment.md"
       ],
       "role": "Optional bounded FIFO actual-input admission shared across peer routers; cancellation and unknown-outcome queue fence"
+    },
+    {
+      "path": "tsconfig.json",
+      "role": "Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree.",
+      "category": "Delivery and configuration",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ]
+    },
+    {
+      "path": ".dockerignore",
+      "role": "Build context exclusions for generated outputs, dependency trees and local data.",
+      "category": "Delivery and configuration",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ]
+    },
+    {
+      "path": "scripts/build.ts",
+      "role": "Clean TypeScript compilation and staging of runtime and verification assets in dist.",
+      "category": "Delivery and configuration",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ]
     }
   ]
 }

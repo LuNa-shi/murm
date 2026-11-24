@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve, relative, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const check = process.argv.includes('--check');
 if (process.argv.slice(2).some((arg) => arg !== '--check')) throw new Error('Usage: node scripts/generate-architecture-coverage.mjs [--check]');
 const map = JSON.parse(await readFile(resolve(root, 'docs/architecture/source-map.json'), 'utf8'));
@@ -14,7 +14,7 @@ const safe = (path) => typeof path === 'string' && path !== '' && !path.startsWi
 // Git worktrees and local agent metadata are workspace state, not repository
 // runtime inputs. They can contain dependency symlinks and must never affect
 // the tracked source inventory.
-const skipRoots = new Set(['.git', '.worktree', '.worktrees', '.claude', 'node_modules', '.codex', 'docs', 'test', 'test-support', 'experiments', 'reports']);
+const skipRoots = new Set(['.git', '.worktree', '.worktrees', '.claude', 'node_modules', 'dist', '.codex', 'docs', 'test', 'test-support', 'experiments', 'reports']);
 async function walk(directory, prefix = '') {
   const files = [];
   for (const entry of await readdir(directory, { withFileTypes: true })) {

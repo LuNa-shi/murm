@@ -2,9 +2,40 @@
 
 The host selects an Environment and supplies its model, image, Service and resource configuration. The programmable Core owns Bot identity, input delivery, private resources, artifact collection and close. Domain state transitions are described in [Execution](02-execution.md), [Mission and Task](03-mission-task.md) and [Services](04-services.md). The full prompt composition is in [Prompts](08-prompts.md).
 
+## TypeScript build and installation
+
+Install the locked development dependencies with `npm ci` and run `npm run build`.
+The build clears `dist/`, compiles with the repository's strict Node ESM TypeScript
+configuration, then stages non-code inputs beside the compiled modules. These
+inputs include the Lean drivers, namespace helper, model catalog and verification
+fixtures. The compiler reports errors before emitting output. Fix a failed build
+and rerun the same command to regenerate the output from source. `npm run typecheck`
+performs the compiler check without producing files.
+
+All three package exports resolve to JavaScript and declarations under
+`dist/src/core/`. `npm pack` runs the build through `prepack`. Install the resulting
+archive with `npm install --omit=dev` to run the same JavaScript without a compiler
+or loader. The installed `swarm` binary, host scripts and in-place example modules
+come from `dist/`. Run `npm run docs:generate` to rebuild documentation references,
+`npm run docs:check` to verify them, and `npm test` for the test suite. Each command
+builds first. The documentation tools execute compiled modules and fingerprint
+their source inputs. Tests execute in the compiled tree.
+
+Each image compiles from the locked inputs in a TypeScript build stage. The
+final image installs production dependencies only and copies the compiled tree.
+Worker startup keeps the image's `/opt/swarmenv/agent-worker.mjs` entrypoint via
+a symlink to that tree. The image executable `swarm` and Git credential helper
+remain root-owned and read-only to the Bot. The built-in Service and Judge shell
+entrypoints run their existing prebuild and lock checks before executing compiled
+JavaScript. Image operators still control the service configuration, mounts,
+deployment locks and startup deadlines described below.
+
+For the pinned source and retained-format inventory, see
+[Issue #204 source inventory](../workflows/typescript-migration-inventory.md).
+
 ## Distribution file boundary
 
-`package.json` declares the distribution roots explicitly: `src`, `scripts`, `services`, `examples`, `docs`, `test` and `test-support`, plus the tracked root glossary, Agent instructions, dependency shrinkwrap, environment example and submodule declaration. npm also includes its mandatory package metadata and README. Runtime code, Worker/image preparation inputs, model catalog, prompts/skills, foreground/result scripts and editable example resources remain in the tarball. Test fixtures remain available for the installed-candidate verification paths; their inclusion does not imply native tests ran.
+`package.json` declares the distribution roots explicitly: `dist`, `src`, `scripts`, `services`, `examples`, `docs`, `test` and `test-support`, plus the compiler configuration and Docker context exclusions, plus the tracked root glossary, Agent instructions, dependency shrinkwrap, environment example and submodule declaration. npm also includes its mandatory package metadata and README. Runtime code, Worker/image preparation inputs, model catalog, prompts/skills, foreground/result scripts and editable example resources remain in the tarball. Test fixtures remain available for the installed-candidate verification paths; their inclusion does not imply native tests ran.
 
 The root `npm-shrinkwrap.json` carries exact dependency resolution into the archive. npm omits `package-lock.json` when packing. All three shipped image Dockerfiles copy the shrinkwrap beside `package.json`, so their dependency installation can consume the same lock from an extracted archive or a checkout. The Worker uses `npm install --omit=dev --ignore-scripts` and the built-in and Mathlib Search images use `npm ci --omit=dev --ignore-scripts`. Their OS packages and base images remain separate build inputs. A deterministic archive regression checks every repository COPY source and runs offline `npm ci` and `npm install` in the extracted context before checking Pi 1.3.0. Physical image build and startup are separate verification steps.
 

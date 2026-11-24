@@ -72,8 +72,8 @@ const domainRoots=['src/task/','src/context/','src/judge/','src/environments/fla
 assert.deepEqual([...loaded].filter(path=>path==='src/agent/bot-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
  'Public Core imports must load independently of flat Task, Mission and role contracts');
 const {runNotesEnvironment,createNotes,fixedFact}=await import('./main.mjs');
-const {createCoreBridge}=await import('./node_modules/@swarmenv/core/src/core/bridge.js');
-const {snapshotServiceRegistry}=await import('./node_modules/@swarmenv/core/src/core/services.js');
+const {createCoreBridge}=await import('./node_modules/@swarmenv/core/dist/src/core/bridge.js');
+const {snapshotServiceRegistry}=await import('./node_modules/@swarmenv/core/dist/src/core/services.js');
 const notes=createNotes();
 const bots={writer:{profile:'writer',status:'idle',services:{notes:['put']}},reader:{profile:'reader',status:'idle',services:{notes:['get']}}};
 const bridge=await createCoreBridge({runtimeId:'notes-package',configuration:{host:'127.0.0.1',publicUrl:'http://127.0.0.1:{port}'},getBot:id=>bots[id]??null,registrations:snapshotServiceRegistry(notes.services)});
@@ -167,7 +167,7 @@ await runtime.close();
   const compilerOptions = { cwd: installed.directory, env: installed.env, timeout: 30_000 };
   const typed = await execute(process.execPath, [compiler, '--project', 'tsconfig.json', '--pretty', 'false', '--listFiles'], compilerOptions);
   for (const declaration of ['index.d.ts', 'services.d.ts', 'backends/pi-opensandbox.d.ts']) {
-    assert.ok(typed.stdout.split('\n').includes(join(installed.directory, 'node_modules/@swarmenv/core/src/core', declaration)));
+    assert.ok(typed.stdout.split('\n').includes(join(installed.directory, 'node_modules/@swarmenv/core/dist/src/core', declaration)));
   }
   await writeFile(join(installed.directory, 'consumer.mts'), consumer.replaceAll(/\/\/ @ts-expect-error[^\n]*\n/g, ''));
   await assert.rejects(execute(process.execPath, [compiler, '--project', 'tsconfig.json', '--pretty', 'false'], compilerOptions), error => {

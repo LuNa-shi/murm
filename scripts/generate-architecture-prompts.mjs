@@ -12,7 +12,7 @@ import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, BOT_MATERIAL_CONTI
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const outputDir = 'docs/architecture/prompts';
 const args = process.argv.slice(2);
 assert.ok(args.length === 0 || (args.length === 1 && args[0] === '--check'), 'Usage: node scripts/generate-architecture-prompts.mjs [--check]');

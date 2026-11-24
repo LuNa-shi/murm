@@ -5,10 +5,10 @@ import { spawnSync } from 'node:child_process';
 import { dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 if (process.argv.length !== 2) throw new Error('Usage: node scripts/check-architecture.mjs');
 for (const script of ['generate-architecture-prompts.mjs', 'generate-architecture-api.mjs', 'generate-architecture-coverage.mjs']) {
-  const result = spawnSync(process.execPath, [resolve(root, 'scripts', script), '--check'], { cwd: root, stdio: 'inherit' });
+  const result = spawnSync(process.execPath, [resolve(import.meta.dirname, script), '--check'], { cwd: root, stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
