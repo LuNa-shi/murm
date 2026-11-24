@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 import { DurableEventLog } from '../src/observability/durable-event-log.js';
-import { beginPrivateAudit, PRIVATE_AUDIT_RETENTION_MS, prunePrivateAudit, requirePrivateAudit } from '../src/observability/private-audit-retention.js';
+import { beginPrivateAudit, PRIVATE_AUDIT_RETENTION_MS, prunePrivateAudit } from '../src/observability/private-audit-retention.js';
 
 test('private audit prunes only expired closed or dead-owner managed runs', async t => {
   const root = await mkdtemp(join(tmpdir(), 'swarm-private-audit-'));
@@ -15,15 +15,13 @@ test('private audit prunes only expired closed or dead-owner managed runs', asyn
   const legacy = join(root, 'legacy');
   await mkdir(legacy);
   await symlink(legacy, join(root, 'link'));
-  const active = await beginPrivateAudit({ root, directory: activePath });
+  await beginPrivateAudit({ root, directory: activePath });
   const closed = await beginPrivateAudit({ root, directory: closedPath });
   await beginPrivateAudit({ root, directory: deadPath });
   const markerPath = join(deadPath, '.swarmenv-private-audit-v1.json');
   const marker = JSON.parse(await readFile(markerPath, 'utf8'));
   marker.owner.start = '0';
   await writeFile(markerPath, JSON.stringify(marker));
-  requirePrivateAudit(active, activePath);
-  assert.throws(() => requirePrivateAudit({}, activePath), /active managed private audit/);
   await assert.rejects(beginPrivateAudit({ root, directory: activePath }), { code: 'EEXIST' });
   for (const path of ['.hidden', '.hidden/run', 'nested/.hidden']) {
     await assert.rejects(beginPrivateAudit({ root, directory: join(root, path) }), /visible to the retention sweep/);
@@ -31,7 +29,7 @@ test('private audit prunes only expired closed or dead-owner managed runs', asyn
   await assert.rejects(beginPrivateAudit({ root, directory: join(root, 'link', 'new') }), /Unsafe private audit/);
   assert.equal((await lstat(activePath)).mode & 0o777, 0o700);
   await closed.close();
-  assert.throws(() => requirePrivateAudit(closed, closedPath), /active managed private audit/);
+  await closed.close();
   assert.deepEqual(await prunePrivateAudit({ root }), { removed: 0 });
   assert.deepEqual(await prunePrivateAudit({ root, now: Date.now() + PRIVATE_AUDIT_RETENTION_MS + 1_000 }), { removed: 2 });
   for (const path of [closedPath, deadPath]) await assert.rejects(lstat(path), { code: 'ENOENT' });

@@ -88,10 +88,6 @@ export async function beginPrivateAudit({ root, directory }) {
   return audit;
 }
 
-export function requirePrivateAudit(audit, directory) {
-  if (!activeRuns.has(audit) || audit.directory !== resolve(directory)) throw new Error('Timed benchmarks require an active managed private audit directory');
-}
-
 export async function prunePrivateAudit({ root, now = Date.now() }) {
   root = resolve(root);
   try { await checkDirectory(root); }

@@ -156,7 +156,7 @@ Public Core records input admission, events, Service requests and cleanup under 
 
 The standalone Observer defaults to loopback. Remote binding requires its operator credential before state is read. Daemon reuse checks the current health/authentication protocol, and metadata omits the password. Its actual access policy and API routes are described above.
 
-The retained private-audit library and `scripts/prune-private-audit.mjs` manage explicitly marked local audit directories. A caller creates and closes the owner record. The sweep validates path, inode and process-start identity, protects active owners and skips unmarked historical directories. Expiration is measured from creation for dead unclosed owners or from confirmed closure for closed records. Automatic creation and closure by the retired benchmark launcher have been removed. [Private audit implementation](../../src/observability/private-audit-retention.js) defines the component contract.
+The retained private-audit library and `scripts/prune-private-audit.mjs` manage explicitly marked local audit directories. A caller creates and closes the owner record, and closing an already closed owner returns without writing a second marker. The sweep validates path, inode and process-start identity, protects active owners and skips unmarked historical directories. Expiration is measured from creation for dead unclosed owners or from confirmed closure for closed records. The retired benchmark launcher's automatic ownership and active-audit admission guard have been removed. [Private audit implementation](../../src/observability/private-audit-retention.js) defines the component contract.
 
 ## Independent service evidence
 
