@@ -11,6 +11,7 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../src/protocol/envelope.js';
 import { transport, controls } from './fixtures/flat-controller-backend.js';
+import { readEnvironmentResult } from '../src/environments/shared/read-result.js';
 const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
@@ -30,6 +31,48 @@ test('flat host refuses unsupported live Workspace binding before creating any R
   const saved=JSON.parse(await readFile(report.reportPath,'utf8'));
   assert.equal(saved.businessFailure.code,'SERVICE_NOT_READY');
   assert.equal(stores.tasks.listExecutions(stores.task.task_id).length,0);
+});
+
+test('flat close retains physical cleanup and reconciles remaining Bots after one domain write fails', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'flat-close-reconciliation-'));
+  const stores = await createFlatTaskStores(root);
+  t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
+  transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
+  const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
+  transport.next = accept;
+  const finalize = stores.tasks.finalizeBotClose.bind(stores.tasks);
+  let failedBotId;
+  stores.tasks.finalizeBotClose = botId => {
+    if (!failedBotId) {
+      failedBotId = botId;
+      throw Object.assign(new Error('Controlled domain close failure'), { code: 'DOMAIN_CLOSE_FAILED' });
+    }
+    return finalize(botId);
+  };
+  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+    missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
+    deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 2,
+    snapshotProject: async () => { throw new Error('No capture is needed for discovery shutdown'); },
+    async drive(controller) { controller.halt('controlled-host-stop'); },
+  });
+  const core = JSON.parse(await readFile(join(root, report.runtimeId, 'runtime.json'), 'utf8'));
+  assert.equal(core.cleanup, 'complete');
+  assert.equal(core.bots.length, 2);
+  assert.equal(report.cleanup?.cleanup, 'complete', 'completed Core cleanup remains available despite failed domain reconciliation');
+  assert.deepEqual(report.cleanup.bots, core.bots);
+  assert.equal(report.businessFailure?.code, 'FLAT_BUSINESS_FAILED');
+  assert.equal(report.cleanupFailure?.code, 'FLAT_CLOSE_RECONCILIATION_FAILED');
+  assert.equal(stores.tasks.getBot(failedBotId).state, 'CLOSING');
+  const survivingBot = core.bots.find(bot => bot.botId !== failedBotId);
+  assert.equal(stores.tasks.getBot(survivingBot.botId).state, 'CLOSED');
+  const saved = JSON.parse(await readFile(report.reportPath, 'utf8'));
+  assert.deepEqual(saved.cleanup, report.cleanup);
+  assert.deepEqual(saved.cleanupFailure, report.cleanupFailure);
+  assert.deepEqual(report.cleanupFailure.details, [{ botId: failedBotId, code: 'DOMAIN_CLOSE_FAILED', message: 'Controlled domain close failure' }]);
+  const inspected = await readEnvironmentResult({ runDirectory: join(root, report.runtimeId), runtimeId: report.runtimeId });
+  assert.equal(inspected.environment.cleanup, 'complete');
+  assert.equal(inspected.core.cleanup, 'complete');
+  assert.equal(inspected.environment.cleanupFailureCode, 'FLAT_CLOSE_RECONCILIATION_FAILED');
 });
 
 

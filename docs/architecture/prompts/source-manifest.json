@@ -60,11 +60,11 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "sha256": "23fd27a5355dc182c45e116e977c0dc8a96c6af155819a06a78b00bfbff24483"
+      "sha256": "916f018037fd15ee4cd90f5f2362f702b77ec25ffa8f8351414fd536dedb6c9c"
     },
     {
       "path": "src/environments/flat/environment.js",
-      "sha256": "13e92aced4a4fed1caa4b23a4088438582f29687d1cde4421e940555637b0adc"
+      "sha256": "f66eab597b1e331fc8a8483a666617c495eca3be2d8a1874b5b074133ac2b3d8"
     },
     {
       "path": "examples/subagents-environment/main.mjs",

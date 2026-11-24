@@ -58,6 +58,23 @@ test('a hung close has a finite host wait and preserves the business result for 
   assert.equal(report.cleanupFailure.code, 'CLOSE_WAIT_TIMEOUT'); assert.equal(closeCalls, 1); assert.equal(report.cleanup, null);
 });
 
+test('a hung post-close reconciliation preserves the physical receipt within the original host wait', { timeout: 1000 }, async t => {
+  const { runWithReport } = await import('../src/environments/shared/run-report.js');
+  const outputDir = await directory(t);
+  const receipt = { cleanup: 'complete', bots: [{ botId: 'closed-bot', execution: 'stopped', cleanup: 'complete' }] };
+  const report = await runWithReport({ outputDir, closeTimeoutMs: 10,
+    createRuntime: async () => ({ id: 'reconciling-run', close: async () => receipt }),
+    run: async () => ({ accepted: false }),
+    afterClose: actual => { assert.deepEqual(actual, receipt); return new Promise(() => {}); },
+  });
+  assert.deepEqual(report.result, { accepted: false });
+  assert.deepEqual(report.cleanup, receipt);
+  assert.equal(report.cleanupFailure.code, 'CLOSE_WAIT_TIMEOUT');
+  const saved = JSON.parse(await readFile(report.reportPath, 'utf8'));
+  assert.deepEqual(saved.cleanup, receipt);
+  assert.equal(saved.cleanupFailure.code, 'CLOSE_WAIT_TIMEOUT');
+});
+
 test('successful Runtime reports use separate directories and apply host redaction before save and return', async t => {
   const { runWithReport } = await import('../src/environments/shared/run-report.js');
   const outputDir = await directory(t);

@@ -58,11 +58,12 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
         signal?.removeEventListener('abort',aborted);
         controller.halt();publication.close();
         await discovery.close({timeoutMs:Math.min(closeTimeoutMs,options.timeoutMs)});
-        const receipt=await runtime.close(options);
-        await controller.reconcileClose(receipt);
-        Object.assign(result,controller.snapshot());
-        return receipt;
+        return runtime.close(options);
       }};
+    },
+    async afterClose(receipt) {
+      try { await controller.reconcileClose(receipt); }
+      finally { Object.assign(result,controller.snapshot()); }
     },
     async run() {
       await controller.start();

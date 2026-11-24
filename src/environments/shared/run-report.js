@@ -13,8 +13,9 @@ function describe(error) {
 /** Environment owns input ordering, business deadlines and external Services.
  * This helper preserves independent failures and bounds only its close wait.
  * redact must scrub any configured secrets from intentional report content. */
-export async function runWithReport({ createRuntime, run, outputDir, closeTimeoutMs = 60_000, redact = value => value }) {
+export async function runWithReport({ createRuntime, run, afterClose, outputDir, closeTimeoutMs = 60_000, redact = value => value }) {
   if (typeof createRuntime !== 'function' || typeof run !== 'function' || typeof redact !== 'function' ||
+      (afterClose !== undefined && typeof afterClose !== 'function') ||
       typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(closeTimeoutMs) || closeTimeoutMs < 1 || closeTimeoutMs > 2147483647) {
     throw new TypeError('Host reporting requires factory, business function, output directory and a finite close wait');
   }
@@ -33,7 +34,10 @@ export async function runWithReport({ createRuntime, run, outputDir, closeTimeou
     if (runtime) {
       let timer;
       try {
-        report.cleanup = await Promise.race([Promise.resolve().then(() => runtime.close({ timeoutMs: closeTimeoutMs })), new Promise((_, reject) => {
+        await Promise.race([Promise.resolve().then(async () => {
+          report.cleanup = await runtime.close({ timeoutMs: closeTimeoutMs });
+          await afterClose?.(report.cleanup);
+        }), new Promise((_, reject) => {
           timer = setTimeout(() => reject(Object.assign(new Error('Host close wait ended; Runtime cleanup is still unknown'), { code: 'CLOSE_WAIT_TIMEOUT' })), closeTimeoutMs);
         })]);
         if (report.cleanup?.cleanup !== 'complete' || report.cleanup.bots?.some(bot => bot.execution !== 'stopped' || bot.cleanup !== 'complete')) {

@@ -216,12 +216,24 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       return snapshot();
     },
     async reconcileClose(receipt) {
+      const reconciliationFailures=[];
       for(const stopped of receipt?.bots??[]) {
         const row=bots.get(stopped.botId);
         if(!row) continue;
-        const owner=taskService.getBot(row.botId);
-        if(owner && !['CLOSING','CLOSED'].includes(owner.state)) taskService.requestBotStop(row.botId,row.stopReason??'controller-close',{terminalState:'FAILED'});
-        await applyStop(row,stopped);
+        try {
+          const owner=taskService.getBot(row.botId);
+          if(owner && !['CLOSING','CLOSED'].includes(owner.state)) taskService.requestBotStop(row.botId,row.stopReason??'controller-close',{terminalState:'FAILED'});
+          await applyStop(row,stopped);
+        } catch(error) {
+          row.cleanupError=info(error);
+          reconciliationFailures.push({botId:row.botId,...row.cleanupError});
+          record('close-reconciliation-failed',row);
+        }
+      }
+      if(reconciliationFailures.length) {
+        const error=new SwarmEnvError('FLAT_CLOSE_RECONCILIATION_FAILED','Flat domain cleanup remains incomplete');
+        error.details=reconciliationFailures;
+        throw error;
       }
       return snapshot();
     },
