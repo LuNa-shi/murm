@@ -123,14 +123,60 @@ test('fixture manifest binds original source bytes and validates locked checker 
   const problemFile = join(root, 'input.lean');
   await writeFile(problemFile, fixtureSource);
   const created = await createFixtureManifest({ fixtureId: fixtureManifest.fixture_id,
-    putnambenchCommit: fixtureManifest.putnambench_commit, problemFile,
+    fixtureCommit: fixtureManifest.putnambench_commit, problemFile,
     leanToolchain: fixtureManifest.lean_toolchain, mathlibVersion: fixtureManifest.mathlib_version,
     checkerRef: fixtureManifest.checker_ref, checkerVersion: fixtureManifest.checker_version,
     environmentRef: fixtureManifest.environment_ref });
   assert.equal(created.problem_file_hash, fixtureManifest.problem_file_hash);
+  assert.equal(created.fixture_commit, fixtureManifest.putnambench_commit);
+  assert.equal(created.putnambench_commit, undefined);
+  const legacy = await createFixtureManifest({ fixtureId: fixtureManifest.fixture_id,
+    putnambenchCommit: fixtureManifest.putnambench_commit, problemFile,
+    leanToolchain: fixtureManifest.lean_toolchain, mathlibVersion: fixtureManifest.mathlib_version,
+    checkerRef: fixtureManifest.checker_ref, checkerVersion: fixtureManifest.checker_version,
+    environmentRef: fixtureManifest.environment_ref });
+  assert.deepEqual(legacy, created);
   validateFixtureManifest(created);
   assert.throws(() => validateFixtureManifest({ ...created, problem_file_hash: 'not-sha256' }), { code: 'INVALID_CONTRACT' });
-  assert.throws(() => validateFixtureManifest({ ...created, putnambench_commit: 'not-a-commit' }), { code: 'INVALID_CONTRACT' });
+  assert.throws(() => validateFixtureManifest({ ...created, fixture_commit: 'not-a-commit' }), { code: 'INVALID_CONTRACT' });
+});
+
+test('Judge reopening reuses one fixture revision but checks a changed canonical revision', async t => {
+  const root = await mkdtemp('/tmp/swarmenv-judge-fixture-revision-');
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const { putnambench_commit: originalCommit, ...manifest } = fixtureManifest;
+  const checker = checkerWithPreflight({
+    check: async ({ fixtureManifest: boundManifest }) => ({
+      verdict: (boundManifest.fixture_commit ?? boundManifest.putnambench_commit) === originalCommit ? 'PASS' : 'FAIL',
+      evidence: { checker_started: true, exit_code: (boundManifest.fixture_commit ?? boundManifest.putnambench_commit) === originalCommit ? 0 : 1 },
+    }),
+  });
+  const results = [];
+  const revisions = [
+    { putnambench_commit: originalCommit },
+    { fixture_commit: originalCommit },
+    { fixture_commit: originalCommit },
+    { fixture_commit: '2'.repeat(40), putnambench_commit: originalCommit },
+  ];
+  for (const [index, revision] of revisions.entries()) {
+    const judge = new JudgeService(join(root, 'judge.sqlite'), {
+      checker, fixtureManifest: { ...manifest, ...revision },
+    });
+    try {
+      results.push(await judge.checkWorkspaceSource({
+        request_key: `fixture-revision-${index}`, source: { content: fixtureSource },
+      }, makeEnvelope({ operationId: `fixture-operation-${index}`, actorRef: 'trusted:host',
+        taskId: 'task-fixture', executionId: 'execution-fixture', specVersion: 1, stateVersion: 1 })));
+      await judge.waitForIdle();
+    } finally {
+      judge.close();
+    }
+  }
+  assert.equal(results[0].verdict, 'PASS');
+  assert.equal(results[1].check_result_id, results[0].check_result_id);
+  assert.equal(results[2].check_result_id, results[0].check_result_id);
+  assert.equal(results[3].verdict, 'FAIL');
+  assert.notEqual(results[3].check_result_id, results[0].check_result_id);
 });
 
 test('Lean checker returns PASS only for a clean zero exit and preserves failure evidence', async () => {

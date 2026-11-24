@@ -293,7 +293,8 @@ export class JudgeService {
     const inputSnapshotHash = fixtureManifest.input_snapshot_hash ?? hash({
       fixture_id: fixtureManifest.fixture_id,
       problem_file_hash: fixtureManifest.problem_file_hash,
-      putnambench_commit: fixtureManifest.putnambench_commit,
+      // Keep the persisted hash format so valid legacy results remain reusable.
+      putnambench_commit: fixtureManifest.fixture_commit ?? fixtureManifest.putnambench_commit,
     });
     const task = {
       task_id: envelope.task_id,

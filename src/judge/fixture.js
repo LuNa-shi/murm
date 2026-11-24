@@ -23,11 +23,12 @@ export function validateFixtureManifest(manifest) {
   return manifest;
 }
 
-export async function createFixtureManifest({ fixtureId, putnambenchCommit, problemFile, leanToolchain, mathlibVersion, checkerRef, checkerVersion, environmentRef, projectRoot = null }) {
+export async function createFixtureManifest({ fixtureId, fixtureCommit, putnambenchCommit, problemFile, leanToolchain, mathlibVersion, checkerRef, checkerVersion, environmentRef, projectRoot = null }) {
+  const commit = fixtureCommit ?? putnambenchCommit;
   const content = await readFile(problemFile);
   return validateFixtureManifest({
     fixture_id: fixtureId,
-    putnambench_commit: putnambenchCommit,
+    fixture_commit: commit,
     problem_file: problemFile,
     problem_file_hash: sha256(content),
     lean_toolchain: leanToolchain,
@@ -36,6 +37,6 @@ export async function createFixtureManifest({ fixtureId, putnambenchCommit, prob
     checker_version: checkerVersion,
     environment_ref: environmentRef,
     project_root: projectRoot,
-    manifest_hash: sha256(stableStringify({ fixtureId, putnambenchCommit, problemFile, leanToolchain, mathlibVersion, checkerRef, checkerVersion, environmentRef, projectRoot })),
+    manifest_hash: sha256(stableStringify({ fixtureId, fixtureCommit: commit, problemFile, leanToolchain, mathlibVersion, checkerRef, checkerVersion, environmentRef, projectRoot })),
   });
 }
