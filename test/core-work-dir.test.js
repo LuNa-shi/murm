@@ -8,7 +8,8 @@ import { CoreWorkDir } from '../scripts/core-work-dir.mjs';
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'core-files-worker-'));
   const path = join(root, 'work');
-  await mkdir(path, { mode: 0o555 });
+  await mkdir(path, { mode: 0o700 });
+  await chmod(path, 0o555);
   t.after(async () => { await chmod(path, 0o700); await rm(root, { recursive: true, force: true }); });
   return { root, path, worker: new CoreWorkDir({ path, uid: process.getuid(), gid: process.getgid(), assertOpen() {} }) };
 }
