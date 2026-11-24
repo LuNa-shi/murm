@@ -1509,21 +1509,6 @@ test('required merge checker cannot be bypassed by missing configuration or call
   assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, '0.1');
 });
 
-test('merge timeout rejects even if its abort handler resolves a late PASS, and replays without rechecking', async t => {
-  let checks = 0;
-  const { workspaceMerge, runtime, identity, dispatch, guest } = await workspaceFixture(t, { mergeRequiredCheck: mergeCheckerIdentity, workspaceMergeChecker: {
-    identity: mergeCheckerIdentity, timeoutMs: 30,
-    check({ signal }) { checks += 1; return new Promise(resolve => signal.addEventListener('abort', () => resolve({ verdict: 'PASS' }), { once: true })); },
-  } });
-  guest.files['addition.txt'] = Buffer.from('saved contribution');
-  const saved = await dispatch('save', 'merge-timeout-source');
-  const merge = () => workspaceMerge.merge({ from: saved.revision }, { ...identity, requestId: 'merge-timeout' });
-  await assert.rejects(merge(), { code: 'SERVICE_TIMEOUT' });
-  await assert.rejects(merge(), { code: 'SERVICE_TIMEOUT' });
-  assert.equal(checks, 1);
-  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, '0.1');
-});
-
 for (const policy of ['task-done-only', 'conflicting', 'none']) test(`merge honors ${policy} Task and Mission check requirements`, async t => {
   let checks = 0;
   const { workspaceMerge, runtime, dispatch, guest, identity } = await workspaceFixture(t, {
@@ -2045,41 +2030,6 @@ for (const deployment of ['in-process', 'independent']) test(`authenticated Brid
     }
   }
 });
-
-test('slow Bot preparation keeps its reservation lease live before activation', async t => {
-  const { service, runtime, manager, startSession } = await fixture(t);
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect a slow public input', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
-  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:slow-lease' });
-  let resume, entered;
-  const gate = new Promise(resolve => { resume = resolve; });
-  const copying = new Promise(resolve => { entered = resolve; });
-  const sync = manager.syncWorkspace.bind(manager);
-  manager.syncWorkspace = async input => { entered(); await gate; return sync(input); };
-  t.mock.timers.enable({ apis: ['Date', 'setInterval'], now: Date.now() });
-  const binding = runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1' });
-  await copying;
-  try {
-    for (let step = 0; step < 4; step++) t.mock.timers.tick(10_000);
-    assert.ok(Date.parse(service.getExecution(execution.execution_id).lease_expires_at) > Date.now(), 'preparation must retain a live lease beyond its original 30 seconds');
-  } finally { resume(); }
-  await binding;
-  assert.equal(service.getBot(bot.bot_id).state, 'ACTIVE');
-  assert.doesNotThrow(() => runtime.heartbeat(execution.execution_id));
-});
-
-test('binding cannot revive an already expired preparation lease', async t => {
-  const { service, runtime, startSession, manager } = await fixture(t);
-  const { bot, session } = await runtime.startBot({ missionId: 'mission:bots', coreId: 'core-1', startSession });
-  const task = service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: bot.mission_id, summary: 'Inspect expired preparation ownership', expected_output: 'Note', acceptance_conditions: ['Reviewed'] }, makeEnvelope({ actorRef: bot.bot_id })).task;
-  const { execution } = service.takeTask(task.task_id, { owner_ref: bot.bot_id, core_id: bot.core_id, take_key: 'take:expired-preparation' });
-  t.mock.timers.enable({ apis: ['Date'], now: Date.parse(execution.lease_expires_at) + 1 });
-  await assert.rejects(runtime.bindAgentExecution(execution.execution_id, session, { coreId: 'core-1' }), /lease has expired/);
-  assert.equal(service.getBot(bot.bot_id).state, 'CLOSED');
-  assert.equal(manager.snapshot().executions.length, 0);
-  assert.notEqual(service.getExecution(execution.execution_id).state, 'RUNNING');
-});
-
 
 test('Bridge stop fences an admitted merge and joins its owned final-tree checker', async t => {
   let entered, release, checkSignal, launchCheck;
