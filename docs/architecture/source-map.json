@@ -1263,6 +1263,15 @@
       "role": "Environment host reporting with independent business, cleanup and save failures"
     },
     {
+      "path": "src/environments/flat/coordination-permissions.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Flat host-only validation and immutable copy of the existing dependency-replacement grant"
+    },
+    {
       "path": "src/environments/flat/task-service.js",
       "category": "Execution and control",
       "chapters": [

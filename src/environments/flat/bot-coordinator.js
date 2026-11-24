@@ -1,9 +1,11 @@
+import { flatCoordinationPermissions } from './coordination-permissions.js';
 function invalid(message) { return Object.assign(new Error(message), { code: 'INVALID_CONTRACT' }); }
 
 /** Host-only startup composition; no model-facing method can mark readiness. */
-export function createFlatBotCoordinator({ runtime, taskService, missionId }) {
+export function createFlatBotCoordinator({ runtime, taskService, missionId, coordinationPermissions = [] }) {
   if (!runtime?.id || typeof runtime.spawn !== 'function' || typeof runtime.stop !== 'function' ||
       !taskService || typeof missionId !== 'string' || !missionId) throw invalid('Trusted Core Runtime and flat Mission are required');
+  const permissions = flatCoordinationPermissions(coordinationPermissions);
   const requests = new Map();
   return Object.freeze({
     async spawn({ legacySlotId, selectionDeadline, hardDeadline = selectionDeadline, ...options }) {
@@ -24,7 +26,7 @@ export function createFlatBotCoordinator({ runtime, taskService, missionId }) {
         const bot = await runtime.spawn(options);
         try {
           if (bot?.status !== 'idle' || typeof bot.id !== 'string' || !bot.id || bot.profile !== options.profile) throw invalid('Core spawn did not return the requested ready Bot');
-          taskService.registerBot({ botId: bot.id, missionId, legacySlotId, selectionDeadline, hardDeadline });
+          taskService.registerBot({ botId: bot.id, missionId, legacySlotId, selectionDeadline, hardDeadline, coordinationPermissions: permissions });
           taskService.markCoreBotReady(bot.id);
           return bot;
         } catch (error) {
