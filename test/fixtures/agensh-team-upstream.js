@@ -7,6 +7,7 @@ export const teamClaim = 'T15_SHARED_COMPONENT';
 export const teamInputs = ['T15_KICK_A', 'T15_KICK_B', 'T15_NEGOTIATE', 'T15_CONFIRM', 'T15_USER'];
 export const eightPeerKeys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 export const latePeerInput = 'T15_ADOPT_H';
+export const foregroundInput = 'T15_FOREGROUND_A';
 
 export function teamCommand(stage, batch, peerNames) {
   const setup = `import assert from 'node:assert/strict';
@@ -36,14 +37,21 @@ const result={stage,event,...identity,head,prNumber:pr.number,file,content,claim
   const user = `const before=JSON.parse(readFileSync('.team-state.json','utf8'));assert.deepEqual(identity.pi,before.pi);assert.equal(identity.cwd,before.cwd);const publicHead=git('rev-parse','HEAD');
 writeFileSync('private.txt','T15_UNPUSHED\\n');git('add','private.txt');git('commit','-m','Private unpushed checkpoint');const privateHead=git('rev-parse','HEAD');assert.notEqual(publicHead,privateHead);writeFileSync('left.txt','T15_DIRTY_PRIVATE\\n');writeFileSync('untracked.bin',Buffer.from([0,255,65,10]));
 const result={stage,event,...identity,publicHead,privateHead,binary:readFileSync('untracked.bin').toString('base64')};writeFileSync('user-event.json',JSON.stringify(result));console.log(JSON.stringify(result));`;
-  return `node --input-type=module <<'TEAM_CHECK'\n${setup}\n${stage.endsWith('initial') ? initial : stage.endsWith('contribution') ? contribution : user}\nTEAM_CHECK`;
+  const foreground = `const before=JSON.parse(readFileSync('.team-state.json','utf8')),previous=JSON.parse(readFileSync('user-event.json','utf8'));assert.deepEqual(identity.pi,before.pi);assert.equal(identity.cwd,before.cwd);assert.equal(identity.branch,previous.branch);assert.deepEqual(identity.pi,previous.pi);
+assert.equal(event.source,'user');assert.equal(event.text,${JSON.stringify(foregroundInput)});
+const privateHead=git('rev-parse','HEAD'),publicHead=git('rev-parse','origin/'+identity.branch),binary=readFileSync('untracked.bin').toString('base64'),dirty=readFileSync('left.txt','utf8');
+assert.equal(privateHead,previous.privateHead);assert.equal(publicHead,previous.publicHead);assert.equal(binary,'AP9BCg==');assert.equal(dirty,'T15_DIRTY_PRIVATE\\n');
+const result={stage,event,...identity,privateHead,publicHead,binary,dirty};writeFileSync('foreground-event.json',JSON.stringify(result));console.log(JSON.stringify(result));`;
+  return `node --input-type=module <<'TEAM_CHECK'\n${setup}\n${stage.endsWith('initial') ? initial : stage.endsWith('contribution') ? contribution : stage === 'a-foreground' ? foreground : user}\nTEAM_CHECK`;
 }
 
-export async function createTeamUpstream({ deadlineAt, peerNames, peerKeys = ['a', 'b'], onFailure = () => {} }) {
+export async function createTeamUpstream({ deadlineAt, peerNames, peerKeys = ['a', 'b'], foregroundInput: includeForegroundInput = false, onFailure = () => {} }) {
   assert.ok(JSON.stringify(peerKeys) === JSON.stringify(['a', 'b']) || JSON.stringify(peerKeys) === JSON.stringify(eightPeerKeys));
   const names = ['a-initial', 'b-initial', 'a-contribution', 'b-contribution', 'a-user',
     ...peerKeys.slice(2).map(key => `${key}-initial`), ...(peerKeys.length === 8 ? ['h-contribution'] : [])];
   const markers = [...teamInputs, ...peerKeys.slice(2).map(key => `T15_KICK_${key.toUpperCase()}`), ...(peerKeys.length === 8 ? [latePeerInput] : [])];
+  assert.equal(typeof includeForegroundInput, 'boolean');
+  if (includeForegroundInput) { assert.equal(peerKeys.length, 2); names.push('a-foreground'); markers.push(foregroundInput); }
   const maxRequests = names.length * 2;
   const stages = new Map(); const evidence = []; let arrivals = 0, accepted = 0, failure;
   const server = createServer(async (request, response) => {
@@ -56,7 +64,7 @@ export async function createTeamUpstream({ deadlineAt, peerNames, peerKeys = ['a
       const batch = JSON.parse(text.slice(text.indexOf('\n') + 1));
       const indices = markers.map((marker, index) => batch.text.includes(marker) ? index : -1).filter(index => index >= 0); assert.equal(indices.length, 1);
       const index = indices[0], stage = names[index];
-      assert.equal(batch.source, stage.endsWith('initial') ? 'kickoff' : stage.endsWith('user') || stage === 'h-contribution' ? 'gitea' : 'mattermost');
+      assert.equal(batch.source, stage === 'a-foreground' ? 'user' : stage.endsWith('initial') ? 'kickoff' : stage.endsWith('user') || stage === 'h-contribution' ? 'gitea' : 'mattermost');
       if (!stage.endsWith('initial')) assert.ok(batch.context.includes(teamFact));
       const prior = stages.get(stage); const callId = `team_${stage}`; let item;
       if (!prior) {
@@ -68,7 +76,8 @@ export async function createTeamUpstream({ deadlineAt, peerNames, peerKeys = ['a
         const result = JSON.parse(results[0].output.trim()); assert.equal(result.stage, stage); assert.equal(result.event.batchId, batch.batchId); assert.equal(result.event.eventId, batch.eventId);
         assert.ok(result.pi.pid > 0 && typeof result.pi.start === 'string');
         if (stage.endsWith('contribution')) { assert.match(result.head, /^[a-f0-9]{40}$/); assert.ok(result.prNumber > 0 && result.claimCount >= 2 && result.adopted); }
-        if (stage === 'a-user') { assert.equal(result.binary, 'AP9BCg=='); assert.notEqual(result.privateHead, result.publicHead); }
+        if (stage === 'a-foreground') { assert.equal(result.event.source, 'user'); assert.equal(result.event.text, foregroundInput); assert.equal(result.dirty, 'T15_DIRTY_PRIVATE\n'); }
+        if (stage === 'a-user' || stage === 'a-foreground') { assert.equal(result.binary, 'AP9BCg=='); assert.notEqual(result.privateHead, result.publicHead); }
         prior.completed = true; evidence.push(result);
         item = { type: 'message', id: `msg_${callId}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: `${stage}_OK`, annotations: [] }] };
       }
