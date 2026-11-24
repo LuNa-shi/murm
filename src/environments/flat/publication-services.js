@@ -1,3 +1,4 @@
+import { flatCoordinationPermissions } from './coordination-permissions.js';
 import { createWorkspaceMergeService } from './workspace-merge.js';
 import { MISSION_WORKSPACE_READS } from './public-workspace-reads.js';
 import { prepareWorkspaceCheckSource } from './workspace-check-source.js';
@@ -51,25 +52,30 @@ const definitions = {
 
 /** Host composition only. Task policy and durable publication remain outside Core. */
 export function createFlatPublicationServices({ runtime, taskService, contextService, missionId, missionWorkspace, workspaceId,
-  profile='researcher', deadline, onFinish=()=>{}, snapshotProject, judgeService = null, workspaceProjectCheck = false, workspaceMergeChecker = null }) {
+  profile='researcher', deadline, coordinationPermissions=[], onFinish=()=>{}, snapshotProject, judgeService = null, workspaceProjectCheck = false, workspaceMergeChecker = null }) {
   if (!runtime || !taskService || !contextService || !missionWorkspace || typeof missionId!=='string' || !missionId ||
       typeof workspaceId!=='string' || !workspaceId || typeof deadline!=='function' || typeof onFinish!=='function') fail('INVALID_CONTRACT','Flat publication requires trusted Runtime, stores and finite Mission budget');
   if (typeof workspaceProjectCheck!=='boolean') fail('INVALID_CONTRACT','Flat Judge project mode must be boolean');
   if (judgeService && (judgeService.taskService !== taskService || typeof judgeService.dispatch !== 'function')) fail('INVALID_CONTRACT','Flat Judge and Task authority must match');
+  const permissions=flatCoordinationPermissions(coordinationPermissions);
   const getRuntime=()=>typeof runtime==='function'?runtime():runtime;
   const requests=new Map();
   const judgeCalls=new Map();
   const mergeCalls=new Map();
   const judgeStatus=()=>({cleanup:judgeCalls.size?'pending':'complete',pending:[...new Map([...judgeCalls.values()].map(({id,work,providerStarted,providerCompleted,...receipt})=>[id,structuredClone(receipt)])).values()]});
   let closing=false;
-  function binding(caller, {write=true}={}) {
+  function binding(caller, {write=true,allowUnboundRevocation=false}={}) {
     const core=getRuntime();
     if (closing || caller?.runtimeId!==core?.id || caller.profile!==profile || typeof caller.botId!=='string') fail('NOT_ALLOWED','Flat publication caller is outside this Runtime');
     const bot=taskService.getBot(caller.botId);
-    if (!bot || bot.mission_id!==missionId || bot.sandbox_id || bot.core_id===core.id || !['UNBOUND','ACTIVE'].includes(bot.state) || (write && bot.state!=='ACTIVE')) fail('NOT_ALLOWED','Flat publication requires its actual current Bot owner');
+    if (!bot || bot.mission_id!==missionId || bot.sandbox_id || bot.core_id===core.id || !['UNBOUND','ACTIVE'].includes(bot.state) || (write && bot.state!=='ACTIVE' && !(allowUnboundRevocation && bot.state==='UNBOUND'))) fail('NOT_ALLOWED','Flat publication requires its actual current Bot owner');
     const until=deadline();
     if (!Number.isFinite(until) || Date.now()>=until) fail('NOT_ALLOWED','Flat Mission budget elapsed');
     taskService.assertMissionResearchOpen(missionId); taskService.assertBotDeadline(bot.bot_id);
+    if (write && bot.state === 'UNBOUND') {
+      // This is the original narrow domain exception; recheck it before replay.
+      taskService.assertMissionCoordination(makeEnvelope({actorRef:bot.bot_id}), 'unsupersede');
+    }
     const execution=bot.execution_id ? taskService.getExecution(bot.execution_id):null;
     if (execution && (execution.owner_ref!==bot.bot_id || execution.state!=='RUNNING' || Date.now()>=Date.parse(execution.lease_expires_at) || taskService.getTask(execution.task_id)?.spec_version!==execution.spec_version)) fail('NOT_ALLOWED','Flat Execution ownership or lease changed');
     return {core,bot,execution};
@@ -179,15 +185,16 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       if(previous.work && !guardedReplay) return structuredClone(await previous.work);
     }
     const read=cap.side_effect==='read';
-    const original=binding(caller,{write:!read});
+    const access={write:!read,allowUnboundRevocation:service==='context' && operation==='material_unsupersede' && permissions.includes('unsupersede')};
+    const original=binding(caller,access);
     const live=await core.get(caller.botId);
     if (!['idle','running'].includes(live.status) || live.profile!==profile) fail('NOT_ALLOWED','Core Bot is unavailable');
     signal?.throwIfAborted();
-    const current=binding(caller,{write:!read});
+    const current=binding(caller,access);
     if (current.execution?.execution_id!==original.execution?.execution_id || current.execution?.fencing_version!==original.execution?.fencing_version) fail('FENCED','Flat binding changed during admission');
     const reauthorize=expected=>{
       assertAuthorized?.();signal?.throwIfAborted();
-      const latest=binding(caller,{write:!read});
+      const latest=binding(caller,access);
       if(latest.execution?.execution_id!==expected.executionId || latest.execution?.fencing_version!==expected.fencingVersion) fail('FENCED','Flat publication replay binding changed');
     };
     const joined=requests.get(key);
@@ -205,7 +212,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     const call=service==='judge'?{id,requestId:envelope.operation_id,operation,botId:caller.botId,executionId:current.execution?.execution_id??null}:null;
     const work=Promise.resolve().then(()=>{
       signal?.throwIfAborted();
-      const latest=binding(caller,{write:!read});
+      const latest=binding(caller,access);
       if(latest.execution?.execution_id!==current.execution?.execution_id || latest.execution?.fencing_version!==current.execution?.fencing_version) fail('FENCED','Flat binding changed before publication');
       const domainEnvelope=latest.execution ? {...executionEnvelope(latest.execution,id),actor_ref:caller.botId}:makeEnvelope({actorRef:caller.botId,operationId:id});
       const result=service==='judge'?judgeOperation(operation,input,latest,id,caller,signal,assertAuthorized,call):service==='workspace'?workspaceOperation(operation,input,latest,id,signal,assertAuthorized):service==='context'?contextService.dispatch(operation,input,domainEnvelope):taskService.dispatch(operation,input,domainEnvelope);

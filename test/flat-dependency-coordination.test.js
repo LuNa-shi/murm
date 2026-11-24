@@ -164,9 +164,10 @@ test('actual Flat host threads only explicit grants into frozen Profile, Service
 });
 
 test('coordination configuration rejects unrelated grants and never derives permission from a mutable input',()=>{
-  for(const coordinationPermissions of [null,'task_dependency_replace',Array(1),['mission_submit'],['unsupersede'],['unknown']]) {
+  for(const coordinationPermissions of [null,'task_dependency_replace',Array(1),['mission_submit'],['unknown']]) {
     assert.throws(()=>flatResearcherProfile({coordinationPermissions}),{code:'INVALID_CONTRACT'});
   }
+  assert.equal(flatResearcherProfile({coordinationPermissions:['unsupersede']}).services.task.includes('unsupersede'),false);
   const coordinationPermissions=[];
   const profile=flatResearcherProfile({coordinationPermissions});
   coordinationPermissions.push('task_dependency_replace');
