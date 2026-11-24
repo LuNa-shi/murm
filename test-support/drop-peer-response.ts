@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 let dropped = false;
-const server = createServer(async (request, response) => {
-  const chunks = [];
+const server = createServer(async (request: any, response: any) => {
+  const chunks: any[] = [];
   for await (const chunk of request) chunks.push(chunk);
   const body = Buffer.concat(chunks).toString();
   const upstream = await fetch(process.env.PEER_UPSTREAM + request.url, {
@@ -15,5 +15,5 @@ const server = createServer(async (request, response) => {
   response.writeHead(upstream.status, { 'content-type': 'application/json' });
   response.end(text);
 });
-server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ url: `http://127.0.0.1:${server.address().port}` })));
+server.listen(0, '127.0.0.1', () => console.log(JSON.stringify({ url: `http://127.0.0.1:${(server.address() as import('node:net').AddressInfo).port}` })));
 process.once('SIGTERM', () => { server.closeAllConnections(); server.close(() => process.exit(0)); });

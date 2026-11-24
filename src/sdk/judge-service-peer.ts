@@ -112,6 +112,6 @@ export function createJudgeServicePeer({ database, token, coordinator, checker, 
       return requests.run({ call_id: command.call_id, project: command.project, authority: new ServiceAuthoritySnapshot(command.authority), sequence: 0 },
         async () => ({ result: await judge.dispatch(...command.args) }));
     } });
-  return { generation, start: (options: any) => server.start(options), environment: () => server.environment(),
+  return { generation, start: (options?: any) => server.start(options), environment: () => server.environment(),
     async stop() { await server.stop(); await judge.waitForIdle(); judge.close(); } };
 }

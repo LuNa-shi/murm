@@ -1229,7 +1229,7 @@
       "role": "Private Runtime summary configuration, ordered evidence writing and credential redaction"
     },
     {
-      "path": "examples/notes-environment/main.mjs",
+      "path": "examples/notes-environment/main.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1237,7 +1237,7 @@
       "role": "Installed-package Notes Environment Service, role prompts, input order, archive verification and saved-report CLI"
     },
     {
-      "path": "examples/notes-environment/config.mjs",
+      "path": "examples/notes-environment/config.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1372,7 +1372,7 @@
       "role": "Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence"
     },
     {
-      "path": "examples/subagents-environment/main.mjs",
+      "path": "examples/subagents-environment/main.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1381,7 +1381,7 @@
       "role": "Subagents host Profiles, bounded three-to-eight-Bot Runtime, verified text adoption and whole-tree reporting"
     },
     {
-      "path": "examples/subagents-environment/controller.mjs",
+      "path": "examples/subagents-environment/controller.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1390,7 +1390,7 @@
       "role": "Bounded multi-source input queue, round snapshots, failure coalescing and shutdown receipts"
     },
     {
-      "path": "examples/subagents-environment/stages.mjs",
+      "path": "examples/subagents-environment/stages.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1398,7 +1398,7 @@
       "role": "Optional four-group original-child identity and cumulative text adoption gate over actual controller admissions"
     },
     {
-      "path": "examples/subagents-environment/prompts.mjs",
+      "path": "examples/subagents-environment/prompts.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1407,7 +1407,7 @@
       "role": "Complete parent and child instructions and fixed initial text goal"
     },
     {
-      "path": "examples/subagents-environment/config.mjs",
+      "path": "examples/subagents-environment/config.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1482,7 +1482,7 @@
       "role": "Validates fixed lead-helper configuration and exact trusted team identity"
     },
     {
-      "path": "examples/lead-helper-environment/main.mjs",
+      "path": "examples/lead-helper-environment/main.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
@@ -1490,7 +1490,7 @@
       "role": "Editable lead-helper CLI with public backend assembly and report output"
     },
     {
-      "path": "examples/lead-helper-environment/config.mjs",
+      "path": "examples/lead-helper-environment/config.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
@@ -1646,7 +1646,7 @@
       "role": "Pinned third-party license or provenance attachment distributed with identified Lean material"
     },
     {
-      "path": "examples/scalemas-environment/main.mjs",
+      "path": "examples/scalemas-environment/main.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/19-scalemas-environment.md"
@@ -1654,7 +1654,7 @@
       "role": "Editable installed scaleMAS host, public backend assembly and saved result CLI"
     },
     {
-      "path": "examples/scalemas-environment/config.mjs",
+      "path": "examples/scalemas-environment/config.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/19-scalemas-environment.md"
@@ -1670,7 +1670,7 @@
       "role": "Exclude default scaleMAS run evidence from packaged examples"
     },
     {
-      "path": "examples/agensh-environment/config.mjs",
+      "path": "examples/agensh-environment/config.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1752,6 +1752,38 @@
       "category": "Core public runtime",
       "chapters": [
         "docs/architecture/04-services.md"
+      ]
+    },
+    {
+      "path": "examples/notes-environment/read-result.ts",
+      "category": "Example entry points",
+      "role": "In-place compiled example import of the shared read-result implementation",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ]
+    },
+    {
+      "path": "examples/notes-environment/run-input.ts",
+      "category": "Example entry points",
+      "role": "In-place compiled example import of the shared run-input implementation",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ]
+    },
+    {
+      "path": "examples/notes-environment/run-report.ts",
+      "category": "Example entry points",
+      "role": "In-place compiled example import of the shared run-report implementation",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ]
+    },
+    {
+      "path": "examples/subagents-environment/run-report.ts",
+      "category": "Example entry points",
+      "role": "In-place compiled example import of the shared run-report implementation",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
       ]
     }
   ]

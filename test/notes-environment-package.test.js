@@ -15,7 +15,7 @@ test('installed Notes and subagents CLIs preserve cancellation received during c
   for (const mode of ['notes', 'subagents']) {
     if (mode === 'subagents') {
       for (const name of ['main', 'controller', 'prompts']) {
-        await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/subagents-environment', `${name}.mjs`), join(installed.directory, `${name}.mjs`));
+        await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/subagents-environment', `${name}.js`), join(installed.directory, `${name}.js`));
       }
     }
     const outputDir = join(installed.directory, `${mode}-cancelled`);
@@ -24,7 +24,7 @@ process.send('config-ready');
 await new Promise(resolve => setTimeout(resolve, 150));
 export default {backend:{},image:'unused',outputDir:${JSON.stringify(outputDir)}};
 `);
-    const child = fork(join(installed.directory, 'main.mjs'), [join(installed.directory, 'delayed-config.mjs')], {
+    const child = fork(join(installed.directory, mode === 'notes' ? 'main.mjs' : 'main.js'), [join(installed.directory, 'delayed-config.mjs')], {
       cwd: installed.directory, env: installed.env, silent: true, timeout: 15_000, killSignal: 'SIGKILL',
     });
     t.after(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); });

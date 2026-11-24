@@ -1,4 +1,4 @@
-const required = name => { const value = process.env[name]; if (!value) throw new Error(`Set ${name}`); return value; };
+const required = (name: any) => { const value = process.env[name]; if (!value) throw new Error(`Set ${name}`); return value; };
 const host = process.env.SWARMENV_LEAD_HELPER_HOST ?? '172.17.0.1';
 const modelToken = process.env.SWARMENV_LEAD_HELPER_MODEL_TOKEN;
 export default {

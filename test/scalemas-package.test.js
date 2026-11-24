@@ -5,7 +5,7 @@ import { installNotesExample, execute } from './fixtures/notes-installed-package
 
 test('installed scaleMAS host resolves the public backend and saves an aborted run without allocating resources', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
-  const main = join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/scalemas-environment/main.mjs');
+  const main = join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/scalemas-environment/main.js');
   const script = `import assert from 'node:assert/strict';
     import {readFile} from 'node:fs/promises';import {pathToFileURL} from 'node:url';
     const {runScaleMASExample}=await import(pathToFileURL(${JSON.stringify(main)}));
@@ -32,7 +32,7 @@ test('installed scaleMAS host resolves the public backend and saves an aborted r
 
 test('installed scaleMAS CLI offers help and saved inspection without loading credentials, and hides configuration errors', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample(); t.after(() => installed.close());
-  const main = join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/scalemas-environment/main.mjs');
+  const main = join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/scalemas-environment/main.js');
   const { writeFile } = await import('node:fs/promises');
   const config = join(installed.directory, 'private-config.mjs');
   await writeFile(config, "throw new Error('PRIVATE_MODEL_TOKEN');\n");

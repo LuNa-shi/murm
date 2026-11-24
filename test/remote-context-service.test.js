@@ -49,7 +49,7 @@ for (const loseResponse of [false, true]) test(`independent Context preserves re
   let proxy;
   let proxyUrl;
   if (loseResponse) {
-    proxy = spawn(process.execPath, ['dist/test-support/drop-peer-response.mjs'], { env: { ...process.env, PEER_UPSTREAM: peer.url }, stdio: ['ignore', 'pipe', 'inherit'] });
+    proxy = spawn(process.execPath, ['dist/test-support/drop-peer-response.js'], { env: { ...process.env, PEER_UPSTREAM: peer.url }, stdio: ['ignore', 'pipe', 'inherit'] });
     proxyUrl = await new Promise(resolve => proxy.stdout.once('data', chunk => resolve(JSON.parse(chunk.toString()).url)));
     t.after(async () => { const done = once(proxy, 'exit'); proxy.kill(); await done; });
   }

@@ -1,8 +1,8 @@
 import { resolve } from 'node:path';
 import { createBoardLauncher } from '../../src/environments/agensh/board-process.js';
 
-const setting = name => process.env[`SWARMENV_AGENSH_${name}`];
-function required(name) {
+const setting = (name: any) => process.env[`SWARMENV_AGENSH_${name}`];
+function required(name: any) {
   const value = setting(name);
   if (!value) throw Object.assign(new Error(`Set SWARMENV_AGENSH_${name}`), { code: `AGENSH_CONFIG_${name}_REQUIRED` });
   return value;
@@ -12,8 +12,8 @@ const runId = required('RUN_ID');
 const image = required('IMAGE');
 const modelUrl = required('MODEL_URL');
 const modelToken = setting('MODEL_TOKEN');
-const gitea = { origin: required('GITEA_ORIGIN'), owner: required('GITEA_OWNER'), adminToken: required('GITEA_TOKEN') };
-const mattermost = { origin: required('MATTERMOST_ORIGIN'), teamId: required('MATTERMOST_TEAM_ID'), adminToken: required('MATTERMOST_TOKEN') };
+const gitea: any = { origin: required('GITEA_ORIGIN'), owner: required('GITEA_OWNER'), adminToken: required('GITEA_TOKEN') };
+const mattermost: any = { origin: required('MATTERMOST_ORIGIN'), teamId: required('MATTERMOST_TEAM_ID'), adminToken: required('MATTERMOST_TOKEN') };
 const mysqlDsn = required('BOARD_MYSQL_DSN');
 const startBoard = createBoardLauncher({
   sourceDirectory: resolve(required('BOARD_SOURCE')),

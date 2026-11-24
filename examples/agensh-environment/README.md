@@ -1,5 +1,7 @@
 # Run Agensh from an installed package
 
+Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pack` builds the distributable JavaScript and declarations before archiving.
+
 This example uses the package's foreground CLI to run two peers with separate Pi Sessions, Git branches and identities. The Environment provisions a private repository, a Mattermost channel and a Board for each run. Use `kickoff` and `input` to give either peer its own work.
 
 ## Prerequisites
@@ -19,9 +21,10 @@ archive=/absolute/path/to/swarmenv-core-0.2.0.tgz
 consumer=$(mktemp -d)
 cd "$consumer"
 npm init -y
+npm pkg set type=module
 npm install --omit=dev --ignore-scripts "$archive"
 package=node_modules/@swarmenv/core
-node "$package/scripts/run-environment.mjs" --help
+node "$package/dist/scripts/run-environment.js" --help
 ```
 
 Set the environment variables below in the host process. Load secrets from your normal credential store. The sample reads them at configuration time and keeps facility credentials out of Bot inputs and foreground status.
@@ -42,7 +45,7 @@ The sample uses two peers (`a` and `b`), one CPU and 1 GiB memory per peer, 128 
 ## Start, observe and stop
 
 ```sh
-node "$package/scripts/run-environment.mjs" --config "$package/examples/agensh-environment/config.mjs"
+node "$package/dist/scripts/run-environment.js" --config "$package/dist/examples/agensh-environment/config.js"
 ```
 
 After the CLI emits `ready`, type one JSON line at a time. Use the actual batch ID from a kickoff or input reply when waiting for that peer. Change the kickoff text and target to supply your own work.
@@ -60,7 +63,7 @@ Use the Runtime ID from the final record to inspect the saved reports, including
 
 ```sh
 runtime_id=RUNTIME_ID_FROM_RESULT
-node "$package/scripts/read-environment-result.mjs" \
+node "$package/dist/scripts/read-environment-result.js" \
   --run-directory "./agensh-runs/$runtime_id" --runtime-id "$runtime_id"
 ```
 

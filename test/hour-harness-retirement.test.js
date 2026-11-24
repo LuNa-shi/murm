@@ -22,15 +22,15 @@ for(const name of await readdir(join(root,'dist/test'))) {
  assert.ok(!/^hour-(?!harness-retirement)/.test(name)&&!/^subagents-hour/.test(name));
 }
 for(const path of ['src/environments/flat/environment.js','src/environments/agensh/index.js','src/environments/scalemas/index.js','src/environments/lead-helper/index.js',
- 'examples/subagents-environment/stages.mjs',
- 'examples/scalemas-environment/main.mjs','examples/lead-helper-environment/main.mjs']) await import(pathToFileURL(join(root,'dist',path)));
-for(const name of ['bot-disk-probe','drop-peer-response','judge-peer-fixture','project-install-rollback-probe','sandbox-project-probe']) await access(join(root,'dist/test-support',name+'.mjs'));
+ 'examples/subagents-environment/stages.js',
+ 'examples/scalemas-environment/main.js','examples/lead-helper-environment/main.js']) await import(pathToFileURL(join(root,'dist',path)));
+for(const name of ['bot-disk-probe','drop-peer-response','judge-peer-fixture','project-install-rollback-probe','sandbox-project-probe']) await access(join(root,'dist/test-support',name+'.js'));
 // Notes and Subagents are editable adjacent-module examples; assemble their documented layout.
 await import('./main.mjs');
 await mkdir('subagents');
-for(const name of ['main','controller','prompts','stages']) await copyFile(join(root,'dist/examples/subagents-environment',name+'.mjs'),'subagents/'+name+'.mjs');
-await copyFile(join(root,'dist/src/environments/shared/run-report.js'),'subagents/run-report.mjs');
-await import('./subagents/main.mjs');
+for(const name of ['main','controller','prompts','stages']) await copyFile(join(root,'dist/examples/subagents-environment',name+'.js'),'subagents/'+name+'.js');
+await copyFile(join(root,'dist/src/environments/shared/run-report.js'),'subagents/run-report.js');
+await import('./subagents/main.js');
 assert.ok(import.meta.resolve('@swarmenv/core').includes('/node_modules/@swarmenv/core/'));
 console.log(JSON.stringify({contained:true,ordinary:true,staged:true}));
 `);

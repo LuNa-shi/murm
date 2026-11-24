@@ -1,16 +1,16 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export async function runScaleMASExample(config, signal) {
+export async function runScaleMASExample(config: any, signal: any) {
   const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
   const { runScaleMAS } = await import('../../src/environments/scalemas/index.js');
   return runScaleMAS({ ...config, backend: createPiOpenSandboxBackend(config.backend) }, signal);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const usage = 'node main.mjs <config.mjs>\nnode main.mjs --result <run-directory> --runtime-id <expected-id>';
+  const usage = 'node main.js <config.mjs>\nnode main.js --result <run-directory> --runtime-id <expected-id>';
   const args = process.argv.slice(2);
-  const lifetime = new AbortController();
+  const lifetime: any = new AbortController();
   const stop = () => lifetime.abort();
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
@@ -29,7 +29,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       process.stdout.write(`${JSON.stringify(report)}\n`);
       process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;
     }
-  } catch (error) {
+  } catch (error: any) {
     const invalid = ['SCALEMAS_ARGUMENTS_INVALID', 'INVALID_RESULT_ARGUMENTS'].includes(error?.code);
     process.stderr.write(`${JSON.stringify({ code: invalid ? 'SCALEMAS_ARGUMENTS_INVALID' : 'SCALEMAS_START_FAILED', ...(invalid ? { usage } : {}) })}\n`);
     process.exitCode = invalid ? 2 : 1;

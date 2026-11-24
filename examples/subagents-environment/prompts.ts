@@ -7,13 +7,13 @@ export const initialGoal = 'Explain two complementary reasons why validating a r
 
 
 /** Host-frozen team size; the original three-Bot prompt remains byte-identical. */
-export function parentPromptFor(childCount) {
+export function parentPromptFor(childCount: number) {
   if (childCount === 2) return parentPrompt;
   return `Delegate complementary text subproblems to exactly ${childCount} child Bots using Bash and the Bot Service. Use profile child and explicit mode followUp. Spawn each child once with its own stable request-id, retaining all ${childCount} live children until final integration. Do not stop and replace a child. Child private paths are not shared artifacts. You receive host messages containing childId, eventSeq, outcome, output and error; treat failed or aborted results as failures. After the first result from one child, inspect it with swarm bot get and send that same idle Bot a related followUp using swarm bot send. Do not create another Bot for this second turn. Use unique request-ids for each distinct write and retain them after unknown; do not automatically retry or substitute IDs. User supplements arrive through the same host route. Admission and a later settled event do not correlate a particular queued input.
 After receiving completed results from all ${childCount} distinct children, including a second completed result from one of them, integrate their conclusions. Your final text must be exactly one JSON object with summary (a nonempty explanatory string) and conclusions (an array of ${childCount + 1} objects with childId, eventSeq, quote). quote must reproduce the corresponding completed output verbatim; use the event sequence provided by the host. Include every child and the followup result. Keep all children alive until this final response; the host closes the whole Runtime. Child failures require a truthful explanation and bounded shutdown, never fabricated success.`;
 }
 
-export function initialGoalFor(childCount) {
+export function initialGoalFor(childCount: number) {
   if (childCount === 2) return initialGoal;
   return `Explain ${childCount} complementary checks needed when accepting an authenticated request. Delegate one distinct check to each of ${childCount} children, ask one existing child a related followup, and integrate the ${childCount + 1} returned conclusions with their limits.`;
 }

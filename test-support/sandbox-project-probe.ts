@@ -8,8 +8,8 @@ import { stableStringify } from '../src/protocol/envelope.js';
 const run = promisify(execFile);
 const name = `swarm-project-probe-${randomUUID()}`;
 const token = 'controlled-worker-test-token';
-const docker = args => run('docker', args, { timeout: 15_000, maxBuffer: 1024 * 1024 });
-const call = async (path, body = null, authenticated = true) => JSON.parse((await docker(['exec', name, 'node', '--input-type=module', '-e', `
+const docker = (args: any) => run('docker', args, { timeout: 15_000, maxBuffer: 1024 * 1024 });
+const call = async (path: any, body: any = null, authenticated: any = true) => JSON.parse((await docker(['exec', name, 'node', '--input-type=module', '-e', `
   const response = await fetch('http://127.0.0.1:44100' + process.argv[1], {
     method: process.argv[2] === 'null' ? 'GET' : 'POST',
     headers: { 'content-type': 'application/json', ...(process.argv[3] ? { authorization: 'Bearer ' + process.argv[3] } : {}) },
@@ -17,7 +17,7 @@ const call = async (path, body = null, authenticated = true) => JSON.parse((awai
   });
   console.log(JSON.stringify({ status: response.status, body: await response.json() }));
 `, path, JSON.stringify(body), authenticated ? token : ''])).stdout);
-const accepted = async (path, body) => {
+const accepted = async (path: any, body: any) => {
   const response = await call(path, body);
   assert.equal(response.status, 200, JSON.stringify(response.body));
   return response.body.result;
@@ -56,25 +56,26 @@ readline.createInterface({ input: process.stdin }).on('line', line => {
   if (message.type === 'exit') setTimeout(() => process.exit(0), 20);
 });
 `;
-const rpc = async message => (await accepted('/rpc', { message: { ...message, id: randomUUID() }, timeout_ms: 3000 })).response.data;
+const rpc = async (message: any) => (await accepted('/rpc', { message: { ...message, id: randomUUID() }, timeout_ms: 3000 })).response.data;
 try {
   await docker(['run', '--detach', '--name', name, '--network', 'none', '--cpus', '1', '--memory', '256m', '--pids-limit', '128',
     '--env', `SWARMENV_WORKER_TOKEN=${token}`, '--env', 'ROOT_ONLY_TEST_SECRET=must-not-reach-agent',
     '--tmpfs', '/workspace:rw,nosuid,nodev,size=64m',
-    '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/opensandbox-agent-worker.js', import.meta.url))},target=/opt/swarmenv/agent-worker.mjs,readonly`,
-    '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/sandbox-project.js', import.meta.url))},target=/opt/swarmenv/sandbox-project.mjs,readonly`,
-    ...['project-install.mjs', 'project-processes.mjs'].flatMap(file => ['--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/' + file, import.meta.url))},target=/opt/swarmenv/${file},readonly`]),
-    '--entrypoint', 'node', 'swarmenv/agent:issue122', '/opt/swarmenv/agent-worker.mjs']);
+    ...['opensandbox-agent-worker.js', 'sandbox-project.js', 'project-install.js', 'project-processes.js',
+      'core-work-dir.js', 'core-file-seed.js', 'core-collection.js', 'pi-rpc-submissions.js'].flatMap(file => [
+      '--mount', `type=bind,source=${fileURLToPath(new URL('../scripts/' + file, import.meta.url))},target=/opt/swarmenv/${file},readonly`,
+    ]),
+    '--entrypoint', 'node', 'swarmenv/agent:issue122', '/opt/swarmenv/opensandbox-agent-worker.js']);
   await docker(['exec', name, 'node', '-e', `
     const fs = require('node:fs');
     fs.mkdirSync('/opt/swarmenv/probe-bin', { recursive: true });
     fs.writeFileSync('/opt/swarmenv/probe-bin/probe.mjs', process.argv[1], { mode: 0o444 });
     fs.writeFileSync('/opt/swarmenv/probe-bin/pi', '#!/bin/sh\\nexec node /opt/swarmenv/probe-bin/probe.mjs\\n', { mode: 0o555 });
   `, agentCode]);
-  let health;
+  let health: any;
   for (let i = 0; i < 20; i += 1) {
     try { health = await call('/health'); if (health.status === 200) break; } catch {}
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
   }
   assert.equal(health?.status, 200);
   assert.equal((await call('/project/grant', { execution_id: 'e', binding_version: 1 }, false)).status, 401);
@@ -96,7 +97,7 @@ try {
   assert.equal((await call('/project/grant', { execution_id: 'e', binding_version: 1 })).status, 400);
   const content = 'complete prepared project input';
   await docker(['exec', name, 'node', '-e', "require('fs').writeFileSync('/workspace/project/input.txt', process.argv[1])", content]);
-  const manifest = { 'input.txt': { content_hash: createHash('sha256').update(content).digest('hex'), bytes: Buffer.byteLength(content) } };
+  const manifest: any = { 'input.txt': { content_hash: createHash('sha256').update(content).digest('hex'), bytes: Buffer.byteLength(content) } };
   await accepted('/project/prepare', { execution_id: 'e', binding_version: 1, manifest });
   assert.equal((await rpc({ type: 'write', path: '/workspace/project/input.txt', content: 'too early' })).error, 'EACCES');
   assert.equal((await call('/project/grant', { execution_id: 'another', binding_version: 1 })).status, 400);
@@ -112,13 +113,13 @@ try {
     console.log('PASS: partial grant failure closes and stops the Bot and revokes directory access');
   } else {
     await rpc({ type: 'watch' });
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
     const granted = await accepted('/project/grant', { execution_id: 'e', binding_version: 1 });
     assert.ok(granted.paused_process_count >= 2);
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
     const writes = JSON.parse((await docker(['exec', name, 'node', '-e', "console.log(JSON.stringify(require('fs').readFileSync('/workspace/runtime/write-times','utf8').split(',').filter(Boolean).map(Number)))"])).stdout);
     assert.ok(writes.length > 0);
-    assert.ok(writes.every(at => at >= granted.granted_at));
+    assert.ok(writes.every((at: any) => at >= granted.granted_at));
     assert.equal((await rpc({ type: 'write', path: '/workspace/project/input.txt', content: 'active write' })).written, true);
     await rpc({ type: 'write', path: '/workspace/project/2', base64: Buffer.from([0, 255, 128]).toString('base64') });
     await rpc({ type: 'write', path: '/workspace/project/10', content: 'ten' });
@@ -127,7 +128,7 @@ try {
     const snapshot = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
     assert.ok(snapshot.paused_process_count >= 2, 'pause both Pi and its detached pre-opened-FD writer');
     assert.equal(snapshot.content_hash, createHash('sha256').update(stableStringify(snapshot.manifest)).digest('hex'));
-    for (const [path, bytes] of Object.entries(snapshot.files)) {
+    for (const [path, bytes] of Object.entries(((snapshot.files as Record<string, any> as Record<string, any>)))) {
       const content = Buffer.from(bytes, 'base64');
       assert.equal(snapshot.manifest[path].content_hash, createHash('sha256').update(content).digest('hex'));
       assert.equal(snapshot.manifest[path].bytes, content.length);
@@ -144,13 +145,13 @@ try {
     await docker(['exec', name, 'node', '-e', "const fs=require('fs'); fs.unlinkSync(Buffer.concat([Buffer.from('/workspace/project/x'),Buffer.from([255])])); fs.unlinkSync('/workspace/project/x\ufffd');"]);
     assert.ok((await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 })).files['2']);
     const beforeApply = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
-    const targetFiles = { ...beforeApply.files, '2': Buffer.from('installed bytes').toString('base64'), 'installed/note': Buffer.from('incoming').toString('base64') };
-    const manifestOf = files => Object.fromEntries(Object.entries(files).map(([path, encoded]) => {
+    const targetFiles: any = { ...beforeApply.files, '2': Buffer.from('installed bytes').toString('base64'), 'installed/note': Buffer.from('incoming').toString('base64') };
+    const manifestOf = (files: any) => Object.fromEntries(Object.entries(((files as Record<string, any> as Record<string, any>))).map(([path, encoded]: any) => {
       const bytes = Buffer.from(encoded, 'base64');
       return [path, { bytes: bytes.length, content_hash: createHash('sha256').update(bytes).digest('hex') }];
     }));
-    const treeHash = files => createHash('sha256').update(stableStringify(manifestOf(files))).digest('hex');
-    const install = { execution_id: 'e', binding_version: 1, request_id: 'install-one', expected_content_hash: beforeApply.content_hash, content_hash: treeHash(targetFiles), files: targetFiles };
+    const treeHash = (files: any) => createHash('sha256').update(stableStringify(manifestOf(files))).digest('hex');
+    const install: any = { execution_id: 'e', binding_version: 1, request_id: 'install-one', expected_content_hash: beforeApply.content_hash, content_hash: treeHash(targetFiles), files: targetFiles };
     const inode = async () => (await docker(['exec', name, 'node', '-e', "console.log(require('fs').statSync('/workspace/project').ino)"])).stdout;
     const initialInode = await inode();
     const installed = await accepted('/project/install', install);
@@ -165,36 +166,36 @@ try {
     assert.equal((await accepted('/project/install', install)).phase, 'committed');
     const afterReplay = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
     assert.equal(Buffer.from(afterReplay.files['2'], 'base64').toString(), 'newer Bot edit after install');
-    const unsafeFiles = { ...afterReplay.files, 'input.txt': Buffer.from('must not replace an open FD').toString('base64') };
+    const unsafeFiles: any = { ...afterReplay.files, 'input.txt': Buffer.from('must not replace an open FD').toString('base64') };
     const unsafe = await call('/project/install', { ...install, request_id: 'open-fd', expected_content_hash: afterReplay.content_hash, content_hash: treeHash(unsafeFiles), files: unsafeFiles });
     assert.equal(unsafe.body.code, 'WORKSPACE_BUSY');
     assert.equal((await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 })).content_hash, afterReplay.content_hash);
     for (const path of ['literal (deleted)', 'space and\nnewline']) {
       await rpc({ type: 'write', path: '/workspace/project/' + path, content: 'open original' });
       await rpc({ type: 'open-file', path: '/workspace/project/' + path });
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
       const before = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
-      const nextFiles = { ...before.files, [path]: Buffer.from('unsafe replacement').toString('base64') };
+      const nextFiles: any = { ...before.files, [path]: Buffer.from('unsafe replacement').toString('base64') };
       assert.equal((await call('/project/install', { ...install, request_id: 'fd-' + path, expected_content_hash: before.content_hash, content_hash: treeHash(nextFiles), files: nextFiles })).body.code, 'WORKSPACE_BUSY');
     }
     const background = await rpc({ type: 'background' });
     if (process.argv.includes('--close-held')) {
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
       const before = await accepted('/project/snapshot', { execution_id: 'e', binding_version: 1 });
-      const nextFiles = { ...before.files, '2': Buffer.from('held install').toString('base64') };
+      const nextFiles: any = { ...before.files, '2': Buffer.from('held install').toString('base64') };
       await accepted('/project/install', { ...install, request_id: 'close-held', expected_content_hash: before.content_hash, content_hash: treeHash(nextFiles), files: nextFiles });
     } else await rpc({ type: 'exit' });
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise<any>((resolve: any) => setTimeout(resolve, 200));
     const size = async () => Number((await docker(['exec', name, 'node', '-e', "console.log(require('fs').statSync('/workspace/runtime/heartbeat').size)"])).stdout);
     assert.ok(await size() > 0);
     const stopped = await accepted('/stop', {});
-    assert.equal(stopped.project_installs.find(receipt => receipt.request_id === 'install-one').phase, 'committed');
+    assert.equal(stopped.project_installs.find((receipt: any) => receipt.request_id === 'install-one').phase, 'committed');
     if (process.argv.includes('--close-held')) {
-      assert.equal(stopped.project_installs.find(receipt => receipt.request_id === 'close-held').phase, 'installed');
+      assert.equal(stopped.project_installs.find((receipt: any) => receipt.request_id === 'close-held').phase, 'installed');
       assert.equal((await call('/project/install-confirm', { ...install, request_id: 'close-held' })).status, 400);
     }
     const stoppedSize = await size();
-    await new Promise(resolve => setTimeout(resolve, 150));
+    await new Promise<any>((resolve: any) => setTimeout(resolve, 150));
     assert.equal(await size(), stoppedSize);
     const processState = (await docker(['exec', name, 'node', '-e', "try { console.log(require('fs').readFileSync('/proc/' + process.argv[1] + '/status','utf8').match(/^State:.*$/m)[0]); } catch (error) { console.log(error.code); }", String(background.pid)])).stdout;
     assert.match(processState, /ENOENT|State:\s+Z/);

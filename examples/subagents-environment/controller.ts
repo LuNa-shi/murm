@@ -1,22 +1,22 @@
 /** Host-owned multi-source routing. Input receipts are never turn-completion receipts. */
-export function createSubagentsController(runtime, parentId, { maxChildren = 2 } = {}) {
+export function createSubagentsController(runtime: any, parentId: any, { maxChildren = 2 }: any = {}) {
   if (!Number.isSafeInteger(maxChildren) || maxChildren < 2 || maxChildren > 7) throw new TypeError('Subagents controller requires two to seven children');
-  const waiters = new Set(); const children = new Set();
-  const seen = new Set(); const failures = new Set(); const users = new Set();
-  const deliveries = []; const parentTurns = []; const turnEvidence = new Map(); const lifecycle = []; const errors = [];
+  const waiters: any = new Set(); const children: any = new Set();
+  const seen: any = new Set(); const failures: any = new Set(); const users: any = new Set();
+  const deliveries: any[] = []; const parentTurns: any[] = []; const turnEvidence: any = new Map(); const lifecycle: any[] = []; const errors: any[] = [];
   let pendingJobs = 0; let observationOrder = 0;
   let accepting = true; let fenced = false; let parentClosed = false; let work = Promise.resolve();
-  const failure = code => Object.assign(new Error(code), { code });
+  const failure = (code: any) => Object.assign(new Error(code), { code });
   function notify() { for (const check of [...waiters]) check(); }
-  function enqueue(job) {
+  function enqueue(job: any) {
     pendingJobs++;
     const result = work.then(job).finally(() => { pendingJobs--; });
-    work = result.catch(error => { if (errors.length < 8) errors.push({ code: error?.code ?? 'ROUTING_FAILED' }); }).finally(notify);
+    work = result.catch((error: any) => { if (errors.length < 8) errors.push({ code: error?.code ?? 'ROUTING_FAILED' }); }).finally(notify);
     return result;
   }
-  async function deliver(input, requestId, source) {
+  async function deliver(input: any, requestId: any, source: any) {
     if (deliveries.length >= 32) { accepting = false; throw failure('DELIVERY_LIMIT'); }
-    const entry = { ...source, requestId, state: 'undelivered' }; deliveries.push(entry);
+    const entry: any = { ...source, requestId, state: 'undelivered' }; deliveries.push(entry);
     if (!accepting || fenced || parentClosed) { entry.reason = !accepting ? 'closing' : fenced ? 'input-unknown' : 'parent-closed'; return entry; }
     const parent = await runtime.get(parentId);
     if (!['idle', 'running'].includes(parent.status)) { parentClosed = true; entry.reason = 'parent-closed'; return entry; }
@@ -26,17 +26,17 @@ export function createSubagentsController(runtime, parentId, { maxChildren = 2 }
       entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });
       entry.state = entry.receipt.status === 'accepted' ? 'accepted' : 'unknown';
       if (entry.state === 'unknown') fenced = true;
-    } catch (error) {
+    } catch (error: any) {
       entry.state = 'unknown'; entry.error = { code: error?.code ?? 'SEND_FAILED' }; fenced = true;
       if (error?.inputId) entry.inputId = error.inputId;
     }
     return entry;
   }
-  const unsubscribe = runtime.onEvent(event => {
+  const unsubscribe = runtime.onEvent((event: any) => {
     const key = `${event.botId}:${event.seq}`;
     if (seen.has(key)) return;
     if (seen.size >= 256 || Buffer.byteLength(JSON.stringify(event)) > 64 * 1024) {
-      accepting = false; if (errors.length < 8 && !errors.some(error => error.code === 'EVENT_LIMIT')) errors.push({ code: 'EVENT_LIMIT' }); notify(); return;
+      accepting = false; if (errors.length < 8 && !errors.some((error: any) => error.code === 'EVENT_LIMIT')) errors.push({ code: 'EVENT_LIMIT' }); notify(); return;
     }
     seen.add(key);
     const snapshot = structuredClone(event);
@@ -44,7 +44,7 @@ export function createSubagentsController(runtime, parentId, { maxChildren = 2 }
     if (snapshot.botId === parentId && snapshot.type === 'settled') {
       // Freeze membership in the synchronous callback, not in its later queue job.
       // References may receive a late admission receipt, but future sends never join.
-      turnEvidence.set(snapshot.seq, { observedOrder, entries: deliveries.filter(entry => entry.dispatchOrder !== undefined && entry.dispatchOrder < observedOrder) });
+      turnEvidence.set(snapshot.seq, { observedOrder, entries: deliveries.filter((entry: any) => entry.dispatchOrder !== undefined && entry.dispatchOrder < observedOrder) });
     }
     void enqueue(async () => {
       if (snapshot.botId === parentId) {
@@ -63,7 +63,7 @@ export function createSubagentsController(runtime, parentId, { maxChildren = 2 }
       if (terminalFailure && failures.has(snapshot.botId)) return;
       if (failedTurn || terminalFailure) failures.add(snapshot.botId);
       else failures.delete(snapshot.botId);
-      const result = { childId: snapshot.botId, eventSeq: snapshot.seq,
+      const result: any = { childId: snapshot.botId, eventSeq: snapshot.seq,
         outcome: snapshot.type === 'settled' ? snapshot.outcome : 'failed',
         ...(snapshot.output === undefined ? {} : { output: snapshot.output }),
         ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
@@ -72,7 +72,7 @@ export function createSubagentsController(runtime, parentId, { maxChildren = 2 }
     }).catch(() => {});
   });
   return Object.freeze({
-    submitUser(input, { requestId } = {}) {
+    submitUser(input: any, { requestId }: any = {}) {
       if (users.size >= 5 || typeof input !== 'string' || Buffer.byteLength(input) > 64 * 1024 || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId ?? '') || users.has(requestId)) {
         throw new TypeError('User input requires text and an unused requestId');
       }
@@ -80,19 +80,19 @@ export function createSubagentsController(runtime, parentId, { maxChildren = 2 }
       return enqueue(() => deliver(input, requestId, { kind: 'user' }));
     },
     drain: () => work,
-    waitForFinal({ accept, timeoutMs, signal } = {}) {
+    waitForFinal({ accept, timeoutMs, signal }: any = {}) {
       if (typeof accept !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2147483647) throw new TypeError('Final wait needs a predicate and finite deadline');
-      return new Promise((resolve, reject) => {
-        const done = (error, result) => { clearTimeout(timer); waiters.delete(check); signal?.removeEventListener('abort', aborted); error ? reject(error) : resolve(structuredClone(result)); };
+      return new Promise<any>((resolve: any, reject: any) => {
+        const done = (error: any, result?: any) => { clearTimeout(timer); waiters.delete(check); signal?.removeEventListener('abort', aborted); error ? reject(error) : resolve(structuredClone(result)); };
         const aborted = () => done(failure('WORK_ABORTED'));
         const check = () => {
           try {
             if (signal?.aborted) return aborted();
             if (fenced || errors.length) return done(failure(fenced ? 'INPUT_UNKNOWN' : errors[0].code));
-            const event = parentTurns.find(event => event.outcome === 'completed' && accept(event, structuredClone(turnEvidence.get(event.seq).entries.filter(entry => entry.state === 'accepted'))));
+            const event = parentTurns.find((event: any) => event.outcome === 'completed' && accept(event, structuredClone(turnEvidence.get(event.seq).entries.filter((entry: any) => entry.state === 'accepted'))));
             if (event) return done(null, event);
             if (parentClosed) done(failure('PARENT_CLOSED'));
-          } catch (error) { done(error); }
+          } catch (error: any) { done(error); }
         };
         const timer = setTimeout(() => done(failure('WORK_DEADLINE')), timeoutMs);
         waiters.add(check); signal?.addEventListener('abort', aborted, { once: true }); check();
@@ -100,6 +100,6 @@ export function createSubagentsController(runtime, parentId, { maxChildren = 2 }
     },
     stop() { accepting = false; },
     dispose() { accepting = false; unsubscribe(); },
-    report: () => structuredClone({ accepting, fenced, parentClosed, maxChildren, pendingJobs, childIds: [...children], deliveries, parentTurns, parentEvidence: [...turnEvidence].map(([eventSeq, evidence]) => ({ eventSeq, observedOrder: evidence.observedOrder, dispatchedRequestIds: evidence.entries.map(entry => entry.requestId) })), lifecycle, errors }),
+    report: () => structuredClone({ accepting, fenced, parentClosed, maxChildren, pendingJobs, childIds: [...children], deliveries, parentTurns, parentEvidence: [...turnEvidence].map(([eventSeq, evidence]: any) => ({ eventSeq, observedOrder: evidence.observedOrder, dispatchedRequestIds: evidence.entries.map((entry: any) => entry.requestId) })), lifecycle, errors }),
   });
 }

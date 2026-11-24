@@ -1,4 +1,4 @@
-function required(name) {
+function required(name: any) {
   const value = process.env[name];
   if (!value) throw new Error(`Set ${name} before running the subagents Environment`);
   return value;

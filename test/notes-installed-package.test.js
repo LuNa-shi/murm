@@ -195,9 +195,9 @@ test('candidate package admits only declared distribution roots and retains exec
     'dist/src/core/backends/pi-opensandbox.js', 'dist/src/core/backends/pi-opensandbox.d.ts',
     'dist/scripts/swarm.js', 'dist/scripts/opensandbox-agent-worker.js',
     'services/opensandbox-agent/pi-models.json', 'dist/src/environments/shared/run-report.js',
-    'dist/examples/scalemas-environment/main.mjs', 'dist/examples/scalemas-environment/config.mjs',
-    'dist/examples/notes-environment/main.mjs', 'dist/examples/subagents-environment/controller.mjs',
-    'dist/examples/agensh-environment/config.mjs', 'examples/agensh-environment/README.md',
+    'dist/examples/scalemas-environment/main.js', 'dist/examples/scalemas-environment/config.js',
+    'dist/examples/notes-environment/main.js', 'dist/examples/subagents-environment/controller.js',
+    'dist/examples/agensh-environment/config.js', 'examples/agensh-environment/README.md',
     'docs/architecture/source-map.json', 'dist/test/fixtures/foreground-host-configuration.mjs',
   ];
   const privatePaths = ['.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',

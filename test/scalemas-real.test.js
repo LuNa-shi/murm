@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { runScaleMASExample } from '../examples/scalemas-environment/main.mjs';
+import { runScaleMASExample } from '../examples/scalemas-environment/main.js';
 import { createScaleMASUpstream, sourceContent } from './fixtures/scalemas-upstream.js';
 import { scaleMASBackendConfiguration } from './fixtures/scalemas-configuration.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';

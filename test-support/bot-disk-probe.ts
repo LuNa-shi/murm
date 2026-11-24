@@ -9,14 +9,14 @@ import { DockerBotDisk } from '../src/runtime/docker-bot-disk.js';
 import { openSandboxMissionKey, openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
 
 const exec = promisify(execFile);
-const docker = (...args) => exec('docker', args, { timeout: 20_000 });
+const docker = (...args: any) => exec('docker', args, { timeout: 20_000 });
 const sandboxId = `disk-probe-${randomUUID()}`;
 const name = `sandbox-${sandboxId}`;
-const bot = { mission_id: 'mission:disk', bot_id: 'bot:disk', resource_key: 'bot:disk-resource' };
-const catalog = JSON.parse(await readFile(new URL('../services/opensandbox-agent/pi-models.json', import.meta.url)));
+const bot: any = { mission_id: 'mission:disk', bot_id: 'bot:disk', resource_key: 'bot:disk-resource' };
+const catalog = JSON.parse((await readFile(new URL('../services/opensandbox-agent/pi-models.json', import.meta.url))) as unknown as string);
 const { assertShippedModelPair } = await import('../src/agent/model-catalog.js');
 const modelCatalogResource = await assertShippedModelPair({ provider: 'gpt_proxy', model: catalog.providers.gpt_proxy.models[0].id });
-const request = async (route, payload) => JSON.parse((await docker('exec', name, 'node', '-e', `
+const request = async (route: any, payload?: unknown) => JSON.parse((await docker('exec', name, 'node', '-e', `
   const [path, data] = process.argv.slice(1);
   const request = { headers: { authorization: 'Bearer diskprobe' } };
   if (data) Object.assign(request, { method: 'POST', body: data });
@@ -51,7 +51,7 @@ try {
   `;
   for (let attempt = 0; ; attempt++) {
     try { assert.equal((await request('/health')).ok, true); break; }
-    catch (error) { if (attempt === 19) throw error; }
+    catch (error: any) { if (attempt === 19) throw error; }
   }
   await docker('exec', name, 'node', '-e', `
     const fs = require('node:fs');
@@ -66,7 +66,7 @@ try {
   assert.deepEqual(result.result.model_catalog_resource, modelCatalogResource);
   for (let attempt = 0; ; attempt++) {
     try { await docker('exec', name, 'test', '-f', '/workspace/runtime/tmp/passed'); break; }
-    catch (error) { if (attempt === 39) throw error; }
+    catch (error: any) { if (attempt === 39) throw error; }
   }
   assert.equal((await request('/stop', {})).result.stopped, true);
   console.log('Docker worker enforced byte and inode quotas and descendant write restrictions.');

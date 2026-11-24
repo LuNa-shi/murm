@@ -3,20 +3,20 @@ import { pathToFileURL } from 'node:url';
 import { createRuntime } from '@swarmenv/core';
 import { ServiceRegistry } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { runWithReport } from './run-report.mjs';
-import { createSubagentsController } from './controller.mjs';
-import { parentPromptFor, childPrompt, initialGoalFor } from './prompts.mjs';
+import { runWithReport } from './run-report.js';
+import { createSubagentsController } from './controller.js';
+import { parentPromptFor, childPrompt, initialGoalFor } from './prompts.js';
 
 /** Text references must point at the actual delivered round snapshots. */
-export function checkDelivery(output, deliveries, childCount = 2) {
+export function checkDelivery(output: any, deliveries: any, childCount: any = 2) {
   if (!Number.isSafeInteger(childCount) || childCount < 2 || childCount > 7) return null;
-  let final;
+  let final: any;
   try { final = JSON.parse(output); } catch { return null; }
   if (typeof final?.summary !== 'string' || !final.summary.trim() || !Array.isArray(final.conclusions) || final.conclusions.length !== childCount + 1) return null;
-  const completed = deliveries.filter(row => row.kind === 'child' && row.state === 'accepted' && row.result.outcome === 'completed');
-  const keys = new Set(); const children = new Map();
+  const completed = deliveries.filter((row: any) => row.kind === 'child' && row.state === 'accepted' && row.result.outcome === 'completed');
+  const keys: any = new Set(); const children: any = new Map();
   for (const conclusion of final.conclusions) {
-    const result = completed.find(row => row.result.childId === conclusion.childId && row.result.eventSeq === conclusion.eventSeq)?.result;
+    const result = completed.find((row: any) => row.result.childId === conclusion.childId && row.result.eventSeq === conclusion.eventSeq)?.result;
     if (!result || typeof conclusion.quote !== 'string' || !conclusion.quote || conclusion.quote !== result.output) return null;
     const key = `${conclusion.childId}:${conclusion.eventSeq}`;
     if (keys.has(key)) return null;
@@ -27,37 +27,37 @@ export function checkDelivery(output, deliveries, childCount = 2) {
 }
 
 export async function runSubagentsEnvironment({ backend, model = 'default', image, outputDir,
-  childCount = 2, goal = initialGoalFor(childCount), supplements = [], workTimeoutMs = 120_000, closeTimeoutMs = 30_000 }, signal) {
-  if (!Number.isSafeInteger(childCount) || childCount < 2 || childCount > 7 || typeof goal !== 'string' || !goal || Buffer.byteLength(goal) > 64 * 1024 || !Array.isArray(supplements) || supplements.length > 4 || supplements.some(input => typeof input !== 'string' || Buffer.byteLength(input) > 64 * 1024) ||
+  childCount = 2, goal = initialGoalFor(childCount), supplements = [], workTimeoutMs = 120_000, closeTimeoutMs = 30_000 }: any, signal: any) {
+  if (!Number.isSafeInteger(childCount) || childCount < 2 || childCount > 7 || typeof goal !== 'string' || !goal || Buffer.byteLength(goal) > 64 * 1024 || !Array.isArray(supplements) || supplements.length > 4 || supplements.some((input: any) => typeof input !== 'string' || Buffer.byteLength(input) > 64 * 1024) ||
       !Number.isSafeInteger(workTimeoutMs) || workTimeoutMs < 1 || workTimeoutMs > 2147483647) throw new TypeError('Provide two to seven children, a text goal, at most four supplements and a finite work deadline');
-  let controller; let final;
+  let controller: any; let final: any;
   const secrets = [backend?.sandbox?.apiKey, backend?.sandbox?.execdToken,
-    ...Object.values(backend?.models ?? {}).flatMap(value => Object.values(value.upstream?.headers ?? {}))]
-    .filter(value => typeof value === 'string' && value.length).flatMap(value => [value, value.replace(/^(?:Bearer|Basic)\s+/i, '')]).filter(Boolean);
-  const redact = value => JSON.parse(JSON.stringify(value, (_key, item) => typeof item === 'string'
-    ? secrets.reduce((text, secret) => text.replaceAll(secret, '[redacted]'), item) : item));
+    ...Object.values((backend?.models ?? {} as Record<string, any>)).flatMap((value: any) => Object.values((value.upstream?.headers ?? {} as Record<string, any>)))]
+    .filter((value: any) => typeof value === 'string' && value.length).flatMap((value: any) => [value, value.replace(/^(?:Bearer|Basic)\s+/i, '')]).filter(Boolean);
+  const redact = (value: any) => JSON.parse(JSON.stringify(value, (_key: any, item: any) => typeof item === 'string'
+    ? secrets.reduce((text: any, secret: any) => text.replaceAll(secret, '[redacted]'), item) : item));
   return runWithReport({ outputDir, closeTimeoutMs,
-    redact: report => redact({ ...report, routing: controller?.report() ?? null }),
+    redact: (report: any) => redact({ ...report, routing: controller?.report() ?? null }),
     createRuntime: async () => {
       signal?.throwIfAborted();
-      const common = { model, image, writable: true };
+      const common: any = { model, image, writable: true };
       const runtime = await createRuntime({ backend: createPiOpenSandboxBackend(backend), outputDir, services: new ServiceRegistry(), maxBots: childCount + 1, profiles: {
         parent: { ...common, prompt: parentPromptFor(childCount), services: { bot: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] },
         child: { ...common, prompt: childPrompt, services: {} },
       } });
-      return { ...runtime, close(options) {
+      return { ...runtime, close(options: any) {
         controller?.stop();
         const closed = runtime.close(options);
-        return closed.then(async receipt => { await controller?.drain(); return receipt; });
+        return closed.then(async (receipt: any) => { await controller?.drain(); return receipt; });
       } };
     },
-    async run(runtime) {
+    async run(runtime: any) {
       const parent = await runtime.spawn({ profile: 'parent', requestId: 'parent' });
       controller = createSubagentsController(runtime, parent.id, { maxChildren: childCount });
-      const waiting = new AbortController();
+      const waiting: any = new AbortController();
       const waitSignal = signal ? AbortSignal.any([signal, waiting.signal]) : waiting.signal;
       const finished = controller.waitForFinal({ timeoutMs: workTimeoutMs, signal: waitSignal,
-        accept: (event, deliveries) => Boolean(final = checkDelivery(event.output, deliveries, childCount)) });
+        accept: (event: any, deliveries: any) => Boolean(final = checkDelivery(event.output, deliveries, childCount)) });
       // Attach immediately: failures can precede admission receipts.
       finished.catch(() => {});
       try {
@@ -80,7 +80,7 @@ export async function runSubagentsEnvironment({ backend, model = 'default', imag
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   if (!process.argv[2]) throw new Error('Supply the host configuration module');
-  const abort = new AbortController(); const stop = () => abort.abort();
+  const abort: any = new AbortController(); const stop = () => abort.abort();
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
     const config = (await import(pathToFileURL(resolve(process.argv[2])).href)).default;

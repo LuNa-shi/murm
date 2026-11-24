@@ -26,8 +26,8 @@
       "sha256": "ea14cdf09fb5177e24da99adb29d5854ec64cdae5ca78cbe0e33469df8dc11a8"
     },
     {
-      "path": "examples/notes-environment/main.mjs",
-      "sha256": "b66b97a021344dec9c30cf9bf10fc1c9fa61f176d65ed20feaffc386416c6d45"
+      "path": "examples/notes-environment/main.ts",
+      "sha256": "f4efd69ad502f826e7b90de4954b791783a5e85d69a2b3172015fe288ceb11e4"
     },
     {
       "path": "src/environments/shared/run-input.ts",
@@ -46,16 +46,16 @@
       "sha256": "6123abd043dbcd014a00cdc85d755539f2686d726fe8b5b537b93a56bc4ac4ac"
     },
     {
-      "path": "examples/subagents-environment/main.mjs",
-      "sha256": "46f5e9b412a2cfd26d153685503234279f7c3a8ddcec62fd09e12de5b90addbc"
+      "path": "examples/subagents-environment/main.ts",
+      "sha256": "fe3f8a991e40eec1f738d4f0c540cd9bab3aceab7e3c90d4056b3d5c8d986518"
     },
     {
-      "path": "examples/subagents-environment/controller.mjs",
-      "sha256": "f6fe1359170dde9f923220f8cd03feb0623d04973cb1d7e58e28b117993eeb6a"
+      "path": "examples/subagents-environment/controller.ts",
+      "sha256": "04660675996d1a235200c7f135c7c9fc188e96f8f1b7f28fa92501ecdc0e0522"
     },
     {
-      "path": "examples/subagents-environment/prompts.mjs",
-      "sha256": "c061cefb7583f4431c82b5750d712bbfdb419a1305195b84adf52bc1166f7842"
+      "path": "examples/subagents-environment/prompts.ts",
+      "sha256": "31f00fce9ac22b4062a771d56956d40555e7a65e323a3a3760b63dc6418d3127"
     },
     {
       "path": "src/environments/agensh/index.ts",
@@ -148,43 +148,43 @@
   ],
   "extracted_spans": [
     {
-      "path": "examples/notes-environment/main.mjs",
+      "path": "examples/notes-environment/main.ts",
       "anchor": "const key = '",
       "line": 10,
       "sha256": "1372308bcd0c2a4bf0cce93a81833b1d747d74543ebfb743f7124eecabb21c67"
     },
     {
-      "path": "examples/notes-environment/main.mjs",
+      "path": "examples/notes-environment/main.ts",
       "anchor": "const inputText = Object.freeze(",
       "line": 73,
       "sha256": "6773660d227007f580e938b67335d3b93619e2253c501904ab14235c89534687"
     },
     {
-      "path": "examples/notes-environment/main.mjs",
+      "path": "examples/notes-environment/main.ts",
       "anchor": "writer: { ...common, prompt: '",
       "line": 96,
       "sha256": "940b9719824154d76eae72fa2febfaf972fe288cee3b71d3b6bbf8ae87bb2bcb"
     },
     {
-      "path": "examples/notes-environment/main.mjs",
+      "path": "examples/notes-environment/main.ts",
       "anchor": "reader: { ...common, prompt: '",
       "line": 97,
       "sha256": "c0f2900930e9feb73c9524e5ffb86c4b5dd6fe750b3cccf4948fabdbd413095a"
     },
     {
-      "path": "examples/subagents-environment/prompts.mjs",
+      "path": "examples/subagents-environment/prompts.ts",
       "anchor": "export const parentPrompt = ",
       "line": 1,
       "sha256": "eeb33346515de001490e205f69348b3950b3b0fd9723298aa7ee509eb6113dc9"
     },
     {
-      "path": "examples/subagents-environment/prompts.mjs",
+      "path": "examples/subagents-environment/prompts.ts",
       "anchor": "export const childPrompt = ",
       "line": 4,
       "sha256": "6d231a982c22cbe6ce5278839ff3a8658b07f9d1a1f63623decb7955b9431130"
     },
     {
-      "path": "examples/subagents-environment/prompts.mjs",
+      "path": "examples/subagents-environment/prompts.ts",
       "anchor": "export const initialGoal = ",
       "line": 6,
       "sha256": "1e96fc7dae086fcde47e0d5648f0ab79d43e74c4b8653f574ef05f6ad03cf2f6"
@@ -318,7 +318,7 @@
   ],
   "prompt_send_sites": [
     {
-      "path": "examples/subagents-environment/controller.mjs",
+      "path": "examples/subagents-environment/controller.ts",
       "line": 26,
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     },
@@ -425,7 +425,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "8f60d84daf88d52f74daf700276cf331e141dc28f83692123ea50a2b48756a58"
+      "sha256": "5e582c31c2ee70324811cb278feb5ba115396a4cc65cbd1d5e2256af15c0bd8a"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",

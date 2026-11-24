@@ -1,4 +1,4 @@
-const required = name => { const value = process.env[name]; if (!value) throw new Error(`Set ${name}`); return value; };
+const required = (name: any) => { const value = process.env[name]; if (!value) throw new Error(`Set ${name}`); return value; };
 const host = process.env.SWARMENV_SCALEMAS_HOST ?? '172.17.0.1';
 const token = process.env.SWARMENV_SCALEMAS_MODEL_TOKEN;
 export default {

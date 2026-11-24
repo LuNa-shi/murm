@@ -14,7 +14,7 @@ import { execute } from './fixtures/notes-installed-package.js';
 test('foreground Agensh example validates host configuration without starting facilities', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'agensh-foreground-config-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const config = new URL('../examples/agensh-environment/config.mjs', import.meta.url);
+  const config = new URL('../examples/agensh-environment/config.js', import.meta.url);
   const cli = new URL('../scripts/run-environment.js', import.meta.url);
   const env = { PATH: process.env.PATH };
   const options = { cwd: directory, env, timeout: 5_000 };

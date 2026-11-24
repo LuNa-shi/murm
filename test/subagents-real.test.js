@@ -15,7 +15,8 @@ test('installed subagents parent delegates natively and adopts two child results
   const image = process.env.SWARMENV_CORE_TEST_IMAGE; assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
   const evidenceDir = await createNativeEvidenceDirectory('subagents');
   const installed = await installNativeNotesExample();
-  for (const name of ['main', 'controller', 'prompts']) await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/subagents-environment', `${name}.mjs`), join(installed.directory, `${name}.mjs`));
+  for (const name of ['main', 'controller', 'prompts']) await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/subagents-environment', `${name}.js`), join(installed.directory, `${name}.js`));
+  await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/dist/src/environments/shared/run-report.js'), join(installed.directory, 'run-report.js'));
   const outputDir = join(evidenceDir, 'output'); let child; let sessions;
   const upstream = await createSubagentsUpstream({ onFailure: () => child?.kill('SIGTERM'), observeSessions: async (phase, native) => {
     const ids = (await readdir(outputDir)).filter(id => /^[a-f0-9-]{36}$/.test(id)); assert.equal(ids.length, 1);
@@ -42,7 +43,7 @@ test('installed subagents parent delegates natively and adopts two child results
     await installed.close();
   });
   const outcome = await new Promise((resolve, reject) => {
-    child = spawn(process.execPath, ['main.mjs', join(evidenceDir, 'config.mjs')], { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    child = spawn(process.execPath, ['main.js', join(evidenceDir, 'config.mjs')], { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
     const timer = setTimeout(() => { expired = true; child.kill('SIGTERM'); }, 120_000);
     const hardTimer = setTimeout(() => { expired = true; child.kill('SIGKILL'); }, 150_000);
     child.stdout.on('data', data => { if (stdout.length + data.length > 8 * 1024 ** 2) { expired = true; child.kill('SIGTERM'); } else stdout += data; });

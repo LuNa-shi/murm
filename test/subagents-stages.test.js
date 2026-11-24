@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createSubagentsStages } from '../examples/subagents-environment/stages.mjs';
+import { createSubagentsStages } from '../examples/subagents-environment/stages.js';
 
 function controlledRuntime() {
   let listener; let parentSeq = 0;

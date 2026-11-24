@@ -42,7 +42,7 @@ test('installed native lead plus two helpers claim exclusively, push verified Gi
       backend: { sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: 512 }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } } };
     const configPath = join(directory, 'lead-helper-config.mjs'); await writeFile(configPath, `const config=${JSON.stringify(configuration)};config.backend.sandbox.apiKey=process.env.SWARMENV_CORE_TEST_API_KEY;export default config;\n`, { mode: 0o600 });
-    const main = join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/lead-helper-environment/main.mjs');
+    const main = join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/lead-helper-environment/main.js');
     const outcome = await new Promise((resolve, reject) => {
       child = spawn(process.execPath, [main, configPath], { cwd: installed.directory, env: installed.env, stdio: ['ignore', 'pipe', 'pipe'] });
       const workTimer = setTimeout(() => { expired = true; cleanup.start(); child.kill('SIGTERM'); }, 120_000);
