@@ -14,7 +14,7 @@ function completion(model = 'k3') {
     response: { status: 'completed', model, usage: { input_tokens: 3, output_tokens: 2 } } })}\n\n`;
 }
 
-async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
+async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, maxOutputTokens = 64, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'core-model-'));
   const requests = [];
   const upstream = createServer(async (request, response) => {
@@ -38,7 +38,7 @@ async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, m
     await rm(outputDir, { recursive: true, force: true });
   });
   const config = {
-    modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens: 64 },
+    modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens },
     models: models ?? { default: { provider, model,
       upstream: { url: upstreamUrl, headers: { authorization: 'Bearer upstream-private' } } } },
   };
@@ -54,6 +54,14 @@ async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, m
   };
   return { access, bots, requests, credentials, call, outputDir, config };
 }
+
+test('Runtime model access propagates explicit natural output policy while retaining Bot credentials and usage evidence', async t => {
+  const { call, requests, access } = await fixture(t, { maxOutputTokens: null });
+  const response = await call('natural-runtime', { model: 'k3', input: 'controlled natural work', max_output_tokens: 128000 });
+  assert.equal(response.status, 200); assert.equal(requests[0].body.max_output_tokens, 128000);
+  assert.equal(requests[0].headers.authorization, 'Bearer upstream-private');
+  assert.ok(access);
+});
 
 test('a generic Runtime Bot calls the shipped model with private upstream credentials and a work receipt', async t => {
   const f = await fixture(t);

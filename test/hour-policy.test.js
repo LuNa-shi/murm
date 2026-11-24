@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { createHourQuotaGate, validateHourBudgets } from '../src/environments/endurance/policy.js';
+import { createHourQuotaGate, createHourRunModelGate, validateHourBudgets } from '../src/environments/endurance/policy.js';
 import { controlledHourQuota } from './fixtures/hour-quota-owner.js';
 const budgets = { setupMs: 1000, workMs: 3900000, turnMs: 1000, cleanupMs: 1000, recoveryMs: 1000, marginMs: 100 };
 test('hour policy rejects missing limits, short owner and changed identity before acceptance', () => {
@@ -36,4 +36,19 @@ test('planned dispatch expiry during cleanup does not erase already settled owne
   check(); await owner.close(); expired = true;
   assert.equal(check({final:true}).closed,true);
   assert.throws(() => check(), {code:'HOUR_MODEL_BUDGET_FAILED'});
+});
+
+test('time-only hour owner permits ordinary model concurrency and keeps unknown accounting visible', () => {
+  let receipt = { profile: 'time_only', deadlineAt: Date.now() + budgets.workMs + 500,
+    forwarded: 400, active: 8, closed: false, inputBytes: 9_000_000,
+    actualInputTokens: 400_000, actualOutputTokens: 230_000, unknownRequests: 1 };
+  const gate = createHourRunModelGate({ receipt: () => receipt }, budgets);
+  assert.equal(gate.maxConcurrentInputs, undefined);
+  assert.equal(gate.check().active, 8);
+  assert.throws(() => gate.check({ final: true }), { code: 'HOUR_MODEL_METER_NOT_CLOSED' });
+  receipt = { ...receipt, active: 0, closed: true };
+  assert.equal(gate.check({ final: true }).unknownRequests, 1);
+  assert.throws(() => gate.check(), { code: 'HOUR_MODEL_DEADLINE_REACHED' });
+  receipt = { ...receipt, deadlineAt: receipt.deadlineAt + 1 };
+  assert.throws(() => gate.check({ final: true }), { code: 'HOUR_MODEL_OWNER_CHANGED' });
 });

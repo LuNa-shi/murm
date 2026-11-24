@@ -10,7 +10,7 @@ const explicitSecret = 'explicit-test-secret\$[]';
 const upstreamSecret = 'test-upstream-bearer';
 const profileValue = 'configured-profile-value';
 
-async function fixture(t, hooks, { registrations = [], grants = {}, sandbox = {} } = {}) {
+async function fixture(t, hooks, { registrations = [], grants = {}, sandbox = {}, modelGateway = {} } = {}) {
   const provider = await createLifecycleProvider(t, hooks);
   provider.allowDeletion();
   const { createRuntime } = await import('@swarmenv/core');
@@ -25,7 +25,7 @@ async function fixture(t, hooks, { registrations = [], grants = {}, sandbox = {}
       backend: createPiOpenSandboxBackend({
         sandbox: { lifecycleBaseUrl: provider.url, resourceLimits: { cpu: '1', memory: '1Gi' }, ...sandbox },
         bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },
-        modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1', requestTimeoutMs: 8000, maxOutputTokens: 256 },
+        modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1', requestTimeoutMs: 8000, maxOutputTokens: 256, ...modelGateway },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses',
           headers: { authorization: `Bearer ${upstreamSecret}` } } } },
         isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } },
@@ -37,6 +37,15 @@ async function fixture(t, hooks, { registrations = [], grants = {}, sandbox = {}
   }
   return { provider, outputDir, makeRuntime: directory => createRuntime(makeOptions(directory)) };
 }
+
+test('actual Runtime report retains null natural output policy instead of reporting the legacy default cap', async t => {
+  const f = await fixture(t, undefined, { modelGateway: { maxOutputTokens: null } });
+  const runtime = await f.makeRuntime();
+  const receipt = await runtime.close();
+  const report = JSON.parse(await readFile(receipt.reportPath, 'utf8'));
+  assert.equal(report.config.models.default.maxOutputTokens, null);
+  assert.equal(report.config.models.default.requestTimeoutMs, 8000);
+});
 
 test('Runtime records identity, unknown input reconciliation, sanitised settled snapshots and independent configurations', { timeout: 8000 }, async t => {
   let workerToken, bridgeToken, modelToken, submitted;

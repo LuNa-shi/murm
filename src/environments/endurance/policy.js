@@ -6,8 +6,8 @@ export const HOUR_QUOTAS = Object.freeze({ maxRequests: 96, maxConcurrent: 2,
   maxInputBytes: 128 * 1024, maxAggregateInputBytes: 8 * 1024 ** 2 });
 
 export function validateHourBudgets(budgets) {
-  const bounds = { setupMs: [1, 600_000], workMs: [HOUR_MS, 3_900_000],
-    cleanupMs: [1, 600_000], recoveryMs: [0, 300_000], marginMs: [1, 120_000], turnMs: [1, 120_000] };
+  const bounds = { setupMs: [1, 720_000], workMs: [HOUR_MS, 4_200_000],
+    cleanupMs: [1, 600_000], recoveryMs: [0, 300_000], marginMs: [1, 120_000], turnMs: [1, 300_000] };
   if (!budgets || Object.keys(budgets).length !== Object.keys(bounds).length ||
       !Object.entries(bounds).every(([key, [low, high]]) => Number.isSafeInteger(budgets[key]) && budgets[key] >= low && budgets[key] <= high) ||
       budgets.workMs < HOUR_MS + budgets.turnMs) throw invalid('HOUR_BUDGET_INVALID');
@@ -45,6 +45,31 @@ export function createHourQuotaGate(quota, budgets) {
     }
     return receipt;
   };
+}
+
+export function createHourRunModelGate(owner, budgets) {
+  const first = owner.receipt();
+  if (first?.profile !== 'time_only') {
+    return { check: createHourQuotaGate(owner, budgets), maxConcurrentInputs: HOUR_QUOTAS.maxConcurrent };
+  }
+  const { deadlineAt } = first;
+  const now = Date.now();
+  if (!Number.isSafeInteger(deadlineAt) || deadlineAt < now + budgets.workMs || deadlineAt > now + budgets.setupMs + budgets.workMs) {
+    throw invalid('HOUR_MODEL_DEADLINE_INVALID');
+  }
+  const check = ({ final = false } = {}) => {
+    const receipt = owner.receipt();
+    if (receipt?.profile !== 'time_only' || receipt.deadlineAt !== deadlineAt) throw invalid('HOUR_MODEL_OWNER_CHANGED');
+    const counts = ['forwarded', 'active', 'inputBytes', 'actualInputTokens', 'actualOutputTokens', 'unknownRequests'];
+    if (!counts.every(key => Number.isSafeInteger(receipt[key]) && receipt[key] >= 0) ||
+        receipt.unknownRequests > receipt.forwarded || receipt.active > receipt.forwarded ||
+        typeof receipt.closed !== 'boolean') throw invalid('HOUR_MODEL_RECEIPT_INVALID');
+    if (receipt.failure) throw invalid('HOUR_MODEL_METER_FAILED');
+    if (!final && (receipt.closed || receipt.deadlineReached || Date.now() >= deadlineAt)) throw invalid('HOUR_MODEL_DEADLINE_REACHED');
+    if (final && (!receipt.closed || receipt.active !== 0 || receipt.forwarded < 1)) throw invalid('HOUR_MODEL_METER_NOT_CLOSED');
+    return receipt;
+  };
+  return { check, maxConcurrentInputs: undefined };
 }
 
 export function checkHourLifetime(receipt, { runtimeId, botIds, workMs, now, controlled }) {

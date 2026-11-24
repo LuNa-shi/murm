@@ -13,6 +13,18 @@ function completion(usage = { input_tokens: 4, output_tokens: 3 }) {
     JSON.stringify({ type: 'response.completed', response: { id: 'resp_fixture', status: 'completed', model, usage } }) + '\n\n';
 }
 
+test('explicit null time policy preserves natural provider output parameters without a synthetic clamp', async t => {
+  const { call, gateway, requests } = await fixture(t, undefined, { timeBounds: { requestTimeoutMs: 2000, maxOutputTokens: null } });
+  const token = gateway.issueToken({ runtimeId: 'r', botId: 'natural' });
+  for (const maximum of [undefined, 128000]) {
+    const response = await call(token, `natural-${maximum ?? 'absent'}`, { model, input: 'controlled', stream: true,
+      ...(maximum === undefined ? {} : { max_output_tokens: maximum }) });
+    assert.equal(response.status, 200); await response.text();
+    assert.equal(requests.at(-1).body.max_output_tokens, maximum);
+    assert.equal(Object.hasOwn(requests.at(-1).body, 'max_output_tokens'), maximum !== undefined);
+  }
+});
+
 async function fixture(t, fn, { timeBounds = { requestTimeoutMs: 2000, maxOutputTokens: 20 } } = {}) {
   const requests = [];
   const upstream = createServer(async (req, res) => {

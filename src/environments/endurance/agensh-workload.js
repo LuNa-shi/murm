@@ -13,7 +13,7 @@ const e = encodeURIComponent;
  * files; final PRs are pinned, merged once and read back from immutable main.
  * A is stopped before the host's targeted external comment triggers B's final
  * adoption. Every event and business read uses the existing real adapters. */
-export function createAgenshArithmeticWorkload({ getFacilities, adminToken, programming }) {
+export function createAgenshArithmeticWorkload({ getFacilities, adminToken, programming, parallel = false }) {
   if (typeof getFacilities !== 'function' || typeof adminToken !== 'string' || !adminToken) throw new TypeError('Agensh hour workload needs owned facilities and host Git credential');
   const program = createProgrammingContract(programming);
   let facilities, git, board, delivery, scope, publisherStop;
@@ -30,7 +30,7 @@ export function createAgenshArithmeticWorkload({ getFacilities, adminToken, prog
   function input(peer, stage) {
     const index = facilities.peers.indexOf(peer), n = 17 * (index + 1) + stage;
     const path = `hour-${peer.key}-${stage}.json`, fact = `HOUR_${peer.key}_${stage}_${n * n}`;
-    return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {"peer":"${peer.key}","stage":${stage},"n":${n},"square":${n * n}} and exactly one trailing newline. Check its bytes, commit and push. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:"FACT",content:"${fact}"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Use one coherent Bash call per turn for the finite work. Board write fields are board_id,type,content; PR create fields are owner,repo,method:"create",title,head:WORK_BRANCH,base:"main". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;
+    return `HOUR_STAGE_${stage}_${peer.key}: Work only on your own WORK_BRANCH. On stage 0 clone RUN_REPOSITORY into the empty project root and create WORK_BRANCH; later stages reuse this exact checkout. Create ${path} with JSON {"peer":"${peer.key}","stage":${stage},"n":${n},"square":${n * n}} and exactly one trailing newline. Check its bytes, commit and push. Publish one admitted FACT with content ${fact} through swarm agensh-context board_write {board_id:RUN_BOARD,type:"FACT",content:"${fact}"}. Never send unsolicited messages or comments. At stage 4, create one real PR from WORK_BRANCH to main through swarm gitea pull_request_write after push, and finish briefly. ${peer.key === 'b' && stage === 4 ? 'Before writing, use actual authenticated Git/Gitea to read hour-a-4.json from main (A has already stopped), parse the original square, and add adoptedSquare and sum to your JSON: adoptedSquare is the read value, sum is your square plus that value. Preserve all other files.' : ''} Board write fields are board_id,type,content; PR create fields are owner,repo,method:"create",title,head:WORK_BRANCH,base:"main". Use the existing Service schemas and Bash CLI; do not fabricate acknowledgements, addresses or SHAs. Stop the turn after these finite operations.${stage === 0 ? '' : program.prompt(index, stage)}`;
   }
   async function verify(peer, stage, signal) {
     const branch = await git('GET', `${scope}/branches/${e(peer.branch)}`, undefined, { signal });
@@ -63,7 +63,7 @@ export function createAgenshArithmeticWorkload({ getFacilities, adminToken, prog
   return Object.freeze({
     async phase(team, index, { signal, timeoutMs }) {
       initialize(); const stage = index + 1, contributions = [];
-      for (const peer of facilities.peers) {
+      async function runPeer(peer) {
         signal.throwIfAborted(); let batch;
         if (stage === 4 && peer.key === 'b') {
           requireEvidence(publisherStop?.execution === 'stopped');
@@ -83,11 +83,23 @@ export function createAgenshArithmeticWorkload({ getFacilities, adminToken, prog
         });
         const settled = await team.wait(peer.key, batch.batchId, { timeoutMs, signal });
         requireEvidence(settled.state === 'completed');
-        const proof = await verify(peer, stage, signal);
-        contributions.push({ peerKey: peer.key, batchId: batch.batchId, proof });
-        if (stage === 4 && peer.key === 'a') {
-          publisherStop = await team.stopPeer('a', { timeoutMs });
-          requireEvidence(publisherStop.botId === team.currentPeers().peers.find(row => row.key === 'a').botId && publisherStop.execution === 'stopped');
+        return batch.batchId;
+      }
+      let groups;
+      if (!parallel) groups = facilities.peers.map(peer => [peer]);
+      else if (stage === 4) groups = [facilities.peers.filter(peer => peer.key !== 'b'), facilities.peers.filter(peer => peer.key === 'b')];
+      else groups = [facilities.peers];
+      for (const group of groups) {
+        const batches = await Promise.all(group.map(runPeer));
+        for (const [index, peer] of group.entries()) {
+          // The workers run independently. Merges still advance a single
+          // shared main in order, and B cannot consume A before A stopped.
+          const proof = await verify(peer, stage, signal);
+          contributions.push({ peerKey: peer.key, batchId: batches[index], proof });
+          if (stage === 4 && peer.key === 'a') {
+            publisherStop = await team.stopPeer('a', { timeoutMs });
+            requireEvidence(publisherStop.botId === team.currentPeers().peers.find(row => row.key === 'a').botId && publisherStop.execution === 'stopped');
+          }
         }
       }
       let handoff;

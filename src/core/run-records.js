@@ -60,7 +60,7 @@ export function runtimeConfiguration({ config, profiles, registrations, maxBots,
     modelAccessPolicy: modelAccessPolicy ? 'host' : 'default',
     models: Object.fromEntries(Object.entries(models).map(([alias, model]) => [alias, {
       provider: model.provider, model: model.model,
-      maxOutputTokens: modelGateway.maxOutputTokens ?? defaultTimedResponsesLimits.maxOutputTokens,
+      maxOutputTokens: modelGateway.maxOutputTokens === undefined ? defaultTimedResponsesLimits.maxOutputTokens : modelGateway.maxOutputTokens,
       requestTimeoutMs: modelGateway.requestTimeoutMs ?? defaultTimedResponsesLimits.requestTimeoutMs,
     }])),
     profiles: Object.fromEntries([...profiles].map(([id, profile]) => [id, {
