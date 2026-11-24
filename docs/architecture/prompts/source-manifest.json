@@ -35,7 +35,7 @@
     },
     {
       "path": "src/environments/scalemas/index.js",
-      "sha256": "8c236fb4956eb4ae1ebd2cb931abf610aa30284946fd857ee39aae9c13bf0940"
+      "sha256": "cc77934afbcc6c73fae6f0c38873b8fdf0207687ecb0c57a7f99377a900db891"
     },
     {
       "path": "src/environments/flat/controller.js",
