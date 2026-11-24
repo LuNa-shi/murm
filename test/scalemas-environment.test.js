@@ -337,11 +337,14 @@ for (const mode of ['deadline', 'cancel', 'unknown']) test(`explicit same-Bot co
   const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
   const report = await runScaleMAS({ backend: f.backend, runId: `correction-${mode}`, image: 'fixture', outputDir: f.directory,
     question: 'Fixed task; independently verify before accepting', maxRounds: 2, workTimeoutMs: 3000, turnTimeoutMs: 100, closeTimeoutMs: 1000,
-    async onCycle({ peerIndex, round }) {
+    async onCycle({ peerIndex, round, signal, deadlineAtMs }) {
+      assert.ok(signal instanceof AbortSignal);
+      assert.equal(signal.aborted, false);
+      assert.ok(Number.isFinite(deadlineAtMs) && deadlineAtMs > performance.now());
       if(peerIndex !== 0 || round !== 0) return;
       callbacks++;
       if(mode === 'deadline') await new Promise(resolve => setTimeout(resolve, 120));
-      if(mode === 'cancel') controller.abort();
+      if(mode === 'cancel') { controller.abort(); assert.equal(signal.aborted, true); }
       return { correction: 'Recheck the complete task input and correct your own result. No reference answer supplied.', timeoutMs: 1000,
         rejected: { reference: 'controlled', sha256: 'a'.repeat(64), code: 'CONTROLLED_REJECTION' } };
     },

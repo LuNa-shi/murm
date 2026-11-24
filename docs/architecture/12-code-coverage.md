@@ -72,7 +72,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [src/environments/scalemas/collaboration-evidence.js](../../src/environments/scalemas/collaboration-evidence.js) | Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence | [19-scalemas-environment](19-scalemas-environment.md) | `b40aea5a53ff59c65ceaf4d95f1987a9c2af6b12988906276a34299cb89cda17` |
-| [src/environments/scalemas/index.js](../../src/environments/scalemas/index.js) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md), [21-hour-matrix](21-hour-matrix.md) | `8c236fb4956eb4ae1ebd2cb931abf610aa30284946fd857ee39aae9c13bf0940` |
+| [src/environments/scalemas/index.js](../../src/environments/scalemas/index.js) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md), [21-hour-matrix](21-hour-matrix.md) | `cc77934afbcc6c73fae6f0c38873b8fdf0207687ecb0c57a7f99377a900db891` |
 | [src/environments/scalemas/substrate.js](../../src/environments/scalemas/substrate.js) | Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `bb76c986c99d57d4e14f6cc0ff9c121076ef7f374879c76be66df1813831686d` |
 
 ### Environment execution (1)

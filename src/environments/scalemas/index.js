@@ -110,7 +110,7 @@ export async function runScaleMAS({ backend, runId, image, outputDir, question, 
                     outcome: receipt.settled.outcome, seq: receipt.settled.seq, attempt };
                   turn.attempts.push(observed); Object.assign(turn, { inputId: observed.inputId, outcome: observed.outcome, seq: observed.seq });
                   const decision = onCycle ? await waitFor(Promise.resolve().then(() => onCycle({ peerIndex: peer.index,
-                    botId: peer.botId, round, attempt, requestId: currentRequestId, result: receipt, beforeSnapshot, snapshot: substrate.snapshot() })), workSignal) : undefined;
+                    botId: peer.botId, round, attempt, requestId: currentRequestId, result: receipt, beforeSnapshot, snapshot: substrate.snapshot(), signal: workSignal, deadlineAtMs: turnDeadline })), workSignal) : undefined;
                   if (decision?.correction === undefined) break;
                   if (typeof decision.correction !== 'string' || !decision.correction.trim() || Buffer.byteLength(decision.correction) > 4096 ||
                       !finite(decision.timeoutMs)) throw fail('SCALEMAS_CORRECTION_INVALID');
