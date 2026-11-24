@@ -90,7 +90,12 @@ export async function runSubagentsHour({backend,image,model='default',outputDir,
         started=time();
         for(let stage=0;stage<4;stage++){
           await pauseUntil(started+RELEASES[stage]);
-          const tasks=childIds.map((childId,peer)=>{const prompt=programming.prompt({peer,stage});if(typeof prompt!=='string'||!prompt.trim())throw failure('SUBAGENTS_PROGRAMMING_PROMPT');return {childId,child:peer,prompt};});
+          const tasks=childIds.map((childId,peer)=>{
+            const assignment=programming.prompt({peer,stage});
+            if(typeof assignment!=='string'||!assignment.trim())throw failure('SUBAGENTS_PROGRAMMING_PROMPT');
+            const prompt=`Assigned stage ${stage}, child ${peer}. In your saved and returned JSON set "stage" to ${stage} and "child" to ${peer}.\n\n${assignment}`;
+            return {childId,child:peer,prompt};
+          });
           const input=JSON.stringify({stage,tasks,instructions:hourStageInstructions});
           const result=await stages.runStage({stage,input,timeoutMs:Math.min(limits.turnMs,started+(stage===3?HOUR:(stage+1)*900_000)-time()),signal:live,async verify({index,output}){let value;try{value=JSON.parse(output);}catch{return false;}return value.stage===stage&&value.child===index&&await programming.verify({peer:index,stage,submission:value.programming})===true;}});
           const atMs=time();if(Math.floor((atMs-started)/900_000)!==stage)throw failure('SUBAGENTS_STAGE_LATE');

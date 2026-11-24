@@ -59,7 +59,7 @@
     },
     {
       "path": "examples/subagents-environment/hour.mjs",
-      "sha256": "b1c78ad0079ba281b1cc2a65efd9470a6c79b4543590e9a918ea825ee0554665"
+      "sha256": "d54a7c80fd38dc7c9ef07aae75479d8711c69a9fb6cb555ceef0a3ec351ee3fc"
     },
     {
       "path": "examples/subagents-environment/main.mjs",
@@ -71,7 +71,7 @@
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
-      "sha256": "50377172cdd46e4035e6819b989d57b6b16c76b6fe65324d3fe4d4d63985cde3"
+      "sha256": "83bb7f80089bd5848b4ba982d30d1ac99de5c05c98a3494d675d6ced08a3ea70"
     },
     {
       "path": "src/environments/agensh/index.js",
@@ -219,13 +219,13 @@
       "path": "examples/subagents-environment/prompts.mjs",
       "anchor": "export const hourParentPrompt = ",
       "line": 21,
-      "sha256": "c42da2b8aedbc36bf5f8646e59b042bf9844c994df0e6bc1d9d3ad478371c551"
+      "sha256": "f4d158e84b256ec33dc566f65466cd1b9e9bfd81f46ca59aabb09e014e81002e"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
       "anchor": "export const hourChildPrompt = ",
       "line": 24,
-      "sha256": "a467a299b0077fce6c5009a00f5f6e41286d454314680f48cf01c1859e5d74d8"
+      "sha256": "09d934e539bb0b96ed98fc004cec5f6a2b417346dae9da56185970c72e305e15"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
@@ -237,7 +237,7 @@
       "path": "examples/subagents-environment/prompts.mjs",
       "anchor": "export const hourStageInstructions = ",
       "line": 27,
-      "sha256": "c95eba0e0d934e03e929454d30fcee7b8b8c672dcec6a59c016b09a462f8cc30"
+      "sha256": "3e4c5b77cb74f4d837107ada8ff8f6695a25983a7d9998034752820bd0f5ca26"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
@@ -582,7 +582,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "1a54a1362b7cae04b7a915a2230233eddd1b8961056eee68667187fc8659b841"
+      "sha256": "885baa539485099a3714bd9cb31d2754452b1072e70d525d3284395a1eeabc9d"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",

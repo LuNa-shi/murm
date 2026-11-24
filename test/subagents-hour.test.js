@@ -17,7 +17,7 @@ const hooks=registerHooks({resolve(specifier,context,next){
 const {runSubagentsHour}=await import('../examples/subagents-environment/hour.mjs');hooks.deregister();
 const hash=value=>createHash('sha256').update(value).digest('hex');
 
-async function setup(t,{changedSession=false,changedArchive=false,lateExit=false,queuedParent=false}={}) {
+async function setup(t,{changedSession=false,changedArchive=false,lateExit=false,queuedParent=false,verbatimTasks=false}={}) {
   transport.reset();transport.collectable=true;
   const outputDir=await mkdtemp(join(tmpdir(),'subagents-hour-'));t.after(()=>rm(outputDir,{recursive:true,force:true}));
   let tick=0,parentId,stageIndex,closed=false;const deadlineAt=Date.now()+6000000;
@@ -49,8 +49,14 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
   async function execute(row){
     if(row.botId===parentId)parentRunning=true;
     if(row.botId!==parentId){
-      const task=JSON.parse(row.input),source=`print(${task.peer+task.stage})\n`,answers=[task.peer+task.stage];
-      const output=JSON.stringify({stage:task.stage,child:task.peer,programming:{task:`task-${task.stage}-${task.peer}`,sourceSha256:hash(source),answersSha256:hash(JSON.stringify(answers))}});
+      let task;
+      if(verbatimTasks){
+        const [,stage,problem]=row.input.match(/Implement finite stage (\d+) problem (\d+)/);
+        const assignment=row.input.match(/^Assigned stage (\d+), child (\d+)\./);
+        task={stage:Number(stage),peer:Number(problem)-35,declaredStage:Number(assignment?.[1]??stage),declaredChild:Number(assignment?.[2]??0)};
+      }else task=JSON.parse(row.input);
+      const source=`print(${task.peer+task.stage})\n`,answers=[task.peer+task.stage];
+      const output=JSON.stringify({stage:task.declaredStage??task.stage,child:task.declaredChild??task.peer,programming:{task:`task-${task.stage}-${task.peer}`,sourceSha256:hash(source),answersSha256:hash(JSON.stringify(answers))}});
       const directory=task.peer===0?'':'programs/';
       keep(row.botId,`${directory}hour-program-${task.stage}.py`,source);keep(row.botId,`${directory}hour-program-${task.stage}.stdout.json`,JSON.stringify(answers));keep(row.botId,`hour-results/stage-${task.stage}.json`,output);
       if(task.peer===0)await new Promise(resolve=>setTimeout(resolve,10));
@@ -61,7 +67,7 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
     }else if(row.input.startsWith('{"stage"')){
       const task=JSON.parse(row.input);stageIndex=task.stage;count=0;
       // This models natural parent-driven concurrent child admission, with no host semaphore.
-      await Promise.all(childIds.map((id,peer)=>call('send',{bot_id:id,input:JSON.stringify({peer,stage:task.stage}),mode:'followUp'},`task-${task.stage}-${peer}`)));
+      await Promise.all(childIds.map((id,peer)=>call('send',{bot_id:id,input:verbatimTasks?task.tasks.find(entry=>entry.childId===id).prompt:JSON.stringify({peer,stage:task.stage}),mode:'followUp'},`task-${task.stage}-${peer}`)));
       if(queuedParent&&hourParentPrompt.includes('End the current turn immediately after dispatch')&&task.instructions.includes('End the current turn immediately after dispatch'))settleParent('Tasks dispatched.', 'dispatch');
     }else{
       const result=JSON.parse(row.input);count++;conclusions.push({childId:result.childId,eventSeq:result.eventSeq,quote:result.output});
@@ -78,7 +84,7 @@ async function setup(t,{changedSession=false,changedArchive=false,lateExit=false
     yield {type:'end',totalBytes,fileCount:entries.length,directoryCount:directories.size};
   };
   return {outputDir,getTick:()=>tick,yields,options:{backend:{...configuration,sandbox:{lifecycleBaseUrl:'http://127.0.0.1:1/v1'}},image:'test',outputDir,clock:()=>tick,waitForMs:async ms=>{tick+=ms;if(lateExit&&tick>=3600000)transport.spawns.get(parentId).onEvent({type:'exit',expected:false,reason:'controlled-last-wake'});},
-    programming:{prompt:({peer,stage})=>`Implement finite task ${stage} for child ${peer}.`,verify:async({peer,stage,submission})=>submission?.task===`task-${stage}-${peer}`&&submission.sourceSha256===hash(`print(${peer+stage})\n`)&&submission.answersSha256===hash(JSON.stringify([peer+stage]))},
+    programming:{prompt:({peer,stage})=>`Implement finite stage ${stage} problem ${peer+35}.`,verify:async({peer,stage,submission})=>submission?.task===`task-${stage}-${peer}`&&submission.sourceSha256===hash(`print(${peer+stage})\n`)&&submission.answersSha256===hash(JSON.stringify([peer+stage]))},
     quota:{url:configuration.models.default.upstream.url,receipt:()=>({profile:'time_only',deadlineAt,forwarded:1,active:0,closed,unknownRequests:1}),close:async()=>{closed=true;}},
     admit:async({runtime,botIds,workMs})=>({runtimeId:runtime.id,clockId:'controlled',observedAtMs:tick,workDeadlineAtMs:tick+workMs,stopAtMs:tick+workMs+600000,resources:botIds.map(botId=>({botId,sandboxId:'fixture-'+botId,expiresAtMs:Date.now()+6000000}))}),
     observeSessions:async({resources})=>resources.map((row,index)=>{const sessionId=`00000000-0000-0000-0000-${String(index+(changedSession&&tick>0?10:0)).padStart(12,'0')}`;return {...row,sessionId,sessionFile:`2026-11-23T00-00-00Z_${sessionId}.jsonl`};}),
@@ -114,6 +120,20 @@ test('controlled subagents hour retains all original peers, four quarters and re
 test('a changed actual Session fails before later stages and still retains the closed time-only owner receipt',async t=>{
   const {options}=await setup(t,{changedSession:true});const report=await runSubagentsHour(options);
   assert.equal(report.businessFailure.code,'SUBAGENTS_SESSION_CHANGED');assert.equal(report.archives,undefined);assert.equal(report.quota.closed,true);
+});
+
+test('verbatim Bot Service task forwarding retains the specific stage and child assignment',async t=>{
+  const {options}=await setup(t,{verbatimTasks:true});
+  const report=await runSubagentsHour(options);
+  assert.equal(report.businessFailure,null,JSON.stringify({businessFailure:report.businessFailure}));
+  assert.equal(report.cleanupFailure,null);
+  assert.equal(report.archives.children.length,12);
+  for(const stage of report.routing.stages){
+    assert.deepEqual(stage.children.map(child=>{
+      const result=JSON.parse(child.result.output);
+      return [result.stage,result.child];
+    }),[[stage.stage,0],[stage.stage,1],[stage.stage,2]]);
+  }
 });
 
 
