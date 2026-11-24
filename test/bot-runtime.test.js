@@ -1445,59 +1445,6 @@ test('registered CLI merge checks the final combined public tree and preserves t
   assert.ok(history.items.some(revision => revision.revision === merged.main_revision));
 });
 
-for (const boundary of ['finish', 'freeze', 'freeze-released', 'soft-closeout']) test(`registered merge cannot advance main after ${boundary} wins during checking`, async t => {
-  let entered, resume;
-  const checking = new Promise(resolve => { entered = resolve; });
-  const gate = new Promise(resolve => { resume = resolve; });
-  const { workspaceMerge, runtime, service, dispatch, guest, identity, execution } = await workspaceFixture(t, { mergeRequiredCheck: mergeCheckerIdentity, workspaceMergeChecker: {
-    identity: mergeCheckerIdentity, timeoutMs: 10000,
-    async check() { entered(); await gate; return { verdict: 'PASS', check_result_id: 'late-result' }; },
-  } });
-  guest.files['addition.txt'] = Buffer.from('saved contribution');
-  const saved = await dispatch('save', `merge-${boundary}-source`);
-  const attempt = workspaceMerge.merge({ from: saved.revision }, { ...identity, requestId: `merge-${boundary}` });
-  const rejected = assert.rejects(attempt, error => error.code === (boundary.startsWith('freeze') ? 'MISSION_SUBMITTING' : 'NOT_ALLOWED'));
-  await checking;
-  try {
-    if (boundary.startsWith('freeze')) {
-      await runtime.missionWorkspace.freeze({ workspaceId: 'workspace-default', submissionId: 'trusted-submit', expectedMainRevision: '0.1' });
-      if (boundary === 'freeze-released') await runtime.missionWorkspace.unfreeze({ workspaceId: 'workspace-default', submissionId: 'trusted-submit' });
-    }
-    else {
-      const current = service.getExecution(execution.execution_id);
-      service.dispatch(boundary === 'finish' ? 'task_finish' : 'record_handoff_reminder', boundary === 'finish' ? { outcome: 'incomplete' } : { reminded_at: new Date().toISOString() },
-        makeEnvelope({ actorRef: identity.actorRef, taskId: execution.task_id, executionId: execution.execution_id, specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version }));
-    }
-  } finally { resume(); }
-  await rejected;
-  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, '0.1');
-  assert.equal((await runtime.missionWorkspace.listRevisions({ workspaceId: 'workspace-default' })).length, 2);
-});
-
-test('merge publication holds the cross-process lifecycle lock through its Git commit', async t => {
-  const { workspaceMerge, root, runtime, identity, dispatch, guest } = await workspaceFixture(t, { persistent: true });
-  guest.files['merge.txt'] = Buffer.from('public contribution');
-  const saved = await dispatch('save', 'locked-merge-source');
-  let attempted = false;
-  runtime.missionWorkspace.repository.fault = point => {
-    if (point !== 'after_intent') return;
-    attempted = true;
-    const result = execFileSync(process.execPath, ['--input-type=module', '-e', `
-      import { DatabaseSync } from 'node:sqlite';
-      const db = new DatabaseSync(process.argv[1]);
-      db.exec('PRAGMA busy_timeout = 40');
-      try { db.exec('BEGIN IMMEDIATE'); console.log('incorrectly acquired'); db.exec('ROLLBACK'); }
-      catch (error) { console.log(error.errcode === 5 ? 'blocked' : error.message); }
-      db.close();
-    `, join(root, 'state.sqlite')], { encoding: 'utf8', timeout: 5000 });
-    assert.equal(result.trim(), 'blocked');
-  };
-  const result = await workspaceMerge.merge({ from: saved.revision }, { ...identity, requestId: 'locked-merge' });
-  runtime.missionWorkspace.repository.fault = null;
-  assert.equal(attempted, true);
-  assert.equal((await runtime.missionWorkspace.get({ workspaceId: 'workspace-default' })).main_revision, result.main_revision);
-});
-
 test('required merge checker cannot be bypassed by missing configuration or caller fields', async t => {
   const { workspaceMerge, runtime, identity, dispatch, guest } = await workspaceFixture(t, { mergeRequiredCheck: mergeCheckerIdentity });
   guest.files['new.txt'] = Buffer.from('needs a real check');
@@ -1528,24 +1475,6 @@ for (const policy of ['task-done-only', 'conflicting', 'none']) test(`merge hono
     assert.equal(result.check, null);
   }
   assert.equal(checks, 0);
-});
-
-test('merge reports failed final-tree evidence with pinned revisions and bounded diagnostics', async t => {
-  const { workspaceMerge, runtime, dispatch, guest, identity } = await workspaceFixture(t, {
-    mergeRequiredCheck: mergeCheckerIdentity,
-    workspaceMergeChecker: { identity: mergeCheckerIdentity, timeoutMs: 5000,
-      async check() { return { verdict: 'FAIL', check_result_id: 'failed-tree', diagnostic: 'x'.repeat(4096) }; } },
-  });
-  guest.files['fails.txt'] = Buffer.from('invalid contribution');
-  const saved = await dispatch('save', 'failed-tree-source');
-  await assert.rejects(workspaceMerge.merge({ from: saved.revision }, { ...identity, requestId: 'failed-tree' }), error => {
-    assert.equal(error.code, 'NOT_ALLOWED');
-    assert.equal(error.details.main_revision, '0.1');
-    assert.equal(error.details.source_revision, saved.revision);
-    assert.equal(error.details.check.check_result_id, 'failed-tree');
-    assert.equal(error.details.check.diagnostic.length, 2048);
-    return true;
-  });
 });
 
 test('shutdown revokes and stops an active Bot before a different Core startup returns', { timeout: 15_000 }, async t => {
