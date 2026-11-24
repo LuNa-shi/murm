@@ -16,7 +16,8 @@ export interface PiOpenSandboxBackendConfig {
     host: string;
     advertiseHost: string;
     requestTimeoutMs?: number;
-    maxOutputTokens?: number;
+    /** null preserves provider/Pi output parameters without a host token clamp. */
+    maxOutputTokens?: number | null;
   };
   models: Readonly<Record<string, {
     provider: string;

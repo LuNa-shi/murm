@@ -40,7 +40,7 @@ This section is generated from executable exports and checked against the source
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
 | [src/core/index.d.ts](../../src/core/index.d.ts) | `df7ab01293dbc2ef9d309174b07ea8b9d194af2f0d3a2f4f826955acff5cca5d` |
 | [src/core/services.d.ts](../../src/core/services.d.ts) | `79dfb50ac78351f64322fdce567fba554721eaa71ca742200b328999ac762692` |
-| [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `a7be8a60645987cb86dc5271cfd0f1be6005e43d523b7161abed9fa2fef569c9` |
+| [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `bfb63428e06a323231e381d0f0a094f5759bd2d7fde0746db984f392400af88c` |
 
 ### Exact built-in command operation surface
 
@@ -3427,7 +3427,8 @@ export interface PiOpenSandboxBackendConfig {
     host: string;
     advertiseHost: string;
     requestTimeoutMs?: number;
-    maxOutputTokens?: number;
+    /** null preserves provider/Pi output parameters without a host token clamp. */
+    maxOutputTokens?: number | null;
   };
   models: Readonly<Record<string, {
     provider: string;

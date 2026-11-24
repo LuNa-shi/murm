@@ -155,8 +155,8 @@ export const defaultTimedResponsesLimits = Object.freeze({ maxOutputTokens: 32_7
 
 function timedPolicy(upstream, { maxOutputTokens = defaultTimedResponsesLimits.maxOutputTokens,
   requestTimeoutMs = defaultTimedResponsesLimits.requestTimeoutMs }) {
-  if (!integer(maxOutputTokens, 16) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
-    throw new TypeError('Timed Responses gateway requires a finite request timeout and output-token cap');
+  if ((maxOutputTokens !== null && !integer(maxOutputTokens, 16)) || !integer(requestTimeoutMs, 1) || requestTimeoutMs > 2_147_483_647) {
+    throw new TypeError('Timed Responses gateway requires a finite request timeout and a valid output-token policy');
   }
   return { ...upstreamPolicy(upstream), mode: 'time_bounded', maxOutputTokens, requestTimeoutMs };
 }
@@ -421,9 +421,11 @@ export class ResponsesBudgetGateway {
     catch { throw new GatewayError(400, 'invalid_json'); }
     if (!validPayload(body, this.policy.model)) throw new GatewayError(400, 'unsupported_responses_request');
     if (response.destroyed || request.aborted) return;
-    const maxOutputTokens = Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
+    const maxOutputTokens = this.policy.maxOutputTokens === null ? body.max_output_tokens
+      : Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
     const payload = {
-      ...body, model: this.policy.model, stream: true, store: false, max_output_tokens: maxOutputTokens,
+      ...body, model: this.policy.model, stream: true, store: false,
+      ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
     };
     const fingerprint = createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex');

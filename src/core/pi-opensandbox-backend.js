@@ -40,6 +40,10 @@ export function createPiOpenSandboxBackend(config) {
   if (typeof config.bridge?.host !== 'string' || !config.bridge.publicUrl?.includes('{port}')) throw invalid('Bridge host and publicUrl with {port} are required');
   httpUrl(config.bridge.publicUrl.replaceAll('{port}', '12345'), 'bridge.publicUrl');
   if (typeof config.modelGateway?.host !== 'string' || typeof config.modelGateway.advertiseHost !== 'string') throw invalid('Model gateway host and advertiseHost are required');
+  const outputPolicy = config.modelGateway.maxOutputTokens;
+  if (outputPolicy !== undefined && outputPolicy !== null && (!Number.isSafeInteger(outputPolicy) || outputPolicy < 16)) {
+    throw invalid('modelGateway.maxOutputTokens must be null or a safe integer of at least 16');
+  }
   if (!Number.isSafeInteger(config.isolation.disk?.bytes) || !Number.isSafeInteger(config.isolation.disk?.inodes)) throw invalid('Explicit disk byte and inode limits are required');
   try { new DockerBotDisk(config.isolation.disk); } catch (error) { throw invalid(error.message); }
   const bridgeOrigin = httpUrl(config.bridge.publicUrl.replaceAll('{port}', '12345'), 'Bridge origin');

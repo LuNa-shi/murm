@@ -29,6 +29,17 @@ test('backend validates finite sandbox lifetime bounds before allocating resourc
   for (const timeoutSeconds of [60, 5100, 86400, Number.MAX_SAFE_INTEGER]) assert.ok(createPiOpenSandboxBackend({ ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1', timeoutSeconds } }));
 });
 
+test('backend freezes an explicit natural output policy and rejects malformed token policies before allocation', async () => {
+  const { configuration } = await import('./fixtures/core-input-backend.js');
+  const config = { ...configuration, sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:8080/v1' },
+    modelGateway: { ...configuration.modelGateway, maxOutputTokens: null } };
+  const handle = createPiOpenSandboxBackend(config); config.modelGateway.maxOutputTokens = 16;
+  assert.equal(claimPiOpenSandboxBackend(handle).modelGateway.maxOutputTokens, null);
+  for (const value of [false, 'none', 0, 15, NaN, Infinity, 16.5]) {
+    assert.throws(() => createPiOpenSandboxBackend({ ...config, modelGateway: { ...config.modelGateway, maxOutputTokens: value } }), { code: 'INVALID_CONTRACT' });
+  }
+});
+
 
 test('backend snapshots the lifetime before the caller can mutate configuration', async () => {
   const { configuration } = await import('./fixtures/core-input-backend.js');

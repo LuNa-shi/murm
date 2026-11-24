@@ -1792,6 +1792,14 @@
         "docs/architecture/21-hour-matrix.md"
       ],
       "role": "Exclude private run evidence when the host is launched from inside the shipped hour example directory"
+    },
+    {
+      "path": "src/environments/endurance/timed-upstream.js",
+      "category": "Runtime and orchestration",
+      "chapters": [
+        "docs/architecture/21-hour-matrix.md"
+      ],
+      "role": "Opt-in private host time-only model forwarding and observed usage with bounded metadata and no logical token/request/concurrency admission"
     }
   ]
 }
