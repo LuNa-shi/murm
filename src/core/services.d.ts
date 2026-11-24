@@ -21,6 +21,8 @@ export interface ServiceCapability {
   output_schema: Record<string, unknown>;
   errors: readonly { code: string; retryable: boolean }[];
   path?: string;
+  /** Host-registered invocation deadline, 1..86400000 ms. Defaults to 30000. */
+  timeout_ms?: number;
 }
 
 export interface ServiceCaller {
@@ -37,10 +39,14 @@ export interface ServiceRequest {
   envelope: { operation_id: string; [key: string]: unknown };
   caller: ServiceCaller;
   signal: AbortSignal;
+  /** Check immediately before committing an effect after an asynchronous wait. */
+  assertAuthorized(): void;
 }
 
 export interface ServiceAdapter {
   invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
+  /** Optional bounded host-only snapshot called during Runtime close. */
+  exportState?(options: { signal: AbortSignal }): JsonValue | Promise<JsonValue>;
 }
 
 export class ServiceRegistry {

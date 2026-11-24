@@ -79,7 +79,7 @@ test('write output violation and lost reply retain unknown operation identity an
   assert.equal(lost.at(-1).outcome, 'unknown'); assert.equal(lost.at(-1).operationId, 'fixed-request'); assert.equal(writes, 2);
 });
 
-test('lost HTTP receipt preserves the same operation identity even when the write later returns', { timeout: 2000 }, async t => {
+test('lost HTTP receipt cancels invocation and preserves unknown operation identity', { timeout: 2000 }, async t => {
   let began, release;
   const started = new Promise(resolve => { began = resolve; });
   const held = new Promise(resolve => { release = resolve; });
@@ -96,7 +96,7 @@ test('lost HTTP receipt preserves the same operation identity even when the writ
   release(); await complete;
   assert.equal(writes, 1);
   assert.ok(rows.some(row => row.state === 'response' && row.outcome === 'unknown' && row.operationId === 'lost-receipt'));
-  assert.equal(rows.at(-1).outcome, 'succeeded');
+  assert.equal(rows.at(-1).outcome, 'unknown');
 });
 
 test('effective HTTP adapter timeout remains inspectable after registry snapshot without exposing its token', async () => {
