@@ -38,7 +38,7 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.js](../../src/agent/services-bridge.js) | `cb014f632b97e2e525fce8920f7f36105a7684771e50fd06c3082db421e315b2` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.js](../../src/errors.js) | `f4bf3103fbbb445233a4fbd07510265a9b88a5857071b134c735d2f63af6323b` |
-| [src/core/index.d.ts](../../src/core/index.d.ts) | `6fb2f21e8cea573649f0fc49d20eb727be07a15175cece680bd979fcdc17ac26` |
+| [src/core/index.d.ts](../../src/core/index.d.ts) | `b734fc27ac9cc65c3daca5afe6814d43f6df79d4cf5633a989386aa908433795` |
 | [src/core/services.d.ts](../../src/core/services.d.ts) | `d722f0f41d75b82fe7b216a904f15703bf5f26069af12a3375a08049a3e3c94d` |
 | [src/core/backends/pi-opensandbox.d.ts](../../src/core/backends/pi-opensandbox.d.ts) | `bfb63428e06a323231e381d0f0a094f5759bd2d7fde0746db984f392400af88c` |
 
@@ -3084,6 +3084,8 @@ These are the declarations exposed by the private checkout package. [Core Runtim
 
 ```ts
 import type { ServiceRegistry } from './services.js';
+
+export {};
 
 declare const backendBrand: unique symbol;
 

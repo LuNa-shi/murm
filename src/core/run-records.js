@@ -76,6 +76,27 @@ export function createRedactor(values = []) {
     };
   }
 
+  function jsonl() {
+    const decoder = new StringDecoder('utf8');
+    let pending = '';
+    function redactLine(line) {
+      if (!line.trim()) return line;
+      const record = JSON.parse(line);
+      const redacted = JSON.stringify(value(record));
+      return redacted === JSON.stringify(record) ? line : redacted;
+    }
+    return {
+      write(bytes) {
+        const lines = (pending + decoder.write(bytes)).split('\n');
+        pending = lines.pop();
+        return lines.map(line => redactLine(line) + '\n').join('');
+      },
+      end() {
+        return redactLine(pending + decoder.end());
+      },
+    };
+  }
+
   function error(value, fallback = 'SERVICE_UNAVAILABLE') {
     return {
       code: text(typeof value?.code === 'string' ? value.code : fallback),
@@ -85,7 +106,7 @@ export function createRedactor(values = []) {
   }
 
   add(values);
-  return { add, text, value, stream, error };
+  return { add, text, value, stream, jsonl, error };
 }
 
 export function runtimeConfiguration({ config, profiles, registrations, maxBots, modelAccessPolicy, defaultTimeoutMs }, redact) {

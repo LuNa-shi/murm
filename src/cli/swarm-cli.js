@@ -335,10 +335,8 @@ async function invoke(service, commandName, options, args = []) {
       const metadata = await manifest(service);
       return bridgeCall(operation, input, options, transportService(service), metadata.capabilities.find(item => item.operation === operation)?.timeout_ms);
     }
-    // Core supplies this reserved routing hint with the protected connection.
     // Legacy Bridges retain their operation-only request and one delivery.
-    return bridgeCall(operation, input, options,
-      process.env.SWARMENV_BRIDGE_CONTRACT_VERSION === '2' ? transportService(service) : undefined);
+    return bridgeCall(operation, input, options);
   }
   const provider = await manifest(service);
   const capability = provider.capabilities?.find((candidate) => candidate.operation === operation || candidate.name === operation);

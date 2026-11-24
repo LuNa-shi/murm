@@ -27,7 +27,14 @@ test('Core Context Fork inherits a live native Session with isolated credentials
     const body = JSON.parse(Buffer.concat(chunks));
     requests.push(body);
     const contents = JSON.stringify(body.input);
-    const item = requests.length === 1
+    const latest = JSON.stringify(body.input.filter(entry => entry.role === 'user').at(-1));
+    const cliFork = latest?.match(/NATIVE_FORK_(ALLOW|DENY)/)?.[1];
+    const callId = `cli_fork_${cliFork}`;
+    const cliOutput = body.input.find(entry => entry.type === 'function_call_output' && entry.call_id === callId);
+    const item = cliFork && !cliOutput
+      ? { type: 'function_call', id: `fc_${callId}`, call_id: callId, name: 'bash',
+        arguments: JSON.stringify({ command: `swarm bot spawn --profile worker --fork true --request-id ${callId} 2>&1`, timeout: 45 }) }
+      : requests.length === 1
       ? { type: 'function_call', id: 'fc_parent', call_id: 'parent_tool', name: 'bash',
         arguments: JSON.stringify({ command: 'echo READY > fork-ready.txt; sleep 8; echo PARENT_FILE > parent-only.txt', timeout: 15 }) }
       : { type: 'message', id: `message_${requests.length}`, role: 'assistant', status: 'completed',
@@ -58,12 +65,18 @@ test('Core Context Fork inherits a live native Session with isolated credentials
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     }),
-    profiles: { worker: { prompt: 'Perform the requested steps.', model: 'default', image, writable: true, services: {} } },
-    services: new ServiceRegistry(), maxBots: 2, outputDir,
+    profiles: {
+      worker: { prompt: 'Perform the requested steps.', model: 'default', image, writable: true, services: {} },
+      allowed: { prompt: 'Perform the requested steps.', model: 'default', image, writable: true,
+        services: { bot: ['spawn'] }, spawnProfiles: ['worker'], allowContextFork: true },
+      denied: { prompt: 'Perform the requested steps.', model: 'default', image, writable: true,
+        services: { bot: ['spawn'] }, spawnProfiles: ['worker'], allowContextFork: false },
+    },
+    services: new ServiceRegistry(), maxBots: 5, outputDir,
   });
   const events = [];
   runtime.onEvent(event => events.push(event));
-  const parent = await runtime.spawn({ profile: 'worker', requestId: 'parent', secretEnv: { PARENT_CREDENTIAL: 'PARENT_PRIVATE_TOKEN' } });
+  const parent = await runtime.spawn({ profile: 'allowed', requestId: 'parent', secretEnv: { PARENT_CREDENTIAL: 'PARENT_PRIVATE_TOKEN' } });
   const [parentContainer] = await ownedContainers(runtime.id);
   const docker = (...args) => promisify(execFile)('docker', ['exec', ...args], { timeout: 5000 });
   await runtime.send(parent.id, 'FORK_MARKER PARENT_PRIVATE_TOKEN', { requestId: 'parent-input' });
@@ -93,4 +106,30 @@ test('Core Context Fork inherits a live native Session with isolated credentials
   assert.equal((await docker(parentContainer, 'cat', '/workspace/project/parent-only.txt')).stdout, 'PARENT_FILE\n');
   await docker(childContainer, 'test', '!', '-e', '/workspace/project/parent-only.txt');
   assert.equal(events.find(event => event.botId === child.id && event.type === 'settled').outcome, 'completed');
+
+  async function settleInput(bot, input) {
+    const settledBefore = events.filter(event => event.botId === bot.id && event.type === 'settled').length;
+    await runtime.start(bot.id, input, { requestId: input });
+    const deadline = Date.now() + 45_000;
+    while (events.filter(event => event.botId === bot.id && event.type === 'settled').length === settledBefore) {
+      assert.ok(Date.now() < deadline, `${input} did not settle`);
+      await delay(50);
+    }
+    assert.equal(events.filter(event => event.botId === bot.id && event.type === 'settled').at(-1).outcome, 'completed');
+  }
+  const cliOutput = suffix => requests.flatMap(request => request.input)
+    .find(entry => entry.type === 'function_call_output' && entry.call_id === `cli_fork_${suffix}`)?.output;
+  await settleInput(parent, 'NATIVE_FORK_ALLOW');
+  assert.match(cliOutput('ALLOW'), /"initialInput"\s*:\s*null/);
+  const [cliChild] = await runtime.list({ parentId: parent.id });
+  assert.ok(cliChild);
+  assert.match(cliOutput('ALLOW'), new RegExp(cliChild.id));
+  await settleInput(cliChild, 'CLI_CHILD_CONTINUE');
+  const childHistory = requests.find(request => JSON.stringify(request.input).includes('CLI_CHILD_CONTINUE')).input;
+  assert.match(JSON.stringify(childHistory), /FORK_MARKER/);
+  assert.doesNotMatch(JSON.stringify(childHistory), /PARENT_PRIVATE_TOKEN|cli_fork_ALLOW/);
+  const denied = await runtime.spawn({ profile: 'denied', requestId: 'denied' });
+  await settleInput(denied, 'NATIVE_FORK_DENY');
+  assert.match(cliOutput('DENY'), /NOT_ALLOWED/);
+  assert.deepEqual(await runtime.list({ parentId: denied.id }), []);
 });

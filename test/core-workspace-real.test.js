@@ -55,7 +55,30 @@ test('native running snapshots preserve random bytes and scoped shared workspace
     ['isolated', python(`import pathlib\nassert list(pathlib.Path('.').iterdir())==[]\nassert not pathlib.Path('/workspace/runtime/parent-only').exists()\npathlib.Path('private').write_text('own')`)],
     ['continue', python(`import pathlib\nassert pathlib.Path('shared').read_text()=='visible'\nassert pathlib.Path('/workspace/runtime/parent-only').read_text()=='private'\npathlib.Path('after-peer-stop').write_text('continued')`)],
     ['frozen', python(`import pathlib\nassert pathlib.Path('random.bin').read_bytes().hex()=='${bytes.toString('hex')}'\nassert not pathlib.Path('after-peer-stop').exists()\npathlib.Path('only-frozen').write_text('private copy')`)],
+    ['rewrite', python("import pathlib\npathlib.Path('only-frozen').write_text('changed after snapshot')")],
   ]);
+  const originalFetch = globalThis.fetch;
+  const received = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  let lostCapture;
+  let stopRaceRequests = 0;
+  t.mock.method(globalThis, 'fetch', async (url, options) => {
+    const response = await originalFetch(url, options);
+    if (!new URL(url).pathname.endsWith('/core/files/snapshot')) return response;
+    const { requestId } = JSON.parse(options.body);
+    if (requestId === 'lost-response' && !lostCapture) {
+      lostCapture = (await response.json()).result;
+      throw new Error('Simulated loss after the native Worker completed the snapshot');
+    }
+    if (requestId === 'stop-race') {
+      stopRaceRequests++;
+      const body = await response.arrayBuffer();
+      received.resolve();
+      await release.promise;
+      return new Response(body, { status: response.status, headers: response.headers });
+    }
+    return response;
+  });
   const provider = await upstream(commands); t.after(() => provider.close());
   const outputDir = join(process.cwd(), 'experiments', `core-workspace-${Date.now()}`);
   await mkdir(outputDir, { recursive: true, mode: 0o700 });
@@ -112,6 +135,22 @@ test('native running snapshots preserve random bytes and scoped shared workspace
   await turn(a, reader, 'read');
   const frozen = await a.spawn({ requestId: 'frozen', profile: 'worker', workspace: { mode: 'frozen-copy', files: capture.files } });
   await a.stop(reader.id); await turn(a, writer, 'continue'); await turn(a, frozen, 'frozen');
+  const lost = { requestId: 'lost-response', paths: ['only-frozen'] };
+  await assert.rejects(a.files.snapshot(frozen.id, lost), { code: 'OPERATION_UNKNOWN' });
+  await turn(a, frozen, 'rewrite');
+  const recovered = await a.files.snapshot(frozen.id, lost);
+  assert.equal(recovered.digest, lostCapture.digest);
+  assert.equal(recovered.version, lostCapture.version);
+  assert.equal(Buffer.from(recovered.files['only-frozen'].data, 'base64').toString(), 'private copy');
+  const race = { requestId: 'stop-race', paths: ['only-frozen'] };
+  const pending = assert.rejects(a.files.snapshot(frozen.id, race), { code: 'OPERATION_UNKNOWN' });
+  try {
+    await Promise.race([received.promise, pending.then(() => assert.fail('Worker did not complete the stop-race snapshot'))]);
+    assert.equal((await a.stop(frozen.id)).cleanup, 'complete');
+  } finally { release.resolve(); }
+  await pending;
+  await assert.rejects(a.files.snapshot(frozen.id, race), { code: 'OPERATION_UNKNOWN' });
+  assert.equal(stopRaceRequests, 1);
   await access(backing);
   assert.equal((await a.stop(writer.id)).cleanup, 'complete');
   await assert.rejects(access(backing), { code: 'ENOENT' });

@@ -15,7 +15,7 @@
     },
     {
       "path": "src/core/index.js",
-      "sha256": "2d32326a78ff3bf801ef8deefef02c2a29745400aa559ca65bb928f34733301d"
+      "sha256": "6f34f27ef7308bb241901d36d191a0cf863c41ca6320003c7ac7e11e77ca6511"
     },
     {
       "path": "src/core/pi-opensandbox-backend.js",

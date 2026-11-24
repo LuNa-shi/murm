@@ -335,7 +335,7 @@ export async function createRuntime(options) {
           const collect = { paths: ['.'], includeGit: false, maxBytes: config.isolation.disk.bytes, required: true };
           [bot.sessionArchive] = await saveBotArtifacts({ outputDir, botId: info.id, collect,
             bounds: config.isolation.disk, records: () => backend.collectSession(info.id),
-            destination: 'session', redactStream: redactor.stream, privateFiles: true });
+            destination: 'session', redactStream: redactor.jsonl, privateFiles: true });
           records.record('session-archive', { botId: info.id, manifestPath: bot.sessionArchive });
         }
         if (bot.collect && bot.collectable && !bot.artifacts && !bot.optionalCollectionError) {

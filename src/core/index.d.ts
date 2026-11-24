@@ -1,5 +1,7 @@
 import type { ServiceRegistry } from './services.js';
 
+export {};
+
 declare const backendBrand: unique symbol;
 
 export interface Backend {
