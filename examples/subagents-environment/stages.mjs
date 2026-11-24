@@ -12,9 +12,9 @@ export async function createSubagentsStages(runtime, parentId, { childIds } = {}
   const stages = []; const history = []; let active = false; let closed = false; let lastParentSeq = 0;
   const fail = code => Object.assign(new Error(code), { code });
   return Object.freeze({
-    runStage({ stage, input, expected, timeoutMs, signal } = {}) {
-      if (closed || active || stage !== stages.length || !Number.isInteger(stage) || stage < 0 || stage > 3 || typeof input !== 'string' || !input.trim() || Buffer.byteLength(input) > 64 * 1024 || !Array.isArray(expected) || expected.length !== 3 || expected.some(value => typeof value !== 'string' || !value || Buffer.byteLength(value) > 4096) || new Set([...history.map(row => row.quote), ...expected]).size !== history.length + 3 || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2147483647) throw new TypeError('Stage requires ordered finite work and three distinct frozen outputs');
-      const outputs = [...expected]; const requestId = `stage-${stage}`;
+    runStage({ stage, input, expected, verify, timeoutMs, signal } = {}) {
+      if (closed || active || stage !== stages.length || !Number.isInteger(stage) || stage < 0 || stage > 3 || typeof input !== 'string' || !input.trim() || Buffer.byteLength(input) > 64 * 1024 || (expected === undefined ? typeof verify !== 'function' : verify !== undefined || !Array.isArray(expected) || expected.length !== 3 || expected.some(value => typeof value !== 'string' || !value || Buffer.byteLength(value) > 4096) || new Set([...history.map(row => row.quote), ...expected]).size !== history.length + 3) || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2147483647) throw new TypeError('Stage requires ordered finite work and frozen outputs or a verifier');
+      const outputs = expected && [...expected]; const deadline = performance.now() + timeoutMs; const requestId = `stage-${stage}`;
       active = true;
       return (async () => {
         const waiting = new AbortController();
@@ -40,7 +40,7 @@ export async function createSubagentsStages(runtime, parentId, { childIds } = {}
             if (references.length !== 1) return false;
             const reference = references[0];
             const previous = history.filter(row => row.childId === childId).at(-1)?.eventSeq ?? 0;
-            if (!Number.isSafeInteger(reference.eventSeq) || reference.eventSeq <= previous || reference.quote !== outputs[index]) return false;
+            if (!Number.isSafeInteger(reference.eventSeq) || reference.eventSeq <= previous || (outputs && reference.quote !== outputs[index])) return false;
             const delivery = deliveries.find(row => row.kind === 'child' && row.result.childId === childId && row.result.eventSeq === reference.eventSeq && row.result.outcome === 'completed' && row.result.output === reference.quote && row.eventOrder > user.dispatchOrder && row.receipt?.status === 'accepted' && typeof row.receipt.inputId === 'string');
             if (!delivery) return false;
             current.push(delivery);
@@ -55,6 +55,26 @@ export async function createSubagentsStages(runtime, parentId, { childIds } = {}
             return completed;
           });
           await Promise.race([completed, submission]);
+          if (verify) {
+            let timer, aborted;
+            try {
+              const remaining = deadline - performance.now();
+              if (remaining <= 0) throw fail('WORK_DEADLINE');
+              await Promise.race([
+                (async () => {
+                  for (const [index, row] of adopted.children.entries()) {
+                    if (await verify({ stage, index, childId: row.result.childId, output: row.result.output, eventSeq: row.result.eventSeq, signal: waitSignal }) !== true) throw fail('STAGE_RESULT_INVALID');
+                  }
+                })(),
+                new Promise((_, reject) => {
+                  timer = setTimeout(() => reject(fail('WORK_DEADLINE')), remaining);
+                  aborted = () => reject(fail('WORK_ABORTED'));
+                  waitSignal.addEventListener('abort', aborted, { once: true });
+                  if (waitSignal.aborted) aborted();
+                }),
+              ]);
+            } finally { clearTimeout(timer); if (aborted) waitSignal.removeEventListener('abort', aborted); }
+          }
           lastParentSeq = adopted.parent.settled.seq;
           history.splice(0, history.length, ...adopted.conclusions);
           stages.push(structuredClone(adopted));

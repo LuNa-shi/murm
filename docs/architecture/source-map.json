@@ -1400,6 +1400,23 @@
       "role": "Optional four-group original-child identity and cumulative text adoption gate over actual controller admissions"
     },
     {
+      "path": "examples/subagents-environment/hour.mjs",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Optional four-Bot subagents hour composition over actual public Core, time-only model owner and injected trusted lifetime/Session observations"
+    },
+    {
+      "path": "examples/subagents-environment/hour-artifacts.mjs",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Post-close required export verification binding twelve child source/stdout/result records and four parent adoption records"
+    },
+    {
       "path": "examples/subagents-environment/prompts.mjs",
       "category": "Execution and control",
       "chapters": [

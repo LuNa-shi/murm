@@ -101,3 +101,26 @@ test('stage identity binding rejects replacement, duplicate and unrelated childr
     await assert.rejects(createSubagentsStages(core, 'parent', { childIds: ids }), TypeError);
   }
 });
+
+test('programming verifier sees actual bound outputs and rejects invalid work before retaining a stage', async () => {
+  const { core, children } = controlledRuntime();
+  const stages = await createSubagentsStages(core, 'parent', { childIds: children });
+  const observed = [];
+  const waiting = stages.runStage({ stage: 0, input: 'programming task', timeoutMs: 1000,
+    async verify(value) { observed.push(value); return value.output !== 'bad program'; } });
+  await stages.drain();
+  children.forEach((id, index) => core.child(id, 1, ['valid program', 'bad program', 'third program'][index])); await stages.drain();
+  core.parent({ stage: 0, summary: 'Integrate programs.', conclusions: children.map((childId, index) => ({ childId, eventSeq: 1, quote: ['valid program', 'bad program', 'third program'][index] })) });
+  await assert.rejects(waiting, { code: 'STAGE_RESULT_INVALID' });
+  assert.equal(observed[1].childId, 'b'); assert.equal(observed[1].stage, 0);
+  assert.equal(stages.report().stages.length, 0); assert.equal(stages.report().accepting, false); stages.dispose();
+});
+
+test('a nonsettling host programming verifier is bounded and cannot retain a successful stage', async () => {
+  const { core, children } = controlledRuntime();
+  const stages = await createSubagentsStages(core, 'parent', { childIds: children });
+  const waiting = stages.runStage({stage:0,input:'programming',timeoutMs:30,verify:()=>new Promise(()=>{})});
+  await stages.drain();children.forEach(id=>core.child(id,1,'result-'+id));await stages.drain();
+  core.parent({stage:0,summary:'Actual text.',conclusions:children.map(childId=>({childId,eventSeq:1,quote:'result-'+childId}))});
+  await assert.rejects(waiting,{code:'WORK_DEADLINE'});assert.equal(stages.report().stages.length,0);assert.equal(stages.report().accepting,false);stages.dispose();
+});

@@ -46,6 +46,10 @@
       "sha256": "fd4cb206f61d5d1d62e839f539823a275cb4c5380e734a13142d1554142b653b"
     },
     {
+      "path": "examples/subagents-environment/hour.mjs",
+      "sha256": "3961dc6a19018281aa4240531c31ff9ab60eb291fa0d02539a351072cab2b95e"
+    },
+    {
       "path": "examples/subagents-environment/main.mjs",
       "sha256": "46f5e9b412a2cfd26d153685503234279f7c3a8ddcec62fd09e12de5b90addbc"
     },
@@ -55,7 +59,7 @@
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
-      "sha256": "c061cefb7583f4431c82b5750d712bbfdb419a1305195b84adf52bc1166f7842"
+      "sha256": "2b56b23d2fc50bd56f131b8ee6b91b64095e1d057f17a33b821320005f1ddd5c"
     },
     {
       "path": "src/environments/agensh/index.js",
@@ -194,6 +198,30 @@
       "anchor": "export const childPrompt = ",
       "line": 4,
       "sha256": "6d231a982c22cbe6ce5278839ff3a8658b07f9d1a1f63623decb7955b9431130"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const hourParentPrompt = ",
+      "line": 21,
+      "sha256": "4fd9133458de210d45f760c27382fef87846bcff3da438644bded449a77ee17c"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const hourChildPrompt = ",
+      "line": 24,
+      "sha256": "9d282dc09be28bbeee443c5b9fc853bebd98ccd8f64b6b182505542dd62ff3b7"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const hourPrepareInput = ",
+      "line": 26,
+      "sha256": "332d67fd37d11c787aaa65e74ca611fadd54a69ef66e6f5c69be66bf58166309"
+    },
+    {
+      "path": "examples/subagents-environment/prompts.mjs",
+      "anchor": "export const hourStageInstructions = ",
+      "line": 27,
+      "sha256": "ab3c2eae1218358b21848c939caeb8270816da702cf7d7fb2a806eaad6b1f0ef"
     },
     {
       "path": "examples/subagents-environment/prompts.mjs",
@@ -367,6 +395,11 @@
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     },
     {
+      "path": "examples/subagents-environment/hour.mjs",
+      "line": 78,
+      "expression": "()=>runtime.send(parentId,hourPrepareInput,{requestId:'hour-prepare',mode:'followUp'}),limits.turnMs);"
+    },
+    {
       "path": "src/environments/flat/controller.js",
       "line": 98,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
@@ -487,7 +520,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "0a1dc59e762a790173b3be17550dd3ec10efb077a84c3b6584e7258ee997a3f9"
+      "sha256": "76198f2d1b37140eab2c814d4b188ade5799b0ef50550e2793b6f96a6cc9262f"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",

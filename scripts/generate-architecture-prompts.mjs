@@ -25,7 +25,7 @@ const sourcePaths = [
   'src/core/index.js', 'src/core/pi-opensandbox-backend.js', 'scripts/opensandbox-agent-worker.mjs',
   'examples/notes-environment/main.mjs', 'src/environments/shared/run-input.js', 'src/environments/scalemas/index.js',
   'src/environments/flat/controller.js', 'src/environments/flat/environment.js',
-  'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
+  'examples/subagents-environment/hour.mjs', 'examples/subagents-environment/main.mjs', 'examples/subagents-environment/controller.mjs', 'examples/subagents-environment/prompts.mjs',
   'src/environments/agensh/index.js', 'src/environments/agensh/router.js', 'src/environments/agensh/routed.js', 'src/environments/agensh/team.js',
   'src/environments/endurance/agensh-workload.js', 'src/environments/endurance/scalemas-workload.js', 'src/environments/endurance/programming.js',
   'test/fixtures/agensh-team-kimi.js', 'test/agensh-team-kimi-real.test.js',
@@ -146,11 +146,15 @@ output('08-subagents-environment.md', header('Subagents Environment prompts',
   'The host stages Profile prompts verbatim. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in controller.mjs with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Bot Service requests.')
   + block('Parent Profile prompt', evaluate(between(subagentsPath, 'export const parentPrompt = ', ';\n')))
   + block('Child Profile prompt', evaluate(between(subagentsPath, 'export const childPrompt = ', ';\n')))
+  + ['hourParentPrompt','hourChildPrompt','hourPrepareInput','hourStageInstructions'].map(name=>block(name,evaluate(between(subagentsPath,`export const ${name} = `,';\n')))).join('')
   + block('Default initial goal', evaluate(between(subagentsPath, 'export const initialGoal = ', ';\n')))
   + [3, 4, 5, 6, 7].map(childCount => block(`Parent Profile prompt: ${childCount + 1} Bots`, parentPromptFor(childCount))
     + block(`Default initial goal: ${childCount + 1} Bots`, initialGoalFor(childCount))).join(''));
 for (const [index, line] of sources.get('examples/subagents-environment/controller.mjs').split('\n').entries()) {
   if (line.includes('await runtime.send(')) sendSites.push({ path: 'examples/subagents-environment/controller.mjs', line: index + 1, expression: line.trim() });
+}
+for (const [index, line] of sources.get('examples/subagents-environment/hour.mjs').split('\n').entries()) {
+  if (line.includes('()=>runtime.send(')) sendSites.push({ path: 'examples/subagents-environment/hour.mjs', line: index + 1, expression: line.trim() });
 }
 const scaleMASPath = 'src/environments/scalemas/index.js';
 output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
