@@ -73,7 +73,7 @@ export async function createFlatAffirmativeEnvironment({ backend, image, model =
         expected_output: `Inspect fixed candidate ${saved.revision}. Merge --from ${saved.revision}; publish and link truthful evidence; finish --workspace-revision with the returned fixed main_revision.`,
         acceptance_conditions: ['Trusted whole-tree checker PASS', 'Current Execution owns final checked main publication', 'Linked truthful Material'],
         workspace: { workspace_id: created.workspace_id, revision: saved.revision },
-        completion_contract: { workspace_delivery: { paths: Object.keys(candidate.files), require_main: true, check: mergeChecker.identity } },
+        completion_contract: { required_materials: [{ role: 'experience', min_count: 1 }], workspace_delivery: { paths: Object.keys(candidate.files), require_main: true, check: mergeChecker.identity } },
       }, host()).task;
       records.push({ taskId: task.task_id, revision: saved.revision, paths: Object.keys(candidate.files) });
     }

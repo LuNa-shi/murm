@@ -22,6 +22,7 @@ async function fixture(t,options={}) {
   const reads={beforeGet:null};
   const controller=createFlatController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
   t.after(async()=>{controls.stopError=null;controls.destroyError=null;await controller.close();await runtime.close();stores.close();await rm(root,{recursive:true,force:true});});
+  options.captureController?.(controller);
   await options.beforeStart?.(stores);
   await controller.start();
   const bot=controller.snapshot().bots[0];
@@ -375,4 +376,35 @@ test('four public Core Bots discover an empty Mission and stop without inventing
   assert.ok(stopped.bots.every(row=>row.released && row.lastStop.execution==='stopped'&&row.lastStop.cleanup==='complete'));
   assert.ok(stopped.bots.every(row=>f.tasks.getBot(row.botId).state==='CLOSED'));
   assert.deepEqual(f.tasks.listMissionTasks({mission_id:missionId}),[]);
+});
+
+test('optional host admission sees the complete four-slot team before any discovery input', async t => {
+  let admitted = false;
+  const f = await fixture(t, { capacity: 4, async beforeInitialDispatch({ runtime, botIds, signal }) {
+    assert.equal(botIds.length, 4); assert.equal(new Set(botIds).size, 4);
+    assert.equal(transport.submissions.size, 0); assert.equal(signal.aborted, false);
+    assert.ok((await Promise.all(botIds.map(id => runtime.get(id)))).every(bot => bot.status === 'idle'));
+    admitted = true;
+  } });
+  assert.equal(admitted, true); assert.equal(f.controller.snapshot().inputs.length, 4);
+});
+
+test('failed pre-discovery host admission sends no model input', async t => {
+  await assert.rejects(fixture(t, { capacity: 4, beforeInitialDispatch() {
+    throw Object.assign(new Error('Actual lifetime unavailable'), { code: 'HOUR_LIFETIME_UNCONFIRMED' });
+  } }), { code: 'HOUR_LIFETIME_UNCONFIRMED' });
+  assert.equal(transport.submissions.size, 0);
+});
+
+
+test('closing Flat cancels a held pre-discovery admission and never sends late inputs', async t => {
+  const entered=Promise.withResolvers(),release=Promise.withResolvers(); let controller;
+  const starting=fixture(t,{capacity:4,captureController:value=>{controller=value;},
+    beforeInitialDispatch({signal}) {entered.resolve(signal);return release.promise;},
+  }).then(value=>({value}),error=>({error}));
+  const signal=await entered.promise;
+  const closing=controller.close({timeoutMs:1000});
+  const result=await starting; assert.equal(result.error.code,'NOT_ALLOWED'); assert.equal(signal.aborted,true);
+  release.resolve(); await closing;
+  assert.equal(transport.submissions.size,0);
 });

@@ -39,7 +39,7 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "sha256": "916f018037fd15ee4cd90f5f2362f702b77ec25ffa8f8351414fd536dedb6c9c"
+      "sha256": "cc849cc06bc86c2ddaede172e91470d78f355a294300a0bef86c1c4aeda8391b"
     },
     {
       "path": "src/environments/flat/environment.js",
@@ -47,7 +47,7 @@
     },
     {
       "path": "src/environments/endurance/flat.js",
-      "sha256": "587121575dfa74a047ea90581681073b133ab83b394059294dcef1c406b6fdd2"
+      "sha256": "3547a76a6a5915a21fdce072339997de64dc2354e4f5eca842edd713699124e9"
     },
     {
       "path": "examples/subagents-environment/main.mjs",
@@ -378,7 +378,7 @@
     },
     {
       "path": "src/environments/flat/controller.js",
-      "line": 98,
+      "line": 99,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
