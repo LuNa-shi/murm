@@ -10,13 +10,13 @@ For that retained path the host's `isStopped(missionId)` must preserve all three
 
 The persisted Mission contains `goal`, `acceptance_conditions`, `merge_required_check`, creator and timestamps. Initial Materials remain separate Context/Task facts. Model, timebox, final-checker and budget configuration come from runtime composition; Mission is not a complete deployment snapshot. Public main and final-submission state have separate Workspace/submission records. Mission is not a permanent manager Agent.
 
-The current implementation has no shared Mission Task special case. A Mission may start with zero Tasks while Bots read public state and propose independent Tasks. Mission itself is never taken; each ordinary Task is exclusively owned through `task_take` and ends through `task_finish`.
+The current implementation has no shared Mission Task special case. A Mission may start with zero Tasks while Bots read public state and the trusted host supplies independent Tasks. Mission itself is never taken; each ordinary Task is exclusively owned through `task_take` and ends through `task_finish`.
 
 ## Ordinary Task
 
-Registered Bot proposals use `mission-gap-v1`; summary, gap and expected output are trimmed before validation and storage. `summary` is a nonblank short title (maximum 240 characters), `gap` describes the concrete local problem and Mission contribution (maximum 4000), `expected_output` describes the deliverable (maximum 4000), and nonempty `acceptance_conditions` retains its array/object form. These conditions are evidence requirements, not automatically executable checks. `priority` explicitly selects high/medium/low (integer aliases 2/1/0); the public `priority_level` names the level. Priority remains advice, with no mandatory highest-priority take. The durable Bot supplies Mission when omitted; a supplied different Mission is rejected. Creator, Execution provenance and timestamps are system records.
+Trusted host/domain Task registrations use `mission-gap-v1`; summary, gap and expected output are trimmed before validation and storage. `summary` is a nonblank short title (maximum 240 characters), `gap` describes the concrete local problem and Mission contribution (maximum 4000), `expected_output` describes the deliverable (maximum 4000), and nonempty `acceptance_conditions` retains its array/object form. These conditions are evidence requirements, not automatically executable checks. `priority` explicitly selects high/medium/low (integer aliases 2/1/0); the public `priority_level` names the level. Priority remains advice, with no mandatory highest-priority take. The domain validator retains same-Mission and durable Bot identity checks for explicitly supplied trusted domain envelopes; this does not expose a guest creation operation. Creator, Execution provenance and timestamps are system records.
 
-A live UNBOUND Bot can make several proposals and take an existing responsibility, and taking its own proposal is optional. An ACTIVE Bot can propose separately using its actual Execution authority. Every Task uses the `mission-gap-v1` contract with an explicit gap and priority.
+Every Task uses the `mission-gap-v1` contract with an explicit gap and priority. The host supplies Tasks before or during discovery; Bots take existing responsibilities. The current Flat Profile and retained v1 Bridge both exclude guest Task creation.
 
 ### Contract revision and cancellation
 
@@ -38,16 +38,15 @@ Task proposals contain no hierarchy fields. Stored contract revisions and accept
 The current Agent-facing operations are principally:
 
 - `task_list`, `task_view`, `task_status` for authoritative work state;
-- `task_create` for a genuinely independent responsibility, followed by `task_take` in a fresh Execution;
 - `task_take` for active identity/Core acquisition;
 - `task_revise` and `task_cancel` for UNBOUND adjustments of open, unowned responsibilities;
 - `task_feedback` for one Execution's decision on a notification;
 - `task_finish`, `task_finish(outcome=blocked)`, `task_finish(outcome=cancelled)` at the appropriate contract
   boundary.
 
-An UNBOUND Bot can propose a distinct responsibility and take that Task itself. An ACTIVE Bot can propose another responsibility without switching its current E; it cannot take a second Task, and a later fresh Bot may take that proposal. Task proposal admission checks durable Bot state, Mission and current E within the mutation transaction after replay. A closing Bot cannot bypass that guard by omitting E, and an active Bot must supply its actual E; unbound proposals require a live selection deadline. Registered Bots use explicit Workspace save, Material publish/link and Task finish. See `src/agent/services-bridge.js` and `src/task/task-service.js`.
+The retained direct Task Service registration method still validates durable Bot state, Mission and current E when a trusted caller supplies a Bot envelope. Closing, expired, mismatched or stale domain authority remains rejected inside the mutation transaction. These domain/security checks are retained for trusted callers and regression coverage; the Bridge and built-in Registry do not expose this creation method to Bots. Registered Bots use explicit Workspace save, Material publish/link and Task finish.
 
-`swarm task propose --base-revision R` and JSON `base_revision` select a fixed public Workspace revision. Task Service accepts the previous `workspace.revision` input and requires both fields to agree when supplied together. It stores the selector under `workspace.revision` and returns it as `base_revision` in the public Task. If omitted, Runtime resolves main during take. A fresh proposal using the same Mission and `responsibility_key` returns the existing Task only for matching contract content, including Workspace, Material input IDs, instructions, and prerequisites. Task Service compares the complete current contract. Changed inputs return `CONFLICT` before Task insertion. Exact request-ID replay still returns the original receipt.
+Trusted Task registration JSON `base_revision` selects a fixed public Workspace revision. Task Service accepts the previous `workspace.revision` input and requires both fields to agree when supplied together. It stores the selector under `workspace.revision` and returns it as `base_revision` in the public Task. If omitted, Runtime resolves main during take. A fresh proposal using the same Mission and `responsibility_key` returns the existing Task only for matching contract content, including Workspace, Material input IDs, instructions, and prerequisites. Task Service compares the complete current contract. Changed inputs return `CONFLICT` before Task insertion. Exact request-ID replay still returns the original receipt.
 
 In the **Mission Task registration path** no fixed numerical Task-count admission quota is enforced; distinct responsibility and key/idempotency checks still apply. Task counts, takes, handoffs and readiness intervals are observation metrics, not proof of useful work. Core/model capacity, total budget, tool timeouts and the single Execution timebox remain runtime limits.
 
@@ -153,9 +152,9 @@ Feedback belongs to a Task and may target a concrete Execution. Every affected
 recipient keeps its own delivery and handling state. A persisted notification
 is not a receipt; a receipt is not proof of a changed research route.
 
-## Proposal replay during closeout
+## Trusted domain registration replay during closeout
 
-For a registered Bot's Task proposal, the operation fingerprint excludes the volatile E state version while preserving Bot, Task/E identity, spec/fence and payload. This permits replay when a heartbeat or closeout reminder advanced the E version. A new request still passes durable Bot/Mission/binding, lease, hard deadline and soft-closeout checks; changing the payload under an accepted ID conflicts. An unbound Bot remains governed by its selection/hard budgets and does not acquire an E merely by proposing.
+For trusted direct Task registration with a Bot envelope, the operation fingerprint excludes the volatile E state version while preserving Bot, Task/E identity, spec/fence and payload. This permits replay when a heartbeat or closeout reminder advanced the E version. A new request still passes durable Bot/Mission/binding, lease, hard deadline and soft-closeout checks; changing the payload under an accepted ID conflicts. An unbound Bot remains governed by its selection/hard budgets and does not acquire an E merely by proposing.
 
 
 ## Narrow coordination and repair

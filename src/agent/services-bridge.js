@@ -11,12 +11,10 @@ import { agentCheckResult } from '../judge/check-result.js';
 import { isSoftCloseout } from '../task/execution-budget.js';
 
 const MAX_BODY_BYTES = 2 * 1024 * 1024;
-// A Bot may inspect Mission-scoped public state and propose work before it
-// owns an Execution. Requiring an Execution for these operations makes a
-// zero-Task Mission impossible to bootstrap.
+// Mission-scoped discovery remains available before taking an Execution.
 const UNBOUND_OPERATIONS = new Set([
   'bot_exit', 'get_check_result', 'material_unsupersede', 'task_revise', 'task_cancel', 'task_dependency_replace',
-  'task_list', 'task_view', 'task_status', 'task_create',
+  'task_list', 'task_view', 'task_status',
   'read_materials', 'context_search_materials', 'context_get_material',
   'workspace_public_files', 'workspace_public_read', 'workspace_public_search', 'workspace_public_diff', 'workspace_public_view', 'workspace_public_history',
   'mission_get', 'mission_submit', 'mission_submission_get',
@@ -48,52 +46,6 @@ function botReceipt(result) {
   return result;
 }
 
-function requiredTaskCapabilities(payload = {}) {
-  const explicit = payload.required_capabilities ?? [];
-  const required = Array.isArray(explicit)
-    ? explicit.filter((value) => typeof value === 'string' && value.length > 0)
-    : [];
-  const conditions = payload.acceptance_conditions;
-  // These acceptance keys are intentionally narrow, stable Task contract
-  // vocabulary. They describe a result that cannot be verified by the
-  // generic Task/Workspace surface; admission must fail before creating a
-  // eligible Task when the corresponding registered capability is absent.
-  if (conditions && typeof conditions === 'object' && !Array.isArray(conditions) &&
-    (conditions.requires_exact_declarations === true || conditions.requires_verified_usage === true)) {
-    required.push('mathlib_search');
-  }
-  return [...new Set(required)];
-}
-
-function availableTaskCapabilities(profile) {
-  return new Set((profile?.capabilities ?? []).flatMap((capability) => [
-    capability.id,
-    capability.name,
-    capability.operation,
-    capability.tool_name,
-    capability.toolName,
-  ]).filter((value) => typeof value === 'string' && value.length > 0));
-}
-
-function assertTaskCapabilityAdmission(payload, profile) {
-  const required = requiredTaskCapabilities(payload);
-  if (required.length === 0) return;
-  const available = availableTaskCapabilities(profile);
-  const missing = required.filter((capability) => !available.has(capability));
-  if (missing.length > 0) {
-    const availableCapabilities = [...available].sort();
-    throw new SwarmEnvError(ERROR_CODES.INVALID_TASK_CONTRACT,
-      `Task requires capabilities unavailable to this Session: ${missing.join(', ')}`, {
-        missing_capabilities: missing,
-        required_capabilities: required,
-        available_capabilities: availableCapabilities,
-        admission: 'rejected',
-        condition: 'task_creation_admission',
-        action: 'modify_task_contract_or_register_capability',
-        hint: 'Use exact capability IDs or operation names from available_capabilities; do not invent conceptual names. Register and verify the required Service before creating the Task if no listed capability is suitable.',
-      });
-  }
-}
 function json(value) {
   return JSON.stringify(value ?? null);
 }
@@ -129,7 +81,7 @@ async function readBody(request) {
 }
 
 export class ServicesBridge {
-  constructor({ taskService, contextService, runtime, missionSubmission = createMissionSubmissionAccess(), workspaceMerge = null, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, taskCreateMutex = null, onTake = null, onTakeAccepted = null, onRelease = null, onTaskCreate = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
+  constructor({ taskService, contextService, runtime, missionSubmission = createMissionSubmissionAccess(), workspaceMerge = null, actorRef = 'agent:real', coreId = null, taskId = null, executionId = null, role = null, capabilityProfile = null, registry = null, onTake = null, onTakeAccepted = null, onRelease = null, onError = null, host = '127.0.0.1', publicUrl = null, logger = null, agentPrompt = null } = {}) {
     if (!taskService || !contextService || !runtime) throw new TypeError('ServicesBridge requires Task Service, Context Service, and Runtime');
     this.pendingCalls = new Set();
     this.pendingHandlers = new Set();
@@ -152,11 +104,9 @@ export class ServicesBridge {
       taskService, contextService, judgeService: null,
       missionWorkspace: runtime.missionWorkspace,
     });
-    this.taskCreateMutex = taskCreateMutex;
     this.onTake = onTake;
     this.onTakeAccepted = onTakeAccepted;
     this.onRelease = onRelease;
-    this.onTaskCreate = onTaskCreate;
     this.onError = onError;
     this.agentPrompt = agentPrompt;
     this.host = host;
@@ -462,7 +412,7 @@ export class ServicesBridge {
           } else if (details.phase === 'hard_stop') {
             notice = '已达到硬上限或发生强制停止，当前 E 不再有发布机会。此前未保存/发布的内容不视为已交接。';
           } else if (operation === 'bot_exit' && details.phase === 'discovery_required') {
-            notice = 'Mission 尚未结束且选工时间仍有剩余。优先查看并领取已有可推进 Task；若没有，核对最新验收、公开 Workspace 和材料，找出具体缺口并提出有可核验交付的新 Task；可直接领取任何合适的已有责任，不必自提自领。不要创建占位 Task。';
+            notice = 'Mission 尚未结束且选工时间仍有剩余。查看当前 Mission、公开 Workspace、材料和已有 Task，领取可推进的责任；没有合适 Task 时保持只读，按选工预算处理，不得创建占位 Task。';
           } else if (details.phase === 'selection_budget') {
             notice = '选工额度已到时间上限。尚未绑定 E 时使用 bot exit --reason selection-budget；不能为保持运行制造任务。';
           } else if (operation === 'task_take' && body.code === 'CONFLICT' && details.condition === 'task_occupied') {
@@ -547,6 +497,7 @@ export class ServicesBridge {
         action: 'call_list_tools_or_get_service_metadata',
         available_capabilities: profile.capabilities.map((candidate) => candidate.tool_name ?? candidate.name),
       });
+      if (capability.operation === 'task_create' && capability.service_id === 'task') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Task creation is not supported');
       if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
         throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'bridge payload must be an object', {
           operation,
@@ -612,7 +563,7 @@ export class ServicesBridge {
           log({ event: 'bridge.complete', operation, ok: true, result });
           return result;
         }
-        if (['mission_get', 'mission_submit', 'mission_submission_get', 'task_create', 'task_list', 'task_status', 'read_materials', 'context_search_materials'].includes(operation)) {
+        if (['mission_get', 'mission_submit', 'mission_submission_get', 'task_list', 'task_status', 'read_materials', 'context_search_materials'].includes(operation)) {
           payload = { ...payload, mission_id: bot.mission_id };
         }
         if (['task_view', 'task_take', 'task_revise', 'task_cancel', 'task_dependency_replace'].includes(operation) && payload.task_id !== undefined) {
@@ -676,16 +627,8 @@ export class ServicesBridge {
         : payload;
       const invoke = async () => {
         assertIdentity(true);
-        if (operation === 'task_create') {
-          const guard = this.onTaskCreate?.({ taskId: this.taskId, executionId: this.executionId, payload });
-          if (guard && typeof guard.then === 'function') await guard;
-          assertIdentity(true);
-          assertTaskCapabilityAdmission(payload, profile);
-        }
         if (operation === 'task_take') this.lastTakeOutcome = { attempted: true, ok: false, task_id: invocationPayload.task_id ?? null };
-        let registeredPayload = operation === 'task_create'
-          ? (({ progress: _progress, ...rest }) => ({ ...rest, required_capabilities: requiredTaskCapabilities(payload) }))(invocationPayload)
-          : invocationPayload;
+        let registeredPayload = invocationPayload;
         if (operation === 'workspace_check') {
           if (!bot) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace checks require a registered Bot');
           const identity = { actorRef: this.actorRef, taskId: this.taskId, executionId: this.executionId, fencingVersion: currentExecution?.fencing_version };
@@ -713,9 +656,7 @@ export class ServicesBridge {
         assertIdentity(true);
         return this.#invokeRegistered(capability, registeredPayload, bridgeOperationId);
       };
-      let result = operation === 'task_create' && this.taskCreateMutex
-        ? await this.taskCreateMutex.run(invoke)
-        : await invoke();
+      let result = await invoke();
       assertIdentity();
       if (bot && ['workspace_check', 'get_check_result'].includes(operation) && result) {
         const target = this.taskService.getTask(result.target_task_id);
