@@ -30,6 +30,9 @@ const definitions = {
   ],
   context:[
     catalogCapability('publish','context_publish_material'),
+    catalogCapability('dispute','material_dispute'),
+    catalogCapability('supersede','material_supersede'),
+    catalogCapability('unsupersede','material_unsupersede'),
     catalogCapability('view','context_get_material','read'),
     catalogCapability('list','read_materials','read'),
     capability('consume','consume_materials',object({material_ids:ids,action:{enum:['route','task','workspace','integration']},impact:text},['material_ids','action','impact'])),
@@ -151,7 +154,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
   }
   async function invoke(service,{capability:cap,input,caller,envelope,signal,assertAuthorized}) {
     const operation=cap.operation;
-    const guardedReplay=service==='judge'||operation==='workspace_merge';
+    const guardedReplay=service==='judge'||operation==='workspace_merge'||['material_dispute','material_supersede','material_unsupersede'].includes(operation);
     if (!definitions[service]?.some(row=>row.operation===operation)) fail('INVALID_CONTRACT','Unknown flat publication operation');
     if (!input || typeof input!=='object' || Array.isArray(input) || ['actor_ref','owner_ref','bot_id','execution_id','fencing_version','spec_version','state_version'].some(key=>Object.hasOwn(input,key))) fail('INVALID_CONTRACT','Flat publication cannot supply trusted identity');
     if (typeof envelope?.operation_id!=='string' || !envelope.operation_id) fail('INVALID_CONTRACT','Flat publication needs stable request identity');
