@@ -51,7 +51,7 @@
     },
     {
       "path": "src/environments/endurance/flat-hour.js",
-      "sha256": "ab08d292507b431985c46e0baefe02f89ada2a997dcaf4a1b0525b5a3bd4f11f"
+      "sha256": "c3cbc517471871011a86599f830a2a6c69c00cb7f46fbcea75550482e5c84036"
     },
     {
       "path": "src/environments/endurance/flat-workload.js",

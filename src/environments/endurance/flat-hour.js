@@ -42,7 +42,7 @@ export async function runFlatNaturalHour({ options, workload, admit, quota, mode
     await health();
   };
   const admission = async ({ runtime, botIds, signal: admissionSignal }) => {
-    const workMs = monitor ? Math.max(1, HOUR_MS - monitor.elapsed()) : budgets.workMs;
+    const workMs = monitor ? Math.max(1, Math.ceil(HOUR_MS - monitor.elapsed())) : budgets.workMs;
     const receipt = await admit({ runtime, outputDir: options.outputDir, botIds, workMs, cleanupMs: budgets.cleanupMs,
       recoveryMs: budgets.recoveryMs, marginMs: budgets.marginMs, signal: AbortSignal.any([combined, admissionSignal]) });
     checkHourLifetime(receipt, { runtimeId: runtime.id, botIds, workMs, now: now(), controlled: clock !== undefined });

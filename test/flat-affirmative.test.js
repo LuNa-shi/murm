@@ -99,7 +99,7 @@ test('four actual Flat slots claim/check/integrate fixed candidates and durably 
 for (const badProgram of [false,true]) test(`controlled Flat hour ${badProgram?'rejects an independently wrong program result':'retains four original Executions for four real program groups then verifies stopped-owner adoption'}`, {timeout:120_000}, async t=>{
   const root=await mkdtemp(join(tmpdir(),'flat-hour-positive-'));const pending=new Set();t.after(async()=>{await Promise.allSettled([...pending]);await rm(root,{recursive:true,force:true});});
   transport.reset();controls.credentials.clear();controls.preparedFiles.clear();controls.stopError=null;controls.destroyError=null;
-  const directories=new Map(),bindings=new Map();let team,backgroundFailure,time=0;const programs=[];
+  const directories=new Map(),bindings=new Map();let team,backgroundFailure,time=0;const programs=[],admittedWork=[];
   const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
   controls.onPrepare=async(id,entries)=>{const dir=join(root,id);await mkdir(dir,{recursive:true});directories.set(id,dir);for(const entry of entries)await writeFile(join(dir,entry.path),entry.bytes);};
   t.after(()=>{controls.onPrepare=null;});
@@ -111,6 +111,7 @@ for (const badProgram of [false,true]) test(`controlled Flat hour ${badProgram?'
       const taken=await cli(bot,'task','take',task.task_id,'--request-id',`take-${bot}`);bindings.set(bot,{taskId:task.task_id,revision:taken.workspace.revision});
     }else if(input.startsWith('FLAT_PROGRAM_GROUP')){
       const [,p,s]=/peer=(\d+) phase=(\d+)/.exec(input),peer=Number(p),phase=Number(s),binding=bindings.get(bot);
+      if(peer===0&&phase===3)time+=0.125; // Match the fractional native monotonic clock at replacement.
       const proofKey=/proofKey:([^,]+),/.exec(input)[1];assert.match(input,/Return the actual Python result/);
       const source=`import json\nprint(json.dumps({'value': ${peer+10*(phase+1)+(badProgram&&peer===0&&phase===0?1:0)}}))\n`;
       const ran=await execute('python3',['-c',source],{timeout:2000});const answers=JSON.parse(ran.stdout);
@@ -140,11 +141,17 @@ for (const badProgram of [false,true]) test(`controlled Flat hour ${badProgram?'
   const meter={profile:'time_only',deadlineAt:Date.now()+budgets.setupMs+budgets.workMs,forwarded:1,active:0,closed:false};
   const owner={receipt:()=>({...meter}),async close(){meter.closed=true;}};
   const workload=createFlatProgrammingWorkload({programming:{prompt:()=> 'Return the actual Python result as programming with value, sourceSha256 and answersSha256.',verify:({peer,stage,submission})=>submission.value===peer+stage*10&&/^[a-f0-9]{64}$/.test(submission.sourceSha256)&&submission.answersSha256===hash(JSON.stringify({value:peer+stage*10}))}});
-  const report=await runFlatNaturalHour({options:{backend:{},image:'fixture',outputDir:root,candidates:Array.from({length:5},(_,i)=>({summary:`Fixed independent candidate ${i}`,files:{[`candidate-${i}-0.txt`]:`Host candidate ${i} phase0\n`},laterFiles:Array.from({length:3},(_,p)=>({[`candidate-${i}-${p+1}.txt`]:`Host candidate ${i} phase${p+1}\n`}))})),checker:{identity:{checker_ref:'fixed-files',checker_version:'1',environment_ref:'controlled'},timeoutMs:5000,async check(plan){assert.ok(Object.keys(plan.files).some(path=>path.startsWith('candidate-')));return{verdict:'PASS',check_mode:'lean-project',checked_paths:Object.keys(plan.files)};}}},workload,quota:owner,modelGate:{check:()=>owner.receipt()},budgets,clock:()=>time,waitForMs:async ms=>{time+=ms;},onReady:({botIds})=>{team=botIds;},admit:async({runtime,botIds,workMs})=>({runtimeId:runtime.id,workDeadlineAtMs:time+workMs,resources:botIds.map(botId=>({botId}))})});
+  const admit=async({runtime,botIds,workMs})=>{
+    assert.ok(Number.isSafeInteger(workMs)&&workMs>0,`Invalid lifetime duration ${workMs}`);
+    admittedWork.push(workMs);
+    return {runtimeId:runtime.id,workDeadlineAtMs:time+workMs,resources:botIds.map(botId=>({botId}))};
+  };
+  const report=await runFlatNaturalHour({options:{backend:{},image:'fixture',outputDir:root,candidates:Array.from({length:5},(_,i)=>({summary:`Fixed independent candidate ${i}`,files:{[`candidate-${i}-0.txt`]:`Host candidate ${i} phase0\n`},laterFiles:Array.from({length:3},(_,p)=>({[`candidate-${i}-${p+1}.txt`]:`Host candidate ${i} phase${p+1}\n`}))})),checker:{identity:{checker_ref:'fixed-files',checker_version:'1',environment_ref:'controlled'},timeoutMs:5000,async check(plan){assert.ok(Object.keys(plan.files).some(path=>path.startsWith('candidate-')));return{verdict:'PASS',check_mode:'lean-project',checked_paths:Object.keys(plan.files)};}}},workload,quota:owner,modelGate:{check:()=>owner.receipt()},budgets,clock:()=>time,waitForMs:async ms=>{time+=ms;},onReady:({botIds})=>{team=botIds;},admit});
   if(badProgram){assert.equal(report.businessFailure?.code,'HOUR_PROGRAMMING_INVALID');assert.equal(report.result,null);assert.equal(report.cleanup.cleanup,'complete');assert.equal(owner.receipt().closed,true);return;}
   assert.equal(report.businessFailure,null,JSON.stringify(report.businessFailure));
   assert.equal(backgroundFailure,undefined,backgroundFailure?.stderr??String(backgroundFailure));assert.equal(report.cleanupFailure,null,JSON.stringify(report.cleanupFailure));
   assert.equal(report.result.state,'controlled');assert.equal(report.result.durationMs,3_600_000);assert.equal(report.result.admissions.length,3);assert.equal(report.result.proofs.length,17);assert.ok(report.result.proofs.every(proof=>proof.programming?.sourceSha256&&proof.programming?.answersSha256));
+  assert.deepEqual(admittedWork,[budgets.workMs,budgets.workMs,900_000]);
   assert.ok(report.result.windows.every(window=>window.botIds.length===4));assert.equal(programs.length,17);
   assert.notEqual(report.result.publisher,report.result.replacement);assert.equal(report.cleanup.cleanup,'complete');assert.equal(owner.receipt().closed,true);
 });
