@@ -5,6 +5,12 @@ const IDENTIFIER = /^[a-z][a-z0-9_-]*$/;
 const registryEntries = new WeakMap();
 const validators = new WeakMap();
 const adapterMetadata = new WeakMap();
+const adapterPrivateValues = new WeakMap();
+
+/** Register host authentication material with the private trace redactor. */
+export function registerServicePrivateValues(registrations, register) {
+  for (const { adapter } of registrations.values()) register(adapterPrivateValues.get(adapter) ?? []);
+}
 
 /** Internal non-credential effective adapter configuration for run evidence. */
 export function getAdapterMetadata(adapter) { return adapterMetadata.get(adapter); }
@@ -79,6 +85,7 @@ function validateManifest(input, builtin = false) {
         !record(capability.input_schema) || !record(capability.output_schema) || !Array.isArray(capability.errors)) {
       invalid('Service capability requires valid identity, help, schemas, effect, idempotency and errors');
     }
+    if (capability.timeout_ms !== undefined && (!Number.isSafeInteger(capability.timeout_ms) || capability.timeout_ms < 1 || capability.timeout_ms > 86_400_000)) invalid('Service timeout_ms must be between 1 and 86400000');
     if (capability.help.ref !== undefined && !nonempty(capability.help.ref)) invalid('Service help ref must be nonempty');
     if (capability.path !== undefined && (typeof capability.path !== 'string' || !capability.path.startsWith('/') ||
         capability.path.includes('..') || capability.path.startsWith('//') || /[?#\\]/.test(capability.path))) invalid('Service capability path must be a relative HTTP route');
@@ -119,7 +126,9 @@ export function builtinBotRegistration(manifest, adapter) {
 
 export function createInProcessAdapter(implementation) {
   if (!implementation || typeof implementation.invoke !== 'function') invalid('In-process Service requires invoke(request)');
-  return Object.freeze({ invoke: implementation.invoke.bind(implementation) });
+  if (implementation.exportState !== undefined && typeof implementation.exportState !== 'function') invalid('Service exportState must be a function');
+  return Object.freeze({ invoke: implementation.invoke.bind(implementation),
+    ...(implementation.exportState ? { exportState: implementation.exportState.bind(implementation) } : {}) });
 }
 
 export function snapshotServiceRegistry(services) {
@@ -127,9 +136,13 @@ export function snapshotServiceRegistry(services) {
   return new Map([...registryEntries.get(services)].map(([id, registration]) => {
     const { manifest, adapter } = registration;
     if (typeof adapter.invoke !== 'function') invalid('Service adapter requires invoke(request)');
-    const captured = Object.freeze({ invoke: adapter.invoke.bind(adapter) });
+    if (adapter.exportState !== undefined && typeof adapter.exportState !== 'function') invalid('Service exportState must be a function');
+    const captured = Object.freeze({ invoke: adapter.invoke.bind(adapter),
+      ...(adapter.exportState ? { exportState: adapter.exportState.bind(adapter) } : {}) });
     const metadata = getAdapterMetadata(adapter);
     if (metadata) adapterMetadata.set(captured, metadata);
+    const privateValues = adapterPrivateValues.get(adapter);
+    if (privateValues) adapterPrivateValues.set(captured, privateValues);
     return [id, Object.freeze({ manifest, adapter: captured })];
   }));
 }
@@ -160,7 +173,7 @@ export async function invokeService(registration, { operation, input, envelope, 
   try {
     if (controller.signal.aborted) throw new SwarmEnvError('NOT_ALLOWED', 'Service caller has closed', identity);
     const timeout = new Promise((_, reject) => {
-      timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Service invocation timed out', { ...identity, request_outcome: 'unknown' })); controller.abort(); }, timeoutMs);
+      timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Service invocation timed out', { ...identity, request_outcome: 'unknown' })); controller.abort(); }, capability.timeout_ms ?? timeoutMs);
       controller.signal.addEventListener('abort', () => reject(new SwarmEnvError('SERVICE_UNAVAILABLE', 'Service invocation was aborted', { ...identity, request_outcome: 'unknown' })), { once: true });
     });
     invoked = true;
@@ -187,7 +200,7 @@ export async function invokeService(registration, { operation, input, envelope, 
 
 /** Host-configured HTTP adapter. Its credential never enters Bot environments. */
 export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = globalThis.fetch } = {}) {
-  if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60_000 ||
+  if (typeof fetchImpl !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 86_400_000 ||
       (token !== undefined && (typeof token !== 'string' || !token))) invalid('HTTP adapter requires a bounded timeout, fetch and optional host token');
   const adapter = Object.freeze({ async invoke({ manifest, capability, input, envelope, caller, signal }) {
     if (manifest.endpoint.transport !== 'http-json') invalid('HTTP adapter requires an HTTP Service endpoint');
@@ -218,11 +231,13 @@ export function createHttpJsonAdapter({ token, timeoutMs = 30_000, fetchImpl = g
       }
       return body.result;
     } catch (error) {
+      if (signal?.aborted) throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'HTTP Service invocation was cancelled', { request_outcome: 'unknown' });
       if (controller.signal.aborted) throw new SwarmEnvError('SERVICE_TIMEOUT', 'HTTP Service invocation timed out', { request_outcome: 'unknown' });
       if (error instanceof SwarmEnvError) throw error;
       throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'HTTP Service is unavailable', { request_outcome: 'unknown' });
     } finally { clearTimeout(timer); signal?.removeEventListener('abort', abort); }
   } });
   adapterMetadata.set(adapter, Object.freeze({ transport: 'http-json', timeoutMs }));
+  if (token !== undefined) adapterPrivateValues.set(adapter, [token]);
   return adapter;
 }

@@ -11,7 +11,7 @@
     },
     "./services": {
       "types": "./src/core/services.d.ts",
-      "default": "./src/core/services.js"
+      "default": "./src/core/public-services.js"
     },
     "./backends/pi-opensandbox": {
       "types": "./src/core/backends/pi-opensandbox.d.ts",
