@@ -73,6 +73,8 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
   transport.onSpawn = async start => {
     const role = start.options.profile; team[role] = start.botId; privateDirectories[role] = join(directory, role); await mkdir(privateDirectories[role]);
     assert.equal(start.options.parentId, undefined); assert.equal(start.options.secretEnv.GITEA_TOKEN, `private-${role}`);
+    assert.equal(start.options.collect.required,true);
+    assert.equal(start.options.collect.includeGit,!['hour','program-hour','natural-hour'].includes(staged));
     assert.equal(start.profile.services.bot, undefined); assert.equal(start.profile.env.WORK_BRANCH, actors[role].branch);
     if (role !== 'lead' && !fixturePrograms) { await run('git', ['clone', repository, privateDirectories[role]]); await run('git', ['-C', privateDirectories[role], 'switch', '-c', role]); }
   };
@@ -81,7 +83,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     const result = await run(process.execPath, [new URL('../scripts/swarm.mjs', import.meta.url).pathname, 'board', operation, '--input', file, '--request-id', requestId ?? `${role}-${operation}-${++serial}`], { cwd: privateDirectories[role], env: { ...process.env, ...start.credentials.environment, ...start.credentials.secretEnvironment }, timeout: 10000 });
     return JSON.parse(result.stdout);
   };
-  let serial = 0, activeHelpers = 0, peakHelpers = 0;
+  let serial = 0, activeHelpers = 0, peakHelpers = 0, hourTime = 0;
   function arm() { transport.next = inputId => {
     const pending = (async () => {
     arm();
@@ -131,7 +133,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       } else {
         const state = await call(role, 'read'); const next = payload.type === 'helper-followup'; const id = staged && next ? `${role}-stage-${payload.stage}` : role + (next ? '-next' : '');
         const owned = await call(role, 'claim', { subtask_id: id, expected_revision: 0 });
-        if (failure && !['stale-feedback', 'pinned-corruption', 'hour-proof', 'hour-late', 'last-fatal', 'last-exit', 'last-unknown'].includes(failure) && role === 'helper1' && !next) {
+        if (failure && !['stale-feedback', 'pinned-corruption', 'hour-proof', 'hour-late', 'hour-quarter-overrun', 'last-fatal', 'last-exit', 'last-unknown'].includes(failure) && role === 'helper1' && !next) {
           if (failure === 'unknown') { input.receipt = { status: 'unknown' }; return; }
           if (failure === 'locked-failed') { lock = new DatabaseSync(join(directory, 'lead-helper-test', 'board.sqlite')); lock.exec('BEGIN IMMEDIATE'); }
           transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXED_FAILURE', message: 'Controlled failure' } }); return;
@@ -168,6 +170,8 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
         await call(role, 'complete', { subtask_id: id, expected_revision: owned.revision, direction_id: state.directions.at(-1).seq, delivery });
         await call(role, 'note', { subtask_id: id, text: next ? 'New direction adopted and verified' : 'Please require explicit evidence in the next direction' });
       }
+      if(failure==='hour-quarter-overrun'&&helperInput&&payload.stage===0&&role==='helper1')hourTime=900000;
+      if(staged==='stage-deadline'&&helperInput&&payload.stage===0&&role==='helper1')await new Promise(resolve=>setTimeout(resolve,1100));
       transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'completed', output: 'Public Board records contain evidence' });
     } catch (error) { if (stopping) return; backgroundFailure = error; transport.spawns.get(input.botId).onEvent({ type: 'settled', outcome: 'failed', error: { code: 'FIXTURE_FAILED', message: 'Deterministic fixture failed' } }); } finally { if (helperInput) activeHelpers--; }
     })().finally(() => work.delete(pending));
@@ -176,6 +180,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
   if (failure === 'unknown') transport.onStop = botId => { if (botId === team.helper1) throw new Error('Controlled stop uncertainty'); };
   const configuration = { runId: 'test', outputDir: directory, image: 'test', backend: {}, ...(helperCount === 2 ? {} : { helperCount }), turnTimeoutMs: 10000, workTimeoutMs: 30000, closeTimeoutMs: 1000,
     prepare: async () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors }) };
+  if(staged==='stage-deadline')configuration.turnTimeoutMs=1000;
   if (['hour', 'program-hour', 'natural-hour'].includes(staged)) {
     const { runLeadHelperHour } = await import('../src/environments/endurance/lead-helper.js');
     const { controlledHourQuota } = await import('./fixtures/hour-quota-owner.js');
@@ -185,17 +190,17 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     const meter = { receipt: () => ({ profile: 'time_only', deadlineAt, forwarded: 20, active: 0, inputBytes: 100,
       actualInputTokens: 100, actualOutputTokens: 100, unknownRequests: 1, closed: meterClosed }),
       close: async () => { meterClosed = true; } };
-    let time = 0;
+
     const report = await runLeadHelperHour({ options: configuration, budgets, quota: staged === 'natural-hour' ? meter : controlledHourQuota(budgets),
-      clock: () => time, waitForMs: async ms => {
-        time += ms; if (failure === 'hour-late' && time === 900000) time += 900000;
-        if (time >= 3600000 && ['last-fatal', 'last-exit', 'last-unknown'].includes(failure)) {
+      clock: () => hourTime, waitForMs: async ms => {
+        hourTime += ms; if (failure === 'hour-late' && hourTime === 900000) hourTime += 900000;
+        if (hourTime >= 3600000 && ['last-fatal', 'last-exit', 'last-unknown'].includes(failure)) {
           const event = failure === 'last-fatal' ? { type: 'error', fatal: true, error: { code: 'CONTROLLED_FATAL', message: 'Controlled late fatal' } }
             : failure === 'last-exit' ? { type: 'exit', expected: false } : { type: 'settled', outcome: 'unknown' };
           transport.spawns.get(team.helper1).onEvent(event);
         }
       },
-      admit: async ({ runtime, workMs }) => ({ runtimeId: runtime.id, workDeadlineAtMs: time + workMs }),
+      admit: async ({ runtime, workMs }) => ({ runtimeId: runtime.id, workDeadlineAtMs: hourTime + workMs }),
       onReady: value => { environment = value; },
       workload: ['program-hour', 'natural-hour'].includes(staged) ? (await import('../src/environments/endurance/lead-helper-workload.js')).createLeadHelperProgrammingWorkload({
         getFacilities: () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, actors }), adminToken: 'fixture-host-token',
@@ -221,6 +226,10 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       assert.equal(transport.submissions.size, 8, 'no later business stage is dispatched'); return;
     }
     assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure));
+    for(const row of report.cleanup.bots){
+      const manifest=JSON.parse(await readFile(row.artifacts[0],'utf8'));
+      assert.equal(manifest.collect.required,true);assert.equal(manifest.collect.includeGit,false);assert.equal(manifest.directories.includes('.git'),false);
+    }
     assert.equal(report.accepted, false); assert.equal(report.result.state, 'controlled');
     assert.equal(report.result.durationMs, 3600000); assert.equal(report.result.baselines.length, 4);
     assert.deepEqual(report.result.windows.map(row => row.botIds.length), [4,4,4,4]);
@@ -246,6 +255,12 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
       for (const botId of Object.values(team)) assert.equal((await owned.get(botId)).status, 'idle');
       const payload = { ...(stage ? { supplement: `Evidence stage ${stage}` } : { goal: 'Deliver initial evidence' }),
         paths: Object.fromEntries(helpers.map(role => [role, `${role}-stage-${stage}.txt`])) };
+      if(failure==='hour-quarter-overrun'&&helperInput&&payload.stage===0&&role==='helper1')hourTime=900000;
+      if(staged==='stage-deadline'){
+        await assert.rejects(owned.runStage({...payload,deadlineAtMs:performance.now()-1}),{code:'INVALID_STAGE'});
+        await assert.rejects(owned.runStage({...payload,deadlineAtMs:performance.now()+901000}),{code:'INVALID_STAGE'});
+        payload.deadlineAtMs=performance.now()+10000;
+      }
       const progressing = owned.runStage(payload);
       await assert.rejects(owned.runStage(payload), { code: 'INVALID_STAGE' });
       stages.push(await progressing);
@@ -349,3 +364,7 @@ test('hour lead-helper external tasks reach original helpers and verify actual P
 test('natural hour lead-helper accepts time-only observations with unknown usage and retains twelve deliveries', t => scenario(t, undefined, false, 3, 'natural-hour'));
 
 for (const event of ['fatal', 'exit', 'unknown']) test(`natural Lead last wake rejects ${event} after all twelve deliveries and retains Board failure`, t => scenario(t, `last-${event}`, false, 3, 'natural-hour'));
+
+test('explicit absolute stage deadline retains the same accepted inputs past the ordinary per-input wait',t=>scenario(t,undefined,false,3,'stage-deadline'));
+
+test('a stage that completes at its quarter cutoff cannot count despite successful accepted input settlements',t=>scenario(t,'hour-quarter-overrun',false,3,'natural-hour'));

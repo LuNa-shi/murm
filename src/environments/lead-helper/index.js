@@ -13,10 +13,10 @@ import { leadPrompt, helperPrompt, initializeInstruction, helperInitialInstructi
 const fail = code => Object.assign(new Error(code), { code });
 const bounded = (value, fallback, maximum) => { const result = value ?? fallback; if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw new TypeError('Invalid lead-helper wait bound'); return result; };
 export async function createLeadHelperEnvironment(options) {
-  const { runId, image, model = 'default', outputDir, backend, exportLimit = 64 * 1024 ** 2, helperCount = 2 } = options;
+  const { runId, image, model = 'default', outputDir, backend, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
   const roles = leadHelperRoles(helperCount);
   const helperRoles = roles.slice(1);
-  if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw new TypeError('Invalid lead-helper run configuration');
+  if (typeof includeGit !== 'boolean' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw new TypeError('Invalid lead-helper run configuration');
   const turnTimeoutMs = bounded(options.turnTimeoutMs, 30_000, 300_000); const workTimeoutMs = bounded(options.workTimeoutMs, 120_000, 900_000);
   const closeTimeoutMs = bounded(options.closeTimeoutMs, 30_000, 60_000);
   const resources = createOwnedResources(); const lifetime = new AbortController();
@@ -66,11 +66,13 @@ export async function createLeadHelperEnvironment(options) {
     }
     return structuredClone(await closeWork);
   }
-  const dispatch = async (role, requestId, payload, workSignal) => {
+  const dispatch = async (role, requestId, payload, workSignal, deadlineAtMs) => {
     if (workSignal.aborted || closing) throw fail('WORKFLOW_STOPPED');
+    const timeoutMs = deadlineAtMs === undefined ? turnTimeoutMs : Math.ceil(deadlineAtMs - performance.now());
+    if (timeoutMs < 1) throw fail('WORKFLOW_STOPPED');
     const row = { role, botId: team[role], requestId, source: payload.type }; inputs.push(row); activeInputs.add(team[role]);
     try {
-      const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs: turnTimeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settledSeq: result.settled.seq, settled: { botId: result.settled.botId, seq: result.settled.seq, outcome: result.settled.outcome } }); return result;
+      const result = await runInput(runtime, team[role], JSON.stringify(payload), { requestId, timeoutMs, signal: workSignal }); Object.assign(row, { inputId: result.inputId, receipt: result.receipt, state: 'completed', settledSeq: result.settled.seq, settled: { botId: result.settled.botId, seq: result.settled.seq, outcome: result.settled.outcome } }); return result;
     } catch (error) { Object.assign(row, { inputId: error.inputId, receipt: error.receipt, state: 'failed', code: error.code ?? 'INPUT_FAILED', uncertain: !['input_failed', 'input_aborted'].includes(error.code) }); recordFence({ botId: team[role], code: row.code }); lifetime.abort(); throw error; }
     finally { activeInputs.delete(team[role]); }
   };
@@ -106,7 +108,7 @@ export async function createLeadHelperEnvironment(options) {
     });
     for (const role of roles) {
       if (startup.aborted || lifetime.signal.aborted) throw fail('ENVIRONMENT_START_ABORTED');
-      const actor = facilities.actors[role]; const bot = await runtime.spawn({ requestId: `spawn-${role}`, profile: role, bindings: { board: `${runId}:board`, gitea: actor.binding }, secretEnv: { GITEA_TOKEN: actor.token }, collect: { paths: ['.'], includeGit: true, maxBytes: exportLimit, required: true } }); team[role] = bot.id;
+      const actor = facilities.actors[role]; const bot = await runtime.spawn({ requestId: `spawn-${role}`, profile: role, bindings: { board: `${runId}:board`, gitea: actor.binding }, secretEnv: { GITEA_TOKEN: actor.token }, collect: { paths: ['.'], includeGit, maxBytes: exportLimit, required: true } }); team[role] = bot.id;
     }
     if (startup.aborted || lifetime.signal.aborted) throw fail('ENVIRONMENT_START_ABORTED');
     board.bindTeam(runtime.id, team); git.bindTeam(runtime.id, team);
@@ -133,10 +135,11 @@ export async function createLeadHelperEnvironment(options) {
         } catch (error) { stop(); error.details = [...(error.details ?? []), snapshot()]; throw error; }
         finally { stageActive = false; }
       },
-      async runStage({ goal, supplement, paths, tasks, signal } = {}) {
+      async runStage({ goal, supplement, paths, tasks, signal, deadlineAtMs } = {}) {
         const stage = stages.length;
         const text = stage === 0 ? goal : supplement;
-        if (closing || stageActive || stage >= 4 || helperCount !== 3 || workflowUsed && stage === 0 && !preparedStages ||
+        const remainingMs = deadlineAtMs === undefined ? workTimeoutMs : Math.ceil(deadlineAtMs - performance.now());
+        if ((deadlineAtMs !== undefined && (!Number.isFinite(deadlineAtMs) || remainingMs < 1 || remainingMs > 900_000)) || closing || stageActive || stage >= 4 || helperCount !== 3 || workflowUsed && stage === 0 && !preparedStages ||
             typeof text !== 'string' || !text.trim() || Buffer.byteLength(text) > 8192 ||
             (signal !== undefined && !(signal instanceof AbortSignal)) ||
             (tasks !== undefined && (!tasks || Object.keys(tasks).length !== 3 || helperRoles.some(role => !Object.hasOwn(tasks, role) ||
@@ -147,8 +150,8 @@ export async function createLeadHelperEnvironment(options) {
         const fixedPaths = structuredClone(paths);
         const fixedTasks = tasks === undefined ? undefined : structuredClone(tasks);
         workflowUsed = true; stageActive = true;
-        const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(workTimeoutMs), ...(signal ? [signal] : [])]);
-        const send = (role, payload) => dispatch(role, `stage-${stage}-${role}`, { ...payload, stage, paths: fixedPaths }, workSignal);
+        const workSignal = AbortSignal.any([lifetime.signal, AbortSignal.timeout(Math.min(workTimeoutMs, remainingMs)), ...(signal ? [signal] : [])]);
+        const send = (role, payload) => dispatch(role, `stage-${stage}-${role}`, { ...payload, stage, paths: fixedPaths }, workSignal, deadlineAtMs);
         const helpers = Object.fromEntries(helperRoles.map(role => [role, team[role]]));
         const previous = stages.at(-1); const startInput = inputs.length;
         try {
