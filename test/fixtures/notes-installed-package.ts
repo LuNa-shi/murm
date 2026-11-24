@@ -34,7 +34,10 @@ export async function preparePackageArchive(directory, { archive: frozenArchive,
     if (requireCleanCheckout && sourceDirty) {
       throw Object.assign(new Error('Native acceptance requires a clean package source pin'), { code: 'DIRTY_PACKAGE_SOURCE' });
     }
-    const packed = await execute('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', directory],
+    // Native evidence must compile its source pin. Ordinary tests already built
+    // this tree before starting and may be using its compiled modules.
+    const packed = await execute('npm', ['pack', '--json',
+      requireCleanCheckout ? '--ignore-scripts=false' : '--ignore-scripts', '--pack-destination', directory],
       { cwd: repository, timeout: 60_000, maxBuffer: 4 * 1024 ** 2 });
     archive = join(directory, JSON.parse(packed.stdout)[0].filename);
   }
