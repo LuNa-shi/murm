@@ -31,7 +31,7 @@ This section is generated from executable exports and checked against the source
 | Source | SHA-256 |
 |---|---|
 | [src/sdk/service-catalog.js](../../src/sdk/service-catalog.js) | `3eb4dbc87d69a3341886b9f9cab68daca531ae7ea0386b50c072473aebc4a98a` |
-| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `2c52545ba9179f809fb99070f7107704425fe944587da9fb61e14162195dd168` |
+| [src/sdk/builtin-registry.js](../../src/sdk/builtin-registry.js) | `2fe172f496be496e92d1a0d9d8245917b4ffe54f49239fac7281c74349ece85e` |
 | [src/sdk/service-manifest.js](../../src/sdk/service-manifest.js) | `415bf40c46e284fbd5ad52fc5f7c96266003edb5573dba3a55c734966b9e01bf` |
 | [src/sdk/service-registry.js](../../src/sdk/service-registry.js) | `6528826cb1e89980159bc23150e6f18162df54ac3f9eb5eda264befb6160dc46` |
 | [src/agent/capability-profile.js](../../src/agent/capability-profile.js) | `7f1981cce971d1d68d69d1de868da800ad13e9020df44b211d523117406ffe07` |

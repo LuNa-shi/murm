@@ -107,7 +107,7 @@
     },
     {
       "path": "src/sdk/builtin-registry.js",
-      "sha256": "2c52545ba9179f809fb99070f7107704425fe944587da9fb61e14162195dd168"
+      "sha256": "2fe172f496be496e92d1a0d9d8245917b4ffe54f49239fac7281c74349ece85e"
     },
     {
       "path": "src/sdk/service-bundle.js",

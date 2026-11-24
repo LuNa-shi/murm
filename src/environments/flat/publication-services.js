@@ -1,3 +1,4 @@
+import { MISSION_WORKSPACE_READS } from './public-workspace-reads.js';
 import { ExecutionWorkspace } from '../../runtime/execution-workspace.js';
 import { SwarmEnvError } from '../../errors.js';
 import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
@@ -79,12 +80,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       const metadata = await missionWorkspace.get({ workspaceId, signal });
       if (metadata.mission_id !== missionId) fail('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       if (operation === 'workspace_public_view') return metadata;
-      if (operation === 'workspace_public_read') {
-        return missionWorkspace.read({ workspaceId, path: input.path, revision: input.revision,
-          maxBytes: input.max_bytes, signal });
-      }
-      return missionWorkspace.files({ workspaceId, prefix: input.path, revision: input.revision,
-        limit: input.limit, cursor: input.cursor, signal });
+      return MISSION_WORKSPACE_READS[operation](missionWorkspace, { ...input, workspace_id: workspaceId }, signal);
     }
     if(!current.execution) fail('NOT_ALLOWED','Private Workspace operation requires an active Execution');
     if(typeof snapshotProject!=='function') fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');

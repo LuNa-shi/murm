@@ -1507,6 +1507,14 @@
       "role": "Trusted scoped fixed-head merge receipts and immutable main-file verification"
     },
     {
+      "path": "src/environments/flat/public-workspace-reads.js",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/02-execution.md"
+      ],
+      "role": "Flat-owned public Workspace read argument mapping shared by v1 Registry and Core Flat adapters"
+    },
+    {
       "path": "src/environments/flat/publication-services.js",
       "category": "Execution and control",
       "chapters": [
