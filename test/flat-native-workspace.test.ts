@@ -52,7 +52,7 @@ text=open('lemma.txt','rb').read()
 binary=open('lemma.bin','rb').read()
 open('consumer.txt','ab').write(b'ADOPTED_LEMMA\\n')
 saved=cli('workspace','save','--request-id','B-integrated-save')
-result={'role':'B-apply','revision':saved['revision'],'text':text.hex(),'binary':binary.hex(),'same_process':os.getcwd()==before,'applied':applied}
+result={'role':'B-apply','revision':saved['revision'],'text':text.hex(),'binary':binary.hex(),'same_process':os.getcwd()==before,'applied':applied,'parents':saved['parents']}
 `;
   return `python3 - <<'FLAT_NATIVE_SCRIPT'\nimport os,json,subprocess,secrets\nROLE=${JSON.stringify(role)}\nbefore=os.getcwd()\nassert before=='/workspace/project'\ndef cli(*args):\n p=subprocess.run(['swarm']+list(args),capture_output=True,text=True,timeout=45)\n assert p.returncode==0, p.stderr\n return json.loads(p.stdout)\n${commands}\nprint(json.dumps(result))\nFLAT_NATIVE_SCRIPT`;
 }
@@ -145,6 +145,8 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
         while ((await runtime.get(bBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
         assert.deepEqual(await sessionEvidence(bContainer, execute), before);
         assert.equal(integrated.text, a.text); assert.equal(integrated.binary, a.binary);
+        assert.deepEqual(integrated.applied.parents, [b.revision, a.revision]);
+        assert.deepEqual(integrated.parents, [b.revision, a.revision]);
         const exported = await workspace.exportRevision({ workspaceId: initial.workspace_id, revision: integrated.revision });
         assert.deepEqual(Buffer.from(exported.files['lemma.txt']), Buffer.from(a.text, 'hex'));
         assert.deepEqual(Buffer.from(exported.files['lemma.bin']), Buffer.from(a.binary, 'hex'));
@@ -161,6 +163,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
     assert.equal(report.cleanupFailure, null); assert.equal(report.cleanup.cleanup, 'complete');
     assert.deepEqual(await ownedContainers(runtimeId), []);
     assert.ok(report.cleanup.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'complete'));
+    for (const bot of report.cleanup.bots) assert.equal(tasks.getBot(bot.botId).state, 'CLOSED');
     for (const bot of report.cleanup.bots) assert.equal(tasks.getBot(bot.botId).state, 'CLOSED');
     const trace = JSON.parse(await readFile(join(outputDir, runtimeId, 'runtime.json'), 'utf8'));
     assert.equal(trace.cleanup, 'complete');
