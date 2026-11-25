@@ -4,18 +4,19 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { loadPutnamB1, putnamB1, putnamWindowMs } from './case.ts';
+import { loadPutnamB1, putnamB1, putnamSelectionMs, putnamWindowMs } from './case.ts';
 
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const git = (args: string[]) => execute('git', args, { cwd: root, timeout: 10_000 });
-const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, ...extra] = process.argv.slice(2);
+const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, ...extra] = process.argv.slice(2);
 if (!['preflight', 'run'].includes(operation) || !checkerConfig || !datasetRoot || extra.length ||
     (operation === 'preflight' && experimentId !== undefined) ||
     (operation === 'run' && (!/^EXP-\d{8}-\d{2}$/.test(experimentId ?? '') || !/^sha256:[a-f0-9]{64}$/.test(image ?? '')))) {
-  throw new Error('Usage: main.ts preflight CHECKER_CONFIG PUTNAMBENCH_ROOT | main.ts run CHECKER_CONFIG PUTNAMBENCH_ROOT EXP_ID WORKER_IMAGE_ID [WINDOW_SECONDS]');
+  throw new Error('Usage: main.ts preflight CHECKER_CONFIG PUTNAMBENCH_ROOT | main.ts run CHECKER_CONFIG PUTNAMBENCH_ROOT EXP_ID WORKER_IMAGE_ID [WINDOW_SECONDS [SELECTION_SECONDS]]');
 }
 const durationMs = putnamWindowMs(windowSeconds);
+const selectionMs = putnamSelectionMs(durationMs, selectionSeconds);
 const problem = await loadPutnamB1(datasetRoot);
 let code: string | undefined;
 let directory: string | undefined;
@@ -45,7 +46,7 @@ if (operation === 'run') {
   directory = join(parent, 'run');
   await writeFile(join(parent, 'identity.json'), JSON.stringify({
     experimentId, code, image, dataset: problem.putnambench_commit, instance: problem.id,
-    provider: problem.provider, model: problem.model, capacity: problem.capacity, durationMs,
+    provider: problem.provider, model: problem.model, capacity: problem.capacity, durationMs, selectionMs,
   }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
 }
 
@@ -87,7 +88,7 @@ if (operation === 'preflight') {
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
   try {
-    const receipt = await runPutnamFlat({ problem, checks, directory: directory!, image: image!, durationMs,
+    const receipt = await runPutnamFlat({ problem, checks, directory: directory!, image: image!, durationMs, selectionMs,
       upstream: { url: upstream.href, headers: { authorization: 'Bearer ' + key } }, signal: abort.signal,
       backend: endpoint => createPiOpenSandboxBackend({
         sandbox: {

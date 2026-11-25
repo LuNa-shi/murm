@@ -10,7 +10,7 @@ import { MissionWorkspace } from '../../dist/src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../../dist/src/runtime/workspace-manager.js';
 import { TaskService } from '../../dist/src/task/task-service.js';
 import { createRunWindow } from '../shared/run-window.ts';
-import type { loadPutnamB1 } from './case.ts';
+import { putnamSelectionMs, type loadPutnamB1 } from './case.ts';
 import type { preparePutnamChecks } from './lean.ts';
 
 const missionId = 'mission:putnam_2025_b1';
@@ -45,7 +45,8 @@ async function usage(directory: string, runtimeId: string) {
   });
 }
 
-export async function runPutnamFlat({ problem, checks, directory, backend, image, upstream, signal, durationMs = problem.durationMs }: {
+export async function runPutnamFlat({ problem, checks, directory, backend, image, upstream, signal,
+  durationMs = problem.durationMs, selectionMs = putnamSelectionMs(durationMs) }: {
   problem: Problem;
   checks: Checks;
   directory: string;
@@ -54,6 +55,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
   upstream: { url: string; headers: Record<string, string> };
   signal: AbortSignal;
   durationMs?: number;
+  selectionMs?: number;
 }) {
   const setupStarted = performance.now();
   await mkdir(directory, { mode: 0o700 });
@@ -103,7 +105,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
       coordinationPermissions: ['mission_submit'], closeTimeoutMs,
       handoff: { executionTimeoutMs: durationMs, handoffLeadMs: Math.min(60_000, Math.floor(durationMs / 4)) },
       controller: {
-        selectionMs: Math.min(300_000, durationMs), hardBudgetMs: durationMs + setupAllowanceMs, stallMs: durationMs,
+        selectionMs, hardBudgetMs: durationMs + setupAllowanceMs, stallMs: durationMs,
         continuationLimit: Number.MAX_SAFE_INTEGER, discoveryLimit: Number.MAX_SAFE_INTEGER, heartbeatMs: 1000,
         beforeInitialDispatch({ signal }: { signal: AbortSignal }) {
           signal.throwIfAborted();
@@ -131,7 +133,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
       : null);
     const modelUsage = report.runtimeId ? await usage(directory, report.runtimeId).catch(() => null) : null;
     const receipt = {
-      startedAt, setupElapsedMs, researchDeadline, problem: problem.id, sourceSha256: problem.source_hash,
+      startedAt, setupElapsedMs, researchDeadline, selectionMs, problem: problem.id, sourceSha256: problem.source_hash,
       image, provider: problem.provider, model: problem.model, checker: checks.evidence,
       window: window.receipt(), modelUsage, runtimeId: report.runtimeId, environmentReport: report.reportPath,
       completion: report.result?.completion ?? report.businessFailure?.details?.[0]?.completion ?? null,

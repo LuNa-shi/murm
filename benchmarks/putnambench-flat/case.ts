@@ -20,13 +20,20 @@ export const putnamB1 = Object.freeze({
   durationMs: 3_600_000,
 });
 
-export function putnamWindowMs(seconds?: string) {
-  if (seconds === undefined) return putnamB1.durationMs;
+function boundedWindowMs(seconds: string, limitMs: number, window: string) {
   const durationMs = Number(seconds) * 1000;
-  if (!/^\d+$/.test(seconds) || !Number.isSafeInteger(durationMs) || durationMs < 1000 || durationMs > putnamB1.durationMs) {
-    throw new Error('Putnam research window must be between 1 and 3600 whole seconds');
+  if (!/^\d+$/.test(seconds) || !Number.isSafeInteger(durationMs) || durationMs < 1000 || durationMs > limitMs) {
+    throw new Error(`Putnam ${window} window must be between 1 and ${Math.floor(limitMs / 1000)} whole seconds`);
   }
   return durationMs;
+}
+
+export function putnamWindowMs(seconds?: string) {
+  return seconds === undefined ? putnamB1.durationMs : boundedWindowMs(seconds, putnamB1.durationMs, 'research');
+}
+
+export function putnamSelectionMs(durationMs: number, seconds?: string) {
+  return seconds === undefined ? Math.min(300_000, durationMs) : boundedWindowMs(seconds, durationMs, 'selection');
 }
 
 export async function loadPutnamB1(directory: string) {
