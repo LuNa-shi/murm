@@ -7,15 +7,21 @@ import { createOwnedResources } from './resources.js';
 
 export const peerPrompt = `You are one Agensh peer in a persistent private project directory. Work only on your unique WORK_BRANCH. Use Bash and swarm Service commands; discover each operation with swarm <service> <operation> --help. Clone RUN_REPOSITORY into the current project root (git clone "$RUN_REPOSITORY" .), then preserve this checkout across turns. Use your native Git credential helper; never print or persist credentials. Read the run issue, publish useful facts and detailed evidence to the shared board, and notify the run channel. Board CLAIM is a soft coordination note, not an exclusive Task lease. Follow-ups and configured idle-work batches arrive only after your current turn settles. There are no mid-turn notices or native automatic continuation. Do not merge or change main. Follow the fixed acceptance input and report actual results.`;
 
+export const projectPeerPrompt = `You are an equal peer working on the project described in RUN_ISSUE. You share the goal, main branch, Board and messages with other peers, and keep your own checkout and Session. Use Bash and swarm Service commands, and discover operation inputs with swarm <service> <operation> --help. Clone RUN_REPOSITORY into your project directory with git clone "$RUN_REPOSITORY" . and create your own WORK_BRANCH. Preserve the checkout across turns. Use your native Git credential helper and never print or persist credentials.
+
+Read the project issue, the current main, open work and the Board. Choose useful work yourself and publish a CLAIM. A CLAIM is an intention with expiry, and overlapping claims are allowed. Use message peer_list and send_dm to find and coordinate with other peers. Record reusable facts, failures or evidence on the Board. Update from main, implement and verify your work, then push your own branch, open a PR and request pull_request_merge with its current head SHA. Repair conflicts on your branch, recheck and request merge again. If a merge is unknown, inspect or retry the same head to reconcile it. Share a PATCH_SUMMARY with the files and evidence that peers can use. Start your next piece of work from the latest main. If there is no useful next step, finish the turn and wait for a new batch. Messages and shared context are delivered at turn boundaries.`;
+
 export function createPeerProfile({ image, model = 'default', facilities }: any) {
   const { runId } = facilities;
   const repository: any = new URL(facilities.repositoryUrl);
-  return { image, model, writable: true, prompt: peerPrompt,
+  return { image, model, writable: true, prompt: facilities.project ? projectPeerPrompt : peerPrompt,
         env: { RUN_REPOSITORY: facilities.repositoryUrl, WORK_BRANCH: facilities.peer.branch ?? `peer-${runId}`, GITEA_USERNAME: facilities.peer.gitea.username,
           GIT_TERMINAL_PROMPT: '0', GIT_AUTHOR_NAME: facilities.peer.gitea.username, GIT_AUTHOR_EMAIL: `${facilities.peer.gitea.username}@swarmenv.invalid`,
           GIT_COMMITTER_NAME: facilities.peer.gitea.username, GIT_COMMITTER_EMAIL: `${facilities.peer.gitea.username}@swarmenv.invalid`,
           RUN_OWNER: facilities.repository.owner, RUN_REPO: facilities.repository.name, RUN_ISSUE: String(facilities.issueNumber), RUN_CHANNEL: facilities.channelId, RUN_BOARD: facilities.boardId },
-        network: { allow: [repository.origin] }, services: { gitea: ['issue_read', 'issue_write', 'pull_request_write'], message: ['post_message'], 'agensh-context': ['board_read', 'board_write', 'board_grep', 'board_unfold'] } };
+        network: { allow: [repository.origin] }, services: { gitea: ['issue_read', 'issue_write', 'pull_request_write', ...(facilities.project ? ['issue_list', 'pull_request_list',
+          'pull_request_read', 'comment_list', 'comment_write', 'pull_request_merge'] : [])],
+          message: ['post_message', ...(facilities.project ? ['peer_list', 'send_dm'] : [])], 'agensh-context': ['board_read', 'board_write', 'board_grep', 'board_unfold'] } };
 }
 
 /** A single input owner. Core owns the Bot; Environment owns facilities. */

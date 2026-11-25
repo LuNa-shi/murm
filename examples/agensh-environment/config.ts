@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { createBoardLauncher } from '../../src/environments/agensh/board-process.js';
 
@@ -10,6 +11,12 @@ function required(name: any) {
 
 const runId = required('RUN_ID');
 const image = required('IMAGE');
+const project = JSON.parse(await readFile(resolve(required('PROJECT_FILE')), 'utf8'));
+const peerCount = Number(setting('PEERS') ?? '2');
+const durationMs = project?.durationMs ?? 3_600_000;
+if (!Number.isSafeInteger(peerCount) || peerCount < 2 || peerCount > 8 || !Number.isSafeInteger(durationMs) || durationMs < 1 || durationMs > 86_400_000) {
+  throw Object.assign(new Error('Invalid peer count or project duration'), { code: 'AGENSH_CONFIG_PROJECT_INVALID' });
+}
 const modelUrl = required('MODEL_URL');
 const modelToken = setting('MODEL_TOKEN');
 const gitea: any = { origin: required('GITEA_ORIGIN'), owner: required('GITEA_OWNER'), adminToken: required('GITEA_TOKEN') };
@@ -42,10 +49,11 @@ const backend = createPiOpenSandboxBackend({
 
 export default {
   mode: 'agensh',
-  timeoutMs: 120_000,
+  timeoutMs: durationMs + 120_000,
   options: {
     runId, image, backend, gitea, mattermost, startBoard,
-    peerKeys: ['a', 'b'], outputDir: setting('OUTPUT_DIR') ?? './agensh-runs', closeTimeoutMs: 30_000,
+    project, peerKeys: Array.from({ length: peerCount }, (_, index) => String.fromCharCode(97 + index)),
+    outputDir: setting('OUTPUT_DIR') ?? './agensh-runs', closeTimeoutMs: 30_000,
     secretValues: [modelToken, mysqlDsn],
   },
 };

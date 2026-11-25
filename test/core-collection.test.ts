@@ -89,3 +89,18 @@ test('collection streams bounded chunks and accepts a policy larger than 64 MiB 
   const controller = new AbortController(); controller.abort();
   await assert.rejects(async () => { for await (const record of collectCoreWorkDir(root, { ...spec, includeGit: false }, { signal: controller.signal })) void record; }, { name: 'AbortError' });
 });
+
+test('if-present Git collection preserves private files before clone and Git history after clone', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'core-collection-checkout-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await writeFile(join(root, 'private-work'), 'draft');
+  const policy = { ...spec, includeGit: 'if-present' };
+  const before = await inventory(root, policy);
+  assert.deepEqual(before.directories, []);
+  assert.equal(before.files[0].path, 'private-work');
+  await assert.rejects(inventory(root, spec), /missing path/);
+  await execute('git', ['init', '-q', root]);
+  const after = await inventory(root, policy);
+  assert.ok(after.directories.includes('.git'));
+  assert.ok(after.files.some(file => file.path === '.git/HEAD'));
+});

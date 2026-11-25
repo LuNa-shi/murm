@@ -163,8 +163,13 @@ output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
   + block('Exact input composition', between(scaleMASPath, '                  const text = ', '\n                  const sendInput'),
     'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.'));
 output('08-agensh-environment.md', header('Agensh peer and serial router prompts',
-  'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper with explicit followUp. There are no mid-turn notices.')
-  + block('Peer Profile prompt', between('src/environments/agensh/index.ts', 'export const peerPrompt = `', '`;'))
+  'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper. The project path uses Core start. The compatibility paths use explicit followUp. There are no mid-turn notices.')
+  + block('Compatibility peer Profile prompt', between('src/environments/agensh/index.ts', 'export const peerPrompt = `', '`;'))
+  + block('Project peer Profile prompt', between('src/environments/agensh/index.ts', 'export const projectPeerPrompt = `', '`;'))
+  + block('Project kickoff text', between('src/environments/agensh/team.ts', 'const goal = `', '`;'),
+    'issueNumber comes from the newly provisioned Gitea project issue. The title comes from trusted project configuration. All peers receive the same text.')
+  + block('Exact serial input composition', between('src/environments/agensh/router.ts', 'const input = `', '`;'),
+    'The Router owns the batch identity and source metadata. Context is the current Board read for the mapped viewer. Kickoff, external input and nudges travel through this same composition.')
   + block('Serial batch instruction', between('src/environments/agensh/router.ts', "export const routerInstruction = '", "';"))
   + block('Configured idle nudge', between('src/environments/agensh/router.ts', "export const idleNudgeInput = '", "';"))
   + block('Opt-in hosted acceptance common instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveCommon = `', '`;'))

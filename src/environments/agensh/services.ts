@@ -1,12 +1,16 @@
+import { httpClient } from './http.js';
 import { ServiceRegistry } from '../../core/services.js';
 
 const text: any = { type: 'string', minLength: 1, maxLength: 16383 };
 const object = (properties: any, required: any) => ({ type: 'object', properties, required, additionalProperties: false });
+const index = { type: 'integer', minimum: 1 };
+const page = { type: 'integer', minimum: 1, maximum: 1000 };
+const gitSha = { type: 'string', pattern: '^[a-f0-9]{40}$' };
 const fixed = (value: any) => ({ type: 'string', enum: [value] });
 const failure = (code: any) => Object.assign(new Error('Agensh upstream operation failed'), { code });
 
 /** One run, trusted peer identities. Credentials and the trusted upstream identities stay here. */
-export function createAgenshServices(configuration: any) {
+export function createAgenshServices(configuration: any, delivery?: { merge(input: any): Promise<unknown> }) {
   const { runId, repository, channelId, boardId } = structuredClone(configuration);
   const peers = structuredClone(configuration.peers ?? [{ ...configuration.peer, key: 'peer' }]);
   if (!Array.isArray(peers) || peers.length < 1 || peers.length > 8 || new Set(peers.map((peer: any) => peer.key)).size !== peers.length) throw new TypeError('Agensh requires a bounded distinct peer list');
@@ -66,6 +70,29 @@ export function createAgenshServices(configuration: any) {
     for (const [key, value] of Object.entries((values as Record<string, any>))) if (value !== undefined) query.set(key, value);
     return `/board/${encodeURIComponent(boardId)}/${operation}?${query}`;
   }
+  if (configuration.project) {
+    const listing = object({ ...repo, page, state: { enum: ['open', 'closed', 'all'] } }, ['owner', 'repo']);
+    const commentInput = { ...repo, index };
+    Object.assign(operations.gitea, {
+      issue_list: { schema: listing, route: ({ page = 1, state = 'open' }) => ['GET', `${scope}/issues?type=issues&state=${state}&limit=30&page=${page}`] },
+      pull_request_list: { schema: listing, route: ({ page = 1, state = 'open' }) => ['GET', `${scope}/pulls?state=${state}&limit=30&page=${page}`] },
+      pull_request_read: { schema: object(commentInput, ['owner', 'repo', 'index']), route: (input: { index: number }) => ['GET', `${scope}/pulls/${input.index}`] },
+      comment_list: { schema: object({ ...commentInput, page }, ['owner', 'repo', 'index']),
+        route: ({ index, page = 1 }: { index: number; page?: number }) => ['GET', `${scope}/issues/${index}/comments?limit=30&page=${page}`] },
+      comment_write: { schema: object({ ...commentInput, body: text }, ['owner', 'repo', 'index', 'body']),
+        route: ({ index, body }: { index: number; body: string }) => ['POST', `${scope}/issues/${index}/comments`, { body }] },
+      pull_request_merge: { schema: object({ ...commentInput, head_sha: gitSha }, ['owner', 'repo', 'index', 'head_sha']) },
+    });
+    Object.assign(operations.message, {
+      peer_list: { schema: object({}, []) },
+      send_dm: { schema: object({ peer: { enum: peers.map(item => item.key) }, message: text }, ['peer', 'message']),
+        route: ({ peer: recipient, message }: { peer: string; message: string }, peer: { key: string }) => {
+          const channel_id = configuration.directChannels?.[peer.key]?.[recipient];
+          if (typeof channel_id !== 'string' || peer.key === recipient) throw failure('NOT_ALLOWED');
+          return ['POST', '/api/v4/posts', { channel_id, message }];
+        } },
+    });
+  }
   const outputs: any = {
     issue_read: { type: 'object', properties: { number: { type: 'integer', minimum: 1 } }, required: ['number'], additionalProperties: true },
     issue_write: { type: 'object', properties: { number: { type: 'integer', minimum: 1 } }, required: ['number'], additionalProperties: true },
@@ -76,30 +103,47 @@ export function createAgenshServices(configuration: any) {
     board_grep: { type: 'object', properties: { total: { type: 'integer', minimum: 0 }, entries: { type: 'array', items: { type: 'object', additionalProperties: true } } }, required: ['total', 'entries'], additionalProperties: true },
     board_unfold: { type: 'object', properties: { rendered: { type: 'string' } }, required: ['rendered'], additionalProperties: true },
   };
+  Object.assign(outputs, {
+    issue_list: { type: 'array', items: outputs.issue_read },
+    pull_request_list: { type: 'array', items: outputs.pull_request_write },
+    pull_request_read: outputs.pull_request_write,
+    comment_list: { type: 'array', items: { type: 'object' } },
+    comment_write: { type: 'object', properties: { id: index }, required: ['id'], additionalProperties: true },
+    pull_request_merge: { type: 'object', properties: { peerKey: text, number: index, headSha: gitSha, mergeSha: gitSha },
+      required: ['peerKey', 'number', 'headSha', 'mergeSha'], additionalProperties: false },
+    peer_list: { type: 'array', items: object({ key: text, username: text }, ['key', 'username']) },
+    send_dm: outputs.post_message,
+  });
+  const readOperation = (operation: string) => /read|list|grep|unfold/.test(operation);
   for (const [id, rules] of Object.entries((operations as Record<string, any>))) {
     services.registerService({
       manifest: { id, title: id, purpose: 'One run Agensh peer access', provider_version: 'agensh-2dae4e14-rest-1', contract_version: '2', endpoint: { transport: 'in-process' },
         capabilities: Object.entries((rules as Record<string, any>)).map(([operation, rule]: any) => ({ name: operation, operation, description: `Run-scoped ${operation}`, help: { when: `Use ${operation} for this run's shared data` },
-          side_effect: /read|grep|unfold/.test(operation) ? 'read' : 'write', idempotent: /read|grep|unfold/.test(operation), input_schema: rule.schema,
-          output_schema: outputs[operation], errors: ['NOT_ALLOWED', 'INVALID_CONTRACT', 'SERVICE_UNAVAILABLE'].map((code: any) => ({ code, retryable: false })) })) },
+          side_effect: readOperation(operation) ? 'read' : 'write', idempotent: readOperation(operation) || operation === 'pull_request_merge', input_schema: rule.schema,
+          output_schema: outputs[operation], errors: ['NOT_ALLOWED', 'INVALID_CONTRACT', 'SERVICE_UNAVAILABLE',
+            ...(operation === 'pull_request_merge' ? ['DELIVERY_INVALID', 'DELIVERY_CONFLICT', 'DELIVERY_NOT_READY', 'DELIVERY_MERGE_UNKNOWN', 'DELIVERY_STOPPING'] : [])]
+            .map(code => ({ code, retryable: false })) })) },
       adapter: { async invoke({ capability, input, caller, signal }: any) {
         const bot = bots.get(caller.botId);
         const peer = bot?.peer;
         const binding = id === 'gitea' ? peer?.gitea.binding : id === 'message' ? peer?.message.binding : peer?.board.binding;
         if (!bot || caller.runtimeId !== bot.runtimeId || caller.botId !== bot.botId || caller.profile !== bot.profile || caller.binding !== binding) throw failure('NOT_ALLOWED');
+        if (capability.operation === 'pull_request_merge') {
+          if (!delivery) throw failure('NOT_ALLOWED');
+          return delivery.merge({ peerKey: peer.key, number: input.index, headSha: input.head_sha, signal });
+        }
+        if (capability.operation === 'peer_list') return peers.map(item => ({ key: item.key, username: item.gitea.username }));
         const [method, path, body] = rules[capability.operation].route(input, peer);
         const endpoint = id === 'agensh-context' ? endpoints.board : endpoints[id];
         const credential = id === 'gitea' ? `token ${peer.gitea.token}` : id === 'message' ? `Bearer ${peer.message.token}` : undefined;
         try {
-          const response = await fetch(new URL(path, endpoint), { method, signal: AbortSignal.any([AbortSignal.timeout(10_000), ...(signal ? [signal] : [])]), redirect: 'error',
-            headers: { accept: 'application/json', 'content-type': 'application/json', ...(credential ? { authorization: credential } : {}) }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
-          if (!response.ok) { await response.body?.cancel(); throw failure(response.status === 401 || response.status === 403 ? 'NOT_ALLOWED' : 'SERVICE_UNAVAILABLE'); }
-          const chunks: any[] = []; let bytes = 0;
-          for await (const chunk of response.body!) { bytes += chunk.length; if (bytes > 2 * 1024 ** 2) throw failure('SERVICE_UNAVAILABLE'); chunks.push(chunk); }
-          const result = JSON.parse(Buffer.concat(chunks).toString());
-          if (!result || typeof result !== 'object' || Array.isArray(result)) throw failure('SERVICE_UNAVAILABLE');
+          const result = await httpClient(endpoint, credential)(method, path, body, { signal });
+          if (!result || typeof result !== 'object' || Array.isArray(result) !== (outputs[capability.operation].type === 'array')) throw failure('SERVICE_UNAVAILABLE');
+          if (capability.operation === 'send_dm' && (result.user_id !== peer.message.accountId || result.channel_id !== body.channel_id)) throw failure('SERVICE_UNAVAILABLE');
           return result;
-        } catch (error: any) { throw failure(error?.code === 'NOT_ALLOWED' ? 'NOT_ALLOWED' : 'SERVICE_UNAVAILABLE'); }
+        } catch (error: any) {
+          throw failure(error?.status === 401 || error?.status === 403 ? 'NOT_ALLOWED' : 'SERVICE_UNAVAILABLE');
+        }
       } },
     });
   }

@@ -31,7 +31,7 @@
     },
     {
       "path": "src/environments/shared/run-input.ts",
-      "sha256": "eef9dbf6c1ceb86b0de73bac4ceb2d3878c6a1c47b476daa1e18b4398e0630a3"
+      "sha256": "13d8a8e3237f4e2d5303bffa59ac39a7a95f2c3fc678c4c7d1691e5da7c09f9d"
     },
     {
       "path": "src/environments/scalemas/index.ts",
@@ -59,11 +59,11 @@
     },
     {
       "path": "src/environments/agensh/index.ts",
-      "sha256": "b658fc0a6fd30cfe11ce3627f277ede386cb02a74021c07c9b60dc25fede8bdd"
+      "sha256": "b03d4ae66c60b53fecb15b9cec372ea32d445e211537cd149708f92c45571b17"
     },
     {
       "path": "src/environments/agensh/router.ts",
-      "sha256": "8d9f59725e11c75174bf56ae76b466b7b67679f7df1105caf93c8ce4b0e14ec5"
+      "sha256": "0951e377f5cdc24340b23a9bbd2d8cd0187cd1710033539b7f4bff02373bc462"
     },
     {
       "path": "src/environments/agensh/routed.ts",
@@ -71,7 +71,7 @@
     },
     {
       "path": "src/environments/agensh/team.ts",
-      "sha256": "a45dd33b773646d90456959ee1e56d2d4ef645621a2668030dc612b59d15929d"
+      "sha256": "55af87f72abd62617bdf2d985d1246f2bcf675d355ff6e442a8cfc3960a4679b"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.ts",
@@ -212,6 +212,24 @@
       "anchor": "export const peerPrompt = `",
       "line": 8,
       "sha256": "06c1eff12e00ec7944444e731069139aa9dc237f1bc6a5132f8d7d9f390699de"
+    },
+    {
+      "path": "src/environments/agensh/index.ts",
+      "anchor": "export const projectPeerPrompt = `",
+      "line": 10,
+      "sha256": "efc886cef76a13196e9134ccca3ae185f8cc7cc58581feeb64e0d1c4340cfabe"
+    },
+    {
+      "path": "src/environments/agensh/team.ts",
+      "anchor": "const goal = `",
+      "line": 153,
+      "sha256": "7ff970f174447d263dc093697d6d4dc71537693a895871fdd8ac7e7148242d90"
+    },
+    {
+      "path": "src/environments/agensh/router.ts",
+      "anchor": "const input = `",
+      "line": 56,
+      "sha256": "f6291a852afcef71e88524604eb3bcd22ae043495b1be38c9a1894e9c3e8e379"
     },
     {
       "path": "src/environments/agensh/router.ts",
@@ -433,7 +451,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",
-      "sha256": "2fbb33a5e52d553fa6031b635fbc8d6a10d6cff5608836cb2d188a9a37d4dd24"
+      "sha256": "7610eb9808d32d779017a2e5ab122b6e31ec52211b8e6c9bdad1b4e82a3c1ee8"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",

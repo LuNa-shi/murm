@@ -77,11 +77,11 @@ test('readiness and post-submit failures preserve their phase and never replay a
     const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
       peers: [{ key: 'a', branch: 'a', gitea: { accountId: '1' } }] }, adminToken: 'private', maxReadinessReads: 2, readinessIntervalMs: 1 });
     const input = { peerKey: 'a', number: 1, headSha: 'a'.repeat(40) };
-    const code = scenario === 'never-ready' ? 'DELIVERY_NOT_READY' : scenario === 'changed-head' ? 'DELIVERY_INVALID' : 'DELIVERY_MERGE_UNKNOWN';
+    const code = ['never-ready', 'submit-405'].includes(scenario) ? 'DELIVERY_NOT_READY' : scenario === 'changed-head' ? 'DELIVERY_INVALID' : 'DELIVERY_MERGE_UNKNOWN';
     await assert.rejects(delivery.merge(input), { code }); await assert.rejects(delivery.merge(input), { code });
     const receipt = delivery.snapshot()[0];
     assert.equal(writes, ['never-ready', 'changed-head'].includes(scenario) ? 0 : 1);
-    assert.equal(receipt.state, writes ? 'unknown' : 'rejected');
+    assert.equal(receipt.state, writes && scenario !== 'submit-405' ? 'unknown' : 'rejected');
     assert.equal(receipt.failure.phase, !writes ? 'preflight' : scenario === 'submit-405' ? 'submit' : 'readback');
     if (scenario === 'submit-405') assert.equal(receipt.failure.status, 405);
     if (scenario === 'readback-503') assert.equal(receipt.failure.status, 503);
@@ -151,4 +151,33 @@ test('immutable content with a different path or invalid file metadata cannot pa
     await assert.rejects(f.delivery.readMainFile('right.txt'), { code: 'DELIVERY_INVALID' });
     assert.equal(f.seen.length, 2); assert.match(f.seen[1].path, /\?ref=e{40}$/);
   }
+});
+
+test('a peer can correct a PR head and then merge another PR on its work branch', async t => {
+  let head = 'a'.repeat(40);
+  const merged = new Set();
+  const server = createServer((request, response) => {
+    request.resume();
+    const number = Number(request.url.match(/pulls\/(\d+)/)[1]);
+    if (request.method === 'POST') {
+      merged.add(number);
+      response.writeHead(204);
+      return response.end();
+    }
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'branch-a', sha: head },
+      base: { ref: 'main' }, mergeable: head !== 'a'.repeat(40), merged: merged.has(number), merge_commit_sha: 'd'.repeat(40) }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
+    repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }] },
+    adminToken: 'host', maxReadinessReads: 1 });
+  await assert.rejects(delivery.merge({ peerKey: 'a', number: 1, headSha: head }), { code: 'DELIVERY_NOT_READY' });
+  head = 'b'.repeat(40);
+  await delivery.merge({ peerKey: 'a', number: 1, headSha: head });
+  head = 'c'.repeat(40);
+  await delivery.merge({ peerKey: 'a', number: 2, headSha: head });
+  assert.deepEqual([...merged], [1, 2]);
 });

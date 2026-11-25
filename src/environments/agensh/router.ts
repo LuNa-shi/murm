@@ -52,8 +52,8 @@ export function createAgenshRouter({ mapping, runInput, readContext, workTimeout
           if (row.state === 'cancelled') continue;
           if (typeof context !== 'string' || Buffer.byteLength(context) > 16 * 1024) throw failure('ROUTER_CONTEXT_INVALID');
           remaining();
-          row.context = context; row.state = 'submitted'; row.dispatchOrder = ++order;
-          const input = `${routerInstruction}\n${JSON.stringify({ batchId: row.batchId, source: row.source, eventId: row.eventId, kind: row.kind, text: row.text, context })}`;
+          row.context = context; row.state = 'submitted'; row.dispatchOrder = ++order; row.dispatchedAt = new Date().toISOString();
+          const input = `${routerInstruction}\n${JSON.stringify({ batchId: row.batchId, source: row.source, eventId: row.eventId, kind: row.kind, text: row.text, ...(row.origin ? { origin: row.origin } : {}), context })}`;
           const result = await runInput(input, { requestId: row.requestId, timeoutMs: Math.min(turnTimeoutMs, remaining()), signal: lifetime.signal });
           Object.assign(row, { state: 'completed', inputId: result.inputId, receipt: result.receipt, settled: clone(result.settled) });
         } catch (error: any) {
@@ -62,7 +62,7 @@ export function createAgenshRouter({ mapping, runInput, readContext, workTimeout
           Object.assign(row, { state: uncertain ? 'uncertain' : 'failed', code: error.code ?? 'ROUTER_BATCH_FAILED',
             ...(error.inputId ? { inputId: error.inputId } : {}), ...(error.receipt ? { receipt: clone(error.receipt) } : {}), ...(error.event ? { event: clone(error.event), ...(error.event.type === 'settled' ? { settled: clone(error.event) } : {}) } : {}) });
           fence(row.code);
-        } finally { activeContext = undefined; active = undefined; notify(); }
+        } finally { row.settledAt = new Date().toISOString(); activeContext = undefined; active = undefined; notify(); }
       }
     } finally {
       pumping = false; notify();
@@ -81,14 +81,18 @@ export function createAgenshRouter({ mapping, runInput, readContext, workTimeout
         !['kickoff', 'user', 'external', 'dm', 'mention', 'peer-message', 'nudge'].includes(event.kind) ||
         typeof event.eventId !== 'string' || !event.eventId || event.eventId.length > 256 || typeof event.targetWorker !== 'string' || !event.targetWorker || event.targetWorker.length > 128 ||
         typeof event.text !== 'string' || !event.text || Buffer.byteLength(event.text) > 16 * 1024) throw failure('ROUTER_EVENT_INVALID');
-    if (Object.keys(event).some((key: any) => !['source', 'eventId', 'targetWorker', 'kind', 'text'].includes(key)) ||
+    if (Object.keys(event).some((key: any) => !['source', 'eventId', 'targetWorker', 'kind', 'text', 'origin'].includes(key)) ||
         !({ kickoff: ['kickoff'], user: ['user'], gitea: ['external'], mattermost: ['dm', 'mention', 'peer-message'], nudge: ['nudge'] } as Record<string, string[]>)[event.source].includes(event.kind)) throw failure('ROUTER_EVENT_INVALID');
-    const normalized: any = { source: event.source, eventId: event.eventId, targetWorker: event.targetWorker, kind: event.kind, text: event.text };
+    const origin = event.origin;
+    if (origin !== undefined && (!['gitea', 'mattermost'].includes(event.source) || !origin || typeof origin.senderId !== 'string' ||
+        origin.senderId.length > 128 || (origin.object !== undefined && (typeof origin.object !== 'string' || origin.object.length > 2048)) ||
+        (origin.timestamp !== undefined && !Number.isSafeInteger(origin.timestamp)))) throw failure('ROUTER_EVENT_INVALID');
+    const normalized: any = { source: event.source, eventId: event.eventId, targetWorker: event.targetWorker, kind: event.kind, text: event.text, ...(origin ? { origin: { senderId: origin.senderId, object: origin.object, timestamp: origin.timestamp } } : {}) };
     const batchId = hash([event.source, event.eventId, event.targetWorker]); const fingerprint = hash(normalized);
     const previous = rows.get(batchId);
     if (previous) { if (previous.fingerprint !== fingerprint) throw failure('BATCH_CONFLICT'); return clone(previous); }
     if (rows.size >= maxBatches) throw failure('ROUTER_BATCH_LIMIT');
-    const row: any = { ...normalized, batchId, requestId: `agensh-batch:${batchId}`, fingerprint, order: ++order, state: 'queued' };
+    const row: any = { ...normalized, batchId, requestId: `agensh-batch:${batchId}`, fingerprint, order: ++order, state: 'queued', receivedAt: new Date().toISOString() };
     rows.set(batchId, row);
     if (!accepting || fenced || event.targetWorker !== peerMapping.workerId) { row.state = 'undelivered'; row.code = event.targetWorker !== peerMapping.workerId ? 'UNKNOWN_RECIPIENT' : fenced ? 'ROUTER_FENCED' : 'ROUTER_STOPPING'; }
     else { clearTimeout(nudgeTimer); queue.push(row); void pump(); }

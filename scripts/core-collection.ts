@@ -25,7 +25,7 @@ export function snapshotCollectionSpec(input: any) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
       Object.keys(input).some(key => !['paths', 'includeGit', 'maxBytes', 'required'].includes(key)) ||
       !Array.isArray(input.paths) || input.paths.length > MAX_COLLECTION_ENTRIES ||
-      typeof input.includeGit !== 'boolean' || typeof input.required !== 'boolean' ||
+      typeof input.includeGit !== 'boolean' && input.includeGit !== 'if-present' || typeof input.required !== 'boolean' ||
       !Number.isSafeInteger(input.maxBytes) || input.maxBytes < 1) {
     throw failure('Collection requires paths, includeGit, required and a positive safe integer maxBytes');
   }
@@ -127,7 +127,12 @@ export async function* collectCoreWorkDir(root: string, input: any, { signal, ma
   try {
     // Shorter ancestors first ensure every requested directory gets traversed,
     // even when paths overlap. Parent directories are emitted exactly once.
-    const paths = [...new Set([...spec.paths, ...(spec.includeGit ? ['.git'] : [])])].sort((a: any, b: any) => a.split('/').length - b.split('/').length || a.localeCompare(b));
+    const paths = [...new Set([...spec.paths, ...(spec.includeGit === true ? ['.git'] : [])])];
+    if (spec.includeGit === 'if-present' && !paths.includes('.git')) {
+      try { await lstat(join(root, '.git')); paths.push('.git'); }
+      catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+    }
+    paths.sort((a: any, b: any) => a.split('/').length - b.split('/').length || a.localeCompare(b));
     for (const path of paths) {
       if (path !== '.') {
         const parts = path.split('/');
