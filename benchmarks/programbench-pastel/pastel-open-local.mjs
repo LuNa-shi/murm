@@ -168,7 +168,7 @@ const policy = { kind, durationMs, maxRequests, maxConcurrent, maxOutputTokens }
 const upstream = await localUpstream((input, number) => driver(input, number, inputTexts(input)), maxRequests, 240_000);
 try {
   const { outputDir, receipt } = await runPastel({ ...policy, mode, image,
-    upstream: { url: upstream.url }, upstreamKind: kind, boardImage: process.env.PROGRAMBENCH_BOARD_IMAGE });
+    upstream: { url: upstream.url }, upstreamKind: kind });
   const audit = await auditPastelReceipt(receipt, policy);
   console.log(JSON.stringify({ run: basename(outputDir), receipt: join(outputDir, 'receipt.json'), audit }));
   assert.equal(upstream.receipt().failure, undefined);

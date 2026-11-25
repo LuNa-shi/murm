@@ -1,21 +1,11 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, writeFile } from 'node:fs/promises';
+import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createPiOpenSandboxBackend } from '../../dist/src/core/backends/pi-opensandbox.js';
 import { streamResponse } from '../../dist/test/fixtures/core-controlled-upstream.js';
 
-export const instance = 'sharkdp__pastel.b60e899';
-export const privateDirectory = fileURLToPath(new URL('../../experiments/programbench-pastel/', import.meta.url));
-export const goal = `Rebuild Pastel for ProgramBench (${instance}).
-Use the reference program at /opt/programbench/executable and its documentation in /opt/programbench.
-Observe its behavior by running it. Author original source without accessing project source, external resources or hidden tests. Do not use or redistribute the reference in the candidate.
-Create a source tree with a root compile.sh that builds ./executable in the offline ProgramBench environment. Preserve partial work if the full program is unfinished.`;
-
-export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 export const tool = (call, command, timeout = 20) => ({ type: 'function_call', id: `fc_${call}`, call_id: call,
   name: 'bash', arguments: JSON.stringify({ command, timeout }) });
 export const message = (number, text) => ({ type: 'message', id: `msg_${number}`, role: 'assistant', status: 'completed',
@@ -75,12 +65,6 @@ export function localBackend(upstream, diskMiB = 64, { timeoutSeconds = 180, max
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream } },
     isolation: { network: 'local-docker', disk: { bytes: diskMiB * 1024 ** 2, inodes: 8192 } },
   });
-}
-
-export async function runDirectory(mode) {
-  const path = join(privateDirectory, 'integration-runs');
-  await mkdir(path, { recursive: true, mode: 0o700 });
-  return mkdtemp(join(path, `${mode}-`));
 }
 
 export const saveReceipt = (dir, data) => writeFile(join(dir, 'receipt.json'), JSON.stringify(data, null, 2) + '\n', { mode: 0o600 });

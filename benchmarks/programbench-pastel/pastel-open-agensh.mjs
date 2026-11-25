@@ -1,13 +1,15 @@
+import { execFile } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { createAgenshDelivery } from '../../dist/src/environments/agensh/delivery.js';
 import { httpClient } from '../../dist/src/environments/agensh/http.js';
 import { prepareAgenshFacilities } from '../../dist/src/environments/agensh/provision.js';
 import { createAgenshTeam } from '../../dist/src/environments/agensh/team.js';
-import { createLocalAgenshStack } from '../../dist/test/fixtures/agensh-local-stack.js';
+import { createLocalAgenshStack, facilityImages } from '../../dist/test/fixtures/agensh-local-stack.js';
 import { checkpointSource } from './source-checkpoint.mjs';
-import { sha256 } from './local-integration.mjs';
+import { sha256 } from './case.mjs';
 
 const peerWork = {
   a: 'Implement a reusable color-input parsing component. Publish a small initial contribution early. Use Python 3 standard library if no language is agreed. Post a Board FACT with its file path, interface and a reference observation. Commit only your component, push it and open a PR from your assigned branch.',
@@ -63,12 +65,31 @@ function declaredAdoption(batch) {
   }
 }
 
-export async function runOpenAgensh({ state, task, window, start, deadline, image, backend, outputDir, durationMs, boardImage }) {
+const execute = promisify(execFile);
+
+export async function resolveAgenshImages() {
+  const board = process.env.PROGRAMBENCH_BOARD_IMAGE ?? facilityImages.board;
+  if (!/^sha256:[a-f0-9]{64}$/.test(board)) throw new Error('Provide a local Board image ID');
+  const references = {
+    mysql: `mysql@${facilityImages.mysql}`,
+    mattermost: `mattermost/mattermost-team-edition@${facilityImages.mattermost}`,
+    gitea: `docker.gitea.com/gitea@${facilityImages.gitea}`,
+    board,
+  };
+  const images = await Promise.all(Object.entries(references).map(async ([name, ref]) => {
+    const { stdout } = await execute('docker', ['image', 'inspect', '--format', '{{.Id}}', ref], { timeout: 10_000 });
+    return [name, stdout.trim()];
+  }));
+  return { references, images: Object.fromEntries(images) };
+}
+
+export async function runOpenAgensh({ state, task, window, start, deadline, image, backend, outputDir, durationMs, agenshImages }) {
+  state.stage = 'agensh-startup';
+  const { images } = agenshImages ?? await resolveAgenshImages();
   const stack = await createLocalAgenshStack({ directory: join(outputDir, 'facilities'), setupMs: 120_000,
-    advertiseHost: process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST, boardImage });
+    advertiseHost: process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST, images });
   const runId = `pastel-${randomBytes(6).toString('hex')}`;
   let team, facilities;
-  state.stage = 'agensh-startup';
   try {
     const configuration = await stack.start();
     const git = httpClient(configuration.gitea.origin, `token ${configuration.gitea.adminToken}`);

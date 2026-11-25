@@ -1,7 +1,7 @@
 import { createRuntime } from '../../dist/src/core/index.js';
 import { ServiceRegistry } from '../../dist/src/core/services.js';
 import { createSubagentsController } from '../../dist/examples/subagents-environment/controller.js';
-import { sha256 } from './local-integration.mjs';
+import { sha256 } from './case.mjs';
 import { checkpointSource } from './source-checkpoint.mjs';
 
 const parentInstructions = `Spawn two child Bots with complementary Pastel work using swarm bot spawn.

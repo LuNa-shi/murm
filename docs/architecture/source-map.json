@@ -51,6 +51,15 @@
   ],
   "files": [
     {
+      "path": "benchmarks/programbench-pastel/case.mjs",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Shared real Pastel prompt, case identity, archive checksums and private run directories"
+    },
+    {
       "path": "benchmarks/programbench-pastel/Dockerfile",
       "category": "development benchmarks",
       "chapters": [
@@ -64,7 +73,7 @@
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
       ],
-      "role": "Common case input, loopback Responses fixture, Docker OpenSandbox settings, and private run paths"
+      "role": "Loopback Responses fixture, Docker OpenSandbox settings and private receipt persistence"
     },
     {
       "path": "benchmarks/programbench-pastel/pack-submission.py",
@@ -86,6 +95,7 @@
       "path": "benchmarks/programbench-pastel/pastel-open-agensh.mjs",
       "category": "development benchmarks",
       "chapters": [
+        "docs/architecture/08-prompts.md",
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Pastel Board and pinned Git contribution handoff between three peer Bots"
@@ -94,6 +104,7 @@
       "path": "benchmarks/programbench-pastel/pastel-open-flat.mjs",
       "category": "development benchmarks",
       "chapters": [
+        "docs/architecture/08-prompts.md",
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Pastel Task and Execution setup with Material attachment publication and integration evidence"
@@ -110,6 +121,7 @@
       "path": "benchmarks/programbench-pastel/pastel-open-subagents.mjs",
       "category": "development benchmarks",
       "chapters": [
+        "docs/architecture/08-prompts.md",
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Pastel parent and child dispatch, result routing, and authenticated source checkpoint publication"

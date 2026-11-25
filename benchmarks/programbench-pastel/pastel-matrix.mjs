@@ -1,19 +1,15 @@
 import { execFile, spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
-import { copyFile, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { copyFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
-import { assertShippedModelPair } from '../../dist/src/agent/model-catalog.js';
-import { facilityImages } from '../../dist/test/fixtures/agensh-local-stack.js';
-import { instance, privateDirectory, runDirectory, sha256 } from './local-integration.mjs';
-import { runPastel, task } from './pastel-open.mjs';
+import { instance, privateDirectory, runDirectory, sha256, task } from './case.mjs';
 
 const directory = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(directory, '../..');
 const upstreamTree = resolve(process.env.PROGRAMBENCH_EVALUATOR_DIR ?? join(privateDirectory, 'upstream'));
-const boardImage = process.env.PROGRAMBENCH_BOARD_IMAGE ?? facilityImages.board;
-const runnerNames = ['local-integration.mjs', 'run-window.mjs', 'source-checkpoint.mjs', 'pack-submission.py',
+const runnerNames = ['case.mjs', 'local-integration.mjs', 'run-window.mjs', 'source-checkpoint.mjs', 'pack-submission.py',
   'pastel-open.mjs', 'pastel-open-subagents.mjs', 'pastel-open-flat.mjs', 'pastel-open-agensh.mjs',
   'pastel-matrix.mjs', 'Dockerfile'];
 const modes = ['subagents', 'flat', 'agensh'];
@@ -114,25 +110,44 @@ async function inspectEvaluatorInputs() {
   return { evaluatorRevision, testsRevision, evaluatorDigest };
 }
 
+async function hostDistributionDigest() {
+  const dist = join(repository, 'dist');
+  const roots = ['src', 'examples/subagents-environment', 'test/fixtures'];
+  const trees = await Promise.all(roots.map(root => readdir(join(dist, root), { recursive: true, withFileTypes: true })));
+  const files = trees.flat().filter(entry => entry.isFile()).map(entry =>
+    relative(dist, join(entry.parentPath, entry.name))).sort();
+  const digests = await Promise.all(files.map(async file => [file, sha256(await readFile(join(dist, file)))]));
+  return sha256(JSON.stringify(digests));
+}
+
 export async function inspectFrozenInputs(worker) {
-  requireThat(/^sha256:[a-f0-9]{64}$/.test(worker) && /^sha256:[a-f0-9]{64}$/.test(boardImage), 'IMAGE_ID_REQUIRED');
-  const [code, treeStatus, localWorker, runnerFiles, catalog, evaluatorPins, agenshImages] = await Promise.all([
+  requireThat(/^sha256:[a-f0-9]{64}$/.test(worker), 'IMAGE_ID_REQUIRED');
+  const [code, treeStatus] = await Promise.all([
     git(repository, 'rev-parse', 'HEAD'), git(repository, 'status', '--porcelain'),
+  ]);
+  requireThat(!treeStatus, 'PINNED_CHECKOUT_DIRTY');
+  // Load distribution modules only after a clean build. dist is ignored by Git.
+  await exec(process.execPath, ['scripts/build.ts'], { cwd: repository, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 });
+  const [{ assertShippedModelPair }, { resolveAgenshImages }] = await Promise.all([
+    import('../../dist/src/agent/model-catalog.js'), import('./pastel-open-agensh.mjs'),
+  ]);
+  const [localWorker, runnerFiles, catalog, evaluatorPins, agenshImages, hostDistributionSha256] = await Promise.all([
     exec('docker', ['image', 'inspect', worker, '--format', '{{json .}}'], { timeout: 10_000 }),
     Promise.all(runnerNames.map(async name => [name, sha256(await readFile(join(directory, name)))])),
     assertShippedModelPair({ provider, model }),
     inspectEvaluatorInputs(),
-    exec('docker', ['image', 'inspect', facilityImages.mysql, facilityImages.mattermost, facilityImages.gitea, boardImage,
-      '--format', '{{.Id}}'], { timeout: 10_000 }),
+    resolveAgenshImages(),
+    hostDistributionDigest(),
   ]);
-  requireThat(!treeStatus, 'PINNED_CHECKOUT_DIRTY');
+  requireThat(await git(repository, 'rev-parse', 'HEAD') === code &&
+    !await git(repository, 'status', '--porcelain'), 'PINNED_CHECKOUT_CHANGED');
   const workerImage = JSON.parse(localWorker.stdout);
-  requireThat(workerImage.Id === worker &&
-    workerImage.Config?.Labels?.['org.swarmenv.benchmark.instance'] === instance &&
-    workerImage.Config?.Labels?.['org.swarmenv.benchmark.cleanroom'] === evaluatorDigest, 'PINNED_WORKER_MISMATCH');
-  return { code, worker, instance, ...evaluatorPins, provider, model, boardImage,
-    agenshImageIds: agenshImages.stdout.trim().split('\n'), modelCatalogSha256: catalog.sha256,
-    taskSha256: sha256(task), runnerFiles: Object.fromEntries(runnerFiles) };
+  const labels = workerImage.Config?.Labels;
+  requireThat(workerImage.Id === worker && labels?.['org.opencontainers.image.revision'] === code &&
+    labels['org.swarmenv.benchmark.instance'] === instance &&
+    labels['org.swarmenv.benchmark.cleanroom'] === evaluatorDigest, 'PINNED_WORKER_MISMATCH');
+  return { code, worker, instance, ...evaluatorPins, provider, model, agenshImages, hostDistributionSha256,
+    modelCatalogSha256: catalog.sha256, taskSha256: sha256(task), runnerFiles: Object.fromEntries(runnerFiles) };
 }
 
 export async function auditPastelReceipt(receipt, { kind, durationMs, maxRequests, maxConcurrent, maxOutputTokens }) {
@@ -233,6 +248,7 @@ async function runHostedMatrix({ pins, issue, experiments, catalogPath, registry
       rows[0].split('|')[4]?.includes(pins.code.slice(0, 7)), 'EXPERIMENT_REGISTRATION_REQUIRED');
   }
   const upstream = await providerConfig(catalogPath);
+  const { runPastel } = await import('./pastel-open.mjs');
   const matrixDir = await runDirectory('k3-matrix');
   const lockDir = join(privateDirectory, 'hosted-run-starts');
   await mkdir(lockDir, { recursive: true, mode: 0o700 });
@@ -260,7 +276,7 @@ async function runHostedMatrix({ pins, issue, experiments, catalogPath, registry
     Object.assign(row, { status: 'launching', submittedAt: new Date().toISOString() });
     console.log(JSON.stringify({ mode, experiment, stage: row.status, matrixDir }));
     try {
-      const { outputDir, receipt } = await runPastel({ ...policy, mode, image: pins.worker, upstream, upstreamKind: policy.kind, boardImage: pins.boardImage,
+      const { outputDir, receipt } = await runPastel({ ...policy, mode, image: pins.worker, upstream, upstreamKind: policy.kind, agenshImages: pins.agenshImages,
         async onStart({ startedAt, runtimeId }) {
           Object.assign(row, { status: 'running', startedAt, runtimeId });
           console.log(JSON.stringify({ mode, experiment, stage: row.status, startedAt, runtimeId, matrixDir }));

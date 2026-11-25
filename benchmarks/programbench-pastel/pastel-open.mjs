@@ -3,16 +3,12 @@ import { once } from 'node:events';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createRunWindow } from './run-window.mjs';
-import { goal, instance, localBackend, runDirectory, saveReceipt, sha256 } from './local-integration.mjs';
+import { instance, runDirectory, sha256, task } from './case.mjs';
+import { localBackend, saveReceipt } from './local-integration.mjs';
 import { ownedContainers } from '../../dist/test/fixtures/core-runtime-containers.js';
 import { runOpenSubagents } from './pastel-open-subagents.mjs';
 import { runOpenFlat } from './pastel-open-flat.mjs';
 import { runOpenAgensh } from './pastel-open-agensh.mjs';
-
-export const task = `${goal}
-Select and implement an original approach. Create an early runnable source snapshot, then extend or correct it as time allows.
-Your teammates solve part of the same program. Record whose work was used, the source or version, and the behavior it supports.
-Keep the candidate source and offline build instructions in the shared deliverable channel described below. A runnable subset is acceptable.`;
 
 const drivers = { subagents: runOpenSubagents, flat: runOpenFlat, agensh: runOpenAgensh };
 
@@ -35,7 +31,7 @@ async function modelUsage(directory, runtimeId) {
 
 /** Private orchestration. Its caller owns upstream selection and formal authorization. */
 export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
-  maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, upstreamKind, boardImage, onStart }) {
+  maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, upstreamKind, agenshImages, onStart }) {
   if (!Object.hasOwn(drivers, mode) || !/^sha256:[a-f0-9]{64}$/.test(image ?? '') ||
       !['scripted_loopback', 'hosted_k3'].includes(upstreamKind)) throw new Error('Invalid Pastel run input');
   const target = new URL(upstream.url);
@@ -63,7 +59,7 @@ export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
     const backend = localBackend(window.upstream, 128, { timeoutSeconds: Math.ceil(durationMs / 1000) + 180,
       maxOutputTokens, requestTimeoutMs: durationMs, ...(upstreamKind === 'hosted_k3' ? { resourceLimits: null } : {}) });
     await drivers[mode]({ state, task, window, start, deadline, image, backend, outputDir, durationMs,
-      capacity: Math.min(3, maxConcurrent), boardImage });
+      capacity: Math.min(3, maxConcurrent), agenshImages });
   } catch (error) {
     const expectedDeadline = window.signal.reason?.code === 'deadline' &&
       ['deadline', 'ROUTER_WAIT_ABORTED', 'ROUTER_WAIT_TIMEOUT'].includes(error.code);

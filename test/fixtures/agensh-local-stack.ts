@@ -20,9 +20,9 @@ export const boardSchema = Object.freeze({
 });
 
 /** No side effects until explicitly called inside the opt-in actual test. */
-export async function createLocalAgenshStack({ directory, advertiseHost = '172.17.0.1', setupMs = 180_000, giteaOnly = false, boardImage = facilityImages.board, executeCommand = execute }) {
-  if (!/^sha256:[a-f0-9]{64}$/.test(boardImage)) throw sanitized('LOCAL_BOARD_IMAGE_ID_REQUIRED');
-  const images = { ...facilityImages, board: boardImage };
+export async function createLocalAgenshStack({ directory, advertiseHost = '172.17.0.1', setupMs = 180_000, giteaOnly = false, images = facilityImages, executeCommand = execute }) {
+  const imageNames = giteaOnly ? ['gitea'] : Object.keys(facilityImages);
+  if (!imageNames.every(name => /^sha256:[a-f0-9]{64}$/.test(images[name]))) throw sanitized('LOCAL_FACILITY_IMAGE_ID_REQUIRED');
   const owner = `t13-${randomBytes(8).toString('hex')}`;
   const network = `${owner}-network`; const names = []; const receipts = []; const commands = []; const readiness = {};
   const dbPassword = randomBytes(24).toString('hex'); const adminPassword = randomBytes(24).toString('hex');
@@ -107,7 +107,7 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
       if (started) throw sanitized('LOCAL_STACK_ALREADY_STARTED'); started = true;
       setup = createDeadline(setupMs, 'LOCAL_FACILITY_SETUP_EXPIRED');
       // All images must already be cached; no implicit download or install.
-      for (const image of giteaOnly ? [images.gitea] : Object.values(images)) await docker(['image', 'inspect', '--format', '{{.Id}}', image], undefined, 'image.cached');
+      for (const name of imageNames) await docker(['image', 'inspect', '--format', '{{.Id}}', images[name]], undefined, 'image.cached');
       await setupStep(() => mkdir(directory, { recursive: true, mode: 0o700 }));
       const data = {};
       for (const key of giteaOnly ? ['gitea'] : ['mysql', 'gitea', 'mm-data', 'mm-config', 'mm-logs', 'mm-plugins', 'mm-client-plugins']) {

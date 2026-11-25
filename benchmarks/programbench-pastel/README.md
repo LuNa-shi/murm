@@ -45,7 +45,7 @@ worker=$(docker image inspect swarmenv-programbench-pastel:local --format '{{.Id
 
 The Worker recipe installs only the reference executable and public documentation from the cleanroom image. Core supplies the Bot network grants. The test data stay in the host evaluator. The Worker has no provider credentials. OpenSandbox defaults to `http://127.0.0.1:8080/v1`, with `127.0.0.1` as endpoint host and `172.17.0.1` as the container-reachable host address. Export `SWARMENV_CORE_TEST_LIFECYCLE_URL`, `SWARMENV_CORE_TEST_ENDPOINT_HOST`, `SWARMENV_CORE_TEST_ADVERTISE_HOST` or `SWARMENV_CORE_TEST_API_KEY` if the provider requires different values.
 
-Agensh also requires Docker images for Git, messaging, database and Board. Pull the first three by their pinned digest. Build the Board from the existing pinned submodule and pass its local image ID.
+Agensh also requires Docker images for Git, messaging, database and Board. Pull the first three by their pinned digest. The runner resolves those references to local image IDs. Build the Board from the existing pinned submodule and pass its local image ID.
 
 ```sh
 docker pull docker.gitea.com/gitea@sha256:538658de667c5d098a274f2f63aa6ec891d88f670cdd5282cf27221ba747dda4
@@ -111,7 +111,7 @@ Follow the [experiment workflow](../../docs/workflows/experiment.md). Use a clea
 }
 ```
 
-The provider base URL ends in `/v1`. Generate pins after building the Worker and preparing the evaluator. The `pins` command uses local files and Docker inspection.
+The provider base URL ends in `/v1`. Generate pins after building the Worker and preparing the evaluator. The command rebuilds and fingerprints the compiled host code. It verifies the Worker label matches the clean checkout commit. The hosted command repeats those checks and compares all pins before any provider call.
 
 ```sh
 node benchmarks/programbench-pastel/pastel-matrix.mjs pins "$worker" \
