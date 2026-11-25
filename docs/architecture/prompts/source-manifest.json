@@ -23,7 +23,11 @@
     },
     {
       "path": "src/core/startup-prompt.ts",
-      "sha256": "319d992edfd055590fb16baa5dcdd0d00ff5a1b131410811ca2dd76a0331c370"
+      "sha256": "128748e404169d346470a009773f770d896235b23be027248dfaa4b77f9d5b24"
+    },
+    {
+      "path": "src/cli/service-command.ts",
+      "sha256": "e81958602a5481e3443726c4ed39d2d52a2b9220ed2d91cbd12181383c30c0b1"
     },
     {
       "path": "src/core/pi-opensandbox-backend.ts",
@@ -461,11 +465,11 @@
     },
     {
       "path": "docs/architecture/prompts/01-core-startup.md",
-      "sha256": "96126f50bf8a0368d0cc7825ca117006cececbbea42a38b5d51d80ec92fa3c32"
+      "sha256": "033802eeb954acb64467871868de40b35f24b5eb83030a193c2d2cb8a00ccd52"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
-      "sha256": "b53b7f7b84fdfd60b465be1185b70b0a6a3fb18b1ac99eb83b6368123908feb8"
+      "sha256": "f09e46530b8b68b7ac5e27cd575a33c8598926bd656c790d948c49c4132135c9"
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",

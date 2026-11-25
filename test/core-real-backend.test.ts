@@ -8,7 +8,7 @@ import { createNotesService, notesManifest } from './fixtures/core-notes-service
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
 
-test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a Bash file effect', {
+test('real Pi receives the permitted Service directory and Bash can call its advertised commands', {
   skip: process.env.SWARMENV_CORE_REAL_TEST !== '1' && 'Set SWARMENV_CORE_REAL_TEST=1 with a verified local OpenSandbox image',
   timeout: 180_000,
 }, async t => {
@@ -44,9 +44,14 @@ test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a 
   const services = new ServiceRegistry();
   services.registerService({ manifest: notesManifest(), adapter: createNotesService().adapter });
   services.registerService({ manifest: notesManifest('other-notes'), adapter: createNotesService().adapter });
+  for (const [service, operation] of [['task', 'task_list'], ['context', 'read_materials']]) {
+    const manifest = notesManifest(service);
+    manifest.capabilities = [{ ...manifest.capabilities[1], name: 'list', description: 'List permitted entries', operation }];
+    services.registerService({ manifest, adapter: { invoke: () => null } });
+  }
   runtime = await createRuntime({ backend, profiles: {
     worker: { prompt: 'Perform the requested local file operation and return its verified result.', model: 'default', image,
-      writable: true, services: { notes: ['get'] } },
+      writable: true, services: { notes: ['get'], task: ['task_list'], context: ['read_materials'] } },
   }, services, maxBots: 1, outputDir });
   assert.deepEqual(await ownedContainers(runtime.id), []);
   const bot = await runtime.spawn({ requestId: 'smoke-spawn', profile: 'worker' });
@@ -81,14 +86,16 @@ test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a 
   assert.ok(directory, 'Pi must send a Service directory in its first model request');
   assert.match(directory, /Fixed notes exchange/);
   assert.match(directory, /swarm notes get.*Read a note/);
-  assert.doesNotMatch(directory, /swarm notes put|other-notes|swarm bot/);
+  assert.match(directory, /swarm task list.*List permitted entries/);
+  assert.match(directory, /swarm material list.*List permitted entries/);
+  assert.doesNotMatch(directory, /swarm notes put|other-notes|swarm bot|swarm task task_list|swarm context/);
   assert.doesNotMatch(prompt, /<docs>/);
   assert.match(prompt, /<added_system_prompt>\nPerform the requested local file operation/);
   assert.deepEqual(firstRequest.tools.map(tool => tool.name).sort(), ['bash', 'edit', 'read', 'write']);
   const toolResult = upstream.requests[1].input.find(item => item.type === 'function_call_output');
   const cliDirectory = JSON.parse(toolResult.output);
   assert.deepEqual(cliDirectory.services.map(service => [service.id, service.capabilities.map(capability => capability.operation)]),
-    [['notes', ['get']]]);
+    [['notes', ['get']], ['task', ['task_list']], ['context', ['read_materials']]]);
   const idle = await runtime.get(bot.id);
   assert.equal(idle.status, 'idle');
   assert.equal(idle.latestOutput?.trim(), 'FILE_OK');

@@ -7,7 +7,7 @@ The backend passes this file through Pi --system-prompt. The current working dir
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Profile with no allowed Service operations and no Added System Prompt
 
-Body SHA-256: `4e314659851bb770ef1cafe4659cb1f5d52ac02ffa67873f0e94f38a99189afb`
+Body SHA-256: `1810df3af6c7f4b7ee3d717d6bc2aeb1b0c0363d3fb201cae00502b2d5dcbab0`
 
 ````text
 You are a SwarmEnv agent running in an isolated sandbox.
@@ -22,7 +22,7 @@ Use the swarm CLI through bash to access your task and collaboration services.
 
 <services>
 Use `swarm service list` to see your available services.
-Use `swarm <service> <operation> --help` for arguments and input formats.
+Add `--help` to a command for arguments and input formats.
 
 No Service operations are available to this agent.
 </services>

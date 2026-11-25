@@ -1230,6 +1230,15 @@
       "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
     },
     {
+      "path": "src/cli/service-command.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Shared Bot CLI aliases and rendered Service command spelling"
+    },
+    {
       "path": "src/core/startup-prompt.ts",
       "category": "programmable Core",
       "chapters": [

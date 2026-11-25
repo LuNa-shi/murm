@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **218 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **219 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -213,7 +213,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `0df92907ec29c96b93503d09ffbe8902732676ed040dba3546a9d7205c4e25da` |
 | [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `56fd25bcb95009277ea65a94315ffd8fd05920a70d2ca79a5713e30ec8d1b5b1` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `ac9a12840d2cc1042b6890827ea6eb817f3b72484555963c2c777f24a9702a5e` |
-| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `09af7e03b3a518722f6498d6dbcc29c800d787300c77f40fc33fe70253e7d16b` |
+| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `33d173a45937d9bb41699595a8397d16a9689374297600cc3027790c78744e5f` |
 
 ### durable storage (3)
 
@@ -277,12 +277,13 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [src/replay/service-history.ts](../../src/replay/service-history.ts) | Automatic transaction-aware private SQLite before/after row history and committed write boundaries | [13-historical-resume](13-historical-resume.md) | `17fe42059e4a7d46915f24f6291f8749f507ed80fe64014ccb871928300f5063` |
 
-### programmable Core (15)
+### programmable Core (16)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/core-file-seed.ts](../../scripts/core-file-seed.ts) | Shared FileSeed validation, portable byte representation and canonical digest | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `02551e298e0253c52cbc28b8666fca1112f2eba6a13288aa7dedec0fa0008948` |
 | [src/agent/model-catalog.ts](../../src/agent/model-catalog.ts) | Shared pinned Pi Responses model and image catalog validation | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f73081f4c7a738afbec11fc83ff663025e400ae080db9aba8005ce13d9445c81` |
+| [src/cli/service-command.ts](../../src/cli/service-command.ts) | Shared Bot CLI aliases and rendered Service command spelling | [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `e81958602a5481e3443726c4ed39d2d52a2b9220ed2d91cbd12181383c30c0b1` |
 | [src/core/artifact-collection.ts](../../src/core/artifact-collection.ts) | Host artifact stream validation, private staging and manifest publication | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6cae5836ec2872b083930f140fb8526d3ffc70cdbf1a047a384933ad7b03748b` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | Public opaque Pi/OpenSandbox backend factory export | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
 | [src/core/bot-service.ts](../../src/core/bot-service.ts) | Built-in Bot Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger | [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `8687c26127e3178829fe9ddc74ef94fb56893e2138600b42d2e369f876fa2df5` |
@@ -295,7 +296,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/core/pi-opensandbox-backend.ts](../../src/core/pi-opensandbox-backend.ts) | Core backend lifecycle, Worker transport and confirmed cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `3324f3748d33e9047875a649b254acf00a38edc4b0a89424db3b2930871abaf3` |
 | [src/core/run-records.ts](../../src/core/run-records.ts) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `b62efd9b6e8f3c0b9aa7982c9cf93748f8f7812101f6ba257d66364b40d7b239` |
 | [src/core/services.ts](../../src/core/services.ts) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
-| [src/core/startup-prompt.ts](../../src/core/startup-prompt.ts) | Standard startup system prompt with a permission-filtered Service directory and optional Profile instructions | [08-prompts](08-prompts.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `319d992edfd055590fb16baa5dcdd0d00ff5a1b131410811ca2dd76a0331c370` |
+| [src/core/startup-prompt.ts](../../src/core/startup-prompt.ts) | Standard startup system prompt with a permission-filtered Service directory and optional Profile instructions | [08-prompts](08-prompts.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `128748e404169d346470a009773f770d896235b23be027248dfaa4b77f9d5b24` |
 
 ### provider deployment and instructions (8)
 
@@ -333,7 +334,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/swarm.ts](../../scripts/swarm.ts) | Executable swarm CLI entry point and exit-code boundary | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `f238e4f144b40f5c414e2a1e70daa5767f0ca6e1bdc30f67d8af45636cf13410` |
-| [src/cli/swarm-cli.ts](../../src/cli/swarm-cli.ts) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `dce3a905d49bb189f72073f53253ae8a3894a873e1bb32eaf9a5e3be4ec22c9c` |
+| [src/cli/swarm-cli.ts](../../src/cli/swarm-cli.ts) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `c942e3582d988f85e4a532dbe7ea13a6f10420312a3d8adb3f90f529e80068ef` |
 | [src/protocol/http-request.ts](../../src/protocol/http-request.ts) | Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `6efc0ed8d79ec86ab74b84cf9c63a744f575b9ffe579740738ca7f4079c82d2d` |
 
 ### service deployment (16)

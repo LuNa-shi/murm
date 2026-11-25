@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { requestHttp } from '../protocol/http-request.js';
+import { COMMAND_OPERATIONS, transportService } from './service-command.js';
 
 const SERVICE_NAMES = ['task', 'bot', 'material', 'workspace', 'mission', 'judge', 'catalog'];
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
@@ -10,15 +11,6 @@ function operationTimeoutMs(operation: any, explicit?: any) {
     ? process.env.SWARMENV_CLI_CHECK_REQUEST_TIMEOUT_MS : undefined;
   return parseScalar(explicit) ?? (configured === undefined ? DEFAULT_REQUEST_TIMEOUT_MS : Number(configured));
 }
-const COMMAND_OPERATIONS = Object.freeze({
-  'mathlib-search': { search: 'mathlib_search' },
-  bot: { exit: 'bot_exit' },
-  task: { list: 'task_list', view: 'task_view', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', revise: 'task_revise', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
-  material: { list: 'read_materials', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials', dispute: 'material_dispute', supersede: 'material_supersede', unsupersede: 'material_unsupersede' },
-  workspace: { view: 'workspace_public_view', history: 'workspace_public_history', status: 'workspace_status', diff: 'workspace_current_diff', files: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
-  mission: { view: 'mission_get', submit: 'mission_submit', 'submission view': 'mission_submission_get' },
-  judge: { check: 'workspace_check', result: 'get_check_result' },
-});
 const RESERVED = new Set(['help', 'json', 'input', 'stdin', 'actor-ref', 'task-id', 'execution-id', 'fencing-version', 'spec-version', 'state-version', 'request-id', 'timeout-ms']);
 const WORKSPACE_FILES_HELP = 'List public paths. Use --at R (main is allowed), an optional positional path prefix, --limit or --cursor. Example: swarm workspace files --at 0.1 --limit 20';
 const COMMAND_HELP = Object.freeze({
@@ -111,7 +103,6 @@ function parseArgs(argv: any) {
   return { positionals, options };
 }
 
-function transportService(service: any) { return service === 'material' ? 'context' : service === 'bot' ? 'task' : service; }
 function envName(service: any) { return `SWARMENV_${transportService(service).toUpperCase()}_SERVICE_URL`; }
 function tokenName(service: any) { return `SWARMENV_${transportService(service).toUpperCase()}_SERVICE_TOKEN`; }
 function endpointFor(service: any) { return process.env[envName(service)] ?? null; }

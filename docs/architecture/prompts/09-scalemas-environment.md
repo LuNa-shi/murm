@@ -31,7 +31,7 @@ Body SHA-256: `de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926`
 ````
 ## FATE startup in the no-library condition
 
-Body SHA-256: `a8bd4ec544302b14836905dde76b5bcea10570c2db60943f7de38ec49ee1b079`
+Body SHA-256: `14899902ab11d96db76b874685e95636854a910c8e05fd88c596d03da1b989bb`
 
 ````text
 You are a SwarmEnv agent running in an isolated sandbox.
@@ -46,7 +46,7 @@ Use the swarm CLI through bash to access your task and collaboration services.
 
 <services>
 Use `swarm service list` to see your available services.
-Use `swarm <service> <operation> --help` for arguments and input formats.
+Add `--help` to a command for arguments and input formats.
 
 fate — Mathlib lookup, Lean checking, and proof submission. Task and collaboration services share a limit of 100 operations per agent.
 - `swarm fate search_mathlib` Search the fixed Mathlib source for existing Lean declarations.
@@ -56,7 +56,7 @@ fate — Mathlib lookup, Lean checking, and proof submission. Task and collabora
 ````
 ## FATE startup in the shared condition
 
-Body SHA-256: `7dc375d5c81f60440155814666492c9500a838a7e8f6491caaf022f5228dae7b`
+Body SHA-256: `4dace7fd42576be98b222bccd87cc43980d085edc17cd08f07ca9c37472b1686`
 
 ````text
 You are a SwarmEnv agent running in an isolated sandbox.
@@ -71,7 +71,7 @@ Use the swarm CLI through bash to access your task and collaboration services.
 
 <services>
 Use `swarm service list` to see your available services.
-Use `swarm <service> <operation> --help` for arguments and input formats.
+Add `--help` to a command for arguments and input formats.
 
 fate — Mathlib lookup, Lean checking, and proof submission. Task and collaboration services share a limit of 100 operations per agent.
 - `swarm fate search_mathlib` Search the fixed Mathlib source for existing Lean declarations.
@@ -91,7 +91,7 @@ Publish reusable intermediate results as they become available and say what you 
 ````
 ## FATE startup in the private condition
 
-Body SHA-256: `384c8cc559593120d94d64ae260caac7f456a6abc8be0c266240d13a7d0c3aa8`
+Body SHA-256: `8f44fbff1069213cf098860c217b051f557656a71a935a481320c0b1d98a769f`
 
 ````text
 You are a SwarmEnv agent running in an isolated sandbox.
@@ -106,7 +106,7 @@ Use the swarm CLI through bash to access your task and collaboration services.
 
 <services>
 Use `swarm service list` to see your available services.
-Use `swarm <service> <operation> --help` for arguments and input formats.
+Add `--help` to a command for arguments and input formats.
 
 fate — Mathlib lookup, Lean checking, and proof submission. Task and collaboration services share a limit of 100 operations per agent.
 - `swarm fate search_mathlib` Search the fixed Mathlib source for existing Lean declarations.

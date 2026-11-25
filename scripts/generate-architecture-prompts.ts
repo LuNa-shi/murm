@@ -26,7 +26,7 @@ const sourcePaths = [
   'src/agent/bot-contract.ts',
   'src/agent/capability-profile.ts',
   'src/agent/services-bridge.ts',
-  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
+  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/cli/service-command.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
   'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts',
   'examples/scalemas-environment/fate-run.ts', 'examples/scalemas-environment/fate-service.ts', 'src/environments/scalemas/paper-substrate.ts',
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',

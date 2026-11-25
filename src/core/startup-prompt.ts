@@ -1,4 +1,5 @@
 import type { ServiceManifest } from './service-types.js';
+import { serviceCommand } from '../cli/service-command.js';
 
 const preamble = [
   'You are a SwarmEnv agent running in an isolated sandbox.',
@@ -14,7 +15,7 @@ const tools = [
 
 const serviceHelp = [
   'Use `swarm service list` to see your available services.',
-  'Use `swarm <service> <operation> --help` for arguments and input formats.',
+  'Add `--help` to a command for arguments and input formats.',
 ].join('\n');
 
 function oneLine(description: string) {
@@ -24,7 +25,7 @@ function oneLine(description: string) {
 export function renderStartupPrompt(services: readonly ServiceManifest[], addedSystemPrompt?: string): string {
   const directory = services.map(({ id, purpose, capabilities }) => [
     `${id} — ${oneLine(purpose)}`,
-    ...capabilities.map(({ operation, description }) => `- \`swarm ${id} ${operation}\` ${oneLine(description)}`),
+    ...capabilities.map(({ operation, description }) => `- \`${serviceCommand(id, operation)}\` ${oneLine(description)}`),
   ].join('\n')).join('\n\n');
   const sections = [
     preamble,
