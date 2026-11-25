@@ -32,9 +32,26 @@ const fixtures = {
     problemId: 2,
     theorem: 'not_isSimpleGroup_of_card_eq_56',
   }),
+  'FATE-X': Object.freeze({
+    ...toolchainPins,
+    fixtureCommit: 'a6fb49ee85fd05bb8ce9fc66e1c66797b5a0592d',
+    datasetSha256: '021ecd8b4cd1c79666d7e64efe4f347d9ef36fa7f6b542fc60a370a4b916daea',
+    lockSha256: '444540e9d26548e4007674373ad297c052b66d0deff1a0febc23536bcf3b3186',
+    problemId: 31,
+    namespace: 'Problem31',
+    theorem: 'UFD_of_ge_5',
+  }),
 };
 export type FateBenchmark = keyof typeof fixtures;
-const placeholder = /:= by\s+sorry\s*$/u;
+type FixturePins = (typeof fixtures)[FateBenchmark] & { namespace?: string };
+
+export function isFateBenchmark(benchmark: string): benchmark is FateBenchmark {
+  return Object.hasOwn(fixtures, benchmark);
+}
+
+const proofPlaceholder = (namespace: string | undefined) => namespace
+  ? new RegExp(`:= by\\s+sorry(?=\\s*end ${namespace}\\s*$)`, 'u')
+  : /:= by\s+sorry\s*$/u;
 const targetDeclaration = (theorem: string) => new RegExp(`^theorem ${theorem}(?=\\s)`, 'mu');
 const guardPath = fileURLToPath(new URL('./FateProofGuard.lean', import.meta.url));
 const verifierPath = fileURLToPath(new URL('./VerifyFateProof.lean', import.meta.url));
@@ -49,8 +66,8 @@ type ProjectOptions = { projectRoot: string; leanRoot: string; benchmark?: FateB
 type LockedPackage = { name: string; rev: string };
 
 export async function loadFateProject({ projectRoot, leanRoot, benchmark = 'FATE-M', signal }: ProjectOptions) {
-  if (!Object.hasOwn(fixtures, benchmark)) throw new TypeError('Select the frozen FATE-M or FATE-H problem');
-  const pins = fixtures[benchmark];
+  if (!isFateBenchmark(benchmark)) throw new TypeError('Select a frozen FATE-M, FATE-H or FATE-X problem');
+  const pins: FixturePins = fixtures[benchmark];
   signal?.throwIfAborted();
   const root = await realpath(resolve(projectRoot));
   const toolchain = await realpath(resolve(leanRoot));
@@ -68,7 +85,7 @@ export async function loadFateProject({ projectRoot, leanRoot, benchmark = 'FATE
   }
   const rows: { id: number; formal_statement: string; informal_statement: string }[] = JSON.parse(data.toString());
   const row = rows.find(row => row.id === pins.problemId);
-  if (!row || !targetDeclaration(pins.theorem).test(row.formal_statement) || !placeholder.test(row.formal_statement) ||
+  if (!row || !targetDeclaration(pins.theorem).test(row.formal_statement) || !proofPlaceholder(pins.namespace).test(row.formal_statement) ||
       !row.formal_statement.startsWith('import Mathlib\n')) throw new Error('Unexpected pinned problem declaration');
   const packages: LockedPackage[] = JSON.parse(lock.toString()).packages;
   if (packages.find(pkg => pkg.name === 'mathlib')?.rev !== pins.mathlibRevision) throw new Error('Mathlib revision differs from the FATE pins');
@@ -127,12 +144,14 @@ function proofFinding(proof: string) {
 
 export async function createFateChecker(project: FateProject, signal?: AbortSignal) {
   signal?.throwIfAborted();
+  const { theorem, namespace } = project.pins;
+  const targetName = namespace ? `${namespace}.${theorem}` : theorem;
+  const placeholder = proofPlaceholder(namespace);
   const trusted = await mkdtemp(join(tmpdir(), 'fate-trusted-'));
   const guard: Mount = { path: trusted, at: '/trusted', library: true };
   try {
     await writeFile(join(trusted, 'FateProofGuard.lean'), await readFile(guardPath));
     await writeFile(join(trusted, 'VerifyFateProof.lean'), await readFile(verifierPath));
-    const theorem = project.pins.theorem;
     const original = project.formal.replace('import Mathlib\n', '').replace(targetDeclaration(theorem), `axiom ${theorem}`).replace(placeholder, '');
     await writeFile(join(trusted, 'FateExpected.lean'), `import Mathlib\n${axiomPrefix}\n${original}\nend FateExpected\n`);
     const writable = { ...guard, writable: true };
@@ -180,7 +199,7 @@ export async function createFateChecker(project: FateProject, signal?: AbortSign
         if (performance.now() - start >= timeoutMs) return result('timeout', 'LEAN_TIMEOUT');
         try {
           const { stdout } = await isolatedLean(project, [guard, candidate],
-            ['--run', '/trusted/VerifyFateProof.lean', project.pins.theorem], { signal, timeoutMs: budget() });
+            ['--run', '/trusted/VerifyFateProof.lean', targetName], { signal, timeoutMs: budget() });
           return stdout.trim() === 'fate-proof-verified' ? result('passed', 'VERIFIED') : result('checker_error', 'VERIFIER_PROTOCOL');
         } catch (caught) {
           const error = caught as { stderr?: string; stdout?: string; killed?: boolean; code?: number };

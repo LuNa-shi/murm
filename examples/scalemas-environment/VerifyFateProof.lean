@@ -16,7 +16,17 @@ unsafe def main (args : List String) : IO UInt32 := do
   let name := target.toName
   let some (.thmInfo proof) := constants[name]? | throw (IO.userError "Original theorem missing")
   let some expected := env.find? (`FateExpected ++ name) | throw (IO.userError "Pinned target missing")
-  unless proof.levelParams == expected.levelParams && proof.type == expected.type do
+  -- The trusted copy is wrapped in FateExpected. Compare references to the
+  -- fixture's own declarations under their original names.
+  let namespaceName := name.getPrefix
+  let expectedNamespace := `FateExpected ++ namespaceName
+  let expectedType := expected.type.replace fun
+    | .const ref levels =>
+      if expectedNamespace.isPrefixOf ref then
+        some (.const (ref.replacePrefix expectedNamespace namespaceName) levels)
+      else none
+    | _ => none
+  unless proof.levelParams == expected.levelParams && proof.type == expectedType do
     throw (IO.userError "Target statement differs from the frozen declaration")
   let checked ← env.replay constants
   let (axioms, _) ← (collectAxioms name : CoreM (Array Name)).toIO

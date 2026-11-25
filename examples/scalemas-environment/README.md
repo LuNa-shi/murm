@@ -89,3 +89,13 @@ node "$example/main.js" --fate-matrix "$example/fate-config.js"
 ```
 
 This configuration gives four peers up to 45 minutes of work and samples progress after 30 minutes. `fate-work-checkpoint.json` is host-only and records timestamps, peer state, candidate digests and tool/substrate evidence if the group is still working. If the group ends early, `fate-result.json` records `not_reached` and its actual closeout. Checkpoint capture does not send a wake or change the work deadline.
+
+## FATE-X #31
+
+Prepare [FATE-X at `a6fb49e`](https://github.com/frenzymath/FATE-X/tree/a6fb49ee85fd05bb8ce9fc66e1c66797b5a0592d) with `lake exe cache get`. It uses the same Lean 4.28.0 and Mathlib revision. Point `SWARMENV_FATE_PROJECT` at that workspace, then select FATE-X in the launcher and preparation steps. The checker uses the full original `Problem31.UFD_of_ge_5` declaration with its local definitions. The default work window is 30 minutes.
+
+```sh
+export SWARMENV_FATE_BENCHMARK=FATE-X
+node "$example/main.js" --fate-prepare "$SWARMENV_FATE_PROJECT" "$SWARMENV_FATE_LEAN" FATE-X
+node "$example/main.js" "$example/fate-config.js"
+```

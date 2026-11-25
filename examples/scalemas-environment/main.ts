@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { isFateBenchmark } from './fate-checker.js';
 
 export async function runScaleMASExample(config: any, signal: any) {
   const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
@@ -38,7 +39,7 @@ async function runMatrix(config: any, signal: AbortSignal) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const usage = 'node main.js <config.mjs>\nnode main.js --result <run-directory> --runtime-id <expected-id>\nnode main.js --fate-prepare <project-root> <lean-root> [FATE-M|FATE-H]\nnode main.js --fate-matrix <config.mjs>\nnode main.js --fate-rescore <project-root> <lean-root> <frozen-bundle.json>';
+  const usage = 'node main.js <config.mjs>\nnode main.js --result <run-directory> --runtime-id <expected-id>\nnode main.js --fate-prepare <project-root> <lean-root> [FATE-M|FATE-H|FATE-X]\nnode main.js --fate-matrix <config.mjs>\nnode main.js --fate-rescore <project-root> <lean-root> <frozen-bundle.json>';
   const args = process.argv.slice(2);
   const lifetime: any = new AbortController();
   const stop = () => lifetime.abort();
@@ -52,10 +53,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const result = await readEnvironmentResult({ runDirectory: args[1], runtimeId: args[3] });
       process.stdout.write(`${JSON.stringify(result)}\n`);
       process.exitCode = result.environment.state === 'read' && result.core.state === 'read' ? 0 : 1;
-    } else if (args[0] === '--fate-prepare' && (args.length === 3 ||
-        (args.length === 4 && (args[3] === 'FATE-M' || args[3] === 'FATE-H')))) {
+    } else if (args[0] === '--fate-prepare' && (args.length === 3 || args.length === 4)) {
+      const benchmark = args[3] ?? 'FATE-M';
+      if (!isFateBenchmark(benchmark)) throw Object.assign(new Error(), { code: 'SCALEMAS_ARGUMENTS_INVALID' });
       const { prepareFate } = await import('./fate-run.js');
-      const prepared = await prepareFate({ projectRoot: args[1], leanRoot: args[2], benchmark: args[3] === 'FATE-H' ? 'FATE-H' : 'FATE-M' });
+      const prepared = await prepareFate({ projectRoot: args[1], leanRoot: args[2], benchmark });
       process.stdout.write(`${JSON.stringify(prepared)}\n`);
     } else if (args.length === 4 && args[0] === '--fate-rescore') {
       const { rescoreFate } = await import('./fate-run.js');
