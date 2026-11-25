@@ -23,7 +23,7 @@ import { openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
 const execute = promisify(execFile);
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-function script(role, revision = null) {
+function script(role, revision = null, notification = null) {
   const commands = role === 'finish' ? `
 finished=cli('task','finish','--outcome','done','--request-id','B-finish')
 result={'role':'finish','same_process':os.getcwd()==before,'finished':finished}
@@ -48,6 +48,8 @@ result={'role':ROLE,'task':task,'execution':taken['execution']['execution_id'],'
 if ROLE=='A':
  result.update({'text':text.hex(),'binary':binary.hex()})
 ` : `
+material=cli('material','view',${JSON.stringify(notification?.material_id ?? '')})
+assert ${JSON.stringify(revision)} in json.dumps(material)
 assert open('consumer.txt','rb').read()==b'CONSUMER_PROGRESS\\n'
 applied=cli('workspace','apply','--from',${JSON.stringify(revision)},'--request-id','B-apply')
 assert open('consumer.txt','rb').read()==b'CONSUMER_PROGRESS\\n'
@@ -55,7 +57,8 @@ text=open('lemma.txt','rb').read()
 binary=open('lemma.bin','rb').read()
 open('consumer.txt','ab').write(b'ADOPTED_LEMMA\\n')
 saved=cli('workspace','save','--request-id','B-integrated-save')
-result={'role':'B-apply','revision':saved['revision'],'text':text.hex(),'binary':binary.hex(),'same_process':os.getcwd()==before,'applied':applied,'parents':saved['parents']}
+feedback=cli('task','feedback','--notification-id',${JSON.stringify(notification?.notification_id ?? '')},'--decision','adopted','--action','applied_revision_and_saved_proof_progress','--request-id','B-adoption-feedback')
+result={'feedback':feedback,'role':'B-apply','revision':saved['revision'],'text':text.hex(),'binary':binary.hex(),'same_process':os.getcwd()==before,'applied':applied,'parents':saved['parents']}
 `;
   return `python3 - <<'FLAT_NATIVE_SCRIPT'\nimport os,json,subprocess,secrets\nROLE=${JSON.stringify(role)}\nbefore=os.getcwd()\nassert before=='/workspace/project'\ndef cli(*args):\n p=subprocess.run(['swarm']+list(args),capture_output=True,text=True,timeout=45)\n assert p.returncode==0, p.stderr\n return json.loads(p.stdout)\n${commands}\nprint(json.dumps(result))\nFLAT_NATIVE_SCRIPT`;
 }
@@ -77,7 +80,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
   const initial = await workspace.create({ missionId, workspaceId: 'native-workspace', initialFiles: { 'input.txt': 'fixed input\n' } });
   assert.equal(tasks.listTasks({ missionId, availableOnly: false }).length, 0);
   const evidence = {}, events = [], admissions = [];
-  let arrivals = 0, starts = 0, failure, runtimeId, report;
+  let arrivals = 0, starts = 0, notificationInputs = 0, adoptionNotification, failure, runtimeId, report;
   const awaiting = new Map();
   const evidenceFor = name => {
     if (evidence[name]) return Promise.resolve(evidence[name]);
@@ -96,7 +99,15 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
       const lastUser = body.input.filter(row => row.role === 'user').at(-1);
       const text = typeof lastUser?.content === 'string' ? lastUser.content : lastUser?.content?.map(row => row.text ?? '').join('');
       const finishing = text === 'FLAT_NATIVE_FINISH';
-      const apply = /^FLAT_NATIVE_APPLY (\d+\.\d+)$/.exec(text ?? '');
+      const apply = adoptionNotification && text?.includes(adoptionNotification.notification_id) ? [text, evidence.A.revision] : null;
+      if (apply) {
+        assert.ok(text.includes(adoptionNotification.material_id));
+        assert.ok(text.includes(evidence.A.task));
+        assert.ok(text.includes(evidence.A.execution));
+        assert.ok(body.input.some(row => row.type === 'function_call' && row.call_id === 'native_B'));
+        const previous = body.input.find(row => row.type === 'function_call_output' && row.call_id === 'native_B');
+        assert.equal(JSON.parse(previous.output.trim()).execution, evidence.B.execution);
+      }
       let item;
       const role = finishing ? 'finish' : apply ? 'B-apply' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_C') ? 'C' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_A') ? 'A' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_B') ? 'B' : null;
       const output = role && body.input.findLast(row => row.type === 'function_call_output' && row.call_id === `native_${role}`)?.output;
@@ -106,9 +117,10 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
         evidence[role] = result; awaiting.get(role)?.resolve(result);
         item = { type: 'message', id: `native_final_${role}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: `${role}_OK`, annotations: [] }] };
       } else {
+        if (apply) notificationInputs++;
         const next = finishing ? 'finish' : apply ? 'B-apply' : ['A', 'B', 'C'][starts++];
         assert.ok(finishing || apply || starts <= 3);
-        item = { type: 'function_call', id: `native_call_${next}`, call_id: `native_${next}`, name: 'bash', arguments: JSON.stringify({ command: script(next, apply?.[1] ?? null), timeout: 120 }) };
+        item = { type: 'function_call', id: `native_call_${next}`, call_id: `native_${next}`, name: 'bash', arguments: JSON.stringify({ command: script(next, apply?.[1] ?? null, apply ? adoptionNotification : null), timeout: 120 }) };
       }
       response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', arrivals, item));
     } catch (error) {
@@ -132,7 +144,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
         isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }),
       model: 'default', image, outputDir, taskService: tasks, contextService: context, missionWorkspace: workspace, workspaceManager: manager,
       missionId, workspaceId: initial.workspace_id, capacity: 2, deadlineAt, autonomousTasks: true, workspaceCapture: 'core',
-      controller: { discoveryPrompt: 'FLAT_NATIVE_START', automaticContinuation: false, deliverNotifications: false, selectionMs: 180_000, hardBudgetMs: 210_000, stallMs: 180_000,
+      controller: { discoveryPrompt: 'FLAT_NATIVE_START', automaticContinuation: false, deliverNotifications: true, selectionMs: 180_000, hardBudgetMs: 210_000, stallMs: 180_000,
         beforeInitialDispatch({ botIds }) { admissions.push([...botIds]); } },
       handoff: { executionTimeoutMs: 180_000 }, closeTimeoutMs: 40_000,
       async drive(controller, runtime) {
@@ -145,10 +157,26 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
         const bContainer = identities.find(row => row.botKey === openSandboxBotKey(bBot)).container;
         while ((await runtime.get(bBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
         const before = await sessionEvidence(bContainer, execute);
-        assert.equal((await runtime.send(bBot, `FLAT_NATIVE_APPLY ${a.revision}`, { requestId: 'native-apply-turn', mode: 'followUp' })).status, 'accepted');
+        adoptionNotification = tasks.enqueueNotification({ deliveryKey: 'native-adopt-A', missionId,
+          recipientTaskId: b.task, recipientExecutionId: b.execution, type: 'material_available', materialId: a.material,
+          sourceTaskId: a.task, sourceExecutionId: a.execution,
+          payload: { material_id: a.material, revision: a.revision } });
+        await controller.tick();
         const integrated = await evidenceFor('B-apply');
         while ((await runtime.get(bBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
         assert.deepEqual(await sessionEvidence(bContainer, execute), before);
+        assert.equal(integrated.feedback.receipt.execution_id, b.execution);
+        assert.equal(integrated.feedback.receipt.notification_id, adoptionNotification.notification_id);
+        assert.ok(integrated.feedback.receipt.handled_at);
+        assert.equal(integrated.feedback.receipt.handling_decision, 'adopted');
+        assert.equal(tasks.listUnprocessedNotifications(b.task, b.execution).some(row => row.notification_id === adoptionNotification.notification_id), false);
+        await controller.tick(); await controller.tick();
+        const notificationInputsRecorded = controller.snapshot().inputs.filter(row => row.source === 'notification' && row.requestId === `flat:notification:${b.execution}:${adoptionNotification.notification_id}`);
+        assert.equal(notificationInputsRecorded.length, 1);
+        assert.equal(notificationInputsRecorded[0].mode, 'followUp');
+        assert.equal(notificationInputsRecorded[0].botId, bBot);
+        assert.equal(notificationInputsRecorded[0].status, 'accepted');
+        evidence.notification = { notification: adoptionNotification, input: notificationInputsRecorded[0], receipt: integrated.feedback.receipt };
         assert.equal(integrated.text, a.text); assert.equal(integrated.binary, a.binary);
         assert.deepEqual(integrated.applied.parents, [b.revision, a.revision]);
         assert.deepEqual(integrated.parents, [b.revision, a.revision]);
@@ -181,7 +209,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
       },
     });
     assert.equal(failure, undefined, failure);
-    assert.ok(arrivals >= 9 && arrivals <= 10); assert.equal(starts, 3);
+    assert.ok(arrivals >= 9 && arrivals <= 10); assert.equal(starts, 3); assert.equal(notificationInputs, 1);
     assert.equal(report.businessFailure?.code, 'FLAT_BUSINESS_FAILED');
     assert.equal(report.cleanupFailure, null); assert.equal(report.cleanup.cleanup, 'complete');
     assert.deepEqual(await ownedContainers(runtimeId), []);
@@ -190,7 +218,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
     const trace = JSON.parse(await readFile(join(outputDir, runtimeId, 'runtime.json'), 'utf8'));
     assert.equal(trace.cleanup, 'complete');
     const calls = (await readFile(join(outputDir, runtimeId, 'service-calls.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
-    for (const operation of ['task_create', 'task_take', 'workspace_save', 'workspace_apply', 'context_publish_material', 'task_finish']) {
+    for (const operation of ['task_create', 'task_take', 'workspace_save', 'workspace_apply', 'context_publish_material', 'task_finish', 'task_feedback']) {
       assert.ok(calls.some(row => row.operation === operation && row.phase === 'settled'), `Missing settled Service trace for ${operation}`);
     }
     assert.ok(calls.every(row => Number.isFinite(Date.parse(row.startedAt))));
