@@ -147,7 +147,7 @@
     },
     {
       "path": "src/sdk/service-catalog.ts",
-      "sha256": "d681cb166cebd207404fb602d225589969bf5f1457cceb306c8d34038b99d4f5"
+      "sha256": "58dc15ec4ed3cca5ee3e1a2c131b17813f7703e598001748259b5c5064abf5ce"
     },
     {
       "path": "src/sdk/builtin-registry.ts",
@@ -537,7 +537,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "cd9d390aaeea1c9f07f0cd5df76e3169e8ac348c41130c80d7028e37f1964fde"
+      "sha256": "9d36c3f076436407f314fcd0e1aaa2b208d9f521dd3d0cdb84a31cc35290bf6a"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",

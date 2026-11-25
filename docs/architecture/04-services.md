@@ -19,6 +19,8 @@ The built-in Registry declares 40 capabilities: Catalog 3, Task 27, Context 8 an
 
 The normal Task surface does not advertise child creation. Registered Agents explicitly save Workspace revisions, publish Materials and finish Tasks. Runtime Sandbox declarations do not permit registered Agents to invoke legacy root shell; their shell is native non-root Pi Bash. Read the generated matrix together with Bridge guards.
 
+Mixed-version HTTP deployments verify the full built-in Service manifest hash at readiness. The Catalog description still says “SwarmEnv” in its versioned manifest so a host and an independently deployed Catalog can verify the same bytes across the rename.
+
 Sources: [service catalog](../../src/sdk/service-catalog.ts), [built-in Registry](../../src/sdk/builtin-registry.ts), [capability profile](../../src/agent/capability-profile.ts).
 
 ## 2. One tool call, from Pi to durable state

@@ -83,12 +83,12 @@ When the complete proof is on main, submit it with swarm mission submit and chec
 
 The CLI returns this help to native Bash on request without contacting the Bridge or a Service.
 
-Body SHA-256: `1ea3b83974cb42d5d374723bfdfa1d78448cf509ee8003801321111c4ca96591`
+Body SHA-256: `930d6fbfceeb9177f1173d2fd800967429058aa9c56eefca9fc84fb1e2869419`
 
 ````text
 Usage: swarm task create [options]
 
-Propose a concrete missing deliverable when the host enables autonomous Tasks. An active Bot keeps its current Execution.
+Propose a concrete missing deliverable when the host enables autonomous Tasks. An active Agent keeps its current Execution.
 Required: --summary, --gap, --expected-output, --priority (high, medium, or low), and --acceptance-conditions (a nonempty JSON array or object).
   swarm task create --summary "Check a boundary case" --gap "The current argument leaves one case open" --expected-output "A reproducible check" --acceptance-conditions '["State the inputs and result"]' --priority medium --request-id propose-boundary
 Replace the example with your actual proposal. You can also pass the same fields in JSON through --input or --stdin. The Service binds the Mission and Workspace. The result includes task.task_id. Use that ID with swarm task take if you choose to claim it.

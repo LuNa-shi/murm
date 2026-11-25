@@ -32,7 +32,7 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `d681cb166cebd207404fb602d225589969bf5f1457cceb306c8d34038b99d4f5` |
+| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `58dc15ec4ed3cca5ee3e1a2c131b17813f7703e598001748259b5c5064abf5ce` |
 | [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `ccb1dea4ee2e42ecd86169d9ccc2c8b8d151a7184e3b9795802499357302db46` |
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `3759b5509820d4ee1793c802e1e5c99aee0f7095fc6d43244d1ca0a773776dd0` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770` |
@@ -115,19 +115,19 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "804b836fdab0271635e356e1094d1d5e8ddc6d6240cee2b9f9c32abd9aa41cac"
+  "manifest_hash": "7b0c87da8e05f7468364705ec0b8ec7277df9e49141f4d1fefca9711fe54a86c"
 }
 ```
 
 #### catalog.catalog_list_services
 
-List every available murm Service and its tool count.
+List every available SwarmEnv Service and its tool count.
 
 ```json
 {
   "name": "catalog_list_services",
   "operation": "list_services",
-  "description": "List every available murm Service and its tool count.",
+  "description": "List every available SwarmEnv Service and its tool count.",
   "input_schema": {
     "type": "object",
     "properties": {},
@@ -153,9 +153,9 @@ List every available murm Service and its tool count.
   "requires_binding": false,
   "scope": "public-read",
   "help": {
-    "when": "List every available murm Service and its tool count.",
+    "when": "List every available SwarmEnv Service and its tool count.",
     "ref": "service://catalog/list_services",
-    "text": "Purpose: Role-scoped Service and capability discovery.\nUse when: List every available murm Service and its tool count.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Role-scoped Service and capability discovery.\nUse when: List every available SwarmEnv Service and its tool count.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/list_services",

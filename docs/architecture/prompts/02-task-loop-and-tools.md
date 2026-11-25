@@ -7,7 +7,7 @@ Core selects the four native tools read/write/edit/bash. The synthetic namespace
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Built-in Services
 
-Body SHA-256: `1ef8b0a8f6650e018b67a436bac531f265af810786b7925a4f1d994a7d83b080`
+Body SHA-256: `0bc7504089fbe376c006c3a2193231b3a4f75fc6706ab30fcc0faa892e4d7097`
 
 ````text
 [
@@ -15,7 +15,7 @@ Body SHA-256: `1ef8b0a8f6650e018b67a436bac531f265af810786b7925a4f1d994a7d83b080`
     "name": "service",
     "provider_service": "catalog",
     "provider_version": "builtin-1",
-    "manifest_hash": "804b836fdab0271635e356e1094d1d5e8ddc6d6240cee2b9f9c32abd9aa41cac",
+    "manifest_hash": "7b0c87da8e05f7468364705ec0b8ec7277df9e49141f4d1fefca9711fe54a86c",
     "help": "swarm service --help",
     "manifest_help": "swarm service view catalog --json",
     "documentation": [],
@@ -85,7 +85,7 @@ Body SHA-256: `1ef8b0a8f6650e018b67a436bac531f265af810786b7925a4f1d994a7d83b080`
 ````
 ## With optional Mathlib Search
 
-Body SHA-256: `bfede73cd40c251693589b6d66f7ba137906f0f3a2a0dc3ef0983ba2304aa808`
+Body SHA-256: `e69b7c12b81ef742ff32f2de30223a1923cfd6d25e4b0d8e4b54de9dc8e8b743`
 
 ````text
 [
@@ -93,7 +93,7 @@ Body SHA-256: `bfede73cd40c251693589b6d66f7ba137906f0f3a2a0dc3ef0983ba2304aa808`
     "name": "service",
     "provider_service": "catalog",
     "provider_version": "builtin-1",
-    "manifest_hash": "804b836fdab0271635e356e1094d1d5e8ddc6d6240cee2b9f9c32abd9aa41cac",
+    "manifest_hash": "7b0c87da8e05f7468364705ec0b8ec7277df9e49141f4d1fefca9711fe54a86c",
     "help": "swarm service --help",
     "manifest_help": "swarm service view catalog --json",
     "documentation": [],
