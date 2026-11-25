@@ -8,7 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261125-13` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **REGISTERED · ScaleMAS · FATE-H #2 · shared · revised sharing instructions** | `f03a19f3` | [ScaleMAS sharing instructions follow-up](EXP-20261125-scalemas-fate-sharing.md) |
+| `EXP-20261125-13` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7161467781) | **SETTLED · ScaleMAS · FATE-H #2 · shared · 2 proofs passed, 0 cross-peer reads** | `f03a19f3` | [ScaleMAS sharing instructions follow-up](EXP-20261125-scalemas-fate-sharing.md) |
 | `EXP-20261125-10` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7156832433) | **SETTLED · ScaleMAS · FATE-H #2 · shared · 1 proof passed, 45 min work** | `e00f8c4f` | [ScaleMAS FATE-H long-window run](EXP-20261125-scalemas-fate-hard.md) |
 | `EXP-20261125-11` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7156832433) | **SETTLED · ScaleMAS · FATE-H #2 · private · 2 proofs passed, 45 min work** | `e00f8c4f` | [ScaleMAS FATE-H long-window run](EXP-20261125-scalemas-fate-hard.md) |
 | `EXP-20261125-12` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7156832433) | **SETTLED · ScaleMAS · FATE-H #2 · none · 1 proof passed, 1 checker error, 45 min work** | `e00f8c4f` | [ScaleMAS FATE-H long-window run](EXP-20261125-scalemas-fate-hard.md) |
