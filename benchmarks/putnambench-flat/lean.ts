@@ -54,7 +54,7 @@ export async function preparePutnamChecks(configurationPath: string, problem: Aw
   });
   const mergeChecker = {
     identity: projectIdentity, timeoutMs: adapter.timeoutMs,
-    async check(plan: Parameters<typeof projectCheck>[0]) {
+    async check(plan: { files: Record<string, Buffer>; tree: string; signal: AbortSignal; deadline: number }) {
       const result = await projectCheck(plan);
       if (result.checked_tree !== plan.tree) return { verdict: 'ERROR', diagnostic: 'Combined Workspace tree was not checked' };
       return { ...result, check_mode: 'lean-project', check_result_id: `projectcheck:${randomUUID()}` };

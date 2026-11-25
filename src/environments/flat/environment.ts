@@ -7,6 +7,7 @@ import { runWithReport } from '../shared/run-report.js';
 import { createFlatTaskService, flatResearcherProfile } from './task-service.js';
 import { createFlatPublicationServices } from './publication-services.js';
 import { createFlatController, FLAT_AUTONOMOUS_DISCOVERY_MESSAGE } from './controller.js';
+import { createFlatMathlibService } from './mathlib-service.js';
 import { createFlatModelAccessPolicy } from './model-access-policy.js';
 
 export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Bot 工作目录中。';
@@ -14,19 +15,23 @@ export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公�
 /** Trusted host entry point. Domain stores remain caller-owned and readable. */
 export async function runFlatEnvironment({backend,model,image,prompt='Use the flat Services to discover, execute and truthfully finish Mission work.',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
-  capacity=2,autonomousTasks=false,completionPolicy='tasks',coordinationPermissions=[],missionCoordination=null,snapshotProject,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
+  capacity=2,autonomousTasks=false,completionPolicy='tasks',coordinationPermissions=[],missionCoordination=null,snapshotProject,workspaceCapture,mathlibSearch=null,activeDeadline,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
   closeTimeoutMs=30_000,redact=(value: any)=>value,signal}: any) {
   if(signal!==undefined && !(signal instanceof AbortSignal)) throw new TypeError('Flat host signal must be an AbortSignal');
   if(typeof autonomousTasks!=='boolean' || !['tasks','mission'].includes(completionPolicy)) throw new TypeError('Flat requires an explicit supported completion policy and autonomous Task flag');
   if(completionPolicy==='mission' && !missionCoordination) throw new TypeError('Mission completion policy requires trusted Mission coordination');
   const permissions=flatCoordinationPermissions(coordinationPermissions);
-  const workspaceSaveAvailable=typeof snapshotProject==='function';
+  const workspaceSaveAvailable=workspaceCapture==='core' || typeof snapshotProject==='function';
+  const deadline=()=>signal?.aborted ? 0 : Math.min(deadlineAt,activeDeadline?.() ?? deadlineAt);
   let runtime: any,controller: any,discovery: any,publication: any,mission: any,closeDeadline: any;
   const result: any={};
   return runWithReport({outputDir,closeTimeoutMs,redact,
     async createRuntime() {
       signal?.throwIfAborted();
-      if(snapshotProject!==undefined && !workspaceSaveAvailable) throw new SwarmEnvError('INVALID_CONTRACT','Flat snapshotProject must be a trusted function when supplied');
+      if(snapshotProject!==undefined && typeof snapshotProject!=='function') throw new SwarmEnvError('INVALID_CONTRACT','Flat snapshotProject must be a trusted function when supplied');
+      if(workspaceCapture!==undefined && workspaceCapture!=='core') throw new SwarmEnvError('INVALID_CONTRACT','Unsupported Flat capture source');
+      if(activeDeadline!==undefined && typeof activeDeadline!=='function') throw new SwarmEnvError('INVALID_CONTRACT','Flat active deadline must be a trusted function');
+      if(mathlibSearch && (typeof mathlibSearch.search!=='function' || typeof mathlibSearch.readiness!=='function' || !await mathlibSearch.readiness())) throw new SwarmEnvError('SERVICE_NOT_READY','Flat Mathlib search requires a ready provider');
       if(contextService?.taskService!==taskService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Context and Task authority must match');
       if(taskService.contextService && taskService.contextService!==contextService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Task Material authority does not match');
       const readinessSignal = AbortSignal.any([AbortSignal.timeout(closeTimeoutMs), ...(signal ? [signal] : [])]);
@@ -34,26 +39,29 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       readinessSignal.throwIfAborted();
       if (workspace.mission_id !== missionId) throw new SwarmEnvError('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       taskService.contextService=contextService;
-      discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:()=>deadlineAt,coordinationPermissions:permissions,autonomousTasks});
-      publication=createFlatPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline:()=>deadlineAt,coordinationPermissions:permissions,snapshotProject,judgeService,workspaceProjectCheck,workspaceMergeChecker,
+      discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:deadline,coordinationPermissions:permissions,autonomousTasks});
+      publication=createFlatPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline,coordinationPermissions:permissions,snapshotProject,workspaceCapture,judgeService,workspaceProjectCheck,workspaceMergeChecker,
         onFinish:()=>controller?.notify()});
       const services: any=new ServiceRegistry();
       services.registerService(publication.composeTask(discovery));
       for(const registration of publication.registrations.filter((row: any)=>row.manifest.id!=='task')) services.registerService(registration);
       if(missionCoordination!==null) {
         mission=createFlatMissionService({runtime:()=>runtime,taskService,missionWorkspace,missionId,workspaceId,missionCoordination,
-          coordinationPermissions:permissions,deadline:()=>deadlineAt});
+          coordinationPermissions:permissions,deadline});
         services.registerService(mission);
       }
+      const mathlib=mathlibSearch ? createFlatMathlibService({provider:mathlibSearch,runtimeId:()=>runtime?.id,taskService,missionId,deadline}) : null;
+      if(mathlib) services.registerService(mathlib);
       const researcherPrompt = workspaceSaveAvailable ? prompt : `${prompt}\n\n${FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT}`;
       const researcher=flatResearcherProfile({prompt:researcherPrompt,model,image,coordinationPermissions:permissions,autonomousTasks});
       researcher.services=Object.fromEntries([
         ['task',[...discovery.manifest.capabilities,...publication.registrations.find((row: any)=>row.manifest.id==='task').manifest.capabilities].map((row: any)=>row.operation)],
         ...publication.registrations.filter((row: any)=>row.manifest.id!=='task').map((row: any)=>[row.manifest.id,row.manifest.capabilities.map((cap: any)=>cap.operation)]),
+        ...(mathlib?[[mathlib.manifest.id,mathlib.manifest.capabilities.map(cap=>cap.operation)]]:[]),
         ...(mission?[['mission',mission.manifest.capabilities.filter((cap: any)=>cap.operation!=='mission_submit'||permissions.includes('mission_submit')).map((cap: any)=>cap.operation)]]:[]),
       ]);
       runtime=await createRuntime({backend,profiles:{researcher},services,maxBots:capacity,outputDir,
-        modelAccessPolicy:createFlatModelAccessPolicy({runtimeId:()=>runtime?.id,taskService,missionId,deadline:()=>deadlineAt,isStopping:()=>controller?.snapshot().closing??false})});
+        modelAccessPolicy:createFlatModelAccessPolicy({runtimeId:()=>runtime?.id,taskService,missionId,deadline,isStopping:()=>controller?.snapshot().closing??false})});
       try {
         controller=createFlatController({...(autonomousTasks?{discoveryPrompt:FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}:{}),...controllerOptions,completionPolicy,runtime,taskService,missionId,capacity,deadlineAt,coordinationPermissions:permissions,
           workspaceSaveAvailable,afterStopped:(id: any,options: any)=>publication.reconcileWorkspace(id,options)});
@@ -64,7 +72,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
         } catch(cleanupError: any) {error.cleanup='pending';error.details=[{code:cleanupError.code??'CLOSE_FAILED',message:'Runtime cleanup after controller admission failed'}];}
         throw error;
       }
-      const aborted=()=>controller.halt('host-stop');
+      const aborted=()=>controller.halt(completionPolicy==='mission' && signal?.reason?.code==='deadline'?'deadline':'host-stop');
       signal?.addEventListener('abort',aborted,{once:true});
       if(signal?.aborted) aborted();
       return {id:runtime.id,async close(options: any) {

@@ -143,6 +143,54 @@
       "role": "Shared Pastel trial lifecycle, window start, Core model accounting, and private closeout receipt"
     },
     {
+      "path": "benchmarks/putnambench-flat/case.ts",
+      "chapters": [
+        "06-observability-experiments",
+        "17-environment-reporting"
+      ],
+      "role": "Locked PutnamBench case identity and exact upstream input validation"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/case.test.ts",
+      "chapters": [
+        "17-environment-reporting"
+      ],
+      "role": "Original PutnamBench statement replacement rejection regression"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/lean.ts",
+      "chapters": [
+        "04-services",
+        "07-run-configuration",
+        "17-environment-reporting"
+      ],
+      "role": "Locked three-layer Putnam Lean deployment and matching Mathlib search"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/main.ts",
+      "chapters": [
+        "06-observability-experiments",
+        "07-run-configuration",
+        "17-environment-reporting"
+      ],
+      "role": "Opt-in PutnamBench preflight and registered hosted entry"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "chapters": [
+        "06-observability-experiments",
+        "17-environment-reporting"
+      ],
+      "role": "Putnam Flat stores, input window, candidate and receipt composition"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/tsconfig.json",
+      "chapters": [
+        "17-environment-reporting"
+      ],
+      "role": "Opt-in TypeScript check for the Putnam benchmark driver"
+    },
+    {
       "path": "benchmarks/shared/run-window.ts",
       "category": "development benchmarks",
       "chapters": [
@@ -810,6 +858,14 @@
         "docs/architecture/13-historical-resume.md"
       ],
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
+    },
+    {
+      "path": "src/environments/flat/mathlib-service.ts",
+      "chapters": [
+        "04-services",
+        "17-environment-reporting"
+      ],
+      "role": "Core-authorized same-version Mathlib search for the current Flat Execution"
     },
     {
       "path": "src/environments/flat/mission-service.ts",

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ContextService } from '../../dist/src/context/context-service.js';
@@ -33,7 +33,6 @@ type BackendFactory = (upstream: Window['upstream']) => Parameters<typeof runFla
 
 async function usage(directory: string, runtimeId: string) {
   const path = join(directory, runtimeId, 'runtime.json');
-  const { readFile } = await import('node:fs/promises');
   const report = JSON.parse(await readFile(path, 'utf8'));
   return report.modelLedgers.map(({ alias, path: ledger }: { alias: string; path: string }) => {
     const db = new DatabaseSync(ledger, { readOnly: true });
@@ -57,6 +56,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
   durationMs?: number;
 }) {
   const setupStarted = performance.now();
+  await mkdir(directory, { mode: 0o700 });
   const { judgeChecker, fixture, mathlibSearch, verifier, mergeChecker } = checks;
   const taskService = new TaskService(join(directory, 'tasks.sqlite'));
   const contextService = new ContextService(join(directory, 'context.sqlite'), { taskService });
@@ -87,7 +87,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
       acceptance_conditions: { required_check: verifier.identity }, merge_required_check: mergeChecker.identity,
     }, makeEnvelope({ actorRef: 'host' }));
     await missionWorkspace.create({ missionId, workspaceId, initialFiles: { [problem.problem_file]: problem.source } });
-    const preflight = await judgeService.preflightChecker();
+    const preflight = await judgeChecker.preflight({ fixtureManifest: fixture });
     if (preflight.status !== 'healthy') throw new Error('Putnam Judge preflight did not verify the locked fixture');
     window = await createRunWindow({
       directory: join(directory, 'window'), upstreamUrl: upstream.url, upstreamHeaders: upstream.headers,
@@ -98,7 +98,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
       backend: backend(window.upstream), model: 'default', image, outputDir: directory, signal: runSignal,
       prompt, taskService, contextService, missionWorkspace, workspaceManager, missionId, workspaceId,
       deadlineAt: initialDeadline, activeDeadline: deadline, capacity: problem.capacity,
-      autonomousTasks: true, completionPolicy: 'mission', workspaceCapture: 'core', workspaceApply: true, mathlibSearch,
+      autonomousTasks: true, completionPolicy: 'mission', workspaceCapture: 'core', mathlibSearch,
       judgeService, workspaceProjectCheck: true, workspaceMergeChecker: mergeChecker, missionCoordination,
       coordinationPermissions: ['mission_submit'], closeTimeoutMs,
       handoff: { executionTimeoutMs: durationMs, handoffLeadMs: Math.min(60_000, Math.floor(durationMs / 4)) },
@@ -137,7 +137,6 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
       cleanup: report.cleanup, cleanupFailure: report.cleanupFailure, reportSaveFailure: report.reportSaveFailure,
       businessFailure: report.businessFailure, mission, assessment, candidate: candidateBinding, revisions,
     };
-    await mkdir(directory, { recursive: true, mode: 0o700 });
     await writeFile(join(directory, 'receipt.json'), JSON.stringify(receipt, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
     return receipt;
   } finally {
