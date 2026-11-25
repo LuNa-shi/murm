@@ -11,7 +11,7 @@ Conditional model comparison against [EXP-20261125-15](EXP-20261125-15-flat-putn
 | Item | Fixed value or reference |
 |---|---|
 | Issue, design and implementation | [#200](https://github.com/LuNa-shi/SwarmEnv/issues/200), [#212](https://github.com/LuNa-shi/SwarmEnv/pull/212), [#213](https://github.com/LuNa-shi/SwarmEnv/pull/213). Main design commit `68eb83e0550109924c56035b4e90077deb399228`, design Git blob `0db49d8de9a83426fe374aa40b7800089622e230`. |
-| Tested implementation | `988659381e7dea788c48487be4951f1a53fccba0`. Worker image `sha256:bdfdb07686ce0a2b01b2cbb32980c8570260698202f5ce118e535fa1a63c722f`, with matching revision label. |
+| Tested implementation | `8e39303870e10ecd5ba6ba6a43a2e1f7acab6071`. Worker image `sha256:f461d488567216013059cb834d02fa19f48f4a853932815d697c8105ada465d8`, with matching revision label. |
 | Original fixture | PutnamBench `a635813f5edf297d928f9bd5ef8324a26bdde09c`, `lean4/src/putnam_2025_b1.lean`, target `putnam_2025_b1`, SHA-256 `80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7`. One Mission, original Lean source in the first user message and initial Workspace, and an empty Task pool. The run excludes prior attempts, reference solutions and preassigned Tasks. |
 | Lean and verifier | Lean 4.33.1, Mathlib `0df444a360eaa60ab8c11dca51a86af692955474`, artifact lock `75e288d8644e93325f4e932fcbf9dace9a4d1e214242caff5169658657c03030`, `lean-final-tree` version `1`. Per checker process budget is 300,000 ms, 4 GiB memory, 0 swap, 64 tasks, 200% CPU. |
 | Model and resources | Real hosted `gpt_proxy/gpt-6.1-sol`, four concurrent Bot slots, one Execution per Bot, refill after confirmed cleanup. Selection sends `low`. Work and closeout retain Pi effort. No request count, token or fee cap. |
@@ -19,12 +19,14 @@ Conditional model comparison against [EXP-20261125-15](EXP-20261125-15-flat-putn
 | Acceptance | Verify the original theorem on the fixed final main with the independent locked Lean checker. For collaboration acceptance, establish that one Bot's saved proof declaration is used by a different Bot in the latter's existing Session and Execution, reaches fixed final main and participates in the target proof's dependencies. Record both findings separately. |
 | Evidence boundary | Raw traces, candidate files and databases stay in ignored private run storage. The report publishes pinned inputs, hashes, run aggregates and identifiers needed to verify conclusions. |
 
+The loopback startup check found and reproduced a K3-only guard in the shared research proxy. The registered implementation binds that guard to the selected model and still rejects mismatched requests before forwarding. No hosted requests were made by the check.
+
 ## Tracked input hashes
 
 | File | SHA-256 |
 |---|---|
 | `benchmarks/putnambench-flat/main.ts` | `2d0432aba3638aef51b81083191bb174ebcb4814bef95c7134396db7c84f2721` |
-| `benchmarks/putnambench-flat/run.ts` | `3baec34a32f06e2c816150e1262d7a1e61869a7456dd4963975fc75c6f81c769` |
+| `benchmarks/putnambench-flat/run.ts` | `83a3e1c8b84556c26c5370439f6c643fa7ca0e55a28074ba25c63ec26afce423` |
 | `src/core/startup-prompt.ts` | `e2c972ed13ddb476540d00b6bc9350ca9f05adce40a7f28971400c8441d0fd73` |
 | `src/cli/service-command.ts` | `67ac954a55204ddc46fdf8c0462067b3da94c41f6c688ab4a23f15e2f88ce87f` |
 | `src/cli/swarm-cli.ts` | `18dd810d9189366cc739e9d226c0080d5260d94c801dd126a08dd282b33ca818` |
@@ -32,8 +34,9 @@ Conditional model comparison against [EXP-20261125-15](EXP-20261125-15-flat-putn
 | `src/environments/flat/environment.ts` | `a90e3a2cf4d0b013fbeb637afb4ce14d9d8a5e4876ee4e2f9c74d2f82de87ca0` |
 | `src/environments/flat/task-service.ts` | `294aada68aa9d01243f81a09669f9c22ef5415dc2a20174f05e255476e41e384` |
 | `src/environments/flat/publication-services.ts` | `ff0788f013182352490ca6cdb856dd9fc2352d711280d1f02e492b5122784d3f` |
-| `docs/architecture/prompts/source-manifest.json` | `e7fd3b0462eae0d86fc4dd64c9e63b346ea52a0541296bda29ab63edd1f87b9f` |
+| `docs/architecture/prompts/source-manifest.json` | `b709dde89f6bce9a235ccf2313c210203d9f30bdb41017e353d247d091b32fb5` |
 | `docs/architecture/10-service-api-reference.md` | `1e2d90bd52307329c2f4de1bfbbbf683dce0d2832b177bf59ee5ebc4bef9e622` |
+| `benchmarks/shared/run-window.ts` | `47014686a3299c460c2455fede548c3ae2fac5aff3bf727b2f914eeabb80357e` |
 
 The Putnam Profile leaves Added System Prompt empty. Core renders the startup directory from the same authorized registered manifests used by the CLI. The experiment will check the actual provider input for each Bot, including replacements.
 
@@ -43,7 +46,7 @@ An OS package update changed `python3-oauthlib` inside the host-library mount. I
 
 ```sh
 umask 022
-node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_ROOT EXP-20261125-17 sha256:bdfdb07686ce0a2b01b2cbb32980c8570260698202f5ce118e535fa1a63c722f 1800 600 low gpt-6.1-sol
+node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_ROOT EXP-20261125-17 sha256:f461d488567216013059cb834d02fa19f48f4a853932815d697c8105ada465d8 1800 600 low gpt-6.1-sol
 ```
 
 Observe initial and replacement prompt parity, proposal scope, successful Task claims, real snapshots, Lean diagnostics and reusable public revisions. For a directed Material, follow publication, response link, delivery and receipt in the recipient's model input. Compare the subsequent use in source, saved parents, checked merge, final tree and proof dependencies. Stop on Mission acceptance, the common deadline, or a confirmed runtime, provider, fixture, or checker defect that prevents the registered workflow. If all four initial selection windows expire with no Task proposal or claim, stop to diagnose the missing workflow. If a directed notice has an admission receipt, audit the next eligible provider input after the native tool batch completes and stop if the delivery path is confirmed broken. Preserve and independently assess the available main on exit.
