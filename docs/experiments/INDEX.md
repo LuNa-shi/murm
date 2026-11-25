@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261125-15` | [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200) | **REGISTERED · Flat · PutnamBench 2025 B1 · 30 min** | `d2829b5e87f512df2ddf00c4cfdabfeb43049459` | [EXP-20261125-15 Flat PutnamBench 2025 B1](EXP-20261125-15-flat-putnambench-b1.md) |
 | `EXP-20261125-04` | [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200) | **STARTUP FAILED · Flat · 0 model requests** | `e1494d60f71235d20eb82f08079edc67702ec6d1` | [EXP-20261125-04 Flat PutnamBench 2025 B1](EXP-20261125-04-flat-putnambench-b1.md) |
 | `EXP-20261125-05` | [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200) | **STOPPED · Flat · selection window defect** | `e1494d60f71235d20eb82f08079edc67702ec6d1` | [EXP-20261125-05 Flat PutnamBench 2025 B1](EXP-20261125-05-flat-putnambench-b1.md) |
 | `EXP-20261125-06` | [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200) | **SETTLED · Flat · no Task formed · final FAIL** | `61f6efd0f6fe15a472e54bd2dfa368bc9b496513` | [EXP-20261125-06 Flat PutnamBench 2025 B1](EXP-20261125-06-flat-putnambench-b1.md) |
