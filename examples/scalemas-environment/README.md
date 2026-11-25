@@ -99,3 +99,5 @@ export SWARMENV_FATE_BENCHMARK=FATE-X
 node "$example/main.js" --fate-prepare "$SWARMENV_FATE_PROJECT" "$SWARMENV_FATE_LEAN" FATE-X
 node "$example/main.js" "$example/fate-config.js"
 ```
+
+A host configuration can set `fate.verifiedCompletion: true` for a sustained attempt. The first task input tells the peer its work window. To finish early, the peer must first get `passed` from `check_lean` on the exact proof it submits. The same Session continues after an unfinished natural reply until it submits a checked proof or the existing deadline stops work.

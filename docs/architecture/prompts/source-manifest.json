@@ -51,11 +51,11 @@
     },
     {
       "path": "examples/scalemas-environment/fate-run.ts",
-      "sha256": "d8ebab76cb54f4ea5134203ca856460934e585ffd79f6a5a9a1aa301c83d3078"
+      "sha256": "231a17cc837745887d65f071f17d4dc848f66e98b9df4078266f159cd3b51acc"
     },
     {
       "path": "examples/scalemas-environment/fate-service.ts",
-      "sha256": "84bc88ef2379e8102d7e0426de584c238c2a3346c1ff55c70887b87306bb58b5"
+      "sha256": "23aa63f7fe43edb5d0936d987be2d095c100b21e8c3f37fd67c393d5bbe9528c"
     },
     {
       "path": "src/environments/scalemas/paper-substrate.ts",
@@ -475,7 +475,7 @@
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
-      "sha256": "2cf6599c7debdba6e46691d81a63b174749ad05db7d637ddb525e6debfb1cb88"
+      "sha256": "2f327542bbb558bfadf6b4a115bbedab122b65f54920b89b752fb2100e5df11f"
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",

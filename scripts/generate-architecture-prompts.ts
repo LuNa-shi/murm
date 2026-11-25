@@ -14,6 +14,7 @@ import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
 import { renderStartupPrompt } from '../src/core/startup-prompt.js';
 import { fateServiceManifest } from '../examples/scalemas-environment/fate-service.js';
+import { fateVerificationContinuation, fateVerifiedInput } from '../examples/scalemas-environment/fate-run.js';
 import { paperSubstrateManifest } from '../src/environments/scalemas/paper-substrate.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -176,8 +177,14 @@ output('09-scalemas-environment.md', header('ScaleMAS peer prompts',
   + block('FATE startup in the no-library condition', renderStartupPrompt([fateManifest]))
   + block('FATE startup in the shared condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('shared')], fateSharing))
   + block('FATE startup in the private condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('private')], fatePrivate))
+  + block('FATE shared startup with verified completion', renderStartupPrompt([fateServiceManifest(true), paperSubstrateManifest('shared')], fateSharing),
+    'The verified FATE manifest also supplies the submit description for the private and no-library variants, which otherwise use the startup composition above.')
   + block('FATE initial input', evaluate(between(fatePath, 'export const fateInput = ', ';\n')),
-    'Every peer receives this same followUp through runInput after the fixed pool is ready. The host stages the frozen formal and informal problem as files. The informal file appends the problem resource address derived from the original declaration SHA-256. There is no periodic continuation or final scorer prompt.'));
+    'Every peer receives the same followUp through runInput after the fixed pool is ready. The host stages the frozen formal and informal problem as files. The informal file appends the problem resource address derived from the original declaration SHA-256.')
+  + block('FATE initial input with verified completion and a 30-minute work window', fateVerifiedInput(1_800_000),
+    'The host supplies the configured workTimeoutMs. The displayed duration uses whole minutes when divisible by 60,000, otherwise seconds. The initial task is sent after all peers are ready.')
+  + block('FATE continuation before verified completion', fateVerificationContinuation,
+    'A verified-completion peer receives this followUp through runInput in the same Session after a known natural settlement without a verified finish, while the work window remains open. It uses a fresh continuation request ID. The final scorer sends no prompt.'));
 output('08-agensh-environment.md', header('Agensh peer and serial router prompts',
   'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper with explicit followUp. There are no mid-turn notices.')
   + block('Peer Profile prompt', between('src/environments/agensh/index.ts', 'export const peerPrompt = `', '`;'))

@@ -24,6 +24,19 @@ export const fatePrivatePrompt = [
 
 export const fateInput = 'Solve the original problem in problem.lean and problem.txt. The question resource address appears in problem.txt. Submit a Lean proof term using the fate Service.';
 
+export function fateVerifiedInput(workTimeoutMs: number) {
+  const workWindow = workTimeoutMs % 60_000 === 0 ? `${workTimeoutMs / 60_000}-minute` : `${workTimeoutMs / 1_000}-second`;
+  return [
+    fateInput,
+    `You have a ${workWindow} work window from the time all peers are ready.`,
+    'Keep working until you submit a proof that passes Lean or the work window ends. If a proof fails, read the diagnostic, work on the missing subgoal or try a different approach, and continue.',
+    'Before ending, run swarm fate check_lean on your exact proof and wait for status passed. Then submit the same proof with swarm fate submit and finish=true.',
+    'Use finish=false to save an unfinished candidate and keep working. Reserve enough Service operations for your final check and submission.',
+  ].join('\n');
+}
+
+export const fateVerificationContinuation = 'Continue in this Session. No Lean-verified proof has been submitted. Work on an unresolved subgoal or try another approach. Get status passed from swarm fate check_lean for the exact proof before submitting it with finish=true.';
+
 const modes: SharingMode[] = ['shared', 'private', 'none'];
 const submissionReceiptGraceMs = 1_000;
 const noTime = () => new Error('ScaleMAS FATE work is closed');
@@ -36,6 +49,7 @@ interface FateOptions {
   mode?: SharingMode;
   setupTimeoutMs?: number;
   scoreTimeoutMs?: number;
+  verifiedCompletion?: boolean;
 }
 
 interface RunOptions {
@@ -57,6 +71,7 @@ type Peer = {
   inputFailure?: { code: string; inputId?: string; receipt?: unknown }; startedAt?: string; endedAt?: string;
   inputId?: string; stop?: StopReceipt; stopFailure?: string;
   finishRequested?: boolean; finishTimer?: ReturnType<typeof setTimeout>;
+  continuations?: number;
 };
 
 type FrozenCandidates = {
@@ -186,10 +201,10 @@ export async function runFateScaleMAS({
   workTimeoutMs = fate.benchmark === 'FATE-H' ? durations.hardWork : durations.work,
   closeTimeoutMs = durations.close, checkpointAfterMs,
 }: RunOptions, externalSignal?: AbortSignal) {
-  const { mode = 'shared', setupTimeoutMs = durations.setup, scoreTimeoutMs = durations.score } = fate;
+  const { mode = 'shared', setupTimeoutMs = durations.setup, scoreTimeoutMs = durations.score, verifiedCompletion = false } = fate;
   const maxWorkMs = fate.benchmark === 'FATE-H' ? durations.hardWork : durations.work;
   const bounded = (value: number, max: number) => Number.isSafeInteger(value) && value >= 1 && value <= max;
-  if (!modes.includes(mode) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(runId) ||
+  if (!modes.includes(mode) || typeof verifiedCompletion !== 'boolean' || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(runId) ||
       ![1, 2, 4, 8, 16].includes(poolSize) || !bounded(workTimeoutMs, maxWorkMs) ||
       (checkpointAfterMs !== undefined && !bounded(checkpointAfterMs, workTimeoutMs - 1)) ||
       !bounded(setupTimeoutMs, durations.setup) || !bounded(closeTimeoutMs, durations.close) || !bounded(scoreTimeoutMs, durations.score) ||
@@ -251,7 +266,7 @@ export async function runFateScaleMAS({
     const problemAddress = `fate:${project.pins.problemId}:${project.problemSha256}`;
     task = createFateTaskService({
       path: join(directory, 'fate-candidates.sqlite'), services, authorize, countOperation, remainingMs, signal: workSignal,
-      problemAddress, shareMathlibResources: mode === 'shared', search, check: checker.evaluate,
+      problemAddress, shareMathlibResources: mode === 'shared', verifiedCompletion, search, check: checker.evaluate,
       validateReferences(botId, rationale, refs) {
         if (substrate) substrate.validateReferences(botId, rationale, refs);
         else if (refs.some(ref => !task!.resourceExists(botId, ref))) throw Object.assign(new Error('Reference is outside the task resources'), { code: 'NOT_FOUND' });
@@ -278,6 +293,7 @@ export async function runFateScaleMAS({
         ...record, mode, runId, startedAt, setupElapsedMs, checkpoint,
         peers: [...peers.values()].map(({ finish: _finish, active: _active, finishTimer: _timer, ...peer }) => peer),
         policy: { poolSize, workTimeoutMs, setupTimeoutMs, closeTimeoutMs, scoreTimeoutMs, checkpointAfterMs: checkpointAfterMs ?? null, maxFateOperationsPerPeer,
+          verifiedCompletion,
           clock: 'new in-scope substrate operation, decay before execution, same-ID retry does not advance',
           tokenCounter: 'js-tiktoken@1.0.21/o200k_base', benchmark: project.benchmark, task: project.pins, problemSha256: project.problemSha256 },
         task: task!.snapshot(), substrate: substrate?.snapshot() ?? null,
@@ -343,15 +359,23 @@ export async function runFateScaleMAS({
             })();
           }, checkpointAfterMs);
         }
+        const initialInput = verifiedCompletion ? fateVerifiedInput(workTimeoutMs) : fateInput;
         const workDone = Promise.all([...peers.values()].map(async peer => {
           peer.startedAt = new Date().toISOString();
+          if (verifiedCompletion) peer.continuations = 0;
+          const signal = AbortSignal.any([workSignal, peer.finish.signal]);
           try {
-            const receipt = await runInput(core, peer.botId, fateInput, {
-              requestId: `${peer.botId}:problem`, timeoutMs: Math.max(1, remainingMs()),
-              signal: AbortSignal.any([workSignal, peer.finish.signal]),
-            });
-            peer.inputId = receipt.inputId;
-            peer.endReason = peer.finishRequested ? 'submitted' : 'settled';
+            for (let continuation = 0; ; continuation++) {
+              const receipt = await runInput(core, peer.botId, continuation ? fateVerificationContinuation : initialInput, {
+                requestId: continuation ? `${peer.botId}:continue:${continuation}` : `${peer.botId}:problem`,
+                timeoutMs: Math.max(1, remainingMs()), signal,
+              });
+              peer.inputId = receipt.inputId;
+              if (!verifiedCompletion || peer.finishRequested || !remainingMs()) break;
+              peer.continuations = continuation + 1;
+            }
+            peer.endReason = peer.finishRequested ? 'submitted' : !verifiedCompletion ? 'settled' :
+              externalSignal?.aborted ? 'cancelled' : 'deadline';
           } catch (error) {
             const detail = error as { code?: string; inputId?: string; receipt?: unknown };
             peer.endReason = peer.finishRequested ? 'submitted' : externalSignal?.aborted ? 'cancelled' :

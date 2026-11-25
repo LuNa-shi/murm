@@ -18,6 +18,8 @@ const descriptions: Record<string, string> = {
   check_lean: `Check a proof term against the original theorem. You have up to ${maxChecks} trial checks.`,
   submit: 'Record or replace your submitted proof. Set finish=true when you are ready to end your work. Your final submission is graded independently.',
 };
+const verifiedSubmitDescription = 'Save drafts with finish=false. To finish, first get status passed from check_lean for the exact proof, then submit it with finish=true. Final scoring is independent.';
+const proofCheckRequired = 'PROOF_CHECK_REQUIRED';
 
 const operationHelp: Record<string, string> = {
   search_mathlib: 'Use a lemma name, a specific query, or a known mathlib: address.\nExample command\n  swarm fate search_mathlib --query "LEMMA_NAME"',
@@ -42,7 +44,7 @@ function operation(name: string, input_schema: Record<string, unknown>, output_s
   };
 }
 
-export function fateServiceManifest(): ServiceManifest {
+export function fateServiceManifest(verifiedCompletion = false): ServiceManifest {
   const nullable = { anyOf: [{ type: 'string' }, { type: 'null' }] };
   const verdict = {
     ...object({ status: string(32), code: string(80), diagnostic: string(4096), elapsedMs: { type: 'integer', minimum: 0 } }),
@@ -57,9 +59,12 @@ export function fateServiceManifest(): ServiceManifest {
         results: { type: 'array', maxItems: 10, items: object({ name: string(512), type: nullable, module: nullable, source: nullable, address: string(200) }) },
       })),
       operation('check_lean', object({ proof }), verdict, checkTimeoutMs + 1_000),
-      operation('submit', object({
+      { ...operation('submit', object({
         proof, rationale: string(8192), refs: { type: 'array', items: string(200), maxItems: 32, uniqueItems: true }, finish: { type: 'boolean' },
       }), object({ sha256: string(64), submitted_at: string(40), finish: { type: 'boolean' } })),
+      ...(verifiedCompletion ? {
+        description: verifiedSubmitDescription, errors: [...errors, { code: proofCheckRequired, retryable: false }],
+      } : {}) },
     ],
   };
 }
@@ -73,6 +78,7 @@ interface TaskOptions {
   signal: AbortSignal;
   problemAddress: string;
   shareMathlibResources?: boolean;
+  verifiedCompletion?: boolean;
   search(query: string, signal: AbortSignal): Promise<MathlibMatch[]>;
   check(proof: string, options: { signal: AbortSignal; timeoutMs: number }): Promise<FateVerdict>;
   validateReferences(botId: string, rationale: string, refs: string[]): void;
@@ -83,6 +89,7 @@ export function createFateTaskService(options: TaskOptions) {
   const db = new DatabaseSync(options.path);
   let closed = false;
   const checks = new Map<string, number>();
+  const passedProofs = new Map<string, Set<string>>();
   const declaredFinished = new Set<string>();
   const requests = new Map<string, { fingerprint: string; result: Promise<JsonValue> }>();
   const resourceScopes = new Map<string, Map<string, Resource>>();
@@ -123,7 +130,17 @@ export function createFateTaskService(options: TaskOptions) {
       const timeoutMs = Math.min(checkTimeoutMs, options.remainingMs());
       if (timeoutMs < 1) throw failure('NOT_ALLOWED', 'The work period ended');
       checks.set(botId, count + 1);
-      return await options.check((input as { proof: string }).proof, { timeoutMs, signal });
+      const { proof } = input as { proof: string };
+      const verdict = await options.check(proof, { timeoutMs, signal });
+      if (options.verifiedCompletion && verdict.status === 'passed') {
+        signal.throwIfAborted();
+        request.assertAuthorized();
+        options.authorize(request.caller);
+        const passed = passedProofs.get(botId) ?? new Set<string>();
+        passed.add(sha256(proof));
+        passedProofs.set(botId, passed);
+      }
+      return verdict;
     }
 
     const submission = input as Submission;
@@ -134,8 +151,12 @@ export function createFateTaskService(options: TaskOptions) {
     options.validateReferences(botId, submission.rationale, submission.refs);
     request.assertAuthorized();
     options.authorize(request.caller);
+    const digest = sha256(submission.proof);
+    if (options.verifiedCompletion && submission.finish && !passedProofs.get(botId)?.has(digest)) {
+      throw failure(proofCheckRequired, 'Continue working. Get status passed from check_lean for this exact proof before finishing.');
+    }
     const candidate: FateCandidate = {
-      ...submission, botId, requestId, sha256: sha256(submission.proof), submittedAt: new Date().toISOString(),
+      ...submission, botId, requestId, sha256: digest, submittedAt: new Date().toISOString(),
     };
     db.prepare(`INSERT INTO fate_candidates VALUES(?,?) ON CONFLICT(bot_id) DO UPDATE SET candidate=excluded.candidate`)
       .run(botId, JSON.stringify(candidate));
@@ -150,7 +171,7 @@ export function createFateTaskService(options: TaskOptions) {
     chmodSync(options.path, 0o600);
     db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE fate_candidates (bot_id TEXT PRIMARY KEY, candidate TEXT NOT NULL);');
     options.services.registerService({
-      manifest: fateServiceManifest(),
+      manifest: fateServiceManifest(options.verifiedCompletion),
       adapter: createInProcessAdapter({ invoke(request) {
         const { caller, envelope, capability, input } = request;
         if (closed) throw failure('NOT_ALLOWED', 'Task Service is closed');
