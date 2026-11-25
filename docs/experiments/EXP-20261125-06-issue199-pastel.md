@@ -1,6 +1,6 @@
 # Pastel acceptance with early child handoffs
 
-Status **REGISTERED**. Repeat of [EXP-20261125-05](EXP-20261125-05-issue199-pastel.md) for [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199). The owner authorized a one-hour window and removal of the host's request count and output token caps, and asked for stronger guidance to use Subagents.
+Status **PASS · Task, collaboration and cleanup**. Repeat of [EXP-20261125-05](EXP-20261125-05-issue199-pastel.md) for [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199). The owner authorized a one-hour window and removal of the host's request count and output token caps, and asked for stronger guidance to use Subagents.
 
 ## Setup
 
@@ -20,12 +20,19 @@ Status **REGISTERED**. Repeat of [EXP-20261125-05](EXP-20261125-05-issue199-past
 
 ## Results
 
-Pending.
+| Check | Finding |
+| --- | --- |
+| Task | Root finished in 359.736 seconds. The HSL request entered Root model request 2 at 14.491 seconds. An independent, offline container rebuilt the four exported files, ran the submitted tests, matched all seven pinned reference cases covering hex, RGB and HSL, and confirmed malformed input rejection. |
+| Autonomous delegation and parallel work | Root chose and created `/root/probe_hex_rgb` at 73.432 seconds and `/root/probe_hsl` at 73.522 seconds. Their actual model requests overlapped for 102.262 seconds. The HSL child finished at 176.720 seconds while the hex/RGB child continued until 209.384 seconds. |
+| Handoff and adoption | The first HSL message was accepted at 101.595 seconds and entered Root request 15 at 102.231 seconds. The first hex/RGB message was accepted at 122.647 seconds and entered Root request 24. Root wrote tests from both contributions. The second HSL message entered Root request 26. The edit from request 28 added previously absent boundary cases including `#8e4585` and `#c0c0c0`. Those tests and cases from the hex/RGB contribution remained in the verified export. Root's final reply attributed work to both children. |
+| Cleanup | Runtime `4ea6a746-80ee-4d24-b224-82200a55f384` closed. All three executions stopped. The export contained three Session archives, Service and lifecycle records, and 35 model request/result pairs. Provider lookups for all three sandbox IDs returned HTTP 404. The host window closed at 363.564 seconds. |
 
 ## Analysis
 
-Pending.
+Root incorporated child results before final delivery, as shown by Service receipts, actual model context, subsequent write and edit operations, and the independently checked export. All 35 forwarded K3 requests completed. There was no host cap on total calls or output tokens per call. The prior hour-long attempt exercised 186 forwarded requests and a 10,818-token response under the same cap policy.
+
+The task verifies the small Pastel slice defined for the Subagents example. The seven reference checks are representative cases for that slice. This single completed run demonstrates the acceptance criteria on one trace. Changes to the task and Role wording between attempts prevent attributing elapsed time to an individual change.
 
 ## Next steps
 
-Execute the registered run.
+Use this trace as the T1 acceptance evidence for Issue #199. The controlled Pi/OpenSandbox scenarios supply the separate evidence for recursive addressing, input and interrupt continuity, and shutdown races.
