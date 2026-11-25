@@ -1,6 +1,6 @@
 # EXP-20261125-07 · Flat PutnamBench 2025 B1
 
-Status · REGISTERED
+Status · STOPPED · selection cutoff reproduced
 
 Repeat of [EXP-20261125-06](EXP-20261125-06-flat-putnambench-b1.md) under the owner's authorization to rerun with independent review and stop at confirmed deviations. The previous run reached public discovery but never called the Task creation Service. This version restores operational startup information from the original Flat behavior and makes the normal CLI Task help actionable. The fixture, model, settings, checker and empty Task pool remain fixed. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
@@ -42,3 +42,23 @@ node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_
 Watch the fixed first four Bot identities from TaskService and reconcile actual accepted proposals, exclusive take and active Execution receipts with private Service traces. Record elapsed time to first proposal, take, save and subsequent collaboration. If all four first selection deadlines pass without an accepted proposal or take anywhere, stop the runner with SIGTERM and inspect the exact point where the workflow stopped. Confirmed worker, provider, repeated valid Service, checker or cleanup defects also trigger an early stop. Isolated rejected guesses and expected exclusive-claim races do not establish a system defect when another Bot progresses.
 
 If the selection transition works, continue observing save, public publication, a second Bot's actual apply, main integration and independent original-theorem acceptance until a confirmed defect or the bounded window closes.
+
+## Results
+
+The four initial workers jointly opened the window at 09:07:50.603 UTC after 17.373 seconds of Runtime setup. The operator sent SIGTERM when the fourth selection deadline passed with zero Tasks or Executions. The research window closed after 297.932 seconds. All four initial Bots received the revised discovery message and read the locked original from revision `0.1` with the expected source hash.
+
+| Observation | Result |
+|---|---|
+| Model | Four initial sessions sent real `kimi_proxy/k3` requests with reasoning effort `medium`. Core recorded 15 selection requests, with nine completed, four interrupted after HTTP 200, and two interrupted without an upstream status during shutdown and refill. The completed requests metered 22,539 input and 1,490 output tokens. Other usage and billed cost are unknown. |
+| First selection cohort | Four sustained HTTP 200 responses had 36,355 to 46,720 reasoning characters each. None emitted a completed output item, a function call or a terminal response. No Task creation or take reached the service. |
+| Proof work | Zero Tasks, Executions, Materials, added Workspace revisions and Mission submissions. Main stayed at `0.1`, tree `15cdae59fe9ba1dada06eb14959403ab364ac8bd`. |
+| Final assessment | The operator stop canceled the post-stop checker, which returned ERROR for `treecheck:31d46bac-399a-4cda-8ca0-a7675a226a09`. The separate locked preflight returned project PASS and final FAIL for the unchanged original seed. |
+| Cleanup | Peak four occupied slots. Six persisted domain Bots closed. Seven Core Bot allocations were included in cleanup, with one startup interrupted near shutdown. Runtime cleanup reported complete with no live sandbox, pending checker or pending merge for this run. |
+
+## Analysis
+
+The restored startup information reached the actual model and the documented public reads succeeded. The first-squad trace reproduced the long selection response before any Task service request. The gateway received continuous reasoning deltas from the upstream, with no function call to deliver. There is no evidence of a Task write rejected by the service. The observations do not establish whether a longer selection window would let K3 produce its first proposal.
+
+## Next steps
+
+Compare a registered longer selection window with the same prompt, provider, initial fixture, empty Task pool, checker, capacity and total research window. Track the first completed proposal and take. Continue into proof collaboration if the transition works.
