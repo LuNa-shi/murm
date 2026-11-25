@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import type { createRunWindow } from './run-window.ts';
+import type { createRunWindow } from '../shared/run-window.ts';
 
 const packer = fileURLToPath(new URL('./pack-submission.py', import.meta.url));
 

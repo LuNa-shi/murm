@@ -17,12 +17,12 @@ const hooks=registerHooks({resolve(specifier,context,next) {
 }});
 const {createRuntime}=await import('@swarmenv/core');hooks.deregister();
 const execute=promisify(execFile);
-async function fixture(t, { coordination = true } = {}) {
+async function fixture(t, { coordination = true, autonomousTasks = false } = {}) {
   const root=await mkdtemp(join(tmpdir(),'flat-coordination-'));
   const stores=await createFlatTaskStores(root);
   stores.tasks.contextService=stores.context;
   let runtime;
-  const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
+  const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000,autonomousTasks});
   const services = new ServiceRegistry();
   services.registerService(discovery);
   const allowed = { task: discovery.manifest.capabilities.map(capability => capability.operation) };
@@ -105,4 +105,24 @@ test('Task correction registration confers no Profile permission or dependency-r
   assert.equal(f.tasks.getTask(target.task_id).state,'OPEN');
   assert.deepEqual(f.tasks.getBot(f.bots[1].id).coordination_permissions,[]);
   await assert.rejects(f.cliFor(f.bots[1],'task','dependency-replace',target.task_id,'--from-task-id','old','--to-task-id','new',...versionArgs(target),'--reason','No grant','--request-id','replace-denied'),error=>/NOT_ALLOWED/.test(error.stderr));
+});
+
+
+test('autonomous proposals through Core Bridge keep active responsibility and inject Mission and Workspace', async t => {
+  const f = await fixture(t, { autonomousTasks: true });
+  const initial = f.tasks.getBot(f.bots[0].id).execution_id;
+  const create = bot => f.cliFor(bot, 'task', 'create', '--summary', 'Prove a missing lemma', '--gap', 'The root proof needs a finite bound', '--expected-output', 'A checked lemma', '--acceptance-conditions', '["Lemma compiles"]', '--priority', 'high', '--request-id', 'proposal');
+  const active = await create(f.bots[0]);
+  assert.equal(active.task.mission_id, f.missionId);
+  assert.equal(active.task.workspace.workspace_id, f.workspaceId);
+  assert.equal(active.task.creation.actor_ref, f.bots[0].id);
+  assert.equal(f.tasks.getBot(f.bots[0].id).execution_id, initial);
+  assert.deepEqual(await create(f.bots[0]), active);
+  await assert.rejects(f.cliFor(f.bots[0], 'task', 'create', '--summary', 'Changed proposal', '--gap', 'Different gap', '--expected-output', 'Lemma', '--acceptance-conditions', '["Compiles"]', '--priority', 'high', '--request-id', 'proposal'), error => /CONFLICT/.test(error.stderr));
+  const unbound = await create(f.bots[1]);
+  assert.notEqual(unbound.task.task_id, active.task.task_id);
+  assert.equal(f.tasks.getBot(f.bots[1].id).state, 'UNBOUND');
+  await assert.rejects(f.cliFor(f.bots[1], 'task', 'create', '--summary', 'Spoof', '--gap', 'Foreign', '--expected-output', 'Lemma', '--acceptance-conditions', '["Compiles"]', '--priority', 'high', '--mission-id', 'foreign', '--request-id', 'spoof'), error => /SERVICE_INPUT_INVALID|INVALID_CONTRACT|NOT_ALLOWED/.test(error.stderr));
+  f.tasks.requestBotStop(f.bots[0].id, 'End original responsibility', { terminalState: 'FAILED' });
+  await assert.rejects(create(f.bots[0]), error => /NOT_ALLOWED/.test(error.stderr));
 });

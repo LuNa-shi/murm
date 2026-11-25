@@ -44,10 +44,10 @@ export async function createRunWindow({
   directory, upstreamUrl, upstreamHeaders = {}, durationMs = 1_800_000,
   maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, now = () => performance.now(),
 }: RunWindowOptions) {
-  if (![durationMs, maxConcurrent].every(positiveInteger) || durationMs > 1_800_000 || maxConcurrent > 3 ||
+  if (![durationMs, maxConcurrent].every(positiveInteger) || durationMs > 2_147_483_647 ||
       (maxRequests !== null && !positiveInteger(maxRequests)) ||
       (maxOutputTokens !== null && (!positiveInteger(maxOutputTokens) || maxOutputTokens < 16))) {
-    throw new Error('Invalid Pastel run bounds');
+    throw new Error('Invalid benchmark run bounds');
   }
   const target = new URL(upstreamUrl);
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password ||

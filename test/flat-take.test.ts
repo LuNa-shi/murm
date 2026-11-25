@@ -74,6 +74,8 @@ test('actual CLI subprocess discovers and takes through the Core v2 Bridge with 
   assert.equal((await cli('task', 'view', f.task.task_id, '--request-id', 'cli-view')).task.task_id, f.task.task_id);
   const taken = await cli('task', 'take', f.task.task_id, '--request-id', 'cli-take');
   assert.equal(taken.execution.state, 'RUNNING'); assert.equal(taken.execution.owner_ref, bot.id);
+  const running = (await cli('task', 'list', '--state', 'running', '--request-id', 'cli-running-list')).tasks;
+  assert.deepEqual(running.find(task => task.task_id === f.task.task_id)?.current_execution, { execution_id: taken.execution.execution_id, owner_ref: bot.id, state: 'RUNNING' });
   assert.deepEqual(await cli('task', 'take', f.task.task_id, '--request-id', 'cli-take'), taken);
   assert.equal(f.tasks.listExecutions(f.task.task_id).length, 1);
   assert.equal(f.service.inspect(bot.id, 'cli-take').stage, 'complete');
