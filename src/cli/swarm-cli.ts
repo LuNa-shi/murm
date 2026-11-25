@@ -13,7 +13,7 @@ function operationTimeoutMs(operation: any, explicit?: any) {
 const COMMAND_OPERATIONS = Object.freeze({
   'mathlib-search': { search: 'mathlib_search' },
   bot: { exit: 'bot_exit' },
-  task: { list: 'task_list', view: 'task_view', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', revise: 'task_revise', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
+  task: { create: 'task_create', list: 'task_list', view: 'task_view', take: 'task_take', finish: 'task_finish', feedback: 'task_feedback', link: 'task_link_material', status: 'task_status', revise: 'task_revise', cancel: 'task_cancel', 'dependency-replace': 'task_dependency_replace' },
   material: { list: 'read_materials', view: 'context_get_material', search: 'context_search_materials', publish: 'context_publish_material', consume: 'consume_materials', dispute: 'material_dispute', supersede: 'material_supersede', unsupersede: 'material_unsupersede' },
   workspace: { view: 'workspace_public_view', history: 'workspace_public_history', status: 'workspace_status', diff: 'workspace_current_diff', files: 'workspace_public_files', read: 'workspace_public_read', search: 'workspace_public_search', save: 'workspace_save', merge: 'workspace_merge' },
   mission: { view: 'mission_get', submit: 'mission_submit', 'submission view': 'mission_submission_get' },
@@ -24,6 +24,7 @@ const WORKSPACE_FILES_HELP = 'List public paths. Use --at R (main is allowed), a
 const COMMAND_HELP = Object.freeze({
   bot: { exit: 'End an unbound Bot with no pending take after the selection budget expires. Use --reason selection-budget. For an open Mission with selection time left, inspect current public state and existing Tasks within the selection budget. The Core is released after cleanup.' },
   task: {
+    create: 'Propose Mission work using --input proposal.json or flags containing summary, gap, expected_output, acceptance_conditions and priority. Available when the host enables autonomous Tasks. ACTIVE callers retain their current Execution.',
     list: `Search Task summaries using --query, --limit (1-100) and --cursor. Omit the state filter to include all states, use --state for one state, or pass a quoted JSON array to --states.
   swarm task list --state ready
   swarm task list --states '["ready","running","blocked","done","canceled"]'

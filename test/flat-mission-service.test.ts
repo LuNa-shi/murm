@@ -152,3 +152,35 @@ test('normal Flat host keeps the explicit Mission checker caller-owned after its
     } else assert.equal(calls.length,0);
   }
 });
+
+
+test('normal math Flat reports a trusted accepted Mission as business success with an active Task', async t => {
+  const { runFlatEnvironment } = await import('../src/environments/flat/environment.js');
+  const root = await mkdtemp(join(tmpdir(), 'flat-math-acceptance-'));
+  const stores = await createFlatTaskStores(root);
+  stores.tasks.db.prepare('UPDATE missions SET acceptance_conditions_json=? WHERE mission_id=?').run(JSON.stringify({ required_check: checkerIdentity }), stores.missionId);
+  const store = createMissionCoordination({ taskService: stores.tasks, contextService: stores.context, workspace: stores.workspace, workspaceId: stores.workspaceId, missionId: stores.missionId,
+    deadline: Date.now()+60000, checker: { identity: checkerIdentity, timeoutMs: 5000, async check() { return { verdict: 'PASS' }; } } });
+  t.after(async () => { await store.shutdown(); stores.close(); await rm(root, { recursive: true, force: true }); });
+  transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
+  const accept = id => { transport.confirm(id, 'started'); transport.next = accept; }; transport.next = accept;
+  const report = await runFlatEnvironment({ taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace, workspaceManager: stores.manager,
+    missionId: stores.missionId, workspaceId: stores.workspaceId, outputDir: root, deadlineAt: Date.now()+30000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    completionPolicy: 'mission', autonomousTasks: true, missionCoordination: store, coordinationPermissions: ['mission_submit'],
+    async drive(controller) {
+      const botId = controller.snapshot().bots[0].botId;
+      const credentials = controls.credentials.get(botId), env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
+      const url = new URL(env.SWARMENV_BRIDGE_URL); url.hostname = '127.0.0.1'; env.SWARMENV_BRIDGE_URL = url.origin;
+      const cli = async (...args) => JSON.parse((await execute(process.execPath, [new URL('../scripts/swarm.js', import.meta.url).pathname, ...args], { env, timeout: 10000 })).stdout);
+      await cli('task', 'take', stores.task.task_id, '--request-id', 'take');
+      await cli('mission', 'submit', '--material-ids', '[]', '--request-id', 'accept');
+      await store.waitForIdle();
+      await controller.tick();
+    },
+  });
+  assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure));
+  assert.equal(report.result.completion, 'mission-accepted');
+  assert.equal(report.result.missionAcceptance.state, 'accepted');
+  assert.equal(report.cleanup.cleanup, 'complete');
+  assert.ok(stores.tasks.getAcceptedSubmission(stores.missionId));
+});
