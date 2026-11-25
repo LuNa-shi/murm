@@ -204,7 +204,9 @@ test('lists every registered Bot and filters by parent and observed status', asy
   rows[0].status = 'closed';
   assert.equal((await runtime.get(bot.id)).status, 'running');
   assert.deepEqual(await runtime.list({ status: 'starting' }), []);
-  await assert.rejects(runtime.list({ status: 'pending' }), { code: 'INVALID_CONTRACT' });
+  for (const status of ['pending', null, 123, {}, ['idle', null]]) {
+    await assert.rejects(runtime.list({ status }), { code: 'INVALID_CONTRACT', operation: 'list' });
+  }
 });
 
 test('start and steer share the compatible input ledger and audit the trusted host source', async t => {

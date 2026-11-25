@@ -38,7 +38,7 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `f2ba8c143c277f817a49248e85c1499dd27083be081d8deefd663cd9ce4b8fd5` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
-| [src/core/index.ts](../../src/core/index.ts) | `63f95c654cad58e825f979be0091bbdd9fe1da5d1350f250a414033929b300df` |
+| [src/core/index.ts](../../src/core/index.ts) | `2210258384ebee02c6d3ab5416dd0846dffc1e22e403702e284862ec211f391c` |
 | [src/core/types.ts](../../src/core/types.ts) | `853ee823d27de900b68b419e288b53366af107effa366babc47aef288514bd0f` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `3d9b797156e9c13cfeea316025584f4aa379007b80831413df0cb9d588719583` |
 | [src/core/services.ts](../../src/core/services.ts) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |

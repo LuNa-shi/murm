@@ -478,8 +478,9 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       throw problem('INVALID_CONTRACT', 'list expects a Bot filter', 'list');
     }
     const { parentId, status } = filter;
-    const statuses = typeof status === 'string' ? [status] : status ?? [];
-    if ((parentId != null && !validId(parentId)) || [...statuses].some(value => !botStates.has(value))) {
+    const statuses: readonly unknown[] = Array.isArray(status) ? status : status === undefined ? [] : [status];
+    if ((parentId != null && !validId(parentId)) ||
+        [...statuses].some(value => typeof value !== 'string' || !botStates.has(value))) {
       throw problem('INVALID_CONTRACT', 'list expects a valid parentId and Bot status', 'list');
     }
     return [...bots.values()].filter(({ info }) =>

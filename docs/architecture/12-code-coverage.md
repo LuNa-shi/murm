@@ -61,7 +61,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [.dockerignore](../../.dockerignore) | Build context exclusions for generated outputs, dependency trees and local data. | [07-run-configuration](07-run-configuration.md) | `5592ad2f492c4d0255176e75ff5f8e8ac0460821f95d1a89b0f841f8c98aa8ac` |
 | [scripts/build.ts](../../scripts/build.ts) | Clean TypeScript compilation and staging of runtime and verification assets in dist. | [07-run-configuration](07-run-configuration.md) | `93ed17a20f1e09a63cbe6a7f272f33a8cc6b8f8421594085b0e481cbdb4f8cac` |
-| [tsconfig.json](../../tsconfig.json) | Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree. | [07-run-configuration](07-run-configuration.md) | `5f35dafe9f8c43a0be9455dcb06216fc5884ad0afe6480fb08282aca11d5e885` |
+| [tsconfig.json](../../tsconfig.json) | Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree. | [07-run-configuration](07-run-configuration.md) | `5fc7619b62546e9359d78248b6b4d880f575ff24e57e2057aceb1faeb4f68ccb` |
 | [tsconfig.tests.json](../../tsconfig.tests.json) | TypeScript test emission configuration for the executable test tree. | [07-run-configuration](07-run-configuration.md) | `9927b0d021c575089dd66a4b84056140dd25b9dd24201df5913ee42d8acf8d0f` |
 
 ### Environment composition (3)
@@ -263,7 +263,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `a77ba3b657caf0f1b6ebb1097a15e2595b38c89e5deb2614bd83e339066489cd` |
 | [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `9a66d1df9128d813a56d43c91919e63fba17384c1c328ddc4d6491b0d1b8f769` |
 | [src/core/file-controls.ts](../../src/core/file-controls.ts) | Bot file-operation identity, preparation receipts, write authority and pending grant fences | [15-core-runtime](15-core-runtime.md) | `a726987c0fb6cd934b71aeca76f981244bde40543cf994b52267e8d7b74dfee1` |
-| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Bot admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `63f95c654cad58e825f979be0091bbdd9fe1da5d1350f250a414033929b300df` |
+| [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Bot admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `2210258384ebee02c6d3ab5416dd0846dffc1e22e403702e284862ec211f391c` |
 | [src/core/input-ledger.ts](../../src/core/input-ledger.ts) | Runtime/caller/operation/target/request input identity and parameter conflict ledger | [15-core-runtime](15-core-runtime.md) | `ec94643c5c1283a93a1c6e462fee88b721a38f9200b2f48f7f8229ab98d95c7f` |
 | [src/core/model-access.ts](../../src/core/model-access.ts) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `f1ba053183f35f13dc75c5505bf5c573a8f44c059949bfe1f05f84548659d5b2` |
 | [src/core/pi-opensandbox-backend.ts](../../src/core/pi-opensandbox-backend.ts) | Core backend lifecycle, Worker transport and confirmed cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `ebbd6581a2bf95ee61c759537cdb7df2d318c0420fbcd7abe7b0276193fa0e3b` |
