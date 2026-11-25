@@ -9,7 +9,7 @@ import { loadPutnamB1, putnamB1, putnamSelectionMs, putnamWindowMs } from './cas
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const git = (args: string[]) => execute('git', args, { cwd: root, timeout: 10_000 });
-const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, selectionReasoningEffort, ...extra] = process.argv.slice(2);
+const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, selectionEffortArg, ...extra] = process.argv.slice(2);
 if (!['preflight', 'run'].includes(operation) || !checkerConfig || !datasetRoot || extra.length ||
     (operation === 'preflight' && experimentId !== undefined) ||
     (operation === 'run' && (!/^EXP-\d{8}-\d{2}$/.test(experimentId ?? '') || !/^sha256:[a-f0-9]{64}$/.test(image ?? '')))) {
@@ -17,9 +17,10 @@ if (!['preflight', 'run'].includes(operation) || !checkerConfig || !datasetRoot 
 }
 const durationMs = putnamWindowMs(windowSeconds);
 const selectionMs = putnamSelectionMs(durationMs, selectionSeconds);
-if (selectionReasoningEffort !== undefined && selectionReasoningEffort !== 'low') {
+if (selectionEffortArg !== undefined && selectionEffortArg !== 'low') {
   throw new Error('Putnam selection reasoning effort must be low when configured');
 }
+const selectionReasoningEffort = selectionEffortArg === 'low' ? selectionEffortArg : undefined;
 const problem = await loadPutnamB1(datasetRoot);
 let code: string | undefined;
 let directory: string | undefined;
