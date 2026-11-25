@@ -1,6 +1,6 @@
 # EXP-20261125-16 — ScaleMAS intermediate sharing
 
-Status **REGISTERED** under [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202). Comparison runs [EXP-20261125-14](EXP-20261125-scalemas-service-discovery.md) and [EXP-20261125-13](EXP-20261125-scalemas-fate-sharing.md), each truncated to its first 30 minutes for Service activity.
+Status **OPERATOR STOP · 17m37.200s · NO PUBLICATIONS OR SUBMISSIONS** under [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7165261463). Comparison runs [EXP-20261125-14](EXP-20261125-scalemas-service-discovery.md) and [EXP-20261125-13](EXP-20261125-scalemas-fate-sharing.md), each truncated to the observed window for Service activity.
 
 ## Setup
 
@@ -20,3 +20,29 @@ Run FATE-H #2 once with four peers in shared mode. The shared Added System Promp
 Check the actual first request from all four peers for the expected developer text, separate task input and native tools. Count successful searches, repeat searches after an empty result, distinct accepted publications, deliveries to a different peer, and concrete downstream use in a later Lean attempt or submitted proof. Join deliveries to the recipient's actual tool response and model input. Record independent scoring, provider usage and cleanup separately.
 
 The full handoff observation requires a voluntary publication, a second peer retrieving the content, and observable use of the contribution in proof work. A publication or visit alone establishes only that step. If the startup input is verified and this run has no full handoff, the owner also authorized one matched GPT-6.1 Sol run with the same shared configuration and work limit. That conditional run receives its own registration before launch.
+
+## Results
+
+The four peers entered work at 14:26:15.282 UTC. At the owner's request the host sent a normal stop at 14:43:52.475 UTC to switch models. The last peer ended at 14:43:52.482 UTC. Setup took 25.240 seconds. The 15-minute host checkpoint recorded four active peers, two successful shared searches, no publication and no candidate. The launcher exited 0. All four Session archive digests and stop receipts validated, and no containers remained under the Runtime label. Standalone regrading reproduced four `NO_SUBMISSION` verdicts.
+
+All four first requests contained the exact developer text, separate user input and four native tools. All 87 requests retained the expected developer text. The ledger recorded 83 completed requests with known usage of 2,068,309 input and 167,267 output tokens. Four streams ended during cancellation with usage unknown.
+
+| First 17m37.200s | EXP-20261125-13 | EXP-20261125-14 | EXP-20261125-16 |
+| --- | ---: | ---: | ---: |
+| Successful shared searches | 8 | 4 | 2 |
+| Repeat searches after empty results | 4 | 0 | 0 |
+| Publications | 1 | 0 | 0 |
+| Cross-peer deliveries / observed proof use | 0 / 0 | 0 / 0 | 0 / 0 |
+| Successful Mathlib searches | 177 | 142 | 242 |
+| Working Lean checks returning verdicts | 10 | 0 | 0 |
+| Accepted submission calls | 0 | 0 | 0 |
+
+The two successful shared searches came from different peers at 0m24.175s and 7m13.779s. Both returned an empty library. Two peers omitted the required `limit` field on their initial attempts, and one of them later succeeded after reading help. The old literal `--field` error did not recur. No archive had a publish or visit command.
+
+## Analysis
+
+The actual startup input and approved Service contract reached the model. The observed K3 window shows no improvement in publication, repeat retrieval or use. The only successful shared operations returned empty results. Mathlib lookup dominated activity, and the traces contained no Lean checks or submissions before stop. The prompts and CLI help changed together relative to EXP-20261125-14. Behavior after the earlier stop is unobserved.
+
+## Next steps
+
+The owner requested the GPT comparison before the 30-minute K3 deadline. The corrected installed entry ran the GPT comparison under a separate registration. [EXP-20261125-18](EXP-20261125-18-scalemas-gpt-30min.md)
