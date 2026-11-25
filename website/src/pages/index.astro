@@ -9,6 +9,7 @@ import { withBase } from '../lib/url';
   title="murm · Build your own agent systems."
   description="A minimal, extensible multi-agent harness with composable coordination services."
   activeSection="home"
+  paperGrid={true}
 >
   <main class="landing-shell">
     <section class="hero">
@@ -16,50 +17,41 @@ import { withBase } from '../lib/url';
         <MurmLogo variant="hero" />
       </div>
       <p class="hero-brand">murm</p>
-      <h1 class="hero-title">Build your own agent systems.</h1>
+      <h1 class="hero-title">
+        Build your own
+        <span class="circled-word">
+          agent systems<svg viewBox="0 0 380 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 356 22 C 296 0, 80 -3, 22 30 C -22 58, 16 96, 118 104 C 228 113, 360 98, 372 58 C 382 28, 318 6, 238 11" /></svg>
+        </span><span class="title-dot">.</span>
+      </h1>
       <p class="hero-subtitle">
-        A minimal, extensible multi-agent harness with composable coordination services.
+        A minimal, extensible multi-agent harness with <span class="marker-highlight">composable coordination services</span>.
         <span class="hero-subtitle-cn">把沙箱隔离、会话管理与运行留痕交给 Runtime，把分工协作完全留给你编写的 Program。</span>
       </p>
 
-      <div class="hero-cta">
-        <a class="btn btn-primary" href={withBase('/docs/quickstart/')}>快速开始</a>
-        <a class="btn btn-secondary" href={withBase('/docs/concepts/')}>阅读文档</a>
-        <a class="btn btn-secondary" href={withBase('/trace-viewer/')}>Trace Viewer</a>
+      <div class="hero-cta-wrap">
+        <div class="hero-cta">
+          <a class="btn btn-tactile" href={withBase('/docs/quickstart/')}>快速开始 →</a>
+          <a class="btn btn-outline" href={withBase('/docs/concepts/')}>阅读文档</a>
+          <a class="btn btn-outline" href={withBase('/trace-viewer/')}>Trace Viewer</a>
+        </div>
+        <span class="hero-hand-note" aria-hidden="true">same runtime, any topology!</span>
       </div>
 
       <div class="pillars">
         <div class="pillar">
-          <div class="pillar-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65">
-              <rect x="6" y="6" width="12" height="12" rx="2" />
-              <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" />
-            </svg>
-          </div>
+          <span class="pillar-index">01 / SANDBOX</span>
           <h3>Run agents</h3>
           <p>隔离沙箱与跨轮次持久化会话</p>
         </div>
 
         <div class="pillar">
-          <div class="pillar-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65">
-              <circle cx="12" cy="5" r="2.5" />
-              <circle cx="6" cy="18" r="2.5" />
-              <circle cx="18" cy="18" r="2.5" />
-              <path d="M12 7.5V12m0 0-4.5 4M12 12l4.5 4" />
-            </svg>
-          </div>
+          <span class="pillar-index">02 / BRIDGE</span>
           <h3>Compose services</h3>
           <p>可组合的共享协作能力与可信鉴权</p>
         </div>
 
         <div class="pillar">
-          <div class="pillar-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65">
-              <rect x="3" y="4" width="18" height="16" rx="2.5" />
-              <path d="m7 14 3-3 3 2.5 4-5" />
-            </svg>
-          </div>
+          <span class="pillar-index">03 / TRACE</span>
           <h3>Observe runs</h3>
           <p>结构化运行落盘与独立轨迹检查</p>
         </div>
@@ -69,10 +61,10 @@ import { withBase } from '../lib/url';
     <section class="landing-section">
       <div class="section-header">
         <div>
-          <p class="section-eyebrow">Core Model</p>
+          <p class="section-eyebrow">01 · CORE MODEL</p>
           <h2 class="section-title">六个清晰正交的核心概念</h2>
           <p class="section-desc">
-            编写侧用 Program 组合 Agent 与 Service；运行侧由 Runtime 分配 Sandbox，每次执行产出可检查的 Run。
+            编写侧用 <span class="marker-highlight">Program</span> 组合 Agent 与 Service；运行侧由 Runtime 分配 Sandbox，每次执行产出可检查的 Run。
           </p>
         </div>
         <a class="section-link" href={withBase('/docs/concepts/')}>逐个了解概念 →</a>
@@ -82,42 +74,42 @@ import { withBase } from '../lib/url';
         <div class="concept-card">
           <div class="concept-top">
             <code>Agent</code>
-            <span class="concept-tag">编写侧</span>
+            <span class="concept-tag tag-author">编写侧</span>
           </div>
           <p>独立的执行个体，拥有持久对话历史、独立工作目录与 4 个本地工具。</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Service</code>
-            <span class="concept-tag">编写侧</span>
+            <span class="concept-tag tag-author">编写侧</span>
           </div>
           <p>可组合的共享能力（任务池、消息、成果库、Board），经 Bridge 鉴权调用。</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Program</code>
-            <span class="concept-tag">编写侧</span>
+            <span class="concept-tag tag-author">编写侧</span>
           </div>
           <p>你编写的多智能体控制逻辑：决定创建谁、如何响应事件以及何时交付收尾。</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Runtime</code>
-            <span class="concept-tag">运行侧</span>
+            <span class="concept-tag tag-runtime">运行侧</span>
           </div>
           <p>统一管理多 Agent 生命周期、输入投递、受控文件交接与资源回收的引擎。</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Sandbox</code>
-            <span class="concept-tag">运行侧</span>
+            <span class="concept-tag tag-runtime">运行侧</span>
           </div>
           <p>隔离每个 Agent 的文件系统、网络白名单与磁盘配额，保障并发安全与稳定导出。</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Run</code>
-            <span class="concept-tag">运行侧</span>
+            <span class="concept-tag tag-runtime">运行侧</span>
           </div>
           <p>一次具体的系统执行，自动落盘会话归档、模型轨迹、Service 调用与报告。</p>
         </div>
@@ -127,13 +119,13 @@ import { withBase } from '../lib/url';
     <section class="landing-section">
       <div class="section-header">
         <div>
-          <p class="section-eyebrow">Execution Flow</p>
+          <p class="section-eyebrow">02 · EXECUTION FLOW</p>
           <h2 class="section-title">多智能体如何在隔离沙箱中并行协作</h2>
           <p class="section-desc">
-            以 Subagents 为例：主控与子 Agent 各自运行在独立泳道，通过 Service Bridge 完成委派、即时纠偏与测试交接。
+            以 Subagents 为例：主控与子 Agent 运行在各自泳道，通过 Service Bridge 完成委派、不唤醒纠偏与测试交接。
           </p>
         </div>
-        <a class="section-link" href={withBase('/trace-viewer/')}>打开本地 Trace Viewer →</a>
+        <a class="section-link" href={withBase('/trace-viewer/')}>了解 Trace Viewer →</a>
       </div>
 
       <SwimlaneSchematic />
@@ -142,10 +134,10 @@ import { withBase } from '../lib/url';
     <section class="landing-section">
       <div class="section-header">
         <div>
-          <p class="section-eyebrow">One Runtime, Five Programs</p>
-          <h2 class="section-title">同一套底座，运行五种多智能体协作机制</h2>
+          <p class="section-eyebrow">03 · ONE RUNTIME, FIVE PROGRAMS</p>
+          <h2 class="section-title">同一套底座，跑出五种多智能体协作机制</h2>
           <p class="section-desc">
-            切换协作形态只需替换 Program 与注册的 Service，底层 Runtime、沙箱与留痕设施完全复用。
+            切换协作形态只需替换 Program 与注册的 Service，底层 Runtime 与沙箱 <span class="marker-highlight">零改动复用</span>。
           </p>
         </div>
         <a class="section-link" href={withBase('/docs/programs/')}>横向机制对比 →</a>
@@ -153,31 +145,76 @@ import { withBase } from '../lib/url';
 
       <div class="programs-bento">
         <a class="card program-card" href={withBase('/docs/programs/subagents/')}>
-          <span class="card-kicker">Tree · Mailbox</span>
+          <div class="card-head-row">
+            <span class="card-kicker">TREE · MAILBOX</span>
+            <svg class="topo-glyph" viewBox="0 0 44 32" width="40" height="28" aria-hidden="true">
+              <path d="M22 8V15M22 15L10 24M22 15L34 24" stroke="currentColor" stroke-width="1.6" fill="none" />
+              <circle cx="22" cy="7" r="4" fill="var(--accent)" />
+              <circle cx="10" cy="25" r="3.5" fill="var(--teal)" />
+              <circle cx="34" cy="25" r="3.5" fill="var(--amber)" />
+            </svg>
+          </div>
           <h3>Subagents</h3>
           <p>Root 递归委派具名子 Agent，支持上下文派生、不唤醒邮箱通知、等待与中断恢复。</p>
-          <div class="card-meta"><span>collaboration Service</span><span>→</span></div>
+          <div class="card-meta"><span>collaboration</span><span>→</span></div>
         </a>
+
         <a class="card program-card" href={withBase('/docs/programs/flat/')}>
-          <span class="card-kicker">Pool · Versioned Main</span>
+          <div class="card-head-row">
+            <span class="card-kicker">POOL · LEASE</span>
+            <svg class="topo-glyph" viewBox="0 0 44 32" width="40" height="28" aria-hidden="true">
+              <rect x="6" y="5" width="32" height="9" rx="2.5" stroke="currentColor" stroke-width="1.5" fill="var(--marker-yellow)" />
+              <path d="M13 14V22M22 14V22M31 14V22" stroke="currentColor" stroke-width="1.5" />
+              <circle cx="13" cy="25" r="3" fill="var(--ink)" />
+              <circle cx="22" cy="25" r="3" fill="var(--ink)" />
+              <circle cx="31" cy="25" r="3" fill="var(--ink)" />
+            </svg>
+          </div>
           <h3>Flat</h3>
           <p>只读发现并排他认领任务，宿主按需解锁写权限、以租约保护模型访问并检验合入主干。</p>
-          <div class="card-meta"><span>task · material · workspace</span><span>→</span></div>
+          <div class="card-meta"><span>task · workspace</span><span>→</span></div>
         </a>
+
         <a class="card program-card" href={withBase('/docs/programs/agensh/')}>
-          <span class="card-kicker">Peers · Git PR</span>
+          <div class="card-head-row">
+            <span class="card-kicker">PEERS · GIT PR</span>
+            <svg class="topo-glyph" viewBox="0 0 44 32" width="40" height="28" aria-hidden="true">
+              <path d="M22 7L10 25H34Z" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2" fill="none" />
+              <circle cx="22" cy="7" r="3.5" fill="var(--accent)" />
+              <circle cx="10" cy="25" r="3.5" fill="var(--accent)" />
+              <circle cx="34" cy="25" r="3.5" fill="var(--accent)" />
+            </svg>
+          </div>
           <h3>Agensh</h3>
           <p>同级成员通过可重叠 CLAIM、频道消息和串行 Router 协商分工，经独立分支提 PR。</p>
-          <div class="card-meta"><span>board · chat · gitea</span><span>→</span></div>
+          <div class="card-meta"><span>board · chat · git</span><span>→</span></div>
         </a>
+
         <a class="card program-card program-card-wide" href={withBase('/docs/programs/scalemas/')}>
-          <span class="card-kicker">Store · Citations</span>
+          <div class="card-head-row">
+            <span class="card-kicker">IMMUTABLE STORE · CITATIONS</span>
+            <svg class="topo-glyph" viewBox="0 0 48 32" width="44" height="28" aria-hidden="true">
+              <rect x="4" y="19" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5" fill="none" />
+              <rect x="20" y="19" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5" fill="none" />
+              <rect x="14" y="4" width="16" height="9" rx="2" stroke="currentColor" stroke-width="1.5" fill="var(--accent-soft)" />
+              <path d="M11 19L19 13M26 19L23 13M34 15H44" stroke="currentColor" stroke-width="1.5" />
+            </svg>
+          </div>
           <h3>ScaleMAS</h3>
           <p>不设任务池也不做消息路由，成员围绕不可变 SQLite 成果库自主发布、检索原文并显式引用演化。</p>
           <div class="card-meta"><span>substrate Service</span><span>→</span></div>
         </a>
+
         <a class="card program-card program-card-wide" href={withBase('/docs/programs/lead-helper/')}>
-          <span class="card-kicker">Direction · Feedback</span>
+          <div class="card-head-row">
+            <span class="card-kicker">DIRECTION · FEEDBACK LOOP</span>
+            <svg class="topo-glyph" viewBox="0 0 48 32" width="44" height="28" aria-hidden="true">
+              <rect x="14" y="4" width="20" height="9" rx="4.5" stroke="currentColor" stroke-width="1.5" fill="var(--marker-yellow)" />
+              <path d="M18 13C10 17 10 24 16 25M30 13C38 17 38 24 32 25" stroke="var(--accent)" stroke-width="1.6" fill="none" />
+              <circle cx="20" cy="25" r="3" fill="var(--teal)" />
+              <circle cx="28" cy="25" r="3" fill="var(--teal)" />
+            </svg>
+          </div>
           <h3>Lead-helper</h3>
           <p>Lead 发布公共方向，Helpers 事务排他认领并在 Git 分支交付与反馈，形成严格的因果迭代闭环。</p>
           <div class="card-meta"><span>board · gitea</span><span>→</span></div>
@@ -186,7 +223,7 @@ import { withBase } from '../lib/url';
     </section>
 
     <footer class="landing-footer">
-      <span>murm · 基于 <code>@swarmenv/core</code> 0.2.0（<code>ac72c76</code>）</span>
+      <span class="footer-brand">MURM · <code>@swarmenv/core</code> 0.2.0 (<code>ac72c76</code>)</span>
       <div class="footer-links">
         <a href={withBase('/docs/quickstart/')}>快速开始</a>
         <a href={withBase('/docs/build-your-program/')}>编写 Program</a>

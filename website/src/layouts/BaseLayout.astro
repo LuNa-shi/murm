@@ -1,4 +1,8 @@
 ---
+import '@fontsource-variable/space-grotesk';
+import '@fontsource-variable/inter';
+import '@fontsource-variable/jetbrains-mono';
+import '@fontsource/caveat/700.css';
 import '../styles/global.css';
 import '../styles/trace-viewer.css';
 import TopNav from '../components/TopNav.astro';
@@ -10,6 +14,7 @@ interface Props {
   description?: string;
   activeSection?: 'home' | 'docs' | 'trace-viewer';
   showMobileMenu?: boolean;
+  paperGrid?: boolean;
 }
 
 const {
@@ -17,6 +22,7 @@ const {
   description = 'A minimal, extensible multi-agent harness with composable coordination services.',
   activeSection = 'home',
   showMobileMenu = false,
+  paperGrid = false,
 } = Astro.props;
 ---
 
@@ -37,7 +43,7 @@ const {
       })();
     </script>
   </head>
-  <body>
+  <body class:list={[{ 'paper-grid-bg': paperGrid }]}>
     <TopNav activeSection={activeSection} showMobileMenu={showMobileMenu} />
     <slot />
     <SearchModal />
