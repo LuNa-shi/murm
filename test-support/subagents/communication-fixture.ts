@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { createRuntime } from '@swarmenv/core';
 import { ServiceRegistry } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { runWithReport } from './run-report.js';
+import { runWithReport } from '../../src/environments/shared/run-report.js';
 import { createSubagentsController } from './communication-fixture-controller.js';
 import { parentPromptFor, childPrompt, initialGoalFor } from './communication-fixture-prompts.js';
 

@@ -137,18 +137,22 @@ export interface BotInfo {
 
 export type InputMode = 'steer' | 'followUp';
 
-export interface SendOptions {
-  mode?: InputMode;
-  wakeIfIdle?: boolean;
+export interface SteerOptions {
   requestId: string;
   source?: string;
   steeringMode?: 'all' | 'one-at-a-time';
 }
 
+export interface SendOptions extends SteerOptions {
+  mode?: InputMode;
+  wakeIfIdle?: boolean;
+}
+
 export type InputReceipt =
   | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
-  | { inputId: string; status: 'not-accepted'; reason: 'idle' }
   | { inputId: string; status: 'unknown' };
+
+export type ConditionalInputReceipt = InputReceipt | { inputId: string; status: 'not-accepted'; reason: 'idle' };
 
 export interface InterruptReceipt {
   interruptId: string;
@@ -207,8 +211,11 @@ export interface Runtime {
   spawn(options: SpawnOptions): Promise<BotInfo>;
   get(botId: string): Promise<BotInfo>;
   list(filter?: BotListFilter): Promise<BotInfo[]>;
+  start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
+  steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
   interrupt(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
-  send(botId: string, input: string, options: SendOptions): Promise<InputReceipt>;
+  send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
+  send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
   onEvent(handler: (event: BotEvent) => void): () => void;
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;

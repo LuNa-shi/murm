@@ -15,7 +15,7 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "2696338f146798e6768abcbd570de05d49838d2c76cd485402608bf8326a6f02"
+      "sha256": "18b7084a77c8f7758ad697aaf4a5158670c9cb66b4843703291bb19a6ae4cfed"
     },
     {
       "path": "src/core/pi-opensandbox-backend.ts",
@@ -31,7 +31,7 @@
     },
     {
       "path": "src/environments/shared/run-input.ts",
-      "sha256": "5c112a9a5e760b7d9dc2a19dc468090e820dc5b20ff6d56b6fee3ab184310ba7"
+      "sha256": "eef9dbf6c1ceb86b0de73bac4ceb2d3878c6a1c47b476daa1e18b4398e0630a3"
     },
     {
       "path": "src/environments/scalemas/index.ts",
@@ -66,15 +66,15 @@
       "sha256": "2b9976254e64f61b62537afb081b54595607630a5da21e9451ad0971f050c708"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture.ts",
-      "sha256": "a8d0d933a02efbf072ca0c0acd7f69604a75c89e8e0bcbfc11cb394375983652"
+      "path": "test-support/subagents/communication-fixture.ts",
+      "sha256": "da597ca11a4cc83b060e7068f4e40d4ac19fb330a6519dd1de23d0600d69c711"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture-controller.ts",
+      "path": "test-support/subagents/communication-fixture-controller.ts",
       "sha256": "04660675996d1a235200c7f135c7c9fc188e96f8f1b7f28fa92501ecdc0e0522"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture-prompts.ts",
+      "path": "test-support/subagents/communication-fixture-prompts.ts",
       "sha256": "31f00fce9ac22b4062a771d56956d40555e7a65e323a3a3760b63dc6418d3127"
     },
     {
@@ -204,19 +204,19 @@
       "sha256": "d1597806b16bbb2cd2b08e7f393029f0f1c0a45f8cd8c5fbe927243320bc530a"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture-prompts.ts",
+      "path": "test-support/subagents/communication-fixture-prompts.ts",
       "anchor": "export const parentPrompt = ",
       "line": 1,
       "sha256": "eeb33346515de001490e205f69348b3950b3b0fd9723298aa7ee509eb6113dc9"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture-prompts.ts",
+      "path": "test-support/subagents/communication-fixture-prompts.ts",
       "anchor": "export const childPrompt = ",
       "line": 4,
       "sha256": "6d231a982c22cbe6ce5278839ff3a8658b07f9d1a1f63623decb7955b9431130"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture-prompts.ts",
+      "path": "test-support/subagents/communication-fixture-prompts.ts",
       "anchor": "export const initialGoal = ",
       "line": 6,
       "sha256": "1e96fc7dae086fcde47e0d5648f0ab79d43e74c4b8653f574ef05f6ad03cf2f6"
@@ -360,7 +360,7 @@
       "expression": "receipt = await runtime.send(member.id!, body, { requestId, source: from, wakeIfIdle: true });"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture-controller.ts",
+      "path": "test-support/subagents/communication-fixture-controller.ts",
       "line": 26,
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     },
@@ -467,7 +467,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "2a605de5097f9cc488263d1acec0e31fb4665297db73e88c46ccfb542ddbcea7"
+      "sha256": "05ff0bff9d7af4722422121f92f65f84399a995abb1e976eb92a703544824474"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",

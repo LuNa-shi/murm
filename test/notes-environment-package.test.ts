@@ -180,8 +180,8 @@ const bot = await runtime.spawn({ requestId: 'spawn', profile: 'reader' });
 await runtime.list({ parentId: null, status: ['idle', 'starting'] });
 await runtime.send(bot.id, 'Read a note', { mode: 'followUp', requestId: 'start' });
 await runtime.send(bot.id, 'Read this too', { requestId: 'steer', source: 'mail', steeringMode: 'all', wakeIfIdle: false });
-// @ts-expect-error Runtime exposes its input policy through send.
-await runtime.steer(bot.id, 'obsolete', { requestId: 'old' });
+await runtime.start(bot.id, 'Start a separate phase', { requestId: 'start-compatible' });
+await runtime.steer(bot.id, 'Steer the active phase', { requestId: 'steer-compatible', source: 'host' });
 await runtime.interrupt(bot.id, { requestId: 'interrupt', timeoutMs: 1000 });
 const files = await runtime.files.snapshot(bot.id, { requestId: 'snapshot', paths: ['note.txt'] });
 await runtime.spawn({ requestId: 'fork', profile: 'reader', forkFrom: bot.id, workspace: { mode: 'frozen-copy', files: files.files } });

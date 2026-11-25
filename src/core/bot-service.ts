@@ -1,4 +1,4 @@
-import type { BotInfo, BotInitialInputResult, BotSpawnReceipt, InputMode, InputReceipt, SendOptions, SpawnOptions, StopReceipt } from './types.js';
+import type { BotInfo, BotInitialInputResult, BotSpawnReceipt, ConditionalInputReceipt, InputMode, InputReceipt, SendOptions, SpawnOptions, StopReceipt } from './types.js';
 import type { JsonValue } from './service-types.js';
 
 interface BotAuthority {
@@ -15,7 +15,8 @@ interface BotServiceOptions {
   getBot: (id: string) => BotAuthority | undefined;
   spawn: (options: SpawnOptions, caller: string) => Promise<BotInfo>;
   get: (id: string) => Promise<BotInfo>;
-  send: (id: string, input: string, options: SendOptions, caller: string) => Promise<InputReceipt>;
+  send(id: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller: string): Promise<InputReceipt>;
+  send(id: string, input: string, options: SendOptions, caller: string): Promise<ConditionalInputReceipt>;
   stop: (id: string) => Promise<StopReceipt>;
 }
 

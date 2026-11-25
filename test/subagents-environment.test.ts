@@ -13,7 +13,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-bot-service-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { runSubagentsEnvironment, checkDelivery } = await import('../examples/subagents-environment/communication-fixture.js'); hooks.deregister();
+const { runSubagentsEnvironment, checkDelivery } = await import('../test-support/subagents/communication-fixture.js'); hooks.deregister();
 
 test('final text must consume three distinct delivered snapshots from exactly two children', () => {
   const results = [{ childId: 'a', eventSeq: 1, output: 'first' }, { childId: 'b', eventSeq: 2, output: 'second' }, { childId: 'a', eventSeq: 3, output: 'followup' }];
@@ -161,7 +161,7 @@ test('four staged groups use real Core and parent Bot Service inputs without end
   const { createRuntime } = await import('@swarmenv/core');
   const { ServiceRegistry } = await import('@swarmenv/core/services');
   const { runInput } = await import('../src/environments/shared/run-input.js');
-  const { createSubagentsStages } = await import('../examples/subagents-environment/stages.js');
+  const { createSubagentsStages } = await import('../test-support/subagents/stages.js');
   transport.reset(); transport.collectable = true;
   const outputDir = await mkdtemp(join(tmpdir(), 'subagents-stages-'));
   const common = { prompt: 'Controlled stage contract.', model: 'default', image: 'test', writable: true, services: {} };

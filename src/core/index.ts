@@ -1,4 +1,4 @@
-import type { BotEvent, BotInfo, BotListFilter, CollectionSpec, CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, Profile, Runtime, SendOptions } from './types.js';
+import type { BotEvent, BotInfo, BotListFilter, CollectionSpec, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, Profile, Runtime, SendOptions } from './types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -28,8 +28,8 @@ interface InterruptRequest {
 interface InputRequest {
   inputId: string;
   dispatched?: boolean;
-  run(): Promise<InputReceipt>;
-  result?: Promise<InputReceipt>;
+  run(): Promise<ConditionalInputReceipt>;
+  result?: Promise<ConditionalInputReceipt>;
 }
 
 interface RuntimeBot {
@@ -101,7 +101,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     registrations = snapshotServiceRegistry(options.services);
     registerServicePrivateValues(registrations, redactor.add);
     registrations.set('bot', createBotService({ runtimeId, getBot: id => getBot(id),
-      spawn: (input, caller) => spawn(input, caller), get, send: (id, input, options, caller) => send(id, input, options, caller), stop }));
+      spawn: (input, caller) => spawn(input, caller), get, send, stop }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
     modelAccessPolicy = options.modelAccessPolicy;
     outputDir = join(resolve(options.outputDir), runtimeId);
@@ -489,10 +489,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       (status === undefined || statuses.includes(info.status))).map(botSnapshot);
   }
 
-  async function send(botId: string, input: string, options: SendOptions, caller = 'host'): Promise<InputReceipt> {
+  function send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller?: string, operation?: string): Promise<InputReceipt>;
+  function send(botId: string, input: string, options: SendOptions, caller?: string, operation?: string): Promise<ConditionalInputReceipt>;
+  async function send(botId: string, input: string, options: SendOptions, caller = 'host', operation = 'send'): Promise<ConditionalInputReceipt> {
     const requestId = options?.requestId;
     const mode = options?.mode === undefined ? 'steer' : options.mode;
-    const operation = 'send';
     const { source, steeringMode, wakeIfIdle = true } = options ?? {};
     if (!validId(requestId) || typeof input !== 'string' || !['steer', 'followUp'].includes(mode) || typeof wakeIfIdle !== 'boolean' ||
         (source !== undefined && (typeof source !== 'string' || !source.trim() || source.length > 256)) ||
@@ -531,6 +532,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
           entry.dispatched = true;
           records.record('input', { ...identity, state: querying ? 'receipt-query' : 'dispatched' });
           const receipt = await backend.send(botId, input, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle });
+          if (wakeIfIdle && receipt.status === 'not-accepted') throw new Error('Backend declined an input with waking enabled');
           if (receipt.status === 'not-accepted' || (receipt.status === 'accepted' && receipt.disposition === 'handled')) releaseActivity();
           records.record('input', { ...identity, state: receipt.status,
             ...(receipt.status === 'accepted' ? { disposition: receipt.disposition } : { reason: receipt.reason }), cursor: bot.info.cursor });
@@ -684,9 +686,19 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     }]) : structuredClone(result);
   }
 
+  function hostSend(id: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
+  function hostSend(id: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
+  function hostSend(id: string, input: string, options: SendOptions) {
+    return send(id, input, options);
+  }
+
   return Object.freeze<Runtime>({
     id: runtimeId, spawn: input => spawn(input), get, list,
-    send: (id, input, options) => send(id, input, options),
+    start: (id, input, options) => send(id, input, { requestId: options?.requestId, mode: 'followUp' }, 'host', 'start'),
+    steer: (id, input, options) => send(id, input, {
+      requestId: options?.requestId, source: options?.source, steeringMode: options?.steeringMode, mode: 'steer',
+    }, 'host', 'steer'),
+    send: hostSend,
     interrupt, onEvent, stop, close, files: fileControls.api,
   });
 }

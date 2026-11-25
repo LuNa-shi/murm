@@ -73,7 +73,6 @@ export async function runInput(runtime: Runtime, botId: string, input: string, {
         receipt = await runtime.send(botId, input, { requestId, mode: 'followUp' });
         if (done) return;
         if (receipt.status === 'unknown') finish(failure('input_unknown', diagnostic()), true);
-        else if (receipt.status === 'not-accepted') finish(failure('input_not_accepted', diagnostic()), true);
         else if (receipt.disposition === 'queued') finish(failure('exclusive_input_was_queued', diagnostic()), true);
         else if (receipt.disposition === 'handled') finish(failure('input_handled_without_model_run', diagnostic()));
         else complete();

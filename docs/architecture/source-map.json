@@ -6,7 +6,8 @@
     "src",
     "scripts",
     "services",
-    "integrations"
+    "integrations",
+    "test-support/subagents"
   ],
   "scope_root_files": [
     "package.json",
@@ -25,7 +26,7 @@
   ],
   "excluded": [
     {
-      "path": "test/ and test-support/",
+      "path": "test/ and remaining test-support/ files",
       "reason": "Verification code is linked from each narrative chapter; it is not production runtime input and is not represented as executed test evidence."
     },
     {
@@ -1507,7 +1508,7 @@
       "role": "Six authorized Bash operations and Service state export"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture.ts",
+      "path": "test-support/subagents/communication-fixture.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1516,7 +1517,7 @@
       "role": "Fixed communication fixture with text adoption and whole-tree reporting"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture-controller.ts",
+      "path": "test-support/subagents/communication-fixture-controller.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1525,7 +1526,7 @@
       "role": "Fixed fixture multi-source input, immutable round snapshots and failure coalescing"
     },
     {
-      "path": "examples/subagents-environment/communication-fixture-prompts.ts",
+      "path": "test-support/subagents/communication-fixture-prompts.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1552,7 +1553,7 @@
       "role": "Tree directory, trusted authorization, message routing, waits, continuation and result snapshots"
     },
     {
-      "path": "examples/subagents-environment/stages.ts",
+      "path": "test-support/subagents/stages.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"

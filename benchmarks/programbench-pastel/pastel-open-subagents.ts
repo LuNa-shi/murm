@@ -1,6 +1,6 @@
 import { createRuntime } from '../../dist/src/core/index.js';
 import { ServiceRegistry, type ServiceRegistration } from '../../dist/src/core/services.js';
-import { createSubagentsController } from '../../dist/examples/subagents-environment/communication-fixture-controller.js';
+import { createSubagentsController } from '../../dist/test-support/subagents/communication-fixture-controller.js';
 import { sha256 } from './case.ts';
 import { checkpointSource } from './source-checkpoint.ts';
 

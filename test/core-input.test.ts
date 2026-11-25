@@ -212,10 +212,13 @@ test('lists every registered Bot and filters by parent and observed status', asy
 test('send independently selects timing and waking, and audits the trusted host source', async t => {
   const { runtime, bot, outputDir } = await setup(t);
   transport.next = async id => transport.confirm(id, 'started');
-  const started = await runtime.send(bot.id, 'first phase', { requestId: 'start', mode: 'followUp' });
+  const started = await runtime.start(bot.id, 'first phase', { requestId: 'start' });
   assert.equal(started.disposition, 'started');
   assert.deepEqual(await runtime.send(bot.id, 'first phase', { requestId: 'start', mode: 'followUp', wakeIfIdle: true }), started);
   transport.next = async id => transport.confirm(id, 'queued');
+  const legacy = { requestId: 'legacy-steer', source: 'external-message-service', steeringMode: 'all' };
+  const legacySteer = await runtime.steer(bot.id, 'steer as before', legacy);
+  assert.deepEqual(await runtime.send(bot.id, 'steer as before', legacy), legacySteer);
   const options = { requestId: 'push', source: 'external-message-service', steeringMode: 'all', wakeIfIdle: false };
   const steered = await runtime.send(bot.id, 'push now', options);
   assert.equal(steered.disposition, 'queued');

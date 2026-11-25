@@ -8,7 +8,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 import { rootPrompt, childPrompt } from '../examples/subagents-environment/prompts.js';
-import { parentPromptFor, initialGoalFor } from '../examples/subagents-environment/communication-fixture-prompts.js';
+import { parentPromptFor, initialGoalFor } from '../test-support/subagents/communication-fixture-prompts.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
 import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, BOT_MATERIAL_CONTINUATION_MESSAGE, BOT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory } from '../src/agent/bot-contract.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
@@ -30,7 +30,7 @@ const sourcePaths = [
   'benchmarks/programbench-pastel/subagents-example.ts',
   'examples/subagents-environment/main.ts', 'examples/subagents-environment/controller.ts',
   'examples/subagents-environment/prompts.ts', 'examples/subagents-environment/collaboration-service.ts',
-  'examples/subagents-environment/communication-fixture.ts', 'examples/subagents-environment/communication-fixture-controller.ts', 'examples/subagents-environment/communication-fixture-prompts.ts',
+  'test-support/subagents/communication-fixture.ts', 'test-support/subagents/communication-fixture-controller.ts', 'test-support/subagents/communication-fixture-prompts.ts',
   'src/environments/agensh/index.ts', 'src/environments/agensh/router.ts', 'src/environments/agensh/routed.ts', 'src/environments/agensh/team.ts',
   'test/fixtures/agensh-team-kimi.ts', 'test/agensh-team-kimi-real.test.ts',
   'src/environments/lead-helper/prompts.ts', 'src/environments/lead-helper/index.ts',
@@ -148,9 +148,9 @@ output('07-notes-environment.md', header('Installed Notes Environment prompts',
   + block('Writer publication', notesInput.put)
   + block('Reader retrieval', notesInput.get)
   + block('Reader follow-up', notesInput.follow));
-const subagentsPath = 'examples/subagents-environment/communication-fixture-prompts.ts';
+const subagentsPath = 'test-support/subagents/communication-fixture-prompts.ts';
 output('08-subagents-environment.md', header('Subagents Environment prompts',
-  'The ordinary Environment stages the Root and Child Profile prompts verbatim and sends user or model-authored task text through the collaboration controller. The separate communication fixture stages its own Profile prompts. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Bot Service requests.')
+  'The ordinary Environment stages the Root and Child Profile prompts verbatim and sends user or model-authored task text through the collaboration controller. The separate communication fixture stages its own Profile prompts. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in communication-fixture-controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Bot Service requests.')
   + block('Root Profile prompt', rootPrompt)
   + block('Recursive Child Profile prompt', childPrompt)
   + block('Pastel example initial task', evaluate(between('benchmarks/programbench-pastel/subagents-example.ts', 'const initial = ', ';\nconst supplement')))
@@ -160,7 +160,7 @@ output('08-subagents-environment.md', header('Subagents Environment prompts',
   + block('Default initial goal', evaluate(between(subagentsPath, 'export const initialGoal = ', ';\n')))
   + [3, 4, 5, 6, 7].map((childCount: any) => block(`Parent Profile prompt: ${childCount + 1} Bots`, parentPromptFor(childCount))
     + block(`Default initial goal: ${childCount + 1} Bots`, initialGoalFor(childCount))).join(''));
-for (const path of ['examples/subagents-environment/controller.ts', 'examples/subagents-environment/communication-fixture-controller.ts']) {
+for (const path of ['examples/subagents-environment/controller.ts', 'test-support/subagents/communication-fixture-controller.ts']) {
   for (const [index, line] of sources.get(path)!.split('\n').entries()) {
     if (line.includes('await runtime.send(')) sendSites.push({ path, line: index + 1, expression: line.trim() });
   }

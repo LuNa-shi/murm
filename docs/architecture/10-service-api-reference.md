@@ -38,8 +38,8 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `f2ba8c143c277f817a49248e85c1499dd27083be081d8deefd663cd9ce4b8fd5` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
-| [src/core/index.ts](../../src/core/index.ts) | `2696338f146798e6768abcbd570de05d49838d2c76cd485402608bf8326a6f02` |
-| [src/core/types.ts](../../src/core/types.ts) | `3ae3a0868f923f63c249e3f07578e0b7e9dfbd4512b71120b7ec17a6b3c5aaae` |
+| [src/core/index.ts](../../src/core/index.ts) | `18b7084a77c8f7758ad697aaf4a5158670c9cb66b4843703291bb19a6ae4cfed` |
+| [src/core/types.ts](../../src/core/types.ts) | `4ec718e07f0613e95e8ec78528ed740f1369e3cac5382e27baefd87f53676901` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `3d9b797156e9c13cfeea316025584f4aa379007b80831413df0cb9d588719583` |
 | [src/core/services.ts](../../src/core/services.ts) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
@@ -3221,12 +3221,14 @@ export interface BotInfo {
     lastStop?: StopReceipt;
 }
 export type InputMode = 'steer' | 'followUp';
-export interface SendOptions {
-    mode?: InputMode;
-    wakeIfIdle?: boolean;
+export interface SteerOptions {
     requestId: string;
     source?: string;
     steeringMode?: 'all' | 'one-at-a-time';
+}
+export interface SendOptions extends SteerOptions {
+    mode?: InputMode;
+    wakeIfIdle?: boolean;
 }
 export type InputReceipt = {
     inputId: string;
@@ -3234,11 +3236,12 @@ export type InputReceipt = {
     disposition: 'started' | 'queued' | 'handled';
 } | {
     inputId: string;
+    status: 'unknown';
+};
+export type ConditionalInputReceipt = InputReceipt | {
+    inputId: string;
     status: 'not-accepted';
     reason: 'idle';
-} | {
-    inputId: string;
-    status: 'unknown';
 };
 export interface InterruptReceipt {
     interruptId: string;
@@ -3312,11 +3315,18 @@ export interface Runtime {
     spawn(options: SpawnOptions): Promise<BotInfo>;
     get(botId: string): Promise<BotInfo>;
     list(filter?: BotListFilter): Promise<BotInfo[]>;
+    start(botId: string, input: string, options: {
+        requestId: string;
+    }): Promise<InputReceipt>;
+    steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
     interrupt(botId: string, options: {
         requestId: string;
         timeoutMs?: number;
     }): Promise<InterruptReceipt>;
-    send(botId: string, input: string, options: SendOptions): Promise<InputReceipt>;
+    send(botId: string, input: string, options: SendOptions & {
+        wakeIfIdle?: true;
+    }): Promise<InputReceipt>;
+    send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
     onEvent(handler: (event: BotEvent) => void): () => void;
     stop(botId: string, options?: {
         timeoutMs?: number;
