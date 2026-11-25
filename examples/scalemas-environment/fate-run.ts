@@ -8,11 +8,11 @@ import { runInput } from '../../src/environments/shared/run-input.js';
 import { runWithReport } from '../../src/environments/shared/run-report.js';
 import { createPaperSubstrate, type SharingMode } from '../../src/environments/scalemas/paper-substrate.js';
 import { MathlibSearchService } from '../../src/services/mathlib-search-service.js';
-import { createFateChecker, fatePins, loadFateProject, sha256, type FateProject } from './fate-checker.js';
+import { createFateChecker, loadFateProject, sha256, type FateBenchmark, type FateProject } from './fate-checker.js';
 import { createFateTaskService, type FateCandidate, type MathlibMatch } from './fate-service.js';
 
 export const fatePeerPrompt = [
-  'Solve the same original FATE-M problem as the other independent peers. Read problem.lean and problem.txt.',
+  'Solve the same original FATE problem as the other independent peers. Read problem.lean and problem.txt.',
   'The fate Service provides search_mathlib, check_lean and submit. Inspect schemas with swarm service view fate.',
   'Use check_lean to try a Lean proof term (usually beginning with by) against the original theorem. You have ten trials.',
   'Use swarm fate submit --input submission.json --request-id <fresh-id> to submit your current proof term, rationale, refs and finish flag.',
@@ -33,11 +33,12 @@ const modes: SharingMode[] = ['shared', 'private', 'none'];
 const maxSemanticOperations = 100;
 const submissionReceiptGraceMs = 1_000;
 const noTime = () => new Error('ScaleMAS FATE work is closed');
-const durations = { setup: 180_000, work: 1_800_000, close: 120_000, score: 900_000 } as const;
+const durations = { setup: 180_000, work: 1_800_000, hardWork: 2_700_000, close: 120_000, score: 900_000 } as const;
 
 interface FateOptions {
   projectRoot: string;
   leanRoot: string;
+  benchmark?: FateBenchmark;
   mode?: SharingMode;
   setupTimeoutMs?: number;
   scoreTimeoutMs?: number;
@@ -53,6 +54,7 @@ interface RunOptions {
   poolSize?: number;
   workTimeoutMs?: number;
   closeTimeoutMs?: number;
+  checkpointAfterMs?: number;
 }
 
 type Peer = {
@@ -64,9 +66,13 @@ type Peer = {
 };
 
 type FrozenCandidates = {
-  version: 1; runId: string; mode: SharingMode; problemId: number; problemSha256: string;
+  version: 1; runId: string; mode: SharingMode; benchmark?: FateBenchmark; problemId: number; problemSha256: string;
   frozenAt: string; scoreTimeoutMs: number; peers: { botId: string; candidate: FateCandidate | null }[];
 };
+
+type Checkpoint = { state: 'not_reached'; afterMs: number } |
+  { state: 'recorded'; afterMs: number; path: string; scheduledAt: string; capturedAt: string } |
+  { state: 'failed'; afterMs: number; scheduledAt: string; capturedAt: string; code: 'FATE_CHECKPOINT_FAILED' };
 
 async function writePrivateJson(path: string, value: unknown) {
   const temp = join(dirname(path), `.${randomUUID()}.tmp`);
@@ -79,7 +85,7 @@ async function writePrivateJson(path: string, value: unknown) {
 function createSearch(project: FateProject) {
   const library = new MathlibSearchService({
     upstreamUrl: null, sourceRoot: project.mathlibRoot, projectRoot: null,
-    leanVersion: fatePins.leanVersion, mathlibRevision: fatePins.mathlibRevision, maxResults: 10,
+    leanVersion: project.pins.leanVersion, mathlibRevision: project.pins.mathlibRevision, maxResults: 10,
   });
   return async (query: string, signal?: AbortSignal) => {
     const found = await library.handle({ input: { query, max_results: 10 }, signal });
@@ -87,7 +93,7 @@ function createSearch(project: FateProject) {
   };
 }
 
-export async function prepareFate(fate: Pick<FateOptions, 'projectRoot' | 'leanRoot'>) {
+export async function prepareFate(fate: Pick<FateOptions, 'projectRoot' | 'leanRoot' | 'benchmark'>) {
   const start = performance.now();
   const project = await loadFateProject(fate);
   const checker = await createFateChecker(project);
@@ -95,14 +101,15 @@ export async function prepareFate(fate: Pick<FateOptions, 'projectRoot' | 'leanR
     const library = await createSearch(project)('Fintype.card');
     if (!library.length) throw new Error('Fixed Mathlib source index is empty');
     const negative = await checker.evaluate('by\n  exact True.intro', { timeoutMs: 60_000 });
-    if (negative.status !== 'rejected' || negative.code !== 'LEAN_REJECTED') throw new Error('FATE-M checker did not reject a known false proof term');
-    return { pins: fatePins, problemSha256: project.problemSha256, preparedMs: Math.round(performance.now() - start),
+    if (negative.status !== 'rejected' || negative.code !== 'LEAN_REJECTED') throw new Error('FATE checker did not reject a known false proof term');
+    return { benchmark: project.benchmark, pins: project.pins, problemSha256: project.problemSha256, preparedMs: Math.round(performance.now() - start),
       negativeControlMs: negative.elapsedMs, mathlibResults: library.length };
   } finally { await checker.close(); }
 }
 
 async function evaluateFrozen(project: FateProject, bundle: FrozenCandidates) {
-  if (bundle?.version !== 1 || bundle.problemId !== fatePins.problemId || bundle.problemSha256 !== project.problemSha256 ||
+  if (bundle?.version !== 1 || (bundle.benchmark ?? 'FATE-M') !== project.benchmark || bundle.problemId !== project.pins.problemId ||
+      bundle.problemSha256 !== project.problemSha256 ||
       !modes.includes(bundle.mode) || !Number.isSafeInteger(bundle.scoreTimeoutMs) || bundle.scoreTimeoutMs < 1 ||
       bundle.scoreTimeoutMs > durations.score || !Array.isArray(bundle.peers) ||
       new Set(bundle.peers.map(peer => peer.botId)).size !== bundle.peers.length ||
@@ -117,7 +124,7 @@ async function evaluateFrozen(project: FateProject, bundle: FrozenCandidates) {
       botId, sha256: candidate.sha256, ...(await checker!.evaluate(candidate.proof, { timeoutMs: bundle.scoreTimeoutMs })),
     } : { botId, sha256: null, status: 'no_submission', code: 'NO_SUBMISSION', elapsedMs: 0 }));
     return {
-      runId: bundle.runId, mode: bundle.mode, problemId: bundle.problemId, problemSha256: bundle.problemSha256,
+      runId: bundle.runId, mode: bundle.mode, benchmark: project.benchmark, problemId: bundle.problemId, problemSha256: bundle.problemSha256,
       teamSuccess: scores.some(score => score.status === 'passed'), candidates: scores,
       scoreElapsedMs: Math.round(performance.now() - start),
     };
@@ -125,8 +132,9 @@ async function evaluateFrozen(project: FateProject, bundle: FrozenCandidates) {
 }
 
 export async function rescoreFate(fate: Pick<FateOptions, 'projectRoot' | 'leanRoot'>, bundlePath: string) {
-  const [project, bytes] = await Promise.all([loadFateProject(fate), readFile(bundlePath, 'utf8')]);
-  return evaluateFrozen(project, JSON.parse(bytes));
+  const bundle: FrozenCandidates = JSON.parse(await readFile(bundlePath, 'utf8'));
+  const project = await loadFateProject({ ...fate, benchmark: bundle?.benchmark });
+  return evaluateFrozen(project, bundle);
 }
 
 async function measureEvidence(path: string | undefined, receipt: StopReceipt[] = []) {
@@ -181,12 +189,15 @@ function limited<T>(promise: Promise<T>, signal: AbortSignal) {
 
 export async function runFateScaleMAS({
   backend, fate, runId, image, outputDir, model = 'default', poolSize = 4,
-  workTimeoutMs = durations.work, closeTimeoutMs = durations.close,
+  workTimeoutMs = fate.benchmark === 'FATE-H' ? durations.hardWork : durations.work,
+  closeTimeoutMs = durations.close, checkpointAfterMs,
 }: RunOptions, externalSignal?: AbortSignal) {
   const { mode = 'shared', setupTimeoutMs = durations.setup, scoreTimeoutMs = durations.score } = fate;
+  const maxWorkMs = fate.benchmark === 'FATE-H' ? durations.hardWork : durations.work;
   const bounded = (value: number, max: number) => Number.isSafeInteger(value) && value >= 1 && value <= max;
   if (!modes.includes(mode) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(runId) ||
-      ![1, 2, 4, 8, 16].includes(poolSize) || !bounded(workTimeoutMs, durations.work) ||
+      ![1, 2, 4, 8, 16].includes(poolSize) || !bounded(workTimeoutMs, maxWorkMs) ||
+      (checkpointAfterMs !== undefined && !bounded(checkpointAfterMs, workTimeoutMs - 1)) ||
       !bounded(setupTimeoutMs, durations.setup) || !bounded(closeTimeoutMs, durations.close) || !bounded(scoreTimeoutMs, durations.score) ||
       typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir) throw new TypeError('Invalid ScaleMAS FATE configuration');
   externalSignal?.throwIfAborted();
@@ -194,6 +205,7 @@ export async function runFateScaleMAS({
   const setup = AbortSignal.timeout(setupTimeoutMs);
   const setupSignal = externalSignal ? AbortSignal.any([setup, externalSignal]) : setup;
   const directory = join(outputDir, runId);
+  let checkpoint: Checkpoint | null = checkpointAfterMs === undefined ? null : { state: 'not_reached', afterMs: checkpointAfterMs };
   await mkdir(outputDir, { mode: 0o700, recursive: true });
   await mkdir(directory, { mode: 0o700 }); // A group never attaches to an earlier run's evidence.
   let project: FateProject;
@@ -207,7 +219,7 @@ export async function runFateScaleMAS({
       runId, mode, runtimeId: null, reportPath: null, bundlePath: null, startedAt: null, setupFailed: true,
       setupElapsedMs: Math.round(performance.now() - preparationStarted), scoring: null, scoreFailure: null,
       businessFailure: { code, message: error instanceof Error && 'code' in error ? String(error.code) : 'FATE setup did not complete' },
-      cleanup: null, cleanupFailure: null, reportSaveFailure: null,
+      cleanup: null, cleanupFailure: null, reportSaveFailure: null, checkpoint,
     };
     await writePrivateJson(join(directory, 'fate-result.json'), result);
     return result;
@@ -242,7 +254,7 @@ export async function runFateScaleMAS({
   let substrate: ReturnType<typeof createPaperSubstrate> | null = null;
   let task: ReturnType<typeof createFateTaskService> | undefined;
   try {
-    const problemAddress = `fate:${fatePins.problemId}:${project.problemSha256}`;
+    const problemAddress = `fate:${project.pins.problemId}:${project.problemSha256}`;
     task = createFateTaskService({
       path: join(directory, 'fate-candidates.sqlite'), services, authorize, countOperation, remainingMs, signal: workSignal,
       problemAddress, shareMathlibResources: mode === 'shared', search, check: checker.evaluate,
@@ -268,11 +280,11 @@ export async function runFateScaleMAS({
     const report = await runWithReport({
       outputDir: directory, closeTimeoutMs,
       redact: (record: Record<string, unknown>) => ({
-        ...record, mode, runId, startedAt, setupElapsedMs,
+        ...record, mode, runId, startedAt, setupElapsedMs, checkpoint,
         peers: [...peers.values()].map(({ finish: _finish, active: _active, finishTimer: _timer, ...peer }) => peer),
-        policy: { poolSize, workTimeoutMs, setupTimeoutMs, closeTimeoutMs, scoreTimeoutMs, maxSemanticOperations,
+        policy: { poolSize, workTimeoutMs, setupTimeoutMs, closeTimeoutMs, scoreTimeoutMs, checkpointAfterMs: checkpointAfterMs ?? null, maxSemanticOperations,
           clock: 'new in-scope substrate operation, decay before execution, same-ID retry does not advance',
-          tokenCounter: 'js-tiktoken@1.0.21/o200k_base', task: fatePins, problemSha256: project.problemSha256 },
+          tokenCounter: 'js-tiktoken@1.0.21/o200k_base', benchmark: project.benchmark, task: project.pins, problemSha256: project.problemSha256 },
         task: task!.snapshot(), substrate: substrate?.snapshot() ?? null,
       }),
       async createRuntime() {
@@ -306,10 +318,37 @@ export async function runFateScaleMAS({
           throw error;
         }
         setupElapsedMs = Math.round(performance.now() - preparationStarted);
-        startedAt = new Date().toISOString();
-        deadlineMs = Date.now() + workTimeoutMs;
+        const openedAt = Date.now();
+        startedAt = new Date(openedAt).toISOString();
+        deadlineMs = openedAt + workTimeoutMs;
         timer = setTimeout(() => work.abort(), workTimeoutMs);
-        await Promise.all([...peers.values()].map(async peer => {
+        let checkpointTimer: ReturnType<typeof setTimeout> | undefined;
+        let checkpointWrite: Promise<void> | undefined;
+        if (checkpointAfterMs !== undefined) {
+          const scheduledAt = new Date(openedAt + checkpointAfterMs).toISOString();
+          checkpointTimer = setTimeout(() => {
+            const activePeers = [...peers.values()];
+            if (remainingMs() === 0 || !activePeers.some(peer => peer.active)) return;
+            const capturedAt = new Date().toISOString();
+            const path = join(directory, 'fate-work-checkpoint.json');
+            checkpointWrite = (async () => {
+              try {
+                const snapshot = task!.snapshot();
+                await writePrivateJson(path, {
+                  runId, runtimeId, mode, scheduledAt, capturedAt, benchmark: project.benchmark, problemId: project.pins.problemId,
+                  peers: activePeers.map(({ botId, active, startedAt, endedAt, finishRequested, semanticOperations }) =>
+                    ({ botId, active, startedAt, endedAt, finishRequested, semanticOperations })),
+                  candidates: snapshot.candidates.map(({ botId, requestId, sha256, submittedAt, refs }) => ({ botId, requestId, sha256, submittedAt, refs })),
+                  taskOperations: snapshot.operations, substrate: substrate?.snapshot() ?? null,
+                });
+                checkpoint = { state: 'recorded', afterMs: checkpointAfterMs, path, scheduledAt, capturedAt };
+              } catch {
+                checkpoint = { state: 'failed', afterMs: checkpointAfterMs, scheduledAt, capturedAt, code: 'FATE_CHECKPOINT_FAILED' };
+              }
+            })();
+          }, checkpointAfterMs);
+        }
+        const workDone = Promise.all([...peers.values()].map(async peer => {
           peer.startedAt = new Date().toISOString();
           try {
             const receipt = await runInput(core, peer.botId, fateInput, {
@@ -334,6 +373,12 @@ export async function runFateScaleMAS({
             catch (error) { peer.stopFailure = (error as { code?: string }).code ?? 'PEER_STOP_FAILED'; }
           }
         }));
+        try {
+          await workDone;
+        } finally {
+          clearTimeout(checkpointTimer);
+          await checkpointWrite;
+        }
         return { peerIds: [...peers.keys()], workStartedAt: startedAt, workDeadlineAt: new Date(deadlineMs).toISOString() };
       },
     });
@@ -342,7 +387,7 @@ export async function runFateScaleMAS({
     await task.settle();
     const byPeer = new Map(task.snapshot().candidates.map(candidate => [candidate.botId, candidate]));
     const bundle: FrozenCandidates = {
-      version: 1, runId, mode, problemId: fatePins.problemId, problemSha256: project.problemSha256,
+      version: 1, runId, mode, benchmark: project.benchmark, problemId: project.pins.problemId, problemSha256: project.problemSha256,
       frozenAt: new Date().toISOString(), scoreTimeoutMs, peers: [...peers.keys()].map(botId => ({ botId, candidate: byPeer.get(botId) ?? null })),
     };
     const bundlePath = join(directory, 'fate-frozen-candidates.json');

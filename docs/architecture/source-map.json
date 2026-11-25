@@ -1794,7 +1794,7 @@
       "chapters": [
         "docs/architecture/19-scalemas-environment.md"
       ],
-      "role": "Frozen first-pass host settings and model authorization inputs"
+      "role": "Frozen FATE host settings, benchmark selection and model authorization inputs"
     },
     {
       "path": "examples/scalemas-environment/fate-run.ts",
@@ -1803,7 +1803,7 @@
         "docs/architecture/19-scalemas-environment.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Autonomous FATE-M startup, time fencing, candidate freezing, grading and reports"
+      "role": "Autonomous FATE startup, time fencing, observed progress, candidate freezing and grading"
     },
     {
       "path": "examples/scalemas-environment/fate-service.ts",

@@ -29,24 +29,24 @@ Body SHA-256: `de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926`
 `scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}` +
                     (attempt ? `\nCORRECTION_ATTEMPT_${attempt}: ${correction}` : '');
 ````
-## FATE-M Profile in the no-library condition
+## FATE Profile in the no-library condition
 
-Body SHA-256: `bc37798eae1b901c52498c637a659bbbc53b14340dc1bdec4686c8635964f17a`
+Body SHA-256: `b3622ddf54fe32c48b1932b2d495b4f9deb0984b9a9a2d44e4c3b4386c27bc79`
 
 ````text
-Solve the same original FATE-M problem as the other independent peers. Read problem.lean and problem.txt.
+Solve the same original FATE problem as the other independent peers. Read problem.lean and problem.txt.
 The fate Service provides search_mathlib, check_lean and submit. Inspect schemas with swarm service view fate.
 Use check_lean to try a Lean proof term (usually beginning with by) against the original theorem. You have ten trials.
 Use swarm fate submit --input submission.json --request-id <fresh-id> to submit your current proof term, rationale, refs and finish flag.
 Set finish to true to end your work with this submission. Otherwise you may replace it later. Your final accepted submission is scored independently.
 Address references explicitly on separate rationale lines starting with the corresponding address and a space, followed by what it contributed.
 ````
-## FATE-M Profile in the shared and private conditions
+## FATE Profile in the shared and private conditions
 
-Body SHA-256: `6280061da2e9c12eaf12cfb642744470dc63eb3c7c71ec02e9e61028d12d2d1e`
+Body SHA-256: `e7574f272448e59cee198ceddcbe5a97650fa265dec9b128f56ab53554c8890a`
 
 ````text
-Solve the same original FATE-M problem as the other independent peers. Read problem.lean and problem.txt.
+Solve the same original FATE problem as the other independent peers. Read problem.lean and problem.txt.
 The fate Service provides search_mathlib, check_lean and submit. Inspect schemas with swarm service view fate.
 Use check_lean to try a Lean proof term (usually beginning with by) against the original theorem. You have ten trials.
 Use swarm fate submit --input submission.json --request-id <fresh-id> to submit your current proof term, rationale, refs and finish flag.
@@ -57,7 +57,7 @@ Use the library when useful. Search relevant work or visit up to eight known add
 Publish completed work with sub_task, artifact, rationale and refs. It can be an intermediate result. Explain each cited contribution on its own rationale line.
 References may point to existing visible messages or task resources. Search Mathlib by a returned mathlib: address to resolve it. Cite only work you actually use. Decide when to publish and when to submit your own proof.
 ````
-## FATE-M initial input
+## FATE initial input
 
 Every peer receives this same followUp through runInput after the fixed pool is ready. The host stages the frozen formal and informal problem as files. The informal file appends the problem resource address derived from the original declaration SHA-256. There is no periodic continuation or final scorer prompt.
 

@@ -9,18 +9,33 @@ import { leanSourcePolicyFinding } from '../../src/judge/lean-source-policy.js';
 
 const execFile = promisify(execFileCallback);
 const MAX_PROOF_BYTES = 128 * 1024;
-export const fatePins = Object.freeze({
-  fixtureCommit: '4eb33c8ccd0ff058b461cd763cc406509129743f',
-  datasetSha256: '39c13a39f82bb2f39fc42d0a0efb41c6b0ef16b8194c8c8e0ae281c5cf0276fb',
-  lockSha256: 'e6efb741f70db112585a49e84e3d04272a6dcf22549b97af072e0c90b08082b0',
+const toolchainPins = Object.freeze({
   leanVersion: '4.28.0',
   leanCommit: '7e01a1bf5c70fc6167d49c345d3bf80596e9a79b',
   mathlibRevision: '8f9d9cff6bd728b17a24e163c9402775d9e6a365',
+});
+export const fatePins = Object.freeze({
+  ...toolchainPins,
+  fixtureCommit: '4eb33c8ccd0ff058b461cd763cc406509129743f',
+  datasetSha256: '39c13a39f82bb2f39fc42d0a0efb41c6b0ef16b8194c8c8e0ae281c5cf0276fb',
+  lockSha256: 'e6efb741f70db112585a49e84e3d04272a6dcf22549b97af072e0c90b08082b0',
   problemId: 1,
   theorem: 'prod_card_eq_card_pow',
 });
+const fixtures = {
+  'FATE-M': fatePins,
+  'FATE-H': Object.freeze({
+    ...toolchainPins,
+    fixtureCommit: '17967b3118082adfba7c5a5fc03b5f4a53717b59',
+    datasetSha256: '21fb5ab61c037858a3b267509d492a98194eb996581662e5e7d2ed461bfead90',
+    lockSha256: 'ceef049390de26dee9aa9502397d18cc8442dbe067c3c3f30880323459c47c59',
+    problemId: 2,
+    theorem: 'not_isSimpleGroup_of_card_eq_56',
+  }),
+};
+export type FateBenchmark = keyof typeof fixtures;
 const placeholder = /:= by\s+sorry\s*$/u;
-const targetDeclaration = new RegExp(`^theorem ${fatePins.theorem}(?=\\s)`, 'mu');
+const targetDeclaration = (theorem: string) => new RegExp(`^theorem ${theorem}(?=\\s)`, 'mu');
 const guardPath = fileURLToPath(new URL('./FateProofGuard.lean', import.meta.url));
 const verifierPath = fileURLToPath(new URL('./VerifyFateProof.lean', import.meta.url));
 const policyWords = /\b(?:sorry|sorryAx|admit|axiom|unsafe|run_tac|run_elab)\b/u;
@@ -30,30 +45,33 @@ export function sha256(value: string | Uint8Array) {
   return createHash('sha256').update(value).digest('hex');
 }
 
-type ProjectOptions = { projectRoot: string; leanRoot: string; signal?: AbortSignal };
+type ProjectOptions = { projectRoot: string; leanRoot: string; benchmark?: FateBenchmark; signal?: AbortSignal };
 type LockedPackage = { name: string; rev: string };
 
-export async function loadFateProject({ projectRoot, leanRoot, signal }: ProjectOptions) {
+export async function loadFateProject({ projectRoot, leanRoot, benchmark = 'FATE-M', signal }: ProjectOptions) {
+  if (!Object.hasOwn(fixtures, benchmark)) throw new TypeError('Select the frozen FATE-M or FATE-H problem');
+  const pins = fixtures[benchmark];
   signal?.throwIfAborted();
   const root = await realpath(resolve(projectRoot));
   const toolchain = await realpath(resolve(leanRoot));
   const [data, lock, version] = await Promise.all([
-    readFile(join(root, 'FATE-M.json'), { signal }), readFile(join(root, 'lake-manifest.json'), { signal }),
+    readFile(join(root, `${benchmark}.json`), { signal }), readFile(join(root, 'lake-manifest.json'), { signal }),
     readFile(join(root, 'lean-toolchain'), { encoding: 'utf8', signal }),
   ]);
-  if (sha256(data) !== fatePins.datasetSha256 || sha256(lock) !== fatePins.lockSha256 ||
-      version.trim() !== `leanprover/lean4:v${fatePins.leanVersion}`) {
-    throw new Error('FATE-M files differ from the frozen upstream fixture');
+  if (sha256(data) !== pins.datasetSha256 || sha256(lock) !== pins.lockSha256 ||
+      version.trim() !== `leanprover/lean4:v${pins.leanVersion}`) {
+    throw new Error('FATE files differ from the frozen upstream fixture');
   }
   const { stdout } = await execFile(join(toolchain, 'bin', 'lean'), ['--version'], { timeout: 10_000, signal });
-  if (!stdout.includes(`version ${fatePins.leanVersion},`) || !stdout.includes(`commit ${fatePins.leanCommit},`)) {
-    throw new Error('Lean binary does not match the pinned FATE-M version and commit');
+  if (!stdout.includes(`version ${pins.leanVersion},`) || !stdout.includes(`commit ${pins.leanCommit},`)) {
+    throw new Error('Lean binary does not match the pinned FATE version and commit');
   }
-  const row: { id: number; formal_statement: string; informal_statement: string } = JSON.parse(data.toString())[0];
-  if (row.id !== fatePins.problemId || !targetDeclaration.test(row.formal_statement) || !placeholder.test(row.formal_statement) ||
+  const rows: { id: number; formal_statement: string; informal_statement: string }[] = JSON.parse(data.toString());
+  const row = rows.find(row => row.id === pins.problemId);
+  if (!row || !targetDeclaration(pins.theorem).test(row.formal_statement) || !placeholder.test(row.formal_statement) ||
       !row.formal_statement.startsWith('import Mathlib\n')) throw new Error('Unexpected pinned problem declaration');
   const packages: LockedPackage[] = JSON.parse(lock.toString()).packages;
-  if (packages.find(pkg => pkg.name === 'mathlib')?.rev !== fatePins.mathlibRevision) throw new Error('Mathlib revision differs from the FATE-M pins');
+  if (packages.find(pkg => pkg.name === 'mathlib')?.rev !== pins.mathlibRevision) throw new Error('Mathlib revision differs from the FATE pins');
   const libraryPaths = await Promise.all(packages.map(async ({ name, rev }) => {
     const path = join(root, '.lake', 'packages', name);
     const [head, status] = await Promise.all([
@@ -69,6 +87,7 @@ export async function loadFateProject({ projectRoot, leanRoot, signal }: Project
     }))?.isDirectory() ? library : null;
   }));
   return Object.freeze({
+    benchmark, pins,
     leanRoot: toolchain, libraries: Object.freeze(libraryPaths.filter(path => path !== null)),
     mathlibRoot: join(root, '.lake', 'packages', 'mathlib', 'Mathlib'),
     formal: row.formal_statement, informal: row.informal_statement, problemSha256: sha256(row.formal_statement),
@@ -113,7 +132,8 @@ export async function createFateChecker(project: FateProject, signal?: AbortSign
   try {
     await writeFile(join(trusted, 'FateProofGuard.lean'), await readFile(guardPath));
     await writeFile(join(trusted, 'VerifyFateProof.lean'), await readFile(verifierPath));
-    const original = project.formal.replace('import Mathlib\n', '').replace(targetDeclaration, `axiom ${fatePins.theorem}`).replace(placeholder, '');
+    const theorem = project.pins.theorem;
+    const original = project.formal.replace('import Mathlib\n', '').replace(targetDeclaration(theorem), `axiom ${theorem}`).replace(placeholder, '');
     await writeFile(join(trusted, 'FateExpected.lean'), `import Mathlib\n${axiomPrefix}\n${original}\nend FateExpected\n`);
     const writable = { ...guard, writable: true };
     for (const module of ['FateProofGuard', 'FateExpected']) {
@@ -160,7 +180,7 @@ export async function createFateChecker(project: FateProject, signal?: AbortSign
         if (performance.now() - start >= timeoutMs) return result('timeout', 'LEAN_TIMEOUT');
         try {
           const { stdout } = await isolatedLean(project, [guard, candidate],
-            ['--run', '/trusted/VerifyFateProof.lean', fatePins.theorem], { signal, timeoutMs: budget() });
+            ['--run', '/trusted/VerifyFateProof.lean', project.pins.theorem], { signal, timeoutMs: budget() });
           return stdout.trim() === 'fate-proof-verified' ? result('passed', 'VERIFIED') : result('checker_error', 'VERIFIER_PROTOCOL');
         } catch (caught) {
           const error = caught as { stderr?: string; stdout?: string; killed?: boolean; code?: number };

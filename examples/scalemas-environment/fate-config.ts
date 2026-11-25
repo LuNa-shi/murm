@@ -5,6 +5,9 @@ function required(name: string) {
 }
 const host = process.env.SWARMENV_SCALEMAS_HOST ?? '172.17.0.1';
 const token = process.env.SWARMENV_SCALEMAS_MODEL_TOKEN;
+const benchmark = process.env.SWARMENV_FATE_BENCHMARK ?? 'FATE-M';
+const hard = benchmark === 'FATE-H';
+const workTimeoutMs = hard ? 2_700_000 : 1_800_000;
 
 export default {
   runId: required('SWARMENV_SCALEMAS_RUN'),
@@ -12,8 +15,10 @@ export default {
   outputDir: process.env.SWARMENV_SCALEMAS_OUTPUT ?? './experiments/scalemas-fate',
   model: 'default',
   poolSize: 4,
-  workTimeoutMs: 1_800_000,
+  workTimeoutMs,
+  checkpointAfterMs: hard ? 1_800_000 : undefined,
   fate: {
+    benchmark,
     projectRoot: required('SWARMENV_FATE_PROJECT'),
     leanRoot: required('SWARMENV_FATE_LEAN'),
     mode: process.env.SWARMENV_FATE_MODE ?? 'shared',
@@ -26,7 +31,7 @@ export default {
       resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000, timeoutSeconds: 3600,
     },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-    modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 1_800_000, maxOutputTokens: null },
+    modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: workTimeoutMs, maxOutputTokens: null },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: {
       url: required('SWARMENV_SCALEMAS_MODEL_URL'), headers: token ? { authorization: `Bearer ${token}` } : {},
     } } },

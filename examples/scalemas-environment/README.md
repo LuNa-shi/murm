@@ -74,4 +74,16 @@ node "$example/main.js" --fate-rescore "$SWARMENV_FATE_PROJECT" "$SWARMENV_FATE_
 
 For a single condition, set `SWARMENV_FATE_MODE` to `shared`, `private` or `none`, then pass the configuration file directly. The matrix uses an independent directory for each condition, in that order, and stops launching groups if a prior group's cleanup is pending. A run ID cannot overwrite earlier evidence. Preparation and rescoring make no model calls. Formal runs require the repository's frozen experiment registration.
 
-`fate-result.json` records task/peer state, score, end reasons, model usage, Core Trace and cleanup, and points to the frozen candidate bundle. A final candidate is a Lean term such as a `by` proof, with any helper lemmas declared locally inside the proof. Sources, candidate contents, peer journals and raw tool results are private run evidence. See the [architecture chapter](../../docs/architecture/19-scalemas-environment.md#fate-m-paper-alignment-configuration) for the contracts and the [Phase 0005 design](../../docs/phases/0005-core-environment/05-scalemas-fate.md) for acceptance.
+`fate-result.json` records task/peer state, score, end reasons, model usage, Core Trace and cleanup, and points to the frozen candidate bundle. A final candidate is a Lean term such as a `by` proof, with any helper lemmas declared locally inside the proof. Sources, candidate contents, peer journals and raw tool results are private run evidence. See the [architecture chapter](../../docs/architecture/19-scalemas-environment.md#fate-paper-alignment-configurations) for the contracts and the [Phase 0005 design](../../docs/phases/0005-core-environment/05-scalemas-fate.md) for acceptance.
+
+## FATE-H with K3
+
+Set `SWARMENV_FATE_BENCHMARK=FATE-H` and `SWARMENV_FATE_PROJECT` to the prepared workspace for FATE-H #2. Freeze [FATE-H at `17967b3`](https://github.com/frenzymath/FATE-H/tree/17967b3118082adfba7c5a5fc03b5f4a53717b59) and run `lake exe cache get` in that workspace. It uses the same Lean 4.28.0 and dependency source revisions as FATE-M. Pass `FATE-H` after the project and toolchain paths in `--fate-prepare`. A frozen bundle selects its own benchmark during rescoring, and the supplied project must match it.
+
+```sh
+export SWARMENV_FATE_BENCHMARK=FATE-H
+node "$example/main.js" --fate-prepare "$SWARMENV_FATE_PROJECT" "$SWARMENV_FATE_LEAN" FATE-H
+node "$example/main.js" --fate-matrix "$example/fate-config.js"
+```
+
+This configuration gives four peers up to 45 minutes of work and samples progress after 30 minutes. `fate-work-checkpoint.json` is host-only and records timestamps, peer state, candidate digests and tool/substrate evidence if the group is still working. If the group ends early, `fate-result.json` records `not_reached` and its actual closeout. Checkpoint capture does not send a wake or change the work deadline.

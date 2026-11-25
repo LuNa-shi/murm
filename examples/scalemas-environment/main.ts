@@ -6,7 +6,7 @@ export async function runScaleMASExample(config: any, signal: any) {
   if (config.fate !== undefined) {
     const selected = config.backend.models[config.model ?? 'default'];
     if (selected?.provider !== 'kimi_proxy' || selected.model !== 'k3') {
-      throw Object.assign(new Error('The FATE-M example selects kimi_proxy/k3'), { code: 'FATE_MODEL_INVALID' });
+      throw Object.assign(new Error('The FATE example selects kimi_proxy/k3'), { code: 'FATE_MODEL_INVALID' });
     }
     const { runFateScaleMAS } = await import('./fate-run.js');
     return runFateScaleMAS({ ...config, backend: createPiOpenSandboxBackend({
@@ -17,7 +17,8 @@ export async function runScaleMASExample(config: any, signal: any) {
   return runScaleMAS({ ...config, backend: createPiOpenSandboxBackend(config.backend) }, signal);
 }
 
-const failed = (report: any) => report.businessFailure || report.cleanupFailure || report.reportSaveFailure || report.scoreFailure;
+const failed = (report: any) => report.businessFailure || report.cleanupFailure || report.reportSaveFailure ||
+  report.scoreFailure || report.checkpoint?.state === 'failed';
 
 async function runMatrix(config: any, signal: AbortSignal) {
   if (!config.fate || typeof config.fate !== 'object' || typeof config.runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,55}$/.test(config.runId)) {
@@ -35,7 +36,7 @@ async function runMatrix(config: any, signal: AbortSignal) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const usage = 'node main.js <config.mjs>\nnode main.js --result <run-directory> --runtime-id <expected-id>\nnode main.js --fate-prepare <project-root> <lean-root>\nnode main.js --fate-matrix <config.mjs>\nnode main.js --fate-rescore <project-root> <lean-root> <frozen-bundle.json>';
+  const usage = 'node main.js <config.mjs>\nnode main.js --result <run-directory> --runtime-id <expected-id>\nnode main.js --fate-prepare <project-root> <lean-root> [FATE-M|FATE-H]\nnode main.js --fate-matrix <config.mjs>\nnode main.js --fate-rescore <project-root> <lean-root> <frozen-bundle.json>';
   const args = process.argv.slice(2);
   const lifetime: any = new AbortController();
   const stop = () => lifetime.abort();
@@ -49,9 +50,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const result = await readEnvironmentResult({ runDirectory: args[1], runtimeId: args[3] });
       process.stdout.write(`${JSON.stringify(result)}\n`);
       process.exitCode = result.environment.state === 'read' && result.core.state === 'read' ? 0 : 1;
-    } else if (args.length === 3 && args[0] === '--fate-prepare') {
+    } else if (args[0] === '--fate-prepare' && (args.length === 3 ||
+        (args.length === 4 && (args[3] === 'FATE-M' || args[3] === 'FATE-H')))) {
       const { prepareFate } = await import('./fate-run.js');
-      const prepared = await prepareFate({ projectRoot: args[1], leanRoot: args[2] });
+      const prepared = await prepareFate({ projectRoot: args[1], leanRoot: args[2], benchmark: args[3] === 'FATE-H' ? 'FATE-H' : 'FATE-M' });
       process.stdout.write(`${JSON.stringify(prepared)}\n`);
     } else if (args.length === 4 && args[0] === '--fate-rescore') {
       const { rescoreFate } = await import('./fate-run.js');

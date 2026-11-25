@@ -121,7 +121,7 @@ test('installed FATE-M peer adopts exact anonymous bytes after the producer is p
   const configuration = join(installed.directory, 'fate-native.mjs');
   await writeFile(configuration, `export default ${JSON.stringify({
     backend, fate: { projectRoot: process.env.SWARMENV_FATE_TEST_PROJECT, leanRoot: process.env.SWARMENV_FATE_TEST_LEAN, mode: 'shared' },
-    runId, image, outputDir: evidenceRoot, poolSize: 2, workTimeoutMs: 120_000, closeTimeoutMs: 30_000,
+    runId, image, outputDir: evidenceRoot, poolSize: 2, workTimeoutMs: 120_000, closeTimeoutMs: 30_000, checkpointAfterMs: 1_000,
   })}\n`, { mode: 0o600 });
   const main = join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/scalemas-environment/main.js');
   await execute(process.execPath, [main, configuration], { cwd: installed.directory, env: installed.env, timeout: 180_000, maxBuffer: 4 * 1024 ** 2 });
@@ -132,6 +132,12 @@ test('installed FATE-M peer adopts exact anonymous bytes after the producer is p
   assert.equal(result.cleanup.cleanup, 'complete');
   assert.equal(result.scoring.teamSuccess, true);
   assert.ok(result.peers.some(peer => peer.endReason === 'submitted'));
+  assert.equal(result.checkpoint.state, 'recorded');
+  const checkpoint = JSON.parse(await readFile(join(runPath, 'fate-work-checkpoint.json'), 'utf8'));
+  assert.equal(checkpoint.runtimeId, result.runtimeId);
+  assert.equal(Date.parse(checkpoint.scheduledAt) - Date.parse(result.startedAt), 1_000);
+  assert.ok(Date.parse(checkpoint.capturedAt) >= Date.parse(checkpoint.scheduledAt));
+  assert.ok(checkpoint.peers.some(peer => peer.active));
   assert.deepEqual(consumerAdoption.original, producerPublication);
   assert.equal(consumerAdoption.original.artifact, artifact);
   assert.ok(consumerAdoption.successor.refs.includes(producerPublication.address));
