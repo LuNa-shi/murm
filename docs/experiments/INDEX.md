@@ -8,6 +8,10 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261125-10` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **SETTLED · 43m54s Subagents delivery · verified child adoption and cleanup · 84.37% official score** | `67c21218` | [ProgramBench fd acceptance](EXP-20261125-10-issue199-fd.md) |
+| `EXP-20261125-06` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **PASS · Pastel task, verified child adoption and cleanup · Root finished in 5m59.736s** | `67c21218` | [Pastel acceptance with early child handoffs](EXP-20261125-06-issue199-pastel.md) |
+| `EXP-20261125-05` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **SETTLED · Deadline · autonomous parallel work · no usable handoff or complete delivery** | `3e4d2a3` | [Pastel acceptance with early delegation](EXP-20261125-05-issue199-pastel.md) |
+| `EXP-20261125-04` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **SETTLED · Deadline without final reply or delegation · exported files passed offline check** | `ac0019e` | [Pastel acceptance through the ordinary Subagents example](EXP-20261125-04-issue199-pastel.md) |
 | `EXP-20261125-01` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Subagents · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
 | `EXP-20261125-02` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Flat · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
 | `EXP-20261125-03` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Agensh · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |

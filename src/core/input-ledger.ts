@@ -3,6 +3,7 @@ import type { InputMode } from './types.js';
 interface InputParameters {
   input: string;
   mode: InputMode;
+  wakeIfIdle: boolean;
   source?: string;
   steeringMode?: 'all' | 'one-at-a-time';
 }
@@ -14,7 +15,7 @@ export function createInputLedger<Request>(runtimeId: string) {
   const key = (caller: string, target: string, requestId: string) => JSON.stringify([runtimeId, caller, 'send', target, requestId]);
   function get(caller: string, target: string, requestId: string, parameters: InputParameters) {
     const entry = entries.get(key(caller, target, requestId));
-    if (entry && (entry.input !== parameters.input || entry.mode !== parameters.mode ||
+    if (entry && (entry.input !== parameters.input || entry.mode !== parameters.mode || entry.wakeIfIdle !== parameters.wakeIfIdle ||
         entry.source !== parameters.source || entry.steeringMode !== parameters.steeringMode)) {
       throw Object.assign(new Error('send requestId already has different parameters'), { code: 'CONFLICT' });
     }

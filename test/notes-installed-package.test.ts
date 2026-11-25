@@ -196,7 +196,7 @@ test('candidate package admits only declared distribution roots and retains exec
     'dist/scripts/swarm.js', 'dist/scripts/opensandbox-agent-worker.js',
     'services/opensandbox-agent/pi-models.json', 'dist/src/environments/shared/run-report.js',
     'dist/examples/scalemas-environment/main.js', 'dist/examples/scalemas-environment/config.js',
-    'dist/examples/notes-environment/main.js', 'dist/examples/subagents-environment/controller.js',
+    'dist/examples/notes-environment/main.js', 'dist/test-support/subagents/communication-fixture-controller.js',
     'dist/examples/agensh-environment/config.js', 'examples/agensh-environment/README.md',
     'docs/architecture/source-map.json', 'dist/test/fixtures/foreground-host-configuration.js',
   ];
