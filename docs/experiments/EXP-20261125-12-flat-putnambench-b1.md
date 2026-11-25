@@ -1,6 +1,6 @@
 # EXP-20261125-12 · Flat PutnamBench 2025 B1
 
-Status · REGISTERED
+Status · SETTLED · Shared deadline · Final FAIL
 
 Repeat of [EXP-20261125-11](EXP-20261125-11-flat-putnambench-b1.md) and follow-up to [EXP-20261125-10](EXP-20261125-10-flat-putnambench-b1.md). EXP-10 passed the original theorem and applied peer revisions, but its final proof was already complete before the applies. Its admitted Material followUps stayed outside subsequent model inputs. EXP-11 added model-chosen checkpoints. All active Bots continued tool work without yielding a checkpoint and the run stopped before its first saved revision. EXP-12 configures Material notifications to use the native steering queue and updates the researcher Profile to ask for early Lean diagnostics and targeted Mathlib search. It evaluates this combination on the same original task. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
@@ -45,3 +45,29 @@ node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_
 Track first-cohort Task formation, first actual file save and Judge diagnostic, separately importable producer files, directed Material publication and authenticated routing. For each directed delivery, reconcile the durable recipient record, Core mode and admission disposition, next eligible native Pi model input and processing feedback. Track actual source adoption in the recipient's existing Session and Execution, its subsequent save, checked merge, fixed final main and the original theorem's proof dependencies. Record Mission and proof adoption separately.
 
 Stop on trusted Mission acceptance, the common deadline or a confirmed workflow deviation. Stop early if every first-cohort selection deadline passes without a proposal or take, the provider rejects the registered settings, the selection override leaks into work, or a Worker, Service, checker or cleanup defect is confirmed. If an eligible admitted Material remains outside the next eligible model input after Pi completes a normal tool batch, verify the admission and request chronology and debug the boundary. A pending response, one invalid call or an ordinary source conflict is not sufficient evidence of a defect. Pin the settled candidate and record cleanup on every exit.
+
+## Results
+
+- The shared window opened at `12:03:41.645 UTC` and closed after `3,600 s`. Three Bots proposed and took work in the first 29 seconds. A fourth missed selection, closed and was replaced. Four Tasks and four Executions formed. Peak concurrency was four.
+- Four Bots produced 50 post-seed immutable saves and received 48 settled Judge results. These comprised 34 `FAIL`, nine `PASS` and five `ERROR`. Error receipts included the checker diagnostic-retention bound, an original placeholder and Lean resource limits. The run also recorded 107 successful pinned Mathlib queries.
+- The separate helper module at `0.18` passed at `12:44:09 UTC` and contained seven public declarations with no placeholder. Its successor `0.32` passed a module check at `12:50:06 UTC`. At `0.35`, the original path contained two auxiliary declarations. The fixed original target declaration was absent from that version. There was no Mission submission.
+- No Bot published or linked a Material, called apply, or advanced main. The four admitted handoff warnings are a separate type. The formal trial therefore provided no observation of the new Material delivery mode. Frozen main remained seed `0.1`, commit `2bc07bedb01f7727ba3ea1c6e45f4bed6b1ae411`, tree `15cdae59fe9ba1dada06eb14959403ab364ac8bd`. Independent final assessment `treecheck:9fb7764f-9349-4136-9400-db831a5fdba8` returned `FAIL` for that tree.
+- The gateway recorded 238 K3 attempts, with 235 metered completions totaling 24,183,468 input and 567,518 output tokens. Three interrupted attempts lack metered usage. The actual trace shows 20 selection requests at `low`, 210 work requests at `medium` and eight closeout attempts at `medium`. No request started after the common cutoff. All five Bots closed and released their slots. The cleanup audit found zero Worker containers and no pending checker or merge.
+
+Each of the four Tasks requested a complete proof of the same theorem and was taken by its own proposer. No Task declared a dependency. All four takes pinned `0.1` and provided zero input Materials. Six of the seven successful Task listings explicitly queried `ready`. The unfiltered listing was in the opening burst, before any Task existed. The replacement Bot queried `ready` while three Tasks were already running, then created a fourth full-proof Task. No Bot submitted a Task finish. Every model request retained one user input, which was the discovery input. The four handoff warnings had controller admission receipts and stayed absent from the recorded K3 inputs.
+
+| Bot | Task and Execution | Observed work |
+|---|---|---|
+| `ccde66ef` | `41326f50` and `1c4655c5` | 18 saves and 19 diagnostics. The first compiling saves were scratch checks. |
+| `862405ef` | `a6386b9d` and `aea08e55` | 14 saves and 13 diagnostics. Separate reusable module passed at `0.18` and `0.32`. |
+| `19e54f51` | `24c14de9` and `e7f55b33` | 8 saves and 6 diagnostics. No pass. |
+| `c8ea0230` | Unclaimed | Reached the selection deadline without taking work. |
+| `031d0e8c` | `5b7cc317` and `e153eefd` | Replacement. 10 saves and 10 diagnostics. Two auxiliary declarations compiled at `0.35`. |
+
+## Analysis
+
+The run had four autonomous workers but no decomposition of the Mission into distinct Task contracts. The ready queue hid claimed work from the actual discovery calls. Multiple local edits and diagnostics followed, but none crossed the notification or revision-adoption boundary. Keeping private directories pinned to their own revisions meant other researchers needed to find a saved revision, receive a Material, or read an updated main before adopting work. Main never advanced. One checked-result continuation took about 398 seconds and next requested a Mathlib search. Ten completed work responses took more than five minutes and the longest took about 1,249 seconds. Longer reasoning consumed time that could have been spent on file and Tool operations. The absence of distinct work and publication was already visible independently of that latency.
+
+## Next steps
+
+Further runs are on hold during owner review of Task discovery, division of work and the handoff flow. Keep strict original-theorem acceptance and an actual cross-Bot proof dependency as the combined pass condition.
