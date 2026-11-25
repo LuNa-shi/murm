@@ -9,7 +9,7 @@ Repeat of [EXP-20261125-11](EXP-20261125-11-flat-putnambench-b1.md) and follow-u
 | Item | Fixed value or reference |
 |---|---|
 | Parent Issue, design and implementation | [#200](https://github.com/LuNa-shi/SwarmEnv/issues/200), [#212](https://github.com/LuNa-shi/SwarmEnv/pull/212), [#213](https://github.com/LuNa-shi/SwarmEnv/pull/213). Main design commit `68eb83e0550109924c56035b4e90077deb399228`, design Git blob `0db49d8de9a83426fe374aa40b7800089622e230`. |
-| Tested implementation | `e063e2ff374d86ac0ee0e46f1ebb926c15f42d59`. Worker image `sha256:64a03e974b61c94fea7ce72ef31173fdc39ee7e829020e287754f3eca92bf10d`, with matching revision label. |
+| Tested implementation | `87f8268b543718ab3062d94e19a8672907033a8c`. Worker image `sha256:7011b3a199dc31c0bcb3b439db511cb4ab463509a89826db6d4f776f44bb03d7`, with matching revision label. |
 | Comparison | Original Flat `fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e`, migration baseline `ce3e503ba534d2b9cf42423aa0cdcdcc80766828` and immediate comparisons EXP-10 and EXP-11. EXP-10 pins its proof and adoption evidence separately. |
 | Original fixture | PutnamBench `a635813f5edf297d928f9bd5ef8324a26bdde09c`, `lean4/src/putnam_2025_b1.lean`, target `putnam_2025_b1`, SHA-256 `80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7`. Empty Task pool. Bots receive the original statement and public run state. Reference solutions, preassigned Tasks and prior-run artifacts stay outside the run. |
 | Lean and verifier | Lean 4.33.1, Mathlib `0df444a360eaa60ab8c11dca51a86af692955474`, artifact lock `6a6b65cb5d0ae4a91d5b5c72e41da7c579c01a26ed0ea2614e610783ea5d0d4a`, `lean-final-tree` version `1`. 300000 ms per checker process budget, 4 GiB memory, 0 swap, 64 tasks, 200% CPU. |
@@ -27,15 +27,17 @@ Repeat of [EXP-20261125-11](EXP-20261125-11-flat-putnambench-b1.md) and follow-u
 | Flat notification mode, input identity and fencing | `src/environments/flat/controller.ts` | `e0aab4a720b465adf8467a04af7896b2447230c0069e2e180102973217265fb5` |
 | Flat Profile, identity grants and service selection | `src/environments/flat/environment.ts` | `a90e3a2cf4d0b013fbeb637afb4ce14d9d8a5e4876ee4e2f9c74d2f82de87ca0` |
 | Service schema reference | `docs/architecture/10-service-api-reference.md` | `832a9daff65c27f49d431ff047b5afa32cecda3e5e77cafd87e3cd6b73782cb3` |
-| Model, runtime, isolation and launcher entry | `benchmarks/putnambench-flat/main.ts` | `8e74407672737f9b4881e7e557b7ba23e733b3abb04840597e6323be242f238b` |
+| Model, runtime, isolation and launcher entry | `benchmarks/putnambench-flat/main.ts` | `39680088b260e27797695db6ec33c96736deea26b04f325ec97507e68ae29d3a` |
 
 The generated researcher Profile and autonomous discovery template have respective body digests `4cb2d88fe307d5e6f03a8957098cb83e479bd9207855c9aa8cf2d0db1851c186` and `dcdf147e66b54731757e9a3ab5ee4a8847755ab2a16a9689bfd326da865a4d81`.
+
+The launcher input is typed before forming the trusted gateway options. The same argument values remain valid. This registration updates the tested commit and image after the benchmark-only TypeScript check, before claiming the run ID.
 
 ## Launch command
 
 ```sh
 umask 022
-node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_ROOT EXP-20261125-12 sha256:64a03e974b61c94fea7ce72ef31173fdc39ee7e829020e287754f3eca92bf10d 3600 600 low
+node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_ROOT EXP-20261125-12 sha256:7011b3a199dc31c0bcb3b439db511cb4ab463509a89826db6d4f776f44bb03d7 3600 600 low
 ```
 
 ## Live observations and stop criteria
