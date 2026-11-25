@@ -39,15 +39,15 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "sha256": "c42cd885c419e3e792e7727adc061f6935494c21b4029eee1361fd71d7b06570"
+      "sha256": "537f77089095276f2e82a6407f0508e44bd2cdc0cc0300fbd53ca8b25ddf6e3d"
     },
     {
       "path": "src/environments/flat/environment.ts",
-      "sha256": "68a8160f8351997916b814c22856c2dc6fae71f7bff55c0d3e061795f6a75f93"
+      "sha256": "a90e3a2cf4d0b013fbeb637afb4ce14d9d8a5e4876ee4e2f9c74d2f82de87ca0"
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "e61169c482a44c74a35a2cba8210b47fa1fd8868c60406a48dbc81ce70515361"
+      "sha256": "8f90185292b518cba73663a20456ae9e925f6bf53444d4d131cf4bc052d7f494"
     },
     {
       "path": "examples/subagents-environment/main.ts",
@@ -302,6 +302,18 @@
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
     },
     {
+      "path": "src/environments/flat/controller.ts",
+      "anchor": "export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE = `",
+      "line": 8,
+      "sha256": "e0bd2dfc2680afddd596bb035c9366e8dd50c076fddfd628ee92c6d831a2b823"
+    },
+    {
+      "path": "src/environments/flat/controller.ts",
+      "anchor": "return `Mission ",
+      "line": 14,
+      "sha256": "3ba07752364313cf01952793024f5162defd9885b526070ff06cc5d809d26cf9"
+    },
+    {
       "path": "src/environments/flat/environment.ts",
       "anchor": "prompt='",
       "line": 16,
@@ -316,20 +328,14 @@
     {
       "path": "src/environments/flat/controller.ts",
       "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
-      "line": 10,
+      "line": 25,
       "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
-    },
-    {
-      "path": "src/environments/flat/controller.ts",
-      "anchor": "export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE='",
-      "line": 8,
-      "sha256": "cb3e314ef13e951603bc969fd6e3423b1234aea9a7d4b9802f065e806dd5569f"
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
       "anchor": "const prompt = `",
       "line": 21,
-      "sha256": "a7ac5580651eab5c88f4f0b0c2c1b4ef6c65b1326f3ba84dbd88ef8b166b5be4"
+      "sha256": "e413390a531428c818d966111b64c20faef59e12b6476b05427ba0e20f9ee7c8"
     }
   ],
   "prompt_send_sites": [
@@ -340,7 +346,7 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "line": 106,
+      "line": 132,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
@@ -463,7 +469,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "143495e6fc7d1383d2da60db7eb873ec4df50efc1e635b956c5c8d05e624d27c"
+      "sha256": "099079a9fc63f9153d928f888f71275985e2c2fc4d7d04e26035a0301113726e"
     }
   ]
 }

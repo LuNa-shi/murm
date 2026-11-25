@@ -187,6 +187,9 @@ leadHelperDoc += block('Staged corrective input composition and send', between('
 output('08-lead-helper-environment.md', leadHelperDoc);
 const flatControllerPath = 'src/environments/flat/controller.ts';
 const flatEnvironmentPath = 'src/environments/flat/environment.ts';
+const autonomousDiscoveryBody = between(flatControllerPath, 'export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE = `', '`;');
+const autonomousDiscovery = ('Mission ' + between(flatControllerPath, 'return `Mission ', '`;'))
+  .replace('${FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}', autonomousDiscoveryBody);
 const sampleCloseout = { at: Date.parse('2026-01-01T00:00:30.000Z'), workspaceSaveAvailable: false };
 const warningDeadline = '2026-01-01T00:01:00.000Z';
 output('08-flat-environment.md', header('Flat discovery and continuation prompts',
@@ -195,8 +198,8 @@ output('08-flat-environment.md', header('Flat discovery and continuation prompts
   + block('Profile suffix when live Workspace save is unavailable', between(flatEnvironmentPath, "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '", "';"),
     'The host appends this suffix after two newlines to the default or host-supplied Profile prompt when it has neither a Core nor an injected live capture binding.')
   + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
-  + block('Autonomous discovery input', between(flatControllerPath, "export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE='", "';"),
-    'Selected by the Flat host when autonomous Task creation is enabled. The controller delivers it after the initial workers are ready.')
+  + block('Autonomous discovery input', autonomousDiscovery,
+    'When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Bot after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.')
   + block('PutnamBench researcher Profile', between('benchmarks/putnambench-flat/run.ts', 'const prompt = `', '`;'),
     'The PutnamBench runner supplies this Profile text to the normal Flat host. Core stages the Profile and native Pi composes the system input. The original fixture is a locked public Workspace file.')
   + block('Default ordinary continuation with a snapshot binding', BOT_CONTINUATION_MESSAGE)

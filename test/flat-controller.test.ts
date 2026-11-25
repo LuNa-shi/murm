@@ -627,6 +627,23 @@ test('optional host admission sees the complete four-slot team before any discov
   assert.equal(admitted, true); assert.equal(f.controller.snapshot().inputs.length, 4);
 });
 
+test('autonomous discovery sends original selection guidance with the live run and Bot deadlines', async t => {
+  const runDeadline = Date.now() + 35000;
+  let admitted = false;
+  const f = await fixture(t, { autonomousTasks: true, selectionMs: 15000,
+    activeDeadline: () => admitted ? runDeadline : runDeadline + 10000,
+    beforeInitialDispatch() { admitted = true; } });
+  const bot = f.tasks.getBot(f.bot.botId);
+  const sent = [...transport.submissions.values()].at(-1).input;
+  for (const value of [bot.bot_id, bot.selection_deadline, bot.hard_deadline, new Date(runDeadline).toISOString(), f.tasks.getMission(f.missionId).goal]) {
+    assert.ok(sent.includes(value), 'Discovery input should include current public Mission and Bot timing');
+  }
+  assert.match(sent, /swarm task list --state ready/);
+  assert.match(sent, /swarm task create --help/);
+  assert.match(sent, /bounded investigation/);
+  assert.match(sent, /remain in this Session/);
+});
+
 test('failed pre-discovery host admission sends no model input', async t => {
   await assert.rejects(fixture(t, { capacity: 4, beforeInitialDispatch() {
     throw Object.assign(new Error('Actual lifetime unavailable'), { code: 'HOUR_LIFETIME_UNCONFIRMED' });

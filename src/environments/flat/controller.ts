@@ -5,7 +5,22 @@ import { stableStringify } from '../../protocol/envelope.js';
 import { createFlatBotCoordinator } from './bot-coordinator.js';
 import { executionEnvelope } from './prepare-inputs.js';
 
-export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE='Read the Mission goal, public Tasks, Materials and Workspace. Propose concrete missing work with swarm task create when useful, then take suitable work. Keep this Session after take. One Bot owns one Execution and exits after finish.';
+export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE = `Find work before the selection deadline. Start with swarm task list --state ready and inspect relevant public files and Materials using swarm workspace files --at main and swarm material list. Use swarm service list to see the Services available to you. You can read the public Workspace before take; your private project is prepared at take.
+Prefer a suitable existing Task. Read its contract with swarm task view and take it by ID with swarm task take. If the Mission is open and nothing suitable is ready, use swarm task create to propose a concrete missing deliverable. See swarm task create --help for an executable example. A bounded investigation with a checkable output is enough to propose work before you have a complete solution. Refresh the relevant Task list before creating or taking work so you can reuse new work and avoid duplicates. An empty list is a reason to propose work, not to exit.
+An unbound Bot can propose multiple independent Tasks and can revise or cancel unowned work with observed versions. An active Bot can propose further work while keeping its Task. Proposals need a short summary, concrete gap, expected output, acceptance conditions and an advisory high, medium, or low priority. Someone else can take your proposal. If a take loses a race, check the Task list again within the remaining time.
+On successful take, remain in this Session with your one Execution. Do the detailed investigation and editing there. Finish the Task with its actual outcome and end this Bot. Stop expanding work after Mission acceptance or stop.`;
+
+export function buildFlatAutonomousDiscoveryMessage({ mission, bot, runDeadline }: any) {
+  return `Mission ${mission.mission_id}
+Goal: ${mission.goal}
+Acceptance: ${JSON.stringify(mission.acceptance_conditions)}
+Bot: ${bot.bot_id}
+Selection deadline: ${bot.selection_deadline}
+Bot hard deadline: ${bot.hard_deadline}
+Run deadline: ${runDeadline}
+
+${FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}`;
+}
 
 export const FLAT_DISCOVERY_MESSAGE='Read public Tasks and take suitable work. Continue in this Session after take.';
 
@@ -16,10 +31,10 @@ const deny=(message: any)=>{throw new SwarmEnvError('NOT_ALLOWED',message);};
  * Core owns resources; this controller owns only flat policy and domain cleanup. */
 export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,activeDeadline=()=>deadlineAt,coordinationPermissions=[],
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
-  stopTimeoutMs=30_000,discoveryPrompt=FLAT_DISCOVERY_MESSAGE,
+  stopTimeoutMs=30_000,autonomousTasks=false,discoveryPrompt,
   continuationPrompt,workspaceSaveAvailable=true,completionPolicy='tasks',deliverNotifications=true,
   afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }: any) {
-  if(!['tasks','mission'].includes(completionPolicy) || typeof deliverNotifications!=='boolean' || !runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
+  if(!['tasks','mission'].includes(completionPolicy) || typeof deliverNotifications!=='boolean' || typeof autonomousTasks!=='boolean' || !runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
     ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() || typeof activeDeadline!=='function' ||
     ![selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every((x: any)=>x>0) || heartbeatMs>10000 ||
     ![continuationLimit,discoveryLimit].every((x: any)=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function' || (beforeInitialDispatch!==undefined && typeof beforeInitialDispatch!=='function') || typeof automaticContinuation!=='boolean' || typeof refillWhenNoReadyTask!=='boolean') throw new TypeError('Flat controller requires finite ordered work budgets and trusted Runtime/domain stores');
@@ -100,6 +115,17 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       record('input-not-delivered', row, { source, requestId, reason: input.reason });
       finish(missionStopReason());
       return input;
+    }
+    if (source === 'discovery') {
+      const owner = taskService.getBot(row.botId);
+      if (owner?.state !== 'UNBOUND' || expired(owner, null)) {
+        input.reason = 'selection-ended';
+        record('input-not-delivered', row, { source, requestId, reason: input.reason });
+        return input;
+      }
+      text ??= autonomousTasks
+        ? buildFlatAutonomousDiscoveryMessage({ mission: taskService.getMission(missionId), bot: owner, runDeadline: new Date(workDeadline()).toISOString() })
+        : FLAT_DISCOVERY_MESSAGE;
     }
     if(notificationId) taskService.recordNotificationAttempt(notificationId);
     try {

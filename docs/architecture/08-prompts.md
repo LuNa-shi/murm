@@ -75,7 +75,7 @@ The [generated flat reference](prompts/08-flat-environment.md) extracts the comp
 Read public Tasks and take suitable work. Continue in this Session after take.
 ```
 
-When the Flat host enables autonomous Tasks, the controller uses the autonomous discovery message in the same generated reference. The opt-in PutnamBench host provides its own complete researcher Profile text there and loads the original theorem as a public Workspace file.
+When the Flat host enables autonomous Tasks, the controller composes the autonomous discovery input in the same generated reference. After the Runtime availability check, it confirms the Bot is still UNBOUND within its persisted selection and hard deadlines and checks that the Mission is open. It then supplies the Mission ID, goal and acceptance conditions from TaskService, that Bot's ID and deadlines, and the effective run deadline from the host clock. This happens for initial discovery and later discovery turns. The input points to public reads and executable Task help, and describes how to choose and claim a bounded deliverable. If the selection window or binding ended, the controller records the skipped input. The opt-in PutnamBench host adds its own researcher Profile which specifies the exact public read command for the original theorem at revision `0.1` and the command for current Mission submissions.
 
 The default researcher Profile prompt in `src/environments/flat/environment.ts` supplies the base text during Core assembly.
 

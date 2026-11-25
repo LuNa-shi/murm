@@ -6,7 +6,7 @@ import { SwarmEnvError } from '../../errors.js';
 import { runWithReport } from '../shared/run-report.js';
 import { createFlatTaskService, flatResearcherProfile } from './task-service.js';
 import { createFlatPublicationServices } from './publication-services.js';
-import { createFlatController, FLAT_AUTONOMOUS_DISCOVERY_MESSAGE } from './controller.js';
+import { createFlatController } from './controller.js';
 import { createFlatMathlibService } from './mathlib-service.js';
 import { createFlatModelAccessPolicy } from './model-access-policy.js';
 
@@ -63,7 +63,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       runtime=await createRuntime({backend,profiles:{researcher},services,maxBots:capacity,outputDir,
         modelAccessPolicy:createFlatModelAccessPolicy({runtimeId:()=>runtime?.id,taskService,missionId,deadline,isStopping:()=>controller?.snapshot().closing??false})});
       try {
-        controller=createFlatController({...(autonomousTasks?{discoveryPrompt:FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}:{}),...controllerOptions,completionPolicy,runtime,taskService,missionId,capacity,deadlineAt,activeDeadline:deadline,coordinationPermissions:permissions,
+        controller=createFlatController({...controllerOptions,autonomousTasks,completionPolicy,runtime,taskService,missionId,capacity,deadlineAt,activeDeadline:deadline,coordinationPermissions:permissions,
           workspaceSaveAvailable,afterStopped:(id: any,options: any)=>publication.reconcileWorkspace(id,options)});
       } catch(error: any) {
         try {

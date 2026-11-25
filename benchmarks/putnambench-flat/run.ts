@@ -19,8 +19,8 @@ const setupAllowanceMs = 180_000;
 const closeTimeoutMs = 60_000;
 
 const prompt = `Work with other Bot researchers on the shared PutnamBench 2025 B1 theorem.
-The public initial file lean4/src/putnam_2025_b1.lean is the exact benchmark input. Read it before selecting a proof route.
-Start from the Mission and public Workspace. Discover gaps, propose independently useful Tasks and take one Task before editing. During discovery, choose a bounded first deliverable as soon as you identify a useful gap. Do the detailed proof search in your claimed Task. Use service help for current task create, workspace save, apply, judge check, mathlib-search, merge, and mission submit commands.
+Read the exact benchmark statement with swarm workspace read lean4/src/putnam_2025_b1.lean --at 0.1. The JSON includes the Lean source in content. Read the current acceptance and submission status with swarm mission submission view.
+During discovery, take suitable ready work or propose a bounded first deliverable as soon as you identify a useful gap. Propose a checkable investigation even when the proof route is still uncertain. Do the detailed proof search and editing after take. Use the command help for Task creation, Workspace save, apply, Judge check, Mathlib search, merge and Mission submission.
 Work in the current Session until your Task is finished. If you need an independent result, propose a Task others can take. Tell relevant Task owners about fixed revisions and the available results. Preserve useful partial work before finishing.
 Place new Lean modules under lean4/src/. The checker supplies Lean and Mathlib. Avoid running a local compiler or fetching dependencies. Use the Mathlib search Service for the pinned library.
 Save actual files before checking. Use a project or module check to diagnose and iterate. Save your own work before applying another fixed public revision. Resolve explicit conflicts and record what you used. Merge checked work that helps advance public main.

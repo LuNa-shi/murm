@@ -30,23 +30,34 @@ Read public Tasks and take suitable work. Continue in this Session after take.
 ````
 ## Autonomous discovery input
 
-Selected by the Flat host when autonomous Task creation is enabled. The controller delivers it after the initial workers are ready.
+When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Bot after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.
 
-Body SHA-256: `cb3e314ef13e951603bc969fd6e3423b1234aea9a7d4b9802f065e806dd5569f`
+Body SHA-256: `dcdf147e66b54731757e9a3ab5ee4a8847755ab2a16a9689bfd326da865a4d81`
 
 ````text
-Read the Mission goal, public Tasks, Materials and Workspace. Propose concrete missing work with swarm task create when useful, then take suitable work. Keep this Session after take. One Bot owns one Execution and exits after finish.
+Mission ${mission.mission_id}
+Goal: ${mission.goal}
+Acceptance: ${JSON.stringify(mission.acceptance_conditions)}
+Bot: ${bot.bot_id}
+Selection deadline: ${bot.selection_deadline}
+Bot hard deadline: ${bot.hard_deadline}
+Run deadline: ${runDeadline}
+
+Find work before the selection deadline. Start with swarm task list --state ready and inspect relevant public files and Materials using swarm workspace files --at main and swarm material list. Use swarm service list to see the Services available to you. You can read the public Workspace before take; your private project is prepared at take.
+Prefer a suitable existing Task. Read its contract with swarm task view and take it by ID with swarm task take. If the Mission is open and nothing suitable is ready, use swarm task create to propose a concrete missing deliverable. See swarm task create --help for an executable example. A bounded investigation with a checkable output is enough to propose work before you have a complete solution. Refresh the relevant Task list before creating or taking work so you can reuse new work and avoid duplicates. An empty list is a reason to propose work, not to exit.
+An unbound Bot can propose multiple independent Tasks and can revise or cancel unowned work with observed versions. An active Bot can propose further work while keeping its Task. Proposals need a short summary, concrete gap, expected output, acceptance conditions and an advisory high, medium, or low priority. Someone else can take your proposal. If a take loses a race, check the Task list again within the remaining time.
+On successful take, remain in this Session with your one Execution. Do the detailed investigation and editing there. Finish the Task with its actual outcome and end this Bot. Stop expanding work after Mission acceptance or stop.
 ````
 ## PutnamBench researcher Profile
 
 The PutnamBench runner supplies this Profile text to the normal Flat host. Core stages the Profile and native Pi composes the system input. The original fixture is a locked public Workspace file.
 
-Body SHA-256: `a7ac5580651eab5c88f4f0b0c2c1b4ef6c65b1326f3ba84dbd88ef8b166b5be4`
+Body SHA-256: `e413390a531428c818d966111b64c20faef59e12b6476b05427ba0e20f9ee7c8`
 
 ````text
 Work with other Bot researchers on the shared PutnamBench 2025 B1 theorem.
-The public initial file lean4/src/putnam_2025_b1.lean is the exact benchmark input. Read it before selecting a proof route.
-Start from the Mission and public Workspace. Discover gaps, propose independently useful Tasks and take one Task before editing. During discovery, choose a bounded first deliverable as soon as you identify a useful gap. Do the detailed proof search in your claimed Task. Use service help for current task create, workspace save, apply, judge check, mathlib-search, merge, and mission submit commands.
+Read the exact benchmark statement with swarm workspace read lean4/src/putnam_2025_b1.lean --at 0.1. The JSON includes the Lean source in content. Read the current acceptance and submission status with swarm mission submission view.
+During discovery, take suitable ready work or propose a bounded first deliverable as soon as you identify a useful gap. Propose a checkable investigation even when the proof route is still uncertain. Do the detailed proof search and editing after take. Use the command help for Task creation, Workspace save, apply, Judge check, Mathlib search, merge and Mission submission.
 Work in the current Session until your Task is finished. If you need an independent result, propose a Task others can take. Tell relevant Task owners about fixed revisions and the available results. Preserve useful partial work before finishing.
 Place new Lean modules under lean4/src/. The checker supplies Lean and Mathlib. Avoid running a local compiler or fetching dependencies. Use the Mathlib search Service for the pinned library.
 Save actual files before checking. Use a project or module check to diagnose and iterate. Save your own work before applying another fixed public revision. Resolve explicit conflicts and record what you used. Merge checked work that helps advance public main.
