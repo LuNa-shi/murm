@@ -23,7 +23,7 @@ import { withBase } from '../lib/url';
       <a class="corner-link" href={withBase('/docs/quickstart/')}>Docs</a>
       <span class="corner-sep" aria-hidden="true">/</span>
       <a class="corner-link" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
-      <button type="button" class="corner-icon-btn" data-murm-toggle aria-label="Toggle soaring birds animation" title="Pause soaring birds">
+      <button type="button" class="corner-icon-btn" data-murm-toggle aria-label="Toggle flock animation" title="Pause flock">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 14c3-4 6-4 9 0 3-4 6-4 9 0" />
           <path d="M6 9c2-2.5 4-2.5 6 0 2-2.5 4-2.5 6 0" opacity="0.6" />
@@ -37,34 +37,44 @@ import { withBase } from '../lib/url';
       </button>
     </div>
 
-    <!-- Beat 1: Open Hero + Airy 3-Slogan Row -->
-    <section class="hero">
-      <div class="hero-mark">
-        <MurmLogo variant="hero" />
-      </div>
-      <p class="hero-brand">murm</p>
-      <h1 class="hero-title">
-        Build your own <span class="circled-word">multi-agent harness<svg viewBox="0 0 420 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 402 25 C 338 4, 80 4, 18 34 C 1 54, 18 96, 152 104 C 296 111, 408 92, 414 56 C 418 32, 366 14, 290 13" /></svg></span>
-      </h1>
-
-      <div class="hero-cta-wrap">
-        <div class="hero-cta">
-          <a class="btn btn-tactile" href={withBase('/docs/quickstart/')}>Get Started →</a>
-          <a class="btn btn-outline" href={withBase('/docs/concepts/')}>Read the Docs</a>
-          <a class="btn btn-outline" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
+    <!-- Chapter 0: Full-Viewport Hero Stage (birds glide here and dissolve on scroll) -->
+    <section class="hero hero-stage">
+      <div class="hero-core">
+        <div class="hero-mark">
+          <MurmLogo variant="hero" />
         </div>
-        <span class="hero-hand-note" aria-hidden="true">one runtime, swap any coordination topology!</span>
+        <p class="hero-brand">murm</p>
+        <h1 class="hero-title">
+          Build your own <span class="circled-word">multi-agent harness<svg viewBox="0 0 420 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 402 25 C 338 4, 80 4, 18 34 C 1 54, 18 96, 152 104 C 296 111, 408 92, 414 56 C 418 32, 366 14, 290 13" /></svg></span>
+        </h1>
+
+        <div class="hero-cta-wrap">
+          <div class="hero-cta">
+            <a class="btn btn-tactile" href={withBase('/docs/quickstart/')}>Get Started →</a>
+            <a class="btn btn-outline" href={withBase('/docs/concepts/')}>Read the Docs</a>
+            <a class="btn btn-outline" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
+          </div>
+          <span class="hero-hand-note" aria-hidden="true">one runtime, swap any coordination topology!</span>
+        </div>
+
+        <PillarSchematics />
       </div>
 
-      <PillarSchematics />
+      <a class="scroll-cue" href="#why-murm" aria-label="Scroll to overview">
+        <span>SCROLL</span>
+        <span class="scroll-cue-arrow" aria-hidden="true">↓</span>
+      </a>
     </section>
 
-    <!-- Beat 2: Quiet Editorial Manifesto (pi.dev-inspired open grid) -->
-    <NoRebuildGrid />
+    <!-- Chapter 1: Punchy 4-Truth Why murm -->
+    <div id="why-murm">
+      <NoRebuildGrid />
+    </div>
 
-    <!-- Beat 3: Clean Single-Layer 2-Plane Core Model -->
-    <section class="landing-section" data-reveal>
-      <div class="section-header">
+    <!-- Chapter 2: Clean Single-Layer 2-Plane Core Model -->
+    <section class="chapter landing-section">
+      <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
+      <div class="section-header" data-reveal style="--reveal-delay: 50ms">
         <div>
           <p class="section-eyebrow">01 · CORE MODEL</p>
           <h2 class="section-title">Six orthogonal concepts</h2>
@@ -75,12 +85,15 @@ import { withBase } from '../lib/url';
         <a class="section-link" href={withBase('/docs/concepts/')}>Explore concepts →</a>
       </div>
 
-      <CoreModelBlueprint />
+      <div data-reveal style="--reveal-delay: 150ms">
+        <CoreModelBlueprint />
+      </div>
     </section>
 
-    <!-- Beat 4: The One Visual Centerpiece — Five Harnesses on One Core -->
-    <section class="landing-section" data-reveal>
-      <div class="section-header">
+    <!-- Chapter 3: The Visual Centerpiece — Five Harnesses on One Core -->
+    <section class="chapter landing-section">
+      <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
+      <div class="section-header" data-reveal style="--reveal-delay: 50ms">
         <div>
           <p class="section-eyebrow">02 · ONE RUNTIME, FIVE HARNESSES</p>
           <h2 class="section-title">Five coordination topologies on one core</h2>
@@ -91,13 +104,15 @@ import { withBase } from '../lib/url';
         <a class="section-link" href={withBase('/docs/harnesses/')}>Compare all five →</a>
       </div>
 
-      <HarnessShowcase />
+      <div data-reveal style="--reveal-delay: 150ms">
+        <HarnessShowcase />
+      </div>
     </section>
 
-    <!-- Beat 5: Airy Cross-Domain Platform Strip -->
+    <!-- Chapter 4: Airy Cross-Domain Platform Strip -->
     <DomainStrip />
 
-    <footer class="landing-footer">
+    <footer class="landing-footer" data-reveal>
       <span class="footer-brand">MURM · <code>@swarmenv/core</code> 0.2.0 (<code>ac72c76</code>)</span>
       <div class="footer-links">
         <a href={withBase('/docs/quickstart/')}>Quick Start</a>

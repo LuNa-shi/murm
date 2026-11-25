@@ -1,29 +1,16 @@
 ---
 ---
 
-<section class="editorial-section" data-reveal>
-  <div class="editorial-head-center">
+<section class="chapter editorial-section">
+  <div class="chapter-rule" data-reveal-line aria-hidden="true"></div>
+
+  <div class="editorial-head-center" data-reveal style="--reveal-delay: 40ms">
     <p class="section-eyebrow">WHY MURM</p>
-    <h2 class="editorial-heading">Stop rebuilding multi-agent plumbing</h2>
-    <p class="editorial-lead">
-      Every bespoke multi-agent system ends up rewriting the same fragile infrastructure. <code>murm</code> solves the runtime once so you focus only on coordination.
-    </p>
+    <h2 class="editorial-heading">Write the harness, not the plumbing</h2>
   </div>
 
-  <div class="manifesto-grid">
-    <article class="manifesto-item" data-reveal style="--reveal-delay: 0ms">
-      <svg class="px-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
-        <rect x="4" y="5" width="16" height="2" />
-        <rect x="4" y="17" width="16" height="2" />
-        <rect x="4" y="7" width="2" height="10" />
-        <rect x="18" y="7" width="2" height="10" />
-        <rect x="8" y="10" width="8" height="4" opacity="0.45" />
-      </svg>
-      <h3>No bespoke container glue</h3>
-      <p>Skip hand-rolling Docker lifecycles, disk quotas, and leak-prone cleanup scripts for every new multi-agent prototype.</p>
-    </article>
-
-    <article class="manifesto-item" data-reveal style="--reveal-delay: 60ms">
+  <div class="pillars-four">
+    <article class="truth-item" data-reveal style="--reveal-delay: 100ms">
       <svg class="px-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
         <rect x="9" y="4" width="6" height="4" />
         <rect x="4" y="16" width="6" height="4" />
@@ -33,11 +20,11 @@
         <rect x="6" y="14" width="2" height="2" />
         <rect x="16" y="14" width="2" height="2" />
       </svg>
-      <h3>No baked-in topology</h3>
-      <p>No forced supervisor, fixed DAG, or hardcoded chat room in the core. Swap your coordination logic without editing the runtime.</p>
+      <h3>Any topology, zero rewrites</h3>
+      <p>Subagents, task pools, peer meshes, or citation graphs — swap the harness, never the runtime.</p>
     </article>
 
-    <article class="manifesto-item" data-reveal style="--reveal-delay: 120ms">
+    <article class="truth-item" data-reveal style="--reveal-delay: 190ms">
       <svg class="px-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
         <rect x="6" y="5" width="12" height="2" />
         <rect x="4" y="7" width="2" height="7" />
@@ -48,27 +35,25 @@
         <rect x="14" y="17" width="2" height="2" />
         <rect x="10" y="19" width="4" height="2" />
       </svg>
-      <h3>No credentials inside sandboxes</h3>
-      <p>Model API keys stay strictly behind the host gateway; per-agent secrets are scoped and automatically redacted from every record.</p>
+      <h3>Real isolation, built in</h3>
+      <p>Every agent runs in its own sandbox with strict quotas. API keys never leave the host.</p>
     </article>
 
-    <article class="manifesto-item" data-reveal style="--reveal-delay: 180ms">
+    <article class="truth-item" data-reveal style="--reveal-delay: 280ms">
       <svg class="px-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
-        <rect x="4" y="6" width="16" height="2" />
-        <rect x="4" y="16" width="16" height="2" />
-        <rect x="4" y="8" width="2" height="8" />
-        <rect x="18" y="8" width="2" height="8" />
-        <rect x="6" y="8" width="2" height="2" />
-        <rect x="8" y="10" width="2" height="2" />
-        <rect x="10" y="12" width="4" height="2" />
-        <rect x="14" y="10" width="2" height="2" />
-        <rect x="16" y="8" width="2" height="2" />
+        <rect x="3" y="9" width="5" height="6" />
+        <rect x="16" y="5" width="5" height="4" />
+        <rect x="16" y="15" width="5" height="4" />
+        <rect x="8" y="11" width="5" height="2" />
+        <rect x="11" y="6" width="2" height="12" />
+        <rect x="13" y="6" width="3" height="2" />
+        <rect x="13" y="16" width="3" height="2" />
       </svg>
-      <h3>No lost messages on interrupt</h3>
-      <p>Non-waking steers (<code>wakeIfIdle: false</code>), idempotent requests, and discarded-input hashes eliminate subtle concurrency races.</p>
+      <h3>Services, not glue code</h3>
+      <p>Plug in a task board, Git repo, or formal verifier without touching the underlying agent.</p>
     </article>
 
-    <article class="manifesto-item" data-reveal style="--reveal-delay: 240ms">
+    <article class="truth-item" data-reveal style="--reveal-delay: 370ms">
       <svg class="px-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
         <rect x="5" y="4" width="14" height="2" />
         <rect x="5" y="18" width="14" height="2" />
@@ -78,23 +63,8 @@
         <rect x="9" y="11" width="6" height="2" opacity="0.65" />
         <rect x="9" y="14" width="4" height="2" opacity="0.65" />
       </svg>
-      <h3>No ad-hoc experiment logs</h3>
-      <p>Every harness writes the same redacted run bundle — sessions, model traces, and service calls — for clean apples-to-apples comparisons.</p>
-    </article>
-
-    <article class="manifesto-item" data-reveal style="--reveal-delay: 300ms">
-      <svg class="px-icon" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
-        <rect x="4" y="5" width="16" height="2" />
-        <rect x="4" y="17" width="16" height="2" />
-        <rect x="4" y="7" width="2" height="10" />
-        <rect x="18" y="7" width="2" height="10" />
-        <rect x="8" y="9" width="2" height="2" />
-        <rect x="10" y="11" width="2" height="2" />
-        <rect x="8" y="13" width="2" height="2" />
-        <rect x="13" y="13" width="4" height="2" />
-      </svg>
-      <h3>No silent cleanup failures</h3>
-      <p>Archive-before-delete guarantees sessions and required deliverables land safely on disk before any container is removed.</p>
+      <h3>Reproducible by design</h3>
+      <p>Sessions, model calls, and traces archive cleanly to disk before containers shut down.</p>
     </article>
   </div>
 </section>

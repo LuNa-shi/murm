@@ -50,6 +50,7 @@ const {
     </script>
   </head>
   <body class:list={[{ 'paper-grid-bg': paperGrid }]}>
+    {!showTopNav && <div class="scroll-progress" data-scroll-progress aria-hidden="true"></div>}
     {showTopNav && <TopNav showMobileMenu={showMobileMenu} />}
     <slot />
     <SearchModal />
@@ -86,8 +87,21 @@ const {
           pre.appendChild(btn);
         });
 
-        // Progressive scroll-reveal rhythm (calm, unhurried entrance)
-        const revealEls = document.querySelectorAll('[data-reveal]');
+        // Subtle reading progress hairline on landing
+        const progressEl = document.querySelector('[data-scroll-progress]');
+        if (progressEl) {
+          const updateBar = () => {
+            const max = Math.max(1, document.documentElement.scrollHeight - window.innerHeight);
+            const pct = Math.max(0, Math.min(1, window.scrollY / max));
+            progressEl.style.transform = 'scaleX(' + pct.toFixed(4) + ')';
+          };
+          window.addEventListener('scroll', updateBar, { passive: true });
+          window.addEventListener('resize', updateBar, { passive: true });
+          updateBar();
+        }
+
+        // Chapter-by-chapter staged scroll reveal
+        const revealEls = document.querySelectorAll('[data-reveal], [data-reveal-line]');
         if (revealEls.length && document.documentElement.classList.contains('reveal-ready')) {
           const io = new IntersectionObserver(
             (entries) => {
@@ -98,7 +112,7 @@ const {
                 }
               }
             },
-            { threshold: 0.08, rootMargin: '0px 0px -36px 0px' }
+            { threshold: 0.14, rootMargin: '0px 0px -64px 0px' }
           );
           revealEls.forEach((el) => io.observe(el));
         } else {
