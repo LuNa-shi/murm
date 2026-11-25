@@ -562,6 +562,11 @@ export class TaskService {
     return this.#transaction(commit);
   }
 
+  getAcceptedSubmission(missionId: any) {
+    const row = this.db.prepare("SELECT document FROM mission_submissions WHERE mission_id = ? AND state = 'accepted' ORDER BY rowid DESC LIMIT 1").get(requireString(missionId, 'mission_id'));
+    return row ? parse(row.document) : null;
+  }
+
   isMissionStopped(missionId: any) {
     return Boolean(this.db.prepare("SELECT 1 FROM mission_submissions WHERE mission_id = ? AND state = 'accepted' LIMIT 1").get(missionId)
       || this.missionStopReader?.(missionId));
@@ -1481,7 +1486,7 @@ export class TaskService {
         priority_level: ['low', 'medium', 'high'][row.priority] ?? null,
         expected_output: row.expected_output, truncated_fields: truncated, state: row.state,
         spec_version: row.spec_version, state_version: row.state_version, priority: row.priority, timebox_ms: row.timebox_ms,
-        created_at: row.created_at, updated_at: row.updated_at, available: ready, current_execution: owner,
+        created_at: row.created_at, updated_at: row.updated_at, available: ready, current_execution: owner ? { ...owner } : null,
         dependencies: { present: Boolean(dependency.present), satisfied: !unsatisfied },
         block_reason: row.block_reason, cancellation_reason: cancelled?.reason ?? null });
       if (tasks.length === limit) break;

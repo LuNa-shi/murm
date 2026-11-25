@@ -664,3 +664,76 @@ test('optional ready-task refill does not create idle discovery Bots for work al
   assert.equal(f.controller.snapshot().bots.length,0);
   assert.equal(transport.submissions.size,0);
 });
+
+test('Mission completion policy keeps discovery open after every existing Task is cancelled', async t => {
+  const f = await fixture(t, { completionPolicy: 'mission', beforeStart(stores) {
+    for (const task of stores.tasks.listTasks({ missionId: stores.missionId, scanAll: true, availableOnly: false, states: ['OPEN','BLOCKED'], limit: 100 })) {
+      stores.tasks.registerBot({ botId: 'cancel-observer', missionId: stores.missionId, legacySlotId: 'cancel-slot', selectionDeadline: new Date(Date.now()+60000).toISOString() });
+      stores.tasks.markCoreBotReady('cancel-observer');
+      stores.tasks.dispatch('task_cancel', { task_id: task.task_id, expected_spec_version: task.spec_version, expected_state_version: task.state_version, reason: 'Retire existing work' }, makeEnvelope({ actorRef: 'cancel-observer' }));
+      stores.tasks.requestBotStop('cancel-observer', 'Observer done');
+      stores.tasks.finalizeBotClose('cancel-observer');
+    }
+  } });
+  assert.equal(f.controller.snapshot().completion, null);
+  assert.equal(f.controller.snapshot().bots.length, 1);
+  assert.equal(f.controller.snapshot().inputs[0].source, 'discovery');
+});
+
+test('ordinary material notification reaches the active owner once without interrupting its Session', async t => {
+  const f = await fixture(t); const execution = f.take();
+  const notification = f.tasks.enqueueNotification({ deliveryKey: 'available-lemma', missionId: f.missionId,
+    recipientTaskId: f.task.task_id, type: 'material_available', materialId: f.material.material_id,
+    payload: { material_id: f.material.material_id } });
+  await f.controller.tick(); await f.controller.tick();
+  const sent = f.controller.snapshot().inputs.filter(row => row.source === 'notification');
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].mode, 'followUp');
+  assert.equal(sent[0].executionId, execution.execution_id);
+  assert.equal(sent[0].status, 'accepted');
+  assert.equal([...transport.submissions.values()].filter(row => row.input.includes(notification.notification_id)).length, 1);
+  assert.ok(f.tasks.listUnprocessedNotifications(f.task.task_id, execution.execution_id)[0].recipient_delivery.delivered_at);
+  assert.equal(f.tasks.getBot(f.bot.botId).execution_id, execution.execution_id);
+});
+
+test('ordinary notification unknown receipt keeps its input identity and never repeats delivery', async t => {
+  const f = await fixture(t); const execution = f.take();
+  const notification = f.tasks.enqueueNotification({ deliveryKey: 'unknown-material', missionId: f.missionId, recipientTaskId: f.task.task_id,
+    type: 'material_available', materialId: f.material.material_id, payload: { material_id: f.material.material_id } });
+  transport.next = undefined;
+  await f.controller.tick();
+  const first = f.controller.snapshot().inputs.find(row => row.source === 'notification');
+  assert.equal(first.status, 'unknown');
+  const count = transport.submissions.size;
+  await f.controller.tick(); f.settle(); await f.controller.flush();
+  assert.equal(transport.submissions.size, count);
+  assert.equal(f.controller.snapshot().inputs.filter(row => row.source === 'notification').length, 1);
+  assert.equal(f.tasks.listUnprocessedNotifications(f.task.task_id, execution.execution_id)[0].recipient_delivery, null);
+  assert.ok([...transport.submissions.values()].some(row => row.input.includes(notification.notification_id)));
+});
+
+test('ordinary notification retries its delivery receipt without another model input', async t => {
+  const f = await fixture(t); const execution = f.take();
+  f.tasks.enqueueNotification({ deliveryKey: 'receipt-material', missionId: f.missionId, recipientTaskId: f.task.task_id,
+    type: 'material_available', payload: { material_id: f.material.material_id } });
+  const mark = f.tasks.markNotificationDelivered.bind(f.tasks); let failed = false;
+  f.tasks.markNotificationDelivered = (...args) => { if (!failed) { failed = true; throw new Error('Receipt unavailable'); } return mark(...args); };
+  await f.controller.tick(); await f.controller.tick();
+  assert.equal(f.controller.snapshot().inputs.filter(row => row.source === 'notification').length, 1);
+  assert.ok(f.tasks.listUnprocessedNotifications(f.task.task_id, execution.execution_id)[0].recipient_delivery.delivered_at);
+});
+
+test('ordinary notification rejects ownership withdrawn during final Core lookup', async t => {
+  const f = await fixture(t); const execution = f.take();
+  f.tasks.enqueueNotification({ deliveryKey: 'late-material', missionId: f.missionId, recipientTaskId: f.task.task_id,
+    type: 'material_available', payload: { material_id: f.material.material_id } });
+  f.reads.beforeGet = () => { f.reads.beforeGet = null;
+    const current = f.tasks.getExecution(execution.execution_id);
+    f.tasks.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({ actorRef: f.bot.botId, taskId: current.task_id, executionId: current.execution_id, specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version }));
+  };
+  await f.controller.tick();
+  const input = f.controller.snapshot().inputs.find(row => row.source === 'notification');
+  assert.equal(input.status, 'not_submitted');
+  assert.equal(input.reason, 'task-binding-changed');
+  assert.equal(f.tasks.listUnprocessedNotifications(f.task.task_id, execution.execution_id)[0].recipient_delivery, null);
+});

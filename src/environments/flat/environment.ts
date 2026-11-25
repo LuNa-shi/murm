@@ -6,7 +6,7 @@ import { SwarmEnvError } from '../../errors.js';
 import { runWithReport } from '../shared/run-report.js';
 import { createFlatTaskService, flatResearcherProfile } from './task-service.js';
 import { createFlatPublicationServices } from './publication-services.js';
-import { createFlatController } from './controller.js';
+import { createFlatController, FLAT_AUTONOMOUS_DISCOVERY_MESSAGE } from './controller.js';
 import { createFlatModelAccessPolicy } from './model-access-policy.js';
 
 export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Bot 工作目录中。';
@@ -14,9 +14,11 @@ export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公�
 /** Trusted host entry point. Domain stores remain caller-owned and readable. */
 export async function runFlatEnvironment({backend,model,image,prompt='Use the flat Services to discover, execute and truthfully finish Mission work.',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
-  capacity=2,coordinationPermissions=[],missionCoordination=null,snapshotProject,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
+  capacity=2,autonomousTasks=false,completionPolicy='tasks',coordinationPermissions=[],missionCoordination=null,snapshotProject,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
   closeTimeoutMs=30_000,redact=(value: any)=>value,signal}: any) {
   if(signal!==undefined && !(signal instanceof AbortSignal)) throw new TypeError('Flat host signal must be an AbortSignal');
+  if(typeof autonomousTasks!=='boolean' || !['tasks','mission'].includes(completionPolicy)) throw new TypeError('Flat requires an explicit supported completion policy and autonomous Task flag');
+  if(completionPolicy==='mission' && !missionCoordination) throw new TypeError('Mission completion policy requires trusted Mission coordination');
   const permissions=flatCoordinationPermissions(coordinationPermissions);
   const workspaceSaveAvailable=typeof snapshotProject==='function';
   let runtime: any,controller: any,discovery: any,publication: any,mission: any,closeDeadline: any;
@@ -32,7 +34,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       readinessSignal.throwIfAborted();
       if (workspace.mission_id !== missionId) throw new SwarmEnvError('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       taskService.contextService=contextService;
-      discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:()=>deadlineAt,coordinationPermissions:permissions});
+      discovery=createFlatTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:()=>deadlineAt,coordinationPermissions:permissions,autonomousTasks});
       publication=createFlatPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline:()=>deadlineAt,coordinationPermissions:permissions,snapshotProject,judgeService,workspaceProjectCheck,workspaceMergeChecker,
         onFinish:()=>controller?.notify()});
       const services: any=new ServiceRegistry();
@@ -44,7 +46,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
         services.registerService(mission);
       }
       const researcherPrompt = workspaceSaveAvailable ? prompt : `${prompt}\n\n${FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT}`;
-      const researcher=flatResearcherProfile({prompt:researcherPrompt,model,image,coordinationPermissions:permissions});
+      const researcher=flatResearcherProfile({prompt:researcherPrompt,model,image,coordinationPermissions:permissions,autonomousTasks});
       researcher.services=Object.fromEntries([
         ['task',[...discovery.manifest.capabilities,...publication.registrations.find((row: any)=>row.manifest.id==='task').manifest.capabilities].map((row: any)=>row.operation)],
         ...publication.registrations.filter((row: any)=>row.manifest.id!=='task').map((row: any)=>[row.manifest.id,row.manifest.capabilities.map((cap: any)=>cap.operation)]),
@@ -53,7 +55,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       runtime=await createRuntime({backend,profiles:{researcher},services,maxBots:capacity,outputDir,
         modelAccessPolicy:createFlatModelAccessPolicy({runtimeId:()=>runtime?.id,taskService,missionId,deadline:()=>deadlineAt,isStopping:()=>controller?.snapshot().closing??false})});
       try {
-        controller=createFlatController({...controllerOptions,runtime,taskService,missionId,capacity,deadlineAt,coordinationPermissions:permissions,
+        controller=createFlatController({...(autonomousTasks?{discoveryPrompt:FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}:{}),...controllerOptions,completionPolicy,runtime,taskService,missionId,capacity,deadlineAt,coordinationPermissions:permissions,
           workspaceSaveAvailable,afterStopped:(id: any,options: any)=>publication.reconcileWorkspace(id,options)});
       } catch(error: any) {
         try {
@@ -96,8 +98,10 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       if(drive) await drive(controller,runtime);
       await controller.wait();
       Object.assign(result,controller.snapshot());
-      if(result.completion!=='all-tasks-terminal' || result.failures.length) {
-        const error: any=new SwarmEnvError('FLAT_BUSINESS_FAILED','Flat ended without complete successful Task closure',{completion:result.completion});
+      if(completionPolicy==='mission') result.missionAcceptance=taskService.getAcceptedSubmission(missionId);
+      const completed=completionPolicy==='mission' ? result.completion==='mission-accepted' && result.missionAcceptance?.state==='accepted' : result.completion==='all-tasks-terminal';
+      if(!completed || (completionPolicy==='tasks' && result.failures.length)) {
+        const error: any=new SwarmEnvError('FLAT_BUSINESS_FAILED',completionPolicy==='mission'?'Flat ended without trusted Mission acceptance':'Flat ended without complete successful Task closure',{completion:result.completion});
         error.details=[result];throw error;
       }
       return result;
