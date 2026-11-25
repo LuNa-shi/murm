@@ -4,16 +4,16 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { loadPutnamB1, putnamB1, putnamSelectionMs, putnamWindowMs } from './case.ts';
+import { loadPutnamB1, putnamModel, putnamSelectionMs, putnamWindowMs } from './case.ts';
 
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const git = (args: string[]) => execute('git', args, { cwd: root, timeout: 10_000 });
-const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, selectionEffortArg, ...extra] = process.argv.slice(2);
+const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, selectionEffortArg, modelArg, ...extra] = process.argv.slice(2);
 if (!['preflight', 'run'].includes(operation) || !checkerConfig || !datasetRoot || extra.length ||
     (operation === 'preflight' && experimentId !== undefined) ||
     (operation === 'run' && (!/^EXP-\d{8}-\d{2}$/.test(experimentId ?? '') || !/^sha256:[a-f0-9]{64}$/.test(image ?? '')))) {
-  throw new Error('Usage: main.ts preflight CHECKER_CONFIG PUTNAMBENCH_ROOT | main.ts run CHECKER_CONFIG PUTNAMBENCH_ROOT EXP_ID WORKER_IMAGE_ID [WINDOW_SECONDS [SELECTION_SECONDS [low]]]');
+  throw new Error('Usage: main.ts preflight CHECKER_CONFIG PUTNAMBENCH_ROOT | main.ts run CHECKER_CONFIG PUTNAMBENCH_ROOT EXP_ID WORKER_IMAGE_ID [WINDOW_SECONDS [SELECTION_SECONDS [low [MODEL]]]]');
 }
 const durationMs = putnamWindowMs(windowSeconds);
 const selectionMs = putnamSelectionMs(durationMs, selectionSeconds);
@@ -21,16 +21,22 @@ if (selectionEffortArg !== undefined && selectionEffortArg !== 'low') {
   throw new Error('Putnam selection reasoning effort must be low when configured');
 }
 const selectionReasoningEffort = selectionEffortArg === 'low' ? selectionEffortArg : undefined;
-const problem = await loadPutnamB1(datasetRoot);
+const problem = await loadPutnamB1(datasetRoot, putnamModel(modelArg));
 let code: string | undefined;
 let directory: string | undefined;
 if (operation === 'run') {
   const index = await readFile(join(root, 'docs/experiments/INDEX.md'), 'utf8');
   const rows = index.split('\n').filter(line => line.startsWith(`| \`${experimentId}\` |`));
   if (rows.length !== 1) throw new Error('The formal run ID must have one entry in the experiment index');
-  const [, , issue, status, pinnedCode] = rows[0].split('|').map(value => value.trim());
+  const [, , issue, status, pinnedCode, report] = rows[0].split('|').map(value => value.trim());
   if (!issue.includes('/issues/200)') || !status.startsWith('**REGISTERED') || !pinnedCode.match(/^`[a-f0-9]{7,40}`$/)) {
     throw new Error('Register the Putnam run under #200 and pin its code before launch');
+  }
+  const reportName = report?.match(/\(([a-z0-9-]+\.md)\)$/i)?.[1];
+  const reportBody = reportName && await readFile(join(root, 'docs/experiments', reportName), 'utf8');
+  const registeredModel = reportBody && reportBody.match(/^Model · `([^\n`]+)`$/m)?.[1];
+  if ((registeredModel || modelArg !== undefined) && registeredModel !== problem.provider + '/' + problem.model) {
+    throw new Error('The selected Putnam model pair must match the registered report');
   }
   code = (await git(['rev-parse', `${pinnedCode.slice(1, -1)}^{commit}`])).stdout.trim();
   await git(['merge-base', '--is-ancestor', code, 'HEAD']);
@@ -66,9 +72,10 @@ if (operation === 'preflight') {
   const { runPutnamFlat } = await import('./run.ts');
   const { createPiOpenSandboxBackend } = await import('../../dist/src/core/backends/pi-opensandbox.js');
   const { assertShippedModelPair } = await import('../../dist/src/agent/model-catalog.js');
-  await assertShippedModelPair({ provider: putnamB1.provider, model: putnamB1.model });
-  let base = process.env.PI_KIMI_PROXY_BASE_URL;
-  let key = process.env.PI_KIMI_PROXY_API_KEY;
+  await assertShippedModelPair({ provider: problem.provider, model: problem.model });
+  const environmentPrefix = 'PI_' + problem.provider.toUpperCase();
+  let base = process.env[environmentPrefix + '_BASE_URL'];
+  let key = process.env[environmentPrefix + '_API_KEY'];
   if (!base && !key) {
     const catalogPath = process.env.SWARMENV_PI_MODELS_FILE ?? join(homedir(), '.pi/agent/models.json');
     const { providers } = JSON.parse(await readFile(catalogPath, 'utf8'));
@@ -81,11 +88,11 @@ if (operation === 'preflight') {
       key = value(configured.apiKey);
     }
   }
-  if (!base || !key) throw new Error('The configured Kimi proxy endpoint and credential are required');
-  if (/[\r\n]/.test(key)) throw new Error('Invalid Kimi proxy credential');
+  if (!base || !key) throw new Error('The configured Putnam model endpoint and credential are required');
+  if (/[\r\n]/.test(key)) throw new Error('Invalid Putnam model credential');
   const upstream = URL.parse(base);
   if (!upstream || !['http:', 'https:'].includes(upstream.protocol) || upstream.username || upstream.password ||
-      upstream.search || upstream.hash) throw new Error('Invalid Kimi proxy endpoint');
+      upstream.search || upstream.hash) throw new Error('Invalid Putnam model endpoint');
   upstream.pathname = upstream.pathname.replace(/\/$/, '').replace(/(?:\/v1)?$/, '/v1/responses');
   const host = process.env.SWARMENV_SANDBOX_ADVERTISE_HOST ?? '172.17.0.1';
   const abort = new AbortController();

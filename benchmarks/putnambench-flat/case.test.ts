@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { loadPutnamB1, putnamB1, putnamSelectionMs, putnamWindowMs } from './case.ts';
+import { loadPutnamB1, putnamB1, putnamModel, putnamSelectionMs, putnamWindowMs } from './case.ts';
 
 test('the benchmark input rejects replacement of the original declaration', async t => {
   const root = await mkdtemp(join(tmpdir(), 'flat-putnam-case-'));
@@ -28,4 +28,10 @@ test('a registered Putnam selection window stays inside the shared research wind
   for (const value of ['0', '121', '1.5', '1e2']) {
     assert.throws(() => putnamSelectionMs(120_000, value), /between 1 and 120 whole seconds/);
   }
+});
+
+test('Putnam defaults to K3 and supports the explicit GPT 6.1 Sol comparison', () => {
+  assert.deepEqual(putnamModel(), { provider: 'kimi_proxy', model: 'k3' });
+  assert.deepEqual(putnamModel('gpt-6.1-sol'), { provider: 'gpt_proxy', model: 'gpt-6.1-sol' });
+  assert.throws(() => putnamModel('unregistered'), /model must be/);
 });
