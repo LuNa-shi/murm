@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { once } from 'node:events';
 import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -31,7 +32,7 @@ export async function localUpstream(route, requestLimit, timeoutMs = 120_000) {
         assert.ok(bytes <= 512 * 1024);
         chunks.push(chunk);
       }
-      const body = JSON.parse(Buffer.concat(chunks));
+      const body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
       assert.equal(body.model, 'k3');
       assert.ok(Array.isArray(body.input));
       const item = route(body.input, number);
@@ -46,7 +47,7 @@ export async function localUpstream(route, requestLimit, timeoutMs = 120_000) {
   server.requestTimeout = 15_000;
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
-  return { url: `http://127.0.0.1:${server.address().port}/v1/responses`,
+  return { url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/responses`,
     receipt: () => ({ requests, requestLimit, failure }),
     close: () => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }) };
 }

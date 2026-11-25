@@ -51,7 +51,15 @@
   ],
   "files": [
     {
-      "path": "benchmarks/programbench-pastel/case.mjs",
+      "path": "benchmarks/programbench-pastel/tsconfig.json",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Opt-in typechecking for the source-checkout Pastel drivers and tests"
+    },
+    {
+      "path": "benchmarks/programbench-pastel/case.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
@@ -68,7 +76,7 @@
       "role": "Development-only Worker overlay for the pinned Pastel reference and public documentation"
     },
     {
-      "path": "benchmarks/programbench-pastel/local-integration.mjs",
+      "path": "benchmarks/programbench-pastel/local-integration.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -84,7 +92,7 @@
       "role": "Bounded deterministic source-only ProgramBench archive builder"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-matrix.mjs",
+      "path": "benchmarks/programbench-pastel/pastel-matrix.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -92,7 +100,7 @@
       "role": "Hosted matrix admission, fixture fingerprints, candidate and adoption audit, and official evaluation"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-open-agensh.mjs",
+      "path": "benchmarks/programbench-pastel/pastel-open-agensh.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
@@ -101,7 +109,7 @@
       "role": "Pastel Board and pinned Git contribution handoff between three peer Bots"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-open-flat.mjs",
+      "path": "benchmarks/programbench-pastel/pastel-open-flat.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
@@ -110,7 +118,7 @@
       "role": "Pastel Task and Execution setup with Material attachment publication and integration evidence"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-open-local.mjs",
+      "path": "benchmarks/programbench-pastel/pastel-open-local.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -118,7 +126,7 @@
       "role": "Opt-in same-case controlled verification with actual Bots, Services, and source-adoption assertions"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-open-subagents.mjs",
+      "path": "benchmarks/programbench-pastel/pastel-open-subagents.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/08-prompts.md",
@@ -127,7 +135,7 @@
       "role": "Pastel parent and child dispatch, result routing, and authenticated source checkpoint publication"
     },
     {
-      "path": "benchmarks/programbench-pastel/pastel-open.mjs",
+      "path": "benchmarks/programbench-pastel/pastel-open.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -135,7 +143,7 @@
       "role": "Shared Pastel trial lifecycle, window start, Core model accounting, and private closeout receipt"
     },
     {
-      "path": "benchmarks/programbench-pastel/run-window.mjs",
+      "path": "benchmarks/programbench-pastel/run-window.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -143,7 +151,7 @@
       "role": "Monotonic Responses admission, active stream cancellation, and deadline-bound checkpoint persistence"
     },
     {
-      "path": "benchmarks/programbench-pastel/run-window.test.mjs",
+      "path": "benchmarks/programbench-pastel/run-window.test.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -151,7 +159,7 @@
       "role": "Deterministic Core gateway and run-window admission, cancellation, and persistence regressions"
     },
     {
-      "path": "benchmarks/programbench-pastel/source-checkpoint.mjs",
+      "path": "benchmarks/programbench-pastel/source-checkpoint.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"

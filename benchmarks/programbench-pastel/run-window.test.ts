@@ -3,13 +3,14 @@ import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import { ResponsesBudgetGateway } from '../../dist/src/agent/responses-budget-gateway.js';
-import { createRunWindow } from './run-window.mjs';
+import { createRunWindow } from './run-window.ts';
 
 const completion = 'data: ' + JSON.stringify({ type: 'response.completed',
   response: { model: 'k3', status: 'completed', usage: { input_tokens: 3, output_tokens: 5 } } }) + '\n\n';
@@ -22,7 +23,7 @@ async function serve(t, handler) {
     server.close(resolve);
     server.closeAllConnections();
   }));
-  return `http://127.0.0.1:${server.address().port}/v1/responses`;
+  return `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/responses`;
 }
 
 async function directory(t) {
@@ -42,7 +43,7 @@ test('Core gateway meters a request and the run fence preserves a pre-deadline a
   const upstreamUrl = await serve(t, async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
-    observed.push({ authorization: request.headers.authorization, body: JSON.parse(Buffer.concat(chunks)) });
+    observed.push({ authorization: request.headers.authorization, body: JSON.parse(Buffer.concat(chunks).toString('utf8')) });
     response.writeHead(200, { 'content-type': 'text/event-stream' });
     response.end(completion);
   });

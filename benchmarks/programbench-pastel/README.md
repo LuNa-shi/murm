@@ -58,14 +58,17 @@ export PROGRAMBENCH_BOARD_IMAGE=$(docker image inspect swarmenv-programbench-boa
 
 ## Run local verification
 
+The benchmark runs its TypeScript source directly with Node. Build SwarmEnv first so the drivers can import `dist/`. Its separate TypeScript check and run-window tests are opt-in.
+
 ```sh
-node --test benchmarks/programbench-pastel/run-window.test.mjs
+./node_modules/.bin/tsc --project benchmarks/programbench-pastel/tsconfig.json
+node --test benchmarks/programbench-pastel/run-window.test.ts
 for mode in subagents flat agensh; do
-  node benchmarks/programbench-pastel/pastel-open-local.mjs "$mode" "$worker" 30000 || exit
+  node benchmarks/programbench-pastel/pastel-open-local.ts "$mode" "$worker" 30000 || exit
 done
 ```
 
-The first command tests gateway admission, metering, in-flight cancellation and late checkpoint rejection. The second runs actual Pi/OpenSandbox Bots and the real collaboration Services against scripted loopback Responses. Each mode must verify two source contributions in its timed archive and finish cleanup. Controlled responses exercise the collaboration path and provide only a small runnable fixture. Provider calls and ProgramBench scores are separate evidence. Each command prints a receipt path for inspection or evaluation.
+The run-window tests cover gateway admission, metering, in-flight cancellation and late checkpoint rejection. The three-mode loop runs actual Pi/OpenSandbox Bots and collaboration Services against scripted loopback Responses. Each mode must verify two source contributions in its timed archive and finish cleanup. Controlled responses exercise the collaboration path and provide a small runnable fixture. Provider calls and ProgramBench scores are separate evidence. Each mode prints a receipt path for inspection or evaluation.
 
 ## Run the official evaluator
 
@@ -88,7 +91,7 @@ git -C "$asset_dir/upstream" checkout --detach 895f65916bc5ba34a915d36da321fde03
 Set `PROGRAMBENCH_EVALUATOR_DIR` to use an existing checkout at the same commit. Set `receipt` to the path printed by a local verification run, then evaluate it.
 
 ```sh
-node benchmarks/programbench-pastel/pastel-matrix.mjs evaluate "$receipt"
+node benchmarks/programbench-pastel/pastel-matrix.ts evaluate "$receipt"
 ```
 
 The evaluator checks the exact local cleanroom and verified archive, then evaluates a copy in a fresh ignored directory using cached test data. The receipt records build or evaluator errors, branch/test counts and the official score. A zero score is compatible with valid collaboration. A run without a timed archive has no score.
@@ -114,14 +117,14 @@ Follow the [experiment workflow](../../docs/workflows/experiment.md). Use a clea
 The provider base URL ends in `/v1`. Generate pins after building the Worker and preparing the evaluator. The command rebuilds and fingerprints the compiled host code. It verifies the Worker label matches the clean checkout commit. The hosted command repeats those checks and compares all pins before any provider call.
 
 ```sh
-node benchmarks/programbench-pastel/pastel-matrix.mjs pins "$worker" \
+node benchmarks/programbench-pastel/pastel-matrix.ts pins "$worker" \
   > experiments/programbench-pastel/pins.json
 ```
 
 The private manifest takes `pins` as the JSON object printed above, `issue` as the approved issue URL, `experiments` as an object keyed by `subagents`, `flat` and `agensh` with registered EXP IDs, and `catalogPath` and `registryPath` as paths to the private catalog and registry with those IDs. Use absolute paths or run from the directory to which those paths are relative.
 
 ```sh
-node benchmarks/programbench-pastel/pastel-matrix.mjs hosted "$manifest"
+node benchmarks/programbench-pastel/pastel-matrix.ts hosted "$manifest"
 ```
 
 Each mode has three concurrent Bot slots and its own 1,800-second monotonic window. The command exits nonzero if any mode misses the timed collaboration and cleanup checks. Active streams are interrupted at the deadline. The host verifies the archive and source-adoption evidence, then records the official evaluator outcome separately. Use the final matrix receipt and [experiment report template](../../docs/experiments/TEMPLATE.md) for reporting. Keep provider configuration, transcripts, databases, archives and logs in the ignored experiment directory.

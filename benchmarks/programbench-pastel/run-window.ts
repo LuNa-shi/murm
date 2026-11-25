@@ -2,18 +2,48 @@ import { createHash, randomBytes } from 'node:crypto';
 import { once } from 'node:events';
 import { open, mkdir, unlink } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import type { ServerResponse } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 const maxInputBytes = 2 * 1024 ** 2;
 const maxArchiveBytes = 9 * 1024 ** 2;
-const positiveInteger = value => Number.isSafeInteger(value) && value > 0;
+const positiveInteger = (value: number) => Number.isSafeInteger(value) && value > 0;
+
+interface RunWindowOptions {
+  directory: string;
+  upstreamUrl: string;
+  upstreamHeaders?: HeadersInit;
+  durationMs?: number;
+  maxRequests?: number | null;
+  maxConcurrent?: number;
+  maxOutputTokens?: number | null;
+  now?: () => number;
+}
+
+interface Attempt {
+  number: number;
+  elapsedMs: number;
+  requestedOutputTokens?: number;
+  upstreamStatus?: number;
+  transport?: 'upstream_rejected' | 'stream_ended' | 'aborted' | 'failed';
+  finishedElapsedMs?: number;
+}
+
+interface Checkpoint {
+  sourceRevision: string;
+  sha256: string;
+  path: string;
+  observedElapsedMs: number;
+  persistedElapsedMs: number;
+}
 
 export async function createRunWindow({
   directory, upstreamUrl, upstreamHeaders = {}, durationMs = 1_800_000,
   maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, now = () => performance.now(),
-}) {
+}: RunWindowOptions) {
   if (![durationMs, maxConcurrent].every(positiveInteger) || durationMs > 1_800_000 || maxConcurrent > 3 ||
       (maxRequests !== null && !positiveInteger(maxRequests)) ||
       (maxOutputTokens !== null && (!positiveInteger(maxOutputTokens) || maxOutputTokens < 16))) {
@@ -28,14 +58,19 @@ export async function createRunWindow({
   headers.set('accept', 'text/event-stream');
   headers.set('content-type', 'application/json');
   const authorization = 'Bearer ' + randomBytes(32).toString('base64url');
-  const active = new Set();
+  const active = new Set<AbortController>();
   const lifetime = new AbortController();
-  const attempts = [];
-  const checkpoints = [];
-  let startTick, startedAt, closedElapsedMs, stopReason, timer, closePromise;
-  let latestCheckpoint;
+  const attempts: Attempt[] = [];
+  const checkpoints: Checkpoint[] = [];
+  let startTick: number | undefined;
+  let startedAt: string | undefined;
+  let closedElapsedMs: number | null | undefined;
+  let stopReason: string | undefined;
+  let timer: NodeJS.Timeout | undefined;
+  let closePromise: Promise<void> | undefined;
+  let latestCheckpoint: Checkpoint | undefined;
 
-  function seal(reason, tick = now()) {
+  function seal(reason: string, tick = now()) {
     if (closedElapsedMs !== undefined) return;
     const expired = startTick !== undefined && tick >= startTick + durationMs;
     stopReason = expired ? 'deadline' : reason;
@@ -45,7 +80,7 @@ export async function createRunWindow({
     lifetime.abort(Object.assign(new Error('Run window sealed'), { code: stopReason }));
   }
 
-  function admits(tick) {
+  function admits(tick: number) {
     if (startTick !== undefined && tick >= startTick + durationMs) seal('deadline', tick);
     return startTick !== undefined && closedElapsedMs === undefined;
   }
@@ -55,7 +90,7 @@ export async function createRunWindow({
     if (admits(tick)) timer = setTimeout(stopWhenDue, Math.max(1, startTick + durationMs - tick));
   }
 
-  function reply(response, status, code) {
+  function reply(response: ServerResponse, status: number, code: string) {
     if (response.destroyed) return;
     if (response.headersSent) return response.destroy();
     response.writeHead(status, { 'content-type': 'application/json' });
@@ -78,7 +113,7 @@ export async function createRunWindow({
         }
         chunks.push(chunk);
       }
-      body = JSON.parse(Buffer.concat(chunks));
+      body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
     } catch {
       return reply(response, 400, 'invalid_json');
     }
@@ -97,7 +132,7 @@ export async function createRunWindow({
     if (active.size >= maxConcurrent) return reply(response, 429, 'concurrent_limit');
     const controller = new AbortController();
     const disconnect = () => controller.abort();
-    const attempt = { number: attempts.length + 1, elapsedMs: tick - startTick, requestedOutputTokens: requested };
+    const attempt: Attempt = { number: attempts.length + 1, elapsedMs: tick - startTick, requestedOutputTokens: requested };
     attempts.push(attempt);
     active.add(controller);
     response.once('close', disconnect);
@@ -141,7 +176,7 @@ export async function createRunWindow({
       return admits(tick) ? Math.max(0, startTick + durationMs - tick) : 0;
     },
     upstream: Object.freeze({
-      url: `http://127.0.0.1:${server.address().port}/v1/responses`,
+      url: `http://127.0.0.1:${(server.address() as AddressInfo).port}/v1/responses`,
       headers: Object.freeze({ authorization }),
     }),
     start() {
@@ -151,7 +186,7 @@ export async function createRunWindow({
       stopWhenDue();
       return startedAt;
     },
-    async checkpoint({ archive, sourceRevision }) {
+    async checkpoint({ archive, sourceRevision }: { archive: Buffer; sourceRevision: string }) {
       if (!Buffer.isBuffer(archive) || !archive.length || archive.length > maxArchiveBytes ||
           typeof sourceRevision !== 'string' || !/^[A-Za-z0-9_.:-]{1,200}$/.test(sourceRevision)) {
         throw new Error('Invalid checkpoint inputs');
@@ -188,10 +223,10 @@ export async function createRunWindow({
         closedElapsedMs: closedElapsedMs ?? null,
         attempts, checkpoints, latestCheckpoint });
     },
-    seal: reason => seal(reason),
+    seal: (reason: string) => seal(reason),
     close() {
       seal('shutdown');
-      closePromise ??= new Promise((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+      closePromise ??= new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
       server.closeAllConnections();
       return closePromise;
     },

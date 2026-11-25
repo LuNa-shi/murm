@@ -4,14 +4,14 @@ import { copyFile, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/p
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual, promisify } from 'node:util';
-import { instance, privateDirectory, runDirectory, sha256, task } from './case.mjs';
+import { instance, privateDirectory, runDirectory, sha256, task } from './case.ts';
 
 const directory = dirname(fileURLToPath(import.meta.url));
 const repository = resolve(directory, '../..');
 const upstreamTree = resolve(process.env.PROGRAMBENCH_EVALUATOR_DIR ?? join(privateDirectory, 'upstream'));
-const runnerNames = ['case.mjs', 'local-integration.mjs', 'run-window.mjs', 'source-checkpoint.mjs', 'pack-submission.py',
-  'pastel-open.mjs', 'pastel-open-subagents.mjs', 'pastel-open-flat.mjs', 'pastel-open-agensh.mjs',
-  'pastel-matrix.mjs', 'Dockerfile'];
+const runnerNames = ['case.ts', 'local-integration.ts', 'run-window.ts', 'source-checkpoint.ts', 'pack-submission.py',
+  'pastel-open.ts', 'pastel-open-subagents.ts', 'pastel-open-flat.ts', 'pastel-open-agensh.ts',
+  'pastel-matrix.ts', 'Dockerfile'];
 const modes = ['subagents', 'flat', 'agensh'];
 const provider = 'kimi_proxy';
 const model = 'k3';
@@ -129,7 +129,7 @@ export async function inspectFrozenInputs(worker) {
   // Load distribution modules only after a clean build. dist is ignored by Git.
   await exec(process.execPath, ['scripts/build.ts'], { cwd: repository, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 });
   const [{ assertShippedModelPair }, { resolveAgenshImages }] = await Promise.all([
-    import('../../dist/src/agent/model-catalog.js'), import('./pastel-open-agensh.mjs'),
+    import('../../dist/src/agent/model-catalog.js'), import('./pastel-open-agensh.ts'),
   ]);
   const [localWorker, runnerFiles, catalog, evaluatorPins, agenshImages, hostDistributionSha256] = await Promise.all([
     exec('docker', ['image', 'inspect', worker, '--format', '{{json .}}'], { timeout: 10_000 }),
@@ -248,11 +248,11 @@ async function runHostedMatrix({ pins, issue, experiments, catalogPath, registry
       rows[0].split('|')[4]?.includes(pins.code.slice(0, 7)), 'EXPERIMENT_REGISTRATION_REQUIRED');
   }
   const upstream = await providerConfig(catalogPath);
-  const { runPastel } = await import('./pastel-open.mjs');
+  const { runPastel } = await import('./pastel-open.ts');
   const matrixDir = await runDirectory('k3-matrix');
   const lockDir = join(privateDirectory, 'hosted-run-starts');
   await mkdir(lockDir, { recursive: true, mode: 0o700 });
-  const policy = { kind: 'hosted_k3', durationMs: approvedWindowMs, maxRequests: null, maxConcurrent: 3, maxOutputTokens: null };
+  const policy = { kind: 'hosted_k3' as const, durationMs: approvedWindowMs, maxRequests: null, maxConcurrent: 3, maxOutputTokens: null };
   const rows = [];
   let writes = Promise.resolve();
   const persist = () => {
@@ -337,7 +337,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     } else throw Object.assign(new Error('Invalid command'), { code: 'USAGE' });
   } catch (error) {
     if (error.code === 'USAGE') {
-      process.stderr.write('Usage: node pastel-matrix.mjs pins <worker-image-id> | evaluate <receipt.json> | hosted <registered-manifest.json>\n');
+      process.stderr.write('Usage: node pastel-matrix.ts pins <worker-image-id> | evaluate <receipt.json> | hosted <registered-manifest.json>\n');
     } else {
       process.stderr.write(`${error.code ?? 'PASTEL_MATRIX_FAILED'}\n`);
     }

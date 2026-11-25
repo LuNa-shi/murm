@@ -8,8 +8,8 @@ import { httpClient } from '../../dist/src/environments/agensh/http.js';
 import { prepareAgenshFacilities } from '../../dist/src/environments/agensh/provision.js';
 import { createAgenshTeam } from '../../dist/src/environments/agensh/team.js';
 import { createLocalAgenshStack, facilityImages } from '../../dist/test/fixtures/agensh-local-stack.js';
-import { checkpointSource } from './source-checkpoint.mjs';
-import { sha256 } from './case.mjs';
+import { checkpointSource } from './source-checkpoint.ts';
+import { sha256 } from './case.ts';
 
 const peerWork = {
   a: 'Implement a reusable color-input parsing component. Publish a small initial contribution early. Use Python 3 standard library if no language is agreed. Post a Board FACT with its file path, interface and a reference observation. Commit only your component, push it and open a PR from your assigned branch.',

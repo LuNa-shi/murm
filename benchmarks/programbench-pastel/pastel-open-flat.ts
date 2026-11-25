@@ -6,8 +6,8 @@ import { makeEnvelope } from '../../dist/src/protocol/envelope.js';
 import { MissionWorkspace } from '../../dist/src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../../dist/src/runtime/workspace-manager.js';
 import { TaskService } from '../../dist/src/task/task-service.js';
-import { checkpointSource } from './source-checkpoint.mjs';
-import { sha256 } from './case.mjs';
+import { checkpointSource } from './source-checkpoint.ts';
+import { sha256 } from './case.ts';
 
 const instructions = `Use swarm task list --state ready to find ready work and swarm task take to claim it. Read the complete Task before writing.
 Publish source as Material attachments with relative names and base64 content. Use swarm material publish --help and --stdin.

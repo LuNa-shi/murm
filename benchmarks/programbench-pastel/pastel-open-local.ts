@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
-import { runPastel } from './pastel-open.mjs';
-import { auditPastelReceipt } from './pastel-matrix.mjs';
-import { inputTexts, localUpstream, message, tool, toolOutput } from './local-integration.mjs';
+import { runPastel } from './pastel-open.ts';
+import { auditPastelReceipt } from './pastel-matrix.ts';
+import { inputTexts, localUpstream, message, tool, toolOutput } from './local-integration.ts';
 
 const [, , mode, image, duration = '30000', extra] = process.argv;
 const durationMs = Number(duration);
 assert.ok(!extra && ['subagents', 'flat', 'agensh'].includes(mode) && /^sha256:[a-f0-9]{64}$/.test(image),
-  'Usage: node pastel-open-local.mjs <subagents|flat|agensh> <worker-image-id> [duration-ms]');
+  'Usage: node pastel-open-local.ts <subagents|flat|agensh> <worker-image-id> [duration-ms]');
 assert.ok(Number.isSafeInteger(durationMs) && durationMs >= 15_000 && durationMs <= 60_000);
 const compile = '#!/bin/sh\nset -eu\ninstall -m 0755 pastel.py executable\n';
 const parser = 'def color(value):\n    return {"red": "ff0000", "blue": "0000ff"}.get(value, value)\n';

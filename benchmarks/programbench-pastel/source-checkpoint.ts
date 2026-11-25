@@ -3,12 +3,22 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import type { createRunWindow } from './run-window.ts';
 
 const packer = fileURLToPath(new URL('./pack-submission.py', import.meta.url));
 
 const exec = promisify(execFile);
 
-export async function checkpointSource({ window, outputDir, sourceRevision, sourceTree, files, assertAuthorized = () => {} }) {
+interface CheckpointSource {
+  window: Awaited<ReturnType<typeof createRunWindow>>;
+  outputDir: string;
+  sourceRevision: string;
+  sourceTree?: string;
+  files?: Record<string, string | Buffer>;
+  assertAuthorized?: () => void;
+}
+
+export async function checkpointSource({ window, outputDir, sourceRevision, sourceTree, files, assertAuthorized = () => {} }: CheckpointSource) {
   const staging = await mkdtemp(join(outputDir, 'checkpoint-'));
   try {
     if (files) {

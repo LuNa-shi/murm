@@ -2,15 +2,35 @@ import { mkdir, copyFile, readFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { createRunWindow } from './run-window.mjs';
-import { instance, runDirectory, sha256, task } from './case.mjs';
-import { localBackend, saveReceipt } from './local-integration.mjs';
+import { createRunWindow } from './run-window.ts';
+import { instance, runDirectory, sha256, task } from './case.ts';
+import { localBackend, saveReceipt } from './local-integration.ts';
 import { ownedContainers } from '../../dist/test/fixtures/core-runtime-containers.js';
-import { runOpenSubagents } from './pastel-open-subagents.mjs';
-import { runOpenFlat } from './pastel-open-flat.mjs';
-import { runOpenAgensh } from './pastel-open-agensh.mjs';
+import { runOpenSubagents } from './pastel-open-subagents.ts';
+import { runOpenFlat } from './pastel-open-flat.ts';
+import { runOpenAgensh } from './pastel-open-agensh.ts';
 
 const drivers = { subagents: runOpenSubagents, flat: runOpenFlat, agensh: runOpenAgensh };
+
+interface PastelRunOptions {
+  mode: string;
+  image: string;
+  upstream: { url: string; headers?: Record<string, string> };
+  durationMs?: number;
+  maxRequests?: number | null;
+  maxConcurrent?: number;
+  maxOutputTokens?: number | null;
+  upstreamKind: 'scripted_loopback' | 'hosted_k3';
+  agenshImages?: Awaited<ReturnType<typeof import('./pastel-open-agensh.ts').resolveAgenshImages>>;
+  onStart?: (event: { startedAt: string; runtimeId?: string }) => void | Promise<void>;
+}
+
+interface PastelRunState {
+  evidence: Record<string, unknown>[];
+  runtimeId?: string;
+  stage?: string;
+  startObservationFailed?: boolean;
+}
 
 async function modelUsage(directory, runtimeId) {
   if (!runtimeId) return [];
@@ -31,7 +51,7 @@ async function modelUsage(directory, runtimeId) {
 
 /** Private orchestration. Its caller owns upstream selection and formal authorization. */
 export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
-  maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, upstreamKind, agenshImages, onStart }) {
+  maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, upstreamKind, agenshImages, onStart }: PastelRunOptions) {
   if (!Object.hasOwn(drivers, mode) || !/^sha256:[a-f0-9]{64}$/.test(image ?? '') ||
       !['scripted_loopback', 'hosted_k3'].includes(upstreamKind)) throw new Error('Invalid Pastel run input');
   const target = new URL(upstream.url);
@@ -44,7 +64,7 @@ export async function runPastel({ mode, image, upstream, durationMs = 1_800_000,
     upstreamHeaders: upstream.headers, durationMs, maxRequests, maxConcurrent, maxOutputTokens });
   const deadline = once(window.signal, 'abort').then(() => window.signal.reason.code);
   let setupElapsedMs;
-  const state = { evidence: [] };
+  const state: PastelRunState = { evidence: [] };
   let startObservation;
   const start = () => {
     const startedAt = window.start();

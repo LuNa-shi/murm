@@ -1,8 +1,8 @@
 import { createRuntime } from '../../dist/src/core/index.js';
-import { ServiceRegistry } from '../../dist/src/core/services.js';
+import { ServiceRegistry, type ServiceRegistration } from '../../dist/src/core/services.js';
 import { createSubagentsController } from '../../dist/examples/subagents-environment/controller.js';
-import { sha256 } from './case.mjs';
-import { checkpointSource } from './source-checkpoint.mjs';
+import { sha256 } from './case.ts';
+import { checkpointSource } from './source-checkpoint.ts';
 
 const parentInstructions = `Spawn two child Bots with complementary Pastel work using swarm bot spawn.
 Ask each child for a useful source file and a reference observation. Child results are delivered as JSON with childId, eventSeq, outcome and output.
@@ -21,7 +21,7 @@ function decodeChild(text) {
   }
 }
 
-function publishService(publish) {
+function publishService(publish: ServiceRegistration['adapter']['invoke']): ServiceRegistration {
   return { manifest: { id: 'candidate', title: 'Pastel candidate', purpose: 'Freeze candidate source during the run.',
     endpoint: { transport: 'in-process' }, contract_version: '2', provider_version: '1',
     capabilities: [{ name: 'publish', operation: 'publish', description: 'Publish a buildable source tree and child references.',
@@ -47,6 +47,11 @@ export async function runOpenSubagents({ state, task, window, start, deadline, i
   let runtime, parent, controller;
   services.registerService(publishService(({ caller, envelope, input, assertAuthorized }) => {
     if (caller.botId !== parent.id) throw new Error('Candidate publication requires the parent Bot');
+    // The Bridge checks this shape against the publish schema before calling the adapter.
+    const submission = input as {
+      files: Record<string, string>;
+      used_children?: { child_id: string; event_seq: number; file: string }[];
+    };
     const fingerprint = sha256(JSON.stringify(input));
     const prior = operations.get(envelope.operation_id);
     if (prior) {
@@ -56,16 +61,16 @@ export async function runOpenSubagents({ state, task, window, start, deadline, i
     const work = (async () => {
       const deliveries = controller.report().deliveries.filter(row => row.kind === 'child' && row.state === 'accepted');
       const adopted = new Map();
-      for (const child of input.used_children ?? []) {
+      for (const child of submission.used_children ?? []) {
         const source = deliveries.find(row => row.result.childId === child.child_id &&
           row.result.eventSeq === child.event_seq && row.result.outcome === 'completed');
         const content = decodeChild(source?.result.output)?.files;
         if (!content || !Object.hasOwn(content, child.file) || typeof content[child.file] !== 'string' ||
-            !Object.hasOwn(input.files, child.file) || input.files[child.file] !== content[child.file]) continue;
+            !Object.hasOwn(submission.files, child.file) || submission.files[child.file] !== content[child.file]) continue;
         adopted.set(child.child_id, { botId: child.child_id, eventSeq: child.event_seq,
           parentInputId: source.receipt.inputId, file: child.file, sha256: sha256(content[child.file]) });
       }
-      const checkpoint = await checkpointSource({ window, outputDir, files: input.files, assertAuthorized,
+      const checkpoint = await checkpointSource({ window, outputDir, files: submission.files, assertAuthorized,
         sourceRevision: `parent:${parent.id}:${sha256(envelope.operation_id)}` });
       const evidence = { candidateSha256: checkpoint.sha256, by: parent.id, adopted: [...adopted.values()] };
       state.evidence.push(evidence);

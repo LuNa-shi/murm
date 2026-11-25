@@ -131,7 +131,7 @@ The generated lead-helper reference reproduces the complete staged corrective in
 
 ## ProgramBench Pastel
 
-The [development benchmark](../../benchmarks/programbench-pastel/README.md) supplies its own workload text to existing dispatch paths. [Case source](../../benchmarks/programbench-pastel/case.mjs) defines the fixed instance `sharkdp__pastel.b60e899`. The task expands `${goal}` to the following text before adding the four task lines.
+The [development benchmark](../../benchmarks/programbench-pastel/README.md) supplies its own workload text to existing dispatch paths. [Case source](../../benchmarks/programbench-pastel/case.ts) defines the fixed instance `sharkdp__pastel.b60e899`. The task expands `${goal}` to the following text before adding the four task lines.
 
 ```text
 Rebuild Pastel for ProgramBench (sharkdp__pastel.b60e899).
