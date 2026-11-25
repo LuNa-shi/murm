@@ -17,6 +17,8 @@ const durationMs = project?.durationMs ?? 3_600_000;
 if (!Number.isSafeInteger(peerCount) || peerCount < 2 || peerCount > 8 || !Number.isSafeInteger(durationMs) || durationMs < 1 || durationMs > 86_400_000) {
   throw Object.assign(new Error('Invalid peer count or project duration'), { code: 'AGENSH_CONFIG_PROJECT_INVALID' });
 }
+const timeoutMs = durationMs + 120_000;
+const closeTimeoutMs = 30_000;
 const modelUrl = required('MODEL_URL');
 const modelToken = setting('MODEL_TOKEN');
 const gitea: any = { origin: required('GITEA_ORIGIN'), owner: required('GITEA_OWNER'), adminToken: required('GITEA_TOKEN') };
@@ -36,6 +38,7 @@ const backend = createPiOpenSandboxBackend({
     lifecycleBaseUrl: setting('LIFECYCLE_URL') ?? 'http://127.0.0.1:8080/v1',
     endpointHost: setting('ENDPOINT_HOST') ?? '127.0.0.1',
     apiKey: setting('LIFECYCLE_TOKEN'),
+    timeoutSeconds: Math.ceil((timeoutMs + closeTimeoutMs) / 1_000),
     resourceLimits: { cpu: '1', memory: '1Gi' },
     commandTimeoutMs: 20_000,
   },
@@ -49,11 +52,11 @@ const backend = createPiOpenSandboxBackend({
 
 export default {
   mode: 'agensh',
-  timeoutMs: durationMs + 120_000,
+  timeoutMs,
   options: {
     runId, image, backend, gitea, mattermost, startBoard,
     project, peerKeys: Array.from({ length: peerCount }, (_, index) => String.fromCharCode(97 + index)),
-    outputDir: setting('OUTPUT_DIR') ?? './agensh-runs', closeTimeoutMs: 30_000,
+    outputDir: setting('OUTPUT_DIR') ?? './agensh-runs', closeTimeoutMs,
     secretValues: [modelToken, mysqlDsn],
   },
 };

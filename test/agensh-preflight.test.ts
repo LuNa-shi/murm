@@ -16,6 +16,7 @@ test('foreground Agensh example validates host configuration without starting fa
   t.after(() => rm(directory, { recursive: true, force: true }));
   const config = new URL('../examples/agensh-environment/config.js', import.meta.url);
   const cli = new URL('../scripts/run-environment.js', import.meta.url);
+  const backendModule = new URL('../src/core/pi-opensandbox-backend.js', import.meta.url);
   const env = { PATH: process.env.PATH };
   const options = { cwd: directory, env, timeout: 5_000 };
   const command = [fileURLToPath(cli), '--config', fileURLToPath(config)];
@@ -39,6 +40,7 @@ test('foreground Agensh example validates host configuration without starting fa
   const observed = await execute(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
     import configuration from ${JSON.stringify(config.href)};
+    import { claimPiOpenSandboxBackend } from ${JSON.stringify(backendModule.href)};
     const { mode, options, timeoutMs } = configuration;
     assert.equal(mode, 'agensh');
     assert.equal(options.runId, 'local-example');
@@ -49,7 +51,8 @@ test('foreground Agensh example validates host configuration without starting fa
     assert.equal(options.project.durationMs, 3_600_000);
     assert.deepEqual(options.peerKeys, ['a', 'b', 'c', 'd']);
     assert.equal(typeof options.startBoard, 'function');
-    assert.ok(options.backend);
+    const backend = claimPiOpenSandboxBackend(options.backend);
+    assert.equal(backend.sandbox.timeoutSeconds, 3_750);
   `], options);
   assert.equal(observed.stdout, '');
   assert.deepEqual(await readdir(directory), ['project.json']);

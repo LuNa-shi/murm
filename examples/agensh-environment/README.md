@@ -41,7 +41,7 @@ Set the environment variables below in the host process. Load secrets from your 
 
 Optional settings use the same `SWARMENV_AGENSH_` prefix. `HOST` defaults to `172.17.0.1` and must be the guest-reachable host IPv4 address. `LIFECYCLE_URL` defaults to `http://127.0.0.1:8080/v1` and `ENDPOINT_HOST` to `127.0.0.1`. Set `LIFECYCLE_TOKEN` and `MODEL_TOKEN` for authenticated endpoints. `BOARD_ORIGIN` defaults to `http://127.0.0.1:8660` and `BOARD_PYTHON` to `python3`. `OUTPUT_DIR` defaults to `./agensh-runs`.
 
-Set `SWARMENV_AGENSH_PEERS` to a number from 2 to 8. It defaults to 2. Each peer has one CPU, 1 GiB memory, 128 MiB project disk and 8,192 project inodes. The model gateway allows 2,048 output tokens per request. Project work starts after provisioning and defaults to one hour, with a separate 30-second close wait. A missing required variable produces an `AGENSH_CONFIG_*_REQUIRED` error at startup.
+Set `SWARMENV_AGENSH_PEERS` to a number from 2 to 8. It defaults to 2. Each peer has one CPU, 1 GiB memory, 128 MiB project disk and 8,192 project inodes. The model gateway allows 2,048 output tokens per request. Project work starts after provisioning and defaults to one hour, with a separate 30-second close wait. The example gives each sandbox enough lifetime from allocation to cover the foreground host window and the close wait, so the host can still export private work at the project deadline. A missing required variable produces an `AGENSH_CONFIG_*_REQUIRED` error at startup.
 
 The project file supplies the issue title and body. Optional `seed` maps up to 64 normalized repository-relative paths to UTF-8 text (up to 64 KiB per file). Use `durationMs` to choose the work window.
 
