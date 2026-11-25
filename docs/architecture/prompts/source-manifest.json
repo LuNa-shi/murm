@@ -47,7 +47,7 @@
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
-      "sha256": "0476c24d6e878fd45e034aedd841ba2114f303b0aac3773de2e9aae6cb8be043"
+      "sha256": "bc23db35d6a52ee0b9ab2301e1d4b66f1f2e32f43fd2bd1a4fe0582842ca7b66"
     },
     {
       "path": "examples/subagents-environment/main.ts",
@@ -195,12 +195,12 @@
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
       "anchor": "const initial = ",
       "line": 12,
-      "sha256": "4ebf5e4bc2b3f7d09f2560d06a1340f5da27301d8dd47ac0c1ecdcfda6667eda"
+      "sha256": "b36b9662b15cf86e65ca219dcd70256e566321a92c0479229f55954204e18a2a"
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
       "anchor": "const supplement = ",
-      "line": 23,
+      "line": 24,
       "sha256": "d1597806b16bbb2cd2b08e7f393029f0f1c0a45f8cd8c5fbe927243320bc530a"
     },
     {
@@ -467,7 +467,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "b134748a2fa2ce5bc7ea69fe60dc53875bb22c00c87362c9285ad03802a63909"
+      "sha256": "2a605de5097f9cc488263d1acec0e31fb4665297db73e88c46ccfb542ddbcea7"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",

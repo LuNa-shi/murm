@@ -27,7 +27,7 @@ Each member has a private project directory by default. A private path alone can
 ````
 ## Pastel example initial task
 
-Body SHA-256: `4a770bdb242040616b5580bbf01ff477c4836a8747e58e0afeadaf9454e3b223`
+Body SHA-256: `93df93d8fbfc49d05d5b7b0b0451dc2af8fe7e6328014ad5b865fadb10d4b27b`
 
 ````text
 Implement a small offline subset of Pastel: pastel format FORMAT COLOR.
@@ -37,6 +37,7 @@ Reference executable: /opt/programbench/executable. Public docs are in /opt/prog
 Use the available Subagents to work on meaningful independent parts in parallel. Inspect the collaboration Service early. Choose the assignments and team size yourself, work on a complementary part while the children work, and use their concrete findings, tests, or patches in the delivery.
 Keep each assignment focused on a distinct deliverable. Ask children to send a first usable result as soon as it is verified so you can use it before their final reply. Probe representative cases for the stated formats. Ship the buildable, tested solution when it meets the stated scope and describe any remaining uncertainty. The task does not require an exhaustive sweep of the color space.
 Deliver delivery/compile.sh, delivery/README.md, delivery/pastel.js and delivery/test.js.
+Make an initial buildable delivery with its tests early, then improve it using verified child contributions. Run the build and tests again before the final reply.
 compile.sh must build an executable named pastel in that directory using available Node.js and shell tools, offline.
 Clean rebuilds and execution use a container with Node.js and no Pastel executable.
 ````
