@@ -1,4 +1,6 @@
-# EXP-20261125-04 · Agensh Pandoc collaboration
+# EXP-20261125-15 · Agensh Pandoc collaboration
+
+Registry ID `EXP-20261125-15` was assigned when integrating the parallel branches. The original run and its evidence use `EXP-20261125-04`.
 
 ## Registration
 

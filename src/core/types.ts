@@ -58,7 +58,8 @@ export type FileSeed = Readonly<Record<string, FileEntry>>;
 
 export interface CollectionSpec {
   paths: readonly string[];
-  includeGit: boolean | 'if-present';
+  includeGit: boolean;
+  allowMissingGit?: boolean;
   maxBytes: number;
   required: boolean;
 }
@@ -143,13 +144,21 @@ export interface SteerOptions {
   steeringMode?: 'all' | 'one-at-a-time';
 }
 
+export interface SendOptions extends SteerOptions {
+  mode?: InputMode;
+  wakeIfIdle?: boolean;
+}
+
 export type InputReceipt =
   | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
   | { inputId: string; status: 'unknown' };
 
+export type ConditionalInputReceipt = InputReceipt | { inputId: string; status: 'not-accepted'; reason: 'idle' };
+
 export interface InterruptReceipt {
   interruptId: string;
   status: 'interrupted' | 'unknown';
+  discardedInputHashes?: readonly string[];
 }
 
 export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
@@ -206,7 +215,8 @@ export interface Runtime {
   start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
   steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
   interrupt(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
-  send(botId: string, input: string, options: { requestId: string; mode?: InputMode }): Promise<InputReceipt>;
+  send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
+  send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
   onEvent(handler: (event: BotEvent) => void): () => void;
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;

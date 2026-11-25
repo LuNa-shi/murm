@@ -101,7 +101,7 @@ test('cancelling a subscription during ingestion prevents dispatch of remaining 
 });
 
 test('polling collects all new pages and advances a Mattermost cursor without duplicate inputs', async t => {
-  const comments = [], posts = [], trace = [], delivered = [];
+  const comments = [], posts = [], trace = [], delivered = [], failures = [];
   const server = createServer((request, response) => {
     const url = new URL(request.url, 'http://localhost');
     trace.push(url);
@@ -121,7 +121,7 @@ test('polling collects all new pages and advances a Mattermost cursor without du
   const source = await createAgenshEventSubscription({
     facilities: { endpoints: { gitea: origin, message: origin }, repository: { owner: 'owner', name: 'repo' }, channelId: 'channel',
       peer: { gitea: { username: 'worker', accountId: '101', token: 'git-token' }, message: { accountId: 'worker', token: 'mm-token' } } },
-    mapping: { workerId: 'worker', botId: 'bot' }, pollIntervalMs: 60_000,
+    mapping: { workerId: 'worker', botId: 'bot' }, pollIntervalMs: 60_000, maxPolls: 2, onFailure: failure => failures.push(failure),
     ingest: event => { delivered.push(event); return { batchId: event.eventId }; },
   });
   t.after(() => source.stop());
@@ -137,4 +137,8 @@ test('polling collects all new pages and advances a Mattermost cursor without du
   assert.equal(delivered.at(-1).eventId, 'post:55');
   assert.ok(trace.some(url => url.searchParams.has('before')));
   assert.ok(trace.some(url => url.searchParams.has('since')));
+  assert.deepEqual(failures, [{ code: 'ROUTER_SOURCE_POLL_LIMIT' }]);
+  assert.equal(source.snapshot().closed, true);
+  assert.equal(source.snapshot().exhausted, true);
+  await assert.rejects(source.poll(), { code: 'ROUTER_SOURCE_STOPPED' });
 });

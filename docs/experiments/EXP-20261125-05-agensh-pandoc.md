@@ -1,8 +1,10 @@
-# EXP-20261125-05 · Agensh Pandoc full-window repeat
+# EXP-20261125-16 · Agensh Pandoc full-window repeat
+
+Registry ID `EXP-20261125-16` was assigned when integrating the parallel branches. The original run and its evidence use `EXP-20261125-05`.
 
 ## Registration
 
-[Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) covers autonomous peer collaboration. On 2026-11-25 UTC the owner approved one run with `kimi_proxy/k3`, four peers and a one-hour project window. The time window is the only run-level budget. The owner authorized a new full-hour run after [EXP-20261125-04](EXP-20261125-04-agensh-pandoc.md) ended early. The same implementation and task are used. The launcher sets the transport lifetime to the project duration so requests are governed by the shared project deadline. It sets no call-count, accumulated-token or per-response output limit.
+[Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) covers autonomous peer collaboration. On 2026-11-25 UTC the owner approved one run with `kimi_proxy/k3`, four peers and a one-hour project window. The time window is the only run-level budget. The owner authorized a new full-hour run after [EXP-20261125-15](EXP-20261125-04-agensh-pandoc.md) ended early. The same implementation and task are used. The launcher sets the transport lifetime to the project duration so requests are governed by the shared project deadline. It sets no call-count, accumulated-token or per-response output limit.
 
 | Setting | Frozen value |
 | --- | --- |

@@ -90,11 +90,11 @@ test('collection streams bounded chunks and accepts a policy larger than 64 MiB 
   await assert.rejects(async () => { for await (const record of collectCoreWorkDir(root, { ...spec, includeGit: false }, { signal: controller.signal })) void record; }, { name: 'AbortError' });
 });
 
-test('if-present Git collection preserves private files before clone and Git history after clone', async t => {
+test('optional Git collection preserves private files before clone and Git history after clone', async t => {
   const root = await mkdtemp(join(tmpdir(), 'core-collection-checkout-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   await writeFile(join(root, 'private-work'), 'draft');
-  const policy = { ...spec, includeGit: 'if-present' };
+  const policy = { ...spec, allowMissingGit: true };
   const before = await inventory(root, policy);
   assert.deepEqual(before.directories, []);
   assert.equal(before.files[0].path, 'private-work');

@@ -135,6 +135,41 @@ test('the real timer interrupts a stream and the concurrency fence prevents disp
   assert.equal(receipt.attempts[0].transport, 'aborted');
 });
 
+test('a one-hour acceptance window can forward past 48 requests without an output clamp', async t => {
+  const observed = [];
+  const upstreamUrl = await serve(t, async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    observed.push(JSON.parse(Buffer.concat(chunks).toString('utf8')).max_output_tokens);
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.end(completion);
+  });
+  let tick = 1000;
+  const path = await directory(t);
+  const durationMs = 3_600_000;
+  await assert.rejects(createRunWindow({ directory: path, upstreamUrl, durationMs: durationMs + 1 }), /Invalid Pastel run bounds/);
+  const window = await createRunWindow({ directory: path, upstreamUrl, durationMs,
+    maxRequests: null, maxOutputTokens: null, now: () => tick });
+  t.after(() => window.close());
+  window.start();
+  for (let sent = 0; sent < 49; sent++) {
+    const response = await send(window.upstream.url, window.upstream.headers, { max_output_tokens: 16_384 });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), completion);
+  }
+  tick += durationMs - 1;
+  const final = await send(window.upstream.url, window.upstream.headers);
+  assert.equal(final.status, 200);
+  assert.equal(await final.text(), completion);
+  assert.deepEqual(observed, [...Array(49).fill(16_384), undefined]);
+  tick++;
+  const late = await send(window.upstream.url, window.upstream.headers);
+  assert.equal(late.status, 403);
+  await late.text();
+  assert.equal(window.receipt().closedElapsedMs, durationMs);
+  assert.equal(window.receipt().attempts.length, 50);
+});
+
 test('a deadline receipt reports the configured duration with a fractional monotonic start', async t => {
   const upstreamUrl = await serve(t, (_request, response) => response.end());
   const durationMs = 30_000;

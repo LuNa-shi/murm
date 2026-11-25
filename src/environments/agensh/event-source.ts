@@ -85,12 +85,22 @@ export async function createAgenshEventSubscription({ facilities, mapping, inges
     commentCursor = nextCommentCursor;
     return result;
   }
+  function failSubscription(code: string) {
+    failure = { code };
+    closed = true;
+    abort.abort();
+    onFailure(failure);
+  }
   function schedule() {
-    if (!closed && !combined.aborted && (maxPolls === undefined || polls < maxPolls)) timer = setTimeout(() => { void poll().catch(() => {}); }, pollIntervalMs);
+    if (closed || combined.aborted) return;
+    if (maxPolls !== undefined && polls >= maxPolls) {
+      failSubscription('ROUTER_SOURCE_POLL_LIMIT');
+      return;
+    }
+    timer = setTimeout(() => { void poll().catch(() => {}); }, pollIntervalMs);
   }
   async function poll() {
     check(); if (inFlight) return inFlight;
-    if (maxPolls !== undefined && polls >= maxPolls) throw fail('ROUTER_SOURCE_POLL_LIMIT');
     clearTimeout(timer); polls++;
     inFlight = (async () => {
       try {
@@ -105,7 +115,10 @@ export async function createAgenshEventSubscription({ facilities, mapping, inges
           seen.add(id);
         }
       } catch (error: any) {
-        if (!closed && !combined.aborted) { failure = { code: ['ROUTER_SOURCE_PAGE_LIMIT', 'ROUTER_SOURCE_INVALID', 'ROUTER_SOURCE_EVENT_LIMIT', 'ROUTER_SOURCE_DM_SCOPE'].includes(error.code) ? error.code : 'ROUTER_SOURCE_FAILED' }; closed = true; abort.abort(); onFailure(failure); }
+        if (!closed && !combined.aborted) {
+          failSubscription(['ROUTER_SOURCE_PAGE_LIMIT', 'ROUTER_SOURCE_INVALID', 'ROUTER_SOURCE_EVENT_LIMIT', 'ROUTER_SOURCE_DM_SCOPE'].includes(error.code)
+            ? error.code : 'ROUTER_SOURCE_FAILED');
+        }
         throw error;
       } finally { inFlight = undefined; schedule(); }
     })();

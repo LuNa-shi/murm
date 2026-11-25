@@ -209,31 +209,38 @@ test('lists every registered Bot and filters by parent and observed status', asy
   }
 });
 
-test('start and steer share the compatible input ledger and audit the trusted host source', async t => {
+test('send independently selects timing and waking, and audits the trusted host source', async t => {
   const { runtime, bot, outputDir } = await setup(t);
   transport.next = async id => transport.confirm(id, 'started');
-  const start = await runtime.start(bot.id, 'first phase', { requestId: 'start' });
-  assert.equal(start.disposition, 'started');
-  assert.deepEqual(await runtime.send(bot.id, 'first phase', { requestId: 'start', mode: 'followUp' }), start);
+  const started = await runtime.start(bot.id, 'first phase', { requestId: 'start' });
+  assert.equal(started.disposition, 'started');
+  assert.deepEqual(await runtime.send(bot.id, 'first phase', { requestId: 'start', mode: 'followUp', wakeIfIdle: true }), started);
   transport.next = async id => transport.confirm(id, 'queued');
-  const options = { requestId: 'push', source: 'external-message-service', steeringMode: 'all' };
-  const steer = await runtime.steer(bot.id, 'push now', options);
-  assert.equal(steer.disposition, 'queued');
-  assert.equal(transport.submissions.get(steer.inputId).steeringMode, 'all');
-  assert.deepEqual(await runtime.steer(bot.id, 'push now', options), steer);
-  await assert.rejects(runtime.steer(bot.id, 'push now', { ...options, source: 'different' }), { code: 'CONFLICT' });
-  await assert.rejects(runtime.steer(bot.id, 'push now', { ...options, steeringMode: 'one-at-a-time' }), { code: 'CONFLICT' });
-  await assert.rejects(runtime.steer(bot.id, 'bad mode', { requestId: 'bad', steeringMode: 'all-at-once' }), { code: 'INVALID_CONTRACT' });
+  const legacy = { requestId: 'legacy-steer', source: 'external-message-service', steeringMode: 'all' };
+  const legacySteer = await runtime.steer(bot.id, 'steer as before', legacy);
+  assert.deepEqual(await runtime.send(bot.id, 'steer as before', legacy), legacySteer);
+  transport.next = async id => transport.confirm(id, 'queued');
+  const options = { requestId: 'push', source: 'external-message-service', steeringMode: 'all', wakeIfIdle: false };
+  const steered = await runtime.send(bot.id, 'push now', options);
+  assert.equal(steered.disposition, 'queued');
+  assert.equal(transport.submissions.get(steered.inputId).wakeIfIdle, false);
+  assert.equal(transport.submissions.get(steered.inputId).steeringMode, 'all');
+  assert.deepEqual(await runtime.send(bot.id, 'push now', { ...options, mode: 'steer' }), steered);
+  await assert.rejects(runtime.send(bot.id, 'push now', { ...options, wakeIfIdle: true }), { code: 'CONFLICT' });
+  await assert.rejects(runtime.send(bot.id, 'push now', { ...options, source: 'different' }), { code: 'CONFLICT' });
+  await assert.rejects(runtime.send(bot.id, 'push now', { ...options, steeringMode: 'one-at-a-time' }), { code: 'CONFLICT' });
+  await assert.rejects(runtime.send(bot.id, 'bad mode', { requestId: 'bad', steeringMode: 'all-at-once' }), { code: 'INVALID_CONTRACT' });
   await runtime.close();
   const rows = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
-  assert.ok(rows.some(row => row.type === 'input' && row.inputId === steer.inputId &&
-    row.state === 'accepted' && row.caller === 'host' && row.source === 'external-message-service' && row.steeringMode === 'all'));
+  assert.ok(rows.some(row => row.type === 'input' && row.inputId === steered.inputId &&
+    row.state === 'accepted' && row.caller === 'host' && row.source === 'external-message-service' &&
+    row.steeringMode === 'all' && row.wakeIfIdle === false));
 });
 
 test('interrupt fences new inputs until the old execution settles and replays the same receipt', async t => {
   const { runtime, bot } = await setup(t);
   transport.next = async id => transport.confirm(id, 'started');
-  await runtime.start(bot.id, 'old execution', { requestId: 'old' });
+  await runtime.send(bot.id, 'old execution', { mode: 'followUp', requestId: 'old' });
   let finish;
   transport.onInterrupt = () => new Promise(resolve => { finish = resolve; });
   const observed = [];
@@ -242,7 +249,7 @@ test('interrupt fences new inputs until the old execution settles and replays th
   await new Promise(resolve => setImmediate(resolve));
   const repeat = runtime.interrupt(bot.id, { requestId: 'interrupt' });
   await assert.rejects(runtime.interrupt(bot.id, { requestId: 'other-interrupt' }), { code: 'CONFLICT' });
-  await assert.rejects(runtime.start(bot.id, 'blocked execution', { requestId: 'new' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.send(bot.id, 'blocked execution', { mode: 'followUp', requestId: 'new' }), { code: 'NOT_ALLOWED' });
   transport.listeners.get(bot.id)({ type: 'settled', outcome: 'aborted' });
   finish({ status: 'interrupted' });
   const receipt = await first;
@@ -250,7 +257,7 @@ test('interrupt fences new inputs until the old execution settles and replays th
   assert.deepEqual(await repeat, receipt);
   assert.equal((await runtime.get(bot.id)).status, 'idle');
   transport.next = async id => transport.confirm(id, 'started');
-  await runtime.start(bot.id, 'new execution', { requestId: 'new' });
+  await runtime.send(bot.id, 'new execution', { mode: 'followUp', requestId: 'new' });
   assert.deepEqual(await runtime.interrupt(bot.id, { requestId: 'interrupt' }), receipt);
   assert.equal((await runtime.get(bot.id)).status, 'running');
   assert.equal(transport.interruptCalls.length, 1);
@@ -264,7 +271,7 @@ test('an uncertain interrupt cannot reach a later execution and the same request
   const request = { requestId: 'lost-interrupt' };
   const first = await runtime.interrupt(bot.id, request);
   assert.equal(first.status, 'unknown');
-  await assert.rejects(runtime.steer(bot.id, 'too soon', { requestId: 'blocked' }), { code: 'NOT_ALLOWED' });
+  await assert.rejects(runtime.send(bot.id, 'too soon', { requestId: 'blocked' }), { code: 'NOT_ALLOWED' });
   transport.onInterrupt = async () => ({ status: 'interrupted' });
   const second = await runtime.interrupt(bot.id, request);
   assert.equal(second.status, 'interrupted');

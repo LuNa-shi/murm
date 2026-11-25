@@ -135,7 +135,7 @@ export async function createAgenshTeam(options: any) {
     }));
     for (const peer of facilities.peers) {
       const profile = `peer-${peer.key}`;
-      const bot = await runtime.spawn({ requestId: `spawn-${peer.key}`, profile, bindings: services.bindingsFor(peer.key), secretEnv: { GITEA_TOKEN: peer.gitea.token }, collect: { paths: ['.'], includeGit: options.project ? 'if-present' : true, maxBytes: exportLimit, required: true } });
+      const bot = await runtime.spawn({ requestId: `spawn-${peer.key}`, profile, bindings: services.bindingsFor(peer.key), secretEnv: { GITEA_TOKEN: peer.gitea.token }, collect: { paths: ['.'], includeGit: true, ...(options.project ? { allowMissingGit: true } : {}), maxBytes: exportLimit, required: true } });
       peers.set(peer.key, bot); check(); services.bindBot({ runtimeId: runtime.id, botId: bot.id, peerKey: peer.key, profile });
     }
     for (const peer of facilities.peers) {

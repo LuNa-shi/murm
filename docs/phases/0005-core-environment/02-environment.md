@@ -480,7 +480,7 @@ Profile.env 放非秘密变量，network.allow 首版只接受 IPv4 字面量 HT
 
 三个 bindings 必须可解析且属于本次运行。Bridge 只注入当前 Service 的引用，JSON 无权覆盖 caller；不能默认 botId 等于上游 worker ID。
 
-原生 Git 使用独立通道；下方兼容示例使用每个 peer 独立的 WORK\_BRANCH，普通项目允许 peer 自选分支。受限 token 由镜像 credential helper 读取，不能拼入 URL、日志或提交文件。
+原生 Git 使用独立通道；WORK\_BRANCH 为该 peer 唯一分支，受限 token 由镜像 credential helper 读取，不能拼入 URL、日志或提交文件。
 
 ```bash
 git clone "$RUN_REPOSITORY" work
@@ -541,11 +541,11 @@ const completed = await runInput(runtime, peer.id, batch.input,
 return { output: completed.settled.output };
 ```
 
-router 先对事件去重。新 batch 使用唯一 ID；重复已完成 batch 读处理记录，不再次调用 runInput。timeout/unknown 保留原 inputId/batch，停止该通道收尾或核对，不换 ID 自动重发。普通项目的轮内通知同样归该 router 管理；原批次的 settled 用于整轮完成，steer 回执单独记录，轮末竞争由 router 处理。
+router 先对事件去重。新 batch 使用唯一 ID；重复已完成 batch 读处理记录，不再次调用 runInput。timeout/unknown 保留原 inputId/batch，停止该通道收尾或核对，不换 ID 自动重发。另开 busy steer 通道会破坏独占前提，需另定输入关联。
 
 ### 8.4 输入与失败收尾
 
-用户经 Mattermost DM/mention 或 Gitea issue/PR comment 进入指定 worker 的 router，保留来源与事件 ID。原版工具返回时附带 pending DM/gist 并维护 pending/shown；首例仅验证轮次边界投递；**Q7 已确认 mid-turn notices 不属于首版验收阻塞项**。#201 在普通项目模式补做这项适配。DM 和已接纳的 Board 条目由同一 peer router 在活动批次内经 Core `steer` 排队，作为独立输入在 Pi 的执行边界进入当前 Session。其他事件按串行批次投递。记录事件 ID、提交回执和执行边界，避免轮内提交后在轮末重复投递；仅接受入队的回执不作为模型已见证据。单 peer 和兼容验收入口保留原来的轮次边界。普通项目允许 peer 自选同仓库分支发起 PR，合入仍通过可信 Service 校验作者、目标 main 和请求的 head。
+用户经 Mattermost DM/mention 或 Gitea issue/PR comment 进入指定 worker 的 router，保留来源与事件 ID。原版工具返回时附带 pending DM/gist 并维护 pending/shown；首例仅验证轮次边界投递；**Q7 已确认 mid-turn notices 不属于首版验收阻塞项**，CLI notices 后续适配并记录语义差异。Profile/router 提示同步改为 Bash 命令，不保留未实现的 mid-turn 通知承诺。
 
 结束先停止新工作，按预算给有界收尾机会，再停 router 派发与 idle nudge、取消未提交队列项。保留完成监听并有界 close；Core 停执行后导出未 push Git 历史、未提交/未跟踪文件及约定记录。Environment 根据 CloseReceipt 结束剩余等待、保存 batch 状态，再关闭自己拥有的连接、Services 与临时账户；外部运营设施按其归属处理。
 
