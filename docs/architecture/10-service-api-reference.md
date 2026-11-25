@@ -31,15 +31,15 @@ This section is generated from executable exports and checked against the source
 | Source | SHA-256 |
 |---|---|
 | [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `58dc15ec4ed3cca5ee3e1a2c131b17813f7703e598001748259b5c5064abf5ce` |
-| [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `98d9ded93d7254f1813080c71862e0b8a305de12704219046156e16bd5787623` |
+| [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `ccb1dea4ee2e42ecd86169d9ccc2c8b8d151a7184e3b9795802499357302db46` |
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `ef5119f0fa92a587850498a8ae2d1fc19c35d45f1cd3df9301916460433a34c2` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `059326242222f5a036a03b33fb0e7b260fb0f527dfd771822755db2419ef5253` |
 | [src/agent/capability-profile.ts](../../src/agent/capability-profile.ts) | `53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5` |
-| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `f2ba8c143c277f817a49248e85c1499dd27083be081d8deefd663cd9ce4b8fd5` |
+| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `e7e4958aa7a1d4d8fb317d26c2fe89291181f2e2a2d4e7aa330fafda6250653e` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
-| [src/core/index.ts](../../src/core/index.ts) | `18b7084a77c8f7758ad697aaf4a5158670c9cb66b4843703291bb19a6ae4cfed` |
-| [src/core/types.ts](../../src/core/types.ts) | `1dad9c2f8adf70e14fe1c54bf2d6a96ed63bef4cd55e9e25bee3bf1fdb205eff` |
+| [src/core/index.ts](../../src/core/index.ts) | `75864afead0fa320e7d34a59dceedcc57f10f17a8d7bd8e386ce30dde9ca23ca` |
+| [src/core/types.ts](../../src/core/types.ts) | `c0da93d51e7061adcc2b645e32190d94082a61605f1f612c7086e3767efa5b3c` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `3d9b797156e9c13cfeea316025584f4aa379007b80831413df0cb9d588719583` |
 | [src/core/services.ts](../../src/core/services.ts) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
@@ -3215,16 +3215,16 @@ export interface ResourceError extends Error {
     reportPath?: string;
     details: readonly ErrorInfo[];
 }
-export type BotStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
-export interface BotListFilter {
+export type AgentStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+export interface AgentListFilter {
     parentId?: string | null;
-    status?: BotStatus | readonly BotStatus[];
+    status?: AgentStatus | readonly AgentStatus[];
 }
-export interface BotInfo {
+export interface AgentInfo {
     id: string;
     profile: string;
     parentId?: string;
-    status: BotStatus;
+    status: AgentStatus;
     cursor: number;
     latestOutput?: string;
     lastError?: ErrorInfo;
@@ -3258,16 +3258,16 @@ export interface InterruptReceipt {
     status: 'interrupted' | 'unknown';
     discardedInputHashes?: readonly string[];
 }
-export type BotInitialInputResult = InputReceipt | {
+export type AgentInitialInputResult = InputReceipt | {
     status: 'rejected';
     error: ErrorInfo;
 } | null;
 /** Built-in bot.spawn Service result, distinct from host Runtime.spawn. */
-export interface BotSpawnReceipt {
-    bot: BotInfo;
-    initialInput: BotInitialInputResult;
+export interface AgentSpawnReceipt {
+    bot: AgentInfo;
+    initialInput: AgentInitialInputResult;
 }
-export type BotEvent = {
+export type AgentEvent = {
     botId: string;
     seq: number;
 } & ({
@@ -3322,9 +3322,9 @@ export interface CloseReceipt {
 }
 export interface Runtime {
     readonly id: string;
-    spawn(options: SpawnOptions): Promise<BotInfo>;
-    get(botId: string): Promise<BotInfo>;
-    list(filter?: BotListFilter): Promise<BotInfo[]>;
+    spawn(options: SpawnOptions): Promise<AgentInfo>;
+    get(botId: string): Promise<AgentInfo>;
+    list(filter?: AgentListFilter): Promise<AgentInfo[]>;
     start(botId: string, input: string, options: {
         requestId: string;
     }): Promise<InputReceipt>;
@@ -3337,7 +3337,7 @@ export interface Runtime {
         wakeIfIdle?: true;
     }): Promise<InputReceipt>;
     send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
-    onEvent(handler: (event: BotEvent) => void): () => void;
+    onEvent(handler: (event: AgentEvent) => void): () => void;
     stop(botId: string, options?: {
         timeoutMs?: number;
     }): Promise<StopReceipt>;
@@ -3372,6 +3372,7 @@ export interface Runtime {
         }): Promise<GrantReceipt>;
     };
 }
+export type { AgentStatus as BotStatus, AgentListFilter as BotListFilter, AgentInfo as BotInfo, AgentInitialInputResult as BotInitialInputResult, AgentSpawnReceipt as BotSpawnReceipt, AgentEvent as BotEvent, };
 ```
 
 #### dist/src/core/public-services.d.ts

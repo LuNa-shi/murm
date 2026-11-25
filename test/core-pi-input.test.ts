@@ -17,9 +17,9 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@swarmenv/core');
-const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
-const { ServiceRegistry } = await import('@swarmenv/core/services');
+const { createRuntime } = await import('@murm/core');
+const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+const { ServiceRegistry } = await import('@murm/core/services');
 hooks.deregister();
 
 async function setup(t, { upstreamUrl = 'http://127.0.0.1:1/v1/responses', services = new ServiceRegistry(), permissions = {}, writable = true, maxBots = 1, upstreamHeaders = {} } = {}) {

@@ -45,11 +45,11 @@ test('checkout TMPDIR cannot make an external frozen consumer inherit checkout d
   await writeFile(join(poison, 'package.json'), JSON.stringify({ name: dependency, type: 'module', exports: './index.js' }));
   await writeFile(join(poison, 'index.js'), 'export default true;');
   const packageRoot = join(root, 'package');
-  await mkdir(join(packageRoot, 'examples/notes-environment'), { recursive: true });
-  await mkdir(join(packageRoot, 'src/environments/shared'), { recursive: true });
-  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@swarmenv/core', version: '0.0.0-external', type: 'module', exports: './examples/notes-environment/main.mjs' }));
-  await writeFile(join(packageRoot, 'examples/notes-environment/main.mjs'), `import value from '${dependency}';export default value;`);
-  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/environments/shared/${name}.js`), '');
+  await mkdir(join(packageRoot, 'examples/notes'), { recursive: true });
+  await mkdir(join(packageRoot, 'src/harnesses/shared'), { recursive: true });
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@murm/core', version: '0.0.0-external', type: 'module', exports: './examples/notes/main.mjs' }));
+  await writeFile(join(packageRoot, 'examples/notes/main.mjs'), `import value from '${dependency}';export default value;`);
+  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/harnesses/shared/${name}.js`), '');
   const archive = join(root, 'candidate.tgz'); await execute('tar', ['-czf', archive, 'package'], { cwd: root, timeout: 5000 });
   const expectedSha256 = createHash('sha256').update(await readFile(archive)).digest('hex');
   const script = `import assert from 'node:assert/strict';import {realpath,writeFile,readFile} from 'node:fs/promises';import {dirname,join} from 'node:path';
@@ -65,7 +65,7 @@ test('checkout TMPDIR cannot make an external frozen consumer inherit checkout d
       const installed=await install();try {
         assert.equal((await realpath(installed.directory)).startsWith(checkout+'/'),false);
         assert.notEqual(dirname(installed.directory),temp);
-        await assert.rejects(execute(process.execPath,['--input-type=module','-e',"await import('@swarmenv/core')"],{cwd:installed.directory,env:installed.env}),error=>/ERR_MODULE_NOT_FOUND/.test(error.stderr));
+        await assert.rejects(execute(process.execPath,['--input-type=module','-e',"await import('@murm/core')"],{cwd:installed.directory,env:installed.env}),error=>/ERR_MODULE_NOT_FOUND/.test(error.stderr));
         const output=join(evidence,'synthetic-result.json');await writeFile(output,JSON.stringify({installation:installed.directory}));
         assert.equal(JSON.parse(await readFile(output)).installation,installed.directory);
       }finally{await installed.close();}
@@ -99,16 +99,16 @@ test('all external install gates honor the host frozen archive selection without
 test('matching frozen archive installs its exact bytes outside checkout without attributing current Git provenance', { timeout: 30_000 }, async t => {
   const root = await mkdtemp(join(tmpdir(), 'notes-frozen-install-')); t.after(() => rm(root, { recursive: true, force: true }));
   const packageRoot = join(root, 'package');
-  await mkdir(join(packageRoot, 'examples/notes-environment'), { recursive: true });
-  await mkdir(join(packageRoot, 'src/environments/shared'), { recursive: true });
-  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@swarmenv/core', version: '0.0.0-frozen-fixture', type: 'module', exports: './examples/notes-environment/main.mjs' }));
-  await writeFile(join(packageRoot, 'examples/notes-environment/main.mjs'), "export const marker = 'frozen-candidate';\n");
-  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/environments/shared/${name}.js`), `export const name = '${name}';\n`);
+  await mkdir(join(packageRoot, 'examples/notes'), { recursive: true });
+  await mkdir(join(packageRoot, 'src/harnesses/shared'), { recursive: true });
+  await writeFile(join(packageRoot, 'package.json'), JSON.stringify({ name: '@murm/core', version: '0.0.0-frozen-fixture', type: 'module', exports: './examples/notes/main.mjs' }));
+  await writeFile(join(packageRoot, 'examples/notes/main.mjs'), "export const marker = 'frozen-candidate';\n");
+  for (const name of ['run-input', 'run-report', 'read-result']) await writeFile(join(packageRoot, `src/harnesses/shared/${name}.js`), `export const name = '${name}';\n`);
   const archive = join(root, 'candidate.tgz');
   await execute('tar', ['-czf', archive, 'package'], { cwd: root, timeout: 5000 });
   const bytes = await readFile(archive), expectedSha256 = createHash('sha256').update(bytes).digest('hex');
   const installed = await installNotesExample({ archive, expectedSha256 }); t.after(() => installed.close());
-  assert.deepEqual(installed.metadata, { name: '@swarmenv/core', version: '0.0.0-frozen-fixture', sourceCommit: null, sourceDirty: null, sha256: expectedSha256 });
+  assert.deepEqual(installed.metadata, { name: '@murm/core', version: '0.0.0-frozen-fixture', sourceCommit: null, sourceDirty: null, sha256: expectedSha256 });
   // The platform temporary directory can itself have checkout ancestry.
   let ancestor = await realpath(installed.directory);
   for (;;) {
@@ -121,7 +121,7 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   assert.deepEqual(await readFile(join(installed.directory, 'frozen-package.tgz')), bytes);
   const result = await execute(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
-    import { marker } from '@swarmenv/core';
+    import { marker } from '@murm/core';
     import { name as input } from './run-input.mjs';
     import { name as reader } from './read-result.mjs';
     assert.equal(marker, 'frozen-candidate');
@@ -139,7 +139,7 @@ try {
   assert.equal((await (await import('node:fs/promises')).stat(installed.directory)).mode & 0o777,0o700);
   assert.equal(installed.metadata.sha256,process.env.SWARMENV_TEST_PACKAGE_SHA256);
   assert.equal(installed.metadata.sourceCommit,null); assert.equal(installed.metadata.sourceDirty,null);
-  const result=await execute(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict'; import {marker} from '@swarmenv/core'; assert.equal(marker,'frozen-candidate');"],{cwd:installed.directory,env:installed.env,timeout:5000});
+  const result=await execute(process.execPath,['--input-type=module','-e',"import assert from 'node:assert/strict'; import {marker} from '@murm/core'; assert.equal(marker,'frozen-candidate');"],{cwd:installed.directory,env:installed.env,timeout:5000});
   assert.equal(result.stderr,'');
 } finally {await installed.close();}
 `], { env: { ...process.env, SWARMENV_TEST_PACKAGE_ARCHIVE: archive,
@@ -194,21 +194,23 @@ test('candidate package admits only declared distribution roots and retains exec
     'dist/src/core/index.js', 'dist/src/core/index.d.ts', 'dist/src/core/services.js', 'dist/src/core/services.d.ts',
     'dist/src/core/backends/pi-opensandbox.js', 'dist/src/core/backends/pi-opensandbox.d.ts',
     'dist/scripts/swarm.js', 'dist/scripts/opensandbox-agent-worker.js',
-    'services/opensandbox-agent/pi-models.json', 'dist/src/environments/shared/run-report.js',
-    'dist/examples/scalemas-environment/main.js', 'dist/examples/scalemas-environment/config.js',
-    'dist/examples/notes-environment/main.js', 'dist/test-support/subagents/communication-fixture-controller.js',
-    'dist/examples/agensh-environment/config.js', 'examples/agensh-environment/README.md',
+    'services/opensandbox-agent/pi-models.json', 'dist/src/harnesses/shared/run-report.js',
+    'dist/examples/substrate/main.js', 'dist/examples/substrate/config.js',
+    'dist/examples/notes/main.js', 'dist/test-support/subagents/communication-fixture-controller.js',
+    'dist/examples/peermesh/config.js', 'examples/peermesh/README.md',
     'docs/architecture/source-map.json', 'dist/test/fixtures/foreground-host-configuration.js',
   ];
+  const exampleRuns = { notes: 'notes-runs', subagents: 'subagents-runs', 'lead-worker': 'lead-helper-runs',
+    substrate: 'scalemas-runs', peermesh: 'agensh-runs' };
   const privatePaths = ['.env.production', 'local-credentials.json', 'runtime.json', 'notes-runs/run/secret.txt',
     'local-artifacts/run/private.bin', 'experiments/run/private.bin', 'reports/run/private.bin', '.worktree/other/private.txt',
-    ...['notes', 'subagents', 'lead-helper', 'scalemas', 'agensh'].map(mode => `examples/${mode}-environment/${mode}-runs/run/runtime.json`)];
+    ...Object.entries(exampleRuns).map(([example, runs]) => `examples/${example}/${runs}/run/runtime.json`)];
   for (const path of [...resources, ...privatePaths]) {
     await mkdir(join(root, path, '..'), { recursive: true });
     await writeFile(join(root, path), resources.includes(path) ? 'distribution fixture\n' : 'PRIVATE_PACKAGE_PROBE\n');
   }
-  for (const mode of ['notes', 'subagents', 'lead-helper', 'scalemas', 'agensh']) {
-    const path = `examples/${mode}-environment/.npmignore`;
+  for (const example of Object.keys(exampleRuns)) {
+    const path = `examples/${example}/.npmignore`;
     await writeFile(join(root, path), await readFile(new URL(`../${path}`, import.meta.url)));
   }
   const packed = await execute('npm', ['pack', '--json', '--ignore-scripts'], { cwd: root, timeout: 15_000 });

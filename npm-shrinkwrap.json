@@ -1,11 +1,11 @@
 {
-  "name": "@swarmenv/core",
+  "name": "@murm/core",
   "version": "0.2.0",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "@swarmenv/core",
+      "name": "@murm/core",
       "version": "0.2.0",
       "dependencies": {
         "@earendil-works/pi-coding-agent": "1.3.0",

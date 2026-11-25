@@ -5,11 +5,11 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
-import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
+import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
 import { decodeFileSeed } from '../scripts/core-file-seed.js';
 import { createHash } from 'node:crypto';
-import { prepareFlatInputs } from '../src/environments/flat/prepare-inputs.js';
+import { prepareTaskPoolInputs } from '../src/harnesses/taskpool/prepare-inputs.js';
 import { SwarmEnvError } from '../src/errors.js';
 import { stableStringify, makeEnvelope } from '../src/protocol/envelope.js';
 
@@ -22,13 +22,13 @@ async function fixture(t, options = {}) {
   stores.tasks.registerBot({ botId, missionId:stores.missionId, legacySlotId:'slot:A', selectionDeadline:new Date(Date.now()+60000).toISOString() });
   stores.tasks.markCoreBotReady(botId);
   let execution = stores.tasks.takeTask(stores.task.task_id, { owner_ref:botId, core_id:'slot:A', take_key:'fixed-take' }).execution;
-  await prepareFlatInputs({execution, taskService:stores.tasks, missionWorkspace:stores.workspace, workspaceId:stores.workspaceId, workspaceManager:stores.manager, contextService:stores.context, check() {}});
+  await prepareTaskPoolInputs({execution, taskService:stores.tasks, missionWorkspace:stores.workspace, workspaceId:stores.workspaceId, workspaceManager:stores.manager, contextService:stores.context, check() {}});
   execution=stores.tasks.getExecution(execution.execution_id);
   execution = stores.tasks.dispatch('start_execution', { core_id:'slot:A' }, makeEnvelope({ actorRef:botId, taskId:execution.task_id, executionId:execution.execution_id, specVersion:execution.spec_version, stateVersion:execution.state_version, fencingVersion:execution.fencing_version })).execution;
   const runtime = options.runtime ?? { id:'runtime:flat', async get(id) { assert.equal(id,botId); return {id,profile:'researcher',status:'running'}; } };
   let publication, registrations;
   const restartPublication = () => {
-    publication = createFlatPublicationServices({ runtime, taskService:stores.tasks, contextService:stores.context, missionId:stores.missionId, missionWorkspace:stores.workspace, workspaceId:stores.workspaceId, deadline:()=>Date.now()+60000, ...options });
+    publication = createTaskPoolPublicationServices({ runtime, taskService:stores.tasks, contextService:stores.context, missionId:stores.missionId, missionWorkspace:stores.workspace, workspaceId:stores.workspaceId, deadline:()=>Date.now()+60000, ...options });
     const registry = new ServiceRegistry();
     for (const registration of publication.registrations) registry.registerService(registration);
     registrations = snapshotServiceRegistry(registry);
@@ -95,7 +95,7 @@ test('Flat advertises enough transport time for a trusted project checker', t =>
   const db = new DatabaseSync(':memory:');
   t.after(() => db.close());
   const taskService = { db, setWorkspaceDeliveryReader() {} };
-  const publication = createFlatPublicationServices({
+  const publication = createTaskPoolPublicationServices({
     runtime: () => ({}), taskService, contextService: {}, missionWorkspace: {},
     missionId: 'bench', workspaceId: 'bench', deadline: () => Date.now() + 3_600_000,
     judgeService: { taskService, processTimeoutMs: 300_000, missionBudget: { queueWaitMs: 120_000 }, dispatch() {} },

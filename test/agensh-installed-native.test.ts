@@ -8,8 +8,8 @@ import { createInterface } from 'node:readline';
 import { createNativeEvidenceDirectory, installNativeNotesExample, execute } from './fixtures/notes-installed-package.js';
 import { createTeamUpstream, teamInputs, teamFact, foregroundInput } from './fixtures/agensh-team-upstream.js';
 import { createDeadline, createCleanupBudget } from './fixtures/agensh-deadline.js';
-import { httpClient } from '../src/environments/agensh/http.js';
-import { createAgenshDelivery } from '../src/environments/agensh/delivery.js';
+import { httpClient } from '../src/harnesses/peermesh/http.js';
+import { createPeerMeshDelivery } from '../src/harnesses/peermesh/delivery.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { closeInstalledForeground } from './fixtures/agensh-installed-cleanup.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
@@ -23,7 +23,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
   const directory = await createNativeEvidenceDirectory('agensh-installed');
 
   const installed = await installNativeNotesExample();
-  const root = join(installed.directory, 'node_modules/@swarmenv/core');
+  const root = join(installed.directory, 'node_modules/@murm/core');
   const runId = `cli-${randomBytes(6).toString('hex')}`;
   const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const cleanup = createCleanupBudget(100_000);
@@ -126,7 +126,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
 
     child = spawn(
       process.execPath,
-      [join(root, 'dist/scripts/run-environment.js'), '--config', join(installed.directory, 'host-config.mjs')],
+      [join(root, 'dist/scripts/run-harness.js'), '--config', join(installed.directory, 'host-config.mjs')],
       {
         cwd: installed.directory,
 
@@ -278,7 +278,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
       };
     }));
 
-    const delivery = createAgenshDelivery({
+    const delivery = createPeerMeshDelivery({
       facilities: {
         peers,
 
@@ -441,7 +441,7 @@ test('installed foreground Agensh CLI preserves native fixed collaboration and a
     }
 
     const read = JSON.parse((await shell(process.execPath, [
-      join(root, 'dist/scripts/read-environment-result.js'),
+      join(root, 'dist/scripts/read-harness-result.js'),
       '--run-directory',
       ready.runDirectory,
       '--runtime-id',

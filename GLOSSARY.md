@@ -1,39 +1,49 @@
-# SwarmEnv
+# murm
 
-SwarmEnv provides a Core library for running Bots and programmable Environments for their collaboration. The [Phase 0005 design](docs/phases/0005-core-environment/README.md) defines this stage's requirements, and [Architecture](docs/architecture/INDEX.md) describes the implementation and retained compatibility paths.
+murm is a toolkit for building multi-agent Harnesses.
 
-## Core and Environment vocabulary
+## Core concepts
 
-**Core**
-The importable library that owns Bot identities, resource lifecycles, input delivery and Service access for its Runtimes.
-_Avoid_ capacity slot, research role, permanent manager.
+**Agent**:
+An independent actor in one Run, with a persistent Session and working directory.
+_Avoid_: Bot.
 
-**Runtime**
-One host run created through Core, with its own Bot capacity, registered resources and close responsibility.
+**Service**:
+A shared capability with a manifest of operations and an implementation the Runtime can invoke for authorized Agents.
 
-**Slot**
-One unit of a Runtime's Bot capacity, occupied until the Bot's resource cleanup is complete.
-_Avoid_ Core, research role, manager lane.
+**Harness**:
+The host program that composes Agent Profiles and Services and defines how Agents collaborate, receive inputs and finish.
+_Avoid_: Environment, Program.
 
-**Environment**
-A host program that assembles a Runtime and Services, supplies collaboration policy and routes inputs among Bots.
+**Runtime**:
+The host control plane for one Run. It manages Agent identity, lifecycle, input delivery and Service access.
 
-**Profile**
-A named, frozen configuration of a Bot role, including its prompt, model, image and permitted Service operations.
+**Sandbox**:
+The isolated filesystem, network and process boundary around an Agent.
 
-**Bot**
-One identity with a private Session and workDir, belonging to one Runtime. In flat, a Bot has zero or one Execution.
-_Avoid_ reusable Agent identity.
+**Run**:
+One concrete Harness execution and its durable record, including Runtime configuration, events and collected artifacts.
 
-**Session**
-The Bot's model conversation context, retained across its input turns.
+## Supporting vocabulary
 
-**workDir / Working directory**
-A Bot's private project directory. In flat, an active Execution's unsaved changes remain in this directory until published to Workspace.
+**Core**:
+The importable library that provides the Runtime, Service framework and Sandbox backend integration.
 
-## Flat vocabulary
+**Profile**:
+A named, frozen configuration of an Agent role, including its prompt, model, image and permitted Service operations.
 
-Flat's Mission, Task and public-result terms follow the approved [Issue #122 model](docs/phases/0002-task-material-workspace/01-model-and-runtime.md).
+**Slot**:
+One unit of a Runtime's Agent capacity, occupied until the Agent's resource cleanup is complete.
+
+**Session**:
+The Agent's model conversation context, retained across its input turns.
+
+**Working directory**:
+An Agent's private project directory. In TaskPool, an active Execution's unsaved changes remain there until published to Workspace.
+
+## TaskPool vocabulary
+
+TaskPool's Mission, Task and public-result terms follow the approved [Issue #122 model](docs/phases/0002-task-material-workspace/01-model-and-runtime.md).
 
 **Mission**: The shared research objective, resource boundary and final acceptance scope. A Mission is not a Task to be taken.
 _Avoid_: Goal object, Mission Task, root Task.
@@ -41,7 +51,7 @@ _Avoid_: Goal object, Mission Task, root Task.
 **Task**: A bounded responsibility with its own objective, deliverable and completion conditions. It has at most one current executor.
 _Avoid_: child Task, manager Task, shared Mission Task.
 
-**Execution**: A Bot's authorized interval of responsibility for one taken Task, through finish and cleanup.
+**Execution**: An Agent's authorized interval of responsibility for one taken Task, through finish and cleanup.
 _Avoid_: permanent worker, resumed predecessor identity.
 
 **Take**: Acquiring exclusive current responsibility for an eligible Task.
@@ -56,7 +66,7 @@ _Avoid_: mandatory Fact, Experience, Progress or Handoff object types.
 _Avoid_: global trust score, mandatory Evidence object.
 
 **Workspace**: The Mission's public project repository, with main and immutable public file revisions, including unmerged saves.
-_Avoid_: Bot private directory, Workspace lineage.
+_Avoid_: Agent private directory, Workspace lineage.
 
 **Revision**: An immutable Workspace file version with explicit ancestry. Revision numbering alone does not establish ancestry.
 
@@ -69,7 +79,7 @@ _Avoid_: separate Candidate entity, Candidate ID, Candidate store.
 
 **Mission submission**: A fixed final delivery selected for Mission acceptance, containing current main and an explicit Material selection.
 
-**Handoff**: Continuing useful work through public Task state, Material and saved files after the earlier Bot ends.
+**Handoff**: Continuing useful work through public Task state, Material and saved files after the earlier Agent ends.
 _Avoid_: restoring a predecessor's private conversation or computation.
 
 **Dependency**: A genuine prerequisite that must be satisfied before a Task can proceed. Proposal origin is not a dependency or hierarchy.
@@ -86,5 +96,5 @@ These definitions capture the [Issue #137 discussion](https://github.com/LuNa-sh
 
 **Mission gap**: A missing result, capability or understanding that a Task is intended to address in support of the Mission, including by solving a local problem. Its contribution may be indirect or exploratory and does not require a complete route to Mission acceptance.
 
-**Task priority**: An advisory judgment of the relative value of investing the next available computation in a Task, given the current Mission state and available evidence. It informs a Bot's choice without compelling it and can change as results, uncertainties and alternative routes change.
+**Task priority**: An advisory judgment of the relative value of investing the next available computation in a Task, given the current Mission state and available evidence. It informs an Agent's choice without compelling it and can change as results, uncertainties and alternative routes change.
 

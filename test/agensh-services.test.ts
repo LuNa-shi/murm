@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createAgenshServices } from '../src/environments/agensh/services.js';
+import { createPeerMeshServices } from '../src/harnesses/peermesh/services.js';
 import { snapshotServiceRegistry, invokeService } from '../src/core/services.js';
 
 test('all three Services resolve only their own trusted account and fix board identity', async t => {
@@ -15,7 +15,7 @@ test('all three Services resolve only their own trusted account and fix board id
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const service = createAgenshServices({ runId: 'run', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board',
+  const service = createPeerMeshServices({ runId: 'run', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board',
     endpoints: { gitea: origin, message: origin, board: origin },
     peer: { gitea: { binding: 'git-binding', accountId: 'git-user', token: 'git-secret' }, message: { binding: 'mm-binding', accountId: 'mm-user', token: 'mm-secret' }, board: { binding: 'board-binding', workerId: 'different-worker' } } });
   service.bindBot({ runtimeId: 'runtime', botId: 'bot' });
@@ -57,7 +57,7 @@ test('one registry selects each peer token and board identity from its trusted B
   const origin = `http://127.0.0.1:${server.address().port}`;
   const peers = ['a', 'b'].map(name => ({ key: name, gitea: { binding: `git-${name}`, accountId: name, token: `git-token-${name}` },
     message: { binding: `mm-${name}`, accountId: name, token: `mm-token-${name}` }, board: { binding: `board-${name}`, workerId: `worker-${name}` } }));
-  const service = createAgenshServices({ runId: 'team', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board', endpoints: { gitea: origin, message: origin, board: origin }, peers });
+  const service = createPeerMeshServices({ runId: 'team', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board', endpoints: { gitea: origin, message: origin, board: origin }, peers });
   for (const peer of peers) service.bindBot({ runtimeId: 'runtime', botId: `bot-${peer.key}`, peerKey: peer.key });
   const registry = snapshotServiceRegistry(service.services);
   const call = (key, id, operation, input, binding) => invokeService(registry.get(id), { operation, input,
@@ -96,8 +96,8 @@ test('project peers can open and merge a PR from a self-chosen branch in their r
   const facilities = { project: true, runId: 'run', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board',
     endpoints: { gitea: origin, message: origin, board: origin }, peers: [{ key: 'a', branch: 'peer-run-a', gitea: { binding: 'git', accountId: '1', token: 'git-secret' },
       message: { binding: 'mm', accountId: 'm', token: 'mm-secret' }, board: { binding: 'board', workerId: 'worker-a' } }] };
-  const { createAgenshDelivery } = await import('../src/environments/agensh/delivery.js');
-  const service = createAgenshServices(facilities, createAgenshDelivery({ facilities, adminToken: 'host', maxReadinessReads: 1 }));
+  const { createPeerMeshDelivery } = await import('../src/harnesses/peermesh/delivery.js');
+  const service = createPeerMeshServices(facilities, createPeerMeshDelivery({ facilities, adminToken: 'host', maxReadinessReads: 1 }));
   service.bindBot({ runtimeId: 'runtime', botId: 'bot', peerKey: 'a', profile: 'peer-a' });
   const registry = snapshotServiceRegistry(service.services);
   let counter = 0;

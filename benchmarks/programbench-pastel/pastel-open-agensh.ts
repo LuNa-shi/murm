@@ -3,10 +3,10 @@ import { createHash, randomBytes } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { createAgenshDelivery } from '../../dist/src/environments/agensh/delivery.js';
-import { httpClient } from '../../dist/src/environments/agensh/http.js';
-import { prepareAgenshFacilities } from '../../dist/src/environments/agensh/provision.js';
-import { createAgenshTeam } from '../../dist/src/environments/agensh/team.js';
+import { createPeerMeshDelivery } from '../../dist/src/harnesses/peermesh/delivery.js';
+import { httpClient } from '../../dist/src/harnesses/peermesh/http.js';
+import { preparePeerMeshFacilities } from '../../dist/src/harnesses/peermesh/provision.js';
+import { createPeerMeshTeam } from '../../dist/src/harnesses/peermesh/team.js';
 import { createLocalAgenshStack, facilityImages } from '../../dist/test/fixtures/agensh-local-stack.js';
 import { checkpointSource } from './source-checkpoint.ts';
 import { sha256 } from './case.ts';
@@ -94,12 +94,12 @@ export async function runOpenAgensh({ state, task, window, start, deadline, imag
     const configuration = await stack.start();
     const git = httpClient(configuration.gitea.origin, `token ${configuration.gitea.adminToken}`);
     const repo = () => `/api/v1/repos/${encodeURIComponent(facilities.repository.owner)}/${encodeURIComponent(facilities.repository.name)}`;
-    team = await createAgenshTeam({ ...configuration, runId, image, outputDir, backend, signal: window.signal,
+    team = await createPeerMeshTeam({ ...configuration, runId, image, outputDir, backend, signal: window.signal,
       peerKeys: ['a', 'b', 'c'],
       router: { workTimeoutMs: durationMs + 120_000, turnTimeoutMs: durationMs, maxBatches: 32,
         maxNudges: 0, events: { pollIntervalMs: 2500, maxPolls: Math.ceil((durationMs + 120_000) / 2500) } },
       prepare: async options => {
-        facilities = await prepareAgenshFacilities(options);
+        facilities = await preparePeerMeshFacilities(options);
         await git('PATCH', `${repo()}/issues/${facilities.issueNumber}`, { title: 'Rebuild Pastel', body: task });
         return facilities;
       },
@@ -107,7 +107,7 @@ export async function runOpenAgensh({ state, task, window, start, deadline, imag
     state.runtimeId = team.id;
     const initialCommit = (await git('GET', `${repo()}/branches/main`)).commit.id;
     const peers = team.snapshot().peers;
-    const delivery = createAgenshDelivery({ facilities, adminToken: configuration.gitea.adminToken });
+    const delivery = createPeerMeshDelivery({ facilities, adminToken: configuration.gitea.adminToken });
     const signal = window.signal;
     const initial = await sourceAt(git, repo(), initialCommit, signal);
     state.stage = 'agensh-work';

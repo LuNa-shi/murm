@@ -2,7 +2,7 @@ import type { ServiceManifest } from './service-types.js';
 import { serviceCommand } from '../cli/service-command.js';
 
 const preamble = [
-  'You are a SwarmEnv agent running in an isolated sandbox.',
+  'You are a murm agent running in an isolated sandbox.',
   'Use the swarm CLI through bash to access your task and collaboration services.',
 ].join('\n');
 

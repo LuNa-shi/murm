@@ -1,9 +1,9 @@
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { createRuntime } from '@swarmenv/core';
-import { ServiceRegistry } from '@swarmenv/core/services';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { runWithReport } from '../../src/environments/shared/run-report.js';
+import { createRuntime } from '@murm/core';
+import { ServiceRegistry } from '@murm/core/services';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { runWithReport } from '../../src/harnesses/shared/run-report.js';
 import { createSubagentsController } from './communication-fixture-controller.js';
 import { parentPromptFor, childPrompt, initialGoalFor } from './communication-fixture-prompts.js';
 
@@ -26,7 +26,7 @@ export function checkDelivery(output: any, deliveries: any, childCount: any = 2)
   return final;
 }
 
-export async function runSubagentsEnvironment({ backend, model = 'default', image, outputDir,
+export async function runSubagentsHarness({ backend, model = 'default', image, outputDir,
   childCount = 2, goal = initialGoalFor(childCount), supplements = [], workTimeoutMs = 120_000, closeTimeoutMs = 30_000 }: any, signal: any) {
   if (!Number.isSafeInteger(childCount) || childCount < 2 || childCount > 7 || typeof goal !== 'string' || !goal || Buffer.byteLength(goal) > 64 * 1024 || !Array.isArray(supplements) || supplements.length > 4 || supplements.some((input: any) => typeof input !== 'string' || Buffer.byteLength(input) > 64 * 1024) ||
       !Number.isSafeInteger(workTimeoutMs) || workTimeoutMs < 1 || workTimeoutMs > 2147483647) throw new TypeError('Provide two to seven children, a text goal, at most four supplements and a finite work deadline');
@@ -84,7 +84,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   process.once('SIGINT', stop); process.once('SIGTERM', stop);
   try {
     const config = (await import(pathToFileURL(resolve(process.argv[2])).href)).default;
-    const report = await runSubagentsEnvironment(config, abort.signal);
+    const report = await runSubagentsHarness(config, abort.signal);
     process.stdout.write(`${JSON.stringify(report)}\n`);
     process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;
   } finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); }

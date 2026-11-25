@@ -10,9 +10,9 @@ const payload = { 'bin/sample': { encoding: 'base64', data: 'AP+A', mode: 0o755 
 
 async function openHarness(t, hooks) {
   const provider = await createLifecycleProvider(t, hooks);
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const outputDir = await mkdtemp(join(tmpdir(), 'core-file-controls-'));
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
     sandbox: { lifecycleBaseUrl: provider.url },

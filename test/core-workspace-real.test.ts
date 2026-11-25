@@ -6,9 +6,9 @@ import { access, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
-import { createRuntime } from '@swarmenv/core';
-import { ServiceRegistry } from '@swarmenv/core/services';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
+import { createRuntime } from '@murm/core';
+import { ServiceRegistry } from '@murm/core/services';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 

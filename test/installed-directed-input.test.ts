@@ -11,9 +11,9 @@ import { execute, installNotesExample } from './fixtures/notes-installed-package
 // Run the same fixed scenario through the installed headless host. Keeping this
 // function self-contained lets the outside-checkout process import only shipped
 // modules; it does not use the checkout's module resolver or transport state.
-async function headlessScenario(configuration, runForegroundEnvironment) {
+async function headlessScenario(configuration, runForegroundHarness) {
   const records = [];
-  const report = await runForegroundEnvironment(configuration, async host => {
+  const report = await runForegroundHarness(configuration, async host => {
     records.push({ type: 'ready', status: await host.status() });
     const command = async (id, operation, input) => {
       try {
@@ -101,10 +101,10 @@ test('installed headless and CLI share configuration, directed input provenance 
 }, async t => {
   const installed = await installNotesExample();
   t.after(() => installed.close());
-  const root = join(installed.directory, 'node_modules/@swarmenv/core');
+  const root = join(installed.directory, 'node_modules/@murm/core');
   const outputDir = join(installed.directory, 'controlled-output');
   await mkdir(outputDir);
-  const entry = join(root, 'dist/scripts/run-environment.js');
+  const entry = join(root, 'dist/scripts/run-harness.js');
   const configuration = join(root, 'dist/test/fixtures/foreground-host-configuration.js');
   // This fixture substitutes the backend, while the installed CLI, host, router,
   // Core input ledger, report writer and result reader execute normally.
@@ -193,7 +193,7 @@ test('installed headless and CLI share configuration, directed input provenance 
     assert.equal(batches[1].batchId, reply(`feedback-${peer.key}`).result.batchId);
     assert.equal(new Set(batches.map(batch => batch.inputId)).size, 2);
   }
-  const readEntry = join(root, 'dist/scripts/read-environment-result.js');
+  const readEntry = join(root, 'dist/scripts/read-harness-result.js');
   const reader = JSON.parse((await execute(process.execPath, [
     readEntry, '--run-directory', ready.runDirectory, '--runtime-id', ready.runtimeId,
   ], { cwd: installed.directory, env: installed.env, timeout: 10_000 })).stdout);
@@ -212,12 +212,12 @@ test('installed headless and CLI share configuration, directed input provenance 
   const headlessOutput = join(installed.directory, 'headless-output');
   await mkdir(headlessOutput);
   const headlessEntry = join(installed.directory, 'headless.mjs');
-  const hostModule = pathToFileURL(join(root, 'dist/src/environments/shared/foreground-host.js')).href;
+  const hostModule = pathToFileURL(join(root, 'dist/src/harnesses/shared/foreground-host.js')).href;
   await writeFile(headlessEntry, [
     `import configuration from ${JSON.stringify(pathToFileURL(configuration).href)};`,
-    `const { runForegroundEnvironment } = await import(${JSON.stringify(hostModule)});`,
+    `const { runForegroundHarness } = await import(${JSON.stringify(hostModule)});`,
     `const scenario = ${headlessScenario.toString()};`,
-    'console.log(JSON.stringify(await scenario(configuration, runForegroundEnvironment)));',
+    'console.log(JSON.stringify(await scenario(configuration, runForegroundHarness)));',
   ].join('\n'));
   const headlessProcess = await execute(process.execPath, [`--redirect-warnings=${join(installed.directory, 'headless-node-warnings.log')}`, headlessEntry], {
     cwd: installed.directory,

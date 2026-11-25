@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createRuntime } from '@swarmenv/core';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { ServiceRegistry } from '@swarmenv/core/services';
-import { createFlatTaskService, flatResearcherProfile } from '../src/environments/flat/task-service.js';
-import { createFlatBotCoordinator } from '../src/environments/flat/bot-coordinator.js';
-import { createFlatModelAccessPolicy } from '../src/environments/flat/model-access-policy.js';
-import { executionEnvelope } from '../src/environments/flat/prepare-inputs.js';
+import { createRuntime } from '@murm/core';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { ServiceRegistry } from '@murm/core/services';
+import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../src/harnesses/taskpool/task-service.js';
+import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/bot-coordinator.js';
+import { createTaskPoolModelAccessPolicy } from '../src/harnesses/taskpool/model-access-policy.js';
+import { executionEnvelope } from '../src/harnesses/taskpool/prepare-inputs.js';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { createFlatTakeUpstream } from './fixtures/flat-task-upstream.js';
 import { createAcceptanceDeadline } from './fixtures/flat-model-acceptance.js';
@@ -61,7 +61,7 @@ test('actual flat readonly discovery competes for one Task and continues the sam
   report.image = image;
   upstream = await createFlatTakeUpstream(stores.task.task_id, deadlineAt);
   const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  service = createFlatTaskService({ runtime: () => runtime, taskService: stores.tasks, missionId: stores.missionId,
+  service = createTaskPoolTaskService({ runtime: () => runtime, taskService: stores.tasks, missionId: stores.missionId,
     missionWorkspace: stores.workspace, workspaceId: stores.workspaceId, workspaceManager: stores.manager, contextService: stores.context,
     missionDeadline: () => deadlineAt, executionTimeoutMs: 120_000 });
   // Both real Bash processes reach take before either transactional reservation.
@@ -77,18 +77,18 @@ test('actual flat readonly discovery competes for one Task and continues the sam
     }
     return service.adapter.invoke(request);
   } } });
-  const policy = createFlatModelAccessPolicy({ runtimeId: () => runtime?.id, taskService: stores.tasks, missionId: stores.missionId, deadline: () => deadlineAt });
+  const policy = createTaskPoolModelAccessPolicy({ runtimeId: () => runtime?.id, taskService: stores.tasks, missionId: stores.missionId, deadline: () => deadlineAt });
   runtime = await createRuntime({ backend: createPiOpenSandboxBackend({ sandbox: {
     lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
     apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
     bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 30_000, maxOutputTokens: 2048 },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }),
-    profiles: { researcher: flatResearcherProfile({ prompt: 'Execute the fixed discovery and take check.', model: 'default', image }) },
+    profiles: { researcher: taskPoolResearcherProfile({ prompt: 'Execute the fixed discovery and take check.', model: 'default', image }) },
     services, maxBots: 2, outputDir, modelAccessPolicy: policy });
   report.runtimeId = runtime.id;
   assert.deepEqual(await ownedContainers(runtime.id), []);
-  const coordinator = createFlatBotCoordinator({ runtime, taskService: stores.tasks, missionId: stores.missionId });
+  const coordinator = createTaskPoolAgentCoordinator({ runtime, taskService: stores.tasks, missionId: stores.missionId });
   for (const name of ['A', 'B']) bots.push(await coordinator.spawn({ profile: 'researcher', requestId: `fixed-${name}`, legacySlotId: `slot:${name}`, writable: false,
     selectionDeadline: new Date(deadlineAt).toISOString(), hardDeadline: new Date(deadlineAt).toISOString() }));
   assert.equal((await ownedContainers(runtime.id)).length, 2);

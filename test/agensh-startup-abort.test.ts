@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createAgenshEnvironment } from '../src/environments/agensh/index.js';
-import { prepareAgenshFacilities } from '../src/environments/agensh/provision.js';
+import { createPeerMeshHarness } from '../src/harnesses/peermesh/index.js';
+import { preparePeerMeshFacilities } from '../src/harnesses/peermesh/provision.js';
 import { createWorkGate } from './fixtures/agensh-deadline.js';
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -27,7 +27,7 @@ for (const phase of ['readiness', 'account', 'repository']) test(`actual product
   const origin = `http://127.0.0.1:${server.address().port}`;
   gate = createWorkGate(60);
   let thrown;
-  await assert.rejects(gate.create(() => createAgenshEnvironment({ runId: 'abort', image: 'unused', exportLimit: 1024, signal: gate.signal,
+  await assert.rejects(gate.create(() => createPeerMeshHarness({ runId: 'abort', image: 'unused', exportLimit: 1024, signal: gate.signal,
     gitea: { origin, adminToken: 'private-admin', owner: 'owner' }, mattermost: { origin, adminToken: 'private-mm-admin', teamId: 'team' },
     startBoard: async () => { boardStarts++; throw new Error('Unexpected board start'); },
   })), error => ['ENVIRONMENT_START_ABORTED', 'ACTUAL_PEER_WORK_EXPIRED'].includes(error.code));
@@ -49,15 +49,15 @@ for (const phase of ['readiness', 'account', 'repository']) test(`actual product
 test('Environment and production provisioner reject nonstring run IDs before any work', async () => {
   for (const runId of [undefined, null, true, 123, {}, { toString() { throw new Error('Must not coerce runId'); } }]) {
     let prepared = false;
-    await assert.rejects(createAgenshEnvironment({ runId, image: 'unused', exportLimit: 1024, prepare: async () => { prepared = true; } }), TypeError);
-    await assert.rejects(prepareAgenshFacilities({ runId, startBoard() {} }), TypeError);
+    await assert.rejects(createPeerMeshHarness({ runId, image: 'unused', exportLimit: 1024, prepare: async () => { prepared = true; } }), TypeError);
+    await assert.rejects(preparePeerMeshFacilities({ runId, startBoard() {} }), TypeError);
     assert.equal(prepared, false);
   }
 });
 
 test('an already aborted startup never calls preparation and exposes a constant cancellation code', async () => {
   const controller = new AbortController(); controller.abort(); let prepared = false;
-  await assert.rejects(createAgenshEnvironment({ runId: 'aborted', image: 'unused', exportLimit: 1024, signal: controller.signal,
+  await assert.rejects(createPeerMeshHarness({ runId: 'aborted', image: 'unused', exportLimit: 1024, signal: controller.signal,
     prepare: async () => { prepared = true; },
   }), { code: 'ENVIRONMENT_START_ABORTED', cleanup: 'complete' });
   assert.equal(prepared, false);
@@ -79,7 +79,7 @@ test('an aborted account write absent from reconciliation stays pending until it
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(async () => { gate.dispose(); gate.cleanup.dispose(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); await pending; });
   const origin = `http://127.0.0.1:${server.address().port}`; gate = createWorkGate(60);
-  await assert.rejects(gate.create(() => createAgenshEnvironment({ runId: 'late', image: 'unused', exportLimit: 1024, signal: gate.signal,
+  await assert.rejects(gate.create(() => createPeerMeshHarness({ runId: 'late', image: 'unused', exportLimit: 1024, signal: gate.signal,
     gitea: { origin, adminToken: 'private', owner: 'owner' }, mattermost: { origin, adminToken: 'private', teamId: 'team' }, startBoard() { throw new Error('must not start'); },
   })), error => ['ENVIRONMENT_START_ABORTED', 'ACTUAL_PEER_WORK_EXPIRED'].includes(error.code));
   const creation = await gate.awaitCreation(); assert.equal(creation.state, 'failed');

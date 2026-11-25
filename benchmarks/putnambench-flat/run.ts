@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { ContextService } from '../../dist/src/context/context-service.js';
-import { runFlatEnvironment } from '../../dist/src/environments/flat/environment.js';
-import { createMissionCoordination } from '../../dist/src/environments/flat/mission-coordination.js';
+import { runTaskPoolHarness } from '../../dist/src/harnesses/taskpool/harness.js';
+import { createMissionCoordination } from '../../dist/src/harnesses/taskpool/mission-coordination.js';
 import { JudgeService } from '../../dist/src/judge/judge-service.js';
 import { makeEnvelope } from '../../dist/src/protocol/envelope.js';
 import { MissionWorkspace } from '../../dist/src/runtime/mission-workspace.js';
@@ -37,7 +37,7 @@ ${source.trimEnd()}
 type Problem = Awaited<ReturnType<typeof loadPutnamB1>>;
 type Checks = Awaited<ReturnType<typeof preparePutnamChecks>>;
 type Window = Awaited<ReturnType<typeof createRunWindow>>;
-type BackendFactory = (upstream: Window['upstream']) => Parameters<typeof runFlatEnvironment>[0]['backend'];
+type BackendFactory = (upstream: Window['upstream']) => Parameters<typeof runTaskPoolHarness>[0]['backend'];
 
 async function usage(directory: string, runtimeId: string) {
   const path = join(directory, runtimeId, 'runtime.json');
@@ -106,7 +106,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
       durationMs, maxConcurrent: problem.capacity, maxRequests: null, maxOutputTokens: null,
     });
     const runSignal = AbortSignal.any([signal, ownDeadline.signal, window.signal]);
-    const report = await runFlatEnvironment({
+    const report = await runTaskPoolHarness({
       backend: backend(window.upstream), model: 'default', image, outputDir: directory, signal: runSignal,
       prompt: '', taskService, contextService, missionWorkspace, workspaceManager, missionId, workspaceId,
       deadlineAt: initialDeadline, activeDeadline: deadline, capacity: problem.capacity,

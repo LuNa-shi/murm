@@ -47,9 +47,9 @@ test('public Core live Kimi K3 acceptance verifies actual file tools within the 
     errors: receipt.errors?.map(error => ({ code: error.code, retryable: error.retryable })),
   };
   try {
-    const { createRuntime } = await import('@swarmenv/core');
-    const { ServiceRegistry } = await import('@swarmenv/core/services');
-    const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+    const { createRuntime } = await import('@murm/core');
+    const { ServiceRegistry } = await import('@murm/core/services');
+    const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
     let upstreamHeaders;
     try { upstreamHeaders = JSON.parse(process.env.SWARMENV_CORE_LIVE_UPSTREAM_HEADERS_JSON ?? '{}'); }
     catch { throw new Error('LIVE_HEADERS_INVALID'); }

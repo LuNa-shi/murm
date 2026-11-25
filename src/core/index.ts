@@ -1,4 +1,4 @@
-import type { BotEvent, BotInfo, BotListFilter, CollectionSpec, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, Profile, Runtime, SendOptions } from './types.js';
+import type { AgentEvent, AgentInfo, AgentListFilter, CollectionSpec, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, Profile, Runtime, SendOptions } from './types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -36,7 +36,7 @@ interface RuntimeBot {
   executionEpoch: number;
   interruptRequests: Map<string, InterruptRequest>;
   interruption?: InterruptRequest;
-  info: BotInfo;
+  info: AgentInfo;
   profile: Profile;
   controller: AbortController;
   activityClaims: Set<unknown>;
@@ -45,7 +45,7 @@ interface RuntimeBot {
   fatal?: boolean;
   bindings?: Readonly<Record<string, string>>;
   collect?: CollectionSpec;
-  start?: Promise<BotInfo>;
+  start?: Promise<AgentInfo>;
 }
 
 const defaultTimeoutMs = 60_000;
@@ -227,7 +227,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     });
   }
 
-  const handlers = new Set<(event: BotEvent) => void>();
+  const handlers = new Set<(event: AgentEvent) => void>();
   const spawnRequests = new Map<any, any>();
   const inputRequests = createInputLedger<InputRequest>(runtimeId);
   const fileControls = createFileControls({ backend, findBot, problem, observe, timedOut,
@@ -420,7 +420,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       if ([...bots.values()].filter(bot => bot.info.status !== 'closed').length >= maxBots) {
         throw problem('CONFLICT', 'Runtime has no free Bot Slot', 'spawn', undefined, requestId);
       }
-      const info: BotInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting', cursor: 0,
+      const info: AgentInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting', cursor: 0,
         ...(parameters.parentId ? { parentId: parameters.parentId } : {}) };
       redactor.add(Object.values(parameters.secretEnv ?? {}));
       const bot: RuntimeBot = {
@@ -474,7 +474,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     return botSnapshot(findBot(botId, 'get'));
   }
 
-  async function list(filter: BotListFilter = {}) {
+  async function list(filter: AgentListFilter = {}) {
     if (!filter || typeof filter !== 'object' || Array.isArray(filter)) {
       throw problem('INVALID_CONTRACT', 'list expects a Bot filter', 'list');
     }
@@ -609,7 +609,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     return receipt();
   }
 
-  function onEvent(handler: (event: BotEvent) => void) {
+  function onEvent(handler: (event: AgentEvent) => void) {
     if (typeof handler !== 'function') throw problem('INVALID_CONTRACT', 'Event handler must be a function', 'onEvent');
     handlers.add(handler);
     return () => { handlers.delete(handler); };

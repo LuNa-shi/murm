@@ -8,21 +8,21 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls } from './fixtures/flat-controller-backend.js';
-import { createFlatTaskService } from '../src/environments/flat/task-service.js';
+import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {createRuntime}=await import('@swarmenv/core');hooks.deregister();
+const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 async function fixture(t, { coordination = true, autonomousTasks = false } = {}) {
   const root=await mkdtemp(join(tmpdir(),'flat-coordination-'));
   const stores=await createFlatTaskStores(root);
   stores.tasks.contextService=stores.context;
   let runtime;
-  const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000,autonomousTasks});
+  const discovery=createTaskPoolTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000,autonomousTasks});
   const services = new ServiceRegistry();
   services.registerService(discovery);
   const allowed = { task: discovery.manifest.capabilities.map(capability => capability.operation) };

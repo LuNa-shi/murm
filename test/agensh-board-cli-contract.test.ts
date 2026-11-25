@@ -9,7 +9,7 @@ import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { createCoreBridge } from '../src/core/bridge.js';
 import { snapshotServiceRegistry } from '../src/core/services.js';
-import { createAgenshServices } from '../src/environments/agensh/services.js';
+import { createPeerMeshServices } from '../src/harnesses/peermesh/services.js';
 import { liveCommon } from './fixtures/agensh-team-kimi.js';
 
 const execute = promisify(execFile);
@@ -28,7 +28,7 @@ test('Kimi Board instructions describe the real schema and unwrapped CLI results
   await once(facility, 'listening');
   t.after(() => new Promise(resolve => { facility.close(resolve); facility.closeAllConnections(); }));
   const origin = `http://127.0.0.1:${facility.address().port}`;
-  const service = createAgenshServices({ runId: 'board-cli', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board',
+  const service = createPeerMeshServices({ runId: 'board-cli', repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', boardId: 'board',
     endpoints: { gitea: origin, message: origin, board: origin },
     peer: { gitea: { binding: 'git', accountId: 'git-peer', token: 'test-git-token' },
       message: { binding: 'message', accountId: 'message-peer', token: 'test-message-token' }, board: { binding: 'board', workerId: 'peer-a' } } });

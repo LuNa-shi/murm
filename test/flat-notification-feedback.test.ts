@@ -8,8 +8,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls } from './fixtures/flat-controller-backend.js';
-import { createFlatTaskService } from '../src/environments/flat/task-service.js';
-import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
+import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
+import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
@@ -17,7 +17,7 @@ const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {createRuntime}=await import('@swarmenv/core');hooks.deregister();
+const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 async function fixture(t, { feedbackAllowed = true } = {}) {
   const root=await mkdtemp(join(tmpdir(),'flat-feedback-'));
@@ -25,8 +25,8 @@ async function fixture(t, { feedbackAllowed = true } = {}) {
   stores.tasks.contextService=stores.context;
   let runtime;
   const policy={deadlineAt:Date.now()+60000,beforeGet:null};
-  const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
-  const publication=createFlatPublicationServices({runtime:()=>({...runtime,async get(id){const result=await runtime.get(id);await policy.beforeGet?.();return result;}}),taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,missionId:stores.missionId,workspaceId:stores.workspaceId,deadline:()=>policy.deadlineAt});
+  const discovery=createTaskPoolTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
+  const publication=createTaskPoolPublicationServices({runtime:()=>({...runtime,async get(id){const result=await runtime.get(id);await policy.beforeGet?.();return result;}}),taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,missionId:stores.missionId,workspaceId:stores.workspaceId,deadline:()=>policy.deadlineAt});
   const services=new ServiceRegistry();services.registerService(publication.composeTask(discovery));
   for(const row of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(row);
   const allowed=Object.fromEntries(publication.registrations.map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]));

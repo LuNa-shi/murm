@@ -7,9 +7,9 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createAgenshRouterEnvironment } from '../src/environments/agensh/routed.js';
+import { createPeerMeshRouterHarness } from '../src/harnesses/peermesh/routed.js';
 import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
-import { httpClient } from '../src/environments/agensh/http.js';
+import { httpClient } from '../src/harnesses/peermesh/http.js';
 import { createLocalAgenshStack } from './fixtures/agensh-local-stack.js';
 import { createRouterUpstream, routerInputs } from './fixtures/agensh-router-upstream.js';
 import { createWorkGate, createCleanupBudget } from './fixtures/agensh-deadline.js';
@@ -36,7 +36,7 @@ test('actual Agensh PR comment and targeted user input cross one serial router i
     denied = createServer((request, response) => { deniedArrivals++; request.resume(); response.end('denied'); }); denied.listen(0, '0.0.0.0'); await once(denied, 'listening');
     work = createWorkGate(120_000, 'ACTUAL_ROUTER_WORK_EXPIRED', cleanup);
     upstream = await createRouterUpstream({ deadlineAt: work.deadlineAt, deniedOrigin: `http://${host}:${denied.address().port}`, onFailure: () => work.abort() });
-    environment = await work.create(() => createAgenshRouterEnvironment({ ...configuration, runId, image, signal: work.signal, exportLimit: 8 * 1024 ** 2, outputDir: join(directory, 'core'),
+    environment = await work.create(() => createPeerMeshRouterHarness({ ...configuration, runId, image, signal: work.signal, exportLimit: 8 * 1024 ** 2, outputDir: join(directory, 'core'),
       router: { workTimeoutMs: work.remaining(), turnTimeoutMs: 75_000, maxNudges: 0, maxBatches: 8, events: { pollIntervalMs: 1000, maxPolls: 120 } },
       backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 128, requestTimeoutMs: 80_000 },

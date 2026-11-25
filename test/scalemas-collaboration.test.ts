@@ -3,11 +3,11 @@ import { test } from 'node:test';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createSubstrateService } from '../src/environments/scalemas/substrate.js';
+import { createSubstrateService } from '../src/harnesses/substrate/substrate.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
-import { verifyScaleMASCollaboration } from '../src/environments/scalemas/collaboration-evidence.js';
+import { verifySubstrateCollaboration } from '../src/harnesses/substrate/collaboration-evidence.js';
 const execute = promisify(execFile);
 
 test('host checkpoints verify durable search, visit, citation and reads after confirmed publisher stop', async t => {
@@ -17,8 +17,8 @@ test('host checkpoints verify durable search, visit, citation and reads after co
   t.after(async () => { if (runtime) await runtime.close({ timeoutMs: 1000 }); substrate.close(); await rm(directory, { recursive: true, force: true }); });
   const starts = [];
   const provider = await createLifecycleProvider(t, { onStart: body => starts.push(body) }); provider.allowDeletion();
-  const { createRuntime } = await import('@swarmenv/core');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const backend = createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
@@ -47,10 +47,10 @@ test('host checkpoints verify durable search, visit, citation and reads after co
   const beforeSuccessor = substrate.snapshot();
   const successor = await call('consumer', 'publish', { content: 'successor uses fixed algebra source', references: [original.address] });
   const evidence = { publisherStop, afterStop, beforeSuccessor, finalSnapshot: substrate.snapshot(), consumerId: consumer.id, originalAddress: original.address, successorAddress: successor.address };
-  const verified = verifyScaleMASCollaboration(evidence);
+  const verified = verifySubstrateCollaboration(evidence);
   assert.equal(verified.accepted, true);
   assert.equal(verified.publisherCleanup, 'complete');
-  assert.equal(verifyScaleMASCollaboration({ ...evidence, publisherStop: { ...publisherStop, cleanup: 'pending' } }).publisherCleanup, 'pending');
+  assert.equal(verifySubstrateCollaboration({ ...evidence, publisherStop: { ...publisherStop, cleanup: 'pending' } }).publisherCleanup, 'pending');
   assert.equal(verified.originalAddress, original.address);
   assert.equal(verified.successorAddress, successor.address);
   assert.equal(verified.searchReadIndex, 0); assert.equal(verified.visitReadIndex, 1);
@@ -67,6 +67,6 @@ test('host checkpoints verify durable search, visit, citation and reads after co
     { finalSnapshot: { ...evidence.finalSnapshot, runId: 'other' } },
     { beforeSuccessor: { ...beforeSuccessor, reads: beforeSuccessor.reads.slice(1) } },
     { finalSnapshot: { ...evidence.finalSnapshot, contents: evidence.finalSnapshot.contents.map(row => row.address === original.address ? { ...row, content: 'changed' } : row) } },
-  ]) assert.throws(() => verifyScaleMASCollaboration({ ...evidence, ...change }), { code: 'COLLABORATION_EVIDENCE_INVALID' });
+  ]) assert.throws(() => verifySubstrateCollaboration({ ...evidence, ...change }), { code: 'COLLABORATION_EVIDENCE_INVALID' });
   assert.deepEqual(substrate.snapshot(), evidence.finalSnapshot);
 });

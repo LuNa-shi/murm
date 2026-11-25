@@ -112,7 +112,7 @@ async function inspectEvaluatorInputs() {
 
 async function hostDistributionDigest() {
   const dist = join(repository, 'dist');
-  const roots = ['src', 'examples/subagents-environment', 'test-support/subagents', 'test/fixtures'];
+  const roots = ['src', 'examples/subagents', 'test-support/subagents', 'test/fixtures'];
   const trees = await Promise.all(roots.map(root => readdir(join(dist, root), { recursive: true, withFileTypes: true })));
   const files = trees.flat().filter(entry => entry.isFile()).map(entry =>
     relative(dist, join(entry.parentPath, entry.name))).sort();

@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 import { setInterval } from 'node:timers/promises';
 import { ContextService } from '../../dist/src/context/context-service.js';
-import { runFlatEnvironment } from '../../dist/src/environments/flat/environment.js';
+import { runTaskPoolHarness } from '../../dist/src/harnesses/taskpool/harness.js';
 import { makeEnvelope } from '../../dist/src/protocol/envelope.js';
 import { MissionWorkspace } from '../../dist/src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../../dist/src/runtime/workspace-manager.js';
@@ -86,7 +86,7 @@ export async function runOpenFlat({ state, task, outputDir, backend, image, wind
       }
     };
     let started = false;
-    const result = await runFlatEnvironment({ backend, model: 'default', image, outputDir,
+    const result = await runTaskPoolHarness({ backend, model: 'default', image, outputDir,
       taskService: table, contextService: context, missionWorkspace: workspace, workspaceManager: manager,
       missionId, workspaceId, capacity, signal: window.signal, deadlineAt: Date.now() + durationMs + 120_000,
       handoff: { executionTimeoutMs: durationMs },

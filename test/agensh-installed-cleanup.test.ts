@@ -39,7 +39,7 @@ throw Object.assign(new Error('fixture setup rejected'), { code: 'LOCAL_SETUP_FA
 
     const child = spawn(
       process.execPath,
-      [resolve('dist/scripts/run-environment.js'), '--config', join(directory, 'config.mjs')],
+      [resolve('dist/scripts/run-harness.js'), '--config', join(directory, 'config.mjs')],
       {
         stdio: ['pipe', 'pipe', 'pipe', 'ipc']
       }

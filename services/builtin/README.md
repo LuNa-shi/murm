@@ -62,7 +62,7 @@ npm run service:builtin
 Client endpoint configuration uses `SWARMENV_{TASK,CONTEXT,JUDGE,CATALOG}_SERVICE_URL`
 and its matching `_SERVICE_TOKEN`; those client credentials must match a
 principal on the target host. The Registry can also receive explicit
-`serviceEndpoints`. A registered Bot remains scoped to its durable Mission and
+`serviceEndpoints`. A registered Agent remains scoped to its durable Mission and
 Execution; a bearer token cannot assign another Task owner.
 
 ## Composition and readiness limits

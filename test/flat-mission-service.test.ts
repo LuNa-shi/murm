@@ -8,16 +8,16 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls, transport } from './fixtures/flat-controller-backend.js';
-import { createFlatMissionService } from '../src/environments/flat/mission-service.js';
-import { createMissionCoordination } from '../src/environments/flat/mission-coordination.js';
-import { createFlatTaskService } from '../src/environments/flat/task-service.js';
-import { createFlatBotCoordinator } from '../src/environments/flat/bot-coordinator.js';
+import { createTaskPoolMissionService } from '../src/harnesses/taskpool/mission-service.js';
+import { createMissionCoordination } from '../src/harnesses/taskpool/mission-coordination.js';
+import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
+import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/bot-coordinator.js';
 import { ServiceRegistry } from '../src/core/services.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {createRuntime}=await import('@swarmenv/core');hooks.deregister();
+const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 const checkerIdentity={checker_ref:'fixed-final',checker_version:'1',environment_ref:'controlled'};
 async function fixture(t,{permissions=['mission_submit'],registered=permissions,profileAllows=true}={}) {
@@ -30,14 +30,14 @@ async function fixture(t,{permissions=['mission_submit'],registered=permissions,
     checker:{identity:checkerIdentity,timeoutMs:5000,check:input=>new Promise(resolve=>calls.push({input,resolve}))}});
   let runtime;
   const policy={beforeGet:null,deadline:Date.now()+60000};
-  const mission=createFlatMissionService({runtime:()=>({...runtime,async get(id){const result=await runtime.get(id);await policy.beforeGet?.();return result;}}),taskService:stores.tasks,
+  const mission=createTaskPoolMissionService({runtime:()=>({...runtime,async get(id){const result=await runtime.get(id);await policy.beforeGet?.();return result;}}),taskService:stores.tasks,
     missionWorkspace:stores.workspace,missionId:stores.missionId,workspaceId:stores.workspaceId,missionCoordination:store,coordinationPermissions:permissions,deadline:()=>policy.deadline});
-  const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
+  const discovery=createTaskPoolTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
     missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
   const services=new ServiceRegistry();services.registerService(mission);services.registerService(discovery);
   runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Submit only fixed public results',model:'default',image:'fixture',writable:false,
     services:{task:discovery.manifest.capabilities.map(cap=>cap.operation),mission:mission.manifest.capabilities.filter(cap=>profileAllows||cap.operation!=='mission_submit').map(cap=>cap.operation)}}},services,maxBots:1,outputDir:root});
-  const coordinator=createFlatBotCoordinator({runtime,taskService:stores.tasks,missionId:stores.missionId,coordinationPermissions:registered});
+  const coordinator=createTaskPoolAgentCoordinator({runtime,taskService:stores.tasks,missionId:stores.missionId,coordinationPermissions:registered});
   const bot=await coordinator.spawn({profile:'researcher',requestId:'coordinator',legacySlotId:'flat-slot',selectionDeadline:new Date(Date.now()+60000).toISOString()});
   t.after(async()=>{mission.close();await discovery.close();for(const call of calls)call.resolve({verdict:'FAIL'});await store.shutdown();await runtime.close({timeoutMs:1000});stores.close();await rm(root,{recursive:true,force:true});});
   const cli=async(...args)=>{
@@ -116,7 +116,7 @@ for(const boundary of ['stop','deadline','binding']) test(`Mission submission re
 });
 
 test('normal Flat host keeps the explicit Mission checker caller-owned after its Bots close',async t=>{
-  const {runFlatEnvironment}=await import('../src/environments/flat/environment.js');
+  const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
   for(const {coordinationPermissions,enabled} of [{coordinationPermissions:[],enabled:false},{coordinationPermissions:[],enabled:true},{coordinationPermissions:['mission_submit'],enabled:true}]) {
     const root=await mkdtemp(join(tmpdir(),'flat-mission-host-')),stores=await createFlatTaskStores(root);
     stores.tasks.db.prepare('UPDATE missions SET acceptance_conditions_json=? WHERE mission_id=?').run(JSON.stringify({required_check:checkerIdentity}),stores.missionId);
@@ -127,7 +127,7 @@ test('normal Flat host keeps the explicit Mission checker caller-owned after its
     transport.reset();controls.credentials.clear();controls.stopError=null;controls.destroyError=null;
     const accept=id=>{transport.confirm(id,'started');transport.next=accept;};transport.next=accept;
     let submissionId;
-    const report=await runFlatEnvironment({taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
+    const report=await runTaskPoolHarness({taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
       missionId:stores.missionId,workspaceId:stores.workspaceId,outputDir:root,deadlineAt:Date.now()+30000,backend:{},model:'default',image:'fixture',capacity:1,
       missionCoordination:enabled?store:null,coordinationPermissions,snapshotProject:async()=>{throw new Error('No live capture required');},
       async drive(controller) {
@@ -155,7 +155,7 @@ test('normal Flat host keeps the explicit Mission checker caller-owned after its
 
 
 test('normal math Flat reports a trusted accepted Mission as business success with an active Task', async t => {
-  const { runFlatEnvironment } = await import('../src/environments/flat/environment.js');
+  const { runTaskPoolHarness } = await import('../src/harnesses/taskpool/harness.js');
   const root = await mkdtemp(join(tmpdir(), 'flat-math-acceptance-'));
   const stores = await createFlatTaskStores(root);
   stores.tasks.db.prepare('UPDATE missions SET acceptance_conditions_json=? WHERE mission_id=?').run(JSON.stringify({ required_check: checkerIdentity }), stores.missionId);
@@ -164,7 +164,7 @@ test('normal math Flat reports a trusted accepted Mission as business success wi
   t.after(async () => { await store.shutdown(); stores.close(); await rm(root, { recursive: true, force: true }); });
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
   const accept = id => { transport.confirm(id, 'started'); transport.next = accept; }; transport.next = accept;
-  const report = await runFlatEnvironment({ taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace, workspaceManager: stores.manager,
+  const report = await runTaskPoolHarness({ taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace, workspaceManager: stores.manager,
     missionId: stores.missionId, workspaceId: stores.workspaceId, outputDir: root, deadlineAt: Date.now()+30000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
     completionPolicy: 'mission', autonomousTasks: true, missionCoordination: store, coordinationPermissions: ['mission_submit'],
     async drive(controller) {

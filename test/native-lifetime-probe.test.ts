@@ -25,9 +25,9 @@ test('native lifetime gateway limits start production Core without allocating or
   const { mkdtemp, rm } = await import('node:fs/promises');
   const { tmpdir } = await import('node:os');
   const { join } = await import('node:path');
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const root = await mkdtemp(join(tmpdir(), 'lifetime-config-'));
   let runtime;
   t.after(async () => { try { if (runtime) await runtime.close({ timeoutMs: 1000 }); } finally { await rm(root, { recursive: true, force: true }); } });

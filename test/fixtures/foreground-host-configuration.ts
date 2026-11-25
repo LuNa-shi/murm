@@ -20,7 +20,7 @@ transport.next = function settle(id) {
 const peers = ['a', 'b'].map(key => ({ key, branch: `branch-${key}`,
   gitea: { username: key, binding: `git-${key}`, accountId: key, token: `private-git-${key}` },
   message: { binding: `mm-${key}`, accountId: key, token: `private-mm-${key}` }, board: { binding: `board-${key}`, workerId: `worker-${key}` } }));
-export default { mode: 'agensh', timeoutMs: 5000, options: {
+export default { mode: 'peermesh', timeoutMs: 5000, options: {
   runId: 'foreground', image: 'fixture', outputDir: process.env.FOREGROUND_TEST_OUTPUT, backend: {}, closeTimeoutMs: 1000,
   prepare: async () => ({ runId: 'foreground', repository: { owner: 'owner', name: 'repo' }, repositoryUrl: 'http://172.17.0.1:3000/owner/repo.git', channelId: 'channel', boardId: 'board', issueNumber: 1,
     endpoints: { gitea: 'http://172.17.0.1:3000', message: 'http://127.0.0.1:3001', board: 'http://127.0.0.1:3002' }, peers }),

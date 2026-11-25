@@ -1,0 +1,410 @@
+import { createHash, randomUUID } from 'node:crypto';
+import type { AgentEvent, InputReceipt, Runtime, SpawnOptions } from '@murm/core';
+import type { JsonValue, ServiceRequest } from '@murm/core/services';
+
+type Settled = Extract<AgentEvent, { type: 'settled' }>;
+type Exit = Extract<AgentEvent, { type: 'exit' }>;
+type Reply = Settled | Extract<AgentEvent, { type: 'exit' }>;
+type Message = {
+  id: string;
+  kind: 'message' | 'result';
+  from: string;
+  text: string;
+  outcome?: 'completed' | 'failed';
+  eventSeq?: number;
+  state: 'pending' | 'unknown' | 'in-input' | 'queued' | 'returned';
+};
+type WaitResult = { reason: 'message'; messages: Message[] } | { reason: 'input' | 'timeout' | 'cancelled' };
+type Wait = (result: WaitResult) => void;
+type Member = {
+  path: string;
+  parent?: Member;
+  id?: string;
+  inbox: Message[];
+  submitted: Map<string, Message>;
+  executionRevision: number;
+  wait?: Wait;
+  lastOutcome?: 'completed' | 'failed' | 'interrupted';
+  fatalReported?: boolean;
+  tail?: Promise<unknown>;
+};
+type Operation = {
+  id: string;
+  fingerprint: string;
+  result?: Promise<JsonValue>;
+  batch?: Message[];
+  destination?: Member;
+  message?: Message;
+  inputDispatched?: boolean;
+  interruptStatus?: string;
+};
+function createMember(path: string, parent?: Member): Member {
+  return { path, parent, inbox: [], submitted: new Map(), executionRevision: 0 };
+}
+
+const namePattern = /^[a-z0-9_]{1,48}$/;
+const inputLimit = 65_536;
+const mailboxLimit = 128;
+const operationLimit = 16_384;
+
+function fail(code: string, message: string): never {
+  throw Object.assign(new Error(message), { code });
+}
+
+function inputText(value: unknown) {
+  if (typeof value !== 'string' || !value.trim() || Buffer.byteLength(value) > inputLimit) {
+    fail('INVALID_CONTRACT', 'Input must be nonempty text within 64 KiB');
+  }
+  return value;
+}
+
+function serial<T>(member: Member, work: () => Promise<T>) {
+  const next = (member.tail ?? Promise.resolve()).then(work);
+  member.tail = next.catch(() => undefined);
+  return next;
+}
+
+export function createSubagentsController(
+  runtime: Runtime,
+  { maxDepth, childWorkspace }: { maxDepth: number; childWorkspace?: SpawnOptions['workspace'] },
+) {
+  const root = createMember('/root');
+  const byPath = new Map([[root.path, root]]);
+  const byId = new Map<string, Member>();
+  const operations = new Map<string, Operation>();
+  const replyListeners = new Set<(event: Reply) => void>();
+  const jobs = new Set<Promise<unknown>>();
+  const deliveryFailures: { id: string; reason: string }[] = [];
+  let lastReply: Reply | undefined;
+  let accepting = true;
+
+  function open() {
+    if (!accepting) fail('NOT_ALLOWED', 'The team is closing');
+  }
+
+  function track<T>(work: Promise<T>) {
+    jobs.add(work);
+    void work.then(() => jobs.delete(work), () => jobs.delete(work));
+    return work;
+  }
+
+  function canonical(caller: Member, value: unknown) {
+    if (typeof value !== 'string' || !value) fail('INVALID_CONTRACT', 'A target name is required');
+    if (byId.has(value)) return byId.get(value)!.path;
+    const path = value.startsWith('/') ? value : `${caller.path}/${value}`;
+    const segments = path.split('/').slice(1);
+    if (segments[0] !== 'root' || segments.slice(1).some(name => !namePattern.test(name) || name === 'root')) {
+      fail('NOT_ALLOWED', 'Target must belong to this team and use a valid path');
+    }
+    return path;
+  }
+
+  function target(caller: Member, name: unknown) {
+    const member = byPath.get(canonical(caller, name));
+    if (!member?.id) fail('NOT_FOUND', 'No team member has that target');
+    return member;
+  }
+
+  function operate(key: string, parameters: unknown, work: (operation: Operation) => Promise<JsonValue>) {
+    const fingerprint = JSON.stringify(parameters);
+    let operation = operations.get(key);
+    if (operation && operation.fingerprint !== fingerprint) fail('CONFLICT', 'The request ID already has different parameters');
+    if (!operation) {
+      open();
+      if (operations.size >= operationLimit) fail('NOT_ALLOWED', 'The team operation limit has been reached');
+      operation = { id: randomUUID(), fingerprint };
+      operations.set(key, operation);
+    }
+    const entry = operation;
+    entry.result ??= Promise.resolve().then(() => work(entry)).then(value => {
+      if (value && typeof value === 'object' && !Array.isArray(value)
+          && (value.status === 'unknown' || value.reason === 'cancelled')) entry.result = undefined;
+      return value;
+    }, error => {
+      if (error.code === 'OPERATION_UNKNOWN' || error.code === 'SERVICE_UNAVAILABLE') entry.result = undefined;
+      throw error;
+    });
+    return track(entry.result);
+  }
+
+  function pending(member: Member) {
+    return member.inbox.filter(message => message.state === 'pending');
+  }
+
+  function reserveMessage(member: Member, message: Message) {
+    member.inbox = member.inbox.filter(item => item.state === 'pending' || item.state === 'unknown' || item.state === 'in-input');
+    if (member.inbox.length >= mailboxLimit) fail('NOT_ALLOWED', 'The recipient mailbox is full');
+    member.inbox.push(message);
+  }
+
+  function releaseWait(member: Member) {
+    const messages = pending(member);
+    if (!member.wait || messages.length === 0) return false;
+    for (const message of messages) message.state = 'returned';
+    member.inbox = member.inbox.filter(message => message.state !== 'returned');
+    member.wait({ reason: 'message', messages: structuredClone(messages) });
+    return true;
+  }
+
+  function removeMemberMessage(member: Member, message: Message) {
+    member.inbox = member.inbox.filter(item => item !== message);
+  }
+
+  async function offer(member: Member, message: Message) {
+    if (message.state === 'returned' || (message.state === 'pending' && releaseWait(member))) return;
+    if (member.submitted.size >= operationLimit) fail('NOT_ALLOWED', 'The recipient delivery history limit has been reached');
+    const { state: _state, ...payload } = message;
+    const body = JSON.stringify(payload);
+    const receipt = await runtime.send(member.id!, body, {
+      requestId: message.id, source: message.from, mode: 'steer', wakeIfIdle: false,
+    });
+    if (receipt.status === 'accepted') {
+      message.state = 'queued';
+      if (receipt.disposition === 'queued') member.submitted.set(createHash('sha256').update(body).digest('hex'), message);
+      removeMemberMessage(member, message);
+      member.wait?.({ reason: 'input' });
+    } else if (receipt.status === 'unknown') {
+      message.state = 'unknown';
+    } else {
+      message.state = 'pending';
+      releaseWait(member);
+    }
+  }
+
+  function resultFor(member: Member, event: Settled | Exit | Extract<AgentEvent, { type: 'error' }>) {
+    const recipient = member.parent;
+    if (!recipient || !accepting) return;
+    const message: Message = {
+      id: randomUUID(), kind: 'result', from: member.path,
+      text: event.type === 'settled'
+        ? (event.outcome === 'completed' ? event.output ?? '' : event.error?.message ?? 'Child execution failed')
+        : event.type === 'exit' ? event.reason : event.error.message,
+      outcome: event.type === 'settled' && event.outcome === 'completed' ? 'completed' : 'failed',
+      eventSeq: event.seq, state: 'pending',
+    };
+    void track(serial(recipient, async () => {
+      open();
+      reserveMessage(recipient, message);
+      await offer(recipient, message);
+    })).catch(error => {
+      if (deliveryFailures.length < mailboxLimit) deliveryFailures.push({ id: message.id, reason: error.code ?? 'SERVICE_UNAVAILABLE' });
+    });
+  }
+
+  const unsubscribe = runtime.onEvent(event => {
+    const member = byId.get(event.botId);
+    if (!member) return;
+    if (event.type === 'settled' || event.type === 'exit') member.executionRevision++;
+    if (event.type === 'settled') {
+      member.lastOutcome = event.outcome === 'aborted' ? 'interrupted' : event.outcome;
+      if (event.outcome !== 'aborted' && !(member.fatalReported && event.outcome === 'failed')) resultFor(member, event);
+    } else if (event.type === 'error' && event.fatal && !member.fatalReported) {
+      member.lastOutcome = 'failed';
+      member.fatalReported = true;
+      resultFor(member, event);
+    } else if (event.type === 'exit' && !event.expected && !member.fatalReported && member.lastOutcome !== 'failed') {
+      member.lastOutcome = 'failed';
+      resultFor(member, event);
+    }
+    if (member === root && (event.type === 'settled' || event.type === 'exit')) {
+      lastReply = event;
+      for (const listener of replyListeners) listener(event);
+    }
+  });
+
+  async function reconcile(member: Member) {
+    for (const message of member.inbox.filter(item => item.state === 'unknown')) {
+      await offer(member, message);
+    }
+  }
+
+  function submit(member: Member, entry: Operation, text: string, from: string, requestId: string, authorize?: () => void) {
+    return serial(member, async (): Promise<InputReceipt> => {
+      open();
+      authorize?.();
+      if (!entry.inputDispatched) {
+        await reconcile(member);
+        const status = await runtime.get(member.id!);
+        open();
+        authorize?.();
+        entry.batch = pending(member);
+        for (const message of entry.batch) message.state = 'in-input';
+        if (status.status === 'idle') member.executionRevision++;
+        entry.inputDispatched = true;
+      }
+      const messages = entry.batch!;
+      const body = messages.length || from !== 'user'
+        ? JSON.stringify({ kind: from === 'user' ? 'user' : 'new-task', from, text, messages: messages.map(({ state: _state, ...message }) => message) })
+        : text;
+      let receipt: InputReceipt;
+      try {
+        receipt = await runtime.send(member.id!, body, { requestId, source: from, wakeIfIdle: true });
+      } catch (error) {
+        for (const message of messages) message.state = 'pending';
+        releaseWait(member);
+        throw error;
+      }
+      if (receipt.status === 'accepted') {
+        for (const message of messages) removeMemberMessage(member, message);
+        member.wait?.({ reason: 'input' });
+      }
+      return receipt;
+    });
+  }
+
+  function waitForMessage(member: Member, duration: number, signal: AbortSignal) {
+    if (member.wait) fail('CONFLICT', 'This member is already waiting');
+    if (signal.aborted) return Promise.resolve<WaitResult>({ reason: 'cancelled' });
+    return new Promise<WaitResult>(resolve => {
+      const timer = setTimeout(() => finish({ reason: 'timeout' }), duration);
+      const cancel = () => finish({ reason: 'cancelled' });
+      function finish(result: WaitResult) {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', cancel);
+        if (member.wait === finish) member.wait = undefined;
+        resolve(result);
+      }
+      member.wait = finish;
+      signal.addEventListener('abort', cancel, { once: true });
+      releaseWait(member);
+    });
+  }
+
+  function attachRoot(id: string) {
+    root.id = id;
+    byId.set(id, root);
+  }
+
+  return {
+    attachRoot,
+    submitUser(text: string, requestId: string) {
+      inputText(text);
+      if (!/^[A-Za-z0-9_.:-]{1,120}$/.test(requestId)) fail('INVALID_CONTRACT', 'Invalid user request ID');
+      return operate(`user:${requestId}`, text, entry => submit(root, entry, text, 'user', `user:${requestId}`));
+    },
+    lastReply: () => lastReply,
+    onReply(listener: (event: Reply) => void) {
+      replyListeners.add(listener);
+      return () => { replyListeners.delete(listener); };
+    },
+    list: () => runtime.list(),
+    async invoke(request: ServiceRequest): Promise<JsonValue> {
+      const caller = request.caller.runtimeId === runtime.id && byId.get(request.caller.botId);
+      if (!caller) fail('NOT_ALLOWED', 'Caller does not belong to this team');
+      request.assertAuthorized();
+      const call = request.input as Record<string, JsonValue>;
+      const operation = request.capability.operation;
+      if (operation === 'list_agents') {
+        const prefix = call.path_prefix === undefined ? '/root' : canonical(caller, call.path_prefix);
+        const visible = await runtime.list();
+        return visible.flatMap(bot => {
+          const member = byId.get(bot.id);
+          return member && ['starting', 'idle', 'running'].includes(bot.status) &&
+            (member.path === prefix || member.path.startsWith(prefix + '/'))
+            ? [{ path: member.path, botId: bot.id, status: bot.status, lastOutcome: member.lastOutcome ?? null }] : [];
+        });
+      }
+      const key = JSON.stringify([caller.id, request.envelope.operation_id]);
+      const parameters = [operation, Object.entries(call).sort(([a], [b]) => a.localeCompare(b))];
+      return operate(key, parameters, async entry => {
+        open();
+        request.assertAuthorized();
+        if (operation === 'wait_agent') {
+          const wait = waitForMessage(caller, Math.max(10_000, (call.timeout_ms as number | undefined) ?? 30_000), request.signal);
+          void track(serial(caller, () => reconcile(caller))).catch(() => undefined);
+          return await wait as unknown as JsonValue;
+        }
+        if (operation === 'spawn_agent') {
+          const name = call.task_name as string;
+          if (name === 'root' || !namePattern.test(name)) fail('INVALID_CONTRACT', 'Invalid child name');
+          const path = `${caller.path}/${name}`;
+          if (path.split('/').length - 2 > maxDepth) fail('NOT_ALLOWED', 'The team depth limit has been reached');
+          if (!entry.destination) {
+            if (byPath.has(path)) fail('CONFLICT', 'A child already uses that path');
+            entry.destination = createMember(path, caller);
+            byPath.set(path, entry.destination);
+          }
+          const child = entry.destination;
+          try {
+            if (!child.id) {
+              const bot = await runtime.spawn({ profile: 'child', requestId: entry.id, parentId: caller.id,
+                ...(call.fork_turns === 'none' ? {} : { forkFrom: caller.id }), workspace: childWorkspace });
+              child.id = bot.id;
+              byId.set(bot.id, child);
+            }
+          } catch (error) {
+            if ((error as { code?: string }).code !== 'OPERATION_UNKNOWN') byPath.delete(path);
+            throw error;
+          }
+          const receipt = await submit(child, entry, inputText(call.message), caller.path, entry.id + ':initial', request.assertAuthorized);
+          return { task_name: child.path, botId: child.id, ...receipt };
+        }
+        const recipient = target(caller, call.target);
+        if (operation === 'followup_task') {
+          if (recipient === root) fail('NOT_ALLOWED', 'The Root only receives follow-up tasks from the host');
+          const receipt = await submit(recipient, entry, inputText(call.message), caller.path, entry.id, request.assertAuthorized);
+          return { ...receipt };
+        }
+        if (operation === 'interrupt_agent') {
+          if (recipient === root || recipient === caller) fail('NOT_ALLOWED', 'Cannot interrupt the Root or yourself');
+          const revision = recipient.executionRevision;
+          return serial(recipient, async () => {
+            open();
+            request.assertAuthorized();
+            if (!entry.interruptStatus) {
+              const before = await runtime.get(recipient.id!);
+              open();
+              request.assertAuthorized();
+              if (recipient.executionRevision !== revision) return { status: 'stale' };
+              if (before.status === 'idle') return { status: 'idle' };
+              entry.interruptStatus = before.status;
+            }
+            const { discardedInputHashes, ...receipt } = await runtime.interrupt(recipient.id!, { requestId: entry.id });
+            if (receipt.status === 'interrupted') {
+              recipient.lastOutcome = 'interrupted';
+              for (const hash of discardedInputHashes ?? []) {
+                const message = recipient.submitted.get(hash);
+                if (message) {
+                  message.state = 'pending';
+                  try { reserveMessage(recipient, message); }
+                  catch { deliveryFailures.push({ id: message.id, reason: 'MAILBOX_FULL_AFTER_INTERRUPT' }); }
+                }
+              }
+              recipient.submitted.clear();
+            }
+            return { ...receipt, previousStatus: entry.interruptStatus };
+          });
+        }
+        if (operation !== 'send_message') return fail('INVALID_CONTRACT', 'Unknown collaboration operation');
+        return serial(recipient, async () => {
+          open();
+          request.assertAuthorized();
+          if (!entry.message) {
+            entry.message = { id: entry.id, kind: 'message', from: caller.path, text: inputText(call.message), state: 'pending' };
+            reserveMessage(recipient, entry.message);
+          }
+          await offer(recipient, entry.message);
+          return { messageId: entry.message.id, status: entry.message.state };
+        });
+      });
+    },
+    beginClose() {
+      accepting = false;
+      for (const member of byPath.values()) member.wait?.({ reason: 'cancelled' });
+    },
+    dispose() { unsubscribe(); replyListeners.clear(); },
+    drain: () => Promise.allSettled(jobs),
+    exportState(): JsonValue {
+      return {
+        accepting,
+        members: [...byPath.values()].map(member => ({
+          path: member.path, botId: member.id ?? null, parent: member.parent?.path ?? null,
+          lastOutcome: member.lastOutcome ?? null, waiting: Boolean(member.wait),
+          nativeQueuedAdmissions: member.submitted.size,
+          pending: member.inbox.map(({ id, state }) => ({ id, state })),
+        })),
+        operations: operations.size, deliveryFailures: [...deliveryFailures],
+      };
+    },
+  };
+}

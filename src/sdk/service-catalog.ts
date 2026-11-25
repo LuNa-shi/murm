@@ -15,7 +15,7 @@ const TASK_REVISION_FIELDS = {
 const TOOL_DEFINITIONS = Object.freeze([
   {
     name: 'catalog_list_services', service: 'catalog', operation: 'list_services', version: '1.0',
-    description: 'List every available SwarmEnv Service and its tool count.',
+    description: 'List every available murm Service and its tool count.',
     scope: 'public-read', side_effect: false,
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },

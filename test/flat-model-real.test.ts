@@ -4,13 +4,13 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createRuntime } from '@swarmenv/core';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { ServiceRegistry } from '@swarmenv/core/services';
+import { createRuntime } from '@murm/core';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { ServiceRegistry } from '@murm/core/services';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { createFlatModelAccessPolicy } from '../src/environments/flat/model-access-policy.js';
-import { createFlatBotCoordinator } from '../src/environments/flat/bot-coordinator.js';
+import { createTaskPoolModelAccessPolicy } from '../src/harnesses/taskpool/model-access-policy.js';
+import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/bot-coordinator.js';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 import { cleanupRuntimes } from './fixtures/core-runtime-cleanup.js';
@@ -96,7 +96,7 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
   if (typeof image !== 'string' || !/(?:^sha256:|@sha256:)[a-f0-9]{64}$/.test(image)) throw new Error('FLAT_PINNED_IMAGE_REQUIRED');
   report.image = image;
   const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const policy = createFlatModelAccessPolicy({ taskService: tasks, missionId: 'flat:model-acceptance', runtimeId: () => runtime?.id, deadline: () => deadlineAt });
+  const policy = createTaskPoolModelAccessPolicy({ taskService: tasks, missionId: 'flat:model-acceptance', runtimeId: () => runtime?.id, deadline: () => deadlineAt });
   runtime = await createRuntime({ backend: createPiOpenSandboxBackend({ sandbox: {
     lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
     apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
@@ -107,7 +107,7 @@ for (const live of [false, true]) test(`flat readonly selection ${live ? 'live K
     services: new ServiceRegistry(), modelAccessPolicy: policy, maxBots: 1, outputDir });
   report.runtimeId = runtime.id;
   report.resources[runtime.id] = { initialEmpty: (await ownedContainers(runtime.id)).length === 0 };
-  const coordinator = createFlatBotCoordinator({ runtime, taskService: tasks, missionId: 'flat:model-acceptance' });
+  const coordinator = createTaskPoolAgentCoordinator({ runtime, taskService: tasks, missionId: 'flat:model-acceptance' });
   bot = await coordinator.spawn({ requestId: 'flat-model-spawn', profile: 'readonly', legacySlotId: 'legacy-slot:acceptance', selectionDeadline: new Date(deadlineAt).toISOString() });
   report.botId = bot.id; report.legacySlotId = tasks.getBot(bot.id).core_id; report.initialDomainState = tasks.getBot(bot.id).state;
   assert.equal(report.initialDomainState, 'UNBOUND'); assert.equal(tasks.getBot(bot.id).sandbox_id, null);

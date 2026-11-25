@@ -1,9 +1,9 @@
-import type { BotInfo, ErrorInfo, ModelAccessPolicy, PendingCleanup } from './types.js';
+import type { AgentInfo, ErrorInfo, ModelAccessPolicy, PendingCleanup } from './types.js';
 import type { createModelTrace } from './model-trace.js';
 import type { PiOpenSandboxBackendConfig } from './backend-config.js';
 
 interface ModelBot {
-  status: BotInfo['status'];
+  status: AgentInfo['status'];
   unavailable?: boolean;
   model: string;
   profile: string;

@@ -9,7 +9,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/agensh-team-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { runForegroundEnvironment } = await import('../src/environments/shared/foreground-host.js');
+const { runForegroundHarness } = await import('../src/harnesses/shared/foreground-host.js');
 hooks.deregister();
 
 async function configuration(t) {
@@ -34,7 +34,7 @@ test('foreground host targets the existing agensh router and preserves request r
   const config = await configuration(t); transport.next = settle;
   config.options.secretValues = ['worker-a'];
   let saved;
-  const report = await runForegroundEnvironment(config, async host => {
+  const report = await runForegroundHarness(config, async host => {
     saved = host;
     const before = await host.status();
     assert.equal(before.mode, 'agensh');
@@ -70,7 +70,7 @@ test('host abort bounds an interaction that never returns and retains actual cle
   const config = await configuration(t);
   const controller = new AbortController();
   const entered = Promise.withResolvers();
-  const pending = runForegroundEnvironment({ ...config, signal: controller.signal }, async () => { entered.resolve(); await new Promise(() => {}); });
+  const pending = runForegroundHarness({ ...config, signal: controller.signal }, async () => { entered.resolve(); await new Promise(() => {}); });
   await entered.promise; controller.abort();
   const report = await pending;
   assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanup.bots.length, 2);
@@ -81,7 +81,7 @@ test('foreground status follows Core activity and exposes only the latest error 
   const config = await configuration(t);
   const sent = Promise.withResolvers();
   transport.next = sent.resolve;
-  const report = await runForegroundEnvironment(config, async host => {
+  const report = await runForegroundHarness(config, async host => {
     const kickoff = await host.kickoff({ recipient: 'a', input: 'held work' });
     const { botId } = transport.submissions.get(await sent.promise);
     const backendBot = transport.spawns.get(botId);
@@ -108,7 +108,7 @@ test('flat host rejects an invalid snapshot binding before allocating any Bot', 
   const config = await configuration(t);
   config.options.snapshotProject = true;
   let entered = false;
-  const report = await runForegroundEnvironment({ ...config, mode: 'flat' }, async () => { entered = true; });
+  const report = await runForegroundHarness({ ...config, mode: 'flat' }, async () => { entered = true; });
   assert.equal(report.businessFailure.code, 'INVALID_CONTRACT');
   assert.match(report.businessFailure.message, /snapshotProject/);
   assert.equal(report.cleanup, null);
@@ -121,7 +121,7 @@ test('actual foreground CLI routes explicit peer commands and emits bounded save
   const { once } = await import('node:events');
   const { readFile } = await import('node:fs/promises');
   const root = await mkdtemp(join(tmpdir(), 'foreground-cli-')); t.after(() => rm(root, { recursive: true, force: true }));
-  const child = spawn(process.execPath, ['dist/scripts/run-environment.js', '--config', 'dist/test/fixtures/foreground-host-configuration.js'],
+  const child = spawn(process.execPath, ['dist/scripts/run-harness.js', '--config', 'dist/test/fixtures/foreground-host-configuration.js'],
     { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root }, stdio: ['pipe', 'pipe', 'pipe'] });
   t.after(() => child.kill('SIGKILL'));
   const records = [], errors = []; child.stderr.on('data', bytes => errors.push(bytes));
@@ -170,7 +170,7 @@ test('foreground CLI records startup cancellation received while loading configu
   const root = await mkdtemp(join(tmpdir(), 'foreground-startup-')); t.after(() => rm(root, { recursive: true, force: true }));
   const configurationPath = join(root, 'loading.mjs');
   await writeFile(configurationPath, `export { default } from ${JSON.stringify(new URL('./fixtures/foreground-host-configuration.js', import.meta.url).href)};\nprocess.send('loading');\nawait new Promise(resolve => setTimeout(resolve, 50));\n`);
-  const child = fork('dist/scripts/run-environment.js', ['--config', configurationPath],
+  const child = fork('dist/scripts/run-harness.js', ['--config', configurationPath],
     { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root }, stdio: ['pipe', 'pipe', 'pipe', 'ipc'] });
   t.after(() => child.kill('SIGKILL'));
   const stdout = [], stderr = []; child.stdout.on('data', bytes => stdout.push(bytes)); child.stderr.on('data', bytes => stderr.push(bytes));
@@ -187,7 +187,7 @@ test('SIGTERM during an active CLI wait closes the team without replies after th
   const { once } = await import('node:events');
   const { createInterface } = await import('node:readline');
   const root = await mkdtemp(join(tmpdir(), 'foreground-active-stop-')); t.after(() => rm(root, { recursive: true, force: true }));
-  const child = spawn(process.execPath, ['dist/scripts/run-environment.js', '--config', 'dist/test/fixtures/foreground-host-configuration.js'],
+  const child = spawn(process.execPath, ['dist/scripts/run-harness.js', '--config', 'dist/test/fixtures/foreground-host-configuration.js'],
     { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root, FOREGROUND_TEST_HOLD: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
   t.after(() => child.kill('SIGKILL'));
   const records = [], stderr = []; child.stderr.on('data', value => stderr.push(value));
@@ -210,7 +210,7 @@ test('an agensh router deadline ends foreground interaction before a longer host
   const config = await configuration(t);
   config.options.router.workTimeoutMs = 40;
   const started = performance.now();
-  const report = await runForegroundEnvironment(config, async () => new Promise(() => {}));
+  const report = await runForegroundHarness(config, async () => new Promise(() => {}));
   assert.equal(report.cleanup.cleanup, 'complete');
   assert.equal(report.businessFailure?.code, 'AGENSH_TEAM_FENCED');
   assert.equal(report.businessFailure?.details?.[0]?.code, 'ROUTER_WORK_EXPIRED');
@@ -222,7 +222,7 @@ test('JSON-line stop overtakes an active wait, seals queued input and precedes t
   const { once } = await import('node:events');
   const { createInterface } = await import('node:readline');
   const root = await mkdtemp(join(tmpdir(), 'foreground-command-stop-')); t.after(() => rm(root, { recursive: true, force: true }));
-  const child = spawn(process.execPath, ['dist/scripts/run-environment.js', '--config', 'dist/test/fixtures/foreground-host-configuration.js'],
+  const child = spawn(process.execPath, ['dist/scripts/run-harness.js', '--config', 'dist/test/fixtures/foreground-host-configuration.js'],
     { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root, FOREGROUND_TEST_HOLD: '1' }, stdio: ['pipe', 'pipe', 'pipe'] });
   t.after(() => child.kill('SIGKILL'));
   const records = [], stderr = []; child.stderr.on('data', value => stderr.push(value));
@@ -259,14 +259,14 @@ test('source failure stays a safe team failure and host deadline stays a distinc
   const config = await configuration(t);
   let failSource;
   config.options.router.subscribe = async ({ onFailure }) => { failSource = onFailure; return { ready: true, stop: async () => {} }; };
-  const source = await runForegroundEnvironment(config, async () => {
+  const source = await runForegroundHarness(config, async () => {
     failSource({ code: 'PRIVATE_source_failure', message: 'private-git-a' });
     await new Promise(() => {});
   });
   assert.equal(source.businessFailure.code, 'AGENSH_TEAM_FENCED');
   assert.deepEqual(source.businessFailure.details, [{ code: 'AGENSH_SOURCE_FAILED' }]);
   assert.equal(source.cleanup.cleanup, 'complete');
-  const deadline = await runForegroundEnvironment({ ...config, timeoutMs: 200 }, async () => new Promise(() => {}));
+  const deadline = await runForegroundHarness({ ...config, timeoutMs: 200 }, async () => new Promise(() => {}));
   assert.equal(deadline.businessFailure.code, 'HOST_WORK_TIMEOUT');
   assert.equal(deadline.cleanup.cleanup, 'complete');
 });
@@ -281,7 +281,7 @@ test('CLI self-fence exits unsuccessfully and a configuration throwing null emit
   await writeFile(fenced, `import config from ${JSON.stringify(fixture)};\nconfig.options.router.workTimeoutMs = 100;\nexport default config;\n`);
   for (const [path, expected, stream] of [[fenced, 'AGENSH_TEAM_FENCED', 'stdout'], [join(root, 'null.mjs'), 'HOST_START_FAILED', 'stderr']]) {
     if (stream === 'stderr') await writeFile(path, 'throw null;\n');
-    const child = spawn(process.execPath, ['dist/scripts/run-environment.js', '--config', path],
+    const child = spawn(process.execPath, ['dist/scripts/run-harness.js', '--config', path],
       { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root }, stdio: ['pipe', 'pipe', 'pipe'] });
     t.after(() => child.kill('SIGKILL'));
     const stdout = [], stderr = []; child.stdout.on('data', bytes => stdout.push(bytes)); child.stderr.on('data', bytes => stderr.push(bytes));
@@ -308,7 +308,7 @@ test('startup source self-fence preserves its first safe cause and actual cleanu
       return { ready: true, stop: async () => {} };
     };
     transport.onStop = () => { stopped++; };
-    const report = await runForegroundEnvironment(config, async () => { entered = true; });
+    const report = await runForegroundHarness(config, async () => { entered = true; });
     assert.equal(report.businessFailure.code, 'AGENSH_TEAM_FENCED');
     assert.equal(report.businessFailure.cleanup, 'complete');
     assert.deepEqual(report.businessFailure.details[0], { code: 'EVENT_SOURCE_FAILED' });
@@ -329,7 +329,7 @@ test('foreground CLI rejects an oversized partial line before its delimiter and 
   const { once } = await import('node:events');
   const root = await mkdtemp(join(tmpdir(), 'foreground-partial-line-'));
   t.after(() => rm(root, { recursive: true, force: true }));
-  const child = spawn(process.execPath, ['dist/scripts/run-environment.js', '--config', 'dist/test/fixtures/foreground-host-configuration.js'],
+  const child = spawn(process.execPath, ['dist/scripts/run-harness.js', '--config', 'dist/test/fixtures/foreground-host-configuration.js'],
     { env: { ...process.env, FOREGROUND_TEST_OUTPUT: root }, stdio: ['pipe', 'pipe', 'pipe'] });
   t.after(() => child.kill('SIGKILL'));
   const records = [], stderr = [];

@@ -4,8 +4,8 @@ import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { createHash } from 'node:crypto';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
-import { createLeadHelperGit, prepareLeadHelperGit } from '../src/environments/lead-helper/git.js';
-import { createOwnedResources } from '../src/environments/agensh/resources.js';
+import { createLeadWorkerGit, prepareLeadWorkerGit } from '../src/harnesses/lead-worker/git.js';
+import { createOwnedResources } from '../src/harnesses/peermesh/resources.js';
 
 async function server(t, callback) {
   const server = createServer(async (request, response) => {
@@ -24,7 +24,7 @@ test('Git proof checks own branch head and actual bytes; PR cannot forge identit
     if (request.url.includes('/contents/')) return { type: 'file', path: 'result.txt', encoding: 'base64', size: content.length, content: (wrongFile ? Buffer.from('forged') : content).toString('base64') };
     assert.equal(request.url, '/api/v1/repos/owner/repo/pulls'); assert.equal(input.head, 'helper1'); return { number: 1 };
   });
-  const git = createLeadHelperGit({ origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors: actors() });
+  const git = createLeadWorkerGit({ origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors: actors() });
   git.bindTeam('runtime', { lead: 'lead-id', helper1: 'one', helper2: 'two' });
   const proof = { commit, path: 'result.txt', bytes: content.length, sha256 };
   assert.equal((await git.verifyDelivery({ actor: 'one', delivery: proof })).verified, true);
@@ -54,7 +54,7 @@ for (const configuration of [{ count: 3 }, { count: 8, helperCount: 7 }]) {
       if (request.url.endsWith('/tokens')) return [];
       return {};
     });
-    const resources = createOwnedResources(); const value = await prepareLeadHelperGit({ runId: 'a'.repeat(32), gitea: { origin, owner: 'owner', adminToken: 'admin' }, resources, helperCount: configuration.helperCount });
+    const resources = createOwnedResources(); const value = await prepareLeadWorkerGit({ runId: 'a'.repeat(32), gitea: { origin, owner: 'owner', adminToken: 'admin' }, resources, helperCount: configuration.helperCount });
     assert.equal(Object.keys(value.actors).length, configuration.count); assert.equal(new Set(Object.values(value.actors).map(row => row.token)).size, configuration.count);
     assert.ok([...users.values()].every(row => row.restricted && row.max_repo_creation === 0 && row.allow_create_organization === false && row.username.length <= 40));
     assert.equal((await resources.close()).cleanup, 'complete');

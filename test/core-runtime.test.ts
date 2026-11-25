@@ -7,9 +7,9 @@ import { join } from 'node:path';
 import test from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createRuntime } from '@swarmenv/core';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { ServiceRegistry } from '@swarmenv/core/services';
+import { createRuntime } from '@murm/core';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { ServiceRegistry } from '@murm/core/services';
 
 function options(outputDir, model = 'k3', sandbox = {}) {
   return {

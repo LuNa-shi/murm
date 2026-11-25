@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
-import { runSubagentsEnvironment } from '../examples/subagents-environment/main.js';
+import { runSubagentsHarness } from '../examples/subagents/main.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 import { streamResponse } from './fixtures/core-controlled-upstream.js';
 
@@ -123,7 +123,7 @@ if swarm collaboration spawn_agent --task-name extra --message extra --fork-turn
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
     },
   };
-  const report = await runSubagentsEnvironment(config, undefined, async (env, signal) => {
+  const report = await runSubagentsHarness(config, undefined, async (env, signal) => {
     for (;;) {
       signal.throwIfAborted();
       if (upstreamError) throw upstreamError;
@@ -246,7 +246,7 @@ for (const workspaceMode of ['private', 'shared']) {
       return new Promise(resolve => server.close(resolve));
     });
     const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-    const report = await runSubagentsEnvironment({ image, outputDir, maxAgents: 3, maxDepth: 1, goal: 'CONTINUITY_ROOT',
+    const report = await runSubagentsHarness({ image, outputDir, maxAgents: 3, maxDepth: 1, goal: 'CONTINUITY_ROOT',
       workTimeoutMs: 65_000, closeTimeoutMs: 25_000,
       collect: { paths: ['delivery.txt'], includeGit: false, maxBytes: 4096, required: true },
       ...(workspaceMode === 'shared' ? { workspace: { root: { id: 'team', mode: 'read-write' }, child: { id: 'team', mode: 'read-write' } } } : {}),

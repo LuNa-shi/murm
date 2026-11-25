@@ -7,12 +7,12 @@ import { registerHooks } from 'node:module';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { transport } from './fixtures/core-bot-service-backend.js';
-import { createAgenshEventSubscription } from '../src/environments/agensh/event-source.js';
+import { createPeerMeshEventSubscription } from '../src/harnesses/peermesh/event-source.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/agensh-team-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { createAgenshTeam } = await import('../src/environments/agensh/team.js'); hooks.deregister();
+const { createPeerMeshTeam } = await import('../src/harnesses/peermesh/team.js'); hooks.deregister();
 
 async function setup(t, extra = {}) {
   transport.reset(); transport.collectable = true;
@@ -21,7 +21,7 @@ async function setup(t, extra = {}) {
   const peers = (extra.peerKeys ?? ['a', 'b']).map(key => ({ key, branch: `branch-${key}`, gitea: { username: key, binding: `git-${key}`, accountId: key, token: `git-private-${key}` },
     message: { binding: `mm-${key}`, accountId: key, token: `mm-private-${key}` }, board: { binding: `board-${key}`, workerId: `worker-${key}` } }));
   let facilityClosed = false; const ready = [];
-  environment = await createAgenshTeam({ runId: 'team', image: 'fixture', outputDir, backend: {},
+  environment = await createPeerMeshTeam({ runId: 'team', image: 'fixture', outputDir, backend: {},
     prepare: async ({ resources }) => { resources.own({ kind: 'facility', id: 'shared', close() { facilityClosed = true; } }); return { runId: 'team', repository: { owner: 'owner', name: 'repo' }, repositoryUrl: 'http://172.17.0.1:3000/owner/repo.git', channelId: 'channel', boardId: 'board', issueNumber: 1,
       endpoints: { gitea: 'http://172.17.0.1:3000', message: 'http://127.0.0.1:3001', board: 'http://127.0.0.1:3002' }, peers }; },
     router: { workTimeoutMs: 3000, turnTimeoutMs: 1000, readContext: async () => 'shared board', subscribe: async ({ mapping }) => { ready.push(mapping); return { ready: true, stop: async () => {} }; } }, ...extra });
@@ -84,7 +84,7 @@ test('eight mapped peers are ready before kickoff and real HTTP events reach onl
     async subscribe(options) {
       assert.equal(transport.spawns.size, 8);
       assert.equal(transport.submissions.size, 0);
-      const source = await createAgenshEventSubscription({ ...options, pollIntervalMs: 60_000, maxPolls: 3,
+      const source = await createPeerMeshEventSubscription({ ...options, pollIntervalMs: 60_000, maxPolls: 3,
         facilities: { ...options.facilities, endpoints: { ...options.facilities.endpoints, gitea: origin, message: origin } } });
       ready.push(options.mapping);
       return source;

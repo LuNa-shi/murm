@@ -13,9 +13,9 @@ const profileValue = 'configured-profile-value';
 async function fixture(t, hooks, { registrations = [], grants = {}, sandbox = {}, modelGateway = {} } = {}) {
   const provider = await createLifecycleProvider(t, hooks);
   provider.allowDeletion();
-  const { createRuntime } = await import('@swarmenv/core');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
+  const { createRuntime } = await import('@murm/core');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core/services');
   const outputDir = await mkdtemp(join(tmpdir(), 'core-report-evidence-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   function makeOptions(directory = outputDir) {
@@ -141,7 +141,7 @@ test('Runtime records identity, unknown input reconciliation, sanitised settled 
 });
 
 test('Runtime report joins a rejected Service write to its trusted caller and effective adapter timeout', async t => {
-  const { createHttpJsonAdapter } = await import('@swarmenv/core/services');
+  const { createHttpJsonAdapter } = await import('@murm/core/services');
   const manifest = notesManifest();
   manifest.endpoint = { transport: 'http-json', url: 'https://example.invalid' };
   const serviceToken = 'fixture-adapter-credential';

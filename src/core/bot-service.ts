@@ -1,8 +1,8 @@
-import type { BotInfo, BotInitialInputResult, BotSpawnReceipt, ConditionalInputReceipt, InputMode, InputReceipt, SendOptions, SpawnOptions, StopReceipt } from './types.js';
+import type { AgentInfo, AgentInitialInputResult, AgentSpawnReceipt, ConditionalInputReceipt, InputMode, InputReceipt, SendOptions, SpawnOptions, StopReceipt } from './types.js';
 import type { JsonValue } from './service-types.js';
 
 interface BotAuthority {
-  status: BotInfo['status'];
+  status: AgentInfo['status'];
   unavailable: boolean;
   services: Readonly<Record<string, readonly string[]>>;
   spawnProfiles?: readonly string[];
@@ -13,8 +13,8 @@ interface BotAuthority {
 interface BotServiceOptions {
   runtimeId: string;
   getBot: (id: string) => BotAuthority | undefined;
-  spawn: (options: SpawnOptions, caller: string) => Promise<BotInfo>;
-  get: (id: string) => Promise<BotInfo>;
+  spawn: (options: SpawnOptions, caller: string) => Promise<AgentInfo>;
+  get: (id: string) => Promise<AgentInfo>;
   send(id: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller: string): Promise<InputReceipt>;
   send(id: string, input: string, options: SendOptions, caller: string): Promise<ConditionalInputReceipt>;
   stop: (id: string) => Promise<StopReceipt>;
@@ -22,9 +22,9 @@ interface BotServiceOptions {
 
 interface SpawnRequest {
   fingerprint: string;
-  bot?: BotInfo;
-  initialInput?: BotInitialInputResult;
-  work?: Promise<BotSpawnReceipt>;
+  bot?: AgentInfo;
+  initialInput?: AgentInitialInputResult;
+  work?: Promise<AgentSpawnReceipt>;
 }
 
 interface BotInput {

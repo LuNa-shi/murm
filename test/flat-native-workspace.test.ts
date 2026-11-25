@@ -9,8 +9,8 @@ import { promisify } from 'node:util';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { runFlatEnvironment } from '../src/environments/flat/environment.js';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { runTaskPoolHarness } from '../src/harnesses/taskpool/harness.js';
 import { TaskService } from '../src/task/task-service.js';
 import { ContextService } from '../src/context/context-service.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
@@ -198,7 +198,7 @@ async function checkNativeAdoption(t, materialNotificationMode) {
   const budget = setTimeout(() => { for (const deferred of awaiting.values()) deferred.reject(new Error('Native diagnostic deadline')); }, 210_000);
   t.after(() => clearTimeout(budget));
   try {
-    report = await runFlatEnvironment({
+    report = await runTaskPoolHarness({
       backend: createPiOpenSandboxBackend({ sandbox: {
         lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
         apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },

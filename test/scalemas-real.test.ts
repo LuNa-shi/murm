@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { runScaleMASExample } from '../examples/scalemas-environment/main.js';
+import { runSubstrateExample } from '../examples/substrate/main.js';
 import { createScaleMASUpstream, sourceContent } from './fixtures/scalemas-upstream.js';
 import { scaleMASBackendConfiguration } from './fixtures/scalemas-configuration.js';
 import { sessionEvidence } from './fixtures/core-session-evidence.js';
@@ -59,7 +59,7 @@ test(`native fixed ${poolSize}-peer substrate adopts immutable producer content 
     const backend = scaleMASBackendConfiguration({ host, upstreamUrl: upstream.url,
       lifecycleUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
       endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY });
-    report = await runScaleMASExample({ backend, runId: `native-${Date.now()}`, image, outputDir: directory, question: 'Verify the fixed ARITHMETIC_SEED contribution through publish, search, visit and adoption.', poolSize, maxRounds: 2,
+    report = await runSubstrateExample({ backend, runId: `native-${Date.now()}`, image, outputDir: directory, question: 'Verify the fixed ARITHMETIC_SEED contribution through publish, search, visit and adoption.', poolSize, maxRounds: 2,
       workTimeoutMs: Math.max(1, deadlineAt - Date.now()), turnTimeoutMs: 40_000, closeTimeoutMs: 30_000 }, controller.signal);
     clearTimeout(timer);
     assert.equal(report.businessFailure, null); assert.equal(report.cleanupFailure, null); assert.equal(report.reportSaveFailure, null);

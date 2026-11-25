@@ -17,7 +17,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { runFlatEnvironment } = await import('../src/environments/flat/environment.js');
+const { runTaskPoolHarness } = await import('../src/harnesses/taskpool/harness.js');
 hooks.deregister();
 const execute = promisify(execFile);
 const hash = value => createHash('sha256').update(value).digest('hex');
@@ -71,7 +71,7 @@ for (const capacity of [2, 4]) test(`${capacity} flat Slots contribute distinct 
     }
     await controller.tick();
   };
-  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+  const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root, deadlineAt: Date.now() + 25_000,
     backend: {}, image: 'fixture', model: 'default', capacity,
     // Explicit test-only trusted dependency. These are host fixture directories,

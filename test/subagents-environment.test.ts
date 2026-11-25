@@ -13,7 +13,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-bot-service-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { runSubagentsEnvironment, checkDelivery } = await import('../test-support/subagents/communication-fixture.js'); hooks.deregister();
+const { runSubagentsHarness, checkDelivery } = await import('../test-support/subagents/communication-fixture.js'); hooks.deregister();
 
 test('final text must consume three distinct delivered snapshots from exactly two children', () => {
   const results = [{ childId: 'a', eventSeq: 1, output: 'first' }, { childId: 'b', eventSeq: 2, output: 'second' }, { childId: 'a', eventSeq: 3, output: 'followup' }];
@@ -70,7 +70,7 @@ test('subagents host closes its complete dynamic tree and verifies adoption thro
     }
   }; }
   arm();
-  const report = await runSubagentsEnvironment({ backend: { sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }, image: 'test', outputDir, supplements: ['USER_SUPPLEMENT'], workTimeoutMs: 3000, closeTimeoutMs: 1000 });
+  const report = await runSubagentsHarness({ backend: { sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }, image: 'test', outputDir, supplements: ['USER_SUPPLEMENT'], workTimeoutMs: 3000, closeTimeoutMs: 1000 });
   assert.equal(report.businessFailure, null, JSON.stringify(report.businessFailure) + String(nativeError ?? '')); assert.equal(report.cleanupFailure, null);
   assert.equal(report.cleanup.bots.length, 3); assert.equal(report.cleanup.cleanup, 'complete');
   assert.equal(report.result.eventSeq, 2, 'The premature first parent final cannot become valid after later dispatches');
@@ -131,7 +131,7 @@ for (const [childCount, pending] of [[3, false], [7, false], [3, true]]) {
       }
     }; }
     arm();
-    const report = await runSubagentsEnvironment({ childCount, backend: { sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
+    const report = await runSubagentsHarness({ childCount, backend: { sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' },
       bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 33554432, inodes: 2048 } } }, image: 'test', outputDir, workTimeoutMs: 3000, closeTimeoutMs: 1000 });
@@ -152,15 +152,15 @@ for (const [childCount, pending] of [[3, false], [7, false], [3, true]]) {
 test('invalid subagents child counts fail before Bot creation', async () => {
   transport.reset();
   for (const childCount of [1, 8, 2.5, '3']) {
-    await assert.rejects(runSubagentsEnvironment({ childCount, backend: {}, outputDir: 'unused' }), TypeError);
+    await assert.rejects(runSubagentsHarness({ childCount, backend: {}, outputDir: 'unused' }), TypeError);
   }
   assert.equal(transport.spawns.size, 0);
 });
 
 test('four staged groups use real Core and parent Bot Service inputs without ending at the first integration', async t => {
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { runInput } = await import('../src/environments/shared/run-input.js');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { runInput } = await import('../src/harnesses/shared/run-input.js');
   const { createSubagentsStages } = await import('../test-support/subagents/stages.js');
   transport.reset(); transport.collectable = true;
   const outputDir = await mkdtemp(join(tmpdir(), 'subagents-stages-'));

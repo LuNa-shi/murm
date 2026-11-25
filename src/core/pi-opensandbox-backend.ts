@@ -1,12 +1,12 @@
-import type { BotEvent, ErrorInfo, FileSnapshot, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from './types.js';
+import type { AgentEvent, ErrorInfo, FileSnapshot, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from './types.js';
 import type { SessionFork } from '../../scripts/core-session-fork.js';
 import type { createCoreBridge } from './bridge.js';
 import { renderStartupPrompt } from './startup-prompt.js';
 import type { createCoreModelAccess } from './model-access.js';
 
 export type BackendEvent = {
-  [Kind in BotEvent['type']]: Omit<Extract<BotEvent, { type: Kind }>, 'botId' | 'seq'>
-}[BotEvent['type']];
+  [Kind in AgentEvent['type']]: Omit<Extract<AgentEvent, { type: Kind }>, 'botId' | 'seq'>
+}[AgentEvent['type']];
 
 export type BackendInputReceipt =
   | { status: 'unknown'; reason: string }

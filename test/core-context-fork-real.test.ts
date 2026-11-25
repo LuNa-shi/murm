@@ -15,9 +15,9 @@ test('Core Context Fork inherits a live native Session with isolated credentials
   skip: process.env.SWARMENV_CORE_FORK_REAL_TEST !== '1' && 'Real OpenSandbox Context Fork probe requires opt-in',
   timeout: 180000,
 }, async t => {
-  const { createRuntime } = await import('@swarmenv/core');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
+  const { createRuntime } = await import('@murm/core');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core/services');
   const image = process.env.SWARMENV_CORE_TEST_IMAGE;
   assert.ok(image);
   const requests = [];

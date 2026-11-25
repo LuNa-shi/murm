@@ -3,10 +3,10 @@ import test from 'node:test';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createRuntime } from '@swarmenv/core';
-import { ServiceRegistry } from '@swarmenv/core/services';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { runWithReport } from '../src/environments/shared/run-report.js';
+import { createRuntime } from '@murm/core';
+import { ServiceRegistry } from '@murm/core/services';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
+import { runWithReport } from '../src/harnesses/shared/run-report.js';
 
 async function recordedRun(t, run = async () => ({ accepted: true, privateOutput: 'DO_NOT_PRINT_RESULT' })) {
   const outputDir = await mkdtemp(join(tmpdir(), 'host-result-reader-'));
@@ -25,9 +25,9 @@ async function recordedRun(t, run = async () => ({ accepted: true, privateOutput
 }
 
 test('reads actual Core and Environment reports without turning a returned accepted flag into business acceptance', async t => {
-  const { readEnvironmentResult } = await import('../src/environments/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
   const input = await recordedRun(t);
-  const result = await readEnvironmentResult(input);
+  const result = await readHarnessResult(input);
   assert.equal(result.runtimeId, input.runtimeId);
   assert.equal(result.environment.state, 'read');
   assert.equal(result.environment.business, 'returned');
@@ -44,7 +44,7 @@ test('reads actual Core and Environment reports without turning a returned accep
 });
 
 test('retains real pending cleanup independently of business failure and later Core reconciliation', async t => {
-  const { readEnvironmentResult } = await import('../src/environments/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
   let runtime;
   const input = await recordedRun(t, async (owned, outputDir) => {
     runtime = owned;
@@ -53,7 +53,7 @@ test('retains real pending cleanup independently of business failure and later C
     await mkdir(path);
     throw Object.assign(new Error('PRIVATE_BUSINESS_MESSAGE'), { code: 'FIXTURE_BUSINESS_FAILED' });
   });
-  const pending = await readEnvironmentResult(input);
+  const pending = await readHarnessResult(input);
   assert.equal(pending.environment.business, 'failed');
   assert.equal(pending.environment.businessFailureCode, 'FIXTURE_BUSINESS_FAILED');
   assert.equal(pending.environment.cleanup, 'pending');
@@ -62,53 +62,53 @@ test('retains real pending cleanup independently of business failure and later C
   assert.equal(JSON.stringify(pending).includes('PRIVATE_BUSINESS_MESSAGE'), false);
   await rm(join(input.runDirectory, 'runtime.json'), { recursive: true });
   await runtime.close();
-  const reconciled = await readEnvironmentResult(input);
+  const reconciled = await readHarnessResult(input);
   assert.equal(reconciled.core.cleanup, 'complete');
   assert.equal(reconciled.environment.cleanup, 'pending');
   assert.equal(reconciled.environment.business, 'failed');
 });
 
 test('rejects foreign or corrupt saved identities without exposing their results and does not invent missing state', async t => {
-  const { readEnvironmentResult } = await import('../src/environments/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
   const input = await recordedRun(t);
-  const foreign = await readEnvironmentResult({ ...input, runtimeId: 'another-runtime' });
+  const foreign = await readHarnessResult({ ...input, runtimeId: 'another-runtime' });
   assert.equal(foreign.environment.state, 'identity-mismatch');
   assert.equal(foreign.core.state, 'identity-mismatch');
   assert.equal(foreign.environment.business, 'unknown');
   assert.deepEqual(foreign.artifacts, []);
   await writeFile(input.report.reportPath, '{broken');
-  const invalid = await readEnvironmentResult(input);
+  const invalid = await readHarnessResult(input);
   assert.equal(invalid.environment.state, 'invalid');
   assert.equal(invalid.core.cleanup, 'complete');
   await writeFile(input.report.reportPath, JSON.stringify({ runtimeId: input.runtimeId, result: 'PRIVATE', businessFailure: null, cleanup: { bots: [null] }, cleanupFailure: null, reportSaveFailure: null }));
-  assert.equal((await readEnvironmentResult(input)).environment.state, 'invalid');
+  assert.equal((await readHarnessResult(input)).environment.state, 'invalid');
   await rm(input.report.reportPath);
-  assert.equal((await readEnvironmentResult(input)).environment.state, 'missing');
+  assert.equal((await readHarnessResult(input)).environment.state, 'missing');
   await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'open', bots: [null] }));
-  assert.equal((await readEnvironmentResult(input)).core.state, 'invalid');
+  assert.equal((await readHarnessResult(input)).core.state, 'invalid');
   await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'starting' }));
-  const starting = await readEnvironmentResult(input);
+  const starting = await readHarnessResult(input);
   assert.equal(starting.core.recordedStatus, 'starting');
   assert.equal(starting.core.cleanup, 'unknown');
   assert.equal(starting.core.bots, null);
   assert.equal(starting.core.pending, null);
   await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'closing', cleanup: 'pending', pending: [null] }));
-  assert.equal((await readEnvironmentResult(input)).core.state, 'invalid');
+  assert.equal((await readHarnessResult(input)).core.state, 'invalid');
   await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'closed', cleanup: 'complete', bots: [{ botId: 'b', execution: 'unknown', cleanup: 'pending' }], pending: [] }));
-  assert.equal((await readEnvironmentResult(input)).core.state, 'invalid');
+  assert.equal((await readHarnessResult(input)).core.state, 'invalid');
   await writeFile(join(input.runDirectory, 'runtime.json'), JSON.stringify({ runtimeId: input.runtimeId, status: 'closed', cleanup: 'complete', bots: [], pending: [{ kind: 'backend' }] }));
-  assert.equal((await readEnvironmentResult(input)).core.state, 'invalid');
+  assert.equal((await readHarnessResult(input)).core.state, 'invalid');
 });
 
 test('reads an Environment-only factory failure and checks recorded artifact locations without dumping error details', async t => {
-  const { readEnvironmentResult } = await import('../src/environments/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
   const root = await mkdtemp(join(tmpdir(), 'environment-only-result-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   const report = await runWithReport({ outputDir: root,
     createRuntime: async () => { throw Object.assign(new Error('PRIVATE_STARTUP_DETAIL'), { runtimeId: 'failed-factory', code: 'START_FAILED', cleanup: 'pending', details: ['PRIVATE_EVIDENCE'] }); },
     run: async () => { throw new Error('must not run'); },
   });
-  const result = await readEnvironmentResult({ runDirectory: join(root, report.runtimeId), runtimeId: report.runtimeId });
+  const result = await readHarnessResult({ runDirectory: join(root, report.runtimeId), runtimeId: report.runtimeId });
   assert.equal(result.environment.business, 'failed');
   assert.equal(result.environment.businessFailureCode, 'START_FAILED');
   assert.equal(result.environment.cleanupFailureCode, 'FACTORY_CLEANUP_PENDING');
@@ -122,7 +122,7 @@ test('reads an Environment-only factory failure and checks recorded artifact loc
       { botId: 'fixture-bot', execution: 'stopped', cleanup: 'pending', artifacts: [artifact, join(root, 'absent.md')] },
     ] }) }), run: async () => ({ publicResult: 'PRIVATE_RESULT_CONTENT' }),
   });
-  const artifacts = await readEnvironmentResult({ runDirectory: join(root, saved.runtimeId), runtimeId: saved.runtimeId });
+  const artifacts = await readHarnessResult({ runDirectory: join(root, saved.runtimeId), runtimeId: saved.runtimeId });
   assert.deepEqual(artifacts.artifacts.map(row => row.availability), ['file', 'missing']);
   assert.equal(artifacts.environment.cleanup, 'pending');
   assert.equal(artifacts.environment.bots[0].execution, 'stopped');
@@ -133,12 +133,12 @@ test('host result CLI returns the same projection with explicit identity and rep
   const { execFile } = await import('node:child_process');
   const { promisify } = await import('node:util');
   const { fileURLToPath } = await import('node:url');
-  const { readEnvironmentResult } = await import('../src/environments/shared/read-result.js');
+  const { readHarnessResult } = await import('../src/harnesses/shared/read-result.js');
   const execute = promisify(execFile);
-  const cli = fileURLToPath(new URL('../scripts/read-environment-result.js', import.meta.url));
+  const cli = fileURLToPath(new URL('../scripts/read-harness-result.js', import.meta.url));
   const input = await recordedRun(t);
   const { stdout } = await execute(process.execPath, [cli, '--run-directory', input.runDirectory, '--runtime-id', input.runtimeId]);
-  assert.deepEqual(JSON.parse(stdout), await readEnvironmentResult(input));
+  assert.deepEqual(JSON.parse(stdout), await readHarnessResult(input));
   await assert.rejects(execute(process.execPath, [cli, '--run-directory', input.runDirectory]), error => {
     assert.equal(error.code, 2);
     assert.equal(JSON.parse(error.stderr).code, 'INVALID_RESULT_ARGUMENTS'); return true;

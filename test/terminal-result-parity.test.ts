@@ -10,7 +10,7 @@ import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { test } from 'node:test';
-import { readEnvironmentResult } from '../src/environments/shared/read-result.js';
+import { readHarnessResult } from '../src/harnesses/shared/read-result.js';
 import { installNotesExample } from './fixtures/notes-installed-package.js';
 
 const execute = promisify(execFile);
@@ -25,7 +25,7 @@ async function stoppedCli(t, failure, cwd, { blockReport = false, businessFailur
     const fixture = new URL('dist/test/fixtures/foreground-host-configuration.js', cwd).href;
     await writeFile(config, `import config from ${JSON.stringify(fixture)};\nconfig.options.router.workTimeoutMs = 1000;\nexport default config;\n`);
   }
-  const child = spawn(process.execPath, [`--redirect-warnings=${join(outputDir, 'node-warnings.log')}`, 'dist/scripts/run-environment.js', '--config', config], {
+  const child = spawn(process.execPath, [`--redirect-warnings=${join(outputDir, 'node-warnings.log')}`, 'dist/scripts/run-harness.js', '--config', config], {
     cwd, env: { ...process.env, FOREGROUND_TEST_OUTPUT: outputDir, FOREGROUND_TEST_CLEANUP_FAILURE: failure },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -84,7 +84,7 @@ async function assertReceiptParity(t, { failure, execution, action, failureCode 
   assert.equal(saved.businessFailure, null);
   assert.equal(saved.cleanupFailure.code, result.cleanupFailureCode);
   const input = { runDirectory: ready.runDirectory, runtimeId: result.runtimeId };
-  const inspected = await readEnvironmentResult(input);
+  const inspected = await readHarnessResult(input);
   for (const receipt of [inspected.environment, inspected.core]) {
     assert.equal(receipt.state, 'read');
     assert.equal(receipt.cleanup, 'pending');
@@ -95,7 +95,7 @@ async function assertReceiptParity(t, { failure, execution, action, failureCode 
   assert.equal(inspected.environment.business, 'returned');
   assert.equal(inspected.environment.acceptance, 'not-interpreted');
   assert.equal(inspected.core.recordedStatus, 'closing');
-  const { stdout } = await execute(process.execPath, ['dist/scripts/read-environment-result.js', '--run-directory', input.runDirectory, '--runtime-id', input.runtimeId], { cwd });
+  const { stdout } = await execute(process.execPath, ['dist/scripts/read-harness-result.js', '--run-directory', input.runDirectory, '--runtime-id', input.runtimeId], { cwd });
   assert.deepEqual(JSON.parse(stdout), inspected);
   assert.ok(!JSON.stringify({ records, inspected }).includes('PRIVATE_'));
 }
@@ -139,7 +139,7 @@ test('foreground report persistence failure stays separate from business and cle
       if (blockReport) {
         assert.equal(result.reportPath, null);
         await assert.rejects(readFile(join(ready.runDirectory, 'environment-report.json')), { code: 'EISDIR' });
-        const inspected = await readEnvironmentResult({ runDirectory: ready.runDirectory, runtimeId: ready.runtimeId });
+        const inspected = await readHarnessResult({ runDirectory: ready.runDirectory, runtimeId: ready.runtimeId });
         assert.equal(inspected.environment.state, 'unreadable');
         assert.equal(inspected.core.state, 'read');
         assert.equal(inspected.environment.business, 'unknown');
@@ -163,7 +163,7 @@ test('foreground report persistence failure stays separate from business and cle
 test('installed terminal and saved-result entries preserve pending receipts without legacy browser sources or built assets', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample();
   t.after(() => installed.close());
-  const packageRoot = join(installed.directory, 'node_modules', '@swarmenv', 'core');
+  const packageRoot = join(installed.directory, 'node_modules', '@murm', 'core');
   for (const path of ['src/observability/client', 'src/observability/public', 'src/observability/vite.config.js']) {
     await assert.rejects(access(join(packageRoot, path)), { code: 'ENOENT' });
   }

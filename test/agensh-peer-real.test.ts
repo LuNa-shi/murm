@@ -7,9 +7,9 @@ import { once } from 'node:events';
 import { mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createHash, randomBytes } from 'node:crypto';
-import { createAgenshEnvironment } from '../src/environments/agensh/index.js';
+import { createPeerMeshHarness } from '../src/harnesses/peermesh/index.js';
 import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
-import { httpClient } from '../src/environments/agensh/http.js';
+import { httpClient } from '../src/harnesses/peermesh/http.js';
 import { createLocalAgenshStack } from './fixtures/agensh-local-stack.js';
 import { createPeerUpstream, peerInputs } from './fixtures/agensh-peer-upstream.js';
 import { createWorkGate, createCleanupBudget } from './fixtures/agensh-deadline.js';
@@ -47,7 +47,7 @@ test('actual single Agensh peer uses trusted Services, native Git and one persis
     deniedServer.listen(0, '0.0.0.0'); await once(deniedServer, 'listening');
     work = createWorkGate(120_000, 'ACTUAL_PEER_WORK_EXPIRED', cleanup);
     upstream = await createPeerUpstream({ deniedOrigin: `http://${host}:${deniedServer.address().port}`, onFailure: () => work.abort() }); upstream.start();
-    environment = await work.create(() => createAgenshEnvironment({ ...configuration, signal: work.signal, runId, image, outputDir: join(directory, 'core'), model: 'default', exportLimit: 8 * 1024 ** 2,
+    environment = await work.create(() => createPeerMeshHarness({ ...configuration, signal: work.signal, runId, image, outputDir: join(directory, 'core'), model: 'default', exportLimit: 8 * 1024 ** 2,
       backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
         endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 80_000, maxOutputTokens: 128 },

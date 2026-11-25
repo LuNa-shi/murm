@@ -4,8 +4,8 @@ import { test } from 'node:test';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createRuntime } from '@swarmenv/core';
-import { ServiceRegistry } from '@swarmenv/core/services';
+import { createRuntime } from '@murm/core';
+import { ServiceRegistry } from '@murm/core/services';
 import { botControlBackend, createBotControlUpstream, parentCommand } from './fixtures/core-bot-service-upstream.js';
 
 const request = (url, input = []) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ model: 'k3', input }) });

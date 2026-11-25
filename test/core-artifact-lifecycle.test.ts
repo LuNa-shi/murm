@@ -20,9 +20,9 @@ const records = [
 
 async function runtimeFixture(t, hooks, { collection = collect, maxBots = 1 } = {}) {
   const provider = await createLifecycleProvider(t, hooks);
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const outputDir = await mkdtemp(join(tmpdir(), 'core-artifacts-fixture-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({

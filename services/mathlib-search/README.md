@@ -1,6 +1,6 @@
 # Mathlib Search Service
 
-This is a separately deployable HTTP provider for the SwarmEnv `mathlib-search`
+This is a separately deployable HTTP provider for the murm `mathlib-search`
 Service. It exposes the versioned `/v1/mathlib_search` capability through the
 same Manifest and JSON envelope used by every other registered Service.
 
@@ -25,6 +25,6 @@ docker run --rm -p 8787:8787 \
   swarmenv-mathlib-search
 ```
 
-The SwarmEnv process registers the provider with a manifest and an
+The murm process registers the provider with a manifest and an
 `HttpJsonServiceAdapter`; it does not import Loogle or share the provider's
 process. See the maintained [Mathlib service implementation](../../docs/architecture/04-services.md#6-optional-mathlib-search) and [Loogle reference](references/loogle.md) for backend behavior and query guidance.

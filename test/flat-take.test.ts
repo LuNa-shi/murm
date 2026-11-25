@@ -8,8 +8,8 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 import { fixedExecutionInputHash } from '../src/task/task-service.js';
 import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
 import { decodeFileSeed } from '../scripts/core-file-seed.js';
-import { createFlatTaskService, flatResearcherProfile } from '../src/environments/flat/task-service.js';
-import { createFlatBotCoordinator } from '../src/environments/flat/bot-coordinator.js';
+import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../src/harnesses/taskpool/task-service.js';
+import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/bot-coordinator.js';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 const runProcess = promisify(execFile);
@@ -20,11 +20,11 @@ async function fixture(t, hooks = {}, config = {}) {
   let runtime, service, provider;
   t.after(async () => { await service?.close(); provider?.allowDeletion(); await runtime?.close({ timeoutMs: 1000 }); context.close(); tasks.close(); await rm(root, { recursive: true, force: true }); });
   provider = await createLifecycleProvider(t, { fileOperation(action, input) { return { body: { result: action === 'prepare' ? { version: input.version, digest: decodeFileSeed(input.files).digest } : { ...input, writable: true } } }; }, ...hooks, allowHostGit: true }); provider.allowDeletion();
-  const { createRuntime } = await import('@swarmenv/core');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
+  const { createRuntime } = await import('@murm/core');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core/services');
   const { collect, stop, ...serviceConfig } = config;
-  service = createFlatTaskService({ runtime: () => stop ? { ...runtime, stop: (...args) => stop(runtime, ...args) } : runtime,
+  service = createTaskPoolTaskService({ runtime: () => stop ? { ...runtime, stop: (...args) => stop(runtime, ...args) } : runtime,
     taskService: tasks, missionId, missionWorkspace: workspace,
     workspaceId, workspaceManager: manager, contextService: context,
     missionDeadline: () => Date.now() + 60_000, executionTimeoutMs: 60_000, ...serviceConfig });
@@ -33,8 +33,8 @@ async function fixture(t, hooks = {}, config = {}) {
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 32 * 1024 ** 2, inodes: 2048 } } }),
-    profiles: { researcher: flatResearcherProfile({ prompt: 'Fixed discovery', model: 'default', image: 'fixture', ...(config.collect ? { collect: config.collect } : {}) }) }, services, maxBots: 2, outputDir: join(root, 'output') });
-  const coordinator = createFlatBotCoordinator({ runtime, taskService: tasks, missionId });
+    profiles: { researcher: taskPoolResearcherProfile({ prompt: 'Fixed discovery', model: 'default', image: 'fixture', ...(config.collect ? { collect: config.collect } : {}) }) }, services, maxBots: 2, outputDir: join(root, 'output') });
+  const coordinator = createTaskPoolAgentCoordinator({ runtime, taskService: tasks, missionId });
   const spawn = id => coordinator.spawn({ legacySlotId: `slot:${id}`, requestId: id, profile: 'researcher', writable: false,
     selectionDeadline: new Date(Date.now() + 60_000).toISOString() });
   const call = (bot, operation, input = {}, requestId = operation) => service.adapter.invoke({ capability: { operation }, input,

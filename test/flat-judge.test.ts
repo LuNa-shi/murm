@@ -8,8 +8,8 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls, transport } from './fixtures/flat-controller-backend.js';
-import { createFlatTaskService } from '../src/environments/flat/task-service.js';
-import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
+import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
+import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { JudgeService } from '../src/judge/judge-service.js';
@@ -18,7 +18,7 @@ const hooks=registerHooks({resolve(specifier,context,next) {
   return next(specifier,context);
 }});
 const {createRuntime}=await import('../src/core/index.js');hooks.deregister();
-const {runFlatEnvironment}=await import('../src/environments/flat/environment.js');
+const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
 const execute=promisify(execFile);
 
 async function fixture(t,options={}) {
@@ -31,8 +31,8 @@ async function fixture(t,options={}) {
       check:async input=>{checked.push(input);return {verdict:'PASS',evidence:{checker_started:true,exit_code:0,diagnostic:'Fixed public input checked',private_internal_field:'private checker stream'}};}}});
   let runtime,deadlineAt=Date.now()+60000;
   stores.tasks.contextService=stores.context;
-  const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>deadlineAt});
-  const publication=createFlatPublicationServices({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,missionId:stores.missionId,workspaceId:stores.workspaceId,deadline:()=>deadlineAt,judgeService:judge});
+  const discovery=createTaskPoolTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>deadlineAt});
+  const publication=createTaskPoolPublicationServices({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,missionId:stores.missionId,workspaceId:stores.workspaceId,deadline:()=>deadlineAt,judgeService:judge});
   const services=new ServiceRegistry();services.registerService(publication.composeTask(discovery));
   for(const row of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(row);
   const allowed=Object.fromEntries(publication.registrations.map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]));
@@ -210,7 +210,7 @@ test('Environment saves owned pending Judge identities when an already started s
   transport.reset();const accept=id=>{transport.confirm(id,'started');transport.next=accept;};transport.next=accept;
   let checking;
   try {
-    const report=await runFlatEnvironment({backend:{},model:'default',image:'fixture',capacity:1,outputDir:root,
+    const report=await runTaskPoolHarness({backend:{},model:'default',image:'fixture',capacity:1,outputDir:root,
       taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,
       deadlineAt:Date.now()+60000,closeTimeoutMs:1000,judgeService:judge,snapshotProject(){throw new Error('No live capture belongs in this test');},
       async drive(controller) {

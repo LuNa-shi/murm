@@ -9,7 +9,7 @@ export interface Backend {
 }
 
 export interface Profile {
-  /** Optional Environment instructions added to the standard startup prompt. */
+  /** Optional Harness instructions added to the standard startup prompt. */
   prompt?: string;
   model: string;
   image: string;
@@ -127,18 +127,18 @@ export interface ResourceError extends Error {
   details: readonly ErrorInfo[];
 }
 
-export type BotStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+export type AgentStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
 
-export interface BotListFilter {
+export interface AgentListFilter {
   parentId?: string | null;
-  status?: BotStatus | readonly BotStatus[];
+  status?: AgentStatus | readonly AgentStatus[];
 }
 
-export interface BotInfo {
+export interface AgentInfo {
   id: string;
   profile: string;
   parentId?: string;
-  status: BotStatus;
+  status: AgentStatus;
   cursor: number;
   latestOutput?: string;
   lastError?: ErrorInfo;
@@ -170,15 +170,15 @@ export interface InterruptReceipt {
   discardedInputHashes?: readonly string[];
 }
 
-export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
+export type AgentInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
 
 /** Built-in bot.spawn Service result, distinct from host Runtime.spawn. */
-export interface BotSpawnReceipt {
-  bot: BotInfo;
-  initialInput: BotInitialInputResult;
+export interface AgentSpawnReceipt {
+  bot: AgentInfo;
+  initialInput: AgentInitialInputResult;
 }
 
-export type BotEvent = { botId: string; seq: number } & (
+export type AgentEvent = { botId: string; seq: number } & (
   | { type: 'output'; text: string }
   | { type: 'settled'; outcome: 'completed' | 'failed' | 'aborted'; output?: string; error?: ErrorInfo }
   | { type: 'error'; error: ErrorInfo; fatal: boolean }
@@ -218,15 +218,15 @@ export interface CloseReceipt {
 
 export interface Runtime {
   readonly id: string;
-  spawn(options: SpawnOptions): Promise<BotInfo>;
-  get(botId: string): Promise<BotInfo>;
-  list(filter?: BotListFilter): Promise<BotInfo[]>;
+  spawn(options: SpawnOptions): Promise<AgentInfo>;
+  get(botId: string): Promise<AgentInfo>;
+  list(filter?: AgentListFilter): Promise<AgentInfo[]>;
   start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
   steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
   interrupt(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
   send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
   send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
-  onEvent(handler: (event: BotEvent) => void): () => void;
+  onEvent(handler: (event: AgentEvent) => void): () => void;
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {
@@ -238,3 +238,13 @@ export interface Runtime {
     grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
   };
 }
+
+// Source compatibility for consumers migrating to the Agent terminology.
+export type {
+  AgentStatus as BotStatus,
+  AgentListFilter as BotListFilter,
+  AgentInfo as BotInfo,
+  AgentInitialInputResult as BotInitialInputResult,
+  AgentSpawnReceipt as BotSpawnReceipt,
+  AgentEvent as BotEvent,
+};

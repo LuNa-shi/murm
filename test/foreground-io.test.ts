@@ -41,7 +41,7 @@ Object.defineProperty(process, 'stdout', { value: output });
 export default configuration;
 `);
   // Keep native runtime warnings available without mixing them into application diagnostics.
-  const child = spawn(process.execPath, [`--redirect-warnings=${join(root, 'node-warnings.log')}`, '--import', path, 'dist/scripts/run-environment.js', '--config', path], {
+  const child = spawn(process.execPath, [`--redirect-warnings=${join(root, 'node-warnings.log')}`, '--import', path, 'dist/scripts/run-harness.js', '--config', path], {
     env: { ...process.env, FOREGROUND_TEST_OUTPUT: root, FOREGROUND_TEST_HOLD: '1', ...(cleanupFailure ? { FOREGROUND_TEST_CLEANUP_FAILURE: cleanupFailure } : {}) }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   t.after(() => child.kill('SIGKILL'));
@@ -122,7 +122,7 @@ ${stage === 'configuration' ? `setTimeout(() => { ${fail} }, 5); await new Promi
   : `transport.onSpawn = async () => { ${fail} await new Promise(resolve => setTimeout(resolve, 25)); };`}
 export default { ...configuration, mode: ${JSON.stringify(mode)} };
 `);
-      const child = spawn(process.execPath, [`--redirect-warnings=${join(root, 'node-warnings.log')}`, 'dist/scripts/run-environment.js', '--config', path], {
+      const child = spawn(process.execPath, [`--redirect-warnings=${join(root, 'node-warnings.log')}`, 'dist/scripts/run-harness.js', '--config', path], {
         env: { ...process.env, FOREGROUND_TEST_OUTPUT: root }, stdio: ['pipe', 'pipe', 'pipe'],
       });
       t.after(() => child.kill('SIGKILL'));

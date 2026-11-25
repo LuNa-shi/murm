@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createAgenshEventSubscription } from '../src/environments/agensh/event-source.js';
+import { createPeerMeshEventSubscription } from '../src/harnesses/peermesh/event-source.js';
 
 test('real HTTP subscription baselines before readiness and routes stable external, mention and direct message identities without self echoes', async t => {
   let comments = [], posts = [], dms = []; const deliveries = [];
@@ -16,7 +16,7 @@ test('real HTTP subscription baselines before readiness and routes stable extern
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const origin = `http://127.0.0.1:${server.address().port}`;
   posts.push({ id: 'old', message: 'old', user_id: 'other', channel_id: 'channel', create_at: 1 });
-  const source = await createAgenshEventSubscription({ facilities: {
+  const source = await createPeerMeshEventSubscription({ facilities: {
     endpoints: { gitea: origin, message: origin }, repository: { owner: 'owner', name: 'repo' }, channelId: 'channel',
     peer: { gitea: { username: 'peer-fixed', accountId: '101', token: 'git-secret' }, message: { accountId: 'mm-peer', token: 'mm-secret' } },
   }, mapping: { workerId: 'worker-fixed', botId: 'bot-fixed' }, ingest: row => { deliveries.push(row); return { batchId: row.eventId }; }, pollIntervalMs: 60_000, maxPolls: 4, dmChannelIds: ['dm'] });
@@ -48,7 +48,7 @@ test('two trusted subscriptions route a directed repository comment once to its 
   const peers = ['one', 'two'].map(name => ({ gitea: { username: name, accountId: name, token: name }, message: { accountId: name, token: name }, board: { workerId: `worker-${name}` } }));
   const sources = [];
   for (let index = 0; index < 2; index++) {
-    sources.push(await createAgenshEventSubscription({ facilities: { endpoints: { gitea: origin, message: origin }, repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', peer: peers[index], peers },
+    sources.push(await createPeerMeshEventSubscription({ facilities: { endpoints: { gitea: origin, message: origin }, repository: { owner: 'owner', name: 'repo' }, channelId: 'channel', peer: peers[index], peers },
       mapping: { workerId: peers[index].board.workerId, botId: `bot-${index}` }, ingest: row => { delivered[index].push(row); return { batchId: row.eventId }; }, pollIntervalMs: 60_000, maxPolls: 3 }));
   }
   t.after(() => Promise.all(sources.map(source => source.stop())));
@@ -72,7 +72,7 @@ test('cancelling a subscription during ingestion prevents dispatch of remaining 
   const cancel = new AbortController();
   const delivered = [];
   const failures = [];
-  const source = await createAgenshEventSubscription({
+  const source = await createPeerMeshEventSubscription({
     facilities: {
       endpoints: { gitea: origin, message: origin }, repository: { owner: 'owner', name: 'repo' }, channelId: 'channel',
       peer: { gitea: { username: 'peer-fixed', accountId: '101', token: 'git-token' }, message: { accountId: 'mm-peer', token: 'mm-token' } },
@@ -118,7 +118,7 @@ test('polling collects all new pages and advances a Mattermost cursor without du
   await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const source = await createAgenshEventSubscription({
+  const source = await createPeerMeshEventSubscription({
     facilities: { endpoints: { gitea: origin, message: origin }, repository: { owner: 'owner', name: 'repo' }, channelId: 'channel',
       peer: { gitea: { username: 'worker', accountId: '101', token: 'git-token' }, message: { accountId: 'worker', token: 'mm-token' } } },
     mapping: { workerId: 'worker', botId: 'bot' }, pollIntervalMs: 60_000, maxPolls: 2, onFailure: failure => failures.push(failure),

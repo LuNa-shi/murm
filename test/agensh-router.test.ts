@@ -21,9 +21,9 @@ async function fixture(t, onPrompt = () => {}, routerOptions = {}) {
       ] };
     } }); provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'agensh-router-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
-  const { createAgenshRouterEnvironment } = await import('../src/environments/agensh/routed.js');
+  const { createPeerMeshRouterHarness } = await import('../src/harnesses/peermesh/routed.js');
   const { createPiOpenSandboxBackend } = await import('../src/core/backends/pi-opensandbox.js');
-  environment = await createAgenshRouterEnvironment({ runId: 'router', image: 'fixture', outputDir, exportLimit: 1024 ** 2,
+  environment = await createPeerMeshRouterHarness({ runId: 'router', image: 'fixture', outputDir, exportLimit: 1024 ** 2,
     backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' },
       models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } }, isolation: { network: 'local-docker', disk: { bytes: 16 * 1024 ** 2, inodes: 2048 } } }),
     prepare: async () => ({ runId: 'router', repository: { owner: 'owner', name: 'repo' }, repositoryUrl: 'http://172.17.0.1:3000/owner/repo.git', channelId: 'channel', boardId: 'board', issueNumber: 1,
@@ -215,7 +215,7 @@ test('actual Core input timeout preserves admission and cancels later batches wi
 });
 
 test('a busy project router steers DM and Board events once while keeping ordinary follow-up serial', async t => {
-  const { createAgenshRouter } = await import('../src/environments/agensh/router.js');
+  const { createPeerMeshRouter } = await import('../src/harnesses/peermesh/router.js');
   const kickoff = Promise.withResolvers();
   const entered = Promise.withResolvers();
   const calls = [];
@@ -229,7 +229,7 @@ test('a busy project router steers DM and Board events once while keeping ordina
     }
     return Promise.resolve({ inputId: 'follow-up', receipt: { status: 'accepted', disposition: 'started' }, settled: { seq: 2 } });
   };
-  const router = createAgenshRouter({ mapping: { botId: 'bot-a', workerId: 'worker-a' }, runInput, readContext: async () => 'shared',
+  const router = createPeerMeshRouter({ mapping: { botId: 'bot-a', workerId: 'worker-a' }, runInput, readContext: async () => 'shared',
     async steerInput(text) {
       const input = JSON.parse(text.slice(text.indexOf('\n') + 1));
       calls.push({ mode: 'steer', input });
@@ -257,11 +257,11 @@ test('a busy project router steers DM and Board events once while keeping ordina
 });
 
 test('settlement racing with a started steer waits for that execution before the next work batch', async t => {
-  const { createAgenshRouter } = await import('../src/environments/agensh/router.js');
+  const { createPeerMeshRouter } = await import('../src/harnesses/peermesh/router.js');
   const kickoff = Promise.withResolvers(), entered = Promise.withResolvers(), steerEntered = Promise.withResolvers();
   const steer = Promise.withResolvers();
   const calls = [];
-  const router = createAgenshRouter({ mapping: { botId: 'bot-a', workerId: 'worker-a' }, readContext: async () => '',
+  const router = createPeerMeshRouter({ mapping: { botId: 'bot-a', workerId: 'worker-a' }, readContext: async () => '',
     runInput(_text, { onStarted }) {
       calls.push('ordinary');
       onStarted();
@@ -292,11 +292,11 @@ test('settlement racing with a started steer waits for that execution before the
 });
 
 test('a steer with unknown receipt reuses its request identity and never becomes a second prompt', async t => {
-  const { createAgenshRouter } = await import('../src/environments/agensh/router.js');
+  const { createPeerMeshRouter } = await import('../src/harnesses/peermesh/router.js');
   const kickoff = Promise.withResolvers(), entered = Promise.withResolvers();
   const attempts = [];
   let runs = 0;
-  const router = createAgenshRouter({ mapping: { botId: 'bot-a', workerId: 'worker-a' }, readContext: async () => '',
+  const router = createPeerMeshRouter({ mapping: { botId: 'bot-a', workerId: 'worker-a' }, readContext: async () => '',
     runInput(_text, { onStarted }) { runs++; onStarted(); entered.resolve(); return kickoff.promise; },
     async steerInput(text, requestId) { attempts.push({ text, requestId }); return { inputId: 'unknown-input', status: 'unknown' }; },
   });

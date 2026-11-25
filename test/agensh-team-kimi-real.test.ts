@@ -5,12 +5,12 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createAgenshTeam } from '../src/environments/agensh/team.js';
-import { prepareAgenshFacilities } from '../src/environments/agensh/provision.js';
-import { createAgenshDelivery } from '../src/environments/agensh/delivery.js';
-import { createAgenshEventSubscription } from '../src/environments/agensh/event-source.js';
+import { createPeerMeshTeam } from '../src/harnesses/peermesh/team.js';
+import { preparePeerMeshFacilities } from '../src/harnesses/peermesh/provision.js';
+import { createPeerMeshDelivery } from '../src/harnesses/peermesh/delivery.js';
+import { createPeerMeshEventSubscription } from '../src/harnesses/peermesh/event-source.js';
 import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
-import { httpClient } from '../src/environments/agensh/http.js';
+import { httpClient } from '../src/harnesses/peermesh/http.js';
 import { createLocalAgenshStack } from './fixtures/agensh-local-stack.js';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
 import { parsePrivateUpstreamHeaders } from './fixtures/flat-model-acceptance.js';
@@ -51,9 +51,9 @@ test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Cor
       generationOutputTokens: liveTeamLimits.generationOutputTokens, maxOutputTokens: liveTeamLimits.maxOutputTokens,
       maxAggregateOutputTokens: liveTeamLimits.maxAggregateOutputTokens, maxInputBytes: liveTeamLimits.maxInputBytes, maxAggregateInputBytes: liveTeamLimits.maxAggregateInputBytes,
       filename: 'unused-live-observation', marker: 'unused-live-marker', failFast: true, recordGeometry: true, onFailure: () => work.abort() });
-    environment = await work.create(() => createAgenshTeam({ ...configuration, runId, image, secretValues: credentialValues, signal: work.signal, outputDir: join(directory, 'core'),
-      prepare: async options => { facilities = await prepareAgenshFacilities(options); ingress = createLiveIngress(facilities.peers); return facilities; },
-      router: { subscribe: options => createAgenshEventSubscription({ ...options, ingest: event => ingress.ingest(options.facilities.peer.key, event, options.ingest) }),
+    environment = await work.create(() => createPeerMeshTeam({ ...configuration, runId, image, secretValues: credentialValues, signal: work.signal, outputDir: join(directory, 'core'),
+      prepare: async options => { facilities = await preparePeerMeshFacilities(options); ingress = createLiveIngress(facilities.peers); return facilities; },
+      router: { subscribe: options => createPeerMeshEventSubscription({ ...options, ingest: event => ingress.ingest(options.facilities.peer.key, event, options.ingest) }),
         readContext: async () => 'Read the current Board through your authenticated board_read/board_grep Service. Seed values are not supplied in injected context.', workTimeoutMs: work.remaining(), turnTimeoutMs: 80_000, maxBatches: 3, maxNudges: 0, events: { pollIntervalMs: 1000, maxPolls: 180 } },
       backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 768, requestTimeoutMs: 85_000 },
@@ -102,7 +102,7 @@ test('two real Kimi K3 peers negotiate and adopt an A-only Board seed in one Cor
       checkLiveFile(contents, path, index === 0 ? 'LIVE_T15_LEFT_ACCEPTED\n' : `LIVE_T15_RIGHT_ADOPTED ${seed}\n`);
     }
     stage = 'merge';
-    delivery = createAgenshDelivery({ facilities, adminToken: configuration.gitea.adminToken });
+    delivery = createPeerMeshDelivery({ facilities, adminToken: configuration.gitea.adminToken });
     for (const pin of pins) await work.step(({ signal }) => delivery.merge({ ...pin, signal }));
     stage = 'verification';
     const mainFiles = {};

@@ -2,11 +2,11 @@
 
 > Configuration for Matt Pocock's engineering skills · Active
 
-**Issues and specs live in the SwarmEnv GitHub repository:** [LuNa-shi/SwarmEnv](https://github.com/LuNa-shi/SwarmEnv). Use an authorized GitHub integration or `gh` CLI. Never publish a SwarmEnv Issue into the upstream `mattpocock/skills` repository.
+**Issues and specs live in the murm GitHub repository:** [LuNa-shi/SwarmEnv](https://github.com/LuNa-shi/SwarmEnv). Use an authorized GitHub integration or `gh` CLI. Never publish a murm Issue into the upstream `mattpocock/skills` repository.
 
 ## Reading and writing
 
-- **Phase 0005 exception:** the [Core / Environment design on main](../phases/0005-core-environment/README.md) is the sole requirements and acceptance authority for this stage. `/to-spec` and `/to-tickets` publish derived execution summaries, cite the exact design revision and sections, and track dependencies/progress/evidence. An Issue or Agent Brief cannot independently override this design; update requirements through a reviewed design PR, then synchronize the tickets. For other stages, use the Issue-led conventions below.
+- **Phase 0005 exception:** the [Core / Harness design on main](../phases/0005-core-environment/README.md) is the sole requirements and acceptance authority for this stage. `/to-spec` and `/to-tickets` publish derived execution summaries, cite the exact design revision and sections, and track dependencies/progress/evidence. An Issue or Agent Brief cannot independently override this design; update requirements through a reviewed design PR, then synchronize the tickets. For other stages, use the Issue-led conventions below.
 - Read an Issue's **body, comments, labels, and linked tickets** before starting. Outside the Phase 0005 exception, the `/to-spec` Issue body is the spec; when `/triage` provides an accepted **Agent Brief** comment, use that brief and any later approved updates as the execution contract.
 - `/to-spec` publishes a spec Issue, generally using the `ready-for-agent` label. Publishing an Issue or adding that label describes readiness; a human instruction or approval is still required before **executing a new research hypothesis** or spending unapproved resources.
 - `/to-tickets` publishes complete vertical-slice GitHub Issues only after its proposed split and blocking relationships have been reviewed. Prefer GitHub sub-Issues and native blocked-by relationships; when unavailable, use explicit `Parent: #N` and `Blocked by: #N` links.

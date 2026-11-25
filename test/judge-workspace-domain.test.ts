@@ -11,7 +11,7 @@ import { makeEnvelope } from '../src/protocol/envelope.js';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
 import { WorkspaceManager } from '../src/runtime/workspace-manager.js';
 import { TaskService } from '../src/task/task-service.js';
-import { prepareFlatInputs } from '../src/environments/flat/prepare-inputs.js';
+import { prepareTaskPoolInputs } from '../src/harnesses/taskpool/prepare-inputs.js';
 
 const checkerIdentity = { checker_ref: 'lean', checker_version: 'test', environment_ref: 'test-project' };
 const initialFiles = {
@@ -51,7 +51,7 @@ async function fixture(t, { sourceFile = false } = {}) {
     return makeEnvelope({ operationId, actorRef: bot.bot_id, taskId: task.task_id, executionId: current.execution_id,
       specVersion: current.spec_version, stateVersion: current.state_version, fencingVersion: current.fencing_version });
   };
-  await prepareFlatInputs({ execution, taskService: tasks, missionWorkspace: workspace, workspaceId,
+  await prepareTaskPoolInputs({ execution, taskService: tasks, missionWorkspace: workspace, workspaceId,
     workspaceManager: manager, contextService: context, check() {} });
   execution = tasks.dispatch('start_execution', {}, envelope('domain-start')).execution;
   const builds = [];

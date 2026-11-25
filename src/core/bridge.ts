@@ -1,10 +1,10 @@
 import type { ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import type { BotInfo } from './types.js';
+import type { AgentInfo } from './types.js';
 import type { ServiceInvocationRecord, ServiceRegistration } from './services.js';
 
 interface BridgeBot {
-  status: BotInfo['status'];
+  status: AgentInfo['status'];
   unavailable?: boolean;
   profile: string;
   services: Readonly<Record<string, readonly string[]>>;

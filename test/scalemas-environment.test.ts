@@ -31,7 +31,7 @@ async function fixture(t, onPrompt, hooks = {}) {
         { worker_sequence: sequence + 3, type: 'agent_settled' },
       ] };
     }, ...hooks }); provider.allowDeletion();
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const backend = createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url },
     bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
@@ -41,8 +41,8 @@ async function fixture(t, onPrompt, hooks = {}) {
 
 test('scaleMAS fixed three-peer pool uses serial fresh inputs on each same Core Bot and saves exact artifacts with independent cleanup', async t => {
   const f = await fixture(t);
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const report = await runScaleMAS({ backend: f.backend, runId: 'fixed', image: 'fixture', outputDir: f.directory, question: 'Fixed source question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
+  const report = await runSubstrate({ backend: f.backend, runId: 'fixed', image: 'fixture', outputDir: f.directory, question: 'Fixed source question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
   assert.equal(report.businessFailure, null); assert.equal(report.cleanupFailure, null); assert.equal(report.reportSaveFailure, null);
   assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanup.bots.length, 3);
   assert.equal(f.provider.allocations(), 3); assert.equal(f.starts.length, 3); assert.equal(f.prompts.length, 6);
@@ -59,8 +59,8 @@ test('scaleMAS fixed three-peer pool uses serial fresh inputs on each same Core 
 test('a six-peer scaleMAS pool is fully ready before work and each peer completes two rounds', async t => {
   const readyCounts = [];
   const f = await fixture(t, ({ starts }) => { readyCounts.push(starts.length); });
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const report = await runScaleMAS({ backend: f.backend, runId: 'six-peers', image: 'fixture', outputDir: f.directory,
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
+  const report = await runSubstrate({ backend: f.backend, runId: 'six-peers', image: 'fixture', outputDir: f.directory,
     question: 'Fixed source question', poolSize: 6, workTimeoutMs: 10_000, turnTimeoutMs: 2000, closeTimeoutMs: 2000 });
   assert.equal(report.businessFailure, null);
   assert.equal(report.policy.poolSize, 6);
@@ -81,9 +81,9 @@ test('a six-peer scaleMAS pool is fully ready before work and each peer complete
 
 test('scaleMAS rejects unsupported pool sizes before allocating Bots', async t => {
   const f = await fixture(t);
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
   for (const poolSize of [2, 9, 4.5, '6', null]) {
-    await assert.rejects(runScaleMAS({ backend: f.backend, runId: 'bad-pool', image: 'fixture', outputDir: f.directory,
+    await assert.rejects(runSubstrate({ backend: f.backend, runId: 'bad-pool', image: 'fixture', outputDir: f.directory,
       question: 'Fixed source question', poolSize }), { name: 'TypeError', message: /pool size/i });
   }
   assert.equal(f.provider.allocations(), 0);
@@ -97,8 +97,8 @@ test('host cycle scheduling delays one peer while other peers complete their ser
     if (completedPeers.size === 2) othersDone.resolve();
   });
   const scheduled = [];
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const work = runScaleMAS({ backend: f.backend, runId: 'scheduled', image: 'fixture', outputDir: f.directory,
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
+  const work = runSubstrate({ backend: f.backend, runId: 'scheduled', image: 'fixture', outputDir: f.directory,
     question: 'Fixed source question', workTimeoutMs: 8000, turnTimeoutMs: 1000, closeTimeoutMs: 1000,
     async beforeCycle(context) {
       scheduled.push(context);
@@ -124,8 +124,8 @@ test('cancellation during host cycle waiting cleans every peer without admitting
   const entered = Promise.withResolvers(), never = new Promise(() => {});
   const controller = new AbortController(), signals = [];
   const f = await fixture(t);
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const work = runScaleMAS({ backend: f.backend, runId: 'cancel-schedule', image: 'fixture', outputDir: f.directory,
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
+  const work = runSubstrate({ backend: f.backend, runId: 'cancel-schedule', image: 'fixture', outputDir: f.directory,
     question: 'Fixed source question', workTimeoutMs: 8000, turnTimeoutMs: 1000, closeTimeoutMs: 1000,
     beforeCycle({ signal }) {
       signals.push(signal);
@@ -146,8 +146,8 @@ test('cancellation during host cycle waiting cleans every peer without admitting
 
 test('a rejected host cycle schedule stops its peer while other peers finish', async t => {
   const f = await fixture(t);
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const report = await runScaleMAS({ backend: f.backend, runId: 'bad-schedule', image: 'fixture', outputDir: f.directory,
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
+  const report = await runSubstrate({ backend: f.backend, runId: 'bad-schedule', image: 'fixture', outputDir: f.directory,
     question: 'Fixed source question', workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000,
     beforeCycle({ peerIndex }) { if (peerIndex === 0) throw Object.assign(new Error('Fixed schedule rejection'), { code: 'HOST_SCHEDULE_REJECTED' }); } });
   assert.equal(report.businessFailure.code, 'SCALEMAS_PEERS_FAILED');
@@ -159,10 +159,10 @@ test('a rejected host cycle schedule stops its peer while other peers finish', a
 
 test('invalid host cycle scheduling is rejected before allocating Bots or creating content data', async t => {
   const f = await fixture(t);
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
   const { readdir } = await import('node:fs/promises');
   for (const beforeCycle of [null, false, 1, 'wait', {}]) {
-    await assert.rejects(runScaleMAS({ backend: f.backend, runId: 'invalid-schedule', image: 'fixture', outputDir: f.directory,
+    await assert.rejects(runSubstrate({ backend: f.backend, runId: 'invalid-schedule', image: 'fixture', outputDir: f.directory,
       question: 'Fixed source question', beforeCycle }), { name: 'TypeError' });
   }
   assert.deepEqual(await readdir(f.directory), []);
@@ -197,8 +197,8 @@ test('actual CLI handoff adopts immutable producer content after producer stop; 
       else { await stopped.promise; return 'failed'; }
     }
   }, { onStop() { producerStopped = true; stopped.resolve(); return { stopped: true }; } });
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const report = await runScaleMAS({ backend: f.backend, runId: 'handoff', image: 'fixture', outputDir: f.directory, question: 'Fixed algebra source', maxRounds: 2, workTimeoutMs: 8000, turnTimeoutMs: 5000, closeTimeoutMs: 1000,
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
+  const report = await runSubstrate({ backend: f.backend, runId: 'handoff', image: 'fixture', outputDir: f.directory, question: 'Fixed algebra source', maxRounds: 2, workTimeoutMs: 8000, turnTimeoutMs: 5000, closeTimeoutMs: 1000,
     beforeCycle: ({ peerIndex }) => peerIndex === 1 ? stopped.promise : undefined });
   assert.equal(report.businessFailure.code, 'SCALEMAS_PEERS_FAILED'); assert.equal(report.cleanupFailure, null);
   assert.equal(report.peers[2].failure.code, 'input_failed'); assert.equal(report.peers[2].stop.execution, 'stopped');
@@ -213,8 +213,8 @@ test('actual CLI handoff adopts immutable producer content after producer stop; 
 
 test('unknown submission stops only its peer and never retries or replaces it while other peers finish', async t => {
   const f = await fixture(t, ({ peer }) => peer === 2 ? 'unknown' : undefined);
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const report = await runScaleMAS({ backend: f.backend, runId: 'unknown', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
+  const report = await runSubstrate({ backend: f.backend, runId: 'unknown', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
   assert.equal(report.peers[2].failure.code, 'input_unknown'); assert.equal(report.peers[2].turns.length, 1);
   assert.equal(report.peers[2].failure.receipt.status, 'unknown'); assert.ok(report.peers[2].failure.receipt.inputId);
   assert.ok(report.peers.slice(0, 2).every(peer => peer.turns.length === 2 && peer.failure === null));
@@ -223,8 +223,8 @@ test('unknown submission stops only its peer and never retries or replaces it wh
 
 test('required artifact failure reports pending ownership independently from successful peer work and retains public data', async t => {
   const f = await fixture(t, undefined, { onCollect: () => ({ error: { code: 'INVALID_CONTRACT', error: 'Fixed export blocker' } }) });
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const report = await runScaleMAS({ backend: f.backend, runId: 'pending', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
+  const report = await runSubstrate({ backend: f.backend, runId: 'pending', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
   assert.equal(report.businessFailure, null); assert.equal(report.cleanupFailure.code, 'CLEANUP_PENDING');
   assert.equal(report.cleanup.cleanup, 'pending');
   assert.ok(report.cleanup.bots.every(bot => bot.execution === 'stopped' && bot.cleanup === 'pending'));
@@ -235,8 +235,8 @@ test('required artifact failure reports pending ownership independently from suc
 test('host cancellation fences further inputs and uses an independent cleanup window', async t => {
   const controller = new AbortController();
   const f = await fixture(t, () => { controller.abort(); });
-  const { runScaleMAS } = await import('../src/environments/scalemas/index.js');
-  const report = await runScaleMAS({ backend: f.backend, runId: 'cancelled', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 }, controller.signal);
+  const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
+  const report = await runSubstrate({ backend: f.backend, runId: 'cancelled', image: 'fixture', outputDir: f.directory, question: 'Fixed question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 }, controller.signal);
   assert.equal(report.businessFailure.code, 'SCALEMAS_WORK_ABORTED');
   assert.equal(report.cleanup.cleanup, 'complete'); assert.equal(report.cleanupFailure, null);
   assert.ok(f.prompts.length <= 3); assert.ok(report.peers.every(peer => peer.turns.length === 1));
@@ -245,8 +245,8 @@ test('host cancellation fences further inputs and uses an independent cleanup wi
 
 test('host observes real six-peer ready, started turns and owned stop receipts', async t => {
   const f = await fixture(t);const seen=[];let identity;
-  const { runScaleMAS }=await import('../src/environments/scalemas/index.js');
-  const report=await runScaleMAS({backend:f.backend,runId:'host-observed',image:'fixture',outputDir:f.directory,question:'Fixed question',poolSize:6,maxRounds:2,workTimeoutMs:10000,turnTimeoutMs:1000,closeTimeoutMs:1000,
+  const { runSubstrate }=await import('../src/harnesses/substrate/index.js');
+  const report=await runSubstrate({backend:f.backend,runId:'host-observed',image:'fixture',outputDir:f.directory,question:'Fixed question',poolSize:6,maxRounds:2,workTimeoutMs:10000,turnTimeoutMs:1000,closeTimeoutMs:1000,
     async onReady({runtime,peerIds}) {identity=runtime.id;assert.equal(peerIds.length,6);assert.equal(f.prompts.length,0);for(const id of peerIds)assert.equal((await runtime.get(id)).status,'idle');seen.push('ready');},
     onCycle({botId,result,snapshot}) {assert.equal(seen[0],'ready');assert.equal(result.receipt.disposition,'started');assert.equal(result.settled.botId,botId);assert.equal(snapshot.runtimeId,identity);seen.push('turn');},
     onPeerStop({botId,receipt,snapshot}) {assert.equal(receipt.botId,botId);assert.equal(receipt.execution,'stopped');assert.equal(snapshot.runtimeId,identity);seen.push('stop');},

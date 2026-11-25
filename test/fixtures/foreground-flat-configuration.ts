@@ -18,7 +18,7 @@ transport.reset(); controls.credentials.clear(); controls.stopError = null; cont
 transport.next = function accept(id) { transport.confirm(id, 'started'); transport.next = accept; };
 const outputDir = process.env.FOREGROUND_TEST_OUTPUT;
 const stores = await createFlatTaskStores(outputDir, { persistent: true });
-export default { mode: 'flat', timeoutMs: 15_000, options: {
+export default { mode: 'taskpool', timeoutMs: 15_000, options: {
   taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace,
   workspaceManager: stores.manager, missionId: stores.missionId, workspaceId: stores.workspaceId,
   outputDir, backend: {}, model: 'default', image: 'fixture', capacity: 1,

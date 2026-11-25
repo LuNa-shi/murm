@@ -16,9 +16,9 @@ test('Core close stops a ready sibling while a late allocation keeps its origina
     async onCreate(id) { if (id === 'fixture-2') { entered(); await gate; } },
     onStart(body) { starts.push(body); },
   });
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const outputDir = await mkdtemp(join(tmpdir(), 'core-startup-slots-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({

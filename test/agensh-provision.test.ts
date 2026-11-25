@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { prepareAgenshFacilities } from '../src/environments/agensh/provision.js';
-import { createOwnedResources } from '../src/environments/agensh/resources.js';
+import { preparePeerMeshFacilities } from '../src/harnesses/peermesh/provision.js';
+import { createOwnedResources } from '../src/harnesses/peermesh/resources.js';
 
 test('single-peer provisioning creates independent account mappings and retains shared data on cleanup', async t => {
   const seen = []; const users = new Map();
@@ -26,7 +26,7 @@ test('single-peer provisioning creates independent account mappings and retains 
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const resources = createOwnedResources(); let boardStopped = false;
-  const facilities = await prepareAgenshFacilities({ runId: 'fixed-run', gitea: { origin, adminToken: 'admin-secret', owner: 'owner' },
+  const facilities = await preparePeerMeshFacilities({ runId: 'fixed-run', gitea: { origin, adminToken: 'admin-secret', owner: 'owner' },
     mattermost: { origin, adminToken: 'mm-admin-secret', teamId: 'team' }, resources,
     startBoard: async ({ boardId, workerId, own }) => { assert.notEqual(boardId, workerId); own({ kind: 'board-process', id: boardId, close: () => { boardStopped = true; } }); return { origin }; } });
   assert.equal(facilities.peer.gitea.accountId, '101');
@@ -59,7 +59,7 @@ test('two provisioned peers share facilities while retaining independent account
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
   const origin = `http://127.0.0.1:${server.address().port}`, resources = createOwnedResources();
-  const facilities = await prepareAgenshFacilities({ runId: 'shared-run', peerKeys: ['a', 'b'], resources,
+  const facilities = await preparePeerMeshFacilities({ runId: 'shared-run', peerKeys: ['a', 'b'], resources,
     gitea: { origin, adminToken: 'admin', owner: 'owner' }, mattermost: { origin, adminToken: 'admin-mm', teamId: 'team' },
     startBoard: async ({ workerIds, own }) => { memberships = workerIds; own({ kind: 'board', id: 'shared', close() {} }); return { origin }; } });
   assert.equal(facilities.peers.length, 2); assert.equal(users.size, 2);

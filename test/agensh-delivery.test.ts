@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { createAgenshDelivery } from '../src/environments/agensh/delivery.js';
+import { createPeerMeshDelivery } from '../src/harnesses/peermesh/delivery.js';
 
 test('host merge admits only pinned own PR and repeats reuse one write receipt including unknown', async t => {
   let writes = 0; let merged = false;
@@ -12,7 +12,7 @@ test('host merge admits only pinned own PR and repeats reuse one write receipt i
     if (request.method === 'POST') { writes++; merged = true; return response.end('{}'); }
     response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'branch-a', sha: 'a'.repeat(40) }, base: { ref: 'main' }, mergeable: true, merged, merge_commit_sha: 'b'.repeat(40) }));
   }); server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }] }, adminToken: 'host-private' });
+  const delivery = createPeerMeshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }] }, adminToken: 'host-private' });
   await assert.rejects(delivery.merge({ peerKey: 'a', number: 1, headSha: 'c'.repeat(40) }), { code: 'DELIVERY_INVALID' }); assert.equal(writes, 0);
   const input = { peerKey: 'a', number: 2, headSha: 'a'.repeat(40) };
   const result = await delivery.merge(input); assert.equal(result.mergeSha, 'b'.repeat(40)); assert.deepEqual(await delivery.merge(input), result); assert.equal(writes, 1);
@@ -28,7 +28,7 @@ test('an unknown merge response is retained and an identical invocation cannot i
     if (request.method === 'POST') { writes++; return response.destroy(); }
     response.setHeader('content-type', 'application/json'); response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'a', sha: 'a'.repeat(40) }, base: { ref: 'main' }, mergeable: true, merged: false }));
   }); server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'a', gitea: { accountId: '1' } }] }, adminToken: 'host-private' });
+  const delivery = createPeerMeshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'a', gitea: { accountId: '1' } }] }, adminToken: 'host-private' });
   const input = { peerKey: 'a', number: 1, headSha: 'a'.repeat(40) };
   await assert.rejects(delivery.merge(input), { code: 'DELIVERY_MERGE_UNKNOWN' }); await assert.rejects(delivery.merge(input), { code: 'DELIVERY_MERGE_UNKNOWN' });
   assert.equal(writes, 1); assert.equal(delivery.snapshot()[0].state, 'unknown');
@@ -51,7 +51,7 @@ test('the second fixed-head merge waits through read-only rechecking after main 
       mergeable: ready, merged: second ? secondMerged : firstMerged, merge_commit_sha: 'c'.repeat(40) }));
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
+  const delivery = createPeerMeshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
     peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }, { key: 'b', branch: 'branch-b', gitea: { accountId: '2' } }] }, adminToken: 'host', readinessIntervalMs: 1 });
   await delivery.merge({ peerKey: 'a', number: 1, headSha: 'a'.repeat(40) });
   await delivery.merge({ peerKey: 'b', number: 2, headSha: 'b'.repeat(40) });
@@ -74,7 +74,7 @@ test('readiness and post-submit failures preserve their phase and never replay a
     });
     server.listen(0, '127.0.0.1'); await once(server, 'listening');
     t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-    const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
+    const delivery = createPeerMeshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
       peers: [{ key: 'a', branch: 'a', gitea: { accountId: '1' } }] }, adminToken: 'private', maxReadinessReads: 2, readinessIntervalMs: 1 });
     const input = { peerKey: 'a', number: 1, headSha: 'a'.repeat(40) };
     const code = ['never-ready', 'submit-405'].includes(scenario) ? 'DELIVERY_NOT_READY' : scenario === 'changed-head' ? 'DELIVERY_INVALID' : 'DELIVERY_MERGE_UNKNOWN';
@@ -99,7 +99,7 @@ test('a lost merge acknowledgement can be confirmed by one authoritative read wi
       base: { ref: 'main' }, mergeable: true, merged: writes > 0, merge_commit_sha: writes ? 'b'.repeat(40) : null }));
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening'); t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
+  const delivery = createPeerMeshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` }, repository: { owner: 'owner', name: 'repo' },
     peers: [{ key: 'a', branch: 'a', gitea: { accountId: '1' } }] }, adminToken: 'host' });
   const input = { peerKey: 'a', number: 1, headSha: 'a'.repeat(40) }, result = await delivery.merge(input);
   assert.equal(result.mergeSha, 'b'.repeat(40)); assert.deepEqual(await delivery.merge(input), result); assert.equal(writes, 1);
@@ -117,7 +117,7 @@ async function mainReader(t, { branch, content }) {
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  return { seen, delivery: createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
+  return { seen, delivery: createPeerMeshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
     repository: { owner: 'owner', name: 'repo' }, peers: [] }, adminToken: 'host-private' }) };
 }
 
@@ -171,7 +171,7 @@ test('a peer can correct a PR head and then merge another PR on its work branch'
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
+  const delivery = createPeerMeshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
     repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }] },
     adminToken: 'host', maxReadinessReads: 1 });
   await assert.rejects(delivery.merge({ peerKey: 'a', number: 1, headSha: head }), { code: 'DELIVERY_NOT_READY' });
@@ -203,7 +203,7 @@ test('fresh Service requests can retry readiness and reconcile the original pare
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const delivery = createAgenshDelivery({ facilities: { project: true, endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
+  const delivery = createPeerMeshDelivery({ facilities: { project: true, endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
     repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }] },
     adminToken: 'host', maxReadinessReads: 1 });
   const input = { peerKey: 'a', number: 1, headSha: originalHead };
@@ -242,7 +242,7 @@ test('a failed archive download keeps the already fixed main revision for close 
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
-  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
+  const delivery = createPeerMeshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
     repository: { owner: 'owner', name: 'repo' }, peers: [] }, adminToken: 'host' });
   await assert.rejects(delivery.finalize(directory, AbortSignal.timeout(5000)), { code: 'DELIVERY_EXPORT_FAILED',
     pin: { commit: 'a'.repeat(40), stable: true } });

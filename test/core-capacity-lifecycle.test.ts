@@ -13,9 +13,9 @@ async function wait(promise) {
 
 test('running, unexpectedly exited and pending cleanup Bots retain capacity until confirmed closed', { timeout: 8000 }, async t => {
   const provider = await createLifecycleProvider(t);
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const outputDir = await mkdtemp(join(tmpdir(), 'core-capacity-fixture-'));
   t.after(() => rm(outputDir, { recursive: true, force: true }));
   const runtime = await createRuntime({ backend: createPiOpenSandboxBackend({

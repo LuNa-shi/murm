@@ -1,6 +1,6 @@
-# PutnamBench 2025 B1 on Flat
+# PutnamBench 2025 B1 on TaskPool
 
-This opt-in driver runs the pinned original Lean theorem with the normal Flat host and the local Pi/OpenSandbox backend. The trial opens with an empty Task pool and four researcher slots. Bots can save and apply proof files in the same Session. The defaults are Kimi K3 and a one-hour research window. See the [Phase 0005 design](../../docs/phases/0005-core-environment/04-flat-math.md) for input visibility and acceptance.
+This opt-in driver runs the pinned original Lean theorem with the normal TaskPool host and the local Pi/OpenSandbox backend. The trial opens with an empty Task pool and four researcher slots. Agents can save and apply proof files in the same Session. The defaults are Kimi K3 and a one-hour research window. See the [Phase 0005 design](../../docs/phases/0005-core-environment/04-flat-math.md) for input visibility and acceptance.
 
 The driver submits Material notices through Pi's steering queue. A busy recipient can receive a notice in its next model request after its current tool batch. The notice keeps the active Task, Execution and Session. The report records admission separately from model visibility, handling and use in the proof.
 
@@ -28,9 +28,9 @@ node benchmarks/putnambench-flat/main.ts run trusted-checker-config.json /path/t
   EXP-YYYYMMDD-NN sha256:<worker-image-id>
 ```
 
-The default research window is 3,600 seconds. The optional argument after the image ID sets a registered shorter window in whole seconds. Each Bot gets up to 300 seconds to select work by default, matching the original Putnam runner. For a registered timing diagnostic, append the selection duration after the research duration, for example `3600 600` for ten minutes of selection within a one-hour run. This duration must fit inside the research window. The controller caps each Bot's selection at the shared deadline. The launch identity and final receipt record the selection duration.
+The default research window is 3,600 seconds. The optional argument after the image ID sets a registered shorter window in whole seconds. Each Agent gets up to 300 seconds to select work by default, matching the original Putnam runner. For a registered timing diagnostic, append the selection duration after the research duration, for example `3600 600` for ten minutes of selection within a one-hour run. This duration must fit inside the research window. The controller caps each Agent's selection at the shared deadline. The launch identity and final receipt record the selection duration.
 
-A registered selection reasoning diagnostic can add `low` after both durations. For example, `3600 600 low` sets the reasoning effort sent to K3 while a Bot selects work. Work and closeout requests retain the effort supplied by Pi. The launch identity and receipt record the setting. The private model trace records the actual request sent upstream.
+A registered selection reasoning diagnostic can add `low` after both durations. For example, `3600 600 low` sets the reasoning effort sent to K3 while a Agent selects work. Work and closeout requests retain the effort supplied by Pi. The launch identity and receipt record the setting. The private model trace records the actual request sent upstream.
 
 For the registered GPT comparison, append the selected model after the reasoning setting, for example `1800 600 low gpt-6.1-sol`. Include the line `` Model · `gpt_proxy/gpt-6.1-sol` `` in the registered report. The launcher compares the report to the selected pair before reserving the run directory. GPT uses `PI_GPT_PROXY_BASE_URL` and `PI_GPT_PROXY_API_KEY` or the matching entry in the same local Pi catalog.
 

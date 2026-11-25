@@ -8,8 +8,8 @@ import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls } from './fixtures/flat-controller-backend.js';
-import { createFlatTaskService } from '../src/environments/flat/task-service.js';
-import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
+import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
+import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
 import { SwarmEnvError } from '../src/errors.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
@@ -17,7 +17,7 @@ const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {createRuntime}=await import('@swarmenv/core');hooks.deregister();
+const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 const identity={checker_ref:'fixed-tree',checker_version:'1',environment_ref:'controlled'};
 async function fixture(t,options={}) {
@@ -26,13 +26,13 @@ async function fixture(t,options={}) {
   stores.tasks.contextService=stores.context;
   let runtime;
   const checked=[];
-  const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
+  const discovery=createTaskPoolTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
   const publicationOptions={runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,missionId:stores.missionId,workspaceId:stores.workspaceId,deadline:()=>Date.now()+60000,
     workspaceMergeChecker:options.disabled?null:{identity,timeoutMs:options.timeoutMs??5000,async check(plan) {
       checked.push(plan);
       return await options.check?.(plan) ?? {verdict:'PASS',check_mode:'lean-project',checked_paths:['input.txt','a.txt','b.txt']};
     }}};
-  const publication=createFlatPublicationServices(publicationOptions);
+  const publication=createTaskPoolPublicationServices(publicationOptions);
   const services=new ServiceRegistry();services.registerService(publication.composeTask(discovery));
   for(const row of publication.registrations.filter(row=>row.manifest.id!=='task')) services.registerService(row);
   const allowed=Object.fromEntries(publication.registrations.map(row=>[row.manifest.id,row.manifest.capabilities.map(cap=>cap.operation)]));
@@ -246,7 +246,7 @@ for(const authority of ['Execution fence','Bridge revoke','Flat close']) test(`d
   assert.equal(published.check.verdict,'PASS');
   // Recompose the public adapter without its process-local request cache. The
   // same actual Runtime/Execution and Git receipt remain the replay authority.
-  const publication=createFlatPublicationServices(f.publicationOptions);
+  const publication=createTaskPoolPublicationServices(f.publicationOptions);
   t.after(async()=>{publication.close();await publication.waitForMerges({timeoutMs:1000});});
   const registry=new ServiceRegistry();
   registry.registerService(publication.registrations.find(row=>row.manifest.id==='workspace'));

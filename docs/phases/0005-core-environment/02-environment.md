@@ -1,13 +1,13 @@
-# Environment 设计：Build your own swarm
+# Harness 设计：Build your own swarm
 
 > Phase 0005 · 本阶段目标规范 · 2026-11-23
 >
-> 来源：[Notion Environment 设计](https://app.notion.com/p/4214e07aa023813e9e5bdeb3dc7b3e32)，源修订时间 `2026-11-23T11:10:13.849Z`。
+> 来源：[Notion Harness 设计](https://app.notion.com/p/4214e07aa023813e9e5bdeb3dc7b3e32)，源修订时间 `2026-11-23T11:10:13.849Z`。
 > 固定实现基线：`fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e`。本文完整保留五种模式、Notes 示例和输入等待 helper；代码示例是目标接口用法，不是已发布实现。
 
 ## 设计概览
 
-Environment 是开发者使用 SwarmEnv Core 编写的协作程序。它决定哪些 Bot 参与、共享什么、何时继续工作、怎样处理反馈，以及什么结果算完成。Core 提供稳定的执行与接入能力；Environment 将这些能力组织成自己的多智能体系统。
+Harness 是开发者使用 murm Core 编写的协作程序。它决定哪些 Agent 参与、共享什么、何时继续工作、怎样处理反馈，以及什么结果算完成。Core 提供稳定的执行与接入能力；Harness 将这些能力组织成自己的多智能体系统。
 
 **文档状态：本阶段目标规范；新接口与各模式尚待实施和验收。** 更新：2026-11-23。Q1–Q8 已确认；新的包入口、Runtime API 和示例代码属于目标合同，尚未在真实 backend 完成迁移验收。本阶段权威关系与变更规则见[阶段入口](README.md)。公共类型与底层保证统一定义在 [2026-11-23｜Core 设计：Minimal Multi-Agent System Harness](01-core.md)；本文说明它们的用法与各模式的运行规则。
 
@@ -17,17 +17,17 @@ Environment 是开发者使用 SwarmEnv Core 编写的协作程序。它决定�
 
 ## 1. 目标与交付范围
 
-本方案面向需要定义或修改协作机制的开发者。Environment 使用普通 JS/TS 代码组合 Profiles、Services、controller / router 和结束政策，不要求把协作方式限制成固定配置模板。
+本方案面向需要定义或修改协作机制的开发者。Harness 使用普通 JS/TS 代码组合 Profiles、Services、controller / router 和结束政策，不要求把协作方式限制成固定配置模板。
 
-**Q8 已确认：首版最低交付为 flat + agensh + 最小开发者接入示例，三者共用同一套 Core。** agensh 是第二个正式 mode；其余 subagents、scaleMAS、lead-helper 保留完整目标，后续累计交付。Core 优先完成公共接口和执行底座，各 Environment 可按接口并行开发；其他模式完成后可一并交付。五种名称及其完整目标保留：
+**Q8 已确认：首版最低交付为 TaskPool + PeerMesh + 最小开发者接入示例，三者共用同一套 Core。** PeerMesh 是第二个正式 mode；其余 Subagents、Substrate、Lead-Worker 保留完整目标，后续累计交付。Core 优先完成公共接口和执行底座，各 Harness 可按接口并行开发；其他模式完成后可一并交付。五种名称及其完整目标保留：
 
 | mode | 主要协作机制 | 需要验证的 Core 能力 |
 | --- | --- | --- |
-| subagents | parent 动态委派 child、回收结果并整合 | 动态创建、父子权限、结果事件、持续输入 |
-| flat | 公共 Task 池、排他认领、Workspace 与成果发布 | 领域服务、运行中资源准备、只读到可写的交接 |
-| scaleMAS | 内容 publish/search/visit 与引用 | 无 Task 的共享状态与成果持续保留 |
-| agensh | Git/PR、peer messages、shared context、事件驱动续轮 | 外部身份、网络、原生 Git、串行输入与导出 |
-| lead-helper | lead 通过 Board 引导 helpers | 角色权限、共享方向与进展、定向反馈 |
+| Subagents | parent 动态委派 child、回收结果并整合 | 动态创建、父子权限、结果事件、持续输入 |
+| TaskPool | 公共 Task 池、排他认领、Workspace 与成果发布 | 领域服务、运行中资源准备、只读到可写的交接 |
+| Substrate | 内容 publish/search/visit 与引用 | 无 Task 的共享状态与成果持续保留 |
+| PeerMesh | Git/PR、peer messages、shared context、事件驱动续轮 | 外部身份、网络、原生 Git、串行输入与导出 |
+| Lead-Worker | lead 通过 Board 引导 helpers | 角色权限、共享方向与进展、定向反馈 |
 
 规模和性能实验另行设计。这里的完成条件是各模式的实际协作闭环，以及它们确实使用相同 Core；不以跑通小例子推断大规模效果或大部分用户需求已经得到验证。
 
@@ -37,45 +37,45 @@ Environment 是开发者使用 SwarmEnv Core 编写的协作程序。它决定�
 
 | 文件或组件 | 作者 | 责任 |
 | --- | --- | --- |
-| main.ts | 使用者 | 读取本次配置、调用 Environment、保存结果和退出状态 |
-| environment.ts | Environment 作者 | 注册能力、创建 Runtime、启动 Bots、协作与结束 |
-| profiles.ts | Environment 作者 | 角色 prompt、镜像、模型、Service 权限与资源默认值 |
-| controller / router | Environment 作者 | 事件排序、结果回传、下一轮、预算与失败政策 |
+| main.ts | 使用者 | 读取本次配置、调用 Harness、保存结果和退出状态 |
+| environment.ts | Harness 作者 | 注册能力、创建 Runtime、启动 Agents、协作与结束 |
+| profiles.ts | Harness 作者 | 角色 prompt、镜像、模型、Service 权限与资源默认值 |
+| controller / router | Harness 作者 | 事件排序、结果回传、下一轮、预算与失败政策 |
 | services/\* | Service 作者 | manifest、adapter、数据与业务规则 |
-| run-input.ts | Environment 作者 | 独占输入场景的有期限等待；不是 Core API |
-| Core | Core 维护者 | Bot 运行、身份、隔离、输入、事件、Service 接入与收尾 |
+| run-input.ts | Harness 作者 | 独占输入场景的有期限等待；不是 Core API |
+| Core | Core 维护者 | Agent 运行、身份、隔离、输入、事件、Service 接入与收尾 |
 
-这些文件名是组织示例，不是必须遵守的目录框架。首版使用普通 import 和函数入口，不增加插件发现系统。**Q1 已确认：首版只对接 Pi 1.3.0 + OpenSandbox，不开发通用多 backend 插件接口。Q2 已确认：Profile / Service 在创建 Runtime 前注册并冻结，运行中可以按已注册 Profile spawn，但不动态修改注册表。** 通常一次 Environment 运行创建一个 Runtime，Runtime 管理多只 Bot；不同环境共享同一个 Core 包。
+这些文件名是组织示例，不是必须遵守的目录框架。首版使用普通 import 和函数入口，不增加插件发现系统。**Q1 已确认：首版只对接 Pi 1.3.0 + OpenSandbox，不开发通用多 backend 插件接口。Q2 已确认：Profile / Service 在创建 Runtime 前注册并冻结，运行中可以按已注册 Profile spawn，但不动态修改注册表。** 通常一次 Harness 运行创建一个 Runtime，Runtime 管理多只 Agent；不同环境共享同一个 Core 包。
 
 ### 2.2 装配和启动顺序
 
 1. 为本次运行选择独立 outputDir，读取 backend、模型、镜像、预算与 Service 数据配置。
 2. 准备所需外部设施，完成 readiness；登记自己创建的连接、账户和进程。
 3. 注册 manifest + adapter，配置 Profiles；固定本次身份引用与权限。
-4. 调用 createRuntime。Core 合入内置 Bot Service、校验注册表和 Profile、装配 Bridge 与模型入口。
+4. 调用 createRuntime。Core 合入内置 Agent Service、校验注册表和 Profile、装配 Bridge 与模型入口。
 5. 在提交模型工作前安装事件处理器；spawn 只创建资源，不提交 input。
-6. 建立 Environment 的 Bot 路由、领域关联或外部订阅，再显式 send。
+6. 建立 Harness 的 Agent 路由、领域关联或外部订阅，再显式 send。
 7. 运行 controller / router，按业务结果和预算决定结束，保存结果与清理回执。
 
-初始化失败同样要关闭已经创建的外部资源。Runtime 工厂只收尾它自身拥有的对象；不会替 Environment 删除其数据库或关闭外部共享服务。
+初始化失败同样要关闭已经创建的外部资源。Runtime 工厂只收尾它自身拥有的对象；不会替 Harness 删除其数据库或关闭外部共享服务。
 
 Core 的创建、文件准备和 send 具有有限的单次宿主等待上限。资源 API 首版不接 AbortSignal；若取消发生在 createRuntime/spawn 期间，示例会在该有界操作返回后检查取消并进入收尾，不声称即时中止远端创建。
 
 ### 2.3 公共状态与私有工作目录
 
-**Q3 已确认：** 每个 Bot 使用独立 sandbox、workDir 和 Session，首版不提供 Bot 间共享文件目录。Bot 之间的可见性由 Service、Git 或明确的 artifact 交付决定；另一个 Bot 的本地路径本身不构成可访问的结果。
+**Q3 已确认：** 每个 Agent 使用独立 sandbox、workDir 和 Session，首版不提供 Agent 间共享文件目录。Agent 之间的可见性由 Service、Git 或明确的 artifact 交付决定；另一个 Agent 的本地路径本身不构成可访问的结果。
 
-共享数据的生命周期由 Service/Environment 决定，Bot 退出后可以继续保留。公共 Workspace 属于 flat；其他模式可以使用 Git、内容库或 Board，不必建立 Task/Execution。
+共享数据的生命周期由 Service/Harness 决定，Agent 退出后可以继续保留。公共 Workspace 属于 TaskPool；其他模式可以使用 Git、内容库或 Board，不必建立 Task/Execution。
 
 ## 3. Service 与 Profile 接入
 
 ### 3.1 调用合同
 
-Service 作者提供 manifest 和 adapter；Environment 将它们注册进 ServiceRegistry，并在 `Profile.services` 中授予操作。Bot 使用 `swarm <service> <operation>` 调用；这些命令是 Bot-facing CLI，宿主入口是调用 Environment 的程序。
+Service 作者提供 manifest 和 adapter；Harness 将它们注册进 ServiceRegistry，并在 `Profile.services` 中授予操作。Agent 使用 `swarm <service> <operation>` 调用；这些命令是 Agent-facing CLI，宿主入口是调用 Harness 的程序。
 
-Bridge 注入真实 caller，Registry 执行参数 schema 校验后再调用 adapter。Service 负责记录归属、事务、业务幂等和外部账户。HTTP adapter 保留相同身份边界；Bot 输入中的 caller/author/binding 字段没有覆盖可信身份的权限。
+Bridge 注入真实 caller，Registry 执行参数 schema 校验后再调用 adapter。Service 负责记录归属、事务、业务幂等和外部账户。HTTP adapter 保留相同身份边界；Agent 输入中的 caller/author/binding 字段没有覆盖可信身份的权限。
 
-新通用 manifest 采用 Core 文档定义的 v2 合同。旧 v1 的 Task audience/context 通过 flat 兼容适配保留；不将旧领域检查静默删除。`registerService`、`createInProcessAdapter` 和 `invoke` 的装配形态沿用现有实现。[Registry](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-registry.js) · [adapter](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-adapter.js)
+新通用 manifest 采用 Core 文档定义的 v2 合同。旧 v1 的 Task audience/context 通过 TaskPool 兼容适配保留；不将旧领域检查静默删除。`registerService`、`createInProcessAdapter` 和 `invoke` 的装配形态沿用现有实现。[Registry](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-registry.js) · [adapter](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-adapter.js)
 
 ### 3.2 接线示例：共享一条带固定源码位置的审查记录
 
@@ -93,48 +93,48 @@ swarm notes put --input note.json --request-id review-note-1
 swarm notes get --input key.json
 ```
 
-附录包含完整 v2 manifest、Environment 函数和 main 的结果保存。config.backend 使用 Core 文档中的具体 backend 配置；model 是模型别名，image 是准备好所需工具的 Worker 镜像。outputDir 必须属于本次运行，避免不同实验覆盖报告。
+附录包含完整 v2 manifest、Harness 函数和 main 的结果保存。config.backend 使用 Core 文档中的具体 backend 配置；model 是模型别名，image 是准备好所需工具的 Worker 镜像。outputDir 必须属于本次运行，避免不同实验覆盖报告。
 
 ## 4. 输入、异步任务与结束规则
 
 ### 4.1 输入与执行收束
 
-**Q4 已确认：`runtime.send` 与 Bot Service `send` 省略 mode 时默认 `steer`，也可显式指定 `followUp`。** 这里的 steer 在 Pi 支持的执行边界加入输入，不是强制中断。本文的串行等待 helper 和 agensh router 为维持整轮边界，**始终显式选择 followUp**，不依赖默认值。accepted 表示 backend 接纳；unknown 保留请求身份并进入核对，不能换 ID 自动重发。settled 携带本次 outcome/output/error；`completed` 不代替业务验收。
+**Q4 已确认：`runtime.send` 与 Agent Service `send` 省略 mode 时默认 `steer`，也可显式指定 `followUp`。** 这里的 steer 在 Pi 支持的执行边界加入输入，不是强制中断。本文的串行等待 helper 和 PeerMesh router 为维持整轮边界，**始终显式选择 followUp**，不依赖默认值。accepted 表示 backend 接纳；unknown 保留请求身份并进入核对，不能换 ID 自动重发。settled 携带本次 outcome/output/error；`completed` 不代替业务验收。
 
-Core 最低合同不提供逐 inputId 的完成关联。Environment 的多来源结果回传要管理自己的顺序与业务状态。agensh 等串行执行场景可限定一个 Bot 只有一个输入源，再使用附录 B 的 runInput。
+Core 最低合同不提供逐 inputId 的完成关联。Harness 的多来源结果回传要管理自己的顺序与业务状态。PeerMesh 等串行执行场景可限定一个 Agent 只有一个输入源，再使用附录 B 的 runInput。
 
-**Q5 已确认：idle Bot 的 Session、私有目录和 Slot 继续保留，直至显式 stop。** runInput 的完整前提是：Bot 初始 idle、没有待消费输入或自动续轮、同一 Bot 同时只有一个调用、使用从未提交过的新 requestId。它拒绝 helper 内的并发与 ID 复用，并同时等待接纳和新的 settled。timeout/取消只结束宿主等待，不声称取消 Bot；结果不确定后该 helper 不再继续使用这个 Bot，示例进入 close。
+**Q5 已确认：idle Agent 的 Session、私有目录和 Slot 继续保留，直至显式 stop。** runInput 的完整前提是：Agent 初始 idle、没有待消费输入或自动续轮、同一 Agent 同时只有一个调用、使用从未提交过的新 requestId。它拒绝 helper 内的并发与 ID 复用，并同时等待接纳和新的 settled。timeout/取消只结束宿主等待，不声称取消 Agent；结果不确定后该 helper 不再继续使用这个 Agent，示例进入 close。
 
-此 helper 不用于 busy Bot 的 steer、多来源 subagents 输入，也不用于对旧 requestId 恢复等待。它内部显式使用 followUp，不替 Core 决定默认输入时机。
+此 helper 不用于 busy Agent 的 steer、多来源 Subagents 输入，也不用于对旧 requestId 恢复等待。它内部显式使用 followUp，不替 Core 决定默认输入时机。
 
 ### 4.2 事件处理与去重
 
-onEvent 的同步 handler 只做接收、筛选与入队。Environment 跟踪异步 jobs 的结果、拒绝和取消，不把 async handler 的 Promise 隐含交给 Core。每条事件先按 botId + seq 去重；需要合并 fatal/exit 等故障通知时，再按本模式的故障状态处理。
+onEvent 的同步 handler 只做接收、筛选与入队。Harness 跟踪异步 jobs 的结果、拒绝和取消，不把 async handler 的 Promise 隐含交给 Core。每条事件先按 botId + seq 去重；需要合并 fatal/exit 等故障通知时，再按本模式的故障状态处理。
 
 转交执行结果时读取事件快照。get 适合查询当前生命周期和 parentId 等关系；累计 latestOutput/lastError 不能代替某个历史 settled 的结果。关闭期间拒绝生成新的工作，保留已接纳输入与未送达结果的记录。
 
 ### 4.3 关闭顺序
 
-| 阶段 | Environment 的动作 | Core 的动作 |
+| 阶段 | Harness 的动作 | Core 的动作 |
 | --- | --- | --- |
 | 停止生产 | 停 router/timer 的新派发，取消未提交工作，保留已提交记录 | Runtime.close 关闭新 spawn/send/resource 入口 |
-| 停止执行 | 等待均有期限或取消信号；不依赖一定收到 exit | 覆盖所有登记 Bot 和在途创建，报告 execution=stopped/unknown |
+| 停止执行 | 等待均有期限或取消信号；不依赖一定收到 exit | 覆盖所有登记 Agent 和在途创建，报告 execution=stopped/unknown |
 | 采集和清理 | 保留导出依赖，记录业务结果与 cleanupFailure | 按 collect 导出、销毁和释放容量；失败返回 pending |
 | 关闭外部设施 | 根据回执保存数据并关闭自己拥有的进程/连接 | 保存 Core 报告与产物清单 |
 
-**Q6 已确认：** 对预先标记为 required 的成果，导出失败时停止 Bot 后保留 sandbox 与 Slot，回报 cleanup=pending；可选成果的失败不必阻止清理。runtime.close 使用独立的有限等待上限，不复用已经取消的工作信号。它返回后，用回执或 AbortSignal 结束剩余等待，再有界地收集 jobs。execution=unknown 不等于已退出；必需导出 pending 不等于可删除 sandbox。
+**Q6 已确认：** 对预先标记为 required 的成果，导出失败时停止 Agent 后保留 sandbox 与 Slot，回报 cleanup=pending；可选成果的失败不必阻止清理。runtime.close 使用独立的有限等待上限，不复用已经取消的工作信号。它返回后，用回执或 AbortSignal 结束剩余等待，再有界地收集 jobs。execution=unknown 不等于已退出；必需导出 pending 不等于可删除 sandbox。
 
-业务失败和清理失败分别记录。工厂失败时保留 ResourceError 的 details/reportPath；close 意外抛错也不能覆盖原始业务错误。外部共享设施只释放本 Environment 持有的连接和临时资源；公共数据按其保留政策处理。
+业务失败和清理失败分别记录。工厂失败时保留 ResourceError 的 details/reportPath；close 意外抛错也不能覆盖原始业务错误。外部共享设施只释放本 Harness 持有的连接和临时资源；公共数据按其保留政策处理。
 
 ### 4.4 必需的运行报告
 
-宿主报告至少包含业务结果、失败原因、各 Bot 的执行/清理状态、未送达或未知输入、共享结果位置和私有产物位置。附录示例将 `businessFailure`、`cleanup`、`cleanupFailure` 分开，并保存 Service 状态与读取证据。若连报告目录都无法写入，宿主明确返回保存错误，不宣称已留下完整记录。
+宿主报告至少包含业务结果、失败原因、各 Agent 的执行/清理状态、未送达或未知输入、共享结果位置和私有产物位置。附录示例将 `businessFailure`、`cleanup`、`cleanupFailure` 分开，并保存 Service 状态与读取证据。若连报告目录都无法写入，宿主明确返回保存错误，不宣称已留下完整记录。
 
-## 5. subagents
+## 5. Subagents
 
-本章至第 9 章是五种 Environment 的待实施方案。它们复用同一套 Core；精确接口、资源政策和示例细节属于设计建议。runInput 在内部显式使用 followUp，不提供 mode 参数。代码只展示关键接线；`routes`、`runInput`、各 controller 和领域 helper 都由 Environment 编写，不是额外的 Core API。宿主先 `spawn`，再显式 `send`；所有直接 send 示例均填写 mode。
+本章至第 9 章是五种 Harness 的待实施方案。它们复用同一套 Core；精确接口、资源政策和示例细节属于设计建议。runInput 在内部显式使用 followUp，不提供 mode 参数。代码只展示关键接线；`routes`、`runInput`、各 controller 和领域 helper 都由 Harness 编写，不是额外的 Core API。宿主先 `spawn`，再显式 `send`；所有直接 send 示例均填写 mode。
 
-subagents 用父 Bot 委派工作、子 Bot 返回结果的流程，检验动态创建、父子权限、结果回传及同一会话续轮。
+Subagents 用父 Agent 委派工作、子 Agent 返回结果的流程，检验动态创建、父子权限、结果回传及同一会话续轮。
 
 ### 5.1 配置与权限
 
@@ -146,11 +146,11 @@ subagents 用父 Bot 委派工作、子 Bot 返回结果的流程，检验动态
 | 资源 | 独立 workDir；settled 保留；parent 关闭不再需要的 child |
 | 输入/结束 | 用户固定发给 parent；整体交付通过或预算/故障结束 |
 
-Core 从可信 caller 生成 parentId。get/send 的目标限于自己与直接 children；stop 仅允许直接 child。每项操作都需 Profile 授权，spawn 另需 spawnProfiles 允许目标角色。child 的镜像、网络、Service 操作权限和 collect 使用目标 Profile，Bot 输入无权覆盖。首例的动态 child 不需要外部 bindings/secretEnv，也不继承 parent 的凭据；需要独立外部账户时先采用宿主创建流程。上下文 fork 另作策略。
+Core 从可信 caller 生成 parentId。get/send 的目标限于自己与直接 children；stop 仅允许直接 child。每项操作都需 Profile 授权，spawn 另需 spawnProfiles 允许目标角色。child 的镜像、网络、Service 操作权限和 collect 使用目标 Profile，Agent 输入无权覆盖。首例的动态 child 不需要外部 bindings/secretEnv，也不继承 parent 的凭据；需要独立外部账户时先采用宿主创建流程。上下文 fork 另作策略。
 
 ### 5.2 Service 与命令
 
-Core 内置 Bot Service，Environment 配置权限。拟新增命令如下；child.json 只含 profile、可选 input 与显式 mode：
+Core 内置 Agent Service，Harness 配置权限。拟新增命令如下；child.json 只含 profile、可选 input 与显式 mode：
 
 ```json
 {"profile":"child","input":"完成子问题，返回结论、依据及不确定部分。","mode":"followUp"}
@@ -169,9 +169,9 @@ swarm bot stop --bot-id "$CHILD_ID" --request-id child-stop-1
 
 ### 5.3 运行流程与关键接线
 
-Environment 注册 Profiles、Services 与事件处理器，spawn parent，再 send 初始目标。parent 经 Bot Service 创建 child；Core 在 child 执行前登记 parentId、资源和事件。child 收束后，Environment 回传结果；parent 可追问存活 child，或整合后 stop。整体完成与预算由 Environment 判断。
+Harness 注册 Profiles、Services 与事件处理器，spawn parent，再 send 初始目标。parent 经 Agent Service 创建 child；Core 在 child 执行前登记 parentId、资源和事件。child 收束后，Harness 回传结果；parent 可追问存活 child，或整合后 stop。整体完成与预算由 Harness 判断。
 
-事件 handler 同步接收，Environment 的队列处理异步路由、顺序、去重和错误。以下是队列中的轮次结果转发；recordDelivery 是 Environment 函数：
+事件 handler 同步接收，Harness 的队列处理异步路由、顺序、去重和错误。以下是队列中的轮次结果转发；recordDelivery 是 Harness 函数：
 
 ```ts
 async function forwardChildResult(event) {
@@ -200,7 +200,7 @@ get 只读取父子关系；结果取自 settled 的本次快照，不能用 lat
 | fatal error 或意外 exit | 即使没有 settled 也报告失败；合并同一次异常终结，避免 fatal+exit 重复通知 |
 | 显式 stop 后的预期 exit | 更新清理记录，不生成新的失败任务 |
 
-Environment 根据 exit.expected 区分预期停止；若同次失败已由 settled 报告，随后 exit 只更新终结状态。
+Harness 根据 exit.expected 区分预期停止；若同次失败已由 settled 报告，随后 exit 只更新终结状态。
 
 ### 5.4 输入与失败收尾
 
@@ -216,28 +216,30 @@ child 失败后的业务选择由 parent 决定。结束时先停用户输入、
 - child 的文本结论被 parent 的最终交付引用或实际使用。
 - idle child 再次收到输入后，沿用原 Session 和 workDir。
 - child 的失败能抵达 parent；正常停止不会重复触发失败通知。
-- 用户补充进入 parent；停止后所有 Bot 都有明确的执行与清理回执。
+- 用户补充进入 parent；停止后所有 Agent 都有明确的执行与清理回执。
 - 若测试编程产物，单独验证“发布 patch/artifact → parent 获取 → 应用/验证”，不以一段文件路径描述替代实际交付。
 
 ### 5.6 来源与适配差异
 
-固定 Codex `a1604a8c` 的 [spawn](https://github.com/openai/codex/blob/a1604a8c0554c09c1be45e5a121bb1889b4d9a50/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs) 与 [completion](https://github.com/openai/codex/blob/a1604a8c0554c09c1be45e5a121bb1889b4d9a50/codex-rs/core/src/agent/control/completion.rs) 提供创建、父子完成通知的参考。本项目采用 Bash Bot Service、独立 sandbox 与 Environment 路由；首例不包含上下文 fork、关闭后恢复或释放 Slot 的等待。不同上游同名输入操作的时机以 Core 对照说明为准。
+固定 Codex `a1604a8c` 的 [spawn](https://github.com/openai/codex/blob/a1604a8c0554c09c1be45e5a121bb1889b4d9a50/codex-rs/core/src/tools/handlers/multi_agents/spawn.rs) 与 [completion](https://github.com/openai/codex/blob/a1604a8c0554c09c1be45e5a121bb1889b4d9a50/codex-rs/core/src/agent/control/completion.rs) 提供创建、父子完成通知的参考。本项目采用 Bash Agent Service、独立 sandbox 与 Harness 路由；首例不包含上下文 fork、关闭后恢复或释放 Slot 的等待。不同上游同名输入操作的时机以 Core 对照说明为准。
 
-## 6. flat
+<a id="6-flat"></a>
 
-flat 保留当前 Task-oriented 工作流：Bot 先在只读条件下发现工作，原子认领 Task，再取得对应 Execution 和文件写权限。一个 Bot 最多执行一个 Execution；结束后由新的 Bot 从公共状态继续工作。
+## 6. TaskPool
+
+TaskPool 保留当前 Task-oriented 工作流：Agent 先在只读条件下发现工作，原子认领 Task，再取得对应 Execution 和文件写权限。一个 Agent 最多执行一个 Execution；结束后由新的 Agent 从公共状态继续工作。
 
 ### 6.1 配置与权限
 
 | 项目 | 首例配置 |
 | --- | --- |
-| 团队 | 2 researcher，固定容量，前一 Bot 收尾后按现有策略补位 |
+| 团队 | 2 researcher，固定容量，前一 Agent 收尾后按现有策略补位 |
 | Profile | Mission/选工/完成 prompt，Task/Context/Workspace；科研例子可加 Judge |
 | 目录 | spawn 时 writable=false；take 后 grant 对应准备版本 |
-| 公共状态 | Mission、Task、Execution、Material、Workspace revision 均由 flat 管理 |
-| 运行策略 | continuation、discovery、deadline、stall 与整体完成判断属于 flat |
+| 公共状态 | Mission、Task、Execution、Material、Workspace revision 均由 TaskPool 管理 |
+| 运行策略 | continuation、discovery、deadline、stall 与整体完成判断属于 TaskPool |
 
-Core 与 flat 使用同一 botId。flat 兼容层维护旧容量字段 legacySlotId，不能填 `runtime.id`；释放与实际收尾对齐。旧 markBotReady 检查 sandbox\_id，迁移后改由受信宿主根据 spawn 就绪建立 UNBOUND；provider/sandbox 状态迁入 Core，不伪造旧字段绕过检查。
+Core 与 TaskPool 使用同一 botId。TaskPool 兼容层维护旧容量字段 legacySlotId，不能填 `runtime.id`；释放与实际收尾对齐。旧 markBotReady 检查 sandbox\_id，迁移后改由受信宿主根据 spawn 就绪建立 UNBOUND；provider/sandbox 状态迁入 Core，不伪造旧字段绕过检查。
 
 ### 6.2 Services 与命令
 
@@ -252,17 +254,17 @@ swarm workspace save --request-id save-1
 swarm task finish --input finish.json --request-id finish-1
 ```
 
-上述 `workspace save` 仅在配置可信捕获绑定时装配；无绑定的受限 Flat 从 Registry/Profile 和提示省略该操作及私有 status/current-diff，仍可使用公共 Workspace 读取、Material 发布和原合同允许的 finish。显式无效绑定拒绝，不将不可用命令冒充已接通能力。
+上述 `workspace save` 仅在配置可信捕获绑定时装配；无绑定的受限 TaskPool 从 Registry/Profile 和提示省略该操作及私有 status/current-diff，仍可使用公共 Workspace 读取、Material 发布和原合同允许的 finish。显式无效绑定拒绝，不将不可用命令冒充已接通能力。
 
-命令已有，沿用成果引用、revision 与 finish 合同。Bridge 注入可信 caller，flat adapter 查询领域关联，检查 Task provenance、归属、事务和排他 take；不接受 JSON 伪造身份。take adapter 原子认领后调用宿主 Runtime.files，模型不直接拥有 prepare/grant。
+命令已有，沿用成果引用、revision 与 finish 合同。Bridge 注入可信 caller，TaskPool adapter 查询领域关联，检查 Task provenance、归属、事务和排他 take；不接受 JSON 伪造身份。take adapter 原子认领后调用宿主 Runtime.files，模型不直接拥有 prepare/grant。
 
 ### 6.3 运行流程与关键接线
 
-流程为：只读 Bot 发现 Task → 原子 take → 准备固定输入 → 激活 Execution → grant → 执行和发布 → finish → 停止与收尾 → 按策略补位。
+流程为：只读 Agent 发现 Task → 原子 take → 准备固定输入 → 激活 Execution → grant → 执行和发布 → finish → 停止与收尾 → 按策略补位。
 
-flat 负责 Workspace revision、Materials、Execution provenance、reservation 与 deadline；Core 只接收 Bot 和确定的文件内容，返回准备回执并实际授权。take adapter 从可信 caller 取 botId、从 envelope 取 requestId，不接受模型伪造。
+TaskPool 负责 Workspace revision、Materials、Execution provenance、reservation 与 deadline；Core 只接收 Agent 和确定的文件内容，返回准备回执并实际授权。take adapter 从可信 caller 取 botId、从 envelope 取 requestId，不接受模型伪造。
 
-以下保留真实 TaskService 入口。prepareFlatInputs、executionEnvelope、startPreparationHeartbeat、timing 及补偿函数都是 flat 的迁移代码，不属于 Core。
+以下保留真实 TaskService 入口。prepareTaskPoolInputs、executionEnvelope、startPreparationHeartbeat、timing 及补偿函数都是 TaskPool 的迁移代码，不属于 Core。
 
 ```ts
 const task = taskService.getTask(taskId);
@@ -281,7 +283,7 @@ try {
   lease = startPreparationHeartbeat({
     botId: bot.id, executionId, expectedFence: originalFence,
   });
-  const files = await prepareFlatInputs(executionId);
+  const files = await prepareTaskPoolInputs(executionId);
   lease.check();
   const prepared = await runtime.files.prepare(bot.id, {
     requestId: requestId + ":prepare", files,
@@ -326,7 +328,7 @@ try {
   }
   recordFlatFailure({ executionId, error, stopped });
   if (stopped.execution === "stopped") finalizeFailedExecution(executionId, error);
-  // unknown 保留待核对归属，不能把同一 Task 交给另一 Bot。
+  // unknown 保留待核对归属，不能把同一 Task 交给另一 Agent。
   throw error;
 } finally {
   lease?.stop();
@@ -337,17 +339,17 @@ try {
 
 | 迁移 helper | 必须保留的行为 |
 | --- | --- |
-| prepareFlatInputs | 提取 #prepareWorkspace / #saveWorkspaceReference，保留 exportRevision、Materials、createWorkspace 与固定输入来源，转换为 FileSeed |
+| prepareTaskPoolInputs | 提取 #prepareWorkspace / #saveWorkspaceReference，保留 exportRevision、Materials、createWorkspace 与固定输入来源，转换为 FileSeed |
 | startPreparationHeartbeat | 立即与定期校验 reservation 并续租；留存 timer 错误；check 核验错误与归属；stop 幂等 |
 | executionEnvelope | 使用当前 task\_id、execution\_id、spec\_version、state\_version、fencing\_version |
-| timing | 保留 Task timebox、handoff/Execution deadline 与 Bot hard deadline |
+| timing | 保留 Task timebox、handoff/Execution deadline 与 Agent hard deadline |
 | saveFlatHandoff / finalizeFailedExecution | 保存领域 fence、Workspace revision 与 prepared 的对应；仅在执行已停后终结领域归属 |
 
-Task fencing\_version 与 PreparedFiles.version 分别证明领域认领和资源内容，不能互相替代。Core 不承担跨 Task 数据库与 sandbox 的原子事务；flat 必须在 grant 前后检查，在未知或失效时先停执行再补偿。
+Task fencing\_version 与 PreparedFiles.version 分别证明领域认领和资源内容，不能互相替代。Core 不承担跨 Task 数据库与 sandbox 的原子事务；TaskPool 必须在 grant 前后检查，在未知或失效时先停执行再补偿。
 
-prepare 首例只用于尚未开放写入的空目录；grant 只接受 Bot 当前有效的 prepared。运行中任意替换、通用 revoke、同一 Bot 承接第二个 Execution 不在此合同中。
+prepare 首例只用于尚未开放写入的空目录；grant 只接受 Agent 当前有效的 prepared。运行中任意替换、通用 revoke、同一 Agent 承接第二个 Execution 不在此合同中。
 
-**模型访问也需迁移。** [BotModelAccess](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/agent/bot-model-access.js) 仍依赖 TaskService、Mission、UNBOUND/ACTIVE 和 Execution lease/deadline；只拆 Runtime/Bridge 会使无 Task mode 被 gateway 拒绝。flat 在 createRuntime 配置策略端口：
+**模型访问也需迁移。** [BotModelAccess](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/agent/bot-model-access.js) 仍依赖 TaskService、Mission、UNBOUND/ACTIVE 和 Execution lease/deadline；只拆 Runtime/Bridge 会使无 Task mode 被 gateway 拒绝。TaskPool 在 createRuntime 配置策略端口：
 
 ```ts
 modelAccessPolicy: {
@@ -360,34 +362,34 @@ authorizeFlatModelCall 从旧 validateBot 提取，返回 ModelPermit：phase/de
 
 ### 6.4 输入与失败收尾
 
-定向反馈先指定仍在执行的 Task，flat 在 send 前重新核验 Executor 绑定；已结束就返回当前状态，不改投其他 Bot。用户输入与自动 continuation 经过同一 controller；settled 只表示收束，是否续轮由 Task 状态与预算决定。群体 Mission 热更新不包含在首例。
+定向反馈先指定仍在执行的 Task，TaskPool 在 send 前重新核验 Executor 绑定；已结束就返回当前状态，不改投其他 Agent。用户输入与自动 continuation 经过同一 controller；settled 只表示收束，是否续轮由 Task 状态与预算决定。群体 Mission 热更新不包含在首例。
 
 | 情况 | 行为 |
 | --- | --- |
-| take 冲突 | 返回领域冲突，Bot 可重新选工 |
+| take 冲突 | 返回领域冲突，Agent 可重新选工 |
 | take 成功后准备失败、租约失效 | 先 stop，执行已停后处理 Execution/Task 归属 |
 | grant 未知或后置检查失败 | 不返回 take 成功；走相同停止与补偿 |
 | execution stopped、导出 pending | 领域终结与资源清理分别记录 |
-| execution unknown | 保留待核对归属，不把相同工作释放给另一 Bot |
+| execution unknown | 保留待核对归属，不把相同工作释放给另一 Agent |
 | 全局结束 | 停 controller 派发与补位，有界 close；保留公共 Workspace、Materials 与 Service 数据 |
 
 ### 6.5 验收
 
-- 排他 take、finish、引用、revision 和一 Bot 一 Execution 保持。
+- 排他 take、finish、引用、revision 和一 Agent 一 Execution 保持。
 - take 前只读；准备与 grant 版本一致；成功后可写。
 - 准备/grant/关闭失败时，旧执行未停不会把同一 Task 发给新 owner。
-- 补位、定向反馈正常；pending/unknown 清楚；其他 mode 不继承 flat 的 stall/continuation。
-- flat 仅用 Core 公开接口，模型 gateway 仍执行领域授权。
+- 补位、定向反馈正常；pending/unknown 清楚；其他 mode 不继承 TaskPool 的 stall/continuation。
+- TaskPool 仅用 Core 公开接口，模型 gateway 仍执行领域授权。
 
 ### 6.6 来源与适配差异
 
-固定 SwarmEnv `fcbe0107` 的 putnam-runner、task-controller、identity-task-loop 与 workspace-publication 提供现有业务链路。重点核对 [Runtime 的准备、heartbeat、激活与 grant](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/runtime.js#L758-L876)，同文件的 #prepareWorkspace、#saveWorkspaceReference、#executionEnvelope 与 deadline 计算随 flat 迁出。[TaskService 的登记与 ready 检查](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/task/task-service.js#L626-L713) 也需与新资源归属对齐。
+固定 murm `fcbe0107` 的 putnam-runner、task-controller、identity-task-loop 与 workspace-publication 提供现有业务链路。重点核对 [Runtime 的准备、heartbeat、激活与 grant](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/runtime.js#L758-L876)，同文件的 #prepareWorkspace、#saveWorkspaceReference、#executionEnvelope 与 deadline 计算随 TaskPool 迁出。[TaskService 的登记与 ready 检查](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/task/task-service.js#L626-L713) 也需与新资源归属对齐。
 
 新 files API、领域 ready 入口、模型授权策略与 legacySlotId 兼容层尚需实现，不能只替换 import 就视为迁移完成。
 
-## 7. scaleMAS
+## 7. Substrate
 
-scaleMAS 用持久共享内容、搜索、引用与组合来组织工作，检验不依赖 Task 的共享成果协作。
+Substrate 用持久共享内容、搜索、引用与组合来组织工作，检验不依赖 Task 的共享成果协作。
 
 ### 7.1 配置与权限
 
@@ -418,9 +420,9 @@ swarm substrate publish --input contribution.json --request-id publish-1
 
 ### 7.3 运行流程与关键接线
 
-Environment 初始化内容库与 Profiles，spawn peers 并显式 send 初始问题。peer search/visit 后在私有目录工作，publish 新内容及引用。每轮收束后，Environment 在预算内安排同一 Bot 继续；搜索方向与内容组合由 Bot 决定。
+Harness 初始化内容库与 Profiles，spawn peers 并显式 send 初始问题。peer search/visit 后在私有目录工作，publish 新内容及引用。每轮收束后，Harness 在预算内安排同一 Agent 继续；搜索方向与内容组合由 Agent 决定。
 
-固定池可用每 Bot 串行 driver。runInput 是 Environment 的一次性等待 helper，要求 idle、独占输入、无队列/自动续轮，每次 requestId 是新值：
+固定池可用每 Agent 串行 driver。runInput 是 Harness 的一次性等待 helper，要求 idle、独占输入、无队列/自动续轮，每次 requestId 是新值：
 
 ```ts
 for (let round = 0; round < config.maxRounds; round += 1) {
@@ -432,7 +434,7 @@ for (let round = 0; round < config.maxRounds; round += 1) {
 }
 ```
 
-budgetExpired、resultAccepted 与 driver 均由 Environment 实现。多个 peers 并发，各自的输入串行；unknown/timeout 不自动换 ID 重投。
+budgetExpired、resultAccepted 与 driver 均由 Harness 实现。多个 peers 并发，各自的输入串行；unknown/timeout 不自动换 ID 重投。
 
 ### 7.4 输入与失败收尾
 
@@ -452,9 +454,11 @@ budgetExpired、resultAccepted 与 driver 均由 Environment 实现。多个 pee
 
 [作者介绍](https://scottyih.org/publication/2026-10-11-scaling-multi-agent-intelligence-with-substrate-centric-coordination) 提供 publish/search/visit、引用、有界检索和内容保留的机制说明；尚未定位官方实现仓库。固定池、driver、CLI、结束条件和具体排序是本项目适配。复用 [ContextService](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/context/context-service.js) 时，需拆开其中的 Task/Execution 授权及引用校验。
 
-## 8. agensh
+<a id="8-agensh"></a>
 
-**Q7 已确认：agensh 首版只要求核心协作闭环，不以完整复现原始运维和通知细节为门槛。** 闭环包括 Git/PR、peer messages、shared context 与事件驱动续轮；共享设施与主要协作语义保留，由 Core 接管 Bot 的创建、输入和销毁。mid-turn notices、完整 ACP/MCP 细节作为适配差异记录，而非首版阻塞项。
+## 8. PeerMesh
+
+**Q7 已确认：PeerMesh 首版只要求核心协作闭环，不以完整复现原始运维和通知细节为门槛。** 闭环包括 Git/PR、peer messages、shared context 与事件驱动续轮；共享设施与主要协作语义保留，由 Core 接管 Agent 的创建、输入和销毁。mid-turn notices、完整 ACP/MCP 细节作为适配差异记录，而非首版阻塞项。
 
 ### 8.1 配置与权限
 
@@ -462,11 +466,11 @@ budgetExpired、resultAccepted 与 driver 均由 Environment 实现。多个 pee
 | --- | --- |
 | 团队 | 2–3 同级 peer，固定池，连续使用同一 Session |
 | Profile | 适配 coder/work-cycle prompt，四基础工具＋Bash Services |
-| 设施 | Gitea、Mattermost、Agensh shared board |
-| controller | 每 Bot 串行 router/dispatcher |
+| 设施 | Gitea、Mattermost、PeerMesh shared board |
+| controller | 每 Agent 串行 router/dispatcher |
 | 文件/结束 | 私有 checkout/分支，经 PR 汇入 main；测试/交付通过或预算结束 |
 
-Profile.env 放非秘密变量，network.allow 首版只接受 IPv4 字面量 HTTP(S) origins。宿主 secretEnv 提供 Bot 本人的受限 Git token，镜像 credential helper 负责认证；管理凭据留在 adapter。系统不主动把 token 写入普通配置、日志或 workDir；Bot 自行写入文件的内容仍按 Core 的归档规则处理，不能承诺自动识别所有秘密。allow 限制目标，目标上的 Git/REST 权限仍由 upstream 凭据与 ACL 决定。
+Profile.env 放非秘密变量，network.allow 首版只接受 IPv4 字面量 HTTP(S) origins。宿主 secretEnv 提供 Agent 本人的受限 Git token，镜像 credential helper 负责认证；管理凭据留在 adapter。系统不主动把 token 写入普通配置、日志或 workDir；Agent 自行写入文件的内容仍按 Core 的归档规则处理，不能承诺自动识别所有秘密。allow 限制目标，目标上的 Git/REST 权限仍由 upstream 凭据与 ACL 决定。
 
 ### 8.2 Services、身份与命令
 
@@ -493,18 +497,18 @@ swarm gitea pull_request_write --input pr.json
 swarm agensh-context board_write --input summary.json
 ```
 
-CLAIM 是带 TTL、允许重叠的工作意向，靠 peer message 协商；保留其与 flat 排他 take、Board 单 owner 的差异。
+CLAIM 是带 TTL、允许重叠的工作意向，靠 peer message 协商；保留其与 TaskPool 排他 take、Board 单 owner 的差异。
 
 ### 8.3 运行流程与关键接线
 
-1. Environment 准备 repo/main、channel、board、验收与 worker accounts；adapters 保存凭据并返回三个引用。
+1. Harness 准备 repo/main、channel、board、验收与 worker accounts；adapters 保存凭据并返回三个引用。
 2. 注册 adapters，配置 Profile、网络与 Git helper，创建 Runtime；spawn 无 input 的 peers，附 bindings、secretEnv、collect。
 3. 建立 botId→worker 路由映射与订阅，检查 readiness 后 kickoff。
 4. peer 读 issue/Git/board，发布 CLAIM，私有分支开发、测试、push/PR 和 PATCH\_SUMMARY；重叠工作经 DM 协商。
-5. Gitea/Mattermost 事件进入各 Bot 串行 router，补共享上下文后续轮；空队列采用有界 idle nudge。
+5. Gitea/Mattermost 事件进入各 Agent 串行 router，补共享上下文后续轮；空队列采用有界 idle nudge。
 6. 验收或预算结束，收尾并保留数据。
 
-以下是单 peer 配置；preparedProject/preparedAccounts 来自 Environment 初始化。peerProfile 在 createRuntime 前注册：
+以下是单 peer 配置；preparedProject/preparedAccounts 来自 Harness 初始化。peerProfile 在 createRuntime 前注册：
 
 ```ts
 const peerProfile = {
@@ -531,9 +535,9 @@ const peer = await runtime.spawn({
 });
 ```
 
-GITEA\_TOKEN 是示例镜像/helper 的约定，需改旧 adapter allowlist 并由 backend 受信安装。Core 就绪后，Environment 完成 router/订阅再 send。初始化失败各方收尾自己创建的资源，保留 pending 清单。
+GITEA\_TOKEN 是示例镜像/helper 的约定，需改旧 adapter allowlist 并由 backend 受信安装。Core 就绪后，Harness 完成 router/订阅再 send。初始化失败各方收尾自己创建的资源，保留 pending 清单。
 
-**CoreChannel 保留整轮完成边界。** 上游 dispatcher 等 channel.prompt 完成后才继续 batch；accepted 不能当作完成。首例把 kickoff、peer event、用户输入和 nudge 全部串到同一 router，满足独占条件后使用 Environment helper。**尽管 Core 默认是 steer，这一 router 明确使用 followUp**，由单输入源保证每个 batch 的整轮完成判断：
+**CoreChannel 保留整轮完成边界。** 上游 dispatcher 等 channel.prompt 完成后才继续 batch；accepted 不能当作完成。首例把 kickoff、peer event、用户输入和 nudge 全部串到同一 router，满足独占条件后使用 Harness helper。**尽管 Core 默认是 steer，这一 router 明确使用 followUp**，由单输入源保证每个 batch 的整轮完成判断：
 
 ```ts
 const completed = await runInput(runtime, peer.id, batch.input,
@@ -547,27 +551,27 @@ router 先对事件去重。新 batch 使用唯一 ID；重复已完成 batch �
 
 用户经 Mattermost DM/mention 或 Gitea issue/PR comment 进入指定 worker 的 router，保留来源与事件 ID。原版工具返回时附带 pending DM/gist 并维护 pending/shown；首例仅验证轮次边界投递；**Q7 已确认 mid-turn notices 不属于首版验收阻塞项**，CLI notices 后续适配并记录语义差异。Profile/router 提示同步改为 Bash 命令，不保留未实现的 mid-turn 通知承诺。
 
-结束先停止新工作，按预算给有界收尾机会，再停 router 派发与 idle nudge、取消未提交队列项。保留完成监听并有界 close；Core 停执行后导出未 push Git 历史、未提交/未跟踪文件及约定记录。Environment 根据 CloseReceipt 结束剩余等待、保存 batch 状态，再关闭自己拥有的连接、Services 与临时账户；外部运营设施按其归属处理。
+结束先停止新工作，按预算给有界收尾机会，再停 router 派发与 idle nudge、取消未提交队列项。保留完成监听并有界 close；Core 停执行后导出未 push Git 历史、未提交/未跟踪文件及约定记录。Harness 根据 CloseReceipt 结束剩余等待、保存 batch 状态，再关闭自己拥有的连接、Services 与临时账户；外部运营设施按其归属处理。
 
 execution unknown 不能伪装成 exit，需保留必要依赖与待核对记录。execution stopped、仅导出 pending 时，是否关闭 Service 取决于导出依赖。共享 Git、消息与 board 数据继续保留；业务失败与清理失败分别记录。
 
 ### 8.5 验收
 
-**Q7 的验收边界是核心协作闭环**，不是原始 Agensh 整套系统的逐行复现；只需要证明消息、Git/PR、共享上下文和事件续轮能正确连接到 Core。先验证单 peer 的“Git clone → Service 调用 → settled → 同 Bot 第二轮 → 保存 → stop”，再增加第二个 peer：
+**Q7 的验收边界是核心协作闭环**，不是原始 PeerMesh 整套系统的逐行复现；只需要证明消息、Git/PR、共享上下文和事件续轮能正确连接到 Core。先验证单 peer 的“Git clone → Service 调用 → settled → 同 Agent 第二轮 → 保存 → stop”，再增加第二个 peer：
 
 - 两个 peers 在独立目录工作，并把实际成果合入同一 main。
-- 一条 peer message 或 PR event 在第一轮后触发同一 Bot 的第二轮。
-- 共享 FACT/FAIL/PATCH\_SUMMARY 被另一 Bot 读取并用于工作。
+- 一条 peer message 或 PR event 在第一轮后触发同一 Agent 的第二轮。
+- 共享 FACT/FAIL/PATCH\_SUMMARY 被另一 Agent 读取并用于工作。
 - 重叠 CLAIM 经协商处理，保留软声明语义。
-- 三个 adapter 均按可信身份访问正确账户；Git 使用该 Bot 自己的受限账户。
+- 三个 adapter 均按可信身份访问正确账户；Git 使用该 Agent 自己的受限账户。
 - 定向用户消息进入正确 router，重复事件不会重复派发。
-- 停止后共享数据及约定私有产物可读取；每个 Bot 的 execution/cleanup 状态明确。
+- 停止后共享数据及约定私有产物可读取；每个 Agent 的 execution/cleanup 状态明确。
 
-agensh 已选为一周版的第二个验收案例，与 flat 共用同一套 Core。先完成单 peer 的身份、Git、连续输入与收尾链路，再按上述标准验收两个 peers 的实际协作。
+PeerMesh 已选为一周版的第二个验收案例，与 TaskPool 共用同一套 Core。先完成单 peer 的身份、Git、连续输入与收尾链路，再按上述标准验收两个 peers 的实际协作。
 
 ### 8.6 来源与适配差异
 
-固定版本为 `microsoft/Agensh@2dae4e14`。原 run profile/task pack 映射到 Environment，worker prompt/能力映射到 Profile。
+固定版本为 `microsoft/PeerMesh@2dae4e14`。原 run profile/task pack 映射到 Harness，worker prompt/能力映射到 Profile。
 
 | 来源 | 保留或适配的内容 |
 | --- | --- |
@@ -577,11 +581,11 @@ agensh 已选为一周版的第二个验收案例，与 flat 共用同一套 Cor
 | [MCP allowlist](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/agent/config/mcp_allowed_tools.json) / [board adapter](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/board-service/mcp.cjs) | 操作参数与 board 身份合同 |
 | [team\_run 收尾](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/agensh/team_run.py#L1049-L1155) | 停新工作、归档与共享设施收尾 |
 
-共享设施和 router 规则可复用；ACP→CoreChannel、MCP→Bash、身份安装、Git 凭据与 Core 导出属于适配。现有 SwarmEnv [网络配置](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/docker-bot-network.js#L24-L59) 只放行 Bridge/gateway；network.allow、secretEnv 与旧 adapter 的环境变量 allowlist 都需改造。当前 backend 仅以 IPv4 字面量的 HTTP(S) origin 为接入目标，不承诺域名解析或远端 Docker 的完整兼容。
+共享设施和 router 规则可复用；ACP→CoreChannel、MCP→Bash、身份安装、Git 凭据与 Core 导出属于适配。现有 murm [网络配置](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/docker-bot-network.js#L24-L59) 只放行 Bridge/gateway；network.allow、secretEnv 与旧 adapter 的环境变量 allowlist 都需改造。当前 backend 仅以 IPv4 字面量的 HTTP(S) origin 为接入目标，不承诺域名解析或远端 Docker 的完整兼容。
 
-## 9. lead-helper
+## 9. Lead-Worker
 
-lead-helper 通过公共 Board 与 Git 组织一名 lead 和多名 helpers。lead 读取进展、调整方向；helpers 认领、实现、提交并汇报，工作成果在公共数据中连接。
+Lead-Worker 通过公共 Board 与 Git 组织一名 lead 和多名 helpers。lead 读取进展、调整方向；helpers 认领、实现、提交并汇报，工作成果在公共数据中连接。
 
 ### 9.1 配置与权限
 
@@ -590,10 +594,10 @@ lead-helper 通过公共 Board 与 Git 组织一名 lead 和多名 helpers。lea
 | 团队 | 宿主预置 1 lead＋2 helpers；不开动态扩充 |
 | lead | 拆分调整、读公共进展、发布公告 |
 | helper | 读方向、创建/认领 subtasks、实现验证、提交汇报 |
-| Services | Board；Git/PR 复用 agensh 接入 |
+| Services | Board；Git/PR 复用 PeerMesh 接入 |
 | 输入/结束 | 用户固定发 lead；有界续轮；交付验收或预算/故障结束 |
 
-各 Bot 独立目录和受限 Git 身份，按第8章配置 env/network、secretEnv 与 bindings。lead 的完成声明须核对实际交付。
+各 Agent 独立目录和受限 Git 身份，按第8章配置 env/network、secretEnv 与 bindings。lead 的完成声明须核对实际交付。
 
 ### 9.2 Board Service 与命令
 
@@ -616,9 +620,9 @@ Board/CLI 为拟新增，可复用 SQLite/Service 方式。Profile 检查操作�
 
 ### 9.3 运行流程与关键接线
 
-1. Environment 初始化 Board、repo、账户与 Profiles，注册 adapters。
-2. 宿主 spawn lead/helpers，不带 input；配置 Git bindings/secretEnv，建立各 Bot 的输入 controller。
-3. lead 收到目标，写公告、分工与第一批 subtasks；Environment 检查初始化产物。
+1. Harness 初始化 Board、repo、账户与 Profiles，注册 adapters。
+2. 宿主 spawn lead/helpers，不带 input；配置 Git bindings/secretEnv，建立各 Agent 的输入 controller。
+3. lead 收到目标，写公告、分工与第一批 subtasks；Harness 检查初始化产物。
 4. helpers 查询公告和待办，认领后实现、验证、push/PR，发布 notes/landed。
 5. lead 根据公共反馈调整方向；helpers 下一轮读取更新继续工作。
 6. 交付通过，或预算/故障结束，保存公共记录并收尾。
@@ -630,17 +634,17 @@ const lead = await runtime.spawn({ requestId: "lead", profile: "lead" });
 await runInput(runtime, lead.id,
   "根据目标建立公告、分工和可认领的 subtasks。",
   { requestId: "lead-initialize", timeoutMs: config.turnTimeoutMs });
-// Board 初始化验收后，Environment 的串行 controller 启动 helpers。
+// Board 初始化验收后，Harness 的串行 controller 启动 helpers。
 // 实际 Git spawn 同时提供各自 bindings/secretEnv，参见第8章。
 ```
 
-runInput、Board 验收与 controller 是 Environment 代码。controller 决定触发时机与预算；Bot 决定业务拆分和执行。使用独占 helper 时不能有另一条直接输入或自动续轮来源。
+runInput、Board 验收与 controller 是 Harness 代码。controller 决定触发时机与预算；Agent 决定业务拆分和执行。使用独占 helper 时不能有另一条直接输入或自动续轮来源。
 
 ### 9.4 输入与失败收尾
 
 用户补充进入 lead controller，示例显式 followUp；lead 将其转换为公告、分工或 subtask 更新。若增加 busy steer，需明确输入关联，不能继续用独占 helper 判完成，也不能把 steer 写成“停止当前工具”。
 
-首例建议：任一关键 Bot 失败，记录失败并有界结束。Board 保留已认领工作的 owner 与失败原因；停止未知时不向另一 helper 释放相同工作。自动替补、claim 回收与重试另作恢复策略。
+首例建议：任一关键 Agent 失败，记录失败并有界结束。Board 保留已认领工作的 owner 与失败原因；停止未知时不向另一 helper 释放相同工作。自动替补、claim 回收与重试另作恢复策略。
 
 关闭时先停 controller、用户输入与新工作，有界 close 后按实际回执处理 Board/Git 连接。公共数据、PR 和已有成果保留；报告区分部分成果、未完成工作与待清理资源。
 
@@ -651,7 +655,7 @@ runInput、Board 验收与 controller 是 Environment 代码。controller 决定
 - lead 根据公共反馈更新一次方向，helpers 在后续工作中采用该更新。
 - 用户对 lead 的补充最终变成可追踪的公共调整。
 - 模拟 helper 失败后，本次运行能有界结束；不会悄悄把仍可能执行的旧 owner 的工作发给另一 helper。
-- Bot 停止后，Board、Git、成果与退出/清理证据仍可读取。
+- Agent 停止后，Board、Git、成果与退出/清理证据仍可读取。
 
 ### 9.6 来源与适配差异
 
@@ -665,13 +669,13 @@ runInput、Board 验收与 controller 是 Environment 代码。controller 决定
 
 | 门槛 | 完成标准 |
 | --- | --- |
-| Core 接口 | 类型和行为一致；无 Task Bot 能调用模型与自定义 Service；输入、授权、关闭及错误路径通过 Core 验收 |
-| flat 回归 | 原有 take、准备期 lease、Execution、Workspace/Material、续轮与清理行为保持；旧领域检查有明确归属 |
-| agensh 验收 | Q7 核心闭环：使用与 flat 相同的 Core，单 peer 接线成功、两个 peers 真实共享 Git/消息/上下文并完成协作；不要求完整 mid-turn notices；标准见第 8.5 节 |
-| 最小开发者示例（Q8） | 仓库外能安装、配置、启动、注册并调用自定义 Service、取得结果并停止；新增 Environment 无需修改 Core 内部 |
+| Core 接口 | 类型和行为一致；无 Task Agent 能调用模型与自定义 Service；输入、授权、关闭及错误路径通过 Core 验收 |
+| TaskPool 回归 | 原有 take、准备期 lease、Execution、Workspace/Material、续轮与清理行为保持；旧领域检查有明确归属 |
+| PeerMesh 验收 | Q7 核心闭环：使用与 TaskPool 相同的 Core，单 peer 接线成功、两个 peers 真实共享 Git/消息/上下文并完成协作；不要求完整 mid-turn notices；标准见第 8.5 节 |
+| 最小开发者示例（Q8） | 仓库外能安装、配置、启动、注册并调用自定义 Service、取得结果并停止；新增 Harness 无需修改 Core 内部 |
 | 其他模式 | 按各自验收完成后累计交付，源码参考与适配差异明确 |
 
-**Q8 已确认：一周版最低交付为 flat + agensh + 最小开发者示例。** Core 接口明确后，先验证 Agensh 单 peer 的网络、身份、Git、连续输入和导出，再接入第二个 peer 完成协作验收；同时保持 flat 回归，并确保仓库外示例能够独立导入 Core、注册自定义 Service、完成输入和收尾。subagents、scaleMAS、lead-helper 保留为后续目标。“前三天形成 Core”是期望节点，实际进度按验收结果判断。
+**Q8 已确认：一周版最低交付为 TaskPool + PeerMesh + 最小开发者示例。** Core 接口明确后，先验证 PeerMesh 单 peer 的网络、身份、Git、连续输入和导出，再接入第二个 peer 完成协作验收；同时保持 TaskPool 回归，并确保仓库外示例能够独立导入 Core、注册自定义 Service、完成输入和收尾。Subagents、Substrate、Lead-Worker 保留为后续目标。“前三天形成 Core”是期望节点，实际进度按验收结果判断。
 
 ### 10.2 每种模式的验收记录
 
@@ -681,26 +685,26 @@ runInput、Board 验收与 controller 是 Environment 代码。controller 决定
 
 保留实际 prompt、Profile/manifest 版本、模型配置、输入来源、关键 Service 操作、结果与清理证据。对适配时改变的通知时机、权限或检索规则明确标注，不将小型机制示例写成上游论文实验的完整复现。
 
-### 10.3 agensh 首版仍需打通的关键环节
+### 10.3 PeerMesh 首版仍需打通的关键环节
 
 | 环节 | 待实现与验收的事实 |
 | --- | --- |
-| 账户与网络 | Gitea、Mattermost、board 的真实 worker 身份绑定；Git credential helper 在私有 sandbox 可用，网络只放行授权目标，禁止把管理 token 暴露给 Bot |
+| 账户与网络 | Gitea、Mattermost、board 的真实 worker 身份绑定；Git credential helper 在私有 sandbox 可用，网络只放行授权目标，禁止把管理 token 暴露给 Agent |
 | 整轮输入 | 一条消息/PR 事件进入对应 peer 的单一 router；显式 followUp 后等待真正 settled，不因默认 steer 或早期 accepted 提前派发下一批 |
-| 共享协作 | 两个 peer 确实通过 Git/PR、消息和共享 board 协作，第二个 peer 读取并使用第一个 peer 的成果，而非两个独立 Bot 恰好完成同一项目 |
+| 共享协作 | 两个 peer 确实通过 Git/PR、消息和共享 board 协作，第二个 peer 读取并使用第一个 peer 的成果，而非两个独立 Agent 恰好完成同一项目 |
 | 产物收尾 | 已 push 的内容存入外部 Git；未 push 历史与未提交文件通过 Core 受限采集；导出失败遵守 Q6，残留 sandbox 有可定位的报告 |
 
-这些是首版 agensh 必须通过的集成验收，不包括原版 mid-turn notices、完整 MCP/ACP 协议适配、千级规模及高级故障恢复。设计合入 main 后，据此建立有验收条件的执行 issues。
+这些是首版 PeerMesh 必须通过的集成验收，不包括原版 mid-turn notices、完整 MCP/ACP 协议适配、千级规模及高级故障恢复。设计合入 main 后，据此建立有验收条件的执行 issues。
 
 ## 附录 A：完整的宿主接线示例
 
-这些文件属于 Environment 示例，调用本稿的拟议 Core API。它们不是当前仓库中已经可以安装的包。共享记录用于接口交接检查；模型输出的独立业务质量需另验收。
+这些文件属于 Harness 示例，调用本稿的拟议 Core API。它们不是当前仓库中已经可以安装的包。共享记录用于接口交接检查；模型输出的独立业务质量需另验收。
 
 ### A.1 Notes manifest
 
 ```ts
 // Proposed generic Service contract v2; not accepted by the legacy v1 parser.
-import type { ServiceManifest } from "@swarmenv/core/services";
+import type { ServiceManifest } from "@murm/core/services";
 
 const noteProperties = {
   key: { type: "string", minLength: 1, maxLength: 128 },
@@ -755,7 +759,7 @@ const notesManifest: ServiceManifest = {
 export default notesManifest;
 ```
 
-### A.2 Environment 与结果保存
+### A.2 Harness 与结果保存
 
 config 包含 model、image、backend、独立 outputDir、turnTimeoutMs、closeTimeoutMs 和上述 notesManifest。main 的调用形态是 `await main(config, optionalAbortSignal)`；停止信号由宿主接入，例如用户取消或预算到期。示例返回并保存两类失败，调用者据报告决定退出码。
 
@@ -763,19 +767,19 @@ config 包含 model、image、backend、独立 outputDir、turnTimeoutMs、close
 // Proposal example: these package exports have not been implemented yet.
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createRuntime, type Runtime, type BotInfo, type CloseReceipt,
-  type Profile, type ErrorInfo, type BotEvent, type InputReceipt } from "@swarmenv/core";
+import { createRuntime, type Runtime, type AgentInfo, type CloseReceipt,
+  type Profile, type ErrorInfo, type AgentEvent, type InputReceipt } from "@murm/core";
 import { ServiceRegistry, createInProcessAdapter }
-  from "@swarmenv/core/services";
+  from "@murm/core/services";
 import { createPiOpenSandboxBackend }
-  from "@swarmenv/core/backends/pi-opensandbox";
+  from "@murm/core/backends/pi-opensandbox";
 import { runInput } from "./run-input.js";
 
 type Note = { key: string; text: string; author: string };
 type Read = { botId: string; key: string };
 type ErrorRecord = { message: string; code?: string; cleanup?: unknown;
   reportPath?: string; botId?: string; requestId?: string; inputId?: string;
-  details?: readonly ErrorInfo[]; event?: BotEvent; receipt?: InputReceipt };
+  details?: readonly ErrorInfo[]; event?: AgentEvent; receipt?: InputReceipt };
 type Config = {
   model: string; image: string; outputDir: string;
   turnTimeoutMs: number; closeTimeoutMs: number;
@@ -796,7 +800,7 @@ export async function run(config: Config, signal?: AbortSignal) {
   const notes = new Map<string, Note>();
   const reads: Read[] = [];
   let runtime: Runtime | undefined;
-  let result: BotInfo | null = null;
+  let result: AgentInfo | null = null;
   let businessFailure: ErrorRecord | null = null;
   let cleanup: CloseReceipt | null = null;
   let cleanupFailure: ErrorRecord | null = null;
@@ -915,24 +919,24 @@ export async function main(config: Config, signal?: AbortSignal) {
 
 ### A.3 局部检查范围
 
-修订期间用模拟 Runtime 检查了等待 helper 的事件顺序、取消、超时、重复 ID、失败结果，以及 Environment 的工厂失败、业务/清理双失败和报告保存。它们验证示例自身控制流，不验证尚未实现的 Core、真实模型、Bridge 或 OpenSandbox。真实链路仍按第 10 节实施验收。
+修订期间用模拟 Runtime 检查了等待 helper 的事件顺序、取消、超时、重复 ID、失败结果，以及 Harness 的工厂失败、业务/清理双失败和报告保存。它们验证示例自身控制流，不验证尚未实现的 Core、真实模型、Bridge 或 OpenSandbox。真实链路仍按第 10 节实施验收。
 
 ## 附录 B：一次性输入等待 helper
 
-文件为 Environment 的 `run-input.ts`。仅用于第 4.1 节的严格独占场景；不能作为通用输入完成协议。timeoutMs 要为有限正整数，所有取消只结束宿主等待。已提交但结果不确定时保留请求身份并进入收尾，不通过另起一次等待猜测之前的结果。
+文件为 Harness 的 `run-input.ts`。仅用于第 4.1 节的严格独占场景；不能作为通用输入完成协议。timeoutMs 要为有限正整数，所有取消只结束宿主等待。已提交但结果不确定时保留请求身份并进入收尾，不通过另起一次等待猜测之前的结果。
 
 ```ts
-// Proposal example, not an implemented @swarmenv/core API.
-import type { Runtime, BotEvent, InputReceipt } from "@swarmenv/core";
+// Proposal example, not an implemented @murm/core API.
+import type { Runtime, AgentEvent, InputReceipt } from "@murm/core";
 
-type Settled = Extract<BotEvent, { type: "settled" }>;
+type Settled = Extract<AgentEvent, { type: "settled" }>;
 type Guard = { active: boolean; unresolved: boolean; used: Set<string> };
 const guards = new WeakMap<Runtime, Map<string, Guard>>();
 
 /**
- * Environment-only helper: one input source, idle Bot, no queued input or
+ * Environment-only helper: one input source, idle Agent, no queued input or
  * automatic continuation. A new requestId is required for every invocation.
- * Timeout/abort end this host wait; they do not cancel the Bot or its input.
+ * Timeout/abort end this host wait; they do not cancel the Agent or its input.
  */
 export async function runInput(
   runtime: Runtime,
@@ -1038,8 +1042,8 @@ export async function runInput(
 
 ## 附录 C：确认状态与修订记录
 
-产品目标、五个 mode 名称、四个基础工具、Core 模块化与 Environment 编程方式，以及 **Q1–Q8 的八项决策**均已确认。精确接口、backend 配置、Service v2、输入保证与清理政策是本阶段待实施和核验的目标合同；完整已确认约束保存在配套 Core 文档附录 C。
+产品目标、五个 mode 名称、四个基础工具、Core 模块化与 Harness 编程方式，以及 **Q1–Q8 的八项决策**均已确认。精确接口、backend 配置、Service v2、输入保证与清理政策是本阶段待实施和核验的目标合同；完整已确认约束保存在配套 Core 文档附录 C。
 
-**Q4 已确认：省略 send.mode 时默认 steer，显式 followUp 仍可选。** 本文 agensh 串行 router 和 runInput 一律显式 followUp。**Q8 已确认：首版为 flat + agensh + 最小开发者示例。** 本轮先通过文档 PR 将设计纳入 main，再按入库版本建立总 issue 与分阶段执行 issues。
+**Q4 已确认：省略 send.mode 时默认 steer，显式 followUp 仍可选。** 本文 PeerMesh 串行 router 和 runInput 一律显式 followUp。**Q8 已确认：首版为 TaskPool + PeerMesh + 最小开发者示例。** 本轮先通过文档 PR 将设计纳入 main，再按入库版本建立总 issue 与分阶段执行 issues。
 
-2026-11-23 本轮同步 Q1–Q8：首版 Pi/OpenSandbox、配置冻结、独立目录、默认 steer、idle 保留资源、required 导出失败保留 sandbox、agensh 核心闭环及 flat+agensh+最小示例。此前修订合并原正文与接线附录，统一各模式的结构；修正输入等待前提、事件错误快照、flat 准备期 heartbeat、模型授权接缝、三类 Agensh 身份映射、原生 Git 凭据和有期限收尾。
+2026-11-23 本轮同步 Q1–Q8：首版 Pi/OpenSandbox、配置冻结、独立目录、默认 steer、idle 保留资源、required 导出失败保留 sandbox、PeerMesh 核心闭环及 TaskPool+PeerMesh+最小示例。此前修订合并原正文与接线附录，统一各模式的结构；修正输入等待前提、事件错误快照、TaskPool 准备期 heartbeat、模型授权接缝、三类 Agensh 身份映射、原生 Git 凭据和有期限收尾。

@@ -9,7 +9,7 @@ const execute = promisify(execFile);
 import { createRuntime } from '../src/core/index.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
-import { runInput } from '../src/environments/shared/run-input.js';
+import { runInput } from '../src/harnesses/shared/run-input.js';
 import { parsePrivateUpstreamHeaders } from './fixtures/flat-model-acceptance.js';
 import { createCappedUpstream } from './fixtures/core-capped-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';

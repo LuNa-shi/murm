@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
-import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
+import { createPiOpenSandboxBackend } from '@murm/core/backends/pi-opensandbox';
 import { streamResponse } from './core-controlled-upstream.js';
 
 export function botControlBackend(upstream, sandbox, { host = '172.17.0.1', listen = '0.0.0.0' } = {}) {

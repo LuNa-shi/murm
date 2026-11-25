@@ -11,12 +11,12 @@ import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../src/protocol/envelope.js';
 import { transport, controls } from './fixtures/flat-controller-backend.js';
-import { readEnvironmentResult } from '../src/environments/shared/read-result.js';
+import { readHarnessResult } from '../src/harnesses/shared/read-result.js';
 const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {runFlatEnvironment}=await import('../src/environments/flat/environment.js');hooks.deregister();
+const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');hooks.deregister();
 
 test('Flat can finish with a public Material when no live Workspace capture is configured', async t => {
   const root=await mkdtemp(join(tmpdir(),'flat-environment-'));
@@ -25,7 +25,7 @@ test('Flat can finish with a public Material when no live Workspace capture is c
   transport.reset(); controls.credentials.clear(); controls.stopError=null; controls.destroyError=null;
   const accept=id=>{transport.confirm(id,'started');transport.next=accept;}; transport.next=accept;
   let materialId;
-  const report=await runFlatEnvironment({...stores,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
+  const report=await runTaskPoolHarness({...stores,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
     outputDir:root,deadlineAt:Date.now()+10000,backend:{},model:'default',image:'fixture',capacity:1,
     async drive(controller) {
       const [{botId}]=controller.snapshot().bots;
@@ -72,7 +72,7 @@ test('flat close retains physical cleanup and reconciles remaining Bots after on
     }
     return finalize(botId);
   };
-  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+  const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
     deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 2,
     snapshotProject: async () => { throw new Error('No capture is needed for discovery shutdown'); },
@@ -92,7 +92,7 @@ test('flat close retains physical cleanup and reconciles remaining Bots after on
   assert.deepEqual(saved.cleanup, report.cleanup);
   assert.deepEqual(saved.cleanupFailure, report.cleanupFailure);
   assert.deepEqual(report.cleanupFailure.details, [{ botId: failedBotId, code: 'DOMAIN_CLOSE_FAILED', message: 'Controlled domain close failure' }]);
-  const inspected = await readEnvironmentResult({ runDirectory: join(root, report.runtimeId), runtimeId: report.runtimeId });
+  const inspected = await readHarnessResult({ runDirectory: join(root, report.runtimeId), runtimeId: report.runtimeId });
   assert.equal(inspected.environment.cleanup, 'complete');
   assert.equal(inspected.core.cleanup, 'complete');
   assert.equal(inspected.environment.cleanupFailureCode, 'FLAT_CLOSE_RECONCILIATION_FAILED');
@@ -109,7 +109,7 @@ test('flat host composes public Bash publication and controller finish with dura
   const hash=value=>createHash('sha256').update(value).digest('hex');
   const manifest=Object.fromEntries(Object.entries(files).map(([path,bytes])=>[path,{bytes:bytes.length,content_hash:hash(bytes)}]));
   let materialId,revision,captures=0;
-  const report=await runFlatEnvironment({...stores,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
+  const report=await runTaskPoolHarness({...stores,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
     outputDir:root,deadlineAt:Date.now()+10000,backend:{},model:'default',image:'fixture',capacity:1,
     async snapshotProject({executionId,fencingVersion}) {captures++;return {execution_id:executionId,binding_version:fencingVersion,state:'ACTIVE',files:Object.fromEntries(Object.entries(files).map(([path,bytes])=>[path,bytes.toString('base64')])),manifest,content_hash:hash(stableStringify(manifest))};},
     async drive(controller) {
@@ -179,7 +179,7 @@ async function runPublicationProbe(t, snapshotProject, probe) {
   const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
   transport.next = accept;
   let probeFailure;
-  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+  const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
     deadlineAt: Date.now() + 20_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
     // Trusted test capture only. This does not provide a production live snapshot.
@@ -376,7 +376,7 @@ test('flat rejects a configured Workspace from another Mission before allocating
   const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
   transport.next = accept;
   let entered = false;
-  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+  const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, workspaceId: foreign.workspace_id,
     outputDir: root, deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
     snapshotProject: async () => { throw new Error('No capture is needed for a public read'); },
@@ -410,7 +410,7 @@ for (const [operation, method, payload] of [
   const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
   transport.next = accept;
   let probeFailure;
-  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+  const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
     deadlineAt: Date.now() + 15_000, backend: {}, model: 'default', image: 'fixture', capacity: 2,
     snapshotProject: async () => { throw new Error('No capture is needed for a public read'); },
@@ -519,7 +519,7 @@ test('flat metadata admission preserves host cancellation when an already admitt
     }, options);
   };
   const controller = new AbortController();
-  const pending = runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+  const pending = runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
     deadlineAt: Date.now() + 10_000, backend: {}, model: 'default', image: 'fixture', capacity: 1,
     signal: controller.signal,
@@ -562,7 +562,7 @@ test('four current CLI discovery Bots take exclusive work and reuse only a physi
     return JSON.parse((await promisify(execFile)(process.execPath, ['dist/scripts/swarm.js', ...args], { env, timeout: 5000 })).stdout);
   };
   let initial, takes, replacement;
-  const report = await runFlatEnvironment({ ...stores, taskService: stores.tasks, contextService: stores.context,
+  const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
     missionWorkspace: stores.workspace, workspaceManager: stores.manager, missionId, workspaceId: workspace.workspace_id,
     outputDir: root, deadlineAt: Date.now() + 20_000, backend: {}, model: 'default', image: 'fixture', capacity: 4,
     controller: { heartbeatMs: 10000, stallMs: 15000 },
@@ -638,7 +638,7 @@ test('the ordinary Flat host exposes Mathlib search only to its current research
   const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
   transport.next = accept;
   const searched = [];
-  const report = await runFlatEnvironment({
+  const report = await runTaskPoolHarness({
     ...stores, taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace,
     workspaceManager: stores.manager, outputDir: root, deadlineAt: Date.now() + 10_000,
     backend: {}, model: 'default', image: 'fixture', capacity: 1,

@@ -12,9 +12,9 @@ async function fixture(t, modify = value => value) {
   const provider = await createLifecycleProvider(t, { createExpiresAt: () => new Date(Date.now() + 5100000).toISOString(),
     onGet(id, resource, response) { gets.push(id); return modify({ id, status: { state: 'Running' }, metadata: resource.labels, expiresAt: new Date(Date.now() + 5000000).toISOString() }, response); } });
   provider.allowDeletion();
-  const { createRuntime } = await import('@swarmenv/core');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
+  const { createRuntime } = await import('@murm/core');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
+  const { ServiceRegistry } = await import('@murm/core/services');
   const outputDir = await mkdtemp(join(tmpdir(), 'lifetime-observation-'));
   runtime = await createRuntime({ backend: createPiOpenSandboxBackend({
     sandbox: { lifecycleBaseUrl: provider.url, timeoutSeconds: 5100 }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' },

@@ -27,9 +27,9 @@ test('four idle native Core Bots attest actual provider lifetime and terminal de
   const headers = apiKey ? { 'OPEN-SANDBOX-API-KEY': apiKey } : {};
   let runtime, receiptSaved = false, probing = false;
   try {
-    const { createRuntime } = await import('@swarmenv/core');
-    const { ServiceRegistry } = await import('@swarmenv/core/services');
-    const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+    const { createRuntime } = await import('@murm/core');
+    const { ServiceRegistry } = await import('@murm/core/services');
+    const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
     const backend = createPiOpenSandboxBackend({
       sandbox: { lifecycleBaseUrl: lifecycle, endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey,
         timeoutSeconds: lifetimeProbePlan.timeoutSeconds, resourceLimits: lifetimeProbePlan.resourceLimits, commandTimeoutMs: 30000 },

@@ -9,7 +9,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { TaskService } from '../src/task/task-service.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 import { createCoreModelAccess } from '../src/core/model-access.js';
-import { createFlatModelAccessPolicy } from '../src/environments/flat/model-access-policy.js';
+import { createTaskPoolModelAccessPolicy } from '../src/harnesses/taskpool/model-access-policy.js';
 
 async function fixture(t, { held = false } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'flat-model-'));
@@ -27,7 +27,7 @@ async function fixture(t, { held = false } = {}) {
     else response.end('event: response.completed\ndata: {"type":"response.completed","response":{"usage":{"input_tokens":1,"output_tokens":1}}}\n\n');
   });
   upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening');
-  const policy = createFlatModelAccessPolicy({ runtimeId: 'r', taskService: tasks, missionId: 'm', deadline: () => deadlineAt });
+  const policy = createTaskPoolModelAccessPolicy({ runtimeId: 'r', taskService: tasks, missionId: 'm', deadline: () => deadlineAt });
   const access = await createCoreModelAccess({ runtimeId: 'r', outputDir, modelAccessPolicy: policy,
     getBot: id => id === 'b' ? { profile: 'readonly', model: 'default', status: 'idle' } : null,
     config: { modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs: 5000, maxOutputTokens: 32 },
@@ -98,7 +98,7 @@ test('flat withCommit holds real SQLite lifecycle authority exactly through its 
   tasks.createMission({ mission_id: 'm', goal: 'Verify synchronous model admission ordering' }, makeEnvelope({ actorRef: 'host' }));
   const deadline = Date.now() + 10_000;
   tasks.registerBot({ botId: 'b', missionId: 'm', legacySlotId: 'slot', selectionDeadline: new Date(deadline).toISOString() }); tasks.markCoreBotReady('b');
-  const policy = createFlatModelAccessPolicy({ runtimeId: 'r', taskService: tasks, missionId: 'm', deadline: () => deadline });
+  const policy = createTaskPoolModelAccessPolicy({ runtimeId: 'r', taskService: tasks, missionId: 'm', deadline: () => deadline });
   let calls = 0;
   const result = policy.withCommit(() => {
     calls++;

@@ -12,7 +12,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/flat-controller-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { runForegroundEnvironment } = await import('../src/environments/shared/foreground-host.js'); hooks.deregister();
+const { runForegroundHarness } = await import('../src/harnesses/shared/foreground-host.js'); hooks.deregister();
 
 test('flat foreground input uses the current controller Task binding and stops with domain reconciliation', async t => {
   const root = await mkdtemp(join(tmpdir(), 'foreground-flat-'));
@@ -21,7 +21,7 @@ test('flat foreground input uses the current controller Task binding and stops w
   transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
   transport.next = function accept(id) { transport.confirm(id, 'started'); transport.next = accept; };
   let snapshot;
-  const report = await runForegroundEnvironment({ mode: 'flat', timeoutMs: 10_000, options: {
+  const report = await runForegroundHarness({ mode: 'flat', timeoutMs: 10_000, options: {
     ...stores, taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace,
     workspaceManager: stores.manager, outputDir: root, backend: {}, model: 'default', image: 'fixture', capacity: 1,
     deadlineAt: Date.now() + 10_000, closeTimeoutMs: 1000,

@@ -8,15 +8,15 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls, transport } from './fixtures/flat-controller-backend.js';
-import { createFlatBotCoordinator } from '../src/environments/flat/bot-coordinator.js';
-import { createFlatTaskService, flatResearcherProfile } from '../src/environments/flat/task-service.js';
+import { createTaskPoolAgentCoordinator } from '../src/harnesses/taskpool/bot-coordinator.js';
+import { createTaskPoolTaskService, taskPoolResearcherProfile } from '../src/harnesses/taskpool/task-service.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {createRuntime}=await import('@swarmenv/core');hooks.deregister();
+const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 async function fixture(t, { coordinationPermissions = ['task_dependency_replace'], registeredPermissions = coordinationPermissions, profileAllows = true } = {}) {
   const root=await mkdtemp(join(tmpdir(),'flat-coordination-'));
@@ -24,7 +24,7 @@ async function fixture(t, { coordinationPermissions = ['task_dependency_replace'
   stores.tasks.contextService=stores.context;
   let runtime;
   const lookup={beforeGet:null};
-  const discovery=createFlatTaskService({runtime:()=>({...runtime,async get(id){const result=await runtime.get(id);await lookup.beforeGet?.();return result;}}),taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000,coordinationPermissions});
+  const discovery=createTaskPoolTaskService({runtime:()=>({...runtime,async get(id){const result=await runtime.get(id);await lookup.beforeGet?.();return result;}}),taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000,coordinationPermissions});
   const services = new ServiceRegistry();
   services.registerService(discovery);
   const allowed = { task: discovery.manifest.capabilities.map(capability => capability.operation) };
@@ -37,7 +37,7 @@ async function fixture(t, { coordinationPermissions = ['task_dependency_replace'
     const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.href.replace(/\/$/,'');
     const {stdout}=await execute(process.execPath,[new URL('../scripts/swarm.js',import.meta.url).pathname,...args],{env,timeout:15000});return JSON.parse(stdout);
   };
-  const coordinator=createFlatBotCoordinator({runtime,taskService:stores.tasks,missionId:stores.missionId,coordinationPermissions:registeredPermissions});
+  const coordinator=createTaskPoolAgentCoordinator({runtime,taskService:stores.tasks,missionId:stores.missionId,coordinationPermissions:registeredPermissions});
   const bots=[];
   for(let i=0;i<2;i++) {
 
@@ -100,7 +100,7 @@ test('explicitly granted UNBOUND CLI repairs with context-free authority and rep
 });
 
 test('Profile capability and registered grant are separate and both default to denied',async t=>{
-  assert.equal(flatResearcherProfile({}).services.task.includes('task_dependency_replace'),false);
+  assert.equal(taskPoolResearcherProfile({}).services.task.includes('task_dependency_replace'),false);
   for(const options of [{coordinationPermissions:[]},{registeredPermissions:[]},{profileAllows:false}]) {
     const f=await fixture(t,options);
     const {old,replacement,dependent}=await cancelledDependency(f);
@@ -130,14 +130,14 @@ test('dependency repair keeps Mission, target ownership and latest execution fen
 });
 
 test('actual Flat host threads only explicit grants into frozen Profile, Service and registered Bots',async t=>{
-  const {runFlatEnvironment}=await import('../src/environments/flat/environment.js');
+  const {runTaskPoolHarness}=await import('../src/harnesses/taskpool/harness.js');
   for(const coordinationPermissions of [[],['task_dependency_replace']]) {
     const root=await mkdtemp(join(tmpdir(),'flat-host-coordination-'));
     const stores=await createFlatTaskStores(root);
     t.after(async()=>{stores.close();await rm(root,{recursive:true,force:true});});
     transport.reset();controls.credentials.clear();controls.stopError=null;controls.destroyError=null;
     const accept=id=>{transport.confirm(id,'started');transport.next=accept;};transport.next=accept;
-    const report=await runFlatEnvironment({taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
+    const report=await runTaskPoolHarness({taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
       missionId:stores.missionId,workspaceId:stores.workspaceId,outputDir:root,deadlineAt:Date.now()+30000,backend:{},model:'default',image:'fixture',capacity:1,
       coordinationPermissions,snapshotProject:async()=>{throw new Error('No capture required');},
       async drive(controller) {
@@ -165,11 +165,11 @@ test('actual Flat host threads only explicit grants into frozen Profile, Service
 
 test('coordination configuration rejects unrelated grants and never derives permission from a mutable input',()=>{
   for(const coordinationPermissions of [null,'task_dependency_replace',Array(1),['mission_force_submit'],['unknown']]) {
-    assert.throws(()=>flatResearcherProfile({coordinationPermissions}),{code:'INVALID_CONTRACT'});
+    assert.throws(()=>taskPoolResearcherProfile({coordinationPermissions}),{code:'INVALID_CONTRACT'});
   }
-  assert.equal(flatResearcherProfile({coordinationPermissions:['unsupersede']}).services.task.includes('unsupersede'),false);
+  assert.equal(taskPoolResearcherProfile({coordinationPermissions:['unsupersede']}).services.task.includes('unsupersede'),false);
   const coordinationPermissions=[];
-  const profile=flatResearcherProfile({coordinationPermissions});
+  const profile=taskPoolResearcherProfile({coordinationPermissions});
   coordinationPermissions.push('task_dependency_replace');
   assert.equal(profile.services.task.includes('task_dependency_replace'),false);
 });

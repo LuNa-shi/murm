@@ -5,11 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { request } from 'node:http';
-import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
+import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { transport, controls } from './fixtures/flat-controller-backend.js';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
-import { createFlatController } from '../src/environments/flat/controller.js';
+import { createTaskPoolController } from '../src/harnesses/taskpool/controller.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next){
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
@@ -23,7 +23,7 @@ async function fixture(t,options={}) {
   const services = new ServiceRegistry();
   let publication;
   if (options.onFinish) {
-    publication = createFlatPublicationServices({ runtime: () => runtime, taskService: stores.tasks,
+    publication = createTaskPoolPublicationServices({ runtime: () => runtime, taskService: stores.tasks,
       contextService: stores.context, missionWorkspace: stores.workspace, missionId: stores.missionId,
       workspaceId: stores.workspaceId, deadline: () => Date.now() + 60000,
       onFinish(receipt) { options.onFinish(receipt); controller.notify(); } });
@@ -32,7 +32,7 @@ async function fixture(t,options={}) {
   runtime=await createRuntime({backend:{},profiles:{researcher:{prompt:'Fixed',model:'default',image:'fixture',writable:false,services:publication?{task:['task_finish']}:{}}},services,maxBots:options.capacity??2,outputDir:root});
   const accepted=id=>{transport.confirm(id,'started');transport.next=accepted;}; transport.next=accepted;
   const reads={beforeGet:null};
-  controller=createFlatController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
+  controller=createTaskPoolController({runtime:{...runtime,async get(id){await reads.beforeGet?.();return runtime.get(id);}},taskService:stores.tasks,missionId:stores.missionId,capacity:1,deadlineAt:Date.now()+60000,heartbeatMs:10000,stallMs:30000,...options});
   t.after(async()=>{controls.stopError=null;controls.destroyError=null;publication?.close();await controller.close();await runtime.close();stores.close();await rm(root,{recursive:true,force:true});});
   options.captureController?.(controller);
   await options.beforeStart?.(stores);

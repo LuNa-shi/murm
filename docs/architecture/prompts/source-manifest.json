@@ -11,7 +11,7 @@
     },
     {
       "path": "src/agent/services-bridge.ts",
-      "sha256": "f2ba8c143c277f817a49248e85c1499dd27083be081d8deefd663cd9ce4b8fd5"
+      "sha256": "e7e4958aa7a1d4d8fb317d26c2fe89291181f2e2a2d4e7aa330fafda6250653e"
     },
     {
       "path": "src/cli/swarm-cli.ts",
@@ -23,11 +23,11 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "18b7084a77c8f7758ad697aaf4a5158670c9cb66b4843703291bb19a6ae4cfed"
+      "sha256": "75864afead0fa320e7d34a59dceedcc57f10f17a8d7bd8e386ce30dde9ca23ca"
     },
     {
       "path": "src/core/bridge.ts",
-      "sha256": "b222d2be7d421e39a0b1808517635c8c05337c5763773d02e6f40ba6468b36bf"
+      "sha256": "540bc41855dc9ffa4f1589c26334fc38e40821ecb8b682f6cf00e01c3c7a5b91"
     },
     {
       "path": "src/core/startup-prompt.ts",
@@ -35,63 +35,63 @@
     },
     {
       "path": "src/core/pi-opensandbox-backend.ts",
-      "sha256": "02e5fde141e6eff1b242d3ea42b3f09a22b5340256141a817823a30e446720ba"
+      "sha256": "6ff8338719099bb7bc714af9fc8ae247014618c28190966bf7c36279913ddc8f"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
       "sha256": "05dd10f01dbd32ad72b24fbf155c7c8d6c0b49e86802191c60bee565c1c01acc"
     },
     {
-      "path": "examples/notes-environment/main.ts",
-      "sha256": "21db09fa2a52e25b81fae13461939ed08aaa09b3ee572a8aaceb5d9f043cc3f4"
+      "path": "examples/notes/main.ts",
+      "sha256": "92681258682f851c26461e9c62ed5d8d1f8f73c66cfeba1ba18437ac5a6e25a2"
     },
     {
-      "path": "src/environments/shared/run-input.ts",
-      "sha256": "4944128a697242f41dd03f652eb1a86271221d1df24cd78c3f1c8ecaa9f80098"
+      "path": "src/harnesses/shared/run-input.ts",
+      "sha256": "12cf0fb7131a543698f32582c7fb63c1c23da330e539e41e254f502f35c15ad2"
     },
     {
-      "path": "src/environments/scalemas/index.ts",
-      "sha256": "8b42231510f94c8108709ad6cc2ddbc5d0682120ba4f1d7918896718ab1caaab"
+      "path": "src/harnesses/substrate/index.ts",
+      "sha256": "9c73846a163ccc7c19c96b3e931e9d67500b22f60774bcd7b0bc2e2e74cf8b64"
     },
     {
-      "path": "src/environments/scalemas/substrate.ts",
-      "sha256": "67465d3b8f76aacb0c959f451f14982ef75f90f2372f6844b0b93e9f805afb9d"
+      "path": "src/harnesses/substrate/substrate.ts",
+      "sha256": "65aa02fa7446f6303703e71e4113aa236beac6b96c17d32046938f4693faa400"
     },
     {
-      "path": "src/environments/flat/controller.ts",
-      "sha256": "4d718d125e2b409f3b8b5c0ab6d92f85c3eb9d2bba7891c58fcff62162dce76c"
+      "path": "src/harnesses/taskpool/controller.ts",
+      "sha256": "27c7ed9639eaa41580f64f438dcf68c6b1bbd58768c8731fc1e49c2c35ccfde5"
     },
     {
-      "path": "src/environments/flat/environment.ts",
-      "sha256": "650af62438f9b4e6cb060fb7154522ebd36446901ff44c1099b7e12185f6a996"
+      "path": "src/harnesses/taskpool/harness.ts",
+      "sha256": "30eb9170c69999d282a5345b0acaff589c41178db9fd4f67164b49f3df8d8cff"
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "83a3e1c8b84556c26c5370439f6c643fa7ca0e55a28074ba25c63ec26afce423"
+      "sha256": "7fa89edae4d8d41c6d0bc25f8ad50689385f4aaba7afd90a991ac8ffd74c4c69"
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
-      "sha256": "bc23db35d6a52ee0b9ab2301e1d4b66f1f2e32f43fd2bd1a4fe0582842ca7b66"
+      "sha256": "c547dcf7d51a61587a69313dfd413b60594ec1c11009e71edc9d54774a154d08"
     },
     {
-      "path": "examples/subagents-environment/main.ts",
-      "sha256": "3ae92d7d6f146de08bcc918e06b2a99721b11805a3945a2b933b5c1a3ce84803"
+      "path": "examples/subagents/main.ts",
+      "sha256": "224598fca310205ad428e5405e703a8231babfa41511ca81a08010561273e707"
     },
     {
-      "path": "examples/subagents-environment/controller.ts",
-      "sha256": "08d75dcbb1c91c88423237fc09dd177ff96f44e3ec8ba16d8f5cf9814db26db1"
+      "path": "examples/subagents/controller.ts",
+      "sha256": "2f4d47f6cc01cab41c653585f5c05226296d20c3c2fbcc8536dc04ddc2f3ad27"
     },
     {
-      "path": "examples/subagents-environment/prompts.ts",
+      "path": "examples/subagents/prompts.ts",
       "sha256": "76fdca19d7bf342d53a0bd57f98c939e39913d3df3316c9aab6c6bcf5f7d4bb4"
     },
     {
-      "path": "examples/subagents-environment/collaboration-service.ts",
-      "sha256": "2b9976254e64f61b62537afb081b54595607630a5da21e9451ad0971f050c708"
+      "path": "examples/subagents/collaboration-service.ts",
+      "sha256": "cbc1aeec07e52f9d916fc91ce7806a4a3c0f37fa271e6ae07a5525b8e354618b"
     },
     {
       "path": "test-support/subagents/communication-fixture.ts",
-      "sha256": "da597ca11a4cc83b060e7068f4e40d4ac19fb330a6519dd1de23d0600d69c711"
+      "sha256": "5636139206bf08eda2d87ecfc769fd2ad6ff897f2edb8b73166931d6084e01e2"
     },
     {
       "path": "test-support/subagents/communication-fixture-controller.ts",
@@ -102,20 +102,20 @@
       "sha256": "31f00fce9ac22b4062a771d56956d40555e7a65e323a3a3760b63dc6418d3127"
     },
     {
-      "path": "src/environments/agensh/index.ts",
-      "sha256": "3570b54545923529e7b8002202d77842bd9869514846d716aecf8f9e9e278f1c"
+      "path": "src/harnesses/peermesh/index.ts",
+      "sha256": "9e0b028b10c927694540eff2ede5aca916ed9d094ab49addd43b0ef6c66d775f"
     },
     {
-      "path": "src/environments/agensh/router.ts",
-      "sha256": "cacf139d1c8a3d0023bea2f110f72a977605fbff89128ec4012fa2b8c6332ec1"
+      "path": "src/harnesses/peermesh/router.ts",
+      "sha256": "f89cf41e0ce16be20b006997864fe8e08091f459dc9c9e3b185d2d7630196b30"
     },
     {
-      "path": "src/environments/agensh/routed.ts",
-      "sha256": "2ddfed8ea5f7d91eabb9068dd38261c0e2e13ba759eed84134925280af2ea033"
+      "path": "src/harnesses/peermesh/routed.ts",
+      "sha256": "c3ea179240985e766675348ae31441d3288e4e9c2b5c295aec59414b578f7db2"
     },
     {
-      "path": "src/environments/agensh/team.ts",
-      "sha256": "7db4360397ba3e9e632717fd6d88025438003ccf10e8dda2d4e43cdd632c053d"
+      "path": "src/harnesses/peermesh/team.ts",
+      "sha256": "b3add286d20e202595a1de12d379fdce63354cd81959afcd176ef36f77b6f18c"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.ts",
@@ -123,15 +123,15 @@
     },
     {
       "path": "test/agensh-team-kimi-real.test.ts",
-      "sha256": "25c7f083078a04845aab8777fc63fb8437bfb41de4f1b3ee56b27e0276ee07d4"
+      "sha256": "4a00b14f7001a28fba209477d577a2389e9e447da19cc9b98d97f1f419dd1157"
     },
     {
-      "path": "src/environments/lead-helper/prompts.ts",
+      "path": "src/harnesses/lead-worker/prompts.ts",
       "sha256": "09e951aea170efce4d575db35925e1cf7afc41f56e4678a46da6f6f79554cc20"
     },
     {
-      "path": "src/environments/lead-helper/index.ts",
-      "sha256": "29260394acd3004120ccfae60c5e3f7ebc94aecc3156b84473626e83c5de7331"
+      "path": "src/harnesses/lead-worker/index.ts",
+      "sha256": "228e5f3c0cc0c7cc3c11b28e29e7da1f1997c95dac485fcf70efa74d0f10379a"
     },
     {
       "path": "src/runtime/runtime.ts",
@@ -151,7 +151,7 @@
     },
     {
       "path": "src/sdk/builtin-registry.ts",
-      "sha256": "98d9ded93d7254f1813080c71862e0b8a305de12704219046156e16bd5787623"
+      "sha256": "ccb1dea4ee2e42ecd86169d9ccc2c8b8d151a7184e3b9795802499357302db46"
     },
     {
       "path": "src/sdk/service-bundle.ts",
@@ -192,13 +192,13 @@
   ],
   "extracted_spans": [
     {
-      "path": "examples/notes-environment/main.ts",
+      "path": "examples/notes/main.ts",
       "anchor": "const key = '",
       "line": 10,
       "sha256": "1372308bcd0c2a4bf0cce93a81833b1d747d74543ebfb743f7124eecabb21c67"
     },
     {
-      "path": "examples/notes-environment/main.ts",
+      "path": "examples/notes/main.ts",
       "anchor": "const inputText = Object.freeze(",
       "line": 73,
       "sha256": "6773660d227007f580e938b67335d3b93619e2253c501904ab14235c89534687"
@@ -234,97 +234,97 @@
       "sha256": "1e96fc7dae086fcde47e0d5648f0ab79d43e74c4b8653f574ef05f6ad03cf2f6"
     },
     {
-      "path": "src/environments/scalemas/index.ts",
+      "path": "src/harnesses/substrate/index.ts",
       "anchor": "export const peerPrompt = '",
       "line": 8,
       "sha256": "80f964edecba1ce3c7c40cfb732799bdfb7ae96699d39185e2f6635555a6daeb"
     },
     {
-      "path": "src/environments/scalemas/substrate.ts",
+      "path": "src/harnesses/substrate/substrate.ts",
       "anchor": "purpose: '",
       "line": 91,
       "sha256": "0a5954f75ed9fac077a64924acfeeb5b9d0871937b25133d43f17756ab349700"
     },
     {
-      "path": "src/environments/scalemas/substrate.ts",
+      "path": "src/harnesses/substrate/substrate.ts",
       "anchor": "capability('publish', '",
       "line": 93,
       "sha256": "6467664b40aa318b9471d337f8aff53a5ae1306c1371c6c623bfe4eb3559b5a8"
     },
     {
-      "path": "src/environments/scalemas/substrate.ts",
+      "path": "src/harnesses/substrate/substrate.ts",
       "anchor": "capability('visit', '",
       "line": 94,
       "sha256": "2ba12cb0a0ff3527b9894ca1582cb29e63d19a6f5e65441a21161867a5adadc8"
     },
     {
-      "path": "src/environments/scalemas/substrate.ts",
+      "path": "src/harnesses/substrate/substrate.ts",
       "anchor": "capability('search', '",
       "line": 95,
       "sha256": "fbf343059b480fcf7250e0cfe40d58971d1f9151239e1416fa224c4f05973d5d"
     },
     {
-      "path": "src/environments/scalemas/index.ts",
+      "path": "src/harnesses/substrate/index.ts",
       "anchor": "export const cyclePrompt = '",
       "line": 9,
       "sha256": "c783b6377a748f73ae5b941513f362f67a9ef7155f6da56671047e8af5182df4"
     },
     {
-      "path": "src/environments/scalemas/index.ts",
+      "path": "src/harnesses/substrate/index.ts",
       "anchor": "                  const text = ",
       "line": 99,
       "sha256": "de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926"
     },
     {
-      "path": "src/environments/agensh/index.ts",
+      "path": "src/harnesses/peermesh/index.ts",
       "anchor": "export const peerPrompt = `",
       "line": 8,
       "sha256": "61ab614acee642624a754020fcc0892fb27e153b3ba6246c4c7f74f64db7ea7b"
     },
     {
-      "path": "src/environments/agensh/index.ts",
+      "path": "src/harnesses/peermesh/index.ts",
       "anchor": "export const projectPeerPrompt = `",
       "line": 10,
       "sha256": "9f7bb83c8e59fc4859bb8a422ca2443597d425c4c2723567b951b796b187e139"
     },
     {
-      "path": "src/environments/agensh/team.ts",
+      "path": "src/harnesses/peermesh/team.ts",
       "anchor": "router.kickoff(",
       "line": 175,
       "sha256": "44a86c7b2af129d1bc52061deff91cd39283d1e6b62f805dcb688a5e4997e936"
     },
     {
-      "path": "src/environments/agensh/router.ts",
+      "path": "src/harnesses/peermesh/router.ts",
       "anchor": "const input = `",
       "line": 122,
       "sha256": "af43c6bff137ff9e10f45f78dee5898ff864fba2101f83793f42c5e08db2d079"
     },
     {
-      "path": "src/environments/agensh/router.ts",
+      "path": "src/harnesses/peermesh/router.ts",
       "anchor": "export const routerInstruction = '",
       "line": 8,
       "sha256": "ebb4197c01fd6d34a6e1250d52a9ad95a47f84e5324e9eadb9ca58d8747a9eb3"
     },
     {
-      "path": "src/environments/agensh/router.ts",
+      "path": "src/harnesses/peermesh/router.ts",
       "anchor": "export const projectRouterInstruction = '",
       "line": 10,
       "sha256": "fdaf08ca8c2a09f1c38d63d5894e20b9bc53139d21d643c9352cf2d543168658"
     },
     {
-      "path": "src/environments/agensh/router.ts",
+      "path": "src/harnesses/peermesh/router.ts",
       "anchor": "export const noticeInstruction = '",
       "line": 11,
       "sha256": "24f55cf7d5ef1a00c65474e63293fa02e350272e26196a687e8e3bf98a864ad7"
     },
     {
-      "path": "src/environments/agensh/router.ts",
+      "path": "src/harnesses/peermesh/router.ts",
       "anchor": "const steerText = `",
       "line": 52,
       "sha256": "6095e708b6735ad9e9f79414129a7c29efbc9fed340ed4d90ad1920ae80f4f77"
     },
     {
-      "path": "src/environments/agensh/router.ts",
+      "path": "src/harnesses/peermesh/router.ts",
       "anchor": "export const idleNudgeInput = '",
       "line": 7,
       "sha256": "4434a9725ae7dfe349ef64dbbacf6d10b80cc11e06828ee222e0c76f4eb33b0f"
@@ -360,43 +360,43 @@
       "sha256": "8f943ea32b0291bed1fdbb8ecd6c55761fd81fb047587040bff06c185d1e063c"
     },
     {
-      "path": "src/environments/lead-helper/prompts.ts",
+      "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const leadPrompt = `",
       "line": 1,
       "sha256": "66c233e655bf948d04a594d7f4d63567941f8f466ea2fae9e431618ac77c9ed9"
     },
     {
-      "path": "src/environments/lead-helper/prompts.ts",
+      "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const helperPrompt = `",
       "line": 2,
       "sha256": "9fcf8519feb1b37203393930b243e0ffd776a12749aa1de1a0a582ce5b60fb83"
     },
     {
-      "path": "src/environments/lead-helper/prompts.ts",
+      "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const initializeInstruction = '",
       "line": 3,
       "sha256": "0bb76cfd2a5782258de1f2c0ac5304b1ab3761c2e5c59c5dbf9133267d6dccf2"
     },
     {
-      "path": "src/environments/lead-helper/prompts.ts",
+      "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const helperInitialInstruction = '",
       "line": 4,
       "sha256": "655a5ce3f8cca7a5a32fa0cc01c843d16df7d1f622e2a4464151c67cd162cfc3"
     },
     {
-      "path": "src/environments/lead-helper/prompts.ts",
+      "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const leadAdjustmentInstruction = '",
       "line": 5,
       "sha256": "b87643bf5ec03c1de13086039f771375d845f9ea0a81a6fb21b41ebd4b98bbde"
     },
     {
-      "path": "src/environments/lead-helper/prompts.ts",
+      "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const helperFollowupInstruction = '",
       "line": 6,
       "sha256": "0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85"
     },
     {
-      "path": "src/environments/lead-helper/index.ts",
+      "path": "src/harnesses/lead-worker/index.ts",
       "anchor": "                  const nextPath =",
       "line": 197,
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
@@ -420,13 +420,13 @@
       "sha256": "697bc515efa28cd4d3ddd4d2cfa7d51e151af042fc3f5ca4c37b0a002585f4e6"
     },
     {
-      "path": "src/environments/flat/environment.ts",
-      "anchor": "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '",
+      "path": "src/harnesses/taskpool/harness.ts",
+      "anchor": "export const TASKPOOL_WITHOUT_WORKSPACE_SAVE_PROMPT = '",
       "line": 13,
       "sha256": "7ddd3c046642e46ad91153885ed29729e1d733c4c0f6420da7200f750ff28a4d"
     },
     {
-      "path": "src/environments/flat/controller.ts",
+      "path": "src/harnesses/taskpool/controller.ts",
       "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
       "line": 30,
       "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
@@ -434,12 +434,12 @@
   ],
   "prompt_send_sites": [
     {
-      "path": "examples/subagents-environment/controller.ts",
+      "path": "examples/subagents/controller.ts",
       "line": 158,
       "expression": "const receipt = await runtime.send(member.id!, body, {"
     },
     {
-      "path": "examples/subagents-environment/controller.ts",
+      "path": "examples/subagents/controller.ts",
       "line": 241,
       "expression": "receipt = await runtime.send(member.id!, body, { requestId, source: from, wakeIfIdle: true });"
     },
@@ -449,7 +449,7 @@
       "expression": "entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });"
     },
     {
-      "path": "src/environments/flat/controller.ts",
+      "path": "src/harnesses/taskpool/controller.ts",
       "line": 143,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
@@ -552,11 +552,11 @@
       "sha256": "0dd9780f082c954cdf7cfa5514190b3770539f0f56f7d904d71ca19c6a3df180"
     },
     {
-      "path": "docs/architecture/prompts/07-notes-environment.md",
+      "path": "docs/architecture/prompts/07-notes-harness.md",
       "sha256": "c48c980a5936f19b406f941790eb6368b9eac4606a1ef9cb4f631d2e0d714cee"
     },
     {
-      "path": "docs/architecture/prompts/08-subagents-environment.md",
+      "path": "docs/architecture/prompts/08-subagents-harness.md",
       "sha256": "dde7896b2380ee4d4b8556d010acbcc6514230f8bb51ccb37109babfecfda853"
     },
     {
@@ -564,19 +564,19 @@
       "sha256": "fc54ac800848c6d521724485ab4ea07feb424db4e3ce6d5b6279568505686344"
     },
     {
-      "path": "docs/architecture/prompts/09-scalemas-environment.md",
+      "path": "docs/architecture/prompts/09-substrate-harness.md",
       "sha256": "8564a96233f423d0953059055a6eb5ca920f87e7346ed85398e7323aeae6d79d"
     },
     {
-      "path": "docs/architecture/prompts/08-agensh-environment.md",
+      "path": "docs/architecture/prompts/08-peermesh-harness.md",
       "sha256": "dd874cba392661bb569a4aa86da7a7bb277c75be2b85ce80fe4af4653b5acfa6"
     },
     {
-      "path": "docs/architecture/prompts/08-lead-helper-environment.md",
+      "path": "docs/architecture/prompts/08-lead-worker-harness.md",
       "sha256": "042cb2345cc4ccbb35714e2f07deeacedd5f47b8fd451ac8c59c7b582d6b534d"
     },
     {
-      "path": "docs/architecture/prompts/08-flat-environment.md",
+      "path": "docs/architecture/prompts/08-taskpool-harness.md",
       "sha256": "772a4d44b7d4930d480687e1d4b687c28b8fd76ab3508fc363dc8083608b5ff8"
     }
   ]

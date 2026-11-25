@@ -6,16 +6,16 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRuntime } from '../src/core/index.js';
 import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
-import { createPeerProfile } from '../src/environments/agensh/index.js';
-import { createAgenshServices } from '../src/environments/agensh/services.js';
-import { createBoardLauncher } from '../src/environments/agensh/board-process.js';
+import { createPeerProfile } from '../src/harnesses/peermesh/index.js';
+import { createPeerMeshServices } from '../src/harnesses/peermesh/services.js';
+import { createBoardLauncher } from '../src/harnesses/peermesh/board-process.js';
 import { execute } from './fixtures/notes-installed-package.js';
 
-test('foreground Agensh example validates host configuration without starting facilities', async t => {
+test('foreground PeerMesh example validates host configuration without starting facilities', async t => {
   const directory = await mkdtemp(join(tmpdir(), 'agensh-foreground-config-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
-  const config = new URL('../examples/agensh-environment/config.js', import.meta.url);
-  const cli = new URL('../scripts/run-environment.js', import.meta.url);
+  const config = new URL('../examples/peermesh/config.js', import.meta.url);
+  const cli = new URL('../scripts/run-harness.js', import.meta.url);
   const backendModule = new URL('../src/core/pi-opensandbox-backend.js', import.meta.url);
   const env = { PATH: process.env.PATH };
   const options = { cwd: directory, env, timeout: 5_000 };
@@ -42,7 +42,7 @@ test('foreground Agensh example validates host configuration without starting fa
     import configuration from ${JSON.stringify(config.href)};
     import { claimPiOpenSandboxBackend } from ${JSON.stringify(backendModule.href)};
     const { mode, options, timeoutMs } = configuration;
-    assert.equal(mode, 'agensh');
+    assert.equal(mode, 'peermesh');
     assert.equal(options.runId, 'local-example');
     assert.equal(options.gitea.owner, 'fixture-owner');
     assert.equal(options.mattermost.teamId, 'fixture-team');
@@ -58,12 +58,12 @@ test('foreground Agensh example validates host configuration without starting fa
   assert.deepEqual(await readdir(directory), ['project.json']);
 });
 
-test('exact Agensh Profile and Services assemble actual Runtime/Bridge/gateway with no sandbox or model call', async t => {
+test('exact PeerMesh Profile and Services assemble actual Runtime/Bridge/gateway with no sandbox or model call', async t => {
   const outputDir = await mkdtemp(join(tmpdir(), 'agensh-preflight-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
   const facilities = { runId: 'preflight', repositoryUrl: 'http://192.0.2.1:3000/owner/repo.git', repository: { owner: 'owner', name: 'repo' }, issueNumber: 1,
     channelId: 'channel', boardId: 'board', endpoints: { gitea: 'http://192.0.2.1:3000', message: 'http://127.0.0.1:1', board: 'http://127.0.0.1:1' },
     peer: { gitea: { binding: 'git', accountId: 'git-account', username: 'peer', token: 'git-private' }, message: { binding: 'message', accountId: 'mm-account', token: 'mm-private' }, board: { binding: 'board', workerId: 'worker' } } };
-  const { services } = createAgenshServices(facilities);
+  const { services } = createPeerMeshServices(facilities);
   const profile = createPeerProfile({ image: 'fixture-no-allocation', facilities });
   const runtime = await createRuntime({ outputDir, maxBots: 1, services, profiles: { peer: profile }, backend: createPiOpenSandboxBackend({
     sandbox: { lifecycleBaseUrl: 'http://127.0.0.1:1/v1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://192.0.2.1:{port}' }, modelGateway: { host: '127.0.0.1', advertiseHost: '192.0.2.1' },

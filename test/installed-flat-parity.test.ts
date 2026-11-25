@@ -14,12 +14,12 @@ const feedback = taskId => ({ taskId, input: 'PRIVATE_FIXED_DIRECTION', requestI
 test('installed Flat CLI and headless host preserve the same directed Task binding and close receipts', { timeout: 180_000 }, async t => {
   const installed = await installNotesExample();
   t.after(() => installed.close());
-  const root = join(installed.directory, 'node_modules/@swarmenv/core');
+  const root = join(installed.directory, 'node_modules/@murm/core');
   const config = join(root, 'dist/test/fixtures/foreground-flat-configuration.js');
   const cliOutput = join(installed.directory, 'cli-flat');
   const headlessOutput = join(installed.directory, 'headless-flat');
   await mkdir(cliOutput); await mkdir(headlessOutput);
-  const child = spawn(process.execPath, [`--redirect-warnings=${join(installed.directory, 'cli-warnings.log')}`, join(root, 'dist/scripts/run-environment.js'), '--config', config], {
+  const child = spawn(process.execPath, [`--redirect-warnings=${join(installed.directory, 'cli-warnings.log')}`, join(root, 'dist/scripts/run-harness.js'), '--config', config], {
     cwd: installed.directory, env: { ...installed.env, FOREGROUND_TEST_OUTPUT: cliOutput }, stdio: ['pipe', 'pipe', 'pipe'],
   });
   t.after(() => child.kill('SIGKILL'));
@@ -52,9 +52,9 @@ test('installed Flat CLI and headless host preserve the same directed Task bindi
   await writeFile(entry, `
 import configuration from ${JSON.stringify(pathToFileURL(config).href)};
 import {readFile} from 'node:fs/promises';
-const {runForegroundEnvironment}=await import(${JSON.stringify(pathToFileURL(join(root, 'dist/src/environments/shared/foreground-host.js')).href)});
+const {runForegroundHarness}=await import(${JSON.stringify(pathToFileURL(join(root, 'dist/src/harnesses/shared/foreground-host.js')).href)});
 const records=[];
-const report=await runForegroundEnvironment(configuration,async host=>{
+const report=await runForegroundHarness(configuration,async host=>{
   records.push({type:'ready',status:await host.status()});
   const {taskId}=JSON.parse(await readFile(process.env.FOREGROUND_TEST_OUTPUT+'/fixture-binding.json','utf8'));
   const input={...${JSON.stringify(feedback(null))},taskId};
@@ -103,7 +103,7 @@ console.log(JSON.stringify({records,reportPath:report.reportPath,runtimeId:repor
       assert.equal(execution.owner_ref, binding.botId); assert.equal(execution.task_id, binding.taskId);
       assert.equal(execution.state, 'FAILED');
     } finally { db.close(); }
-    const reader = JSON.parse((await execute(process.execPath, [join(root, 'dist/scripts/read-environment-result.js'), '--run-directory', ready.runDirectory, '--runtime-id', ready.runtimeId], { cwd: installed.directory, env: installed.env, timeout: 10_000 })).stdout);
+    const reader = JSON.parse((await execute(process.execPath, [join(root, 'dist/scripts/read-harness-result.js'), '--run-directory', ready.runDirectory, '--runtime-id', ready.runtimeId], { cwd: installed.directory, env: installed.env, timeout: 10_000 })).stdout);
     assert.equal(reader.runtimeId, ready.runtimeId);
     assert.equal(saved.businessFailure.code, 'FLAT_BUSINESS_FAILED');
     assert.equal(saved.cleanupFailure, null); assert.equal(saved.reportSaveFailure, null);

@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
-import { runWithReport } from '../src/environments/shared/run-report.js';
+import { runWithReport } from '../src/harnesses/shared/run-report.js';
 import { leadHelperCommand, adjustedDirection } from './fixtures/lead-helper-upstream.js';
 import { transport } from './fixtures/core-bot-service-backend.js';
 import { closeLeadHelperFixture, drainLeadHelperFixture } from './fixtures/lead-helper-scenario-cleanup.js';
@@ -19,7 +19,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/lead-helper-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { createLeadHelperEnvironment } = await import('../src/environments/lead-helper/index.js'); hooks.deregister();
+const { createLeadWorkerHarness } = await import('../src/harnesses/lead-worker/index.js'); hooks.deregister();
 
 async function scenario(t, failure, fixturePrograms = false, helperCount = 2, staged = false) {
   const helpers = Array.from({ length: helperCount }, (_, index) => `helper${index + 1}`);
@@ -170,7 +170,7 @@ async function scenario(t, failure, fixturePrograms = false, helperCount = 2, st
     prepare: async () => ({ runId: 'test', origin, repository: { owner: 'owner', name: 'repo' }, repositoryUrl: `${origin}/owner/repo.git`, actors }) };
   if(staged==='stage-deadline')configuration.turnTimeoutMs=1000;
   const report = await runWithReport({ outputDir: directory, closeTimeoutMs: 1000, createRuntime: async () => {
-    const owned = await createLeadHelperEnvironment(configuration);
+    const owned = await createLeadWorkerHarness(configuration);
     // The simulator cannot outlive the first Core close: a complete receipt is
     // cached, so a later close cannot flush evidence from an unfinished send.
     environment = { ...owned, async close(options) { await drainWork(); return owned.close(options); } };
@@ -290,7 +290,7 @@ test('four-Bot fixed lead-helper team completes both rounds with distinct author
 test('eight-Bot fixed lead-helper team completes both rounds with distinct authorized delivery owners', t => scenario(t, undefined, false, 7));
 test('invalid helper capacity fails before provisioning', async () => {
   for (const helperCount of [1, 8, 2.5, '3', null]) {
-    await assert.rejects(createLeadHelperEnvironment({ helperCount, prepare: assert.fail }), {
+    await assert.rejects(createLeadWorkerHarness({ helperCount, prepare: assert.fail }), {
       name: 'TypeError', message: 'Lead-helper requires between two and seven helpers',
     });
   }
@@ -306,7 +306,7 @@ test('lead-helper provisions the capacity captured before async startup', async 
       throw Object.assign(new Error('controlled startup stop'), { code: 'CAPACITY_OBSERVED' });
     },
   };
-  const creating = createLeadHelperEnvironment(options);
+  const creating = createLeadWorkerHarness(options);
   options.helperCount = 7;
   await assert.rejects(creating, { code: 'CAPACITY_OBSERVED' });
 });

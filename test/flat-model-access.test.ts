@@ -28,11 +28,11 @@ test('trusted Core readiness preserves returned identity and legacy capacity wit
 });
 
 test('flat policy returns finite selection authority only for its trusted Runtime and unbound Bot', async t => {
-  const { createFlatModelAccessPolicy } = await import('../src/environments/flat/model-access-policy.js');
+  const { createTaskPoolModelAccessPolicy } = await import('../src/harnesses/taskpool/model-access-policy.js');
   const tasks = fixture(t);
   const deadline = Date.now() + 60_000;
   tasks.registerBot({ botId: 'bot:selection', missionId: 'mission:flat', legacySlotId: 'slot', selectionDeadline: new Date(deadline - 1000).toISOString(), hardDeadline: new Date(deadline).toISOString() });
-  const policy = createFlatModelAccessPolicy({ taskService: tasks, missionId: 'mission:flat', runtimeId: () => 'runtime:flat', deadline: () => deadline });
+  const policy = createTaskPoolModelAccessPolicy({ taskService: tasks, missionId: 'mission:flat', runtimeId: () => 'runtime:flat', deadline: () => deadline });
   const caller = { runtimeId: 'runtime:flat', botId: 'bot:selection', profile: 'readonly', model: 'default' };
   assert.equal(policy.authorize(caller), null);
   tasks.markCoreBotReady(caller.botId);
@@ -47,12 +47,12 @@ test('flat policy returns finite selection authority only for its trusted Runtim
 });
 
 test('trusted startup uses only Core returned Bot identity and keeps Runtime separate from legacy Slot', async t => {
-  const { createFlatBotCoordinator } = await import('../src/environments/flat/bot-coordinator.js');
+  const { createTaskPoolAgentCoordinator } = await import('../src/harnesses/taskpool/bot-coordinator.js');
   const tasks = fixture(t);
   const requests = [];
   const runtime = { id: 'runtime:host', async spawn(options) { requests.push(options); return { id: 'core:actual', profile: 'readonly', status: 'idle' }; },
     async stop() { throw new Error('Unexpected cleanup'); } };
-  const coordinator = createFlatBotCoordinator({ runtime, taskService: tasks, missionId: 'mission:flat' });
+  const coordinator = createTaskPoolAgentCoordinator({ runtime, taskService: tasks, missionId: 'mission:flat' });
   const options = { requestId: 'spawn:1', profile: 'readonly', legacySlotId: 'legacy:1', selectionDeadline: new Date(Date.now() + 30_000).toISOString() };
   const bot = await coordinator.spawn(options);
   assert.equal(bot.id, 'core:actual');
@@ -71,7 +71,7 @@ function executionEnvelope(execution, actorRef = execution.owner_ref) {
 }
 
 test('real Task state maps work and closeout to the current Execution fence and renewed lease', async t => {
-  const { createFlatModelAccessPolicy } = await import('../src/environments/flat/model-access-policy.js');
+  const { createTaskPoolModelAccessPolicy } = await import('../src/harnesses/taskpool/model-access-policy.js');
   const tasks = fixture(t);
   const deadlineAt = Date.now() + 60_000;
   for (const botId of ['owner', 'other']) {
@@ -80,7 +80,7 @@ test('real Task state maps work and closeout to the current Execution fence and 
   }
   const task = tasks.createTask({ mission_id: 'mission:flat', gap: 'Check that model authority follows its actual Execution owner', priority: 'medium', summary: 'Model Execution ownership', expected_output: 'Verified boundary', acceptance_conditions: ['Ownership checked'] }, makeEnvelope({ actorRef: 'owner' })).task;
   const { execution: preparing } = tasks.takeTask(task.task_id, { owner_ref: 'owner', core_id: 'slot:owner', take_key: 'take' });
-  const policy = createFlatModelAccessPolicy({ taskService: tasks, missionId: 'mission:flat', runtimeId: 'r', deadline: () => deadlineAt, closeoutDeadline: () => deadlineAt - 1000 });
+  const policy = createTaskPoolModelAccessPolicy({ taskService: tasks, missionId: 'mission:flat', runtimeId: 'r', deadline: () => deadlineAt, closeoutDeadline: () => deadlineAt - 1000 });
   const caller = { runtimeId: 'r', botId: 'owner', profile: 'readonly', model: 'default', executionId: 'foreign' };
   assert.equal(policy.authorize(caller), null);
   let { execution } = tasks.dispatch('start_execution', {}, executionEnvelope(preparing));
@@ -100,12 +100,12 @@ test('real Task state maps work and closeout to the current Execution fence and 
 });
 
 test('selection deadline and Mission stop invalidate real Task state before cleanup timers run', async t => {
-  const { createFlatModelAccessPolicy } = await import('../src/environments/flat/model-access-policy.js');
+  const { createTaskPoolModelAccessPolicy } = await import('../src/harnesses/taskpool/model-access-policy.js');
   const tasks = fixture(t);
   const start = Date.now();
   tasks.registerBot({ botId: 'b', missionId: 'mission:flat', legacySlotId: 'slot', selectionDeadline: new Date(start + 1000).toISOString(), hardDeadline: new Date(start + 2000).toISOString() });
   tasks.markCoreBotReady('b');
-  const policy = createFlatModelAccessPolicy({ runtimeId: 'r', taskService: tasks, missionId: 'mission:flat', deadline: () => start + 3000 });
+  const policy = createTaskPoolModelAccessPolicy({ runtimeId: 'r', taskService: tasks, missionId: 'mission:flat', deadline: () => start + 3000 });
   const caller = { runtimeId: 'r', botId: 'b', profile: 'readonly', model: 'default' };
   assert.equal(policy.authorize(caller).deadlineAt, start + 1000);
   tasks.setMissionStopReader(() => true);

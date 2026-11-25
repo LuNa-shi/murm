@@ -1,4 +1,4 @@
-import { MISSION_WORKSPACE_READS } from '../environments/flat/public-workspace-reads.js';
+import { MISSION_WORKSPACE_READS } from '../harnesses/taskpool/public-workspace-reads.js';
 import { createInProcessAdapter, createHttpJsonAdapter } from './service-adapter.js';
 import { createServiceManifest } from './service-manifest.js';
 import { ServiceRegistry } from './service-registry.js';

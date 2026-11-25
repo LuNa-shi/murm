@@ -12,9 +12,9 @@ test('real Pi receives the permitted Service directory and Bash can call its adv
   skip: process.env.SWARMENV_CORE_REAL_TEST !== '1' && 'Set SWARMENV_CORE_REAL_TEST=1 with a verified local OpenSandbox image',
   timeout: 180_000,
 }, async t => {
-  const { createRuntime } = await import('@swarmenv/core');
-  const { ServiceRegistry } = await import('@swarmenv/core/services');
-  const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
+  const { createRuntime } = await import('@murm/core');
+  const { ServiceRegistry } = await import('@murm/core/services');
+  const { createPiOpenSandboxBackend } = await import('@murm/core/backends/pi-opensandbox');
   const image = process.env.SWARMENV_CORE_TEST_IMAGE;
   assert.ok(image, 'SWARMENV_CORE_TEST_IMAGE must identify a verified Pi/OpenSandbox image');
   const upstream = await createControlledUpstream({ listServices: true });
@@ -81,7 +81,7 @@ test('real Pi receives the permitted Service directory and Bash can call its adv
   const firstRequest = upstream.requests[0];
   const prompt = firstRequest.input.find(item => item.role === 'developer')?.content;
   assert.equal(typeof prompt, 'string');
-  assert.match(prompt, /^You are a SwarmEnv agent/);
+  assert.match(prompt, /^You are a murm agent/);
   const directory = prompt.match(/<services>\n([\s\S]*?)\n<\/services>/)?.[1];
   assert.ok(directory, 'Pi must send a Service directory in its first model request');
   assert.match(directory, /Fixed notes exchange/);

@@ -7,12 +7,12 @@ import { createLifecycleProvider } from './fixtures/core-lifecycle-provider.js';
 
 test('Environment admits one real Core peer with bindings, native Git secret and required collection before work', async t => {
   let start; const provider = await createLifecycleProvider(t, { onStart: body => { start = body; }, onCollect: () => ({ error: { code: 'SERVICE_UNAVAILABLE', message: 'Fixture export pending' } }) });
-  const { createAgenshEnvironment } = await import('../src/environments/agensh/index.js');
+  const { createPeerMeshHarness } = await import('../src/harnesses/peermesh/index.js');
   const { createPiOpenSandboxBackend } = await import('../src/core/backends/pi-opensandbox.js');
   provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'agensh-environment-')); t.after(() => rm(outputDir, { recursive: true, force: true }));
   let facilityClosed = false;
-  const environment = await createAgenshEnvironment({ runId: 'fixture', image: 'swarmenv-agent:test', outputDir, model: 'default', exportLimit: 1024 * 1024,
+  const environment = await createPeerMeshHarness({ runId: 'fixture', image: 'swarmenv-agent:test', outputDir, model: 'default', exportLimit: 1024 * 1024,
     backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: provider.url, endpointHost: '127.0.0.1' }, bridge: { host: '127.0.0.1', publicUrl: 'http://172.17.0.1:{port}' },
       modelGateway: { host: '127.0.0.1', advertiseHost: '172.17.0.1' }, models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: 'http://127.0.0.1:1/v1/responses', headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 16 * 1024 ** 2, inodes: 2048 } } }),
@@ -35,9 +35,9 @@ test('Environment admits one real Core peer with bindings, native Git secret and
 });
 
 test('partial facility startup closes only registered owned resources and retains a sanitized pending ledger', async () => {
-  const { createAgenshEnvironment } = await import('../src/environments/agensh/index.js');
+  const { createPeerMeshHarness } = await import('../src/harnesses/peermesh/index.js');
   const attempts = [];
-  await assert.rejects(createAgenshEnvironment({ runId: 'partial', image: 'unused', exportLimit: 1024, prepare: async ({ resources }) => {
+  await assert.rejects(createPeerMeshHarness({ runId: 'partial', image: 'unused', exportLimit: 1024, prepare: async ({ resources }) => {
     resources.own({ kind: 'channel', id: 'shared', retained: true });
     resources.own({ kind: 'account', id: 'owned', close: () => { attempts.push('owned'); throw new Error('private credential'); } });
     throw new Error('private credential');

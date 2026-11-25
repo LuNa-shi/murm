@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { test } from 'node:test';
-import { ServiceRegistry } from '@swarmenv/core/services';
+import { ServiceRegistry } from '@murm/core/services';
 import { transport } from './fixtures/core-input-backend.js';
 
 // Replace the external backend boundary, leaving the public Runtime and its
@@ -15,7 +15,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@swarmenv/core');
+const { createRuntime } = await import('@murm/core');
 hooks.deregister();
 
 async function setup(t) {

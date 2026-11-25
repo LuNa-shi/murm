@@ -22,8 +22,8 @@ test('Flat recovers exact binary workDir bytes through Core after a lost snapsho
   const { createPiOpenSandboxBackend } = await import('../src/core/backends/pi-opensandbox.js');
   const { ServiceRegistry, snapshotServiceRegistry, invokeService } = await import('../src/core/services.js');
   const { createFlatTaskStores } = await import('./fixtures/flat-task-stores.js');
-  const { prepareFlatInputs } = await import('../src/environments/flat/prepare-inputs.js');
-  const { createFlatPublicationServices } = await import('../src/environments/flat/publication-services.js');
+  const { prepareTaskPoolInputs } = await import('../src/harnesses/taskpool/prepare-inputs.js');
+  const { createTaskPoolPublicationServices } = await import('../src/harnesses/taskpool/publication-services.js');
   const { makeEnvelope } = await import('../src/protocol/envelope.js');
   provider.allowDeletion();
   const outputDir = await mkdtemp(join(tmpdir(), 'flat-core-capture-'));
@@ -43,10 +43,10 @@ test('Flat recovers exact binary workDir bytes through Core after a lost snapsho
     stores.tasks.registerBot({ botId: bot.id, missionId: stores.missionId, legacySlotId: 'slot:A', selectionDeadline: new Date(Date.now() + 60000).toISOString() });
     stores.tasks.markCoreBotReady(bot.id);
     let execution = stores.tasks.takeTask(stores.task.task_id, { owner_ref: bot.id, core_id: 'slot:A', take_key: 'take' }).execution;
-    await prepareFlatInputs({ execution, taskService: stores.tasks, missionWorkspace: stores.workspace, workspaceId: stores.workspaceId, workspaceManager: stores.manager, contextService: stores.context, check() {} });
+    await prepareTaskPoolInputs({ execution, taskService: stores.tasks, missionWorkspace: stores.workspace, workspaceId: stores.workspaceId, workspaceManager: stores.manager, contextService: stores.context, check() {} });
     execution = stores.tasks.getExecution(execution.execution_id);
     stores.tasks.dispatch('start_execution', { core_id: 'slot:A' }, makeEnvelope({ actorRef: bot.id, taskId: execution.task_id, executionId: execution.execution_id, specVersion: execution.spec_version, stateVersion: execution.state_version, fencingVersion: execution.fencing_version }));
-    const publication = createFlatPublicationServices({ runtime, taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace, missionId: stores.missionId, workspaceId: stores.workspaceId, workspaceCapture: 'core', deadline: () => Date.now() + 60000 });
+    const publication = createTaskPoolPublicationServices({ runtime, taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace, missionId: stores.missionId, workspaceId: stores.workspaceId, workspaceCapture: 'core', deadline: () => Date.now() + 60000 });
     const registry = new ServiceRegistry();
     for (const service of publication.registrations) registry.registerService(service);
     const services = snapshotServiceRegistry(registry);

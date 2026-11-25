@@ -91,14 +91,14 @@ export async function installNotesExample(selection, { requireCleanCheckout = fa
     await writeFile(join(directory, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
     await execute('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive],
       { cwd: directory, timeout: 120_000, maxBuffer: 4 * 1024 ** 2 });
-    const installed = join(directory, 'node_modules', '@swarmenv', 'core');
+    const installed = join(directory, 'node_modules', '@murm', 'core');
     const metadata = JSON.parse(await readFile(join(installed, 'package.json'), 'utf8'));
     const compiled = metadata.exports?.['.']?.default?.startsWith('./dist/');
     const executableRoot = compiled ? join(installed, 'dist') : installed;
     const extension = compiled ? 'js' : 'mjs';
-    await copyFile(join(executableRoot, `examples/notes-environment/main.${extension}`), join(directory, 'main.mjs'));
+    await copyFile(join(executableRoot, `examples/notes/main.${extension}`), join(directory, 'main.mjs'));
     for (const name of ['run-input', 'run-report', 'read-result']) {
-      await copyFile(join(executableRoot, `src/environments/shared/${name}.js`), join(directory, `${name}.${extension}`));
+      await copyFile(join(executableRoot, `src/harnesses/shared/${name}.js`), join(directory, `${name}.${extension}`));
     }
     const env = { ...process.env }; delete env.NODE_PATH; delete env.NODE_OPTIONS;
     return { directory, env, metadata: { name: metadata.name, version: metadata.version,

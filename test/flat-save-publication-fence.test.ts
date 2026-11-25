@@ -9,8 +9,8 @@ import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls } from './fixtures/flat-controller-backend.js';
-import { createFlatTaskService } from '../src/environments/flat/task-service.js';
-import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
+import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
+import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { stableStringify } from '../src/protocol/envelope.js';
 import { installNotesExample } from './fixtures/notes-installed-package.js';
@@ -19,7 +19,7 @@ const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
   return next(specifier,context);
 }});
-const {createRuntime}=await import('@swarmenv/core');hooks.deregister();
+const {createRuntime}=await import('@murm/core');hooks.deregister();
 const execute=promisify(execFile);
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const closeFromAnotherProcess=(root,botId)=>execute(process.execPath,['--input-type=module','-e',`
@@ -35,9 +35,9 @@ async function fixture(t,installed) {
   stores.tasks.contextService=stores.context;
   let runtime,captures=0;
   const files={'input.txt':Buffer.from('fixed λ\n'),'exact.bin':Buffer.from([0,255,128,10])};
-  const discovery=createFlatTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
+  const discovery=createTaskPoolTaskService({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,workspaceManager:stores.manager,
     missionId:stores.missionId,workspaceId:stores.workspaceId,missionDeadline:()=>Date.now()+60000});
-  const publication=createFlatPublicationServices({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,
+  const publication=createTaskPoolPublicationServices({runtime:()=>runtime,taskService:stores.tasks,contextService:stores.context,missionWorkspace:stores.workspace,
     missionId:stores.missionId,workspaceId:stores.workspaceId,deadline:()=>Date.now()+60000,
     async snapshotProject({executionId,fencingVersion}) {
       captures++;
@@ -56,7 +56,7 @@ async function fixture(t,installed) {
   const credentials=controls.credentials.get(bot.id);
   const env={...installed.env,...credentials.environment,...credentials.secretEnvironment};
   const url=new URL(env.SWARMENV_BRIDGE_URL);url.hostname='127.0.0.1';env.SWARMENV_BRIDGE_URL=url.origin;
-  const cli=async(...args)=>JSON.parse((await execute(process.execPath,[join(installed.directory,'node_modules/@swarmenv/core/dist/scripts/swarm.js'),...args],{cwd:installed.directory,env,timeout:15000})).stdout);
+  const cli=async(...args)=>JSON.parse((await execute(process.execPath,[join(installed.directory,'node_modules/@murm/core/dist/scripts/swarm.js'),...args],{cwd:installed.directory,env,timeout:15000})).stdout);
   await cli('task','take',stores.task.task_id,'--request-id','take');
   return {...stores,root,bot,cli,captures:()=>captures};
 }

@@ -5,11 +5,11 @@ import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { createAgenshTeam } from '../src/environments/agensh/team.js';
-import { prepareAgenshFacilities } from '../src/environments/agensh/provision.js';
-import { createAgenshDelivery } from '../src/environments/agensh/delivery.js';
+import { createPeerMeshTeam } from '../src/harnesses/peermesh/team.js';
+import { preparePeerMeshFacilities } from '../src/harnesses/peermesh/provision.js';
+import { createPeerMeshDelivery } from '../src/harnesses/peermesh/delivery.js';
 import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
-import { httpClient } from '../src/environments/agensh/http.js';
+import { httpClient } from '../src/harnesses/peermesh/http.js';
 import { createLocalAgenshStack } from './fixtures/agensh-local-stack.js';
 import { createTeamUpstream, teamInputs, teamFact, eightPeerKeys, latePeerInput } from './fixtures/agensh-team-upstream.js';
 import { createWorkGate, createCleanupBudget } from './fixtures/agensh-deadline.js';
@@ -35,8 +35,8 @@ test(`${peerKeys.length} native Agensh peers negotiate claims and merge adopted 
     const configuration = await stack.start();
     work = createWorkGate(180_000, 'ACTUAL_TEAM_WORK_EXPIRED', cleanup);
     upstream = await createTeamUpstream({ deadlineAt: work.deadlineAt, peerKeys, peerNames: { a: `peer-${runId}-a`, b: `peer-${runId}-b` }, onFailure: () => work.abort() });
-    environment = await work.create(() => createAgenshTeam({ ...configuration, runId, image, peerKeys, signal: work.signal, outputDir: join(directory, 'core'),
-      prepare: async options => { facilities = await prepareAgenshFacilities(options); return facilities; },
+    environment = await work.create(() => createPeerMeshTeam({ ...configuration, runId, image, peerKeys, signal: work.signal, outputDir: join(directory, 'core'),
+      prepare: async options => { facilities = await preparePeerMeshFacilities(options); return facilities; },
       router: { workTimeoutMs: work.remaining(), turnTimeoutMs: 80_000, maxBatches: 8, maxNudges: 0, events: { pollIntervalMs: 1000, maxPolls: 180 } },
       backend: createPiOpenSandboxBackend({ sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1', endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY, commandTimeoutMs: 20_000, resourceLimits: { cpu: '1', memory: '1Gi' } },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` }, modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 128, requestTimeoutMs: 85_000 },
@@ -71,7 +71,7 @@ test(`${peerKeys.length} native Agensh peers negotiate claims and merge adopted 
     }
     assert.equal((await findCompleted('a', teamInputs[2])).state, 'completed');
     assert.equal((await findCompleted('b', teamInputs[3])).state, 'completed');
-    delivery = createAgenshDelivery({ facilities, adminToken: configuration.gitea.adminToken });
+    delivery = createPeerMeshDelivery({ facilities, adminToken: configuration.gitea.adminToken });
     for (const key of ['a', 'b']) {
       const result = upstream.receipt().evidence.find(row => row.stage === `${key}-contribution`); assert.ok(result);
       await work.step(({ signal }) => delivery.merge({ peerKey: key, number: result.prNumber, headSha: result.head, signal }));

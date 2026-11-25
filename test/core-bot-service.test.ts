@@ -4,13 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { test } from 'node:test';
-import { ServiceRegistry } from '@swarmenv/core/services';
+import { ServiceRegistry } from '@murm/core/services';
 import { transport } from './fixtures/core-bot-service-backend.js';
 const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-bot-service-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@swarmenv/core'); hooks.deregister();
+const { createRuntime } = await import('@murm/core'); hooks.deregister();
 async function setup(t, options = {}) {
   transport.reset();
   const outputDir = await mkdtemp(join(tmpdir(), 'bot-service-'));
