@@ -22,12 +22,26 @@ Observe self-selected work, reuse of another peer's output, delivery via PR, lat
 
 ## Results
 
-Registered before launch. Results pending.
+Runtime `b523a308-6fbd-40f5-9500-0829bab5befd` prepared four separate peers in 77.9 seconds. All four started at 07:45:17.137 UTC. The operator stopped at 08:02:32.991 UTC, after 17m15.854s of the one-hour allowance, because every peer's router had stopped accepting inputs. Core and facility cleanup completed 3.3 seconds later. All four private checkouts and Pi Sessions were exported.
+
+| Peer | K3 requests | Completed with known usage | Interrupted with unknown usage | First turn failed at |
+| --- | ---: | ---: | ---: | ---: |
+| A | 35 | 29 | 6 | 14m05.168s |
+| B | 31 | 23 | 8 | 16m01.875s |
+| C | 35 | 28 | 7 | 16m14.168s |
+| D | 22 | 18 | 4 | 7m29.923s |
+| Total | 123 | 98 | 25 | |
+
+All 123 requests reached the configured K3 route and returned HTTP 200 SSE headers. Known usage was 1,116,020 input tokens and 43,443 output tokens. The 25 interrupted requests lack final usage receipts.
+
+Every peer read the issue and Board. A, B and C posted accepted, self-selected CLAIMs. All three claimed overlapping pieces of the Python scaffold, CLI or Markdown path. C posted a team message, which the other three routers received and queued. Every recipient's first turn ended with `MODEL_ERROR`, and the queued batches were cancelled. Three peers archived private files beyond the initial checkout. No PR was opened or merged, and the evidence contains no completed later turn or confirmed adoption.
+
+The independent checkout verified the final archive SHA-256 `611737a9ccf10220f24a37776fd99f4d156c3b43c017260f7fd73e7bd5a5f5eb` at starting revision `f6bb05ffd5cd460e4d408c398f7709987ca29444`. It contained only the initial README, so there was no `compile.sh` to build. The four sandbox stop receipts and facility owner checks confirmed cleanup. The private traces and source are retained locally.
 
 ## Analysis
 
-Pending.
+The execution launcher set a 65-second deadline per model request. Every interrupted stream ended between 65.000 and 65.012 seconds after its request started. Each peer eventually exhausted its Pi retries. The resulting failed input caused the router to stop dispatching further work to that peer. This accounts for the early termination and the undelivered message. The run established real K3 startup, autonomous claims, receipt of a broadcast in the routers and complete export and cleanup. It left autonomous continuation, adoption and PR delivery unverified with K3.
 
 ## Next steps
 
-Observe the registered run through its deadline and verify the archive and clean shutdown.
+The local launcher now ties its model request timeout to the project time window while the project deadline still revokes the active runtime. The existing regression for stopping an active upstream stream passed. A fresh full-hour observation uses a new registration and a separately authorized time allowance.
