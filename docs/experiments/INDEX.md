@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261125-19` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **REGISTERED · ScaleMAS · FATE-X #31 · GPT-6.1 Sol · shared · 30 min** | `4503fecb` | [ScaleMAS FATE-X #31](EXP-20261125-19-scalemas-fatex-31.md) |
 | `EXP-20261125-18` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7165860299) | **SETTLED · ScaleMAS · FATE-H #2 · 5:24 work · GPT-6.1 Sol · 4 proofs passed · 5 publications · 0 cross-peer reads** | `c468ce03` | [ScaleMAS GPT-6.1 Sol run](EXP-20261125-18-scalemas-gpt-30min.md) |
 | `EXP-20261125-17` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7165746185) | **STARTUP REJECTED · GPT-6.1 Sol · 0 model requests** | `69ede684` | [ScaleMAS GPT-6.1 Sol startup attempt](EXP-20261125-17-scalemas-gpt-comparison.md) |
 | `EXP-20261125-16` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7165261463) | **OPERATOR STOP · ScaleMAS · FATE-H #2 · shared · K3 · 17:37 work · no publications or submissions** | `69ede684` | [ScaleMAS intermediate sharing](EXP-20261125-16-scalemas-intermediate-sharing.md) |
