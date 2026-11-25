@@ -6,9 +6,11 @@ import { join } from 'node:path';
 import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
+import { decodeFileSeed } from '../scripts/core-file-seed.js';
 import { createHash } from 'node:crypto';
 import { prepareFlatInputs } from '../src/environments/flat/prepare-inputs.js';
 import { SwarmEnvError } from '../src/errors.js';
+import { decodeFileSeed } from '../scripts/core-file-seed.js';
 import { stableStringify, makeEnvelope } from '../src/protocol/envelope.js';
 
 async function fixture(t, options = {}) {
@@ -16,14 +18,14 @@ async function fixture(t, options = {}) {
   const stores = await createFlatTaskStores(root);
   stores.tasks.contextService = stores.context;
   t.after(async () => { stores.close(); await rm(root, { recursive:true, force:true }); });
-  const botId = 'actual-bot';
+  const botId = options.botId ?? 'actual-bot';
   stores.tasks.registerBot({ botId, missionId:stores.missionId, legacySlotId:'slot:A', selectionDeadline:new Date(Date.now()+60000).toISOString() });
   stores.tasks.markCoreBotReady(botId);
   let execution = stores.tasks.takeTask(stores.task.task_id, { owner_ref:botId, core_id:'slot:A', take_key:'fixed-take' }).execution;
   await prepareFlatInputs({execution, taskService:stores.tasks, missionWorkspace:stores.workspace, workspaceId:stores.workspaceId, workspaceManager:stores.manager, contextService:stores.context, check() {}});
   execution=stores.tasks.getExecution(execution.execution_id);
   execution = stores.tasks.dispatch('start_execution', { core_id:'slot:A' }, makeEnvelope({ actorRef:botId, taskId:execution.task_id, executionId:execution.execution_id, specVersion:execution.spec_version, stateVersion:execution.state_version, fencingVersion:execution.fencing_version })).execution;
-  const runtime = { id:'runtime:flat', async get(id) { assert.equal(id,botId); return {id,profile:'researcher',status:'running'}; } };
+  const runtime = options.runtime ?? { id:'runtime:flat', async get(id) { assert.equal(id,botId); return {id,profile:'researcher',status:'running'}; } };
   let publication, registrations;
   const restartPublication = () => {
     publication = createFlatPublicationServices({ runtime, taskService:stores.tasks, contextService:stores.context, missionId:stores.missionId, missionWorkspace:stores.workspace, workspaceId:stores.workspaceId, deadline:()=>Date.now()+60000, ...options });
@@ -281,4 +283,35 @@ test('flat admitted publication conflict keeps its identity against a changed se
   await assert.rejects(f.save('guard-conflict'), { code: 'CONFLICT' });
   assert.equal(f.guest.captures, 1);
   assert.equal((await f.revisions()).length, 1);
+});
+
+test('Core snapshot save recovers the original bytes after a lost reply and adapter replacement', async t => {
+  const f = await fixture(t, { workspaceCapture: 'core' });
+  let bytes = Buffer.from([0, 255, 128, 10]);
+  const receipts = new Map();
+  const ids = [];
+  let lose = true;
+  f.runtime.files = { async snapshot(botId, options) {
+    assert.equal(botId, f.botId);
+    assert.deepEqual(options.paths, ['.']);
+    ids.push(options.requestId);
+    if (!receipts.has(options.requestId)) {
+      const files = { 'proof.bin': { encoding: 'base64', data: bytes.toString('base64'), mode: 0o644 } };
+      receipts.set(options.requestId, { botId, requestId: options.requestId, version: 73, files, digest: decodeFileSeed(files).digest });
+    }
+    if (lose) { lose = false; throw new SwarmEnvError('OUTCOME_UNKNOWN', 'lost snapshot reply'); }
+    return receipts.get(options.requestId);
+  } };
+  await assert.rejects(f.call('workspace', 'workspace_save', {}, 'same-save'), { code: 'WORKSPACE_RESULT_UNKNOWN' });
+  bytes = Buffer.from('later edits');
+  f.restartPublication();
+  await assert.rejects(f.call('workspace', 'workspace_save', {}, 'different-save'), { code: 'WORKSPACE_RESULT_UNKNOWN' });
+  await assert.rejects(f.call('workspace', 'workspace_save', { resolved: true }, 'same-save'), { code: 'CONFLICT' });
+  const saved = await f.call('workspace', 'workspace_save', {}, 'same-save');
+  const exported = await f.workspace.exportRevision({ workspaceId: f.workspaceId, revision: saved.revision });
+  assert.deepEqual(Buffer.from(exported.files['proof.bin']), Buffer.from([0, 255, 128, 10]));
+  assert.equal(new Set(ids).size, 1);
+  assert.equal(ids.length, 2);
+  assert.equal(f.workspace.readDeliveryRevision({ workspaceId: f.workspaceId, missionId: f.missionId, revision: saved.revision }).source.fencing_version, f.execution.fencing_version);
+  assert.deepEqual(await f.call('workspace', 'workspace_save', {}, 'same-save'), saved);
 });
