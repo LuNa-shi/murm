@@ -15,6 +15,7 @@ const initial = [
   'Match the Pastel reference stdout on this scope. Reject malformed colors with a nonzero exit.',
   'Reference executable: /opt/programbench/executable. Public docs are in /opt/programbench.',
   'Use the available Subagents to work on meaningful independent parts in parallel. Inspect the collaboration Service early. Choose the assignments and team size yourself, work on a complementary part while the children work, and use their concrete findings, tests, or patches in the delivery.',
+  'Keep each assignment focused on a distinct deliverable. Ask children to send a first usable result as soon as it is verified so you can use it before their final reply. Probe representative cases for the stated formats. Ship the buildable, tested solution when it meets the stated scope and describe any remaining uncertainty. The task does not require an exhaustive sweep of the color space.',
   'Deliver delivery/compile.sh, delivery/README.md, delivery/pastel.js and delivery/test.js.',
   'compile.sh must build an executable named pastel in that directory using available Node.js and shell tools, offline.',
   'Clean rebuilds and execution use a container with Node.js and no Pastel executable.',
@@ -24,6 +25,7 @@ const supplement = [
   'Match the same Pastel reference formatting, including hue rounding, decimal digits and percentages.',
   'If this affects work you delegated, tell the affected members so their contributions account for it.',
   'Keep the original behavior and update the tests and README.',
+  'Use a small set of representative HSL probes for verification and avoid duplicating the same broad investigation across the team.',
 ].join('\n');
 const probes = [
   ['rgb', '#fF4080'], ['hex', 'rgb(12, 34, 56)'], ['rgb', 'rgb(0, 255, 0)'],

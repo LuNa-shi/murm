@@ -47,7 +47,7 @@
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
-      "sha256": "92f1673fe3771db908a55373e62f579f8c3c86ea73a2f7c213d938a065b1fc43"
+      "sha256": "0476c24d6e878fd45e034aedd841ba2114f303b0aac3773de2e9aae6cb8be043"
     },
     {
       "path": "examples/subagents-environment/main.ts",
@@ -59,7 +59,7 @@
     },
     {
       "path": "examples/subagents-environment/prompts.ts",
-      "sha256": "9b7e8dea6e80a6f9f8fcf194139462255c4fba758df9c1b26e083af4d26ab982"
+      "sha256": "4c8682b6d092f0e9d5b23cf4c85ee2728f3be64727bb29925f3bce9ed6b180e1"
     },
     {
       "path": "examples/subagents-environment/collaboration-service.ts",
@@ -195,13 +195,13 @@
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
       "anchor": "const initial = ",
       "line": 12,
-      "sha256": "1a2b8b65db632a3ff54c9af5e3e0dcd220a35b36e4eed35247bb602034db74d4"
+      "sha256": "4ebf5e4bc2b3f7d09f2560d06a1340f5da27301d8dd47ac0c1ecdcfda6667eda"
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
       "anchor": "const supplement = ",
-      "line": 22,
-      "sha256": "647d04fe4b846ab3c84bd9868cb4249ac17fb036336055bc0e7dea9260fe86ea"
+      "line": 23,
+      "sha256": "d1597806b16bbb2cd2b08e7f393029f0f1c0a45f8cd8c5fbe927243320bc530a"
     },
     {
       "path": "examples/subagents-environment/communication-fixture-prompts.ts",
@@ -467,7 +467,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "af7a2869e67411e1c1ec4e9b978d31de43ed5e9966d6cb925b9a0f08ea44167b"
+      "sha256": "b134748a2fa2ce5bc7ea69fe60dc53875bb22c00c87362c9285ad03802a63909"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
