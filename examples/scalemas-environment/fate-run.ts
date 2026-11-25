@@ -9,31 +9,16 @@ import { runWithReport } from '../../src/environments/shared/run-report.js';
 import { createPaperSubstrate, type SharingMode } from '../../src/environments/scalemas/paper-substrate.js';
 import { MathlibSearchService } from '../../src/services/mathlib-search-service.js';
 import { createFateChecker, loadFateProject, sha256, type FateBenchmark, type FateProject } from './fate-checker.js';
-import { createFateTaskService, type FateCandidate, type MathlibMatch } from './fate-service.js';
-
-export const fatePeerPrompt = [
-  'Solve the same original FATE problem as the other independent peers. Read problem.lean and problem.txt.',
-  'The fate Service provides search_mathlib, check_lean and submit. Inspect schemas with swarm service view fate.',
-  'Use check_lean to try a Lean proof term (usually beginning with by) against the original theorem. You have ten trials.',
-  'Use swarm fate submit --input submission.json --request-id <fresh-id> to submit your current proof term, rationale, refs and finish flag.',
-  'Set finish to true to end your work with this submission. Otherwise you may replace it later. Your final accepted submission is scored independently.',
-  'Address references explicitly on separate rationale lines starting with the corresponding address and a space, followed by what it contributed.',
-].join('\n');
+import { maxFateOperationsPerPeer, createFateTaskService, type FateCandidate, type MathlibMatch } from './fate-service.js';
 
 export const fateSharingPrompt = [
-  'The substrate is the library of work visible to you in this run. Use it throughout the proof so useful results can carry forward.',
-  'Before starting a new piece of work, search for that subgoal or exact lemma name. If you get stuck, search for the specific blocker before another round of independent searches or checks. An empty result only describes that search at that time. Continue your work and search again at the next subgoal or blocker.',
-  'Publish useful intermediate work as soon as you have it: an exact lemma name and how to apply it, a proved branch, a proof skeleton with open goals, or a failed route with the reason it failed. Give each contribution a searchable sub_task and an artifact someone can use, with its verification status. Publish a compact piece when a whole proof is too long.',
-  'Search example: printf \'%s\\n\' \'{"query":"exact lemma name or subgoal","limit":8}\' | swarm substrate search --stdin',
-  'Search returns the matching contributions in full. To read known content: addresses, use swarm substrate visit --input visit.json with an addresses array of up to eight actual returned addresses. Resolve a mathlib: address with swarm fate search_mathlib --query followed by the address.',
-  'To write, use swarm substrate publish --input contribution.json. Include sub_task, artifact, rationale and refs (an empty array is allowed). Sub_task plus artifact must fit within 1,024 tokens. Cite only contributions and task resources you actually use, with a separate rationale line starting with each address and explaining what it contributed.',
-  'Verify any reused work in your own proof and submit through the fate Service. Keep enough time and operations for final submission. Mathlib searches, Lean checks, submissions and library calls share the 100-operation allowance per peer. For the full schemas, use swarm service view substrate.',
+  'When you start a new subgoal or get stuck, search substrate for work on that specific subgoal.',
+  'Publish reusable intermediate results as they become available and say what you have verified.',
 ].join('\n');
 
 export const fateInput = 'Solve the original problem in problem.lean and problem.txt. The question resource address appears in problem.txt. Submit a Lean proof term using the fate Service.';
 
 const modes: SharingMode[] = ['shared', 'private', 'none'];
-const maxSemanticOperations = 100;
 const submissionReceiptGraceMs = 1_000;
 const noTime = () => new Error('ScaleMAS FATE work is closed');
 const durations = { setup: 180_000, work: 1_800_000, hardWork: 2_700_000, close: 120_000, score: 900_000 } as const;
@@ -250,7 +235,7 @@ export async function runFateScaleMAS({
     const key = JSON.stringify([operation, requestId]);
     if (seen.has(key)) return;
     if (peer.finishRequested) throw Object.assign(new Error('Peer has finished; only stable request replay is available'), { code: 'NOT_ALLOWED' });
-    if (peer.semanticOperations >= maxSemanticOperations) throw Object.assign(new Error('Peer used its task and contribution operation allowance'), { code: 'OPERATION_LIMIT' });
+    if (peer.semanticOperations >= maxFateOperationsPerPeer) throw Object.assign(new Error('Peer used its task and contribution operation allowance'), { code: 'OPERATION_LIMIT' });
     seen.add(key);
     peer.semanticOperations++;
   };
@@ -277,7 +262,7 @@ export async function runFateScaleMAS({
       databasePath: join(directory, 'substrate.sqlite'), runId, mode, services, authorize, countOperation, resourceExists: task.resourceExists,
     });
     const profile: Profile = {
-      image, model, writable: true, prompt: [fatePeerPrompt, ...(substrate ? [fateSharingPrompt] : [])].join('\n'),
+      image, model, writable: true, ...(substrate ? { prompt: fateSharingPrompt } : {}),
       services: { fate: ['search_mathlib', 'check_lean', 'submit'], ...(substrate ? { substrate: ['publish', 'search', 'visit'] } : {}) },
     };
     const report = await runWithReport({
@@ -285,7 +270,7 @@ export async function runFateScaleMAS({
       redact: (record: Record<string, unknown>) => ({
         ...record, mode, runId, startedAt, setupElapsedMs, checkpoint,
         peers: [...peers.values()].map(({ finish: _finish, active: _active, finishTimer: _timer, ...peer }) => peer),
-        policy: { poolSize, workTimeoutMs, setupTimeoutMs, closeTimeoutMs, scoreTimeoutMs, checkpointAfterMs: checkpointAfterMs ?? null, maxSemanticOperations,
+        policy: { poolSize, workTimeoutMs, setupTimeoutMs, closeTimeoutMs, scoreTimeoutMs, checkpointAfterMs: checkpointAfterMs ?? null, maxFateOperationsPerPeer,
           clock: 'new in-scope substrate operation, decay before execution, same-ID retry does not advance',
           tokenCounter: 'js-tiktoken@1.0.21/o200k_base', benchmark: project.benchmark, task: project.pins, problemSha256: project.problemSha256 },
         task: task!.snapshot(), substrate: substrate?.snapshot() ?? null,

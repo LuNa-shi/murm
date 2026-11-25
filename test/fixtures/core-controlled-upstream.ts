@@ -23,7 +23,7 @@ export function streamResponse(model, number, item) {
   return result;
 }
 
-export async function createControlledUpstream({ model = 'k3' } = {}) {
+export async function createControlledUpstream({ model = 'k3', listServices = false } = {}) {
   const requests = [];
   let failure;
   const server = createServer(async (request, response) => {
@@ -41,8 +41,9 @@ export async function createControlledUpstream({ model = 'k3' } = {}) {
       if (body.model !== model || !Array.isArray(body.input)) throw new Error('Unexpected model or input shape');
       let item;
       if (requests.length === 1) {
+        const createFile = `printf '%s\\n' '${SMOKE_MARKER}' > core-smoke.txt`;
         item = { type: 'function_call', id: 'fc_core_bash', call_id: 'call_core_bash', name: 'bash',
-          arguments: JSON.stringify({ command: `printf '%s\\n' '${SMOKE_MARKER}' > core-smoke.txt`, timeout: 5 }) };
+          arguments: JSON.stringify({ command: listServices ? `${createFile} && swarm service list` : createFile, timeout: 5 }) };
       } else if (requests.length === 2) {
         if (!body.input.some(value => value.type === 'function_call_output' && value.call_id === 'call_core_bash')) {
           throw new Error('Pi did not return the Bash tool result');

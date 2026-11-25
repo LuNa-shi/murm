@@ -1,11 +1,12 @@
 import { chmodSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
-import { createInProcessAdapter, type JsonValue, type ServiceCaller, type ServiceCapability, type ServiceRegistry, type ServiceRequest } from '@swarmenv/core/services';
+import { createInProcessAdapter, type JsonValue, type ServiceCaller, type ServiceCapability, type ServiceRegistry, type ServiceManifest, type ServiceRequest } from '@swarmenv/core/services';
 import { stableStringify } from '../../src/protocol/envelope.js';
-import { validateRationale } from '../../src/environments/scalemas/paper-substrate.js';
+import { referenceHelp, validateRationale } from '../../src/environments/scalemas/paper-substrate.js';
 import { fatePins, sha256, type FateVerdict } from './fate-checker.js';
 
 const maxChecks = 10;
+export const maxFateOperationsPerPeer = 100;
 const checkTimeoutMs = 900_000;
 const string = (maxLength: number) => ({ type: 'string', minLength: 1, maxLength });
 const object = (properties: Record<string, unknown>) => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
@@ -13,9 +14,15 @@ const proof = string(131_072);
 const errors = ['NOT_ALLOWED', 'NOT_FOUND', 'CONFLICT', 'INVALID_CONTRACT', 'CHECK_LIMIT', 'OPERATION_LIMIT']
   .map(code => ({ code, retryable: false }));
 const descriptions: Record<string, string> = {
-  search_mathlib: 'Search the fixed Mathlib source for at most ten declarations and their stable resource addresses',
-  check_lean: 'Compile a trial proof term against the original FATE declaration and return diagnostics',
-  submit: 'Replace your currently submitted proof. Set finish=true to end your work after this submission',
+  search_mathlib: 'Search the fixed Mathlib source for existing Lean declarations.',
+  check_lean: `Check a proof term against the original theorem. You have up to ${maxChecks} trial checks.`,
+  submit: 'Record or replace your submitted proof. Set finish=true when you are ready to end your work. Your final submission is graded independently.',
+};
+
+const operationHelp: Record<string, string> = {
+  search_mathlib: 'Use a lemma, a specific query, or a known mathlib: address as the query.',
+  check_lean: 'Supply a Lean proof term, usually beginning with by.',
+  submit: `Supply a Lean proof term, usually beginning with by. ${referenceHelp} Use refs: [] when you used no references.`,
 };
 
 export type MathlibMatch = { name: string; type: string | null; module: string | null; source: string | null };
@@ -30,8 +37,30 @@ function failure(code: string, message: string) {
 function operation(name: string, input_schema: Record<string, unknown>, output_schema: Record<string, unknown>, timeout_ms?: number): ServiceCapability {
   return {
     name, operation: name, description: descriptions[name], input_schema, output_schema,
-    side_effect: name === 'submit' ? 'write' : 'read', idempotent: true, help: { when: descriptions[name] },
+    side_effect: name === 'submit' ? 'write' : 'read', idempotent: true, help: { when: operationHelp[name] },
     errors, ...(timeout_ms ? { timeout_ms } : {}),
+  };
+}
+
+export function fateServiceManifest(): ServiceManifest {
+  const nullable = { anyOf: [{ type: 'string' }, { type: 'null' }] };
+  const verdict = {
+    ...object({ status: string(32), code: string(80), diagnostic: string(4096), elapsedMs: { type: 'integer', minimum: 0 } }),
+    required: ['status', 'code', 'elapsedMs'],
+  };
+  return {
+    id: 'fate', title: 'FATE task tools',
+    purpose: `Mathlib lookup, Lean checking, and proof submission. Task and collaboration services share a limit of ${maxFateOperationsPerPeer} operations per agent.`,
+    provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' },
+    capabilities: [
+      operation('search_mathlib', object({ query: string(512) }), object({
+        results: { type: 'array', maxItems: 10, items: object({ name: string(512), type: nullable, module: nullable, source: nullable, address: string(200) }) },
+      })),
+      operation('check_lean', object({ proof }), verdict, checkTimeoutMs + 1_000),
+      operation('submit', object({
+        proof, rationale: string(8192), refs: { type: 'array', items: string(200), maxItems: 32, uniqueItems: true }, finish: { type: 'boolean' },
+      }), object({ sha256: string(64), submitted_at: string(40), finish: { type: 'boolean' } })),
+    ],
   };
 }
 
@@ -120,25 +149,8 @@ export function createFateTaskService(options: TaskOptions) {
   try {
     chmodSync(options.path, 0o600);
     db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE fate_candidates (bot_id TEXT PRIMARY KEY, candidate TEXT NOT NULL);');
-    const nullable = { anyOf: [{ type: 'string' }, { type: 'null' }] };
-    const verdict = {
-      ...object({ status: string(32), code: string(80), diagnostic: string(4096), elapsedMs: { type: 'integer', minimum: 0 } }),
-      required: ['status', 'code', 'elapsedMs'],
-    };
     options.services.registerService({
-      manifest: {
-        id: 'fate', title: 'FATE task tools', purpose: 'Search the frozen library, check and submit proofs for the original problem',
-        provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' },
-        capabilities: [
-          operation('search_mathlib', object({ query: string(512) }), object({
-            results: { type: 'array', maxItems: 10, items: object({ name: string(512), type: nullable, module: nullable, source: nullable, address: string(200) }) },
-          })),
-          operation('check_lean', object({ proof }), verdict, checkTimeoutMs + 1_000),
-          operation('submit', object({
-            proof, rationale: string(8192), refs: { type: 'array', items: string(200), maxItems: 32, uniqueItems: true }, finish: { type: 'boolean' },
-          }), object({ sha256: string(64), submitted_at: string(40), finish: { type: 'boolean' } })),
-        ],
-      },
+      manifest: fateServiceManifest(),
       adapter: createInProcessAdapter({ invoke(request) {
         const { caller, envelope, capability, input } = request;
         if (closed) throw failure('NOT_ALLOWED', 'Task Service is closed');

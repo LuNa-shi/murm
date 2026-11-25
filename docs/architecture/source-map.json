@@ -1230,6 +1230,15 @@
       "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
     },
     {
+      "path": "src/core/startup-prompt.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Standard startup system prompt with a permission-filtered Service directory and optional Profile instructions"
+    },
+    {
       "path": "src/core/pi-opensandbox-backend.ts",
       "category": "programmable Core",
       "chapters": [

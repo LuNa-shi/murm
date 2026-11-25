@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **217 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **218 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -53,7 +53,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | Published Pi/OpenSandbox Backend configuration contract | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6df9b7fd2bb6e6b704e50f3560dfbb6c6adc8d79320b19e7e4ef8a7fe73344f3` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | Published Core Service manifest, adapter and operation contracts | [04-services](04-services.md) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
-| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Bot, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `853ee823d27de900b68b419e288b53366af107effa366babc47aef288514bd0f` |
+| [src/core/types.ts](../../src/core/types.ts) | Published Core Runtime, Bot, event and receipt contracts | [15-core-runtime](15-core-runtime.md) | `4d7f0589f22a3f876a826ee64238308670dbc27f3e70ad0224a879e6375f0bb3` |
 
 ### Delivery and configuration (4)
 
@@ -70,7 +70,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [src/environments/scalemas/collaboration-evidence.ts](../../src/environments/scalemas/collaboration-evidence.ts) | Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence | [19-scalemas-environment](19-scalemas-environment.md) | `61639a9939ed26b1db7e9949c276c8252d43c24c1b29dc9a8f9a14006d833255` |
 | [src/environments/scalemas/index.ts](../../src/environments/scalemas/index.ts) | Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `026924cb38465352f32f9ff0f7e3ea9d96f27bcd49d41398ea0b97a461e9da5d` |
-| [src/environments/scalemas/paper-substrate.ts](../../src/environments/scalemas/paper-substrate.ts) | Paper-style immutable publications, anonymous scoped retrieval, transactional replay and decaying citation ranking | [19-scalemas-environment](19-scalemas-environment.md) | `4afc9653760d6691ca23570a94290065022cebf5feda30173e5169e9d9666b54` |
+| [src/environments/scalemas/paper-substrate.ts](../../src/environments/scalemas/paper-substrate.ts) | Paper-style immutable publications, anonymous scoped retrieval, transactional replay and decaying citation ranking | [19-scalemas-environment](19-scalemas-environment.md) | `d8211f82023f333d847e77aa6b24c4e773f060e19c16b9b609f3c9f21a562aaa` |
 | [src/environments/scalemas/substrate.ts](../../src/environments/scalemas/substrate.ts) | Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `197f80527c774177ae4374410c4fe4db7edf1d4b9cfb0088b2fddaf9d3b0af85` |
 
 ### Environment execution (1)
@@ -87,8 +87,8 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [examples/lead-helper-environment/main.ts](../../examples/lead-helper-environment/main.ts) | Editable lead-helper CLI with public backend assembly and report output | [20-lead-helper-environment](20-lead-helper-environment.md) | `31dc857b6e140cb8250fa53af61d59dc7cf45c216d9842ccb6e3d40f70c08c61` |
 | [examples/scalemas-environment/fate-checker.ts](../../examples/scalemas-environment/fate-checker.ts) | Frozen dependency checks and isolated Lean compilation and replay | [19-scalemas-environment](19-scalemas-environment.md) | `66cd0f401fb0730bbf705908869482917532c40c5803d45658385cefd2689f5b` |
 | [examples/scalemas-environment/fate-config.ts](../../examples/scalemas-environment/fate-config.ts) | Frozen FATE host settings, benchmark selection and model authorization inputs | [19-scalemas-environment](19-scalemas-environment.md) | `425c5c6037c10ae708806ab7a4e743c19a05142cbdb96b647d92fdae9747d2bd` |
-| [examples/scalemas-environment/fate-run.ts](../../examples/scalemas-environment/fate-run.ts) | Autonomous FATE startup, time fencing, observed progress, candidate freezing and grading | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `58fe92ee789f582ec2aa7599fe8ae12eacd939873133158b9ed07350baeb127f` |
-| [examples/scalemas-environment/fate-service.ts](../../examples/scalemas-environment/fate-service.ts) | Task search, working Lean budget, stable request scope and durable proof submission | [19-scalemas-environment](19-scalemas-environment.md) | `d7aa233cb183bb8b4a5c1dba97e92c840981db500c3126259dea1e05de8215bc` |
+| [examples/scalemas-environment/fate-run.ts](../../examples/scalemas-environment/fate-run.ts) | Autonomous FATE startup, time fencing, observed progress, candidate freezing and grading | [19-scalemas-environment](19-scalemas-environment.md), [08-prompts](08-prompts.md) | `4f358dce505ec613d6e446841a7fbcbace69a2c2ba40506678efa7b7af9413bb` |
+| [examples/scalemas-environment/fate-service.ts](../../examples/scalemas-environment/fate-service.ts) | Task search, working Lean budget, stable request scope and durable proof submission | [19-scalemas-environment](19-scalemas-environment.md) | `5ec5e638915df27a275a77bdf8b100514196ac6d903493b64d536e2eed509373` |
 | [examples/scalemas-environment/FateProofGuard.lean](../../examples/scalemas-environment/FateProofGuard.lean) | Single proof term parsing inside the trusted declaration | [19-scalemas-environment](19-scalemas-environment.md) | `436f1934936f11cb7c8791ba5cd2915021556c907841dcc8b2fa5c6762d76dfb` |
 | [examples/scalemas-environment/VerifyFateProof.lean](../../examples/scalemas-environment/VerifyFateProof.lean) | Original target comparison, kernel replay and axiom auditing | [19-scalemas-environment](19-scalemas-environment.md) | `23669396500f858351ab52948271a15a8989e844a0a64cefd661d30d0c1c2549` |
 | [scripts/git-credential-agensh.ts](../../scripts/git-credential-agensh.ts) | Single-peer Agensh ownership, trusted facility identity and Git integration | [18-agensh-environment](18-agensh-environment.md) | `6aeed7b20e3e77f5828e4a5e6261dfec2f08f5f53987132214a4a763e296b23c` |
@@ -213,7 +213,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `0df92907ec29c96b93503d09ffbe8902732676ed040dba3546a9d7205c4e25da` |
 | [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `56fd25bcb95009277ea65a94315ffd8fd05920a70d2ca79a5713e30ec8d1b5b1` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `ac9a12840d2cc1042b6890827ea6eb817f3b72484555963c2c777f24a9702a5e` |
-| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `fa1161def2607dfa72ba7e7a7be5296ad0a3a7ae69cc970bf3eb958d8fade45f` |
+| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `09af7e03b3a518722f6498d6dbcc29c800d787300c77f40fc33fe70253e7d16b` |
 
 ### durable storage (3)
 
@@ -277,7 +277,7 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [src/replay/service-history.ts](../../src/replay/service-history.ts) | Automatic transaction-aware private SQLite before/after row history and committed write boundaries | [13-historical-resume](13-historical-resume.md) | `17fe42059e4a7d46915f24f6291f8749f507ed80fe64014ccb871928300f5063` |
 
-### programmable Core (14)
+### programmable Core (15)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
@@ -286,15 +286,16 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | [src/core/artifact-collection.ts](../../src/core/artifact-collection.ts) | Host artifact stream validation, private staging and manifest publication | [15-core-runtime](15-core-runtime.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `6cae5836ec2872b083930f140fb8526d3ffc70cdbf1a047a384933ad7b03748b` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | Public opaque Pi/OpenSandbox backend factory export | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
 | [src/core/bot-service.ts](../../src/core/bot-service.ts) | Built-in Bot Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger | [15-core-runtime](15-core-runtime.md), [08-prompts](08-prompts.md) | `8687c26127e3178829fe9ddc74ef94fb56893e2138600b42d2e369f876fa2df5` |
-| [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `a77ba3b657caf0f1b6ebb1097a15e2595b38c89e5deb2614bd83e339066489cd` |
-| [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `9a66d1df9128d813a56d43c91919e63fba17384c1c328ddc4d6491b0d1b8f769` |
+| [src/core/bridge.ts](../../src/core/bridge.ts) | Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `4ba1913794408a1f9b395fb923968b029282053a64090f176ec99b16639d6acd` |
+| [src/core/config.ts](../../src/core/config.ts) | Profile snapshot, spawn request and environment validation | [15-core-runtime](15-core-runtime.md) | `fbd2fec0a754cc3ee55641f7298e8175e99fc3727c26094446ec66d0f8341e1c` |
 | [src/core/file-controls.ts](../../src/core/file-controls.ts) | Bot file-operation identity, preparation receipts, write authority and pending grant fences | [15-core-runtime](15-core-runtime.md) | `a726987c0fb6cd934b71aeca76f981244bde40543cf994b52267e8d7b74dfee1` |
 | [src/core/index.ts](../../src/core/index.ts) | Runtime assembly, Bot admission, input and bounded lifecycle | [15-core-runtime](15-core-runtime.md) | `2210258384ebee02c6d3ab5416dd0846dffc1e22e403702e284862ec211f391c` |
 | [src/core/input-ledger.ts](../../src/core/input-ledger.ts) | Runtime/caller/operation/target/request input identity and parameter conflict ledger | [15-core-runtime](15-core-runtime.md) | `ec94643c5c1283a93a1c6e462fee88b721a38f9200b2f48f7f8229ab98d95c7f` |
 | [src/core/model-access.ts](../../src/core/model-access.ts) | Runtime-scoped model gateway lifecycle, credentials and policy | [15-core-runtime](15-core-runtime.md) | `f1ba053183f35f13dc75c5505bf5c573a8f44c059949bfe1f05f84548659d5b2` |
-| [src/core/pi-opensandbox-backend.ts](../../src/core/pi-opensandbox-backend.ts) | Core backend lifecycle, Worker transport and confirmed cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `ebbd6581a2bf95ee61c759537cdb7df2d318c0420fbcd7abe7b0276193fa0e3b` |
-| [src/core/run-records.ts](../../src/core/run-records.ts) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `daf2d2ae99319815e272ed969233a04eb6cb0900f4beb8fec90bb9b196e57095` |
+| [src/core/pi-opensandbox-backend.ts](../../src/core/pi-opensandbox-backend.ts) | Core backend lifecycle, Worker transport and confirmed cleanup | [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `3324f3748d33e9047875a649b254acf00a38edc4b0a89424db3b2930871abaf3` |
+| [src/core/run-records.ts](../../src/core/run-records.ts) | Private Runtime summary configuration, ordered evidence writing and credential redaction | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `b62efd9b6e8f3c0b9aa7982c9cf93748f8f7812101f6ba257d66364b40d7b239` |
 | [src/core/services.ts](../../src/core/services.ts) | Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter | [15-core-runtime](15-core-runtime.md), [17-environment-reporting](17-environment-reporting.md) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
+| [src/core/startup-prompt.ts](../../src/core/startup-prompt.ts) | Standard startup system prompt with a permission-filtered Service directory and optional Profile instructions | [08-prompts](08-prompts.md), [16-pi-opensandbox-backend](16-pi-opensandbox-backend.md) | `319d992edfd055590fb16baa5dcdd0d00ff5a1b131410811ca2dd76a0331c370` |
 
 ### provider deployment and instructions (8)
 

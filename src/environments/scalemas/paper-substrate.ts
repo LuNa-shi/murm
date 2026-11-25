@@ -4,7 +4,7 @@ import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { Tiktoken } from 'js-tiktoken/lite';
 import encoder from 'js-tiktoken/ranks/o200k_base';
-import { createInProcessAdapter, type JsonValue, type ServiceCaller, type ServiceCapability, type ServiceRegistry } from '@swarmenv/core/services';
+import { createInProcessAdapter, type JsonValue, type ServiceCaller, type ServiceCapability, type ServiceManifest, type ServiceRegistry } from '@swarmenv/core/services';
 import { stableStringify } from '../../protocol/envelope.js';
 
 export type SharingMode = 'shared' | 'private' | 'none';
@@ -20,6 +20,21 @@ type RequestRow = { fingerprint: string; response: string | null; error_code: st
 const maxRead = 8;
 const maxRefs = 32;
 const maxContentTokens = 1024;
+export const referenceHelp = 'Give a non-empty rationale. Cite only visible contributions and task resources you actually use. For every address in refs, start a separate rationale line with the address and a space, followed by what it contributed.';
+const operations = {
+  search: {
+    description: 'Find contributions visible to you by lemma, subgoal, or blocker. Returns matching contributions in full.',
+    help: 'Provide a query with 1–64 distinct terms and a result limit.',
+  },
+  visit: {
+    description: 'Read contributions at known content addresses.',
+    help: 'Use exact content addresses returned by search or publish.',
+  },
+  publish: {
+    description: 'Publish reusable intermediate work in this run.',
+    help: `Give sub_task and artifact as non-empty text with at most ${maxContentTokens} tokens combined. ${referenceHelp} Use refs: [] when you used no references.`,
+  },
+};
 const tokenize = (value: string) => value.normalize('NFC').toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
 const text = (maxLength: number) => ({ type: 'string', minLength: 1, maxLength });
@@ -41,12 +56,25 @@ class Rejection extends Error {
   }
 }
 
-function capability(operation: string, input_schema: Record<string, unknown>, output_schema: Record<string, unknown>): ServiceCapability {
+function capability(operation: keyof typeof operations, input_schema: Record<string, unknown>, output_schema: Record<string, unknown>): ServiceCapability {
   return {
-    name: operation, operation, description: `${operation} run-scoped ScaleMAS contributions`,
+    name: operation, operation, description: operations[operation].description,
     side_effect: operation === 'publish' ? 'write' : 'read', idempotent: true,
-    help: { when: 'Find, read or share completed work in the contribution library' },
+    help: { when: operations[operation].help },
     input_schema, output_schema, errors,
+  };
+}
+
+export function paperSubstrateManifest(mode: Exclude<SharingMode, 'none'>): ServiceManifest {
+  return {
+    id: 'substrate', title: 'ScaleMAS contributions',
+    purpose: mode === 'shared' ? 'Work published by agents in this run.' : 'Your own published work in this run.',
+    provider_version: '2', contract_version: '2', endpoint: { transport: 'in-process' },
+    capabilities: [
+      capability('publish', object(publication), message),
+      capability('search', object({ query: text(512), limit: count(maxRead) }), results),
+      capability('visit', object({ addresses: addresses(maxRead, 1) }), results),
+    ],
   };
 }
 
@@ -174,15 +202,7 @@ export function createPaperSubstrate({ databasePath, runId, mode, services, auth
       return projection(requireMessage(scope, address));
     }
     services.registerService({
-      manifest: {
-        id: 'substrate', title: 'ScaleMAS contributions', purpose: 'Persist immutable messages and references within one visibility scope',
-        provider_version: '2', contract_version: '2', endpoint: { transport: 'in-process' },
-        capabilities: [
-          capability('publish', object(publication), message),
-          capability('search', object({ query: text(512), limit: count(maxRead) }), results),
-          capability('visit', object({ addresses: addresses(maxRead, 1) }), results),
-        ],
-      },
+      manifest: paperSubstrateManifest(mode),
       adapter: createInProcessAdapter({ invoke(request) {
         const { caller, input, capability, envelope } = request;
         if (closed || !runtimeId || caller.runtimeId !== runtimeId) throw new Rejection('NOT_ALLOWED', 'Caller is outside the bound Runtime');

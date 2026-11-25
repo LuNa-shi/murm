@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { createControlledUpstream } from './fixtures/core-controlled-upstream.js';
+import { createNotesService, notesManifest } from './fixtures/core-notes-service.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
 
@@ -16,7 +17,7 @@ test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a 
   const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
   const image = process.env.SWARMENV_CORE_TEST_IMAGE;
   assert.ok(image, 'SWARMENV_CORE_TEST_IMAGE must identify a verified Pi/OpenSandbox image');
-  const upstream = await createControlledUpstream();
+  const upstream = await createControlledUpstream({ listServices: true });
   let runtime;
   let close;
   t.after(async () => {
@@ -40,10 +41,13 @@ test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a 
     models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
     isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 * 1024, inodes: 4096 } },
   });
+  const services = new ServiceRegistry();
+  services.registerService({ manifest: notesManifest(), adapter: createNotesService().adapter });
+  services.registerService({ manifest: notesManifest('other-notes'), adapter: createNotesService().adapter });
   runtime = await createRuntime({ backend, profiles: {
     worker: { prompt: 'Perform the requested local file operation and return its verified result.', model: 'default', image,
-      writable: true, services: {} },
-  }, services: new ServiceRegistry(), maxBots: 1, outputDir });
+      writable: true, services: { notes: ['get'] } },
+  }, services, maxBots: 1, outputDir });
   assert.deepEqual(await ownedContainers(runtime.id), []);
   const bot = await runtime.spawn({ requestId: 'smoke-spawn', profile: 'worker' });
   assert.equal(bot.status, 'idle');
@@ -69,6 +73,22 @@ test('public Core runs a no-Task Bot through real Pi/OpenSandbox and verifies a 
   assert.equal(outcome.output?.trim(), 'FILE_OK');
   assert.equal(upstream.failure, undefined);
   assert.equal(upstream.requests.length, 3);
+  const firstRequest = upstream.requests[0];
+  const prompt = firstRequest.input.find(item => item.role === 'developer')?.content;
+  assert.equal(typeof prompt, 'string');
+  assert.match(prompt, /^You are a SwarmEnv agent/);
+  const directory = prompt.match(/<services>\n([\s\S]*?)\n<\/services>/)?.[1];
+  assert.ok(directory, 'Pi must send a Service directory in its first model request');
+  assert.match(directory, /Fixed notes exchange/);
+  assert.match(directory, /swarm notes get.*Read a note/);
+  assert.doesNotMatch(directory, /swarm notes put|other-notes|swarm bot/);
+  assert.doesNotMatch(prompt, /<docs>/);
+  assert.match(prompt, /<added_system_prompt>\nPerform the requested local file operation/);
+  assert.deepEqual(firstRequest.tools.map(tool => tool.name).sort(), ['bash', 'edit', 'read', 'write']);
+  const toolResult = upstream.requests[1].input.find(item => item.type === 'function_call_output');
+  const cliDirectory = JSON.parse(toolResult.output);
+  assert.deepEqual(cliDirectory.services.map(service => [service.id, service.capabilities.map(capability => capability.operation)]),
+    [['notes', ['get']]]);
   const idle = await runtime.get(bot.id);
   assert.equal(idle.status, 'idle');
   assert.equal(idle.latestOutput?.trim(), 'FILE_OK');

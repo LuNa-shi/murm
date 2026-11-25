@@ -71,6 +71,12 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
   let closing = false;
   let closePromise: Promise<void> | undefined;
   const active = new Map<AbortController, string | undefined>();
+  const allows = (grants: BridgeBot['services'] | undefined, service: string, operation: string) =>
+    grants !== undefined && Object.hasOwn(grants, service) && Array.isArray(grants[service]) && grants[service].includes(operation);
+  const visibleServices = (grants: BridgeBot['services']) => [...registrations.values()].flatMap(({ manifest }) => {
+    const capabilities = manifest.capabilities.filter(capability => allows(grants, manifest.id, capability.operation));
+    return capabilities.length ? [{ ...manifest, capabilities }] : [];
+  });
   const server = createServer(async (request, response) => {
     let body: BridgeBody | undefined;
     let controller: AbortController | undefined;
@@ -109,17 +115,11 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       if (!body || typeof body !== 'object' || Array.isArray(body) || typeof body.operation !== 'string' ||
           typeof body.operation_id !== 'string' || !body.operation_id || body.operation_id.length > 256) invalid('Bridge request requires operation and operation_id');
       const current = live();
-      const allows = (service: string, operation: string) => Object.hasOwn(current.services ?? {}, service) &&
-        Array.isArray(current.services[service]) && current.services[service].includes(operation);
-      const visible = [...registrations.values()].flatMap(({ manifest }) => {
-        const capabilities = manifest.capabilities.filter(capability => allows(manifest.id, capability.operation));
-        return capabilities.length ? [{ ...manifest, capabilities }] : [];
-      });
       if (body.operation === 'list_services' && body.service_id === undefined) {
-        reply(response, 200, { ok: true, result: { services: visible } }); return;
+        reply(response, 200, { ok: true, result: { services: visibleServices(current.services) } }); return;
       }
       if (body.operation === 'get_service_metadata' && body.service_id === undefined) {
-        const manifest = visible.find(item => item.id === (body!.payload as { service?: string } | null | undefined)?.service);
+        const manifest = visibleServices(current.services).find(item => item.id === (body!.payload as { service?: string } | null | undefined)?.service);
         if (!manifest) throw new SwarmEnvError('NOT_ALLOWED', 'Service is unavailable to this Profile');
         reply(response, 200, { ok: true, result: manifest }); return;
       }
@@ -129,7 +129,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
         input: Object.hasOwn(body, 'payload') ? body.payload : {}, startedAt: new Date().toISOString() };
       traceService?.({ ...trace, phase: 'started' });
       const registration = registrations.get(body.service_id);
-      if (!registration || !allows(body.service_id, body.operation)) throw new SwarmEnvError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
+      if (!registration || !allows(current.services, body.service_id, body.operation)) throw new SwarmEnvError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
       const binding = Object.hasOwn(current.bindings ?? {}, body.service_id) && typeof current.bindings![body.service_id] === 'string'
         ? current.bindings![body.service_id] : undefined;
       const caller = { runtimeId, botId: botId!, profile: current.profile, ...(binding === undefined ? {} : { binding }) };
@@ -147,7 +147,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
         envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService,
         assertAuthorized: () => {
           const latest=live();
-          if(latest.profile!==caller.profile || !latest.services?.[body!.service_id]?.includes(body!.operation)) throw new SwarmEnvError('NOT_ALLOWED','Service caller authority was revoked');
+          if(latest.profile!==caller.profile || !allows(latest.services, body!.service_id, body!.operation)) throw new SwarmEnvError('NOT_ALLOWED','Service caller authority was revoked');
         } }, serviceTimeoutMs);
       traceOutput = result;
       reply(response, 200, { ok: true, result });
@@ -213,6 +213,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
   return {
     publicUrl,
     cancelBotCalls,
+    visibleServices,
     credentialsForBot(botId: string) {
       const bot = getBot(botId);
       if (closing || !bot || bot.unavailable || ['exited', 'closing', 'closed'].includes(bot.status)) {

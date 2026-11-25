@@ -12,6 +12,9 @@ import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-pro
 import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, BOT_MATERIAL_CONTINUATION_MESSAGE, BOT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory } from '../src/agent/bot-contract.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
+import { renderStartupPrompt } from '../src/core/startup-prompt.js';
+import { fateServiceManifest } from '../examples/scalemas-environment/fate-service.js';
+import { paperSubstrateManifest } from '../src/environments/scalemas/paper-substrate.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const outputDir = 'docs/architecture/prompts';
@@ -23,9 +26,9 @@ const sourcePaths = [
   'src/agent/bot-contract.ts',
   'src/agent/capability-profile.ts',
   'src/agent/services-bridge.ts',
-  'src/core/index.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
+  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
   'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts',
-  'examples/scalemas-environment/fate-run.ts',
+  'examples/scalemas-environment/fate-run.ts', 'examples/scalemas-environment/fate-service.ts', 'src/environments/scalemas/paper-substrate.ts',
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',
   'examples/subagents-environment/main.ts', 'examples/subagents-environment/controller.ts', 'examples/subagents-environment/prompts.ts',
   'src/environments/agensh/index.ts', 'src/environments/agensh/router.ts', 'src/environments/agensh/routed.ts', 'src/environments/agensh/team.ts',
@@ -158,7 +161,10 @@ for (const [index, line] of sources.get('examples/subagents-environment/controll
 }
 const scaleMASPath = 'src/environments/scalemas/index.ts';
 const fatePath = 'examples/scalemas-environment/fate-run.ts';
-const fateTask = evaluate(between(fatePath, 'export const fatePeerPrompt = ', ';\n'));
+output('01-core-startup.md', header('Core startup system prompt',
+  'The backend passes this file through Pi --system-prompt. The current working directory is appended by Pi. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
+  + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([])));
+const fateManifest = fateServiceManifest();
 const fateSharing = evaluate(between(fatePath, 'export const fateSharingPrompt = ', ';\n'));
 output('09-scalemas-environment.md', header('ScaleMAS peer prompts',
   'In the generic configuration all three default peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
@@ -166,8 +172,9 @@ output('09-scalemas-environment.md', header('ScaleMAS peer prompts',
   + block('Cycle instruction', between(scaleMASPath, "export const cyclePrompt = '", "';\n"))
   + block('Exact input composition', between(scaleMASPath, '                  const text = ', '\n                  const sendInput'),
     'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.')
-  + block('FATE Profile in the no-library condition', fateTask)
-  + block('FATE Profile in the shared and private conditions', [fateTask, fateSharing].join('\n'))
+  + block('FATE startup in the no-library condition', renderStartupPrompt([fateManifest]))
+  + block('FATE startup in the shared condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('shared')], fateSharing))
+  + block('FATE startup in the private condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('private')], fateSharing))
   + block('FATE initial input', evaluate(between(fatePath, 'export const fateInput = ', ';\n')),
     'Every peer receives this same followUp through runInput after the fixed pool is ready. The host stages the frozen formal and informal problem as files. The informal file appends the problem resource address derived from the original declaration SHA-256. There is no periodic continuation or final scorer prompt.'));
 output('08-agensh-environment.md', header('Agensh peer and serial router prompts',

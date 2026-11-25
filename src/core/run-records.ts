@@ -150,7 +150,7 @@ export function runtimeConfiguration({ config, profiles, registrations, maxBots,
     profiles: Object.fromEntries([...profiles].map(([id, profile]) => [id, {
       model: profile.model, image: redact(profile.image), writable: profile.writable, services: profile.services,
       environmentKeys: Object.keys(profile.env ?? {}).sort(), network: profile.network, collect: profile.collect,
-      spawnProfiles: profile.spawnProfiles, promptSha256: createHash('sha256').update(profile.prompt).digest('hex'),
+      spawnProfiles: profile.spawnProfiles, promptSha256: createHash('sha256').update(profile.prompt ?? '').digest('hex'),
     }])),
     services: [...registrations.values()].map(({ manifest, adapter }) => ({
       id: manifest.id, transport: manifest.endpoint.transport, ...getAdapterMetadata(adapter),
