@@ -8,7 +8,11 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261125-17` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **COMPLETED 1H WINDOW · upstream Agensh · Pandoc · one PR merged · ProgramBench 1.21%** | `2dae4e14` (upstream) | [Native Agensh Pandoc comparison](EXP-20261125-06-native-agensh-pandoc.md) · [ProgramBench evaluation](EXP-20261125-07-agensh-pandoc-steer.md#programbench-evaluation-of-the-final-archives) (recorded as `EXP-20261125-06`) |
+| `EXP-20261125-16` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **COMPLETED 1H WINDOW · Agensh · Pandoc · K3 · 4 peers · no main delivery · private export lost** | `ce7b0d6` | [Pandoc full-window repeat](EXP-20261125-05-agensh-pandoc.md) (recorded as `EXP-20261125-05`) |
+| `EXP-20261125-15` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **STOPPED EARLY · Agensh Pandoc · 17m16s · all peers hit request timeout** | `ce7b0d6` | [Agensh Pandoc collaboration](EXP-20261125-04-agensh-pandoc.md) (recorded as `EXP-20261125-04`) |
 | `EXP-20261125-10` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **SETTLED · 43m54s Subagents delivery · verified child adoption and cleanup · 84.37% official score** | `67c21218` | [ProgramBench fd acceptance](EXP-20261125-10-issue199-fd.md) |
+| `EXP-20261125-07` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **COMPLETED 1H WINDOW · Agensh · Pandoc · 16 PR merges · 78 in-turn deliveries · ProgramBench 18.55%** | `d43f3127` | [Peer-chosen branches and in-turn notices](EXP-20261125-07-agensh-pandoc-steer.md) |
 | `EXP-20261125-06` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **PASS · Pastel task, verified child adoption and cleanup · Root finished in 5m59.736s** | `67c21218` | [Pastel acceptance with early child handoffs](EXP-20261125-06-issue199-pastel.md) |
 | `EXP-20261125-05` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **SETTLED · Deadline · autonomous parallel work · no usable handoff or complete delivery** | `3e4d2a3` | [Pastel acceptance with early delegation](EXP-20261125-05-issue199-pastel.md) |
 | `EXP-20261125-04` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **SETTLED · Deadline without final reply or delegation · exported files passed offline check** | `ac0019e` | [Pastel acceptance through the ordinary Subagents example](EXP-20261125-04-issue199-pastel.md) |
@@ -65,6 +69,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 | `EXP-20261112-05` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **1h single-problem acceptance rerun with clean Execution Workspace · REGISTERED** | `be3d1d5` | [Issue #122 clean-workspace rerun](EXP-20261112-05-single-problem-1h.md) |
 | `EXP-20261112-06` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **1h single-problem acceptance rerun with normalized modern claim boundary · REGISTERED** | `9ac4012` | [Issue #122 normalized-claim rerun](EXP-20261112-06-single-problem-1h.md) |
 | `EXP-20261112-07` | [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) | **Single-problem run stopped early · BLOCKED** | `7ceda2f` | [Issue #122 blocked run](EXP-20261112-07-single-problem-1h.md) |
+
+The Agensh rows for 2026-11-25 preserve the recorded labels from their original run evidence. Three rows received unique registry IDs during integration after the recorded labels collided with the parallel Subagents branch.
 
 Use [TEMPLATE.md](TEMPLATE.md) for each new formal study. An approved Issue may delegate a bounded matrix and repeated runs, so a separate human approval is not needed for every execution. The human decides the value/importance of research hypotheses and any material scope change.
 

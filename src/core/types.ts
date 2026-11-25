@@ -59,6 +59,7 @@ export type FileSeed = Readonly<Record<string, FileEntry>>;
 export interface CollectionSpec {
   paths: readonly string[];
   includeGit: boolean;
+  allowMissingGit?: boolean;
   maxBytes: number;
   required: boolean;
 }

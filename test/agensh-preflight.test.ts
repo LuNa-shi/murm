@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,6 +16,7 @@ test('foreground Agensh example validates host configuration without starting fa
   t.after(() => rm(directory, { recursive: true, force: true }));
   const config = new URL('../examples/agensh-environment/config.js', import.meta.url);
   const cli = new URL('../scripts/run-environment.js', import.meta.url);
+  const backendModule = new URL('../src/core/pi-opensandbox-backend.js', import.meta.url);
   const env = { PATH: process.env.PATH };
   const options = { cwd: directory, env, timeout: 5_000 };
   const command = [fileURLToPath(cli), '--config', fileURLToPath(config)];
@@ -26,7 +27,10 @@ test('foreground Agensh example validates host configuration without starting fa
     return true;
   });
 
+  const projectFile = join(directory, 'project.json');
+  await writeFile(projectFile, JSON.stringify({ title: 'Example project', body: 'Implement the target together', durationMs: 3_600_000 }));
   const values = {
+    PROJECT_FILE: projectFile, PEERS: '4',
     RUN_ID: 'local-example', IMAGE: 'sha256:immutable-fixture', MODEL_URL: 'http://127.0.0.1:1/v1/responses',
     MODEL_TOKEN: 'private-model-marker', GITEA_ORIGIN: 'http://192.0.2.1:3000', GITEA_OWNER: 'fixture-owner',
     GITEA_TOKEN: 'private-gitea-marker', MATTERMOST_ORIGIN: 'http://127.0.0.1:1', MATTERMOST_TEAM_ID: 'fixture-team',
@@ -36,19 +40,22 @@ test('foreground Agensh example validates host configuration without starting fa
   const observed = await execute(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
     import configuration from ${JSON.stringify(config.href)};
+    import { claimPiOpenSandboxBackend } from ${JSON.stringify(backendModule.href)};
     const { mode, options, timeoutMs } = configuration;
     assert.equal(mode, 'agensh');
     assert.equal(options.runId, 'local-example');
     assert.equal(options.gitea.owner, 'fixture-owner');
     assert.equal(options.mattermost.teamId, 'fixture-team');
     assert.equal(options.outputDir, './agensh-runs');
-    assert.equal(timeoutMs, 120_000);
-    assert.deepEqual(options.peerKeys, ['a', 'b']);
+    assert.equal(timeoutMs, 3_720_000);
+    assert.equal(options.project.durationMs, 3_600_000);
+    assert.deepEqual(options.peerKeys, ['a', 'b', 'c', 'd']);
     assert.equal(typeof options.startBoard, 'function');
-    assert.ok(options.backend);
+    const backend = claimPiOpenSandboxBackend(options.backend);
+    assert.equal(backend.sandbox.timeoutSeconds, 3_750);
   `], options);
   assert.equal(observed.stdout, '');
-  assert.deepEqual(await readdir(directory), []);
+  assert.deepEqual(await readdir(directory), ['project.json']);
 });
 
 test('exact Agensh Profile and Services assemble actual Runtime/Bridge/gateway with no sandbox or model call', async t => {

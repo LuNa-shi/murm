@@ -31,7 +31,7 @@ Read 00 first, then 07 for current entry points. Read 15–21 for the programmab
 | [15 Programmable Core Runtime](15-core-runtime.md) | How does a host assemble and run a Task-free Bot, subscribe to input results and close the run? |
 | [16 Pi/OpenSandbox backend](16-pi-opensandbox-backend.md) | How does Core connect its identity, a guest, a Pi Session and separately confirmed stop and destruction? |
 | [17 Runtime evidence and Environment reports](17-environment-reporting.md) | How do the foreground host, Notes and subagents run? How do reports record input, events, Service operations and cleanup failures? |
-| [18 Single-peer Agensh Environment](18-agensh-environment.md) | How does one Core peer use separately bound Git, message and board accounts across continuous turns and retain private work? |
+| [18 Agensh Environment](18-agensh-environment.md) | How do peers start a project, share work and merge through separate accounts, and retain their results at shutdown? |
 | [19 Fixed scaleMAS peer pool](19-scalemas-environment.md) | How does a fixed pool publish immutable content, adopt ranked references and continue its Sessions without Tasks? |
 | [20 Fixed lead-helper Environment](20-lead-helper-environment.md) | How do Board transactions, restricted Git identities, direction adoption and cleanup work? |
 | [21 Native acceptance evidence boundary](21-hour-matrix.md) | Where are the five original long-run proofs retained, and which ordinary workflows remain after removing experiment-only runners? |

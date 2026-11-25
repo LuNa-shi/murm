@@ -1,6 +1,8 @@
+import { resolve } from 'node:path';
 import { createRuntime } from '../../core/index.js';
 import { createPeerProfile } from './index.js';
 import { prepareAgenshFacilities } from './provision.js';
+import { createAgenshDelivery } from './delivery.js';
 import { createAgenshServices } from './services.js';
 import { createOwnedResources } from './resources.js';
 import { createAgenshRouter } from './router.js';
@@ -21,6 +23,9 @@ async function bounded(work: any, timeoutMs: any, code: any) {
 /** One public Core Runtime with a fixed independently authenticated peer pool. */
 export async function createAgenshTeam(options: any) {
   const { runId, image, outputDir, backend, model = 'default', exportLimit = 8 * 1024 ** 2, peerKeys = ['a', 'b'] } = options;
+  const durationMs = options.project?.durationMs ?? 3_600_000;
+  if (options.project !== undefined && (!finite(durationMs) || durationMs > 86_400_000 ||
+      typeof options.project?.title !== 'string' || typeof options.project?.body !== 'string')) throw new TypeError('Agensh project requires a goal and bounded duration');
   const readinessTimeoutMs = options.router?.readinessTimeoutMs ?? 10_000;
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir ||
       (options.maxConcurrentInputs !== undefined && (!Number.isSafeInteger(options.maxConcurrentInputs) || options.maxConcurrentInputs < 1 || options.maxConcurrentInputs > peerKeys.length)) ||
@@ -34,6 +39,10 @@ export async function createAgenshTeam(options: any) {
   const redact = (value: any) => { let bytes = JSON.stringify(value); for (const secret of [...secrets].sort((a: any, b: any) => b.length - a.length)) bytes = bytes.split(JSON.stringify(secret).slice(1, -1)).join('[redacted]'); return JSON.parse(bytes); };
   const peers: any = new Map(); const routers: any = new Map(); const subscriptions: any = new Map(); const unsubscriptions: any[] = []; const pendingSources: any = new Set();
   const stoppedPeers: any = new Set(), unavailablePeers: any = new Map();
+  let delivery: ReturnType<typeof createAgenshDelivery> | undefined;
+  let deliveryReceipt: { state: string; code?: string; commit?: string; stable?: boolean; archive?: string; sha256?: string; bytes?: number } | undefined;
+  let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+  let startedAt: string | undefined;
   let runtime: any, facilities: any, services: any, closing = false, closeWork: any, completed: any, fencedFailure: any;
   const hostStreamFailure = () => ['HOST_INPUT_FAILED', 'HOST_OUTPUT_FAILED'].includes(signal.reason?.code) ? signal.reason.code : undefined;
   const check = () => {
@@ -42,8 +51,9 @@ export async function createAgenshTeam(options: any) {
   const peerStates = () => [...peers].map(([key, bot]: any) => ({ key, botId: bot.id, profile: bot.profile,
     ...(unavailablePeers.has(bot.id) ? { unavailable: unavailablePeers.get(bot.id) } : {}),
     router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() }));
-  const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), resources: resources.snapshot(), peers: peerStates() });
-  function stop(reason?: unknown) { inputAdmission?.close(); closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
+  const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), ...(delivery ? { project: { repository: facilities.repository, issue: facilities.issueNumber,
+    startedAt, durationMs, delivery: deliveryReceipt, merges: delivery.snapshot() } } : {}), resources: resources.snapshot(), peers: peerStates() });
+  function stop(reason?: unknown) { clearTimeout(deadlineTimer); delivery?.stop(); inputAdmission?.close(); closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
   function fence(reason: any) {
     if (closing || signal.aborted) return;
     const code = typeof reason === 'string' ? reason : reason?.code;
@@ -58,14 +68,24 @@ export async function createAgenshTeam(options: any) {
       const end = Date.now() + timeoutMs;
       const sourceCreation = await Promise.allSettled([...pendingSources].map((work: any) => bounded(() => work, Math.max(1, Math.floor(timeoutMs / 3)), 'SOURCE_CREATE_PENDING')));
       const sourceResults = await Promise.allSettled([...subscriptions.values()].map((source: any) => bounded(() => source.stop(), Math.max(1, Math.floor(timeoutMs / 3)), 'SOURCE_STOP_PENDING')));
+      const deliveryWork = delivery && startedAt && (!deliveryReceipt || deliveryReceipt.state === 'pending')
+        ? delivery.finalize(resolve(outputDir, runtime.id), AbortSignal.timeout(Math.max(1, end - Date.now())))
+          .then(value => { deliveryReceipt = { ...value, state: value.stable ? 'complete' : 'pending', ...(!value.stable ? { code: 'DELIVERY_MERGE_UNKNOWN' } : {}) }; },
+            error => { deliveryReceipt = { ...error.pin, state: 'pending', code: error.code ?? 'DELIVERY_EXPORT_FAILED' }; })
+        : undefined;
       let core: any;
       try { core = runtime ? await bounded(() => runtime.close({ timeoutMs: Math.max(1, end - Date.now()) }), Math.max(1, end - Date.now()), 'CORE_CLOSE_PENDING') : { cleanup: 'complete', bots: [], pending: [] }; }
       catch { core = { cleanup: 'pending', bots: [...peers.values()].map((bot: any) => ({ botId: bot.id, execution: 'unknown', cleanup: 'pending' })), pending: [{ kind: 'runtime-close', id: runtime?.id }] }; }
-      for (const router of routers.values()) await router.finishClose(core);
+      const routersDrained = await bounded(() => Promise.all([...routers.values()].map(router => router.finishClose(core))),
+        Math.max(1, end - Date.now()), 'ROUTER_CLOSE_PENDING').then(() => true, () => false);
+      if (deliveryWork) {
+        await bounded(() => deliveryWork, Math.max(1, end - Date.now()), 'DELIVERY_EXPORT_PENDING')
+          .catch(() => { deliveryReceipt ??= { state: 'pending', code: 'DELIVERY_EXPORT_PENDING' }; });
+      }
       const sourcesPending = pendingSources.size > 0 || [...sourceResults, ...sourceCreation].some((row: any) => row.status === 'rejected');
-      if (core.cleanup !== 'complete' || core.bots?.some((bot: any) => bot.execution !== 'stopped' || bot.cleanup !== 'complete') || sourcesPending) return { ...core, cleanup: 'pending', sourceCleanup: sourcesPending ? 'pending' : 'complete', environment: { cleanup: 'pending', resources: resources.snapshot() } };
+      if (core.cleanup !== 'complete' || core.bots?.some((bot: any) => bot.execution !== 'stopped' || bot.cleanup !== 'complete') || sourcesPending || !routersDrained || deliveryReceipt?.state === 'pending') return { ...core, cleanup: 'pending', ...(deliveryReceipt ? { delivery: deliveryReceipt } : {}), sourceCleanup: sourcesPending ? 'pending' : 'complete', ...(!routersDrained ? { routerCleanup: 'pending' } : {}), environment: { cleanup: 'pending', resources: resources.snapshot() } };
       const environment = await bounded(() => resources.close(), Math.max(1, end - Date.now()), 'FACILITY_CLOSE_PENDING').catch(() => ({ cleanup: 'pending', resources: resources.snapshot() }));
-      const receipt: any = { ...core, cleanup: environment.cleanup, environment };
+      const receipt: any = { ...core, cleanup: environment.cleanup, environment, ...(deliveryReceipt ? { delivery: deliveryReceipt } : {}) };
       if (receipt.cleanup === 'complete') { completed = receipt; for (const unsubscribe of unsubscriptions) unsubscribe(); }
       return structuredClone(receipt);
     })().finally(() => { closeWork = undefined; });
@@ -79,7 +99,32 @@ export async function createAgenshTeam(options: any) {
     for (const peer of facilities.peers) secrets.push(peer.gitea.token, peer.message.token);
     const repository: any = new URL(facilities.repositoryUrl);
     if (repository.origin !== new URL(facilities.endpoints.gitea).origin || repository.username || repository.password || repository.search || repository.hash) throw fail('TEAM_IDENTITY_INVALID');
-    services = createAgenshServices(facilities);
+    if (options.project) {
+      if (facilities.project !== true) throw fail('TEAM_PROJECT_NOT_READY');
+      delivery = createAgenshDelivery({ facilities, adminToken: options.gitea?.adminToken });
+      signal.addEventListener('abort', () => delivery?.stop(), { once: true });
+    }
+    function projectFailure(botId: string, key: string, error: any) {
+      if (closing || signal.aborted) return;
+      unavailablePeers.set(botId, { type: 'routing', code: error?.code ?? error });
+      routers.get(key)?.stop();
+    }
+    services = createAgenshServices(facilities, delivery, options.project ? entry => {
+      if (closing || signal.aborted) return;
+      const label = `G${entry.gistId}`;
+      const content = Buffer.from([`${entry.type} ${label}`, entry.content, entry.detail].filter(Boolean).join('\n'));
+      const text = content.length <= 16 * 1024 ? content.toString('utf8')
+        : new TextDecoder().decode(content.subarray(0, 16 * 1024 - 3), { stream: true }) + '…';
+      for (const peer of facilities.peers) {
+        if (peer.board.workerId === entry.workerId || stoppedPeers.has(peer.key)) continue;
+        const router = routers.get(peer.key);
+        if (!router) continue;
+        try {
+          router.ingest({ source: 'board', kind: 'board-entry', eventId: label, targetWorker: peer.board.workerId, text,
+            origin: { senderId: entry.workerId, object: facilities.boardId } });
+        } catch (error: any) { projectFailure(peers.get(peer.key).id, peer.key, error); }
+      }
+    } : undefined);
     const profiles = Object.fromEntries(facilities.peers.map((peer: any) => [`peer-${peer.key}`, createPeerProfile({ image, model, facilities: { ...facilities, peer } })]));
     runtime = await createRuntime({ backend, services: services.services, profiles, maxBots: peerKeys.length, outputDir }); check();
     unsubscriptions.push(runtime.onEvent((event: any) => {
@@ -90,21 +135,27 @@ export async function createAgenshTeam(options: any) {
     }));
     for (const peer of facilities.peers) {
       const profile = `peer-${peer.key}`;
-      const bot = await runtime.spawn({ requestId: `spawn-${peer.key}`, profile, bindings: services.bindingsFor(peer.key), secretEnv: { GITEA_TOKEN: peer.gitea.token }, collect: { paths: ['.'], includeGit: true, maxBytes: exportLimit, required: true } });
+      const bot = await runtime.spawn({ requestId: `spawn-${peer.key}`, profile, bindings: services.bindingsFor(peer.key), secretEnv: { GITEA_TOKEN: peer.gitea.token }, collect: { paths: ['.'], includeGit: true, ...(options.project ? { allowMissingGit: true } : {}), maxBytes: exportLimit, required: true } });
       peers.set(peer.key, bot); check(); services.bindBot({ runtimeId: runtime.id, botId: bot.id, peerKey: peer.key, profile });
     }
     for (const peer of facilities.peers) {
       const bot = peers.get(peer.key); const mapping: any = { botId: bot.id, workerId: peer.board.workerId };
       const board = httpClient(facilities.endpoints.board);
-      const router = createAgenshRouter({ ...options.router, mapping, onFence: fence,
+      const failRouting = options.project ? (error: any) => projectFailure(bot.id, peer.key, error) : fence;
+      const router = createAgenshRouter({ ...(options.project ? {
+        workTimeoutMs: durationMs + 120_000, turnTimeoutMs: durationMs, maxBatches: 256, idleNudgeMs: 120_000, maxNudges: 8,
+      } : {}), ...options.router, mapping, onFence: failRouting,
+        steerInput: options.project ? (text: string, requestId: string) => runtime.steer(bot.id, text, { requestId, source: 'agensh-peer-notice', steeringMode: 'all' }) : undefined,
         runInput: (text: any, wait: any) => {
-          const send = () => runInput(runtime, bot.id, text, { ...wait, signal: AbortSignal.any([signal, wait.signal]) });
+          const send = () => runInput(runtime, bot.id, text, { ...wait, operation: options.project ? 'start' : 'send', signal: AbortSignal.any([signal, wait.signal]) });
           return inputAdmission ? inputAdmission.run(send) : send();
         },
         readContext: options.router?.readContext ?? (async ({ signal }: any) => (await board('GET', `/board/${encodeURIComponent(facilities.boardId)}/read?viewer=${encodeURIComponent(peer.board.workerId)}`, undefined, { signal })).rendered) });
       routers.set(peer.key, router); unsubscriptions.push(runtime.onEvent(router.observe));
       const subscribe = options.router?.subscribe ?? createAgenshEventSubscription;
-      const creation = Promise.resolve().then(() => subscribe({ ...options.router?.events, facilities: { ...facilities, peer }, mapping, ingest: router.ingest, signal, onFailure: fence })).then(async (source: any) => {
+      const creation = Promise.resolve().then(() => subscribe({ ...(options.project ? { pollIntervalMs: 2500, dmChannelIds: Object.values(facilities.directChannels?.[peer.key] ?? {}) } : {}),
+        ...options.router?.events, facilities: { ...facilities, peer }, mapping, ingest: router.ingest, signal,
+        onFailure: failRouting })).then(async (source: any) => {
         if (typeof source?.stop !== 'function') throw fail('TEAM_SOURCE_NOT_READY');
         subscriptions.set(peer.key, source);
         if (closing) await source.stop();
@@ -117,6 +168,12 @@ export async function createAgenshTeam(options: any) {
       check();
     }
     for (const router of routers.values()) router.markReady();
+    if (options.project) {
+      const goal = `Work with the other peers on run issue #${facilities.issueNumber}: ${options.project.title}. Read the issue and start your own work cycle.`;
+      startedAt = new Date().toISOString();
+      deadlineTimer = setTimeout(() => stop(fail('AGENSH_PROJECT_DEADLINE')), durationMs);
+      for (const router of routers.values()) router.kickoff(goal);
+    }
     return Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getBot: runtime.get,
       currentPeers: () => ({ closing, peers: peerStates() }),
       async stopPeer(key: any, { timeoutMs = 60_000 }: any = {}) {
