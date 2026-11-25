@@ -8,6 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261125-06` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **REGISTERED · upstream Agensh · Pandoc · K3 · 4 peers · 1h** | `2dae4e14` (upstream) | [Native Agensh Pandoc comparison](EXP-20261125-06-native-agensh-pandoc.md) |
 | `EXP-20261125-05` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **COMPLETED 1H WINDOW · Agensh · Pandoc · K3 · 4 peers · no main delivery · private export lost** | `ce7b0d6` | [Pandoc full-window repeat](EXP-20261125-05-agensh-pandoc.md) |
 | `EXP-20261125-04` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **STOPPED EARLY · Agensh Pandoc · 17m16s · all peers hit request timeout** | `ce7b0d6` | [Agensh Pandoc collaboration](EXP-20261125-04-agensh-pandoc.md) |
 | `EXP-20261125-01` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Subagents · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
