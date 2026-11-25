@@ -25,6 +25,7 @@ const sourcePaths = [
   'src/agent/services-bridge.ts',
   'src/core/index.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
   'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts',
+  'examples/scalemas-environment/fate-run.ts',
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',
   'examples/subagents-environment/main.ts', 'examples/subagents-environment/controller.ts', 'examples/subagents-environment/prompts.ts',
   'src/environments/agensh/index.ts', 'src/environments/agensh/router.ts', 'src/environments/agensh/routed.ts', 'src/environments/agensh/team.ts',
@@ -156,12 +157,19 @@ for (const [index, line] of sources.get('examples/subagents-environment/controll
   if (line.includes('await runtime.send(')) sendSites.push({ path: 'examples/subagents-environment/controller.ts', line: index + 1, expression: line.trim() });
 }
 const scaleMASPath = 'src/environments/scalemas/index.ts';
-output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
-  'All three peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
+const fatePath = 'examples/scalemas-environment/fate-run.ts';
+const fateTask = evaluate(between(fatePath, 'export const fatePeerPrompt = ', ';\n'));
+const fateSharing = evaluate(between(fatePath, 'export const fateSharingPrompt = ', ';\n'));
+output('09-scalemas-environment.md', header('ScaleMAS peer prompts',
+  'In the generic configuration all three default peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
   + block('Peer Profile prompt', between(scaleMASPath, "export const peerPrompt = '", "';\n"))
   + block('Cycle instruction', between(scaleMASPath, "export const cyclePrompt = '", "';\n"))
   + block('Exact input composition', between(scaleMASPath, '                  const text = ', '\n                  const sendInput'),
-    'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.'));
+    'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.')
+  + block('FATE-M Profile in the no-library condition', fateTask)
+  + block('FATE-M Profile in the shared and private conditions', [fateTask, fateSharing].join('\n'))
+  + block('FATE-M initial input', evaluate(between(fatePath, 'export const fateInput = ', ';\n')),
+    'Every peer receives this same followUp through runInput after the fixed pool is ready. The host stages the frozen formal and informal problem as files. The informal file appends the problem resource address derived from the original declaration SHA-256. There is no periodic continuation or final scorer prompt.'));
 output('08-agensh-environment.md', header('Agensh peer and serial router prompts',
   'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper with explicit followUp. There are no mid-turn notices.')
   + block('Peer Profile prompt', between('src/environments/agensh/index.ts', 'export const peerPrompt = `', '`;'))

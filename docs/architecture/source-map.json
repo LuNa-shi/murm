@@ -18,6 +18,8 @@
     "examples/subagents-environment/.npmignore",
     "examples/lead-helper-environment/.npmignore",
     "examples/scalemas-environment/.npmignore",
+    "examples/scalemas-environment/FateProofGuard.lean",
+    "examples/scalemas-environment/VerifyFateProof.lean",
     "examples/agensh-environment/.npmignore",
     "tsconfig.json",
     "tsconfig.tests.json",
@@ -1481,6 +1483,14 @@
       "role": "Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking"
     },
     {
+      "path": "src/environments/scalemas/paper-substrate.ts",
+      "category": "Environment composition",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Paper-style immutable publications, anonymous scoped retrieval, transactional replay and decaying citation ranking"
+    },
+    {
       "path": "src/environments/scalemas/collaboration-evidence.ts",
       "category": "Environment composition",
       "chapters": [
@@ -1777,6 +1787,55 @@
         "docs/architecture/19-scalemas-environment.md"
       ],
       "role": "Host-only Kimi K3 scaleMAS configuration and finite resource defaults"
+    },
+    {
+      "path": "examples/scalemas-environment/fate-config.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Frozen first-pass host settings and model authorization inputs"
+    },
+    {
+      "path": "examples/scalemas-environment/fate-run.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Autonomous FATE-M startup, time fencing, candidate freezing, grading and reports"
+    },
+    {
+      "path": "examples/scalemas-environment/fate-service.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Task search, working Lean budget, stable request scope and durable proof submission"
+    },
+    {
+      "path": "examples/scalemas-environment/fate-checker.ts",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Frozen dependency checks and isolated Lean compilation and replay"
+    },
+    {
+      "path": "examples/scalemas-environment/FateProofGuard.lean",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Single proof term parsing inside the trusted declaration"
+    },
+    {
+      "path": "examples/scalemas-environment/VerifyFateProof.lean",
+      "category": "Environment integration",
+      "chapters": [
+        "docs/architecture/19-scalemas-environment.md"
+      ],
+      "role": "Original target comparison, kernel replay and axiom auditing"
     },
     {
       "path": "examples/scalemas-environment/.npmignore",

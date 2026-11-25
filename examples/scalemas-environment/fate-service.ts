@@ -1,0 +1,180 @@
+import { chmodSync } from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { createInProcessAdapter, type JsonValue, type ServiceCaller, type ServiceCapability, type ServiceRegistry, type ServiceRequest } from '@swarmenv/core/services';
+import { stableStringify } from '../../src/protocol/envelope.js';
+import { validateRationale } from '../../src/environments/scalemas/paper-substrate.js';
+import { fatePins, sha256, type FateVerdict } from './fate-checker.js';
+
+const maxChecks = 10;
+const checkTimeoutMs = 900_000;
+const string = (maxLength: number) => ({ type: 'string', minLength: 1, maxLength });
+const object = (properties: Record<string, unknown>) => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
+const proof = string(131_072);
+const errors = ['NOT_ALLOWED', 'NOT_FOUND', 'CONFLICT', 'INVALID_CONTRACT', 'CHECK_LIMIT', 'OPERATION_LIMIT']
+  .map(code => ({ code, retryable: false }));
+const descriptions: Record<string, string> = {
+  search_mathlib: 'Search the fixed Mathlib source for at most ten declarations and their stable resource addresses',
+  check_lean: 'Compile a trial proof term against the original FATE-M declaration and return diagnostics',
+  submit: 'Replace your currently submitted proof. Set finish=true to end your work after this submission',
+};
+
+export type MathlibMatch = { name: string; type: string | null; module: string | null; source: string | null };
+type Resource = MathlibMatch & { address: string };
+type Submission = { proof: string; rationale: string; refs: string[]; finish: boolean };
+export type FateCandidate = Submission & { botId: string; requestId: string; sha256: string; submittedAt: string };
+
+function failure(code: string, message: string) {
+  return Object.assign(new Error(message), { code });
+}
+
+function operation(name: string, input_schema: Record<string, unknown>, output_schema: Record<string, unknown>, timeout_ms?: number): ServiceCapability {
+  return {
+    name, operation: name, description: descriptions[name], input_schema, output_schema,
+    side_effect: name === 'submit' ? 'write' : 'read', idempotent: true, help: { when: descriptions[name] },
+    errors, ...(timeout_ms ? { timeout_ms } : {}),
+  };
+}
+
+interface TaskOptions {
+  path: string;
+  services: ServiceRegistry;
+  authorize(caller: ServiceCaller): void;
+  countOperation(botId: string, operation: string, requestId: string): void;
+  remainingMs(): number;
+  signal: AbortSignal;
+  problemAddress: string;
+  search(query: string, signal: AbortSignal): Promise<MathlibMatch[]>;
+  check(proof: string, options: { signal: AbortSignal; timeoutMs: number }): Promise<FateVerdict>;
+  validateReferences(botId: string, rationale: string, refs: string[]): void;
+  onFinish(botId: string): void;
+}
+
+export function createFateTaskService(options: TaskOptions) {
+  const db = new DatabaseSync(options.path);
+  let closed = false;
+  const checks = new Map<string, number>();
+  const declaredFinished = new Set<string>();
+  const requests = new Map<string, { fingerprint: string; result: Promise<JsonValue> }>();
+  const resourceScopes = new Map<string, Map<string, Resource>>();
+  const operations: { botId: string; operation: string; requestId: string; startedAt: string; outcome: string; elapsedMs?: number }[] = [];
+  const pending = new Set<Promise<JsonValue>>();
+
+  const resourceExists = (botId: string, address: string) =>
+    address === options.problemAddress || resourceScopes.get(botId)?.has(address) === true;
+
+  async function run(request: ServiceRequest): Promise<JsonValue> {
+    const { caller: { botId }, capability: { operation: name }, envelope: { operation_id: requestId }, input } = request;
+    options.countOperation(botId, name, requestId);
+    const signal = AbortSignal.any([request.signal, options.signal]);
+    signal.throwIfAborted();
+    if (name === 'search_mathlib') {
+      const { query } = input as { query: string };
+      if (!query.trim() || !query.isWellFormed()) throw failure('INVALID_CONTRACT', 'Provide a search query');
+      const raw = await options.search(query, signal);
+      signal.throwIfAborted();
+      request.assertAuthorized();
+      options.authorize(request.caller);
+      const entries = raw.slice(0, 10).map(row => ({ ...row, address: `mathlib:${sha256(stableStringify([fatePins.mathlibRevision, row.name, row.source]))}` }));
+      const scope = resourceScopes.get(botId) ?? new Map<string, Resource>();
+      for (const entry of entries) scope.set(entry.address, entry);
+      resourceScopes.set(botId, scope);
+      return { results: entries };
+    }
+    if (name === 'check_lean') {
+      const count = checks.get(botId) ?? 0;
+      if (count >= maxChecks) throw failure('CHECK_LIMIT', 'This peer used all ten working Lean checks');
+      const timeoutMs = Math.min(checkTimeoutMs, options.remainingMs());
+      if (timeoutMs < 1) throw failure('NOT_ALLOWED', 'The work period ended');
+      checks.set(botId, count + 1);
+      return await options.check((input as { proof: string }).proof, { timeoutMs, signal });
+    }
+
+    const submission = input as Submission;
+    if (!submission.proof.trim() || !submission.proof.isWellFormed() || Buffer.byteLength(submission.proof) > 131_072) {
+      throw failure('INVALID_CONTRACT', 'Submit a bounded, nonempty Lean proof term');
+    }
+    validateRationale(submission.rationale, submission.refs);
+    options.validateReferences(botId, submission.rationale, submission.refs);
+    request.assertAuthorized();
+    options.authorize(request.caller);
+    const candidate: FateCandidate = {
+      ...submission, botId, requestId, sha256: sha256(submission.proof), submittedAt: new Date().toISOString(),
+    };
+    db.prepare(`INSERT INTO fate_candidates VALUES(?,?) ON CONFLICT(bot_id) DO UPDATE SET candidate=excluded.candidate`)
+      .run(botId, JSON.stringify(candidate));
+    if (submission.finish) {
+      declaredFinished.add(botId);
+      options.onFinish(botId);
+    }
+    return { sha256: candidate.sha256, submitted_at: candidate.submittedAt, finish: candidate.finish };
+  }
+
+  try {
+    chmodSync(options.path, 0o600);
+    db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE fate_candidates (bot_id TEXT PRIMARY KEY, candidate TEXT NOT NULL);');
+    const nullable = { anyOf: [{ type: 'string' }, { type: 'null' }] };
+    const verdict = {
+      ...object({ status: string(32), code: string(80), diagnostic: string(4096), elapsedMs: { type: 'integer', minimum: 0 } }),
+      required: ['status', 'code', 'elapsedMs'],
+    };
+    options.services.registerService({
+      manifest: {
+        id: 'fate', title: 'FATE-M task tools', purpose: 'Search the frozen library, check and submit proofs for the original problem',
+        provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' },
+        capabilities: [
+          operation('search_mathlib', object({ query: string(512) }), object({
+            results: { type: 'array', maxItems: 10, items: object({ name: string(512), type: nullable, module: nullable, source: nullable, address: string(200) }) },
+          })),
+          operation('check_lean', object({ proof }), verdict, checkTimeoutMs + 1_000),
+          operation('submit', object({
+            proof, rationale: string(8192), refs: { type: 'array', items: string(200), maxItems: 32, uniqueItems: true }, finish: { type: 'boolean' },
+          }), object({ sha256: string(64), submitted_at: string(40), finish: { type: 'boolean' } })),
+        ],
+      },
+      adapter: createInProcessAdapter({ invoke(request) {
+        const { caller, envelope, capability, input } = request;
+        if (closed) throw failure('NOT_ALLOWED', 'Task Service is closed');
+        options.authorize(caller);
+        request.assertAuthorized();
+        const key = stableStringify([caller.botId, envelope.operation_id]);
+        const fingerprint = sha256(stableStringify({ name: capability.operation, input }));
+        const prior = requests.get(key);
+        if (prior) {
+          if (prior.fingerprint !== fingerprint) throw failure('CONFLICT', 'Task request was reused with a different operation or input');
+          return prior.result;
+        }
+        if (declaredFinished.has(caller.botId)) throw failure('NOT_ALLOWED', 'The peer has finished');
+        const evidence: typeof operations[number] = { botId: caller.botId, operation: capability.operation,
+          requestId: envelope.operation_id, startedAt: new Date().toISOString(), outcome: 'pending' };
+        operations.push(evidence);
+        const result = run(request).then(value => {
+          const verdict = capability.operation === 'check_lean' ? value as FateVerdict : null;
+          evidence.outcome = verdict?.status ?? 'succeeded';
+          if (verdict) evidence.elapsedMs = verdict.elapsedMs;
+          return value;
+        }, cause => {
+          evidence.outcome = typeof cause?.code === 'string' ? cause.code : 'SERVICE_FAILED';
+          throw cause;
+        });
+        requests.set(key, { fingerprint, result });
+        pending.add(result);
+        void result.then(() => pending.delete(result), () => pending.delete(result));
+        return result;
+      } }),
+    });
+    return Object.freeze({
+      resourceExists,
+      snapshot() {
+        const candidates = db.prepare('SELECT candidate FROM fate_candidates ORDER BY bot_id').all()
+          .map(row => JSON.parse(String(row.candidate)) as FateCandidate);
+        return { candidates, operations, checks: Object.fromEntries(checks),
+          resources: Object.fromEntries([...resourceScopes].map(([botId, scope]) => [botId, [...scope.values()]])) };
+      },
+      settle: () => Promise.allSettled([...pending]),
+      close() { if (!closed) { closed = true; db.close(); } },
+    });
+  } catch (error) {
+    db.close();
+    throw error;
+  }
+}

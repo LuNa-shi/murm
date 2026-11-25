@@ -1,0 +1,340 @@
+import { randomUUID } from 'node:crypto';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
+import { createRuntime, type Backend, type ModelCaller, type Profile, type StopReceipt } from '@swarmenv/core';
+import { ServiceRegistry, type ServiceCaller } from '@swarmenv/core/services';
+import { runInput } from '../../src/environments/shared/run-input.js';
+import { runWithReport } from '../../src/environments/shared/run-report.js';
+import { createPaperSubstrate, type SharingMode } from '../../src/environments/scalemas/paper-substrate.js';
+import { MathlibSearchService } from '../../src/services/mathlib-search-service.js';
+import { createFateChecker, fatePins, loadFateProject, sha256, type FateProject } from './fate-checker.js';
+import { createFateTaskService, type FateCandidate, type MathlibMatch } from './fate-service.js';
+
+export const fatePeerPrompt = [
+  'Solve the same original FATE-M problem as the other independent peers. Read problem.lean and problem.txt.',
+  'The fate Service provides search_mathlib, check_lean and submit. Inspect schemas with swarm service view fate.',
+  'Use check_lean to try a Lean proof term (usually beginning with by) against the original theorem. You have ten trials.',
+  'Use swarm fate submit --input submission.json --request-id <fresh-id> to submit your current proof term, rationale, refs and finish flag.',
+  'Set finish to true to end your work with this submission. Otherwise you may replace it later. Your final accepted submission is scored independently.',
+  'Address references explicitly on separate rationale lines starting with the corresponding address and a space, followed by what it contributed.',
+].join('\n');
+
+export const fateSharingPrompt = [
+  'The substrate Service provides publish, search and visit. Inspect schemas with swarm service view substrate.',
+  'Use the library when useful. Search relevant work or visit up to eight known addresses. You may continue or improve a contribution.',
+  'Publish completed work with sub_task, artifact, rationale and refs. It can be an intermediate result. Explain each cited contribution on its own rationale line.',
+  'References may point to existing visible messages or task resources. Cite only work you actually use. Decide when to publish and when to submit your own proof.',
+].join('\n');
+
+export const fateInput = 'Solve the original problem in problem.lean and problem.txt. The question resource address appears in problem.txt. Submit a Lean proof term using the fate Service.';
+
+const modes: SharingMode[] = ['shared', 'private', 'none'];
+const maxSemanticOperations = 100;
+const noTime = () => new Error('ScaleMAS FATE work is closed');
+const durations = { setup: 180_000, work: 1_800_000, close: 120_000, score: 900_000 } as const;
+
+interface FateOptions {
+  projectRoot: string;
+  leanRoot: string;
+  mode?: SharingMode;
+  setupTimeoutMs?: number;
+  scoreTimeoutMs?: number;
+}
+
+interface RunOptions {
+  backend: Backend;
+  fate: FateOptions;
+  runId: string;
+  image: string;
+  outputDir: string;
+  model?: string;
+  poolSize?: number;
+  workTimeoutMs?: number;
+  closeTimeoutMs?: number;
+}
+
+type Peer = {
+  botId: string; finish: AbortController; active: boolean; semanticOperations: number;
+  endReason?: 'submitted' | 'settled' | 'deadline' | 'cancelled' | 'failed';
+  inputFailure?: { code: string; inputId?: string }; startedAt?: string; endedAt?: string;
+  inputId?: string; stop?: StopReceipt; stopFailure?: string;
+};
+
+type FrozenCandidates = {
+  version: 1; runId: string; mode: SharingMode; problemId: number; problemSha256: string;
+  frozenAt: string; scoreTimeoutMs: number; peers: { botId: string; candidate: FateCandidate | null }[];
+};
+
+async function writePrivateJson(path: string, value: unknown) {
+  const temp = join(dirname(path), `.${randomUUID()}.tmp`);
+  try {
+    await writeFile(temp, `${JSON.stringify(value, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+    await rename(temp, path);
+  } finally { await rm(temp, { force: true }); }
+}
+
+function createSearch(project: FateProject) {
+  const library = new MathlibSearchService({
+    upstreamUrl: null, sourceRoot: project.mathlibRoot, projectRoot: null,
+    leanVersion: fatePins.leanVersion, mathlibRevision: fatePins.mathlibRevision, maxResults: 10,
+  });
+  return async (query: string, signal?: AbortSignal) => {
+    const found = await library.handle({ input: { query, max_results: 10 }, signal });
+    return found.results.map(({ name, type, module, source }: MathlibMatch) => ({ name, type, module, source })) as MathlibMatch[];
+  };
+}
+
+export async function prepareFate(fate: Pick<FateOptions, 'projectRoot' | 'leanRoot'>) {
+  const start = performance.now();
+  const project = await loadFateProject(fate);
+  const checker = await createFateChecker(project);
+  try {
+    const library = await createSearch(project)('Fintype.card');
+    if (!library.length) throw new Error('Fixed Mathlib source index is empty');
+    const negative = await checker.evaluate('by\n  exact True.intro', { timeoutMs: 60_000 });
+    if (negative.status !== 'rejected' || negative.code !== 'LEAN_REJECTED') throw new Error('FATE-M checker did not reject a known false proof term');
+    return { pins: fatePins, problemSha256: project.problemSha256, preparedMs: Math.round(performance.now() - start),
+      negativeControlMs: negative.elapsedMs, mathlibResults: library.length };
+  } finally { await checker.close(); }
+}
+
+async function evaluateFrozen(project: FateProject, bundle: FrozenCandidates) {
+  if (bundle?.version !== 1 || bundle.problemId !== fatePins.problemId || bundle.problemSha256 !== project.problemSha256 ||
+      !modes.includes(bundle.mode) || !Number.isSafeInteger(bundle.scoreTimeoutMs) || bundle.scoreTimeoutMs < 1 ||
+      bundle.scoreTimeoutMs > durations.score || !Array.isArray(bundle.peers) ||
+      new Set(bundle.peers.map(peer => peer.botId)).size !== bundle.peers.length ||
+      bundle.peers.some(({ botId, candidate }) => typeof botId !== 'string' || !botId || (candidate !== null &&
+        (candidate?.botId !== botId || typeof candidate.proof !== 'string' || sha256(candidate.proof) !== candidate.sha256)))) {
+    throw new Error('Frozen candidate bundle identity or proof digest mismatch');
+  }
+  const start = performance.now();
+  const checker = bundle.peers.some(peer => peer.candidate) ? await createFateChecker(project) : null;
+  try {
+    const scores = await Promise.all(bundle.peers.map(async ({ botId, candidate }) => candidate ? {
+      botId, sha256: candidate.sha256, ...(await checker!.evaluate(candidate.proof, { timeoutMs: bundle.scoreTimeoutMs })),
+    } : { botId, sha256: null, status: 'no_submission', code: 'NO_SUBMISSION', elapsedMs: 0 }));
+    return {
+      runId: bundle.runId, mode: bundle.mode, problemId: bundle.problemId, problemSha256: bundle.problemSha256,
+      teamSuccess: scores.some(score => score.status === 'passed'), candidates: scores,
+      scoreElapsedMs: Math.round(performance.now() - start),
+    };
+  } finally { await checker?.close(); }
+}
+
+export async function rescoreFate(fate: Pick<FateOptions, 'projectRoot' | 'leanRoot'>, bundlePath: string) {
+  const [project, bytes] = await Promise.all([loadFateProject(fate), readFile(bundlePath, 'utf8')]);
+  return evaluateFrozen(project, JSON.parse(bytes));
+}
+
+async function measureEvidence(path: string, receipt: StopReceipt[] = []) {
+  try {
+    const report = JSON.parse(await readFile(path, 'utf8'));
+    const usage = (report.modelLedgers as { alias: string; path: string }[]).map(ledger => {
+      const db = new DatabaseSync(ledger.path, { readOnly: true });
+      try {
+        return { alias: ledger.alias, peers: db.prepare(`SELECT bot_id AS botId, COUNT(*) AS requests,
+          COUNT(*) FILTER (WHERE input_tokens IS NULL OR output_tokens IS NULL) AS requestsWithoutUsage,
+          COUNT(*) FILTER (WHERE state='unknown') AS unknownRequests,
+          COUNT(*) FILTER (WHERE state='pending') AS pendingRequests, SUM(input_tokens) AS inputTokens,
+          SUM(output_tokens) AS outputTokens FROM runtime_model_attempts WHERE runtime_id=? GROUP BY bot_id ORDER BY bot_id`).all(report.runtimeId) };
+      } finally { db.close(); }
+    });
+    const nativeTools = await Promise.all(receipt.map(async ({ botId, sessionArchive }) => {
+      try {
+        if (!sessionArchive) return { botId, state: 'unavailable', counts: null };
+        const manifest = JSON.parse(await readFile(sessionArchive, 'utf8'));
+        const sessions = (manifest.files as { path: string }[]).filter(file => file.path.endsWith('.jsonl'));
+        if (!sessions.length) return { botId, state: 'unavailable', counts: null };
+        const calls = new Map<string, string>();
+        for (const session of sessions) {
+          const raw = await readFile(join(dirname(sessionArchive), 'files', session.path), 'utf8');
+          for (const line of raw.trim().split('\n').filter(Boolean)) {
+            const entry = JSON.parse(line);
+            const content = entry.type === 'message' && entry.message.role === 'assistant' ? entry.message.content : [];
+            if (!Array.isArray(content)) continue;
+            for (const item of content) if (item.type === 'toolCall' && typeof item.id === 'string' && typeof item.name === 'string') calls.set(item.id, item.name);
+          }
+        }
+        const counts: Record<string, number> = { read: 0, write: 0, edit: 0, bash: 0 };
+        for (const name of calls.values()) counts[name] = (Object.hasOwn(counts, name) ? counts[name] : 0) + 1;
+        return { botId, state: 'recorded', counts };
+      } catch { return { botId, state: 'unavailable', counts: null }; }
+    }));
+    return { modelUsage: usage, modelTrace: report.modelTrace, serviceTrace: report.serviceTrace, nativeToolCalls: nativeTools };
+  } catch { return { modelUsage: null, modelTrace: null, serviceTrace: null, nativeToolCalls: null }; }
+}
+
+function limited<T>(promise: Promise<T>, signal: AbortSignal) {
+  return new Promise<T>((resolve, reject) => {
+    const stop = () => reject(signal.reason);
+    signal.addEventListener('abort', stop, { once: true });
+    if (signal.aborted) stop();
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', stop));
+  });
+}
+
+export async function runFateScaleMAS({
+  backend, fate, runId, image, outputDir, model = 'default', poolSize = 4,
+  workTimeoutMs = durations.work, closeTimeoutMs = durations.close,
+}: RunOptions, externalSignal?: AbortSignal) {
+  const { mode = 'shared', setupTimeoutMs = durations.setup, scoreTimeoutMs = durations.score } = fate;
+  const bounded = (value: number, max: number) => Number.isSafeInteger(value) && value >= 1 && value <= max;
+  if (!modes.includes(mode) || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(runId) ||
+      ![1, 2, 4, 8, 16].includes(poolSize) || !bounded(workTimeoutMs, durations.work) ||
+      !bounded(setupTimeoutMs, durations.setup) || !bounded(closeTimeoutMs, durations.close) || !bounded(scoreTimeoutMs, durations.score) ||
+      typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir) throw new TypeError('Invalid ScaleMAS FATE configuration');
+  externalSignal?.throwIfAborted();
+  const preparationStarted = performance.now();
+  const directory = join(outputDir, runId);
+  await mkdir(outputDir, { mode: 0o700, recursive: true });
+  await mkdir(directory, { mode: 0o700 }); // A group never attaches to an earlier run's evidence.
+  const project = await loadFateProject(fate);
+  const checker = await createFateChecker(project);
+  const search = createSearch(project);
+  const services = new ServiceRegistry();
+  const peers = new Map<string, Peer>();
+  const semanticRequests = new Map<string, Set<string>>();
+  const work = new AbortController();
+  const workSignal = externalSignal ? AbortSignal.any([work.signal, externalSignal]) : work.signal;
+  const setup = AbortSignal.timeout(setupTimeoutMs);
+  const setupSignal = externalSignal ? AbortSignal.any([setup, externalSignal]) : setup;
+  let runtimeId: string | undefined;
+  let startedAt: string | null = null;
+  let setupElapsedMs: number | null = null;
+  let deadlineMs = 0;
+  let setupFailed = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const remainingMs = () => workSignal.aborted ? 0 : Math.max(0, deadlineMs - Date.now());
+  const authorize = (caller: ServiceCaller | ModelCaller) => {
+    if (!startedAt || caller.runtimeId !== runtimeId || caller.profile !== 'peer' || !peers.get(caller.botId)?.active || remainingMs() === 0) {
+      throw Object.assign(noTime(), { code: 'NOT_ALLOWED' });
+    }
+  };
+  const countOperation = (botId: string, operation: string, requestId: string) => {
+    const peer = peers.get(botId)!;
+    const seen = semanticRequests.get(botId)!;
+    const key = JSON.stringify([operation, requestId]);
+    if (seen.has(key)) return;
+    if (peer.semanticOperations >= maxSemanticOperations) throw Object.assign(new Error('Peer used its task and contribution operation allowance'), { code: 'OPERATION_LIMIT' });
+    seen.add(key);
+    peer.semanticOperations++;
+  };
+  let substrate: ReturnType<typeof createPaperSubstrate> | null = null;
+  let task: ReturnType<typeof createFateTaskService> | undefined;
+  try {
+    const problemAddress = `fate:${fatePins.problemId}:${project.problemSha256}`;
+    task = createFateTaskService({
+      path: join(directory, 'fate-candidates.sqlite'), services, authorize, countOperation, remainingMs, signal: workSignal,
+      problemAddress, search, check: checker.evaluate,
+      validateReferences(botId, rationale, refs) {
+        if (substrate) substrate.validateReferences(botId, rationale, refs);
+        else if (refs.some(ref => !task!.resourceExists(botId, ref))) throw Object.assign(new Error('Reference is outside the task resources'), { code: 'NOT_FOUND' });
+      },
+      onFinish(botId) { peers.get(botId)!.finish.abort(); },
+    });
+    if (mode !== 'none') substrate = createPaperSubstrate({
+      databasePath: join(directory, 'substrate.sqlite'), runId, mode, services, authorize, countOperation, resourceExists: task.resourceExists,
+    });
+    const profile: Profile = {
+      image, model, writable: true, prompt: [fatePeerPrompt, ...(substrate ? [fateSharingPrompt] : [])].join('\n'),
+      services: { fate: ['search_mathlib', 'check_lean', 'submit'], ...(substrate ? { substrate: ['publish', 'search', 'visit'] } : {}) },
+    };
+    const report = await runWithReport({
+      outputDir: directory, closeTimeoutMs,
+      redact: (record: Record<string, unknown>) => ({
+        ...record, mode, runId, startedAt, setupElapsedMs, peers: [...peers.values()].map(({ finish: _finish, active: _active, ...peer }) => peer),
+        policy: { poolSize, workTimeoutMs, setupTimeoutMs, closeTimeoutMs, scoreTimeoutMs, maxSemanticOperations,
+          clock: 'new in-scope substrate operation, decay before execution, same-ID retry does not advance',
+          tokenCounter: 'js-tiktoken@1.0.21/o200k_base', task: fatePins, problemSha256: project.problemSha256 },
+        task: task!.snapshot(), substrate: substrate?.snapshot() ?? null,
+      }),
+      async createRuntime() {
+        await limited(search('Fintype.card', setupSignal), setupSignal);
+        return createRuntime({
+        backend, outputDir: directory, services, maxBots: poolSize, profiles: { peer: profile },
+        modelAccessPolicy: {
+          authorize(caller) {
+            try { authorize(caller); return { phase: 'work', deadlineAt: deadlineMs }; } catch { return null; }
+          },
+          withCommit: commit => commit(),
+        },
+        });
+      },
+      async run(core: Awaited<ReturnType<typeof createRuntime>>) {
+        runtimeId = core.id;
+        substrate?.bindRuntime(runtimeId);
+        try {
+          for (let index = 0; index < poolSize; index++) {
+            setupSignal.throwIfAborted();
+            const bot = await limited(core.spawn({ requestId: `peer:${index}`, profile: 'peer', files: {
+              'problem.lean': { data: project.formal, encoding: 'utf8' },
+              'problem.txt': { data: `${project.informal}\n\nProblem resource: ${problemAddress}\n`, encoding: 'utf8' },
+            } }), setupSignal);
+            semanticRequests.set(bot.id, new Set());
+            peers.set(bot.id, { botId: bot.id, finish: new AbortController(), active: true, semanticOperations: 0 });
+          }
+          setupSignal.throwIfAborted();
+        } catch (error) { setupFailed = true; throw error; }
+        setupElapsedMs = Math.round(performance.now() - preparationStarted);
+        startedAt = new Date().toISOString();
+        deadlineMs = Date.now() + workTimeoutMs;
+        timer = setTimeout(() => work.abort(), workTimeoutMs);
+        await Promise.all([...peers.values()].map(async peer => {
+          peer.startedAt = new Date().toISOString();
+          try {
+            const receipt = await runInput(core, peer.botId, fateInput, {
+              requestId: `${peer.botId}:problem`, timeoutMs: Math.max(1, remainingMs()),
+              signal: AbortSignal.any([workSignal, peer.finish.signal]),
+            });
+            peer.inputId = receipt.inputId;
+            peer.endReason = peer.finish.signal.aborted ? 'submitted' : 'settled';
+          } catch (error) {
+            const detail = error as { code?: string; inputId?: string; receipt?: unknown };
+            peer.endReason = peer.finish.signal.aborted ? 'submitted' : externalSignal?.aborted ? 'cancelled' :
+              !remainingMs() || detail.code === 'input_timeout' ? 'deadline' : 'failed';
+            if (peer.endReason !== 'submitted') peer.inputFailure = {
+              code: detail.code ?? 'PEER_WORK_FAILED', ...(detail.inputId ? { inputId: detail.inputId } : {}),
+            };
+          } finally {
+            peer.active = false;
+            peer.endedAt = new Date().toISOString();
+            try { peer.stop = await core.stop(peer.botId, { timeoutMs: closeTimeoutMs }); }
+            catch (error) { peer.stopFailure = (error as { code?: string }).code ?? 'PEER_STOP_FAILED'; }
+          }
+        }));
+        return { peerIds: [...peers.keys()], workStartedAt: startedAt, workDeadlineAt: new Date(deadlineMs).toISOString() };
+      },
+    });
+    work.abort();
+    clearTimeout(timer);
+    await task.settle();
+    const byPeer = new Map(task.snapshot().candidates.map(candidate => [candidate.botId, candidate]));
+    const bundle: FrozenCandidates = {
+      version: 1, runId, mode, problemId: fatePins.problemId, problemSha256: project.problemSha256,
+      frozenAt: new Date().toISOString(), scoreTimeoutMs, peers: [...peers.keys()].map(botId => ({ botId, candidate: byPeer.get(botId) ?? null })),
+    };
+    const bundlePath = join(directory, 'fate-frozen-candidates.json');
+    await writePrivateJson(bundlePath, bundle);
+    const evidence = await measureEvidence(join(dirname(report.reportPath), 'runtime.json'), report.cleanup?.bots);
+    let scoring;
+    let scoreFailure = null;
+    try {
+      scoring = await evaluateFrozen(project, bundle);
+      if (scoring.candidates.some(candidate => ['timeout', 'checker_error', 'aborted'].includes(candidate.status))) {
+        scoreFailure = { code: 'FATE_SCORE_INCOMPLETE', message: 'A final candidate did not reach a trusted verdict' };
+      }
+    }
+    catch (error) { scoreFailure = { code: 'FATE_SCORE_FAILED', message: (error as Error).message }; }
+    const final = { ...report, bundlePath, evidence, scoring: scoring ?? null, scoreFailure, setupFailed };
+    await writePrivateJson(join(directory, 'fate-result.json'), final);
+    return final;
+  } finally {
+    work.abort();
+    clearTimeout(timer);
+    await task?.settle();
+    task?.close();
+    substrate?.close();
+    await checker.close();
+  }
+}
