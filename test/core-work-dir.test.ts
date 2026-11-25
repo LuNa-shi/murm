@@ -62,3 +62,34 @@ test('trusted snapshot returns fixed binary bytes and never recaptures an existi
   await symlink('/etc/passwd', join(path, 'escape'));
   await assert.rejects(worker.snapshot({ ...options, requestId: 'escape', paths: ['escape'] }), { code: 'INVALID_CONTRACT' });
 });
+
+test('live installation checks current bytes and retains exact tree until host confirmation', {
+  skip: process.getuid() !== 0 && 'Trusted live installation requires root worker permissions',
+}, async t => {
+  const { path } = await fixture(t);
+  const worker = new CoreWorkDir({ path, uid: 1000, gid: 1000, assertOpen() {} });
+  const original = { 'proof.lean': { encoding: 'utf8', data: 'original' }, 'obsolete': { encoding: 'utf8', data: 'remove' } };
+  await worker.initialize({ files: original, writable: true });
+  const before = await worker.snapshot({ requestId: 'before', paths: ['.'], includeGit: false, maxBytes: 4096, required: true });
+  const inode = (await lstat(path)).ino;
+  const files = { 'proof.lean': { encoding: 'utf8', data: 'integrated', mode: 0o755 }, 'binary': { encoding: 'base64', data: 'AP+A' } };
+  const input = { requestId: 'install', version: 2, expectedDigest: before.digest, files };
+  await writeFile(join(path, 'proof.lean'), 'unsaved');
+  await assert.rejects(worker.install(input, []), { code: 'WORKSPACE_BUSY' });
+  await writeFile(join(path, 'proof.lean'), 'original');
+  const installed = await worker.install(input, []);
+  assert.equal(installed.phase, 'installed'); assert.equal(worker.installPending, true);
+  assert.equal((await lstat(path)).ino, inode);
+  assert.equal(await readFile(join(path, 'proof.lean'), 'utf8'), 'integrated');
+  assert.equal((await lstat(join(path, 'proof.lean'))).mode & 0o777, 0o755);
+  assert.deepEqual(await readFile(join(path, 'binary')), Buffer.from([0, 255, 128]));
+  await assert.rejects(readFile(join(path, 'obsolete')), { code: 'ENOENT' });
+  assert.deepEqual(await worker.install(input, []), installed);
+  await assert.rejects(worker.install({ ...input, files: original }, []), { code: 'CONFLICT' });
+  await assert.rejects(worker.confirm({ ...installed, digest: before.digest }), { code: 'CONFLICT' });
+  const committed = await worker.confirm(installed);
+  assert.equal(committed.phase, 'committed'); assert.equal(worker.installPending, false);
+  await writeFile(join(path, 'proof.lean'), 'continued');
+  assert.equal((await worker.install(input, [])).phase, 'committed');
+  assert.equal(await readFile(join(path, 'proof.lean'), 'utf8'), 'continued');
+});

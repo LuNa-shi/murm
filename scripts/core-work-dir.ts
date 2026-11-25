@@ -2,6 +2,7 @@ import { chmod, chown, lstat, mkdir, readFile, readdir, rm, writeFile } from 'no
 import { dirname, join } from 'node:path';
 import type { FileSnapshot, FileSeed } from '../src/core/types.js';
 import { collectCoreWorkDir, snapshotCollectionSpec } from './core-collection.js';
+import { ProjectInstaller, decodeProjectFiles } from './project-install.js';
 import { decodeFileSeed, fileSeedDigest } from './core-file-seed.js';
 
 function failure(code: string, message: string) {
@@ -32,12 +33,16 @@ export class CoreWorkDir {
   #shared = false;
   #snapshots = new Map<string, { identity: string; receipt: Omit<FileSnapshot, 'botId'> }>();
   #snapshotVersion = 0;
+  #installer: ProjectInstaller;
+  #installs = new Map<string, { identity: string; version: number; digest: string; input: any }>();
 
   constructor({ path, uid, gid, assertOpen }: { path: string; uid: number; gid: number; assertOpen: () => void }) {
     this.path = path;
     this.uid = uid;
     this.gid = gid;
     this.assertOpen = assertOpen;
+    this.#installer = new ProjectInstaller({ projectDir: path, controlDir: join(dirname(path), '.core-file-installs'), uid,
+      assertOpen: () => this.assertOpen(), snapshot: () => this.#projectSnapshot() });
   }
 
   #serialize<T>(operation: () => Promise<T>): Promise<T> {
@@ -98,21 +103,77 @@ export class CoreWorkDir {
         if (previous.identity !== identity) throw failure('CONFLICT', 'Snapshot requestId has different paths or limits');
         return previous.receipt;
       }
-      const files: Record<string, FileSeed[string]> = Object.create(null);
-      let current!: { path: string; mode: number };
-      let chunks!: Buffer[];
-      for await (const entry of collectCoreWorkDir(this.path, spec)) {
-        this.assertOpen();
-        if (entry.type === 'file') { current = entry; chunks = []; }
-        if (entry.type === 'chunk') chunks.push(Buffer.from(entry.data, 'base64'));
-        if (entry.type === 'fileEnd') {
-          files[current.path] = { encoding: 'base64', data: Buffer.concat(chunks).toString('base64'), mode: current.mode & 0o111 ? 0o755 : 0o644 };
-        }
-      }
+      const files = await this.#capture(spec);
       const { digest } = decodeFileSeed(files);
       const receipt = { requestId, version: ++this.#snapshotVersion, digest, files };
       this.#snapshots.set(requestId, { identity, receipt });
       return receipt;
+    });
+  }
+
+  async #capture(spec: ReturnType<typeof snapshotCollectionSpec>) {
+    const files: Record<string, FileSeed[string]> = Object.create(null);
+    let current!: { path: string; mode: number };
+    let chunks!: Buffer[];
+    for await (const entry of collectCoreWorkDir(this.path, spec)) {
+      this.assertOpen();
+      if (entry.type === 'file') { current = entry; chunks = []; }
+      if (entry.type === 'chunk') chunks.push(Buffer.from(entry.data, 'base64'));
+      if (entry.type === 'fileEnd') {
+        files[current.path] = { encoding: 'base64', data: Buffer.concat(chunks).toString('base64'), mode: current.mode & 0o111 ? 0o755 : 0o644 };
+      }
+    }
+    return files;
+  }
+
+  async #projectSnapshot() {
+    const files = await this.#capture(snapshotCollectionSpec({ paths: ['.'], includeGit: false, maxBytes: 16 * 1024 ** 2, required: true }));
+    const encoded = Object.fromEntries(decodeFileSeed(files).entries.map(entry => [entry.path, entry.bytes.toString('base64')]));
+    const snapshot = decodeProjectFiles(encoded);
+    return { files: encoded, manifest: snapshot.manifest, content_hash: snapshot.content_hash };
+  }
+
+  get installPending() { return this.#installer.held !== null; }
+
+  install(input: { requestId: string; version: number; expectedDigest: string; files: FileSeed }, pids: number[]) {
+    return this.#serialize(async () => {
+      this.assertOpen();
+      if (this.#shared || !this.#writable) throw failure('NOT_ALLOWED', 'Live install requires a private writable workDir');
+      if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(input.requestId) || !Number.isSafeInteger(input.version) || input.version < 1 ||
+          !/^[a-f0-9]{64}$/.test(input.expectedDigest)) throw failure('INVALID_CONTRACT', 'Live install requires request, version and expected digest');
+      const target = decodeFileSeed(input.files);
+      const identity = JSON.stringify([input.version, input.expectedDigest, target.digest]);
+      let record = this.#installs.get(input.requestId);
+      if (record && record.identity !== identity) throw failure('CONFLICT', 'Install requestId has different files or expected digest');
+      if (!record) {
+        if (this.installPending) throw failure('CONFLICT', 'An installation awaits acknowledgement');
+        const before = await this.#capture(snapshotCollectionSpec({ paths: ['.'], includeGit: false, maxBytes: 16 * 1024 ** 2, required: true }));
+        if (decodeFileSeed(before).digest !== input.expectedDigest) throw failure('WORKSPACE_BUSY', 'workDir changed after capture');
+        const source = decodeProjectFiles(Object.fromEntries(decodeFileSeed(before).entries.map(entry => [entry.path, entry.bytes.toString('base64')])));
+        const files = Object.fromEntries(target.entries.map(entry => [entry.path, entry.bytes.toString('base64')]));
+        const tree = decodeProjectFiles(files);
+        await this.#installer.initialize();
+        record = { identity, version: input.version, digest: target.digest, input: {
+          request_id: input.requestId, execution_id: 'core-files', binding_version: input.version,
+          expected_content_hash: source.content_hash, content_hash: tree.content_hash, files,
+          file_modes: Object.fromEntries(target.entries.map(entry => [entry.path, entry.mode])),
+        } };
+        this.#installs.set(input.requestId, record);
+      }
+      const receipt = await this.#installer.install(record.input, pids);
+      if (receipt.phase === 'failed') throw failure('CONFLICT', 'Installation rolled back without changing the workDir');
+      if (!['installed', 'committed'].includes(receipt.phase)) throw failure('OPERATION_UNKNOWN', 'Installation is awaiting reconciliation');
+      return { requestId: input.requestId, version: record.version, digest: record.digest, phase: receipt.phase };
+    });
+  }
+
+  confirm(input: { requestId: string; version: number; digest: string }) {
+    return this.#serialize(async () => {
+      this.assertOpen();
+      const record = this.#installs.get(input.requestId);
+      if (!record || record.version !== input.version || record.digest !== input.digest) throw failure('CONFLICT', 'Confirmation does not match an installation');
+      const receipt = this.#installer.confirm(record.input);
+      return { requestId: input.requestId, version: record.version, digest: record.digest, phase: receipt.phase };
     });
   }
 
