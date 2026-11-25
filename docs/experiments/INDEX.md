@@ -8,7 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261125-07` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **REGISTERED · Agensh · Pandoc · K3 · 4 peers · 1h** | `d43f3127` | [Peer-chosen branches and in-turn notices](EXP-20261125-07-agensh-pandoc-steer.md) |
+| `EXP-20261125-07` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **COMPLETED 1H WINDOW · Agensh · Pandoc · 16 PR merges · 78 in-turn deliveries · build and smoke pass** | `d43f3127` | [Peer-chosen branches and in-turn notices](EXP-20261125-07-agensh-pandoc-steer.md) |
 | `EXP-20261125-06` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **COMPLETED 1H WINDOW · upstream Agensh · Pandoc · one PR merged · build produced executable** | `2dae4e14` (upstream) | [Native Agensh Pandoc comparison](EXP-20261125-06-native-agensh-pandoc.md) |
 | `EXP-20261125-05` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **COMPLETED 1H WINDOW · Agensh · Pandoc · K3 · 4 peers · no main delivery · private export lost** | `ce7b0d6` | [Pandoc full-window repeat](EXP-20261125-05-agensh-pandoc.md) |
 | `EXP-20261125-04` | [Issue #201](https://github.com/LuNa-shi/SwarmEnv/issues/201) | **STOPPED EARLY · Agensh Pandoc · 17m16s · all peers hit request timeout** | `ce7b0d6` | [Agensh Pandoc collaboration](EXP-20261125-04-agensh-pandoc.md) |
