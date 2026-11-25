@@ -109,7 +109,7 @@ test('Core Context Fork inherits a live native Session with isolated credentials
 
   async function settleInput(bot, input) {
     const settledBefore = events.filter(event => event.botId === bot.id && event.type === 'settled').length;
-    await runtime.start(bot.id, input, { requestId: input });
+    await runtime.send(bot.id, input, { mode: 'followUp', requestId: input });
     const deadline = Date.now() + 45_000;
     while (events.filter(event => event.botId === bot.id && event.type === 'settled').length === settledBefore) {
       assert.ok(Date.now() < deadline, `${input} did not settle`);

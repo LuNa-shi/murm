@@ -143,6 +143,15 @@
       "role": "Shared Pastel trial lifecycle, window start, Core model accounting, and private closeout receipt"
     },
     {
+      "path": "benchmarks/programbench-pastel/subagents-example.ts",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Pastel slice through the ordinary Subagents entry, in-flight user input and independent offline checker"
+    },
+    {
       "path": "benchmarks/programbench-pastel/run-window.ts",
       "category": "development benchmarks",
       "chapters": [
@@ -1489,13 +1498,49 @@
       "role": "Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence"
     },
     {
+      "path": "examples/subagents-environment/collaboration-service.ts",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Six authorized Bash operations and Service state export"
+    },
+    {
+      "path": "examples/subagents-environment/communication-fixture.ts",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Fixed communication fixture with text adoption and whole-tree reporting"
+    },
+    {
+      "path": "examples/subagents-environment/communication-fixture-controller.ts",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Fixed fixture multi-source input, immutable round snapshots and failure coalescing"
+    },
+    {
+      "path": "examples/subagents-environment/communication-fixture-prompts.ts",
+      "category": "Execution and control",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Fixed fixture parent and child instructions and enumerated initial goals"
+    },
+    {
       "path": "examples/subagents-environment/main.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Subagents host Profiles, bounded three-to-eight-Bot Runtime, verified text adoption and whole-tree reporting"
+      "role": "Subagents host Profiles, live user input, one-shot or interactive execution and whole-tree reporting"
     },
     {
       "path": "examples/subagents-environment/controller.ts",
@@ -1504,7 +1549,7 @@
         "docs/architecture/17-environment-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Bounded multi-source input queue, round snapshots, failure coalescing and shutdown receipts"
+      "role": "Tree directory, trusted authorization, message routing, waits, continuation and result snapshots"
     },
     {
       "path": "examples/subagents-environment/stages.ts",
@@ -1521,7 +1566,7 @@
         "docs/architecture/17-environment-reporting.md",
         "docs/architecture/08-prompts.md"
       ],
-      "role": "Complete parent and child instructions and fixed initial text goal"
+      "role": "Production Root and Child instructions for the discovered collaboration Service"
     },
     {
       "path": "examples/subagents-environment/config.ts",

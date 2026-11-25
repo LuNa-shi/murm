@@ -128,3 +128,15 @@ node benchmarks/programbench-pastel/pastel-matrix.ts hosted "$manifest"
 ```
 
 Each mode has three concurrent Bot slots and its own 1,800-second monotonic window. The command exits nonzero if any mode misses the timed collaboration and cleanup checks. Active streams are interrupted at the deadline. The host verifies the archive and source-adoption evidence, then records the official evaluator outcome separately. Use the final matrix receipt and [experiment report template](../../docs/experiments/TEMPLATE.md) for reporting. Keep provider configuration, transcripts, databases, archives and logs in the ignored experiment directory.
+
+
+## Pastel task through the ordinary Subagents example
+
+`subagents-example.ts` runs the same reference's hex/RGB formatting slice and adds HSL output during the task. Use a host config for the ordinary Subagents example with its Worker image set to the Pastel overlay above. Once the model and run limits have been approved, run this driver from the built checkout.
+
+```sh
+node benchmarks/programbench-pastel/subagents-example.ts /path/to/config.js
+node benchmarks/programbench-pastel/subagents-example.ts --check /path/to/exported/artifacts/files/delivery
+```
+
+The checker rebuilds the saved files in a clean offline Node container, runs the delivered tests, and compares with the pinned Pastel executable. The run result records whether HSL reached the real Root model request and whether the output passed the independent check. Review the private model and Service traces for autonomous delegation, overlap and actual contribution adoption. The official ProgramBench score uses the full task and its own evaluation command.

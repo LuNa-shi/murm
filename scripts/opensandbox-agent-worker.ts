@@ -43,6 +43,7 @@ let sequence = 0;
 const records: any[] = [];
 const MAX_RECORDS = 2_048;
 let executionEpoch = 0;
+let nativeExecuting = false;
 const preflights = new Set<Promise<void>>();
 interface InterruptOperation {
   epoch: number;
@@ -51,8 +52,12 @@ interface InterruptOperation {
 }
 const interruptions = new Map<string, InterruptOperation>();
 let interrupting = false;
-const rpcSubmissions = createPiRpcSubmissions({ write({ steeringMode, executionEpoch: _executionEpoch, ...message }: Record<string, unknown>) {
+const rpcSubmissions = createPiRpcSubmissions({ write({ steeringMode, executionEpoch: _executionEpoch, onlyWhileActive, ...message }: Record<string, unknown>) {
   if (!child?.stdin?.writable) throw Object.assign(new Error('worker Agent is not running'), { code: 'NOT_ALLOWED' });
+  if (onlyWhileActive && !nativeExecuting) {
+    publish({ type: 'response', id: message.id, command: message.type, success: false, code: 'NO_ACTIVE_EXECUTION' });
+    return;
+  }
   if (steeringMode !== undefined) {
     child.stdin.write(`${JSON.stringify({ type: 'set_steering_mode', mode: steeringMode })}\n`);
   }
@@ -82,6 +87,8 @@ async function body(request: IncomingMessage, maxBytes = 2 * 1024 * 1024) {
 }
 
 function publish(record: any) {
+  if (record.type === 'agent_start') nativeExecuting = true;
+  if (['agent_settled', 'worker_exit'].includes(record.type)) nativeExecuting = false;
   const value = { ...record, worker_sequence: ++sequence };
   records.push(value);
   if (records.length > MAX_RECORDS) records.splice(0, records.length - MAX_RECORDS);
@@ -282,8 +289,13 @@ async function interruptPi({ id, executionEpoch: nextEpoch }: { id: string; exec
 async function rpc(input: any): Promise<{ records: any[]; response?: any; state?: string }> {
   const message = input?.message ?? input;
   if (!message || typeof message !== 'object' || Array.isArray(message)) throw new Error('worker RPC message must be an object');
+  const queueOnly = message.type === 'steer' || message.type === 'follow_up';
+  const isInput = message.type === 'prompt' || queueOnly;
+  if (message.onlyWhileActive !== undefined && (!queueOnly || message.onlyWhileActive !== true || typeof message.id !== 'string' || !message.id)) {
+    throw Object.assign(new Error('Invalid conditional input command'), { code: 'INVALID_CONTRACT' });
+  }
   if (message.steeringMode !== undefined &&
-      (message.type !== 'prompt' || !['all', 'one-at-a-time'].includes(message.steeringMode))) {
+      ((!['prompt', 'steer'].includes(message.type)) || !['all', 'one-at-a-time'].includes(message.steeringMode))) {
     throw Object.assign(new Error('Invalid prompt steering mode'), { code: 'INVALID_CONTRACT' });
   }
   // Core polls bounded Worker history from an explicit sequence without
@@ -305,12 +317,12 @@ async function rpc(input: any): Promise<{ records: any[]; response?: any; state?
   }
   let result;
   if (message.type === 'core_interrupt') result = await interruptPi(message, timeoutMs);
-  else if (message.type === 'prompt' && (interrupting || (message.executionEpoch ?? 0) !== executionEpoch)) {
-    result = { state: 'complete', response: { id: message.id, command: 'prompt', success: false,
+  else if (isInput && (interrupting || (message.executionEpoch ?? 0) !== executionEpoch)) {
+    result = { state: 'complete', response: { id: message.id, command: message.type, success: false,
       code: 'NOT_ALLOWED', error: 'Prompt is fenced by the current Pi execution generation' } };
   } else {
     const pending = rpcSubmissions.submit(message, timeoutMs);
-    if (message.type === 'prompt') {
+    if (isInput) {
       const completion = rpcSubmissions.completion(message.id);
       if (completion && !preflights.has(completion)) {
         preflights.add(completion);

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createSubagentsController } from '../examples/subagents-environment/controller.js';
+import { createSubagentsController } from '../examples/subagents-environment/communication-fixture-controller.js';
 
 function runtime() {
   let handler; const sent = [];

@@ -1,4 +1,4 @@
-import type { BotInfo, BotInitialInputResult, BotSpawnReceipt, InputMode, InputReceipt, SpawnOptions, StopReceipt } from './types.js';
+import type { BotInfo, BotInitialInputResult, BotSpawnReceipt, InputMode, InputReceipt, SendOptions, SpawnOptions, StopReceipt } from './types.js';
 import type { JsonValue } from './service-types.js';
 
 interface BotAuthority {
@@ -15,7 +15,7 @@ interface BotServiceOptions {
   getBot: (id: string) => BotAuthority | undefined;
   spawn: (options: SpawnOptions, caller: string) => Promise<BotInfo>;
   get: (id: string) => Promise<BotInfo>;
-  send: (id: string, input: string, options: { requestId: string; mode?: InputMode }, caller: string) => Promise<InputReceipt>;
+  send: (id: string, input: string, options: SendOptions, caller: string) => Promise<InputReceipt>;
   stop: (id: string) => Promise<StopReceipt>;
 }
 
@@ -32,6 +32,7 @@ interface BotInput {
   mode?: InputMode;
   bot_id: string;
   fork?: boolean;
+  wake_if_idle?: boolean;
 }
 
 interface BotServiceFailure extends Error {
@@ -73,6 +74,7 @@ const botInfo = object({
 }, ['id', 'profile', 'status', 'cursor']);
 const inputReceipt = { oneOf: [
   object({ inputId: id, status: { const: 'unknown' } }, ['inputId', 'status']),
+  object({ inputId: id, status: { const: 'not-accepted' }, reason: { const: 'idle' } }, ['inputId', 'status', 'reason']),
   object({ inputId: id, status: { const: 'accepted' }, disposition: { enum: ['started', 'queued', 'handled'] } }, ['inputId', 'status', 'disposition']),
 ] };
 const outputs: Record<string, Record<string, unknown>> = {
@@ -86,7 +88,7 @@ const botStopView = ({ sessionArchive: _sessionArchive, ...receipt }: StopReceip
 const definitions: readonly [string, string, Record<string, unknown>][] = [
   ['spawn', 'Create a direct child using its Profile defaults; initialInput reports admission, not completion.', object({ profile: id, input: { type: 'string' }, mode, fork: { type: 'boolean' } }, ['profile'])],
   ['get', 'Inspect yourself or one direct child in this Runtime.', object({ bot_id: id }, ['bot_id'])],
-  ['send', 'Continue yourself or one direct child; omitted mode is steer. Reuse request-id after unknown.', object({ bot_id: id, input: { type: 'string' }, mode }, ['bot_id', 'input'])],
+  ['send', 'Continue yourself or one direct child; omitted mode is steer and wake_if_idle defaults to true. Reuse request-id after unknown.', object({ bot_id: id, input: { type: 'string' }, mode, wake_if_idle: { type: 'boolean' } }, ['bot_id', 'input'])],
   ['stop', 'Stop and collect one direct child; pending cleanup can be retried. Self-stop is unavailable.', object({ bot_id: id }, ['bot_id'])],
 ];
 
@@ -150,7 +152,7 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }: 
       if (snapshot.lastStop) snapshot.lastStop = botStopView(snapshot.lastStop);
       return jsonSnapshot(snapshot);
     }
-    if (operation === 'send') return jsonSnapshot(await send(input.bot_id, input.input!, { requestId, mode: input.mode }, source));
+    if (operation === 'send') return jsonSnapshot(await send(input.bot_id, input.input!, { requestId, mode: input.mode, wakeIfIdle: input.wake_if_idle }, source));
     return jsonSnapshot(botStopView(await stop(input.bot_id)));
   } });
 }

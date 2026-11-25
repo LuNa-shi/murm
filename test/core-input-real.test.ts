@@ -84,6 +84,13 @@ test('real Pi batches steer before start and preserves Session and files across 
     assert.equal(receipt.status, 'accepted');
     return receipt;
   }
+  for (const mode of ['steer', 'followUp']) {
+    const options = { requestId: 'idle-' + mode, mode, wakeIfIdle: false };
+    const receipt = await runtime.send(bot.id, 'IDLE_MESSAGE_MUST_NOT_RUN', options);
+    assert.deepEqual(receipt, { inputId: receipt.inputId, status: 'not-accepted', reason: 'idle' });
+    assert.deepEqual(await runtime.send(bot.id, 'IDLE_MESSAGE_MUST_NOT_RUN', options), receipt);
+  }
+  assert.equal((await runtime.get(bot.id)).status, 'idle');
   // These first two associations require idle, one input source, and no queued
   // or automatic continuation. Busy inputs below intentionally share one run.
   await send('ROUND_ONE: write the persistent file.', 'round-one');
@@ -102,31 +109,31 @@ test('real Pi batches steer before start and preserves Session and files across 
     await delay(50);
   }
   assert.equal((await runtime.get(bot.id)).status, 'running');
-  const steers = await Promise.all(['A', 'B'].map(suffix => runtime.steer(bot.id, `STEER_AT_TOOL_BOUNDARY_${suffix}`, {
-    requestId: `busy-steer-${suffix}`, steeringMode: 'all', source: 'controlled-upstream',
+  const steers = await Promise.all(['A', 'B'].map(suffix => runtime.send(bot.id, `STEER_AT_TOOL_BOUNDARY_${suffix}`, {
+    requestId: `busy-steer-${suffix}`, steeringMode: 'all', source: 'controlled-upstream', wakeIfIdle: false,
   })));
-  const followUp = await runtime.start(bot.id, 'FOLLOW_UP_AFTER_CURRENT', { requestId: 'busy-follow-up' });
+  const followUp = await runtime.send(bot.id, 'FOLLOW_UP_AFTER_CURRENT', { mode: 'followUp', requestId: 'busy-follow-up', wakeIfIdle: false });
   assert.ok(steers.every(steer => steer.status === 'accepted' && steer.disposition === 'queued'));
   assert.equal(followUp.disposition, 'queued');
   resources.bashStillRunningAfterQueue = await docker('test', '-e', '/workspace/project/busy-finished.txt').then(() => false, () => true);
   assert.equal(resources.bashStillRunningAfterQueue, true);
   assert.equal((await waitSettled(2)).output, 'BUSY_ROUND_OK');
   assert.equal(settled.length, 3, 'Busy inputs may share one settled; no per-input completion assumption');
-  assert.equal((await runtime.start(bot.id, 'INTERRUPT_HELD_TOOL', { requestId: 'held-tool' })).disposition, 'started');
+  assert.equal((await runtime.send(bot.id, 'INTERRUPT_HELD_TOOL', { mode: 'followUp', requestId: 'held-tool' })).disposition, 'started');
   const interruptDeadline = Date.now() + 10_000;
   while (!(await docker('test', '-e', '/workspace/project/interrupt-ready.txt').then(() => true, () => false))) {
     assert.ok(Date.now() < interruptDeadline, 'Pi never entered the Bash operation to interrupt');
     await delay(50);
   }
-  assert.equal((await runtime.start(bot.id, 'CANCEL_QUEUED_PHASE', { requestId: 'old-queued' })).disposition, 'queued');
+  assert.equal((await runtime.send(bot.id, 'CANCEL_QUEUED_PHASE', { mode: 'followUp', requestId: 'old-queued' })).disposition, 'queued');
   const interrupt = await runtime.interrupt(bot.id, { requestId: 'interrupt' });
   assert.equal(interrupt.status, 'interrupted');
   await waitSettled(3, 'aborted');
   assert.equal(await sessionFiles(), firstSession);
-  assert.equal((await runtime.steer(bot.id, 'RESUME_AFTER_INTERRUPT', { requestId: 'resume', steeringMode: 'one-at-a-time' })).disposition, 'started');
+  assert.equal((await runtime.send(bot.id, 'RESUME_AFTER_INTERRUPT', { requestId: 'resume', steeringMode: 'one-at-a-time' })).disposition, 'started');
   assert.deepEqual(await runtime.interrupt(bot.id, { requestId: 'interrupt' }), interrupt);
   assert.equal((await waitSettled(4)).output, 'RESUMED_OK');
-  assert.equal((await runtime.start(bot.id, 'FAIL_MODEL', { requestId: 'failed' })).disposition, 'started');
+  assert.equal((await runtime.send(bot.id, 'FAIL_MODEL', { mode: 'followUp', requestId: 'failed' })).disposition, 'started');
   await waitSettled(5, 'failed');
   assert.deepEqual(upstream.receipt(), { requests: 11, failure: undefined, persistedRead: true, bashCompleted: true,
     steerAtBoundary: true, followUpAfterCurrent: true, resumedAfterInterrupt: true });

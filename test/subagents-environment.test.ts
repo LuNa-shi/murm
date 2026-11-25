@@ -13,7 +13,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./fixtures/core-bot-service-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
-const { runSubagentsEnvironment, checkDelivery } = await import('../examples/subagents-environment/main.js'); hooks.deregister();
+const { runSubagentsEnvironment, checkDelivery } = await import('../examples/subagents-environment/communication-fixture.js'); hooks.deregister();
 
 test('final text must consume three distinct delivered snapshots from exactly two children', () => {
   const results = [{ childId: 'a', eventSeq: 1, output: 'first' }, { childId: 'b', eventSeq: 2, output: 'second' }, { childId: 'a', eventSeq: 3, output: 'followup' }];

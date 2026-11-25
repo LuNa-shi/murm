@@ -1,105 +1,364 @@
-/** Host-owned multi-source routing. Input receipts are never turn-completion receipts. */
-export function createSubagentsController(runtime: any, parentId: any, { maxChildren = 2 }: any = {}) {
-  if (!Number.isSafeInteger(maxChildren) || maxChildren < 2 || maxChildren > 7) throw new TypeError('Subagents controller requires two to seven children');
-  const waiters: any = new Set(); const children: any = new Set();
-  const seen: any = new Set(); const failures: any = new Set(); const users: any = new Set();
-  const deliveries: any[] = []; const parentTurns: any[] = []; const turnEvidence: any = new Map(); const lifecycle: any[] = []; const errors: any[] = [];
-  let pendingJobs = 0; let observationOrder = 0;
-  let accepting = true; let fenced = false; let parentClosed = false; let work = Promise.resolve();
-  const failure = (code: any) => Object.assign(new Error(code), { code });
-  function notify() { for (const check of [...waiters]) check(); }
-  function enqueue(job: any) {
-    pendingJobs++;
-    const result = work.then(job).finally(() => { pendingJobs--; });
-    work = result.catch((error: any) => { if (errors.length < 8) errors.push({ code: error?.code ?? 'ROUTING_FAILED' }); }).finally(notify);
-    return result;
+import { randomUUID } from 'node:crypto';
+import type { BotEvent, InputReceipt, Runtime, SpawnOptions } from '@swarmenv/core';
+import type { JsonValue, ServiceRequest } from '@swarmenv/core/services';
+
+type Settled = Extract<BotEvent, { type: 'settled' }>;
+type Reply = Settled | Extract<BotEvent, { type: 'exit' }>;
+type Message = {
+  id: string;
+  kind: 'message' | 'result';
+  from: string;
+  text: string;
+  outcome?: 'completed' | 'failed';
+  eventSeq?: number;
+  state: 'pending' | 'unknown' | 'in-input' | 'queued' | 'returned';
+};
+type WaitResult = { reason: 'message'; messages: Message[] } | { reason: 'input' | 'timeout' | 'cancelled' };
+type Wait = (result: WaitResult) => void;
+type Member = {
+  path: string;
+  parent?: Member;
+  id?: string;
+  inbox: Message[];
+  wait?: Wait;
+  lastOutcome?: 'completed' | 'failed' | 'interrupted';
+  fatalReported?: boolean;
+  tail?: Promise<unknown>;
+};
+type Operation = { id: string; fingerprint: string; result?: Promise<JsonValue>; batch?: Message[]; destination?: Member; message?: Message };
+
+const namePattern = /^[a-z0-9_]{1,48}$/;
+const inputLimit = 65_536;
+const mailboxLimit = 128;
+const operationLimit = 16_384;
+
+function fail(code: string, message: string): never {
+  throw Object.assign(new Error(message), { code });
+}
+
+function inputText(value: unknown) {
+  if (typeof value !== 'string' || !value.trim() || Buffer.byteLength(value) > inputLimit) {
+    fail('INVALID_CONTRACT', 'Input must be nonempty text within 64 KiB');
   }
-  async function deliver(input: any, requestId: any, source: any) {
-    if (deliveries.length >= 32) { accepting = false; throw failure('DELIVERY_LIMIT'); }
-    const entry: any = { ...source, requestId, state: 'undelivered' }; deliveries.push(entry);
-    if (!accepting || fenced || parentClosed) { entry.reason = !accepting ? 'closing' : fenced ? 'input-unknown' : 'parent-closed'; return entry; }
-    const parent = await runtime.get(parentId);
-    if (!['idle', 'running'].includes(parent.status)) { parentClosed = true; entry.reason = 'parent-closed'; return entry; }
-    try {
-      // Record invocation before calling send: a fast settled can precede its receipt.
-      entry.dispatchOrder = ++observationOrder;
-      entry.receipt = await runtime.send(parentId, input, { requestId, mode: 'followUp' });
-      entry.state = entry.receipt.status === 'accepted' ? 'accepted' : 'unknown';
-      if (entry.state === 'unknown') fenced = true;
-    } catch (error: any) {
-      entry.state = 'unknown'; entry.error = { code: error?.code ?? 'SEND_FAILED' }; fenced = true;
-      if (error?.inputId) entry.inputId = error.inputId;
-    }
-    return entry;
+  return value;
+}
+
+function serial<T>(member: Member, work: () => Promise<T>) {
+  const next = (member.tail ?? Promise.resolve()).then(work);
+  member.tail = next.catch(() => undefined);
+  return next;
+}
+
+export function createSubagentsController(
+  runtime: Runtime,
+  { maxAgents, maxDepth, childWorkspace }: { maxAgents: number; maxDepth: number; childWorkspace?: SpawnOptions['workspace'] },
+) {
+  const root: Member = { path: '/root', inbox: [] };
+  const byPath = new Map([[root.path, root]]);
+  const byId = new Map<string, Member>();
+  const operations = new Map<string, Operation>();
+  const replyListeners = new Set<(event: Reply) => void>();
+  const jobs = new Set<Promise<unknown>>();
+  const deliveryFailures: { id: string; reason: string }[] = [];
+  let lastReply: Reply | undefined;
+  let accepting = true;
+
+  function open() {
+    if (!accepting) fail('NOT_ALLOWED', 'The team is closing');
   }
-  const unsubscribe = runtime.onEvent((event: any) => {
-    const key = `${event.botId}:${event.seq}`;
-    if (seen.has(key)) return;
-    if (seen.size >= 256 || Buffer.byteLength(JSON.stringify(event)) > 64 * 1024) {
-      accepting = false; if (errors.length < 8 && !errors.some((error: any) => error.code === 'EVENT_LIMIT')) errors.push({ code: 'EVENT_LIMIT' }); notify(); return;
+
+  function track<T>(work: Promise<T>) {
+    jobs.add(work);
+    void work.then(() => jobs.delete(work), () => jobs.delete(work));
+    return work;
+  }
+
+  function canonical(caller: Member, value: unknown) {
+    if (typeof value !== 'string' || !value) fail('INVALID_CONTRACT', 'A target name is required');
+    if (byId.has(value)) return byId.get(value)!.path;
+    const path = value.startsWith('/') ? value : `${caller.path}/${value}`;
+    const segments = path.split('/').slice(1);
+    if (segments[0] !== 'root' || segments.slice(1).some(name => !namePattern.test(name) || name === 'root')) {
+      fail('NOT_ALLOWED', 'Target must belong to this team and use a valid path');
     }
-    seen.add(key);
-    const snapshot = structuredClone(event);
-    const observedOrder = ++observationOrder;
-    if (snapshot.botId === parentId && snapshot.type === 'settled') {
-      // Freeze membership in the synchronous callback, not in its later queue job.
-      // References may receive a late admission receipt, but future sends never join.
-      turnEvidence.set(snapshot.seq, { observedOrder, entries: deliveries.filter((entry: any) => entry.dispatchOrder !== undefined && entry.dispatchOrder < observedOrder) });
+    return path;
+  }
+
+  function target(caller: Member, name: unknown) {
+    const member = byPath.get(canonical(caller, name));
+    if (!member?.id) fail('NOT_FOUND', 'No team member has that target');
+    return member;
+  }
+
+  function operate(key: string, parameters: unknown, work: (operation: Operation) => Promise<JsonValue>) {
+    const fingerprint = JSON.stringify(parameters);
+    let operation = operations.get(key);
+    if (operation && operation.fingerprint !== fingerprint) fail('CONFLICT', 'The request ID already has different parameters');
+    if (!operation) {
+      open();
+      if (operations.size >= operationLimit) fail('NOT_ALLOWED', 'The team operation limit has been reached');
+      operation = { id: randomUUID(), fingerprint };
+      operations.set(key, operation);
     }
-    void enqueue(async () => {
-      if (snapshot.botId === parentId) {
-        if (snapshot.type === 'settled') parentTurns.push(snapshot);
-        if (snapshot.type === 'exit') parentClosed = true;
-        return;
-      }
-      const child = await runtime.get(snapshot.botId);
-      if (child.parentId !== parentId) return;
-      children.add(child.id);
-      if (children.size > maxChildren) { accepting = false; throw failure('CHILD_LIMIT'); }
-      if (snapshot.type === 'exit') lifecycle.push(snapshot);
-      const failedTurn = snapshot.type === 'settled' && ['failed', 'aborted'].includes(snapshot.outcome);
-      const terminalFailure = snapshot.type === 'error' && snapshot.fatal || snapshot.type === 'exit' && !snapshot.expected;
-      if (snapshot.type !== 'settled' && !terminalFailure) return;
-      if (terminalFailure && failures.has(snapshot.botId)) return;
-      if (failedTurn || terminalFailure) failures.add(snapshot.botId);
-      else failures.delete(snapshot.botId);
-      const result: any = { childId: snapshot.botId, eventSeq: snapshot.seq,
-        outcome: snapshot.type === 'settled' ? snapshot.outcome : 'failed',
-        ...(snapshot.output === undefined ? {} : { output: snapshot.output }),
-        ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
-        ...(terminalFailure ? { failure: snapshot.type } : {}) };
-      await deliver(JSON.stringify(result), `child-result:${snapshot.botId}:${snapshot.seq}`, { kind: 'child', result, eventOrder: observedOrder });
-    }).catch(() => {});
+    const entry = operation;
+    entry.result ??= Promise.resolve().then(() => work(entry)).then(value => {
+      if (value && typeof value === 'object' && !Array.isArray(value)
+          && (value.status === 'unknown' || value.reason === 'cancelled')) entry.result = undefined;
+      return value;
+    }, error => {
+      if (error.code === 'OPERATION_UNKNOWN' || error.code === 'SERVICE_UNAVAILABLE') entry.result = undefined;
+      throw error;
+    });
+    return track(entry.result);
+  }
+
+  function pending(member: Member) {
+    return member.inbox.filter(message => message.state === 'pending');
+  }
+
+  function reserveMessage(member: Member, message: Message) {
+    member.inbox = member.inbox.filter(item => item.state === 'pending' || item.state === 'unknown' || item.state === 'in-input');
+    if (member.inbox.length >= mailboxLimit) fail('NOT_ALLOWED', 'The recipient mailbox is full');
+    member.inbox.push(message);
+  }
+
+  function releaseWait(member: Member) {
+    const messages = pending(member);
+    if (!member.wait || messages.length === 0) return false;
+    for (const message of messages) message.state = 'returned';
+    member.inbox = member.inbox.filter(message => message.state !== 'returned');
+    member.wait({ reason: 'message', messages: structuredClone(messages) });
+    return true;
+  }
+
+  function removeMemberMessage(member: Member, message: Message) {
+    member.inbox = member.inbox.filter(item => item !== message);
+  }
+
+  async function offer(member: Member, message: Message) {
+    if (message.state === 'pending' && releaseWait(member)) return;
+    const { state: _state, ...payload } = message;
+    const receipt = await runtime.send(member.id!, JSON.stringify(payload), {
+      requestId: message.id, source: message.from, mode: 'steer', wakeIfIdle: false,
+    });
+    if (receipt.status === 'accepted') {
+      message.state = 'queued';
+      removeMemberMessage(member, message);
+      member.wait?.({ reason: 'input' });
+    } else if (receipt.status === 'unknown') {
+      message.state = 'unknown';
+    } else {
+      message.state = 'pending';
+      releaseWait(member);
+    }
+  }
+
+  function resultFor(member: Member, event: Settled | Extract<BotEvent, { type: 'error' }>) {
+    const recipient = member.parent;
+    if (!recipient || !accepting) return;
+    const message: Message = {
+      id: randomUUID(), kind: 'result', from: member.path,
+      text: event.type === 'settled'
+        ? (event.outcome === 'completed' ? event.output ?? '' : event.error?.message ?? 'Child execution failed')
+        : event.error.message,
+      outcome: event.type === 'settled' && event.outcome === 'completed' ? 'completed' : 'failed',
+      eventSeq: event.seq, state: 'pending',
+    };
+    void track(serial(recipient, async () => {
+      open();
+      reserveMessage(recipient, message);
+      await offer(recipient, message);
+    })).catch(error => deliveryFailures.push({ id: message.id, reason: error.code ?? 'SERVICE_UNAVAILABLE' }));
+  }
+
+  const unsubscribe = runtime.onEvent(event => {
+    const member = byId.get(event.botId);
+    if (!member) return;
+    if (event.type === 'settled') {
+      member.lastOutcome = event.outcome === 'aborted' ? 'interrupted' : event.outcome;
+      if (event.outcome !== 'aborted' && !(member.fatalReported && event.outcome === 'failed')) resultFor(member, event);
+    } else if (event.type === 'error' && event.fatal && !member.fatalReported) {
+      member.lastOutcome = 'failed';
+      member.fatalReported = true;
+      resultFor(member, event);
+    }
+    if (member === root && (event.type === 'settled' || event.type === 'exit')) {
+      lastReply = event;
+      for (const listener of replyListeners) listener(event);
+    }
   });
-  return Object.freeze({
-    submitUser(input: any, { requestId }: any = {}) {
-      if (users.size >= 5 || typeof input !== 'string' || Buffer.byteLength(input) > 64 * 1024 || !/^[A-Za-z0-9_.:-]{1,128}$/.test(requestId ?? '') || users.has(requestId)) {
-        throw new TypeError('User input requires text and an unused requestId');
+
+  async function reconcile(member: Member) {
+    for (const message of member.inbox.filter(item => item.state === 'unknown')) {
+      await offer(member, message);
+    }
+  }
+
+  function submit(member: Member, entry: Operation, text: string, from: string, requestId: string, authorize?: () => void) {
+    return serial(member, async (): Promise<InputReceipt> => {
+      open();
+      authorize?.();
+      if (!entry.batch) {
+        await reconcile(member);
+        open();
+        authorize?.();
+        entry.batch = pending(member);
+        for (const message of entry.batch) message.state = 'in-input';
       }
-      users.add(requestId);
-      return enqueue(() => deliver(input, requestId, { kind: 'user' }));
+      const body = entry.batch.length || from !== 'user'
+        ? JSON.stringify({ kind: from === 'user' ? 'user' : 'new-task', from, text, messages: entry.batch.map(({ state: _state, ...message }) => message) })
+        : text;
+      let receipt: InputReceipt;
+      try {
+        receipt = await runtime.send(member.id!, body, { requestId, source: from, wakeIfIdle: true });
+      } catch (error) {
+        for (const message of entry.batch) message.state = 'pending';
+        releaseWait(member);
+        throw error;
+      }
+      if (receipt.status === 'accepted') {
+        for (const message of entry.batch) removeMemberMessage(member, message);
+        member.wait?.({ reason: 'input' });
+      }
+      return receipt;
+    });
+  }
+
+  function waitForMessage(member: Member, duration: number, signal: AbortSignal) {
+    if (member.wait) fail('CONFLICT', 'This member is already waiting');
+    if (signal.aborted) return Promise.resolve<WaitResult>({ reason: 'cancelled' });
+    return new Promise<WaitResult>(resolve => {
+      const timer = setTimeout(() => finish({ reason: 'timeout' }), duration);
+      const cancel = () => finish({ reason: 'cancelled' });
+      function finish(result: WaitResult) {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', cancel);
+        if (member.wait === finish) member.wait = undefined;
+        resolve(result);
+      }
+      member.wait = finish;
+      signal.addEventListener('abort', cancel, { once: true });
+      releaseWait(member);
+    });
+  }
+
+  function attachRoot(id: string) {
+    root.id = id;
+    byId.set(id, root);
+  }
+
+  return {
+    attachRoot,
+    submitUser(text: string, requestId: string) {
+      inputText(text);
+      if (!/^[A-Za-z0-9_.:-]{1,120}$/.test(requestId)) fail('INVALID_CONTRACT', 'Invalid user request ID');
+      return operate(`user:${requestId}`, text, entry => submit(root, entry, text, 'user', `user:${requestId}`));
     },
-    drain: () => work,
-    waitForFinal({ accept, timeoutMs, signal }: any = {}) {
-      if (typeof accept !== 'function' || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2147483647) throw new TypeError('Final wait needs a predicate and finite deadline');
-      return new Promise<any>((resolve: any, reject: any) => {
-        const done = (error: any, result?: any) => { clearTimeout(timer); waiters.delete(check); signal?.removeEventListener('abort', aborted); error ? reject(error) : resolve(structuredClone(result)); };
-        const aborted = () => done(failure('WORK_ABORTED'));
-        const check = () => {
+    lastReply: () => lastReply,
+    onReply(listener: (event: Reply) => void) {
+      replyListeners.add(listener);
+      return () => { replyListeners.delete(listener); };
+    },
+    list: () => runtime.list(),
+    async invoke(request: ServiceRequest): Promise<JsonValue> {
+      const caller = request.caller.runtimeId === runtime.id && byId.get(request.caller.botId);
+      if (!caller) fail('NOT_ALLOWED', 'Caller does not belong to this team');
+      request.assertAuthorized();
+      const call = request.input as Record<string, JsonValue>;
+      const operation = request.capability.operation;
+      if (operation === 'list_agents') {
+        const prefix = call.path_prefix === undefined ? '/root' : canonical(caller, call.path_prefix);
+        const visible = await runtime.list();
+        return visible.flatMap(bot => {
+          const member = byId.get(bot.id);
+          return member && ['starting', 'idle', 'running'].includes(bot.status) &&
+            (member.path === prefix || member.path.startsWith(prefix + '/'))
+            ? [{ path: member.path, botId: bot.id, status: bot.status, lastOutcome: member.lastOutcome ?? null }] : [];
+        });
+      }
+      const key = JSON.stringify([caller.id, request.envelope.operation_id]);
+      return operate(key, [operation, call], async entry => {
+        open();
+        request.assertAuthorized();
+        if (operation === 'wait_agent') {
+          const wait = waitForMessage(caller, Math.max(10_000, (call.timeout_ms as number | undefined) ?? 30_000), request.signal);
+          void track(serial(caller, () => reconcile(caller))).catch(() => undefined);
+          return await wait as unknown as JsonValue;
+        }
+        if (operation === 'spawn_agent') {
+          const name = call.task_name as string;
+          if (name === 'root' || !namePattern.test(name)) fail('INVALID_CONTRACT', 'Invalid child name');
+          const path = `${caller.path}/${name}`;
+          if (path.split('/').length - 2 > maxDepth) fail('NOT_ALLOWED', 'The team depth limit has been reached');
+          if (!entry.destination) {
+            if (byPath.has(path)) fail('CONFLICT', 'A child already uses that path');
+            if (byPath.size >= maxAgents) fail('NOT_ALLOWED', 'The team is at capacity');
+            entry.destination = { path, parent: caller, inbox: [] };
+            byPath.set(path, entry.destination);
+          }
+          const child = entry.destination;
           try {
-            if (signal?.aborted) return aborted();
-            if (fenced || errors.length) return done(failure(fenced ? 'INPUT_UNKNOWN' : errors[0].code));
-            const event = parentTurns.find((event: any) => event.outcome === 'completed' && accept(event, structuredClone(turnEvidence.get(event.seq).entries.filter((entry: any) => entry.state === 'accepted'))));
-            if (event) return done(null, event);
-            if (parentClosed) done(failure('PARENT_CLOSED'));
-          } catch (error: any) { done(error); }
-        };
-        const timer = setTimeout(() => done(failure('WORK_DEADLINE')), timeoutMs);
-        waiters.add(check); signal?.addEventListener('abort', aborted, { once: true }); check();
+            if (!child.id) {
+              const bot = await runtime.spawn({ profile: 'child', requestId: entry.id, parentId: caller.id,
+                ...(call.fork_turns === 'none' ? {} : { forkFrom: caller.id }), workspace: childWorkspace });
+              child.id = bot.id;
+              byId.set(bot.id, child);
+            }
+          } catch (error) {
+            if ((error as { code?: string }).code !== 'OPERATION_UNKNOWN') byPath.delete(path);
+            throw error;
+          }
+          const receipt = await submit(child, entry, inputText(call.message), caller.path, entry.id + ':initial', request.assertAuthorized);
+          return { task_name: child.path, botId: child.id, ...receipt };
+        }
+        const recipient = target(caller, call.target);
+        if (operation === 'followup_task') {
+          if (recipient === root) fail('NOT_ALLOWED', 'The Root only receives follow-up tasks from the host');
+          const receipt = await submit(recipient, entry, inputText(call.message), caller.path, entry.id, request.assertAuthorized);
+          return { ...receipt };
+        }
+        if (operation === 'interrupt_agent') {
+          if (recipient === root || recipient === caller) fail('NOT_ALLOWED', 'Cannot interrupt the Root or yourself');
+          return serial(recipient, async () => {
+            open();
+            request.assertAuthorized();
+            const status = await runtime.get(recipient.id!);
+            if (status.status === 'idle') return { status: 'idle' };
+            request.assertAuthorized();
+            const receipt = await runtime.interrupt(recipient.id!, { requestId: entry.id });
+            if (receipt.status === 'interrupted') recipient.lastOutcome = 'interrupted';
+            return { ...receipt, previousStatus: status.status };
+          });
+        }
+        if (operation !== 'send_message') return fail('INVALID_CONTRACT', 'Unknown collaboration operation');
+        return serial(recipient, async () => {
+          open();
+          request.assertAuthorized();
+          if (!entry.message) {
+            entry.message = { id: entry.id, kind: 'message', from: caller.path, text: inputText(call.message), state: 'pending' };
+            reserveMessage(recipient, entry.message);
+          }
+          await offer(recipient, entry.message);
+          return { messageId: entry.message.id, status: entry.message.state };
+        });
       });
     },
-    stop() { accepting = false; },
-    dispose() { accepting = false; unsubscribe(); },
-    report: () => structuredClone({ accepting, fenced, parentClosed, maxChildren, pendingJobs, childIds: [...children], deliveries, parentTurns, parentEvidence: [...turnEvidence].map(([eventSeq, evidence]: any) => ({ eventSeq, observedOrder: evidence.observedOrder, dispatchedRequestIds: evidence.entries.map((entry: any) => entry.requestId) })), lifecycle, errors }),
-  });
+    beginClose() {
+      accepting = false;
+      for (const member of byPath.values()) member.wait?.({ reason: 'cancelled' });
+    },
+    dispose() { unsubscribe(); replyListeners.clear(); },
+    drain: () => Promise.allSettled(jobs),
+    exportState(): JsonValue {
+      return {
+        accepting,
+        members: [...byPath.values()].map(member => ({
+          path: member.path, botId: member.id ?? null, parent: member.parent?.path ?? null,
+          lastOutcome: member.lastOutcome ?? null, waiting: Boolean(member.wait),
+          pending: member.inbox.map(({ id, state }) => ({ id, state })),
+        })),
+        operations: operations.size, deliveryFailures: [...deliveryFailures],
+      };
+    },
+  };
 }

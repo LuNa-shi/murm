@@ -1,91 +1,204 @@
+import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
+import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
-import { createRuntime } from '@swarmenv/core';
+import { createRuntime, type CollectionSpec, type FileSeed, type SpawnOptions } from '@swarmenv/core';
 import { ServiceRegistry } from '@swarmenv/core/services';
 import { createPiOpenSandboxBackend } from '@swarmenv/core/backends/pi-opensandbox';
-import { runWithReport } from './run-report.js';
+import { collaborationOperations, createCollaborationService } from './collaboration-service.js';
 import { createSubagentsController } from './controller.js';
-import { parentPromptFor, childPrompt, initialGoalFor } from './prompts.js';
+import { childPrompt, rootPrompt } from './prompts.js';
+import { runWithReport } from './run-report.js';
 
-/** Text references must point at the actual delivered round snapshots. */
-export function checkDelivery(output: any, deliveries: any, childCount: any = 2) {
-  if (!Number.isSafeInteger(childCount) || childCount < 2 || childCount > 7) return null;
-  let final: any;
-  try { final = JSON.parse(output); } catch { return null; }
-  if (typeof final?.summary !== 'string' || !final.summary.trim() || !Array.isArray(final.conclusions) || final.conclusions.length !== childCount + 1) return null;
-  const completed = deliveries.filter((row: any) => row.kind === 'child' && row.state === 'accepted' && row.result.outcome === 'completed');
-  const keys: any = new Set(); const children: any = new Map();
-  for (const conclusion of final.conclusions) {
-    const result = completed.find((row: any) => row.result.childId === conclusion.childId && row.result.eventSeq === conclusion.eventSeq)?.result;
-    if (!result || typeof conclusion.quote !== 'string' || !conclusion.quote || conclusion.quote !== result.output) return null;
-    const key = `${conclusion.childId}:${conclusion.eventSeq}`;
-    if (keys.has(key)) return null;
-    keys.add(key); children.set(conclusion.childId, (children.get(conclusion.childId) ?? 0) + 1);
-  }
-  if (children.size !== childCount || ![...children.values()].includes(2)) return null;
-  return final;
+interface Config {
+  backend: Parameters<typeof createPiOpenSandboxBackend>[0];
+  model?: string;
+  rootModel?: string;
+  childModel?: string;
+  image: string;
+  outputDir: string;
+  goal?: string;
+  maxAgents?: number;
+  maxDepth?: number;
+  workTimeoutMs?: number;
+  closeTimeoutMs?: number;
+  files?: FileSeed;
+  collect?: CollectionSpec;
+  workspace?: { root: SpawnOptions['workspace']; child: SpawnOptions['workspace'] };
+  interactive?: boolean;
 }
 
-export async function runSubagentsEnvironment({ backend, model = 'default', image, outputDir,
-  childCount = 2, goal = initialGoalFor(childCount), supplements = [], workTimeoutMs = 120_000, closeTimeoutMs = 30_000 }: any, signal: any) {
-  if (!Number.isSafeInteger(childCount) || childCount < 2 || childCount > 7 || typeof goal !== 'string' || !goal || Buffer.byteLength(goal) > 64 * 1024 || !Array.isArray(supplements) || supplements.length > 4 || supplements.some((input: any) => typeof input !== 'string' || Buffer.byteLength(input) > 64 * 1024) ||
-      !Number.isSafeInteger(workTimeoutMs) || workTimeoutMs < 1 || workTimeoutMs > 2147483647) throw new TypeError('Provide two to seven children, a text goal, at most four supplements and a finite work deadline');
-  let controller: any; let final: any;
-  const secrets = [backend?.sandbox?.apiKey, backend?.sandbox?.execdToken,
-    ...Object.values((backend?.models ?? {} as Record<string, any>)).flatMap((value: any) => Object.values((value.upstream?.headers ?? {} as Record<string, any>)))]
-    .filter((value: any) => typeof value === 'string' && value.length).flatMap((value: any) => [value, value.replace(/^(?:Bearer|Basic)\s+/i, '')]).filter(Boolean);
-  const redact = (value: any) => JSON.parse(JSON.stringify(value, (_key: any, item: any) => typeof item === 'string'
-    ? secrets.reduce((text: any, secret: any) => text.replaceAll(secret, '[redacted]'), item) : item));
-  return runWithReport({ outputDir, closeTimeoutMs,
-    redact: (report: any) => redact({ ...report, routing: controller?.report() ?? null }),
-    createRuntime: async () => {
-      signal?.throwIfAborted();
-      const common: any = { model, image, writable: true };
-      const runtime = await createRuntime({ backend: createPiOpenSandboxBackend(backend), outputDir, services: new ServiceRegistry(), maxBots: childCount + 1, profiles: {
-        parent: { ...common, prompt: parentPromptFor(childCount), services: { bot: ['spawn', 'get', 'send', 'stop'] }, spawnProfiles: ['child'] },
-        child: { ...common, prompt: childPrompt, services: {} },
-      } });
-      return { ...runtime, close(options: any) {
-        controller?.stop();
-        const closed = runtime.close(options);
-        return closed.then(async (receipt: any) => { await controller?.drain(); return receipt; });
-      } };
+function deadline(value: number, name: string) {
+  if (!Number.isSafeInteger(value) || value < 1 || value > 2_147_483_647) {
+    throw new TypeError(`${name} must be a finite positive integer`);
+  }
+  return value;
+}
+
+export async function createSubagentsEnvironment(config: Config) {
+  const { maxAgents = 4, maxDepth = 3, model = 'default', rootModel = model, childModel = model,
+    closeTimeoutMs = 30_000, outputDir, image, files, collect, workspace } = config;
+  if (!Number.isSafeInteger(maxAgents) || maxAgents < 1 || maxAgents > 64 ||
+      !Number.isSafeInteger(maxDepth) || maxDepth < 0 || maxDepth > 16) {
+    throw new TypeError('Use maxAgents from 1 to 64 (including Root) and maxDepth from 0 to 16');
+  }
+  deadline(closeTimeoutMs, 'closeTimeoutMs');
+  const services = new ServiceRegistry();
+  let team: ReturnType<typeof createSubagentsController>;
+  services.registerService(createCollaborationService(request => team.invoke(request), () => team.exportState()));
+  const common = { image, writable: true, services: { collaboration: collaborationOperations },
+    spawnProfiles: ['child'], allowContextFork: true };
+  const runtime = await createRuntime({
+    backend: createPiOpenSandboxBackend(config.backend), outputDir, services, maxBots: maxAgents,
+    profiles: {
+      root: { ...common, model: rootModel, prompt: rootPrompt },
+      child: { ...common, model: childModel, prompt: childPrompt },
     },
-    async run(runtime: any) {
-      const parent = await runtime.spawn({ profile: 'parent', requestId: 'parent' });
-      controller = createSubagentsController(runtime, parent.id, { maxChildren: childCount });
-      const waiting: any = new AbortController();
-      const waitSignal = signal ? AbortSignal.any([signal, waiting.signal]) : waiting.signal;
-      const finished = controller.waitForFinal({ timeoutMs: workTimeoutMs, signal: waitSignal,
-        accept: (event: any, deliveries: any) => Boolean(final = checkDelivery(event.output, deliveries, childCount)) });
-      // Attach immediately: failures can precede admission receipts.
-      finished.catch(() => {});
-      try {
-        for (const [index, input] of [goal, ...supplements].entries()) {
-          signal?.throwIfAborted();
-          const entry = await controller.submitUser(input, { requestId: `user-${index}` });
-          if (entry.state !== 'accepted') throw Object.assign(new Error('Parent input was not admitted; preserve its receipt'), { code: 'INPUT_UNKNOWN', requestId: entry.requestId, receipt: entry.receipt });
+  });
+  team = createSubagentsController(runtime, { maxAgents, maxDepth, childWorkspace: workspace?.child });
+  const closing = new AbortController();
+  async function close(options = { timeoutMs: closeTimeoutMs }) {
+    closing.abort(new Error('The team is closing'));
+    team.beginClose();
+    try {
+      return await runtime.close(options);
+    } finally {
+      team.dispose();
+    }
+  }
+  let root;
+  try {
+    root = await runtime.spawn({ profile: 'root', requestId: 'root', files, collect, workspace: workspace?.root });
+    team.attachRoot(root.id);
+  } catch (error) {
+    await close().catch(() => undefined);
+    throw error;
+  }
+
+  return {
+    id: runtime.id,
+    rootId: root.id,
+    input: (text: string, requestId: string = randomUUID()) => team.submitUser(text, requestId),
+    status: team.list,
+    onReply: team.onReply,
+    lastReply: team.lastReply,
+    waitForReply({ after = 0, signal }: { after?: number; signal?: AbortSignal } = {}) {
+      const abort = signal ? AbortSignal.any([signal, closing.signal]) : closing.signal;
+      abort.throwIfAborted();
+      return new Promise<NonNullable<ReturnType<typeof team.lastReply>>>((resolveReply, rejectReply) => {
+        const cancel = () => finish(() => rejectReply(abort.reason));
+        const unsubscribe = team.onReply(reply => {
+          if (reply.seq > after) finish(() => resolveReply(reply));
+        });
+        function finish(callback: () => void) {
+          unsubscribe();
+          abort.removeEventListener('abort', cancel);
+          callback();
         }
-        const event = await finished;
-        return { parentId: parent.id, childCount, eventSeq: event.seq, delivery: final };
-      } finally {
-        // Retain the listener for Runtime close events, while preventing all new dispatch.
-        controller.stop(); waiting.abort();
-        // Core synchronously fences dynamic spawn before any asynchronous cleanup wait.
-        void runtime.close({ timeoutMs: closeTimeoutMs }).catch(() => {});
-      }
+        abort.addEventListener('abort', cancel, { once: true });
+        const latest = team.lastReply();
+        if (latest && latest.seq > after) finish(() => resolveReply(latest));
+      });
     },
-  }).finally(() => controller?.dispose());
+    close,
+    afterClose: team.drain,
+    collaborationState: team.exportState,
+  };
+}
+
+function reportRedactor(backend: Config['backend']) {
+  const secrets = [backend.sandbox.apiKey, backend.sandbox.execdToken,
+    ...Object.values(backend.models).flatMap(model => Object.values(model.upstream.headers ?? {}))]
+    .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    .flatMap(value => [value, value.replace(/^(?:Bearer|Basic)\s+/i, '')])
+    .filter(Boolean).sort((left, right) => right.length - left.length);
+  return (report: unknown) => JSON.parse(JSON.stringify(report, (_key, value) => typeof value === 'string'
+    ? secrets.reduce((text, secret) => text.replaceAll(secret, '[redacted]'), value) : value));
+}
+
+type Environment = Awaited<ReturnType<typeof createSubagentsEnvironment>>;
+
+export async function runSubagentsEnvironment(config: Config, signal?: AbortSignal,
+  interact?: (environment: Environment, signal: AbortSignal) => Promise<unknown>) {
+  const timeout = AbortSignal.timeout(deadline(config.workTimeoutMs ?? 120_000, 'workTimeoutMs'));
+  const work = signal ? AbortSignal.any([signal, timeout]) : timeout;
+  let environment: Environment | undefined;
+  const redact = reportRedactor(config.backend);
+  return runWithReport({
+    outputDir: config.outputDir, closeTimeoutMs: config.closeTimeoutMs,
+    redact: (report: object) => redact({ ...report, collaboration: environment?.collaborationState() ?? null }),
+    createRuntime: async () => {
+      work.throwIfAborted();
+      if (!interact && !config.goal?.trim()) throw new TypeError('Supply a task in config.goal or use interactive input');
+      environment = await createSubagentsEnvironment(config);
+      return environment;
+    },
+    afterClose: () => environment?.afterClose(),
+    async run(env: Environment) {
+      const initial = config.goal?.trim() ? await env.input(config.goal, 'initial-task') : undefined;
+      if (initial && (typeof initial !== 'object' || !('status' in initial) || initial.status !== 'accepted')) {
+        throw Object.assign(new Error('Root input was not confirmed'), { code: 'INPUT_UNKNOWN', receipt: initial });
+      }
+      if (interact) return await interact(env, work);
+      const reply = await env.waitForReply({ signal: work });
+      if (reply.type !== 'settled' || reply.outcome !== 'completed') {
+        throw Object.assign(new Error('Root did not complete the task'), { code: 'ROOT_FAILED', event: reply });
+      }
+      return { rootId: env.rootId, eventSeq: reply.seq, output: reply.output };
+    },
+  });
+}
+
+async function readInteraction(env: Environment, signal: AbortSignal) {
+  const input = createInterface({ input: process.stdin, terminal: false });
+  const done = () => input.close();
+  const showReply: Parameters<Environment['onReply']>[0] = reply => {
+    if (reply.type === 'settled' && reply.output) process.stdout.write(`${reply.output}\n`);
+    if (reply.type === 'exit' || (reply.type === 'settled' && reply.outcome === 'failed')) done();
+  };
+  const stopReply = env.onReply(showReply);
+  const last = env.lastReply();
+  if (last) showReply(last);
+  if (signal.aborted) done();
+  else signal.addEventListener('abort', done, { once: true });
+  try {
+    for await (const line of input) {
+      if (line === '/exit') break;
+      if (!line.trim()) continue;
+      const work = line === '/status' ? env.status().then(value => { process.stdout.write(`${JSON.stringify(value)}\n`); })
+        : env.input(line).then(value => { process.stderr.write(`${JSON.stringify(value)}\n`); });
+      void work.catch(error => {
+        process.stderr.write(`${error.code ?? 'INPUT_ERROR'}\n`);
+      });
+    }
+  } finally {
+    input.close();
+    signal.removeEventListener('abort', done);
+    stopReply();
+  }
+  signal.throwIfAborted();
+  return { rootId: env.rootId, interaction: 'closed' };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  if (!process.argv[2]) throw new Error('Supply the host configuration module');
-  const abort: any = new AbortController(); const stop = () => abort.abort();
-  process.once('SIGINT', stop); process.once('SIGTERM', stop);
-  try {
-    const config = (await import(pathToFileURL(resolve(process.argv[2])).href)).default;
-    const report = await runSubagentsEnvironment(config, abort.signal);
-    process.stdout.write(`${JSON.stringify(report)}\n`);
-    process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;
-  } finally { process.off('SIGINT', stop); process.off('SIGTERM', stop); }
+  const [, , filename, task] = process.argv;
+  if (!filename || filename === '--help') {
+    process.stdout.write('Usage: node main.js <config.js> ["task" | --interactive]\n');
+  } else {
+    const interrupt = new AbortController();
+    const stop = () => interrupt.abort(new Error('Stopped by host'));
+    process.once('SIGINT', stop);
+    process.once('SIGTERM', stop);
+    try {
+      const config: Config = (await import(pathToFileURL(resolve(filename)).href)).default;
+      const report = await runSubagentsEnvironment(
+        task && task !== '--interactive' ? { ...config, goal: task } : config,
+        interrupt.signal, task === '--interactive' || config.interactive ? readInteraction : undefined);
+      process.stdout.write(`${JSON.stringify(report)}\n`);
+      process.exitCode = report.businessFailure || report.cleanupFailure || report.reportSaveFailure ? 1 : 0;
+    } finally {
+      process.off('SIGINT', stop);
+      process.off('SIGTERM', stop);
+    }
+  }
 }

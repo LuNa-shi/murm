@@ -174,8 +174,8 @@ const runtime: Runtime = await createRuntime({ backend: createPiOpenSandboxBacke
   services: registry, maxBots: 2, outputDir: './output' });
 const bot = await runtime.spawn({ requestId: 'spawn', profile: 'reader' });
 await runtime.list({ parentId: null, status: ['idle', 'starting'] });
-await runtime.start(bot.id, 'Read a note', { requestId: 'start' });
-await runtime.steer(bot.id, 'Read this too', { requestId: 'steer', source: 'mail', steeringMode: 'all' });
+await runtime.send(bot.id, 'Read a note', { mode: 'followUp', requestId: 'start' });
+await runtime.send(bot.id, 'Read this too', { requestId: 'steer', source: 'mail', steeringMode: 'all' });
 await runtime.interrupt(bot.id, { requestId: 'interrupt', timeoutMs: 1000 });
 const files = await runtime.files.snapshot(bot.id, { requestId: 'snapshot', paths: ['note.txt'] });
 await runtime.spawn({ requestId: 'fork', profile: 'reader', forkFrom: bot.id, workspace: { mode: 'frozen-copy', files: files.files } });
