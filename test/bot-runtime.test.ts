@@ -763,12 +763,12 @@ async function workspaceFixture(t, options = {}) {
   return { ...f, bot, bridge, execution, identity, guest, command, dispatch, context, workspaceMerge };
 }
 
-test('retired active Workspace apply is absent from CLI discovery and rejected before guest work', async t => {
+test('legacy Workspace routes reject live apply without a registered capability before guest work', async t => {
   const { command, bridge, dispatch, guest, service } = await workspaceFixture(t);
   assert.equal(listTools(null, { includeInternal: true }).some(tool => tool.operation === 'workspace_public_apply'), false);
   const { stdout: help } = await promisify(execFile)(process.execPath, ['dist/scripts/swarm.js', 'workspace', '--help']);
   assert.doesNotMatch(help, /\bapply\b/);
-  await assert.rejects(command('workspace', 'apply', '--from', 'main'), error => /Unknown|unknown|Unsupported|unsupported/.test(error.stderr));
+  await assert.rejects(command('workspace', 'apply', '--from', 'main'), error => JSON.parse(error.stderr).code === 'NOT_ALLOWED');
   const response = await fetch(`http://127.0.0.1:${bridge.address.port}/call`, { method: 'POST',
     headers: { authorization: `Bearer ${bridge.token}`, 'content-type': 'application/json' },
     body: JSON.stringify({ operation: 'workspace_public_apply', payload: { from: 'main' }, operation_id: 'retired' }) });
