@@ -33,6 +33,19 @@ Body SHA-256: `7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e`
 ````text
 retry_with_the_registered_input_schema
 ````
+## guidance — src/runtime/mission-workspace.ts:10
+
+Source: [src/runtime/mission-workspace.ts](../../../src/runtime/mission-workspace.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
+
+Body SHA-256: `18cebaa7bc8bb2d860f6fbfb457f2ff28866d9c9935ea78da8ef4c317c3e32db`
+
+````text
+Workspace apply has unresolved conflicts. The ordinary project tree contains Git's editable merge result.
+The base/current/incoming files here preserve the exact alternatives, including binary, rename and deletion conflicts.
+Resolve the intended ordinary project paths, remove this alternatives directory, then call swarm workspace save --resolved.
+Resolution records your decision; it does not establish correctness or replace a required check.
+
+````
 ## remediation — src/runtime/workspace-contract.ts:36
 
 Source: [src/runtime/workspace-contract.ts](../../../src/runtime/workspace-contract.ts). This block is the complete value of the remediation field, without JSON quoting. See delivery conditions above.
@@ -96,7 +109,7 @@ Body SHA-256: `f54f33ecfd41745a310aa5c249667ade5e1fb31f77528b4b0bb1843188745631`
 ````text
 Refresh the locked input or update the Task contract to the intended fixture hash.
 ````
-## guidance — src/task/task-service.ts:1493
+## guidance — src/task/task-service.ts:1498
 
 Source: [src/task/task-service.ts](../../../src/task/task-service.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
 
@@ -105,7 +118,7 @@ Body SHA-256: `7e00a9a0673a67a15ea3cc67a3ce0331614bdf9a024122bbf2821ad7cb98844f`
 ````text
 Read relevant continuation pages and Task detail before taking. New Tasks after this scan began require a fresh query.
 ````
-## action — src/task/task-service.ts:1611
+## action — src/task/task-service.ts:1616
 
 Source: [src/task/task-service.ts](../../../src/task/task-service.ts). This block is the complete value of the action field, without JSON quoting. See delivery conditions above.
 
@@ -114,7 +127,7 @@ Body SHA-256: `70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f`
 ````text
 inspect_material_and_record_task_feedback
 ````
-## guidance — src/task/task-service.ts:1761
+## guidance — src/task/task-service.ts:1766
 
 Source: [src/task/task-service.ts](../../../src/task/task-service.ts). This block is the complete value of the guidance field, without JSON quoting. See delivery conditions above.
 

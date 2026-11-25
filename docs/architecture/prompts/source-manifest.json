@@ -3,7 +3,7 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.ts",
-      "sha256": "c3cc8d1e990624772e85bc67c5319b6a9346b3afc6809be54ba67b33da31e6bc"
+      "sha256": "2dd43b79c5634b7af33c3dee0835f473a9db088436c07cdb947ea08f949fdb76"
     },
     {
       "path": "src/agent/capability-profile.ts",
@@ -19,11 +19,11 @@
     },
     {
       "path": "src/core/pi-opensandbox-backend.ts",
-      "sha256": "ebbd6581a2bf95ee61c759537cdb7df2d318c0420fbcd7abe7b0276193fa0e3b"
+      "sha256": "74fb7492b7dd742555841c74ec45c615746f3d254d0c641a4fdddc8f0b95c7dc"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "02ceda7450e2d7e1a7e6bd08c67194c3972587fa5268a8ae39576fe8318b9bf4"
+      "sha256": "a1d5320f76c27d249e80dd36b62924842f5f7069003f8e2c529f36a480b54d02"
     },
     {
       "path": "examples/notes-environment/main.ts",
@@ -39,11 +39,15 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "sha256": "97817d01c3ce6a34b60887d459513e8e818678c76a1d3d6f7fe6930d300aa988"
+      "sha256": "dd11de384a62da18a0f5d88501d9a79df76016464e24b3dccbd9d0f49f6dc8ac"
     },
     {
       "path": "src/environments/flat/environment.ts",
-      "sha256": "6123abd043dbcd014a00cdc85d755539f2686d726fe8b5b537b93a56bc4ac4ac"
+      "sha256": "a3056827e13303941c6cca29c4cd2f72e306cfc3a7f3383d8274d35dd1eb1924"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "sha256": "8910e6abc45b68fd00140bb58604e7a22169372a9069bef285ae8fe0d7d3c2a9"
     },
     {
       "path": "examples/subagents-environment/main.ts",
@@ -99,11 +103,11 @@
     },
     {
       "path": "src/runtime/mission-workspace.ts",
-      "sha256": "12a377fa5203b300315fa09b1c03f5a0c9a6959b6c22c3c75b4cc7bfe73cba78"
+      "sha256": "e7784ac7001599551bdea9cebf089ddd59cf8ee3dae3de3175c8ebb95016a8fd"
     },
     {
       "path": "src/sdk/service-catalog.ts",
-      "sha256": "0e284ab9a0d04987bbf3d48988dad86a6cd9ad491c1d38adf3cc8390a5dae399"
+      "sha256": "cee8156288678efa0ec1b47ab31ec74cabdf75afcaae50b5b4fe244c86a7ae81"
     },
     {
       "path": "src/sdk/builtin-registry.ts",
@@ -127,7 +131,7 @@
     },
     {
       "path": "src/task/task-service.ts",
-      "sha256": "0842ce7bae7bd01b6dab03359682c50f7335321799dbc81f08e5d5229bd74df1"
+      "sha256": "0b2df9c04e4f3ed93290d1ad6baca8e26ac70d52f8c8c9ede0e5667d3df266a5"
     },
     {
       "path": "src/task/task-types.ts",
@@ -300,20 +304,32 @@
     {
       "path": "src/environments/flat/environment.ts",
       "anchor": "prompt='",
-      "line": 15,
+      "line": 16,
       "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
     },
     {
       "path": "src/environments/flat/environment.ts",
       "anchor": "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '",
-      "line": 12,
+      "line": 13,
       "sha256": "7ddd3c046642e46ad91153885ed29729e1d733c4c0f6420da7200f750ff28a4d"
     },
     {
       "path": "src/environments/flat/controller.ts",
       "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
-      "line": 8,
+      "line": 10,
       "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
+    },
+    {
+      "path": "src/environments/flat/controller.ts",
+      "anchor": "export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE='",
+      "line": 8,
+      "sha256": "cb3e314ef13e951603bc969fd6e3423b1234aea9a7d4b9802f065e806dd5569f"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "anchor": "const prompt = `",
+      "line": 21,
+      "sha256": "c859566237ccb3adfa276635f850ec2315334c41283f5efad1ff9a27293ed892"
     }
   ],
   "prompt_send_sites": [
@@ -324,7 +340,7 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "line": 100,
+      "line": 105,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
@@ -340,6 +356,12 @@
       "line": 540,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
+    },
+    {
+      "path": "src/runtime/mission-workspace.ts",
+      "line": 10,
+      "field": "guidance",
+      "sha256": "18cebaa7bc8bb2d860f6fbfb457f2ff28866d9c9935ea78da8ef4c317c3e32db"
     },
     {
       "path": "src/runtime/workspace-contract.ts",
@@ -385,19 +407,19 @@
     },
     {
       "path": "src/task/task-service.ts",
-      "line": 1493,
+      "line": 1498,
       "field": "guidance",
       "sha256": "7e00a9a0673a67a15ea3cc67a3ce0331614bdf9a024122bbf2821ad7cb98844f"
     },
     {
       "path": "src/task/task-service.ts",
-      "line": 1611,
+      "line": 1616,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.ts",
-      "line": 1761,
+      "line": 1766,
       "field": "guidance",
       "sha256": "0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b"
     }
@@ -405,7 +427,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "2211fbddbcf092874ce4e3db8214e7bb6c71e9e51e13c1b340778bce46528719"
+      "sha256": "babebae23f1ed5de549496eec57b36a29c42f7249f1dc8238d79d382d41a6bb7"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
@@ -413,11 +435,11 @@
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "6f9698c49338f73048589c12b0d1e439af07b3caa476f1a8a503a5141621bb1a"
+      "sha256": "0875b3b1ad59142caf6c00972491c7f0367bd0983ea7eb8fa713f7c2f2b1eacb"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "7e4dbca89dcccfc0b0eb1863756d3f685fb02a54c4aaea970cc010d079c5e684"
+      "sha256": "0dd9780f082c954cdf7cfa5514190b3770539f0f56f7d904d71ca19c6a3df180"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
@@ -441,7 +463,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "71c28c18542c852e50df770029a35b58bc2cc01e3943318f7199a25e6c568bf7"
+      "sha256": "e78e3db35a6f4db7675c92f86484f2d879b3ec8c665cc4886b17c3afe06a885e"
     }
   ]
 }

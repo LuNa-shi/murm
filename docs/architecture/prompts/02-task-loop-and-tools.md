@@ -7,7 +7,7 @@ Core selects the four native tools read/write/edit/bash. The synthetic namespace
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Built-in Services
 
-Body SHA-256: `e96ecf2177ef74fdd9e6bb02f5469303aab36b47e7b06634e2b595f4f0ca4ec3`
+Body SHA-256: `07dc33a6ec1b7eabdca25c325dd4873d219da1a51905ee016b4e22ef40ec7c22`
 
 ````text
 [
@@ -59,7 +59,7 @@ Body SHA-256: `e96ecf2177ef74fdd9e6bb02f5469303aab36b47e7b06634e2b595f4f0ca4ec3`
     "help": "swarm task --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
-    "permission": "Mission reads and direct take; Task creation is host-owned; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant"
+    "permission": "Mission reads and direct take; Task creation requires an enabled task_create capability and permits UNBOUND or ACTIVE proposals in the same Mission; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant"
   },
   {
     "name": "workspace",
@@ -85,7 +85,7 @@ Body SHA-256: `e96ecf2177ef74fdd9e6bb02f5469303aab36b47e7b06634e2b595f4f0ca4ec3`
 ````
 ## With optional Mathlib Search
 
-Body SHA-256: `ae320737cb7741e6733faf34343fa3d83a1b3c5250e4d3ecdd8760cfd399335c`
+Body SHA-256: `9d30a87fc80682d09ebd6543a56a45e742ae9da323b9341ab952d98d5c6b2a66`
 
 ````text
 [
@@ -162,7 +162,7 @@ Body SHA-256: `ae320737cb7741e6733faf34343fa3d83a1b3c5250e4d3ecdd8760cfd399335c`
     "help": "swarm task --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
-    "permission": "Mission reads and direct take; Task creation is host-owned; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant"
+    "permission": "Mission reads and direct take; Task creation requires an enabled task_create capability and permits UNBOUND or ACTIVE proposals in the same Mission; only UNBOUND may revise or cancel open unowned Tasks using observed versions; finish and feedback require current E; dependency replacement requires a coordination grant"
   },
   {
     "name": "workspace",

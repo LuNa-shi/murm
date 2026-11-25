@@ -30,7 +30,7 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `0e284ab9a0d04987bbf3d48988dad86a6cd9ad491c1d38adf3cc8390a5dae399` |
+| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `cee8156288678efa0ec1b47ab31ec74cabdf75afcaae50b5b4fe244c86a7ae81` |
 | [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `98d9ded93d7254f1813080c71862e0b8a305de12704219046156e16bd5787623` |
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `ef5119f0fa92a587850498a8ae2d1fc19c35d45f1cd3df9301916460433a34c2` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `059326242222f5a036a03b33fb0e7b260fb0f527dfd771822755db2419ef5253` |
@@ -39,7 +39,7 @@ This section is generated from executable exports and checked against the source
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
 | [src/core/index.ts](../../src/core/index.ts) | `2210258384ebee02c6d3ab5416dd0846dffc1e22e403702e284862ec211f391c` |
-| [src/core/types.ts](../../src/core/types.ts) | `853ee823d27de900b68b419e288b53366af107effa366babc47aef288514bd0f` |
+| [src/core/types.ts](../../src/core/types.ts) | `287bdc27062cd7636496f833d8d2f8d9d55d1b146486366ed0b98b06fd76d901` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `3d9b797156e9c13cfeea316025584f4aa379007b80831413df0cb9d588719583` |
 | [src/core/services.ts](../../src/core/services.ts) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
@@ -2772,7 +2772,7 @@ This section records catalog declarations used by trusted service composition bu
   "service": "task",
   "operation": "task_create",
   "version": "1.0",
-  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Trusted host/domain callers supply Tasks; this schema does not grant Bot admission. Optional base_revision pins input; otherwise take uses main.",
+  "description": "Propose one independently useful responsibility with a short summary, Mission gap, output, completion conditions and explicit high/medium/low priority. Bot proposals require explicit Environment registration and current Mission authority. Optional base_revision pins input; otherwise take uses main.",
   "scope": "task-write",
   "side_effect": true,
   "parameters": {
@@ -3166,6 +3166,13 @@ export interface FileSnapshot {
     readonly digest: string;
     readonly files: FileSeed;
 }
+export interface FileInstall {
+    readonly botId: string;
+    readonly requestId: string;
+    readonly version: number;
+    readonly digest: string;
+    readonly phase: 'installed' | 'committed';
+}
 export interface GrantReceipt {
     readonly botId: string;
     readonly version: number;
@@ -3331,6 +3338,17 @@ export interface Runtime {
             includeGit?: boolean;
             maxBytes?: number;
         }): Promise<FileSnapshot>;
+        installStatus(botId: string, options: {
+            requestId: string;
+        }): Promise<FileInstall | null>;
+        install(botId: string, options: {
+            requestId: string;
+            expected: FileSnapshot;
+            files: FileSeed;
+        }): Promise<FileInstall>;
+        confirm(botId: string, options: {
+            requestId: string;
+        }): Promise<FileInstall>;
         prepare(botId: string, options: {
             requestId: string;
             files: FileSeed;

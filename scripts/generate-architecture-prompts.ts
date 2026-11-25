@@ -26,6 +26,7 @@ const sourcePaths = [
   'src/core/index.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
   'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts',
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',
+  'benchmarks/putnambench-flat/run.ts',
   'examples/subagents-environment/main.ts', 'examples/subagents-environment/controller.ts', 'examples/subagents-environment/prompts.ts',
   'src/environments/agensh/index.ts', 'src/environments/agensh/router.ts', 'src/environments/agensh/routed.ts', 'src/environments/agensh/team.ts',
   'test/fixtures/agensh-team-kimi.ts', 'test/agensh-team-kimi-real.test.ts',
@@ -85,7 +86,7 @@ let turnsDoc = header('Complete flat continuation messages', 'The flat controlle
 turnsDoc += block('Flat bound continuation', BOT_CONTINUATION_MESSAGE);
 turnsDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
 output('03-runtime-turns.md', turnsDoc);
-let runtimeDoc = header('Complete Runtime notification messages', 'The Flat controller admits durable handoff warnings through its serialized followUp path using buildBotNotification from bot-contract.js. The retained Runtime no longer sends notification inputs. Material/dependency variants below are retained formatter output with no automatic send path in the current Flat host. Synthetic identifiers below illustrate the exact current body; composition alone does not establish delivery.');
+let runtimeDoc = header('Complete Runtime notification messages', 'The Flat controller admits durable handoff warnings and eligible Material/dependency notices through its serialized followUp path using buildBotNotification from bot-contract.js. The retained Runtime no longer sends notification inputs. Eligibility and actual delivery are recorded by the controller. Synthetic identifiers below illustrate the exact current body; composition alone does not establish delivery.');
 for (const notification_type of ['handoff_warning', 'material_available', 'dependency_satisfied']) runtimeDoc += block(notification_type, buildBotNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', material_id: '<MATERIAL_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', recipient_task_id: '<TASK_ID>', payload: { execution_id: '<EXECUTION_ID>', deadline: '2099-01-01T00:00:00.000Z' } }, { at: Date.parse('2098-12-31T23:59:30.000Z') }));
 output('04-runtime-messages.md', runtimeDoc);
 
@@ -189,11 +190,15 @@ const flatEnvironmentPath = 'src/environments/flat/environment.ts';
 const sampleCloseout = { at: Date.parse('2026-01-01T00:00:30.000Z'), workspaceSaveAvailable: false };
 const warningDeadline = '2026-01-01T00:01:00.000Z';
 output('08-flat-environment.md', header('Flat discovery and continuation prompts',
-  'After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The optional trusted snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.')
+  'After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The trusted Core capture or explicit snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.')
   + block('Default researcher Profile prompt', between(flatEnvironmentPath, "prompt='", "',\n"))
   + block('Profile suffix when live Workspace save is unavailable', between(flatEnvironmentPath, "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '", "';"),
-    'The host appends this suffix after two newlines to the default or host-supplied Profile prompt when it omits snapshotProject.')
+    'The host appends this suffix after two newlines to the default or host-supplied Profile prompt when it has neither a Core nor an injected live capture binding.')
   + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
+  + block('Autonomous discovery input', between(flatControllerPath, "export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE='", "';"),
+    'Selected by the Flat host when autonomous Task creation is enabled. The controller delivers it after the initial workers are ready.')
+  + block('PutnamBench researcher Profile', between('benchmarks/putnambench-flat/run.ts', 'const prompt = `', '`;'),
+    'The PutnamBench runner supplies this Profile text to the normal Flat host. Core stages the Profile and native Pi composes the system input. The original fixture is a locked public Workspace file.')
   + block('Default ordinary continuation with a snapshot binding', BOT_CONTINUATION_MESSAGE)
   + block('Default ordinary continuation without a snapshot binding', BOT_MATERIAL_CONTINUATION_MESSAGE,
     'The host can override controller.continuationPrompt in either configuration. During soft closeout the controller selects the built-in text for the registered Workspace capabilities.')
