@@ -338,8 +338,8 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [scripts/swarm.ts](../../scripts/swarm.ts) | Executable swarm CLI entry point and exit-code boundary | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md) | `f238e4f144b40f5c414e2a1e70daa5767f0ca6e1bdc30f67d8af45636cf13410` |
-| [src/cli/service-command.ts](../../src/cli/service-command.ts) | Shared mapping between registered Service operations and model-visible CLI commands | [04-services](04-services.md), [08-prompts](08-prompts.md) | `56b198574806f5362c99b67e79087334a18d3c8554b9984788de9b5d02fabb61` |
-| [src/cli/swarm-cli.ts](../../src/cli/swarm-cli.ts) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `dbcfb6cc8347b1865354c28be73c5b8d257af5dcf7bed380f05b00583a0397a2` |
+| [src/cli/service-command.ts](../../src/cli/service-command.ts) | Shared mapping between registered Service operations and model-visible CLI commands | [04-services](04-services.md), [08-prompts](08-prompts.md) | `67ac954a55204ddc46fdf8c0462067b3da94c41f6c688ab4a23f15e2f88ce87f` |
+| [src/cli/swarm-cli.ts](../../src/cli/swarm-cli.ts) | Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md), [15-core-runtime](15-core-runtime.md) | `18dd810d9189366cc739e9d226c0080d5260d94c801dd126a08dd282b33ca818` |
 | [src/protocol/http-request.ts](../../src/protocol/http-request.ts) | Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers | [04-services](04-services.md), [07-run-configuration](07-run-configuration.md), [08-prompts](08-prompts.md) | `6efc0ed8d79ec86ab74b84cf9c63a744f575b9ffe579740738ca7f4079c82d2d` |
 
 ### service deployment (16)

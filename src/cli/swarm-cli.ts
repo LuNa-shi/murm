@@ -332,8 +332,8 @@ async function invoke(service: any, commandName: any, options: any, args: any = 
   if (process.env.SWARMENV_BRIDGE_URL) {
     if (coreV2 || !knownGroup) {
       const metadata = await manifest(service);
-      const capability = metadata.capabilities?.find((item: { operation: string; name: string; timeout_ms?: number }) =>
-        item.operation === operation || (!alias && item.name === operation));
+      const capability = metadata.capabilities?.find((item: { operation: string }) => item.operation === operation) ??
+        (alias ? undefined : metadata.capabilities?.find((item: { name: string }) => item.name === operation));
       if (!capability && !alias) {
         if (knownGroup) throw new Error(`unknown ${service} command: ${commandName}`);
         throw new Error(`service ${service} does not advertise capability ${operation}`);
@@ -389,11 +389,13 @@ export async function runSwarmCli(argv: any = process.argv.slice(2), { stdout = 
   const botDiscovery = helpService === 'bot' && !helpCommand;
   const manifestHelp = options.help && helpService && helpService !== 'service' && !hasLocalHelp &&
     (Boolean(helpCommand) || !Object.hasOwn(COMMAND_OPERATIONS, helpService));
-  if ((manifestHelp || botDiscovery) && process.env.SWARMENV_BRIDGE_URL && !(botDiscovery && options.help)) {
+  if ((manifestHelp || botDiscovery) && process.env.SWARMENV_BRIDGE_URL) {
     const provider = await manifest(helpService);
     if (botDiscovery && provider.id !== 'bot') { stdout.write(usage('bot') + '\n'); return 0; }
     const operation = operationForCommand(helpService, helpCommand) ?? helpCommand;
-    const capabilities = operation ? provider.capabilities.filter((item: any) => item.operation === operation || item.name === operation) : provider.capabilities;
+    const exact = operation && provider.capabilities.find((item: any) => item.operation === operation);
+    const capabilities = exact ? [exact]
+      : operation ? provider.capabilities.filter((item: any) => item.name === operation) : provider.capabilities;
     if (!capabilities.length) throw new Error('Service does not advertise this operation');
     return writeManifestHelp(stdout, `swarm ${helpService} ${helpCommand ?? '<operation>'}`, provider, capabilities);
   }

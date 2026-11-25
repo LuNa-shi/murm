@@ -34,34 +34,40 @@ test('public Bash CLI discovers permitted operations, renders manifest help and 
 
 test('registered operations in a known command group can run exactly as advertised at startup', async t => {
   const manifest = notesManifest('task');
-  manifest.capabilities = [{ ...manifest.capabilities[1], operation: 'custom_read', name: 'read_extra' }];
+  manifest.capabilities = [
+    { ...manifest.capabilities[1], operation: 'other_read', name: 'custom_read', description: 'A different operation.' },
+    { ...manifest.capabilities[1], operation: 'custom_read', name: 'read_extra' },
+  ];
   const { bridge, credentials, bot } = await setup(t, { invoke({ input, caller, capability }) {
     assert.equal(capability.operation, 'custom_read');
     return { key: input.key, text: 'fixed', author: caller.botId };
   } }, { manifest });
-  bot.services = { task: ['custom_read'] };
+  bot.services = { task: ['other_read', 'custom_read'] };
   const system = renderStartupPrompt(bridge.visibleServices(bot.services));
   const advertised = system.match(/`swarm (task custom_read)`/)?.[1].split(' ');
   assert.deepEqual(advertised, ['task', 'custom_read']);
   const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
   const cli = (...args) => execute(process.execPath, ['dist/scripts/swarm.js', ...args], { env, timeout: 5000 });
-  assert.match((await cli(...advertised, '--help')).stdout, /Input schema/);
+  const operationHelp = (await cli(...advertised, '--help')).stdout;
+  assert.match(operationHelp, /Input schema/);
+  assert.doesNotMatch(operationHelp, /A different operation/);
   assert.deepEqual(JSON.parse((await cli(...advertised, '--key', 'one')).stdout), { key: 'one', text: 'fixed', author: 'bot-one' });
   const offline = { ...env, SWARMENV_BRIDGE_TOKEN: '', SWARMENV_BRIDGE_URL: 'http://127.0.0.1:1' };
   const { stdout } = await execute(process.execPath, ['dist/scripts/swarm.js', 'task', '--help'], { env: offline, timeout: 1000 });
   assert.match(stdout, /Usage: swarm task/);
 });
 
-for (const id of ['service', 'material']) {
-  test(`startup command can address a registered Service named ${id} without CLI aliasing`, async t => {
+for (const [id, operation] of [['service', 'get'], ['material', 'get'], ['mission', 'submission']]) {
+  test(`startup command can address registered ${id}/${operation} without CLI aliasing`, async t => {
     const manifest = notesManifest(id);
+    manifest.capabilities = [{ ...manifest.capabilities[1], operation }];
     const { bridge, credentials, bot } = await setup(t, { invoke({ input }) {
       return { key: input.key, text: 'fixed', author: 'bot-one' };
     } }, { manifest });
-    bot.services = { [id]: ['get'] };
+    bot.services = { [id]: [operation] };
     const system = renderStartupPrompt(bridge.visibleServices(bot.services));
     const advertised = system.match(/`swarm (service invoke [^`]+)`/)?.[1].split(' ');
-    assert.deepEqual(advertised, ['service', 'invoke', id, 'get']);
+    assert.deepEqual(advertised, ['service', 'invoke', id, operation]);
     const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
     const cli = (...args) => execute(process.execPath, ['dist/scripts/swarm.js', ...args], { env, timeout: 5000 });
     assert.match((await cli(...advertised, '--help')).stdout, /Input schema/);

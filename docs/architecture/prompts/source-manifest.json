@@ -15,11 +15,11 @@
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "dbcfb6cc8347b1865354c28be73c5b8d257af5dcf7bed380f05b00583a0397a2"
+      "sha256": "18dd810d9189366cc739e9d226c0080d5260d94c801dd126a08dd282b33ca818"
     },
     {
       "path": "src/cli/service-command.ts",
-      "sha256": "56b198574806f5362c99b67e79087334a18d3c8554b9984788de9b5d02fabb61"
+      "sha256": "67ac954a55204ddc46fdf8c0462067b3da94c41f6c688ab4a23f15e2f88ce87f"
     },
     {
       "path": "src/core/index.ts",
