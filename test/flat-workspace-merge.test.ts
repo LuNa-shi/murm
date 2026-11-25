@@ -11,7 +11,7 @@ import { controls } from './fixtures/flat-controller-backend.js';
 import { createTaskPoolTaskService } from '../src/harnesses/taskpool/task-service.js';
 import { createTaskPoolPublicationServices } from '../src/harnesses/taskpool/publication-services.js';
 import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/core/services.js';
-import { SwarmEnvError } from '../src/errors.js';
+import { MurmError } from '../src/errors.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
   if(specifier==='./pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return {url:new URL('./fixtures/flat-controller-backend.js',import.meta.url).href,shortCircuit:true};
@@ -261,7 +261,7 @@ for(const authority of ['Execution fence','Bridge revoke','Flat close']) test(`d
   let revoked=false;
   const attempt=invokeService(registered,{operation:'workspace_merge',input:{from:f.revisions[0].revision},envelope:{operation_id:requestId},
     caller:{runtimeId:f.runtime.id,botId:f.bots[0].id,profile:'researcher'},
-    assertAuthorized(){if(revoked) throw new SwarmEnvError('NOT_ALLOWED','Caller revoked');},
+    assertAuthorized(){if(revoked) throw new MurmError('NOT_ALLOWED','Caller revoked');},
   }).then(value=>({value}),error=>({error}));
   await entered.promise;
   if(authority==='Execution fence') {
@@ -281,7 +281,7 @@ test('fresh checker failure keeps its original cause when authority is also with
   f=await fixture(t,{async check(){
     const execution=f.tasks.getExecution(f.tasks.getBot(f.bots[0].id).execution_id);
     f.tasks.dispatch('fence_execution',{reason:'Concurrent checker failure'},makeEnvelope({actorRef:'host',taskId:execution.task_id,executionId:execution.execution_id,specVersion:execution.spec_version,stateVersion:execution.state_version,fencingVersion:execution.fencing_version}));
-    throw new SwarmEnvError('SERVICE_TIMEOUT','Controlled checker timeout');
+    throw new MurmError('SERVICE_TIMEOUT','Controlled checker timeout');
   }});
   await assert.rejects(f.cli('workspace','merge','--from',f.revisions[0].revision,'--request-id','original-failure'),error=>/SERVICE_TIMEOUT/.test(error.stderr));
   assert.equal((await f.publication.waitForMerges({timeoutMs:1000})).cleanup,'complete');

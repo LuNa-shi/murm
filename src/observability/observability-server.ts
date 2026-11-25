@@ -590,7 +590,7 @@ export class ObservabilityServer {
         return;
       }
       if (!this.#isOperator(request)) {
-        if (this.operatorHash) response.setHeader('www-authenticate', 'Basic realm="SwarmEnv Operator", charset="UTF-8"');
+        if (this.operatorHash) response.setHeader('www-authenticate', 'Basic realm="murm Operator", charset="UTF-8"');
         send(response, this.operatorHash ? 401 : 403, { ok: false, error: { code: 'OPERATOR_REQUIRED', message: 'Observer operator access is required' } });
         return;
       }

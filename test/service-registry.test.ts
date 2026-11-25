@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { DatabaseSync } from 'node:sqlite';
 import { ContextService } from '../src/context/context-service.js';
-import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { ERROR_CODES, MurmError } from '../src/errors.js';
 import { JudgeService } from '../src/judge/judge-service.js';
 import { ServiceRegistry } from '../src/sdk/service-registry.js';
 import { TaskService } from '../src/task/task-service.js';
@@ -60,12 +60,12 @@ test('Service Manifest rejects open-ended schemas and duplicate capabilities', (
         input_schema: { type: 'object', properties: {}, additionalProperties: true },
       }],
     }),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID,
   );
   const first = manifest().capabilities[0];
   assert.throws(
     () => createServiceManifest({ ...manifest(), capabilities: [first, first] }),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID,
   );
 });
 
@@ -93,7 +93,7 @@ test('Service Registry is the source for metadata, role profiles, and invocation
   assert.deepEqual(await registry.invoke({ serviceId: 'fake', capability: 'echo', input: { value: 'ok' }, envelope, role: 'recovery' }), { value: 'ok', operation_id: 'echo-1' });
   await assert.rejects(
     registry.invoke({ serviceId: 'fake', capability: 'echo', input: { value: 'no' }, envelope: makeEnvelope({ operationId: 'echo-no', actorRef: 'agent:bound' }), role: 'bound' }),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.SERVICE_CAPABILITY_NOT_ALLOWED,
   );
 });
 
@@ -170,7 +170,7 @@ test('Registry verifies a remote manifest and readiness before its first invocat
     ready = false;
     await assert.rejects(
       registry.checkReadiness('verified-remote'),
-      (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.SERVICE_NOT_READY,
+      (error) => error instanceof MurmError && error.code === ERROR_CODES.SERVICE_NOT_READY,
     );
   } finally {
     await host.stop();
@@ -192,7 +192,7 @@ test('Registry refuses a remote provider whose advertised manifest differs from 
     const envelope = makeEnvelope({ operationId: 'untruthful-remote-1', actorRef: 'agent:bound' });
     await assert.rejects(
       registry.invoke({ serviceId: 'untruthful-remote', capability: 'echo', input: {}, envelope, role: 'bound' }),
-      (error) => error instanceof SwarmEnvError
+      (error) => error instanceof MurmError
         && error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID
         && error.details?.expected_manifest_hash === mismatched.manifest_hash,
     );

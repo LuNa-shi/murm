@@ -1,4 +1,4 @@
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 
 const capture = (action: any) => {
@@ -55,28 +55,28 @@ export class ServiceAuthoritySnapshot {
   }
   #scope(envelope: any, key: any) {
     if (stableStringify(envelope) !== stableStringify(this.snapshot.envelope)) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service authority is bound to one exact request envelope');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service authority is bound to one exact request envelope');
     }
     const result = this.snapshot[key];
-    if (!result || result.error) throw new SwarmEnvError(result?.error?.code ?? ERROR_CODES.NOT_ALLOWED,
+    if (!result || result.error) throw new MurmError(result?.error?.code ?? ERROR_CODES.NOT_ALLOWED,
       result?.error?.message ?? 'Service authority does not authorize this request');
     const bot = this.snapshot.bot;
     const execution = this.getExecution(envelope.execution_id);
     const deadlines = bot ? [bot.hard_deadline, bot.state === 'UNBOUND' ? bot.selection_deadline : null,
       execution?.execution_deadline, execution?.lease_expires_at].filter(Boolean) : [];
     if (deadlines.some((value: any) => !Number.isFinite(Date.parse(value)) || Date.parse(value) <= Date.now())) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service authority deadline elapsed before commit');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service authority deadline elapsed before commit');
     }
     return result.value;
   }
   materialScope(envelope: any, { write = false }: any = {}) { return this.#scope(envelope, write ? 'write_scope' : 'scope'); }
   assertMissionCoordination(envelope: any, operation: any) {
-    if (operation !== 'unsupersede') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unsupported service coordination grant');
+    if (operation !== 'unsupersede') throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Unsupported service coordination grant');
     return this.#scope(envelope, 'correction_scope');
   }
   assertMissionResearchOpen(missionId: any) {
     const open = this.snapshot.mission_open;
-    if (!open || open.error || open.value !== missionId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, open?.error?.message ?? 'Mission no longer admits research');
+    if (!open || open.error || open.value !== missionId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, open?.error?.message ?? 'Mission no longer admits research');
   }
   withServiceLifecycleWrite(commit: any) { return commit(); }
   // Dependency notifications are derived from the durable command receipt by

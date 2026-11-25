@@ -2,7 +2,7 @@ import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 import { createTaskPoolMissionService } from './mission-service.js';
 import { createRuntime } from '../../core/index.js';
 import { ServiceRegistry } from '../../core/services.js';
-import { SwarmEnvError } from '../../errors.js';
+import { MurmError } from '../../errors.js';
 import { runWithReport } from '../shared/run-report.js';
 import { createTaskPoolTaskService, taskPoolResearcherProfile } from './task-service.js';
 import { createTaskPoolPublicationServices } from './publication-services.js';
@@ -28,16 +28,16 @@ export async function runTaskPoolHarness({backend,model,image,prompt='',
   return runWithReport({outputDir,closeTimeoutMs,redact,
     async createRuntime() {
       signal?.throwIfAborted();
-      if(snapshotProject!==undefined && typeof snapshotProject!=='function') throw new SwarmEnvError('INVALID_CONTRACT','Flat snapshotProject must be a trusted function when supplied');
-      if(workspaceCapture!==undefined && workspaceCapture!=='core') throw new SwarmEnvError('INVALID_CONTRACT','Unsupported Flat capture source');
-      if(activeDeadline!==undefined && typeof activeDeadline!=='function') throw new SwarmEnvError('INVALID_CONTRACT','Flat active deadline must be a trusted function');
-      if(mathlibSearch && (typeof mathlibSearch.search!=='function' || typeof mathlibSearch.readiness!=='function' || !await mathlibSearch.readiness())) throw new SwarmEnvError('SERVICE_NOT_READY','Flat Mathlib search requires a ready provider');
-      if(contextService?.taskService!==taskService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Context and Task authority must match');
-      if(taskService.contextService && taskService.contextService!==contextService) throw new SwarmEnvError('INVALID_CONTRACT','Flat Task Material authority does not match');
+      if(snapshotProject!==undefined && typeof snapshotProject!=='function') throw new MurmError('INVALID_CONTRACT','Flat snapshotProject must be a trusted function when supplied');
+      if(workspaceCapture!==undefined && workspaceCapture!=='core') throw new MurmError('INVALID_CONTRACT','Unsupported Flat capture source');
+      if(activeDeadline!==undefined && typeof activeDeadline!=='function') throw new MurmError('INVALID_CONTRACT','Flat active deadline must be a trusted function');
+      if(mathlibSearch && (typeof mathlibSearch.search!=='function' || typeof mathlibSearch.readiness!=='function' || !await mathlibSearch.readiness())) throw new MurmError('SERVICE_NOT_READY','Flat Mathlib search requires a ready provider');
+      if(contextService?.taskService!==taskService) throw new MurmError('INVALID_CONTRACT','Flat Context and Task authority must match');
+      if(taskService.contextService && taskService.contextService!==contextService) throw new MurmError('INVALID_CONTRACT','Flat Task Material authority does not match');
       const readinessSignal = AbortSignal.any([AbortSignal.timeout(closeTimeoutMs), ...(signal ? [signal] : [])]);
       const workspace = await missionWorkspace.get({ workspaceId, signal: readinessSignal });
       readinessSignal.throwIfAborted();
-      if (workspace.mission_id !== missionId) throw new SwarmEnvError('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
+      if (workspace.mission_id !== missionId) throw new MurmError('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       taskService.contextService=contextService;
       discovery=createTaskPoolTaskService({...handoffOptions,runtime:()=>runtime,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,missionDeadline:deadline,coordinationPermissions:permissions,autonomousTasks});
       publication=createTaskPoolPublicationServices({runtime:()=>runtime,taskService,contextService,missionWorkspace,missionId,workspaceId,deadline,coordinationPermissions:permissions,snapshotProject,workspaceCapture,judgeService,workspaceProjectCheck,workspaceMergeChecker,
@@ -92,11 +92,11 @@ export async function runTaskPoolHarness({backend,model,image,prompt='',
         await controller.reconcileClose(receipt);
         if(workspaceMergeChecker) {
           result.workspaceMerge=await publication.waitForMerges({timeoutMs:Math.max(1,closeDeadline-Date.now()-1)});
-          if(result.workspaceMerge.cleanup!=='complete') throw new SwarmEnvError('FLAT_MERGE_CLEANUP_PENDING','Flat final-tree merge checker has no confirmed completion receipt',result.workspaceMerge);
+          if(result.workspaceMerge.cleanup!=='complete') throw new MurmError('FLAT_MERGE_CLEANUP_PENDING','Flat final-tree merge checker has no confirmed completion receipt',result.workspaceMerge);
         }
         if(judgeService) {
           result.judge=await publication.waitForJudges({timeoutMs:Math.max(1,closeDeadline-Date.now()-1)});
-          if(result.judge.cleanup!=='complete') throw new SwarmEnvError('FLAT_JUDGE_CLEANUP_PENDING','Flat Judge operations have no confirmed completion receipt',result.judge);
+          if(result.judge.cleanup!=='complete') throw new MurmError('FLAT_JUDGE_CLEANUP_PENDING','Flat Judge operations have no confirmed completion receipt',result.judge);
         }
       }
       finally { Object.assign(result,controller.snapshot()); }
@@ -109,7 +109,7 @@ export async function runTaskPoolHarness({backend,model,image,prompt='',
       if(completionPolicy==='mission') result.missionAcceptance=taskService.getAcceptedSubmission(missionId);
       const completed=completionPolicy==='mission' ? result.completion==='mission-accepted' && result.missionAcceptance?.state==='accepted' : result.completion==='all-tasks-terminal';
       if(!completed || (completionPolicy==='tasks' && result.failures.length)) {
-        const error: any=new SwarmEnvError('FLAT_BUSINESS_FAILED',completionPolicy==='mission'?'Flat ended without trusted Mission acceptance':'Flat ended without complete successful Task closure',{completion:result.completion});
+        const error: any=new MurmError('FLAT_BUSINESS_FAILED',completionPolicy==='mission'?'Flat ended without trusted Mission acceptance':'Flat ended without complete successful Task closure',{completion:result.completion});
         error.details=[result];throw error;
       }
       return result;

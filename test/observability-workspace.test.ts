@@ -46,7 +46,7 @@ test('ObservabilityServer exposes the selected Execution Workspace files and rev
   for (const authorization of ['', 'Bearer guest-token', `Basic ${Buffer.from('operator:incorrect').toString('base64')}`]) {
     const denied = await fetch(endpoint, { headers: { authorization } });
     assert.equal(denied.status, 401);
-    assert.match(denied.headers.get('www-authenticate'), /^Basic /);
+    assert.equal(denied.headers.get('www-authenticate'), 'Basic realm="murm Operator", charset="UTF-8"');
     assert.doesNotMatch(await denied.text(), /notes\.md|observable/);
   }
   assert.equal(restores, 0);

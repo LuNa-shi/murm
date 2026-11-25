@@ -1,5 +1,5 @@
 import type { ServiceRegistration } from '../../core/services.js';
-import { SwarmEnvError } from '../../errors.js';
+import { MurmError } from '../../errors.js';
 import { assertNewExecutionWork } from '../../task/execution-budget.js';
 import { createMathlibSearchManifest, type MathlibSearchService } from '../../services/mathlib-search-service.js';
 
@@ -32,7 +32,7 @@ export function createTaskPoolMathlibService({ provider, runtimeId, taskService,
               bot.state !== 'ACTIVE' || execution?.owner_ref !== bot.bot_id || !Number.isFinite(until) || Date.now() >= until ||
               Date.now() >= Date.parse(execution.lease_expires_at) ||
               taskService.getTask(execution.task_id)?.spec_version !== execution.spec_version) {
-            throw new SwarmEnvError('NOT_ALLOWED', 'Mathlib search requires the live execution of this Bot');
+            throw new MurmError('NOT_ALLOWED', 'Mathlib search requires the live execution of this Bot');
           }
           taskService.assertMissionResearchOpen(missionId);
           taskService.assertBotDeadline(bot.bot_id);
@@ -41,7 +41,7 @@ export function createTaskPoolMathlibService({ provider, runtimeId, taskService,
         };
         const fence = binding();
         const result = await provider.search(input, { signal });
-        if (binding() !== fence) throw new SwarmEnvError('FENCED', 'Mathlib search owner changed');
+        if (binding() !== fence) throw new MurmError('FENCED', 'Mathlib search owner changed');
         return result;
       },
     },

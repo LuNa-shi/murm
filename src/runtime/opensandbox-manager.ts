@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { openSandboxBotKey, openSandboxMissionKey, openSandboxRuntimeKey } from './opensandbox-metadata.js';
 import { decodeFileSeed } from '../../scripts/core-file-seed.js';
 import { snapshotCollectionSpec, MAX_COLLECTION_LINE_BYTES } from '../../scripts/core-collection.js';
@@ -25,19 +25,19 @@ function baseUrl(value: any) {
 
 function timeout(value: any) {
   if (!Number.isFinite(value) || value <= 0 || value > MAX_TIMEOUT_MS) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `sandbox timeout must be between 1 and ${MAX_TIMEOUT_MS} ms`, { timeout_ms: value });
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox timeout must be between 1 and ${MAX_TIMEOUT_MS} ms`, { timeout_ms: value });
   }
   return value;
 }
 
 function envs(value: any, { allowSecrets = false }: any = {}) {
   if (value === undefined || value === null) return {};
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'sandbox env must be an object');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'sandbox env must be an object');
   const result: Record<string, any> = {};
   for (const [key, item] of Object.entries(value)) {
-    if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `sandbox env key is invalid: ${key}`);
-    if (!allowSecrets && SECRET_ENVIRONMENT.test(key)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `sandbox env key is not allowed: ${key}`);
-    if (typeof item !== 'string' || item.length > 4096) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `sandbox env value is invalid: ${key}`);
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(key)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox env key is invalid: ${key}`);
+    if (!allowSecrets && SECRET_ENVIRONMENT.test(key)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, `sandbox env key is not allowed: ${key}`);
+    if (typeof item !== 'string' || item.length > 4096) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox env value is invalid: ${key}`);
     result[key] = item;
   }
   return result;
@@ -55,13 +55,13 @@ function safeDiagnostic(value: any, depth: any = 0): any {
 
 function normalizeVolumes(value: any) {
   if (value === undefined || value === null) return [];
-  if (!Array.isArray(value)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'sandbox volumes must be an array');
+  if (!Array.isArray(value)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'sandbox volumes must be an array');
   return value.map((volume: any, index: any) => {
-    if (!volume || typeof volume !== 'object' || Array.isArray(volume)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `sandbox volume ${index} must be an object`);
-    if (typeof volume.name !== 'string' || !/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(volume.name)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `sandbox volume ${index} has an invalid name`);
-    if (typeof volume.mountPath !== 'string' || !volume.mountPath.startsWith('/') || volume.mountPath.split('/').includes('..')) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `sandbox volume ${index} has an invalid mountPath`);
-    if (Object.hasOwn(volume, 'host')) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'OpenSandbox host-path volumes are not allowed for Agent Executions');
-    if (Object.hasOwn(volume, 'readOnly') && typeof volume.readOnly !== 'boolean') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `sandbox volume ${index}.readOnly must be boolean`);
+    if (!volume || typeof volume !== 'object' || Array.isArray(volume)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox volume ${index} must be an object`);
+    if (typeof volume.name !== 'string' || !/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(volume.name)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox volume ${index} has an invalid name`);
+    if (typeof volume.mountPath !== 'string' || !volume.mountPath.startsWith('/') || volume.mountPath.split('/').includes('..')) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox volume ${index} has an invalid mountPath`);
+    if (Object.hasOwn(volume, 'host')) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'OpenSandbox host-path volumes are not allowed for Agent Executions');
+    if (Object.hasOwn(volume, 'readOnly') && typeof volume.readOnly !== 'boolean') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `sandbox volume ${index}.readOnly must be boolean`);
     return structuredClone(volume);
   });
 }
@@ -69,13 +69,13 @@ function normalizeVolumes(value: any) {
 function command(value: any) {
   if (typeof value === 'string' && value.trim()) return { command: value };
   if (Array.isArray(value) && value.length > 0 && value.every((part: any) => typeof part === 'string')) return { argv: value };
-  throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'sandbox command must be a non-empty shell string or argv array');
+  throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'sandbox command must be a non-empty shell string or argv array');
 }
 
 function underWorkspace(value: any) {
   const cwd = value ?? '/workspace';
   if (typeof cwd !== 'string' || !(cwd === '/workspace' || cwd.startsWith('/workspace/')) || cwd.split('/').includes('..')) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'sandbox cwd must stay inside /workspace', { cwd });
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'sandbox cwd must stay inside /workspace', { cwd });
   }
   return cwd;
 }
@@ -161,7 +161,7 @@ function shellQuote(value: any) { return `'${String(value).replaceAll("'", "'\\'
 
 function exactCommandVersion(value: any, commandName: any) {
   const match = String(value ?? '').match(/\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?/);
-  if (!match) throw new SwarmEnvError(ERROR_CODES.START_FAILED, `could not determine ${commandName} version inside OpenSandbox`, { command: commandName });
+  if (!match) throw new MurmError(ERROR_CODES.START_FAILED, `could not determine ${commandName} version inside OpenSandbox`, { command: commandName });
   return match[0];
 }
 
@@ -233,7 +233,7 @@ export class OpenSandboxManager {
     if (!Array.isArray(entrypoint) || entrypoint.length === 0 || !entrypoint.every((part: any) => typeof part === 'string')) throw new TypeError('entrypoint must be a non-empty string array');
     this.entrypoint = [...entrypoint];
     if (this.entrypoint.length !== 3 || this.entrypoint[0] !== 'tail' || this.entrypoint[1] !== '-f' || this.entrypoint[2] !== '/dev/null') {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'OpenSandbox uses the fixed Agent worker entrypoint; custom entrypoints are not supported');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'OpenSandbox uses the fixed Agent worker entrypoint; custom entrypoints are not supported');
     }
     this.metadata = { ...metadata };
     this.environment = envs(environment);
@@ -285,7 +285,7 @@ export class OpenSandboxManager {
     const deadline = Date.now() + timeout(timeoutMs);
     const remaining = () => {
       const ms = deadline - Date.now();
-      if (ms <= 0) throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'OpenSandbox reconciliation timed out', {}, { retryable: true });
+      if (ms <= 0) throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'OpenSandbox reconciliation timed out', {}, { retryable: true });
       return ms;
     };
     const sandboxes = await this.#listSandboxes(remaining);
@@ -377,12 +377,12 @@ export class OpenSandboxManager {
       const items = Array.isArray(value) ? value : (value?.items ?? value?.sandboxes);
       const pagination = value?.pagination;
       if (!Array.isArray(items) || (pagination && pagination.page !== page)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid OpenSandbox list page', { page });
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Invalid OpenSandbox list page', { page });
       }
       for (const sandbox of items) {
         const id = sandbox?.id ?? sandbox?.sandbox_id;
         if (typeof id !== 'string' || id.length === 0 || sandboxes.has(id)) {
-          throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'OpenSandbox listing changed or contained invalid IDs', { page }, { retryable: true });
+          throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'OpenSandbox listing changed or contained invalid IDs', { page }, { retryable: true });
         }
         sandboxes.set(id, sandbox.metadata ?? {});
       }
@@ -391,7 +391,7 @@ export class OpenSandboxManager {
       } else if (pagination.hasNextPage === false) {
         return sandboxes;
       } else if (pagination.hasNextPage !== true || items.length === 0) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Invalid OpenSandbox list continuation', { page });
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Invalid OpenSandbox list continuation', { page });
       }
     }
   }
@@ -406,7 +406,7 @@ export class OpenSandboxManager {
     }
     const observed = await this.#request(path, { timeoutMs: remaining(), allowStatuses: [404] });
     if (observed.status !== 404) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox deletion is still pending', { sandbox_id: sandboxId }, { retryable: true });
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox deletion is still pending', { sandbox_id: sandboxId }, { retryable: true });
     }
   }
 
@@ -416,13 +416,13 @@ export class OpenSandboxManager {
     required(botId, 'bot_id');
     const existing = this.executions.get(id);
     if (existing) {
-      if (existing.preparing || existing.stopPromise) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox preparation or cleanup is pending', { execution_id: id }, { retryable: true });
+      if (existing.preparing || existing.stopPromise) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox preparation or cleanup is pending', { execution_id: id }, { retryable: true });
       return this.#snapshot(existing);
     }
-    if (this.pendingCreations.has(id)) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE,
+    if (this.pendingCreations.has(id)) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE,
       'Sandbox creation or cleanup is pending', { execution_id: id }, { retryable: true });
     if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 60) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Sandbox timeout must be at least 60 seconds');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Sandbox timeout must be at least 60 seconds');
     }
     const launchBody = { ...this.environment, ...envs(environment) };
     const { mission_id: configuredMission = null, mission_key: _missionKey, bot_id: _botId, bot_key: _botKey,
@@ -474,7 +474,7 @@ export class OpenSandboxManager {
     const created = responseValue(response.body);
     const sandboxId = created?.id ?? created?.sandbox_id;
     if (typeof sandboxId !== 'string' || sandboxId.length === 0) {
-      throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return a sandbox id', { response: created });
+      throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return a sandbox id', { response: created });
     }
     const suppliedExecdEndpoint = created?.execd_endpoint ?? created?.endpoint;
     let execdUrl = endpointForHost(suppliedExecdEndpoint, this.endpointHost);
@@ -492,7 +492,7 @@ export class OpenSandboxManager {
         execdUrl = endpointForHost(endpoint, this.endpointHost);
         execdHeaders = endpoint?.headers ?? {};
       }
-      if (!execdUrl) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return an Execd endpoint', { sandbox_id: sandboxId, port: this.execdPort });
+      if (!execdUrl) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return an Execd endpoint', { sandbox_id: sandboxId, port: this.execdPort });
     } catch (error: any) {
       if (cleanupOnFailure) await this.stopExecution(id).catch((cleanupError: any) => {
         this.logger?.({ event: 'sandbox.prepare_cleanup_error', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, error_class: cleanupError?.code ?? cleanupError?.name });
@@ -508,7 +508,7 @@ export class OpenSandboxManager {
       throw error;
     }
     record.preparing = false;
-    if (this.executions.get(id) !== record || record.stopPromise) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox was stopped during preparation', { execution_id: id }, { retryable: true });
+    if (this.executions.get(id) !== record || record.stopPromise) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox was stopped during preparation', { execution_id: id }, { retryable: true });
     this.logger?.({ event: 'sandbox.started', provider: 'opensandbox', execution_id: id, sandbox_id: sandboxId, binding_version: bindingVersion });
     return this.#snapshot(record);
   }
@@ -516,12 +516,12 @@ export class OpenSandboxManager {
   bindBotExecution({ botId, executionId, bindingVersion = null, workspaceRef = null }: any) {
     const record: any = this.#record(botId);
     if (record.botId !== botId || record.preparing || record.stopPromise) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Sandbox is not ready for binding');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot Sandbox is not ready for binding');
     }
     required(executionId, 'execution_id');
     if ((record.boundExecutionId && record.boundExecutionId !== executionId) ||
         (this.executions.has(executionId) && this.executions.get(executionId) !== record)) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot Sandbox is already bound');
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Bot Sandbox is already bound');
     }
     record.boundExecutionId = executionId;
     record.bindingVersion = bindingVersion;
@@ -616,15 +616,15 @@ export class OpenSandboxManager {
       ? JSON.stringify(values.map(({ path, sha256 }: any) => ({ path, sha256 })).sort((a: any, b: any) => a.path.localeCompare(b.path))) : null;
     const expectedVersion = files !== undefined || writable ? 1 : 0;
     const expectedDigest = expectedVersion === 1 ? decodeFileSeed(files ?? {}).digest : undefined;
-    if (signature(resources) !== signature(contract.resources)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
-    if (!record.botId) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
-    if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
+    if (signature(resources) !== signature(contract.resources)) throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Agent startup requires the complete pinned Bot contract');
+    if (!record.botId) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent worker startup requires a registered Bot Sandbox');
+    if (record.projectQuotaRequired !== Boolean(projectQuota)) throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker startup quota does not match the Sandbox launch mode');
     if (record.agent) return { ...record.agent };
     record.executionStopped = false;
     const workerToken = record.workerToken;
-    if (typeof workerToken !== 'string' || workerToken.length === 0) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
+    if (typeof workerToken !== 'string' || workerToken.length === 0) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox worker token is unavailable for this Execution');
     let endpoint = endpointForHost((await this.#request(`/sandboxes/${encodeURIComponent(record.sandboxId)}/endpoints/${this.workerPort}`, { method: 'GET', timeoutMs: 30_000 })).body, this.endpointHost);
-    if (!endpoint) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return the Agent worker endpoint', { sandbox_id: record.sandboxId, port: this.workerPort });
+    if (!endpoint) throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox did not return the Agent worker endpoint', { sandbox_id: record.sandboxId, port: this.workerPort });
     endpoint = endpoint.replace(/\/$/, '');
     const workerHeaders = { authorization: `Bearer ${workerToken}` };
     await this.#waitWorker(endpoint, workerHeaders);
@@ -659,20 +659,20 @@ export class OpenSandboxManager {
     });
     const receipt = startup.body?.result?.contract;
     if (receipt?.version !== contract.protocolVersion || !Array.isArray(receipt.resources) || signature(receipt.resources) !== signature(resources)) {
-      throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Bot contract resources');
+      throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Bot contract resources');
     }
     const quotaReceipt = startup.body?.result?.project_quota;
     const catalogReceipt = startup.body?.result?.model_catalog_resource;
     if (projectQuota && (quotaReceipt?.bytes !== projectQuota.bytes || quotaReceipt?.inodes !== projectQuota.inodes)) {
-      throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest Bot workspace quota');
+      throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest Bot workspace quota');
     }
     if (modelCatalogResource && signature([catalogReceipt]) !== signature([modelCatalogResource])) {
-      throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
+      throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
     }
     const fileReceipt = startup.body?.result?.project_files;
-    if (workspace && JSON.stringify(startup.body?.result?.shared_workspace) !== JSON.stringify(workspace)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker did not attest shared workspace');
+    if (workspace && JSON.stringify(startup.body?.result?.shared_workspace) !== JSON.stringify(workspace)) throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker did not attest shared workspace');
     if (!workspace && (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest)) {
-      throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
+      throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
     record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt };
     this.logger?.({ event: 'sandbox.agent_started', provider: 'opensandbox', execution_id: executionId, sandbox_id: record.sandboxId, worker_port: this.workerPort });
@@ -692,9 +692,9 @@ export class OpenSandboxManager {
       ['nodeVersion', 'node', nodeCommand],
     ];
     for (const [field, commandName, command] of commands) {
-      if (typeof command !== 'string' || command.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${commandName} command is required`);
+      if (typeof command !== 'string' || command.length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${commandName} command is required`);
       const result: any = await this.exec({ executionId, command: [command, '--version'], cwd: '/workspace', timeoutMs });
-      if (result.exit_code !== 0) throw new SwarmEnvError(ERROR_CODES.START_FAILED, `${commandName} --version failed inside OpenSandbox`, { command: commandName, exit_code: result.exit_code, diagnostic: safeDiagnostic(result.stderr) });
+      if (result.exit_code !== 0) throw new MurmError(ERROR_CODES.START_FAILED, `${commandName} --version failed inside OpenSandbox`, { command: commandName, exit_code: result.exit_code, diagnostic: safeDiagnostic(result.stderr) });
       versions[field] = exactCommandVersion(`${result.stdout}\n${result.stderr}`, commandName);
     }
     return versions;
@@ -702,23 +702,23 @@ export class OpenSandboxManager {
 
   async syncWorkspace({ executionId, workspaceRef, manifest = null, maxFileBytes = 2 * 1024 * 1024, maxTotalBytes = 16 * 1024 * 1024 }: any = {}) {
     const record: any = this.#record(executionId);
-    if (typeof workspaceRef !== 'string' || workspaceRef.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspaceRef is required to initialize the provider Workspace');
+    if (typeof workspaceRef !== 'string' || workspaceRef.length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspaceRef is required to initialize the provider Workspace');
     const root = workspaceRef;
     const files: any[] = [];
-    if (!manifest) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot input requires a pinned manifest');
+    if (!manifest) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Bot input requires a pinned manifest');
     if (manifest) {
       const rootInfo = await lstat(root);
-      if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input root must be a regular directory');
+      if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory()) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input root must be a regular directory');
       for (const path of Object.keys(manifest)) {
         const segments = path.split('/');
         if (segments.some((segment: any) => !segment || ['.', '..', '.git', '.swarm', '.pi', '.env'].includes(segment) || segment.startsWith('.swarm-') || segment.startsWith('.env.')) || path.includes('\\') || path.includes('\0')) {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace manifest contains a forbidden path');
+          throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace manifest contains a forbidden path');
         }
         let current = root;
         for (const [index, segment] of segments.entries()) {
           current = join(current, segment);
           const info = await lstat(current);
-          if (info.isSymbolicLink() || (index < segments.length - 1 ? !info.isDirectory() : !info.isFile())) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input must contain regular files without symlinks');
+          if (info.isSymbolicLink() || (index < segments.length - 1 ? !info.isDirectory() : !info.isFile())) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Public Workspace input must contain regular files without symlinks');
         }
         files.push(join(root, path));
       }
@@ -727,11 +727,11 @@ export class OpenSandboxManager {
     const inputFiles = Object.create(null);
     for (const source of files) {
       const content = await readFile(source);
-      if (content.length > maxFileBytes || total + content.length > maxTotalBytes) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'initial Workspace exceeds provider sync bounds', { max_file_bytes: maxFileBytes, max_total_bytes: maxTotalBytes });
+      if (content.length > maxFileBytes || total + content.length > maxTotalBytes) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'initial Workspace exceeds provider sync bounds', { max_file_bytes: maxFileBytes, max_total_bytes: maxTotalBytes });
       total += content.length;
       const path = relative(root, source).split('\\').join('/');
       const digest = createHash('sha256').update(content).digest('hex');
-      if (manifest && (manifest[path]?.content_hash !== digest || manifest[path]?.bytes !== content.length)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Public Workspace input bytes differ from the pinned manifest', { path });
+      if (manifest && (manifest[path]?.content_hash !== digest || manifest[path]?.bytes !== content.length)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Public Workspace input bytes differ from the pinned manifest', { path });
       inputFiles[path] = content.toString('base64');
     }
     await this.#projectCall(executionId, 'prepare', manifest, { files: inputFiles });
@@ -741,14 +741,14 @@ export class OpenSandboxManager {
 
   async #projectCall(executionId: any, action: any, manifest: any = undefined, input: any = {}) {
     const record: any = this.#record(executionId);
-    if (!record.botId || record.boundExecutionId !== executionId || !record.agent || record.stopPromise) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Project control requires the live bound Bot worker');
+    if (!record.botId || record.boundExecutionId !== executionId || !record.agent || record.stopPromise) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Project control requires the live bound Bot worker');
     const body = { ...input, execution_id: executionId, binding_version: record.bindingVersion, ...(manifest ? { manifest } : {}) };
     const response = await this.#request(`${record.agent.endpoint}/project/${action}`, { absolute: true, method: 'POST',
       extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body, timeoutMs: action.startsWith('install') ? 5000 : 30_000 });
     const result: any = responseValue(response.body);
     const expected = action === 'prepare' ? 'PREPARED' : 'ACTIVE';
-    if ((!action.startsWith('install') && result?.state !== expected) || result?.execution_id !== executionId || result?.binding_version !== record.bindingVersion) throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
-    if (record.stopPromise || this.executions.get(executionId) !== record) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project control');
+    if ((!action.startsWith('install') && result?.state !== expected) || result?.execution_id !== executionId || result?.binding_version !== record.bindingVersion) throw new MurmError(ERROR_CODES.START_FAILED, 'Worker did not confirm the expected project permission state');
+    if (record.stopPromise || this.executions.get(executionId) !== record) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project control');
     this.logger?.({ event: `sandbox.project_${action === 'prepare' ? 'prepared' : action === 'grant' ? 'granted' : action}`, bot_id: record.botId, execution_id: executionId, binding_version: record.bindingVersion });
     return result;
   }
@@ -759,7 +759,7 @@ export class OpenSandboxManager {
   async coreSessionSnapshot(executionId: string) {
     const record = this.#record(executionId);
     if (record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise || record.executionStopped) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Context Fork requires a live Bot Worker');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Context Fork requires a live Bot Worker');
     }
     const response = await this.#request(`${record.agent.endpoint}/core/session/snapshot`, {
       absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
@@ -771,7 +771,7 @@ export class OpenSandboxManager {
   async coreFileOperation(executionId: string, action: string, input: unknown) {
     const record = this.#record(executionId);
     if (record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Bot Worker');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Bot Worker');
     }
     const response = await this.#request(`${record.agent.endpoint}/core/files/${action}`, {
       absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
@@ -780,7 +780,7 @@ export class OpenSandboxManager {
     if (response.status === 400) {
       const { code, error } = response.body ?? {};
       const recognized = ['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY', 'OPERATION_UNKNOWN'];
-      throw new SwarmEnvError(recognized.includes(code) ? code : 'OPERATION_UNKNOWN',
+      throw new MurmError(recognized.includes(code) ? code : 'OPERATION_UNKNOWN',
         typeof error === 'string' ? error : 'Worker could not confirm the Core file operation');
     }
     return responseValue(response.body);
@@ -799,7 +799,7 @@ export class OpenSandboxManager {
   /** Pull guest files back before Runtime checkpoints or deletes the sandbox. */
   async agentRpc(executionId: any, message: any, { timeoutMs = 600_000, since }: any = {}) {
     const record: any = this.#record(executionId);
-    if (!record.agent) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Agent worker is not started', { execution_id: executionId });
+    if (!record.agent) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Agent worker is not started', { execution_id: executionId });
     const response = await this.#request(`${record.agent.endpoint}/rpc`, { absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` }, body: { message, timeout_ms: timeoutMs, ...(since === undefined ? {} : { since }) }, timeoutMs: timeoutMs + 10_000 });
     return responseValue(response.body);
   }
@@ -817,7 +817,7 @@ export class OpenSandboxManager {
       this.projectInstallReceipts.set(record.boundExecutionId, { bindingVersion: record.bindingVersion,
         receipts: stopped.project_installs.filter((receipt: any) => receipt.execution_id === record.boundExecutionId && receipt.binding_version === record.bindingVersion) });
     }
-    if (stopped?.stopped !== true) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not confirm execution stopped');
+    if (stopped?.stopped !== true) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not confirm execution stopped');
     record.executionStopped = true;
     if (!preserveWorker) record.agent = null;
     return true;
@@ -840,11 +840,11 @@ export class OpenSandboxManager {
     const spec = snapshotCollectionSpec(input);
     const record: any = this.#record(executionId);
     if (!record.executionStopped || !record.coreAgent || !record.agent || record.stopPromise) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Bot and retained Worker');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Bot and retained Worker');
     }
     const fingerprint = JSON.stringify(spec);
     const policyKey = session ? 'sessionCollectionSpec' : 'collectionSpec';
-    if (record[policyKey] && record[policyKey] !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot collection policy is immutable');
+    if (record[policyKey] && record[policyKey] !== fingerprint) throw new MurmError(ERROR_CODES.CONFLICT, 'Bot collection policy is immutable');
     record[policyKey] = fingerprint;
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), session ? 610_000 : 30_000);
@@ -854,7 +854,7 @@ export class OpenSandboxManager {
         headers: { authorization: `Bearer ${record.agent.token}`, 'content-type': 'application/json', accept: 'application/x-ndjson' },
         body: JSON.stringify(spec), signal: controller.signal, redirect: 'error' });
       if (!response.ok || !response.body || response.headers.get('content-type')?.split(';')[0] !== 'application/x-ndjson') {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not return the bounded Core collection stream');
+        throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker did not return the bounded Core collection stream');
       }
       let pending = Buffer.alloc(0);
       let ended = false;
@@ -865,23 +865,23 @@ export class OpenSandboxManager {
           controller.signal.throwIfAborted();
           const newline = bytes.indexOf(10, offset);
           const end = newline === -1 ? bytes.length : newline;
-          if (pending.length + end - offset > MAX_COLLECTION_LINE_BYTES) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record exceeds its line limit');
+          if (pending.length + end - offset > MAX_COLLECTION_LINE_BYTES) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record exceeds its line limit');
           pending = Buffer.concat([pending, bytes.subarray(offset, end)]);
           offset = end + (newline === -1 ? 0 : 1);
           if (newline === -1) break;
-          if (ended) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection contains records after its final receipt');
+          if (ended) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Core collection contains records after its final receipt');
           let value;
-          try { value = JSON.parse(pending.toString('utf8')); } catch { throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record is not valid JSON'); }
+          try { value = JSON.parse(pending.toString('utf8')); } catch { throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record is not valid JSON'); }
           pending = Buffer.alloc(0);
-          if (value?.type === 'error') throw new SwarmEnvError(
+          if (value?.type === 'error') throw new MurmError(
             ['INVALID_CONTRACT', 'NOT_ALLOWED', 'CONFLICT', 'SERVICE_UNAVAILABLE'].includes(value.code) ? value.code : ERROR_CODES.SERVICE_UNAVAILABLE,
             typeof value.message === 'string' ? value.message : 'Worker collection failed');
-          if (!['directory', 'file', 'chunk', 'fileEnd', 'end'].includes(value?.type)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record type is invalid');
+          if (!['directory', 'file', 'chunk', 'fileEnd', 'end'].includes(value?.type)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Core collection record type is invalid');
           ended = value.type === 'end';
           yield value;
         }
       }
-      if (!ended || pending.length) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker collection stream ended without a complete receipt');
+      if (!ended || pending.length) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Worker collection stream ended without a complete receipt');
     } finally {
       clearTimeout(deadline);
       controller.abort();
@@ -894,7 +894,7 @@ export class OpenSandboxManager {
     if (!record) {
       const creation = this.pendingCreations.get(executionId);
       if (!creation) return false;
-      if (creation.inFlight) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE,
+      if (creation.inFlight) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE,
         'Sandbox creation is still pending', { execution_id: executionId }, { retryable: true });
       if (!creation.stopPromise) creation.stopPromise = this.#releaseUnknownCreation(creation).finally(() => { creation.stopPromise = null; });
       return creation.stopPromise;
@@ -908,7 +908,7 @@ export class OpenSandboxManager {
   async #deleteExecution(executionId: any, record: any) {
     if (record.coreAgent) {
       if (!await this.stopAgent(executionId, 'SIGTERM', { preserveWorker: true })) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Core deletion requires confirmed execution stop');
+        throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Core deletion requires confirmed execution stop');
       }
     }
     else await this.stopAgent(executionId).catch(() => undefined);
@@ -926,7 +926,7 @@ export class OpenSandboxManager {
         bot.sandbox_id = sandboxId;
       } }, creation);
     if (!result.confirmed_bot_ids.includes(creation.bot_id)) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox creation or deletion cannot be confirmed',
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Sandbox creation or deletion cannot be confirmed',
         { bot_id: creation.bot_id, resource_key: creation.resource_key }, { retryable: true });
     }
     this.pendingCreations.delete(creation.resource_key);
@@ -938,7 +938,7 @@ export class OpenSandboxManager {
   snapshot() { return { provider: 'opensandbox', lifecycle_url: this.lifecycleBaseUrl, image: this.image, verified: this.verified, executions: [...new Set(this.executions.values())].map((record: any) => this.#snapshot(record)) }; }
 
   #snapshot(record: any) { return { execution_id: record.boundExecutionId, bot_id: record.botId, resource_key: record.executionId, sandbox_id: record.sandboxId, binding_version: record.bindingVersion, workspace: '/workspace/project', host_workspace_ref: null, agent_worker: record.agent ? { worker_port: record.agent.worker_port, started_at: record.agent.started_at } : null }; }
-  #record(executionId: any) { const record: any = this.executions.get(executionId); if (!record) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'sandbox is not bound to this Execution', { execution_id: executionId }); return record; }
+  #record(executionId: any) { const record: any = this.executions.get(executionId); if (!record) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'sandbox is not bound to this Execution', { execution_id: executionId }); return record; }
 
   async #waitWorker(endpoint: any, headers: any) {
     const deadline = Date.now() + 30_000;
@@ -949,7 +949,7 @@ export class OpenSandboxManager {
       } catch { /* worker is still starting */ }
       await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
     }
-    throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'Agent worker did not become ready', { endpoint: safeUrl(endpoint) }, { retryable: true });
+    throw new MurmError(ERROR_CODES.START_FAILED, 'Agent worker did not become ready', { endpoint: safeUrl(endpoint) }, { retryable: true });
   }
 
   async #waitExecd(record: any) {
@@ -967,7 +967,7 @@ export class OpenSandboxManager {
       }
       await new Promise<any>((resolve: any) => setTimeout(resolve, 100));
     }
-    throw new SwarmEnvError(ERROR_CODES.START_FAILED, 'OpenSandbox Execd did not become ready', { endpoint: safeUrl(record.execdUrl), timeout_ms: this.execdReadyTimeoutMs }, { retryable: true });
+    throw new MurmError(ERROR_CODES.START_FAILED, 'OpenSandbox Execd did not become ready', { endpoint: safeUrl(record.execdUrl), timeout_ms: this.execdReadyTimeoutMs }, { retryable: true });
   }
 
   #commandResult(events: any, body: any, { startedAt }: any) {
@@ -988,7 +988,7 @@ export class OpenSandboxManager {
       stderr ||= fallback.stderr ?? '';
       if (fallback.running === true) state = 'running';
     }
-    if (events.length === 0 && !fallback) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'OpenSandbox Execd returned no command result', { started_at: startedAt }, { retryable: true });
+    if (events.length === 0 && !fallback) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'OpenSandbox Execd returned no command result', { started_at: startedAt }, { retryable: true });
     return { job_id: jobId ?? randomUUID(), state, exit_code: exitCode, timed_out: timedOut, truncated, stdout, stderr };
   }
 
@@ -1008,18 +1008,18 @@ export class OpenSandboxManager {
       const text = await response.text();
       const parsed = response.headers?.get?.('content-type')?.includes('text/event-stream') ? null : (text ? jsonData(text) : {});
       if (workerStart && response.status === 400 && parsed?.ok === false && parsed.code === ERROR_CODES.BOT_STARTUP_CONTRACT) {
-        throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker rejected the pinned Bot startup contract');
+        throw new MurmError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker rejected the pinned Bot startup contract');
       }
-      if (!response.ok && !allowStatuses.includes(response.status)) throw new SwarmEnvError(absolute && /\/project\/(snapshot|install|install-result|install-confirm)$/.test(new URL(url).pathname) && [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED].includes(parsed?.code)
+      if (!response.ok && !allowStatuses.includes(response.status)) throw new MurmError(absolute && /\/project\/(snapshot|install|install-result|install-confirm)$/.test(new URL(url).pathname) && [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED].includes(parsed?.code)
         ? parsed.code : response.status >= 500 ? ERROR_CODES.SERVICE_UNAVAILABLE : ERROR_CODES.INVALID_CONTRACT,
       `OpenSandbox request failed with HTTP ${response.status}`, { status: response.status, diagnostic: safeDiagnostic(parsed ?? text),
         ...(absolute && parsed?.code === ERROR_CODES.WORKSPACE_BUSY && ['dirty', 'active_writer'].includes(parsed.apply_blocker) ? { apply_blocker: parsed.apply_blocker } : {}) },
       { retryable: response.status >= 500 || response.status === 429 || parsed?.code === ERROR_CODES.WORKSPACE_BUSY });
       return { status: response.status, body: parsed, text };
     } catch (error: any) {
-      if (error instanceof SwarmEnvError) throw error;
-      if (controller.signal.aborted) throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'OpenSandbox request timed out', { url: safeUrl(url) }, { cause: error, retryable: true });
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, error?.message ?? 'OpenSandbox request failed', { url: safeUrl(url) }, { cause: error, retryable: true });
+      if (error instanceof MurmError) throw error;
+      if (controller.signal.aborted) throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'OpenSandbox request timed out', { url: safeUrl(url) }, { cause: error, retryable: true });
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, error?.message ?? 'OpenSandbox request failed', { url: safeUrl(url) }, { cause: error, retryable: true });
     } finally { clearTimeout(timer); }
   }
 }

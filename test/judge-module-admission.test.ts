@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { JudgeService } from '../src/judge/judge-service.js';
 import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { LeanFinalTreeVerifier } from '../src/judge/lean-final-tree-verifier.js';
-import { SwarmEnvError } from '../src/errors.js';
+import { MurmError } from '../src/errors.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 
 const manifest = { fixture_id: 'module-admission', putnambench_commit: 'a'.repeat(40), problem_file: 'Target.lean',
@@ -27,7 +27,7 @@ function harness(t, { check, checker, fixtureManifest = manifest, files = source
   let authorityChecks = 0;
   let lockDepth = 0;
   const taskService = { db, getBot: () => true, getTask: () => ({ task_id: 't', mission_id: 'm' }), getExecution: () => execution,
-    materialScope(envelope) { authorityChecks++; if (envelope.fencing_version !== execution.fencing_version || Date.parse(execution.lease_expires_at) <= Date.now()) throw new SwarmEnvError('FENCED', 'Stale authority'); if (execution.state !== 'RUNNING') throw new SwarmEnvError('FENCED', 'Execution ended'); return { mission_id: 'm' }; },
+    materialScope(envelope) { authorityChecks++; if (envelope.fencing_version !== execution.fencing_version || Date.parse(execution.lease_expires_at) <= Date.now()) throw new MurmError('FENCED', 'Stale authority'); if (execution.state !== 'RUNNING') throw new MurmError('FENCED', 'Execution ended'); return { mission_id: 'm' }; },
     assertMissionResearchOpen() {}, withServiceLifecycleWrite(fn) { lockDepth++; try { return fn(); } finally { lockDepth--; } } };
   const judge = new JudgeService(':memory:', { taskService, fixtureManifest,
     checker: checker ?? { timeoutMs: 30000, projectChecker: true,

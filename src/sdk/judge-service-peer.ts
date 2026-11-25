@@ -6,7 +6,7 @@ import { ServiceAuthoritySnapshot } from './service-authority-snapshot.js';
 import { createCoordinatorPeerHost } from './coordinator-peer-host.js';
 import { callCoordinatorPeer } from './coordinator-peer-client.js';
 import { stableStringify } from '../protocol/envelope.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 export const JUDGE_READ_METHODS = Object.freeze(['getCheckResult', 'getAgentCheckResult', 'getByRequestKey',
   'getCheckerPreflight', 'listCheckerPreflights', 'getMissionCheckBudget']);
@@ -23,13 +23,13 @@ export function createJudgeServicePeer({ database, token, coordinator, checker, 
   }
   // Presence is required by local admission guards; all real remote writes
   // use lifecycleWrite below rather than this synchronous local seam.
-  authority.withServiceLifecycleWrite = () => { throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Remote Judge requires a coordinator launch gate'); };
+  authority.withServiceLifecycleWrite = () => { throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Remote Judge requires a coordinator launch gate'); };
   const stage = (input: any) => callCoordinatorPeer({ ...coordinator, actorRef: 'service:judge', operation: 'judge_lifecycle', input });
   const judge = new (JudgeService as any)(database, { checker, fixtureManifest, taskService: authority, missionBudget, maxInfrastructureRetries,
     readProjectRevision: projectChecks ? async (reference: any) => {
       const project = requests.getStore().project;
       if (!project || project.workspace_id !== reference.workspaceId || project.revision !== reference.revision) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge project does not match the coordinator export');
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Judge project does not match the coordinator export');
       }
       return { ...project, files: Object.fromEntries(Object.entries(project.files).map(([path, bytes]: any) => [path, Buffer.from(bytes, 'base64')])) };
     } : null,
@@ -46,7 +46,7 @@ export function createJudgeServicePeer({ database, token, coordinator, checker, 
       phases.set(key, phase);
       try {
         await stage({ action: 'execute', call_id: request.call_id, generation, sequence, ...metadata });
-        if (!phase.executed) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Coordinator did not execute the Judge phase');
+        if (!phase.executed) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Coordinator did not execute the Judge phase');
         if (phase.failure) throw phase.failure;
         return await phase.value;
       } finally {
@@ -83,7 +83,7 @@ export function createJudgeServicePeer({ database, token, coordinator, checker, 
         const phase = bound && phases.get(`${bound.call_id}:${bound.sequence}`);
         if (!phase || phase.executed || bound.generation !== generation || phase.phase !== bound.phase ||
             createHash('sha256').update(stableStringify(bound)).digest('hex') !== admission.digest) {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Judge phase does not match its registered callback');
+          throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Judge phase does not match its registered callback');
         }
         return requests.run(phase.request, () => {
           phase.request.authority = new ServiceAuthoritySnapshot(bound.authority);
@@ -107,7 +107,7 @@ export function createJudgeServicePeer({ database, token, coordinator, checker, 
       if (JUDGE_READ_METHODS.includes(command.method)) return { result: (judge as any)[command.method](...command.args) };
       if (command.method !== 'dispatch' || !['workspace_check', 'get_check_result'].includes(command.args?.[0]) ||
           typeof command.call_id !== 'string' || !command.authority) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unsupported coordinator Judge operation');
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Unsupported coordinator Judge operation');
       }
       return requests.run({ call_id: command.call_id, project: command.project, authority: new ServiceAuthoritySnapshot(command.authority), sequence: 0 },
         async () => ({ result: await judge.dispatch(...command.args) }));

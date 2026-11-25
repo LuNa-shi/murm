@@ -49,7 +49,7 @@ interface BridgeFailure extends Error {
 import { createServer } from 'node:http';
 import { randomBytes } from 'node:crypto';
 import { invokeService } from './services.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 const WAIT_TIMEOUT_MS = 60_000;
 
@@ -60,7 +60,7 @@ function reply(response: ServerResponse, status: number, body: unknown) {
 }
 
 function invalid(message: string): never {
-  throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, message);
+  throw new MurmError(ERROR_CODES.INVALID_CONTRACT, message);
 }
 
 export async function createCoreBridge({ runtimeId, configuration, getBot, registrations, serviceTimeoutMs = 30_000, onOwned, recordService, traceService }: BridgeOptions) {
@@ -96,14 +96,14 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
     const live = () => {
       const bot = getBot(botId);
       if (closing || !botId || tokens.get(token) !== botId || !bot || bot.unavailable || !['idle', 'running'].includes(bot.status)) {
-        throw new SwarmEnvError('NOT_ALLOWED', 'Bridge caller is unavailable');
+        throw new MurmError('NOT_ALLOWED', 'Bridge caller is unavailable');
       }
       return bot;
     };
     try {
       // Health also supports starting Bots while the backend is assembling.
       const bot = botId && getBot(botId);
-      if (closing || !bot || bot.unavailable || ['exited', 'closing', 'closed'].includes(bot.status)) throw new SwarmEnvError('NOT_ALLOWED', 'Bridge caller is unavailable');
+      if (closing || !bot || bot.unavailable || ['exited', 'closing', 'closed'].includes(bot.status)) throw new MurmError('NOT_ALLOWED', 'Bridge caller is unavailable');
       if (request.method === 'GET' && request.url === '/health') {
         request.resume(); reply(response, 200, { ok: true, runtimeId, botId }); return;
       }
@@ -126,7 +126,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       }
       if (body.operation === 'get_service_metadata' && body.service_id === undefined) {
         const manifest = visibleServices(current.services).find(item => item.id === (body!.payload as { service?: string } | null | undefined)?.service);
-        if (!manifest) throw new SwarmEnvError('NOT_ALLOWED', 'Service is unavailable to this Profile');
+        if (!manifest) throw new MurmError('NOT_ALLOWED', 'Service is unavailable to this Profile');
         reply(response, 200, { ok: true, result: manifest }); return;
       }
       trace = { runtimeId, caller: { runtimeId, botId, profile: current.profile,
@@ -135,7 +135,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
         input: Object.hasOwn(body, 'payload') ? body.payload : {}, startedAt: new Date().toISOString() };
       traceService?.({ ...trace, phase: 'started' });
       const registration = registrations.get(body.service_id);
-      if (!registration || !allows(current.services, body.service_id, body.operation)) throw new SwarmEnvError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
+      if (!registration || !allows(current.services, body.service_id, body.operation)) throw new MurmError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
       const binding = Object.hasOwn(current.bindings ?? {}, body.service_id) && typeof current.bindings![body.service_id] === 'string'
         ? current.bindings![body.service_id] : undefined;
       const caller = { runtimeId, botId: botId!, profile: current.profile, ...(binding === undefined ? {} : { binding }) };
@@ -153,7 +153,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
         envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService,
         assertAuthorized: () => {
           const latest=live();
-          if(latest.profile!==caller.profile || !allows(latest.services, body!.service_id, body!.operation)) throw new SwarmEnvError('NOT_ALLOWED','Service caller authority was revoked');
+          if(latest.profile!==caller.profile || !allows(latest.services, body!.service_id, body!.operation)) throw new MurmError('NOT_ALLOWED','Service caller authority was revoked');
         } }, serviceTimeoutMs);
       traceOutput = result;
       reply(response, 200, { ok: true, result });
@@ -200,7 +200,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       if (!onOwned) void close().catch(() => {});
-      reject(new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'Bridge listener startup timed out'));
+      reject(new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'Bridge listener startup timed out'));
     }, WAIT_TIMEOUT_MS);
     const onError = (error: Error) => { clearTimeout(timer); reject(error); };
     server.once('error', onError);
@@ -223,7 +223,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
     credentialsForBot(botId: string) {
       const bot = getBot(botId);
       if (closing || !bot || bot.unavailable || ['exited', 'closing', 'closed'].includes(bot.status)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bridge credentials require a live Bot');
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bridge credentials require a live Bot');
       }
       let token = botTokens.get(botId);
       if (!token) {

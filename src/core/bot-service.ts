@@ -44,7 +44,7 @@ interface BotServiceFailure extends Error {
 }
 
 import { validId } from './config.js';
-import { SwarmEnvError } from '../errors.js';
+import { MurmError } from '../errors.js';
 import { builtinBotRegistration } from './services.js';
 
 const id = { type: 'string', pattern: '^[A-Za-z0-9_.:-]{1,128}$' };
@@ -127,7 +127,7 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }: 
           const error = caught as BotServiceFailure;
           // Startup may already own a child even when its receipt is unknown.
           // Preserve that identity and cleanup state through Service errors.
-          throw new SwarmEnvError(error.code ?? 'SERVICE_UNAVAILABLE', error.message, {
+          throw new MurmError(error.code ?? 'SERVICE_UNAVAILABLE', error.message, {
             runtimeId, ...(error.botId ? { botId: error.botId } : {}), requestId,
             ...(error.cleanup ? { cleanup: error.cleanup } : {}),
           }, { retryable: error.code === 'OPERATION_UNKNOWN' });

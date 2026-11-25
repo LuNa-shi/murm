@@ -1,7 +1,7 @@
 import { access, readdir, readFile, stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { createServiceManifest } from '../sdk/service-manifest.js';
 
 export const MATHLIB_SEARCH_SERVICE_ID = 'mathlib-search';
@@ -30,23 +30,23 @@ function objectSchema(properties: any = {}, required: any = []) {
 }
 
 function normalizeQuery(input: any = {}) {
-  if (!isRecord(input)) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search input must be an object');
+  if (!isRecord(input)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search input must be an object');
   const query = typeof input.query === 'string' ? input.query.trim() : '';
-  if (query.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.query is required');
+  if (query.length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.query is required');
   if (query.length > MAX_QUERY_LENGTH) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `mathlib_search.query must be at most ${MAX_QUERY_LENGTH} characters`, { max_length: MAX_QUERY_LENGTH });
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `mathlib_search.query must be at most ${MAX_QUERY_LENGTH} characters`, { max_length: MAX_QUERY_LENGTH });
   }
   const moduleName = input.module === undefined || input.module === null ? null : String(input.module).trim();
   if (moduleName && (moduleName.length > MAX_MODULE_LENGTH || !/^[A-Za-z][A-Za-z0-9_.]*$/.test(moduleName))) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module must be a Lean module name', { max_length: MAX_MODULE_LENGTH });
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module must be a Lean module name', { max_length: MAX_MODULE_LENGTH });
   }
   const pathScope = input.path === undefined || input.path === null ? null : String(input.path).trim();
   if (pathScope && (pathScope.length > MAX_PATH_LENGTH || pathScope.includes('\0'))) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `mathlib_search.path must be at most ${MAX_PATH_LENGTH} characters`, { max_length: MAX_PATH_LENGTH });
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `mathlib_search.path must be at most ${MAX_PATH_LENGTH} characters`, { max_length: MAX_PATH_LENGTH });
   }
   const maxResults = input.max_results ?? input.maxResults ?? DEFAULT_MAX_RESULTS;
   if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > MAX_RESULTS) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `mathlib_search.max_results must be an integer from 1 to ${MAX_RESULTS}`, { max_results: maxResults, max: MAX_RESULTS });
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `mathlib_search.max_results must be an integer from 1 to ${MAX_RESULTS}`, { max_results: maxResults, max: MAX_RESULTS });
   }
   return { query, module: moduleName, path: pathScope, max_results: maxResults };
 }
@@ -121,7 +121,7 @@ function normalizeUpstreamResult(value: any, { query, maxResults = null, metadat
     ? value
     : value?.results ?? value?.declarations ?? value?.hits ?? value?.matches ?? [];
   if (!Array.isArray(candidates)) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'mathlib search backend returned an unsupported result shape', undefined, { retryable: true });
+    throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'mathlib search backend returned an unsupported result shape', undefined, { retryable: true });
   }
   const normalized = candidates.map((candidate: any) => {
     if (typeof candidate === 'string') return { name: candidate, type: null, module: null, source: null, score: null };
@@ -148,10 +148,10 @@ function endpointUrl(base: any) {
   if (!base) return null;
   let parsed;
   try { parsed = new URL(base); } catch (error: any) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'mathlib search upstream_url must be an absolute URL', { upstream_url: base }, { cause: error });
+    throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'mathlib search upstream_url must be an absolute URL', { upstream_url: base }, { cause: error });
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'mathlib search upstream_url must use http or https', { upstream_url: base });
+    throw new MurmError(ERROR_CODES.SERVICE_MANIFEST_INVALID, 'mathlib search upstream_url must use http or https', { upstream_url: base });
   }
   return parsed;
 }
@@ -335,7 +335,7 @@ export class MathlibSearchService {
         ...(upstreamError ? { fallback: true, upstream_error_code: upstreamError.code ?? ERROR_CODES.SERVICE_UNAVAILABLE } : {}),
       };
     }
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'mathlib search backend is not configured', undefined, { retryable: true });
+    throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'mathlib search backend is not configured', undefined, { retryable: true });
   }
 
   async handle({ input, signal }: any = {}) {
@@ -345,7 +345,7 @@ export class MathlibSearchService {
   async #validateScope({ module, path }: any) {
     if (!module && !path) return { path: null };
     if (path && !this.boundaryRoot) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.path requires a configured source/project boundary', { path });
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.path requires a configured source/project boundary', { path });
     }
     let scopedPath = path;
     if (path) {
@@ -353,7 +353,7 @@ export class MathlibSearchService {
       const candidate = isAbsolute(path) ? resolve(path) : resolve(boundary, path);
       const relativeCandidate = relative(boundary, candidate).split(sep).join('/');
       if (relativeCandidate === '..' || relativeCandidate.startsWith('../') || isAbsolute(relativeCandidate)) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.path is outside the configured source/project boundary', {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.path is outside the configured source/project boundary', {
           path,
           source_root: this.boundaryRoot,
         });
@@ -364,12 +364,12 @@ export class MathlibSearchService {
       ? `${this.sourceModulePrefix}.${module}`
       : module) : null;
     if (scopedModule && !this.sourceRoot && !this.allowedModules) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module requires a configured project/module boundary', {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module requires a configured project/module boundary', {
         module,
       });
     }
     if (scopedModule && this.allowedModules && ![...this.allowedModules].some((candidate: any) => moduleMatches(candidate, scopedModule, this.sourceModulePrefix))) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module is outside the configured source/project boundary', {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module is outside the configured source/project boundary', {
         module,
         allowed_modules: [...this.allowedModules].slice(0, 100),
       });
@@ -379,7 +379,7 @@ export class MathlibSearchService {
       const modules = this.sourceModules ?? new Set(declarations.map((declaration: any) => declaration.module));
       const inBoundary = [...modules].some((candidate: any) => moduleMatches(candidate, scopedModule, this.sourceModulePrefix));
       if (!inBoundary) {
-        throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module is outside the configured source/project boundary', {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'mathlib_search.module is outside the configured source/project boundary', {
           module,
           source_root: this.sourceRoot,
         });
@@ -408,10 +408,10 @@ export class MathlibSearchService {
       const response = await this.fetch(url, { headers: { accept: 'application/json' }, signal: controller.signal });
       let body;
       try { body = await response.json(); } catch (error: any) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'mathlib search backend returned invalid JSON', { status: response.status }, { cause: error, retryable: true });
+        throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'mathlib search backend returned invalid JSON', { status: response.status }, { cause: error, retryable: true });
       }
       if (!response.ok) {
-        throw new SwarmEnvError(response.status === 408 || response.status === 504 ? ERROR_CODES.SERVICE_TIMEOUT : ERROR_CODES.SERVICE_UNAVAILABLE, `mathlib search backend returned HTTP ${response.status}`, { status: response.status }, { retryable: response.status >= 500 || response.status === 408 });
+        throw new MurmError(response.status === 408 || response.status === 504 ? ERROR_CODES.SERVICE_TIMEOUT : ERROR_CODES.SERVICE_UNAVAILABLE, `mathlib search backend returned HTTP ${response.status}`, { status: response.status }, { retryable: response.status >= 500 || response.status === 408 });
       }
       const normalized = normalizeUpstreamResult(body, {
         query,
@@ -434,11 +434,11 @@ export class MathlibSearchService {
         truncated: normalized.truncated || pathScoped.length > results.length,
       };
     } catch (error: any) {
-      if (error instanceof SwarmEnvError) throw error;
+      if (error instanceof MurmError) throw error;
       if (controller.signal.aborted) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, `mathlib search timed out after ${this.timeoutMs}ms`, undefined, { cause: error, retryable: true });
+        throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, `mathlib search timed out after ${this.timeoutMs}ms`, undefined, { cause: error, retryable: true });
       }
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, error?.message ?? 'mathlib search backend is unavailable', undefined, { cause: error, retryable: true });
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, error?.message ?? 'mathlib search backend is unavailable', undefined, { cause: error, retryable: true });
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener('abort', onAbort);
@@ -449,7 +449,7 @@ export class MathlibSearchService {
     if (!this.indexPromise) {
       this.indexPromise = (async () => {
         const root = await stat(this.sourceRoot);
-        if (!root.isDirectory()) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'mathlib search sourceRoot must be a directory', { source_root: this.sourceRoot }, { retryable: true });
+        if (!root.isDirectory()) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'mathlib search sourceRoot must be a directory', { source_root: this.sourceRoot }, { retryable: true });
         const files: any = await walkLeanFiles(this.sourceRoot);
         this.sourceModules = new Set(files.map((file: any) => moduleNameFor(this.sourceRoot, file, this.sourceModulePrefix)));
         const declarations: any[] = [];

@@ -148,11 +148,15 @@ console.log(JSON.stringify({resolved:true,closed:true,cancelled:true}));
     files: ['consumer.mts'],
   }));
   const consumer = `
-import { createRuntime, type Runtime } from '@murm/core';
+import { createRuntime, type Runtime, type AgentInfo, type AgentEvent, type AgentStatus,
+  type BotInfo, type BotEvent, type BotStatus } from '@murm/core';
 import { ServiceRegistry, createInProcessAdapter, createHttpJsonAdapter } from '@murm/core/services';
 import { createPiOpenSandboxBackend, type PiOpenSandboxBackendConfig } from '@murm/core/backends/pi-opensandbox';
 type Assert<T extends true> = T;
 type Same<A, B> = [A, B] extends [B, A] ? true : false;
+type AgentInfoCompatibility = Assert<Same<AgentInfo, BotInfo>>;
+type AgentEventCompatibility = Assert<Same<AgentEvent, BotEvent>>;
+type AgentStatusCompatibility = Assert<Same<AgentStatus, BotStatus>>;
 type CoreExports = Assert<Same<keyof typeof import('@murm/core'), 'createRuntime'>>;
 type ServiceExports = Assert<Same<keyof typeof import('@murm/core/services'), 'ServiceRegistry' |
   'builtinBotRegistration' | 'createHttpJsonAdapter' | 'createInProcessAdapter' | 'getAdapterMetadata' |

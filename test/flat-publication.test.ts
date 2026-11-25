@@ -10,7 +10,7 @@ import { ServiceRegistry, snapshotServiceRegistry, invokeService } from '../src/
 import { decodeFileSeed } from '../scripts/core-file-seed.js';
 import { createHash } from 'node:crypto';
 import { prepareTaskPoolInputs } from '../src/harnesses/taskpool/prepare-inputs.js';
-import { SwarmEnvError } from '../src/errors.js';
+import { MurmError } from '../src/errors.js';
 import { stableStringify, makeEnvelope } from '../src/protocol/envelope.js';
 
 async function fixture(t, options = {}) {
@@ -194,7 +194,7 @@ async function recoveryFixture(t) {
 
 test('flat busy capture failure survives adapter replacement without poisoning a fresh save', async t => {
   const f = await recoveryFixture(t);
-  f.guest.before = () => { throw new SwarmEnvError('WORKSPACE_BUSY', 'controlled writer busy'); };
+  f.guest.before = () => { throw new MurmError('WORKSPACE_BUSY', 'controlled writer busy'); };
   let first;
   await assert.rejects(f.save('busy'), error => { first = { code: error.code, message: error.message, details: error.details }; return error.code === 'WORKSPACE_BUSY'; });
   f.guest.before = null;
@@ -217,7 +217,7 @@ test('flat definitive publication rejection replays after replacement and permit
   const importTree = repository.importTree.bind(repository);
   let reject = true;
   repository.importTree = async (...args) => {
-    if (reject) { reject = false; throw new SwarmEnvError('NOT_ALLOWED', 'controlled publication rejection'); }
+    if (reject) { reject = false; throw new MurmError('NOT_ALLOWED', 'controlled publication rejection'); }
     return importTree(...args);
   };
   await assert.rejects(f.save('rejected'), { code: 'NOT_ALLOWED' });
@@ -295,7 +295,7 @@ test('flat admitted publication conflict keeps its identity against a changed se
   const importTree = repository.importTree.bind(repository);
   let reject = true;
   repository.importTree = async (...args) => {
-    if (reject) { reject = false; throw new SwarmEnvError('CONFLICT', 'controlled publication guard conflict'); }
+    if (reject) { reject = false; throw new MurmError('CONFLICT', 'controlled publication guard conflict'); }
     return importTree(...args);
   };
   await assert.rejects(f.save('guard-conflict'), { code: 'CONFLICT' });
@@ -319,7 +319,7 @@ test('Core snapshot save recovers the original bytes after a lost reply and adap
       const files = { 'proof.bin': { encoding: 'base64', data: bytes.toString('base64'), mode: 0o644 } };
       receipts.set(options.requestId, { botId, requestId: options.requestId, version: 73, files, digest: decodeFileSeed(files).digest });
     }
-    if (lose) { lose = false; throw new SwarmEnvError('OUTCOME_UNKNOWN', 'lost snapshot reply'); }
+    if (lose) { lose = false; throw new MurmError('OUTCOME_UNKNOWN', 'lost snapshot reply'); }
     return receipts.get(options.requestId);
   } };
   await assert.rejects(f.call('workspace', 'workspace_save', {}, 'same-save'), { code: 'WORKSPACE_RESULT_UNKNOWN' });

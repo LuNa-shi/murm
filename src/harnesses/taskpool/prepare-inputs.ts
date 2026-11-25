@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../../protocol/envelope.js';
 import { snapshotFileSeed } from '../../../scripts/core-file-seed.js';
-import { SwarmEnvError } from '../../errors.js';
+import { MurmError } from '../../errors.js';
 
-const deny = (message: any) => { throw new SwarmEnvError('NOT_ALLOWED', message); };
+const deny = (message: any) => { throw new MurmError('NOT_ALLOWED', message); };
 
 /** Flat selects domain inputs; Core receives only their deterministic bytes. */
 export async function prepareTaskPoolInputs({ execution, taskService, missionWorkspace, workspaceId, workspaceManager, contextService, preview, check }: any) {

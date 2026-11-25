@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 export function stableStringify(value: any): string {
   if (value === null || typeof value !== 'object') return JSON.stringify(value)!;
@@ -57,26 +57,26 @@ export function makeEnvelope({
 
 export function validateEnvelope(envelope: any, { executionWrite = false }: any = {}) {
   if (!envelope || typeof envelope !== 'object') {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'operation envelope is required');
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'operation envelope is required');
   }
   for (const field of ['operation_id', 'actor_ref']) {
     if (typeof envelope[field] !== 'string' || envelope[field].length === 0) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
     }
   }
   for (const field of ['task_id', 'execution_id']) {
     if (envelope[field] !== null && envelope[field] !== undefined && typeof envelope[field] !== 'string') {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} must be a string or null`);
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} must be a string or null`);
     }
   }
   for (const field of ['spec_version', 'state_version', 'fencing_version']) {
     if (envelope[field] !== null && envelope[field] !== undefined &&
       (!Number.isInteger(envelope[field]) || envelope[field] < 0)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} must be a non-negative integer or null`);
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} must be a non-negative integer or null`);
     }
   }
   if (executionWrite && (envelope.execution_id === null || envelope.fencing_version === undefined)) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'execution writes require execution_id and fencing_version');
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'execution writes require execution_id and fencing_version');
   }
   return envelope;
 }

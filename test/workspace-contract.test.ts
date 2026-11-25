@@ -4,7 +4,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { SwarmEnvError } from '../src/errors.js';
+import { MurmError } from '../src/errors.js';
 import {
   WORKSPACE_ERROR_CODES,
   normalizeWorkspaceContract,
@@ -62,15 +62,15 @@ test('missing required public input and hash mismatch reject before publishing a
   await withManager(async manager => {
     const task = { workspace: { required_inputs: [{ path: 'input.txt', content_hash: sha256('expected') }] } };
     await assert.rejects(manager.createWorkspace({ executionId: 'missing', fencingVersion: 1, task, publicSnapshot: snapshot({}) }),
-      error => error instanceof SwarmEnvError && error.code === WORKSPACE_ERROR_CODES.INPUT_MISSING);
+      error => error instanceof MurmError && error.code === WORKSPACE_ERROR_CODES.INPUT_MISSING);
     await assert.rejects(manager.createWorkspace({ executionId: 'mismatched', fencingVersion: 1, task, publicSnapshot: snapshot({ 'input.txt': 'changed' }) }),
-      error => error instanceof SwarmEnvError && error.code === WORKSPACE_ERROR_CODES.INPUT_HASH_MISMATCH);
+      error => error instanceof MurmError && error.code === WORKSPACE_ERROR_CODES.INPUT_HASH_MISMATCH);
   });
 });
 
 test('Workspace contract rejects paths addressing Runtime metadata or parent directories', () => {
   for (const path of ['../outside.txt', '.swarm/workspace.json']) {
     assert.throws(() => normalizeWorkspaceContract({ allowed_outputs: [path] }),
-      error => error instanceof SwarmEnvError && error.code === 'NOT_ALLOWED' && error.details.path_class === 'forbidden');
+      error => error instanceof MurmError && error.code === 'NOT_ALLOWED' && error.details.path_class === 'forbidden');
   }
 });

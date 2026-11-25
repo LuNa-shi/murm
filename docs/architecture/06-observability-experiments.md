@@ -92,7 +92,7 @@ Common event filters include `after_sequence`, `execution_id` on the event route
 
 ### Exposure boundary
 
-Operator admission covers event, detail, report and owner-service routes. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
+Operator admission covers event, detail, report and owner-service routes. A denied request with operator authentication configured receives a Basic challenge with the `murm Operator` realm. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
 
 Sources: [server](../../src/observability/observability-server.ts), [daemon entry/discovery](../../scripts/serve-observability.ts), [server tests](../../test/observability-server.test.ts), [worktree discovery tests](../../test/observability-worktree-discovery.test.ts).
 

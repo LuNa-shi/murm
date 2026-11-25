@@ -1,4 +1,4 @@
-import { ERROR_CODES, SwarmEnvError } from '../../errors.js';
+import { ERROR_CODES, MurmError } from '../../errors.js';
 import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
 import { assertNewExecutionWork } from '../../task/execution-budget.js';
 import { MissionSubmissionStore } from '../../runtime/mission-submission.js';
@@ -10,22 +10,22 @@ export function createMissionCoordination({
 }: any) {
   if (typeof deadline !== 'function' && !Number.isFinite(deadline)) throw new TypeError('Mission coordination requires a finite run deadline');
   if (!taskService?.db || !contextService || contextService.taskService !== taskService) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission requires local Task lifecycle authority for Context');
+    throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Mission submission requires local Task lifecycle authority for Context');
   }
   const getDeadline = typeof deadline === 'function' ? deadline : () => deadline;
   const running = () => !isStopping() && Date.now() < getDeadline();
   const acceptance = () => taskService.getMission(missionId)?.acceptance_conditions;
   const authorize = (input: any) => {
     if (input.missionId !== missionId || input.workspaceId !== workspaceId || !running()) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission submission requires the current running Mission and Workspace');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission submission requires the current running Mission and Workspace');
     }
     const execution = input.executionId ? taskService.getExecution(input.executionId) : null;
     if (input.executionId) {
       if (!execution || !Number.isSafeInteger(input.fencingVersion) || execution.fencing_version !== input.fencingVersion) {
-        throw new SwarmEnvError(ERROR_CODES.FENCED, 'Mission submission requires the original Execution fence');
+        throw new MurmError(ERROR_CODES.FENCED, 'Mission submission requires the original Execution fence');
       }
     } else if (input.fencingVersion != null) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Unbound submission cannot carry an Execution fence');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Unbound submission cannot carry an Execution fence');
     }
     const envelope = makeEnvelope({
       operationId: input.requestId, actorRef: input.actorRef, taskId: input.taskId,
@@ -34,7 +34,7 @@ export function createMissionCoordination({
     });
     const scope = taskService.assertMissionCoordination(envelope, 'mission_submit');
     if (scope.mission_id !== missionId) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission submission permission belongs to another Mission');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission submission permission belongs to another Mission');
     }
     if (execution) assertNewExecutionWork(execution);
     return { acceptance: acceptance(), envelope, deadline: getDeadline() };
@@ -45,7 +45,7 @@ export function createMissionCoordination({
       const view = contextService.dispatch('context_get_material', { material_id: materialId }, envelope);
       const material = view.material;
       if (!material || material.mission_id !== missionId) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Submission Material must be readable in the Mission');
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Submission Material must be readable in the Mission');
       }
       return {
         material_id: material.material_id, content_hash: material.content_hash, version: material.version,
@@ -80,7 +80,7 @@ export function createMissionCoordination({
 export function createMissionSubmissionAccess({ store = null, workspaceId, isStopped }: any = {}) {
   if (store && typeof isStopped !== 'function') throw new TypeError('Mission submission access requires a host stop predicate');
   const requireStore = () => {
-    if (!store) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
+    if (!store) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Mission submission is not enabled');
     return store;
   };
   return {

@@ -1,5 +1,5 @@
 import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
-import { SwarmEnvError } from '../../errors.js';
+import { MurmError } from '../../errors.js';
 import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 import { executionEnvelope, inputFingerprint } from './prepare-inputs.js';
 import { listTools } from '../../sdk/service-catalog.js';
@@ -8,8 +8,8 @@ import { runTaskPoolHandoff, stopFailedHandoff } from './task-handoff.js';
 const coordinationOperations = ['task_revise', 'task_cancel'];
 const operations = ['task_list', 'task_view', 'task_take', ...coordinationOperations];
 const coordinationTools = listTools('task').filter((tool: any) => coordinationOperations.includes(tool.operation));
-const invalid = (message: any) => { throw new SwarmEnvError('INVALID_CONTRACT', message); };
-const denied = (message: any) => { throw new SwarmEnvError('NOT_ALLOWED', message); };
+const invalid = (message: any) => { throw new MurmError('INVALID_CONTRACT', message); };
+const denied = (message: any) => { throw new MurmError('NOT_ALLOWED', message); };
 const objectSchema = (properties: any) => ({ type: 'object', properties, additionalProperties: false });
 const taskId: any = { type: 'string', minLength: 1, maxLength: 256 };
 
@@ -81,10 +81,10 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
     const key = stableStringify([core.id, caller.botId, envelope.operation_id]);
     const fingerprint = stableStringify({ operation, input, profile: caller.profile });
     const coordinated = coordinationRequests.get(key);
-    if (coordinated && coordinated !== fingerprint) throw new SwarmEnvError('CONFLICT', 'Flat request ID has different parameters');
+    if (coordinated && coordinated !== fingerprint) throw new MurmError('CONFLICT', 'Flat request ID has different parameters');
     const previous = requests.get(key);
     if (previous) {
-      if (previous.fingerprint !== fingerprint) throw new SwarmEnvError('CONFLICT', 'Flat request ID has different parameters');
+      if (previous.fingerprint !== fingerprint) throw new MurmError('CONFLICT', 'Flat request ID has different parameters');
       return structuredClone(await previous.work);
     }
     if (closing) denied('Flat Task Service is closing');
@@ -94,10 +94,10 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
     const live = await core.get(bot.bot_id);
     if (!['idle', 'running'].includes(live.status) || live.profile !== profile || closing || signal?.aborted) denied('Core researcher is unavailable');
     const coordinatedAfterAdmission = coordinationRequests.get(key);
-    if (coordinatedAfterAdmission && coordinatedAfterAdmission !== fingerprint) throw new SwarmEnvError('CONFLICT', 'Flat request ID has different parameters');
+    if (coordinatedAfterAdmission && coordinatedAfterAdmission !== fingerprint) throw new MurmError('CONFLICT', 'Flat request ID has different parameters');
     const joined = requests.get(key);
     if (joined) {
-      if (joined.fingerprint !== fingerprint) throw new SwarmEnvError('CONFLICT', 'Flat request ID has different parameters');
+      if (joined.fingerprint !== fingerprint) throw new MurmError('CONFLICT', 'Flat request ID has different parameters');
       return structuredClone(await joined.work);
     }
     eligibleBot(bot.bot_id, core.id);
@@ -106,7 +106,7 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
       assertAuthorized?.(); signal?.throwIfAborted();
       const current = eligibleBot(bot.bot_id, core.id);
       const execution = current.execution_id ? taskService.getExecution(current.execution_id) : null;
-      if (current.execution_id !== bot.execution_id || execution?.fencing_version !== admittedExecution?.fencing_version) throw new SwarmEnvError('FENCED', 'Flat proposal binding changed during admission');
+      if (current.execution_id !== bot.execution_id || execution?.fencing_version !== admittedExecution?.fencing_version) throw new MurmError('FENCED', 'Flat proposal binding changed during admission');
       const until = missionDeadline();
       if (!Number.isFinite(until) || Date.now() >= until) denied('Task proposal requires the current Mission budget');
       const id = `flat:proposal:${inputFingerprint([core.id, bot.bot_id, envelope.operation_id])}`;
@@ -125,7 +125,7 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
       if (!replacement && (current.state !== 'UNBOUND' || current.execution_id)) denied('Task revision and cancellation require an UNBOUND Bot');
       if (replacement && !current.coordination_permissions.includes(operation)) denied('Bot lacks the registered dependency-replacement grant');
       const execution = current.execution_id ? taskService.getExecution(current.execution_id) : null;
-      if (replacement && (current.execution_id !== bot.execution_id || execution?.fencing_version !== admittedExecution?.fencing_version)) throw new SwarmEnvError('FENCED', 'Flat coordination binding changed during admission');
+      if (replacement && (current.execution_id !== bot.execution_id || execution?.fencing_version !== admittedExecution?.fencing_version)) throw new MurmError('FENCED', 'Flat coordination binding changed during admission');
       const id = `flat:coordination:${inputFingerprint([core.id, bot.bot_id, envelope.operation_id])}`;
       // The target is input; ACTIVE authority is the caller's own Execution.
       // The domain owns durable replay, CAS and history. Replays repeat admission.

@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { makeEnvelope } from '../protocol/envelope.js';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { requestHttp } from '../protocol/http-request.js';
 
 export async function callCoordinatorPeer({ url, token, actorRef, operation, input, timeoutMs = 15_000 }: any) {
@@ -16,11 +16,11 @@ export async function callCoordinatorPeer({ url, token, actorRef, operation, inp
       body: JSON.stringify({ envelope, role: 'recovery', input }), signal: controller.signal });
     body = JSON.parse(response.text);
   } catch (error: any) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Independent service transport did not return a response', undefined, { cause: error, retryable: true });
+    throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Independent service transport did not return a response', undefined, { cause: error, retryable: true });
   } finally {
     clearTimeout(timer);
   }
-  if (!response.ok || body.ok === false) throw new SwarmEnvError(body.error?.code ?? ERROR_CODES.SERVICE_UNAVAILABLE,
+  if (!response.ok || body.ok === false) throw new MurmError(body.error?.code ?? ERROR_CODES.SERVICE_UNAVAILABLE,
     body.error?.message ?? 'Independent service request failed', body.error?.details, { retryable: Boolean(body.error?.retryable) });
   return body.result;
 }
@@ -45,16 +45,16 @@ export function createDomainCommandClient({ url, token, timeoutMs = 15_000 }: an
       input: config,
       encoding: 'utf8', maxBuffer: 4 * 1024 * 1024, timeout: timeoutMs + 2_000,
     });
-    if (result.error || result.status !== 0) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE,
+    if (result.error || result.status !== 0) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE,
       'Independent service command did not complete', undefined, { retryable: true, cause: result.error });
     const split = result.stdout.lastIndexOf('\n');
     const status = Number(result.stdout.slice(split + 1));
     let body;
     try { body = JSON.parse(result.stdout.slice(0, split)); } catch (cause: any) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Invalid independent service response', undefined, { retryable: true, cause });
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Invalid independent service response', undefined, { retryable: true, cause });
     }
     if (status < 200 || status >= 300 || body?.ok !== true) {
-      throw new SwarmEnvError(body?.error?.code ?? ERROR_CODES.SERVICE_UNAVAILABLE,
+      throw new MurmError(body?.error?.code ?? ERROR_CODES.SERVICE_UNAVAILABLE,
         body?.error?.message ?? 'Independent service command failed', body?.error?.details,
         { retryable: body?.error?.retryable ?? (status >= 500) });
     }

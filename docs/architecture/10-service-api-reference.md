@@ -22,6 +22,8 @@ A JSON Schema in a manifest is a declared contract. This implementation validate
 
 After changing catalogs, capability selection, manifests, schemas or error vocabulary, run `node dist/scripts/generate-architecture-api.js` and review the generated differences. `node dist/scripts/generate-architecture-api.js --check` detects stale generated content without changing it. A successful check detects declaration drift; it does not prove that the explanatory text or runtime behavior is correct.
 
+Internal Services use `MurmError`. The former class/helper exports and the diagnostic error name `SwarmEnvError` remain for consumers of the previous names. Structured error codes are listed below.
+
 <!-- BEGIN GENERATED REFERENCE -->
 
 ## Generated API inventory

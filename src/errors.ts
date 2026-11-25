@@ -37,13 +37,14 @@ export const ERROR_CODES = Object.freeze({
   SERVICE_TIMEOUT: 'SERVICE_TIMEOUT',
 });
 
-export class SwarmEnvError extends Error {
+export class MurmError extends Error {
   declare code: string;
   declare details: unknown;
   declare retryable: boolean;
 
   constructor(code: string, message: string, details: unknown = undefined, options: ErrorOptions & { retryable?: boolean } = {}) {
     super(message, options);
+    // Preserve the diagnostic name used by existing log consumers.
     this.name = 'SwarmEnvError';
     this.code = code;
     this.details = details;
@@ -51,13 +52,15 @@ export class SwarmEnvError extends Error {
   }
 }
 
-export function asSwarmEnvError(error: any, fallbackCode: string = ERROR_CODES.INVALID_CONTRACT) {
-  if (error instanceof SwarmEnvError) return error;
-  return new SwarmEnvError(fallbackCode, error?.message ?? String(error), undefined, {
+export function asMurmError(error: any, fallbackCode: string = ERROR_CODES.INVALID_CONTRACT) {
+  if (error instanceof MurmError) return error;
+  return new MurmError(fallbackCode, error?.message ?? String(error), undefined, {
     cause: error,
   });
 }
 
 export function fail(code: string, message: string, details: unknown = undefined, options: ErrorOptions & { retryable?: boolean } = {}): never {
-  throw new SwarmEnvError(code, message, details, options);
+  throw new MurmError(code, message, details, options);
 }
+
+export { MurmError as SwarmEnvError, asMurmError as asSwarmEnvError };

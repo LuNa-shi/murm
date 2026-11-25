@@ -1,4 +1,4 @@
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 
 export interface CloseoutExecution {
   handoff_reminder_sent_at?: string | null;
@@ -15,7 +15,7 @@ export function isSoftCloseout(execution: CloseoutExecution | null | undefined, 
 }
 
 export function assertNewExecutionWork(execution: CloseoutExecution | null | undefined, at: number = Date.now()) {
-  if (isSoftCloseout(execution, at)) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED,
+  if (isSoftCloseout(execution, at)) throw new MurmError(ERROR_CODES.NOT_ALLOWED,
     'Soft closeout permits saving, publishing existing work and finish; new research work is closed',
     { phase: 'soft_closeout', execution_id: execution!.execution_id, deadline: execution!.execution_deadline });
 }

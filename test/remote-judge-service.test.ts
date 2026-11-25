@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { TaskService } from '../src/task/task-service.js';
 import { RemoteJudgeService } from '../src/sdk/remote-judge-service.js';
-import { SwarmEnvError } from '../src/errors.js';
+import { MurmError } from '../src/errors.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const fixtureManifest = { fixture_id: 'remote-judge', putnambench_commit: 'a'.repeat(40), problem_file: 'input.lean',
   problem_file_hash: 'b'.repeat(64), lean_toolchain: 'leanprover/lean4:v4.33.1', mathlib_version: 'fixture',
@@ -48,7 +48,7 @@ for (const closeDuringPreflight of [false, true, 'scoped']) test(`independent Ju
   const input = { request_key: 'check:one', source: { workspace_id: 'workspace:one', revision: '0.1', path: 'Main.lean',
     git_commit: 'c'.repeat(40), git_tree: 'd'.repeat(40), content: 'example : True := by trivial' } };
   let authorized=true;
-  const checking = judge.dispatch('workspace_check', input, env('check:one'),{assertAuthorized(){if(!authorized) throw new SwarmEnvError('NOT_ALLOWED','Caller authority revoked');}});
+  const checking = judge.dispatch('workspace_check', input, env('check:one'),{assertAuthorized(){if(!authorized) throw new MurmError('NOT_ALLOWED','Caller authority revoked');}});
   if (closeDuringPreflight) {
     for (let attempt = 0; judge.getMissionCheckBudget('mission:one').preflight_process_starts !== 1; attempt++) {
       assert.ok(attempt < 100); await delay(10);

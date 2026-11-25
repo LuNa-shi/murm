@@ -23,7 +23,7 @@ import { ServicesBridge } from '../src/agent/services-bridge.js';
 import { ContextService } from '../src/context/context-service.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { startIndependentServices } from '../src/sdk/independent-services.js';
-import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
+import { MurmError, ERROR_CODES } from '../src/errors.js';
 
 async function assertExecutionReleased(runtime, service, executionId, timeoutMs) {
   const deadline = performance.now() + timeoutMs;
@@ -95,7 +95,7 @@ test('Mission timeout preserves a fresh Bot proposal after earlier Tasks finish 
   const store = createMissionCoordination({ taskService: service, contextService: context, missionId,
     workspace: runtime.missionWorkspace, workspaceId: runtime.missionWorkspaceId,
     deadline: Date.now() + 60_000,
-    checker: { identity, check: () => { throw new SwarmEnvError('SERVICE_TIMEOUT', 'controlled final-check timeout'); } },
+    checker: { identity, check: () => { throw new MurmError('SERVICE_TIMEOUT', 'controlled final-check timeout'); } },
   });
   missionSubmission.store = store;
   const create = (summary, actorRef) => service.createTask({ gap: 'Resolve the boundary required by this test Mission', priority: 'medium', mission_id: missionId, summary,
@@ -730,7 +730,7 @@ async function workspaceFixture(t, options = {}) {
   const guest = { files: { 'input.txt': Buffer.from('public project input') }, captures: 0, before: null };
   f.manager.snapshotBotProject = async ({ executionId }) => {
     const current = f.service.getExecution(executionId);
-    if (guest.held) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'controlled install hold');
+    if (guest.held) throw new MurmError(ERROR_CODES.WORKSPACE_BUSY, 'controlled install hold');
     guest.captures += 1;
     await guest.before?.();
     const manifest = Object.fromEntries(Object.entries(guest.files).map(([path, bytes]) => [path, { bytes: bytes.length, content_hash: createHash('sha256').update(bytes).digest('hex') }]));
@@ -860,7 +860,7 @@ for (const method of ['stopExecution', 'fenceExecution']) test(`${method} retain
   const { service, runtime, execution, dispatch } = await workspaceFixture(t);
   await dispatch('save', 'before-stop');
   const reconcile = runtime.executionWorkspace.reconcile.bind(runtime.executionWorkspace);
-  runtime.executionWorkspace.reconcile = async () => { throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED, 'controlled unresolved receipt'); };
+  runtime.executionWorkspace.reconcile = async () => { throw new MurmError(ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED, 'controlled unresolved receipt'); };
   await assert.rejects(runtime[method](execution.execution_id), error => error.code === 'WORKSPACE_RECONCILIATION_REQUIRED');
   assert.equal(service.getExecution(execution.execution_id).state, 'RUNNING');
   assert.equal(service.getTask(execution.task_id).state, 'RUNNING');
@@ -873,7 +873,7 @@ test('lease expiry keeps its durable intent and Task owner until Workspace recei
   const { service, runtime, execution, bot } = await workspaceFixture(t);
   service.db.prepare('UPDATE executions SET lease_expires_at = ? WHERE execution_id = ?').run(new Date(Date.now() - 1000).toISOString(), execution.execution_id);
   const reconcile = runtime.executionWorkspace.reconcile.bind(runtime.executionWorkspace);
-  runtime.executionWorkspace.reconcile = async () => { throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED, 'controlled lease receipt failure'); };
+  runtime.executionWorkspace.reconcile = async () => { throw new MurmError(ERROR_CODES.WORKSPACE_RECONCILIATION_REQUIRED, 'controlled lease receipt failure'); };
   await assert.rejects(runtime.sweepExpired(), error => error.code === 'WORKSPACE_RECONCILIATION_REQUIRED');
   assert.equal(service.getBot(bot.bot_id).state, 'CLOSING');
   assert.equal(service.getBot(bot.bot_id).stop_terminal_state, 'EXPIRED');
@@ -926,7 +926,7 @@ test('persisted install recovery retries only original confirmation and preserve
   const f = await workspaceFixture(t);
   const row = await seedPendingInstall(f, 'lost-ack', 'captured');
   let once = true;
-  f.guest.confirmHook = () => { if (once) { once = false; throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled acknowledgement loss'); } };
+  f.guest.confirmHook = () => { if (once) { once = false; throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled acknowledgement loss'); } };
   f.guest.installHook = () => assert.throws(() => f.service.dispatch('task_finish', { outcome: 'incomplete' }, makeEnvelope({
     actorRef: f.bot.bot_id, taskId: f.execution.task_id, executionId: f.execution.execution_id,
     specVersion: f.execution.spec_version, stateVersion: f.execution.state_version, fencingVersion: f.execution.fencing_version })), error => error.code === 'WORKSPACE_BUSY');
@@ -951,7 +951,7 @@ test('persisted committed install retains original receipt through confirmed phy
   const f = await workspaceFixture(t);
   const row = await seedPendingInstall(f, 'confirmed-before-close');
   const confirm = f.manager.confirmBotProjectInstall;
-  f.manager.confirmBotProjectInstall = async input => { await confirm(input); throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled response lost after resume'); };
+  f.manager.confirmBotProjectInstall = async input => { await confirm(input); throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled response lost after resume'); };
   await assert.rejects(f.runtime.executionWorkspace.reconcile(f.execution.execution_id), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
   const before = row().result_json;
   assert.equal(row().phase, 'installed');
@@ -966,11 +966,11 @@ test('persisted committed install retains original receipt through confirmed phy
 test('persisted install closing intent retains capture until physical close is confirmed', async t => {
   const f = await workspaceFixture(t);
   const row = await seedPendingInstall(f, 'close-query-race');
-  f.guest.confirmHook = () => { throw new SwarmEnvError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled held acknowledgement'); };
+  f.guest.confirmHook = () => { throw new MurmError(ERROR_CODES.SERVICE_TIMEOUT, 'controlled held acknowledgement'); };
   await assert.rejects(f.runtime.executionWorkspace.reconcile(f.execution.execution_id), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
   f.service.requestBotStop(f.bot.bot_id, 'controlled-close', { terminalState: 'FAILED' });
   const query = f.manager.queryBotProjectInstall;
-  f.manager.queryBotProjectInstall = async () => { throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'physical stop still pending'); };
+  f.manager.queryBotProjectInstall = async () => { throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'physical stop still pending'); };
   await assert.rejects(f.runtime.executionWorkspace.reconcile(f.execution.execution_id), error => error.code === 'WORKSPACE_RESULT_UNKNOWN');
   assert.equal(row().phase, 'installed');
   assert.ok(row().captured_json);

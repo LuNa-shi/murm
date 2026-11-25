@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { buildBotContinuationMessage, buildBotNotification } from '../../agent/bot-contract.js';
-import { SwarmEnvError } from '../../errors.js';
+import { MurmError } from '../../errors.js';
 import { stableStringify } from '../../protocol/envelope.js';
 import { createTaskPoolAgentCoordinator } from './bot-coordinator.js';
 import { executionEnvelope } from './prepare-inputs.js';
@@ -30,7 +30,7 @@ export const TASKPOOL_TASK_FINISH_GUIDANCE = 'When your responsibility ends, rep
 export const FLAT_DISCOVERY_MESSAGE='Read public Tasks and take suitable work. Continue in this Session after take.';
 
 const info=(error: any)=>({code:error?.code??'FLAT_CONTROLLER_FAILED',message:error?.message??'Flat controller failed'});
-const deny=(message: any)=>{throw new SwarmEnvError('NOT_ALLOWED',message);};
+const deny=(message: any)=>{throw new MurmError('NOT_ALLOWED',message);};
 
 /** One serialized source for discovery, continuation and directed user input.
  * Core owns resources; this controller owns only flat policy and domain cleanup. */
@@ -250,7 +250,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       record('host-admission-start',null,{botIds:[...bots.values()].filter((row: any)=>!row.released).map((row: any)=>row.botId)});
       try {
         const cancelled=new Promise<any>((_: any,reject: any)=>{
-          aborted=()=>reject(new SwarmEnvError('NOT_ALLOWED','Flat host admission was cancelled'));
+          aborted=()=>reject(new MurmError('NOT_ALLOWED','Flat host admission was cancelled'));
           gate.signal.addEventListener('abort',aborted,{once:true});
           deadline=setTimeout(()=>gate.abort(),Math.max(1,remaining()));
         });
@@ -330,7 +330,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       if(typeof taskId!=='string'||typeof input!=='string'||!input || typeof requestId!=='string'||!requestId||!['steer','followUp'].includes(mode)) throw new TypeError('Directed flat feedback requires Task, text, stable request and mode');
       const fingerprint=stableStringify({taskId,input,mode});
       const previous=feedbackRequests.get(requestId);
-      if(previous) {if(previous.fingerprint!==fingerprint) throw new SwarmEnvError('CONFLICT','Feedback request changed');return previous.work;}
+      if(previous) {if(previous.fingerprint!==fingerprint) throw new MurmError('CONFLICT','Feedback request changed');return previous.work;}
       const selectedTask=taskService.getTask(taskId);
       const selectedExecution=selectedTask?.mission_id===missionId?taskService.listExecutions(taskId).find((row: any)=>row.state==='RUNNING'):null;
       const selected=selectedExecution?{botId:selectedExecution.owner_ref,executionId:selectedExecution.execution_id,fence:selectedExecution.fencing_version}:null;
@@ -372,7 +372,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
         }
       }
       if(reconciliationFailures.length) {
-        const error: any=new SwarmEnvError('FLAT_CLOSE_RECONCILIATION_FAILED','Flat domain cleanup remains incomplete');
+        const error: any=new MurmError('FLAT_CLOSE_RECONCILIATION_FAILED','Flat domain cleanup remains incomplete');
         error.details=reconciliationFailures;
         throw error;
       }

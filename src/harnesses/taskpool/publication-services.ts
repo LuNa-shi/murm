@@ -6,12 +6,12 @@ import { MISSION_WORKSPACE_READS } from './public-workspace-reads.js';
 import { prepareWorkspaceCheckSource } from './workspace-check-source.js';
 import { agentCheckResult } from '../../judge/check-result.js';
 import { ExecutionWorkspace, WorkspaceRequestMismatchError } from '../../runtime/execution-workspace.js';
-import { SwarmEnvError } from '../../errors.js';
+import { MurmError } from '../../errors.js';
 import { makeEnvelope, stableStringify } from '../../protocol/envelope.js';
 import { inputFingerprint, executionEnvelope } from './prepare-inputs.js';
 import { listTools } from '../../sdk/service-catalog.js';
 
-const fail = (code: any, message: any) => { throw new SwarmEnvError(code, message); };
+const fail = (code: any, message: any) => { throw new MurmError(code, message); };
 const publicationRequestId = (runtimeId: any, botId: any, requestId: any) =>
   `flat:publication:${inputFingerprint([runtimeId,botId,requestId])}`;
 const text: any = { type:'string', minLength:1, maxLength:4000 };

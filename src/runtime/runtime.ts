@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { makeEnvelope } from '../protocol/envelope.js';
 import { ExecutionWorkspace } from './execution-workspace.js';
 
 function requireString(value: any, field: any) {
-  if (typeof value !== 'string' || value.length === 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
+  if (typeof value !== 'string' || value.length === 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `${field} is required`);
   return value;
 }
 
@@ -69,13 +69,13 @@ export class Runtime {
     this.runtimeGeneration = runtimeGeneration;
     this.actorRef = actorRef;
     this.logger = logger;
-    if (!Number.isFinite(finishCleanupRetryMs) || finishCleanupRetryMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'finishCleanupRetryMs must be positive');
-    if (!Number.isInteger(maxFinishCleanupRetries) || maxFinishCleanupRetries < 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'maxFinishCleanupRetries must be a non-negative integer');
+    if (!Number.isFinite(finishCleanupRetryMs) || finishCleanupRetryMs <= 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'finishCleanupRetryMs must be positive');
+    if (!Number.isInteger(maxFinishCleanupRetries) || maxFinishCleanupRetries < 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'maxFinishCleanupRetries must be a non-negative integer');
     this.finishCleanupRetryMs = finishCleanupRetryMs;
     this.maxFinishCleanupRetries = maxFinishCleanupRetries;
     this.finishCleanupTimers = new Map<any, any>();
-    if (!Number.isFinite(executionTimeoutMs) || executionTimeoutMs <= 0) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'executionTimeoutMs must be positive');
-    if (!Number.isFinite(handoffReminderMs) || handoffReminderMs <= 0 || handoffReminderMs >= executionTimeoutMs) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'handoffReminderMs must be positive and less than executionTimeoutMs');
+    if (!Number.isFinite(executionTimeoutMs) || executionTimeoutMs <= 0) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'executionTimeoutMs must be positive');
+    if (!Number.isFinite(handoffReminderMs) || handoffReminderMs <= 0 || handoffReminderMs >= executionTimeoutMs) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'handoffReminderMs must be positive and less than executionTimeoutMs');
     this.executionTimeoutMs = executionTimeoutMs;
     this.handoffReminderMs = handoffReminderMs;
     this.setRunDeadline(runDeadlineAt);
@@ -109,21 +109,21 @@ export class Runtime {
   async #startBot({ missionId, coreId, selectionTimeoutMs = 300_000, maxLifetimeMs = selectionTimeoutMs + this.executionTimeoutMs, startSession, readyTimeoutMs = 30_000 }: any) {
     if (typeof startSession !== 'function' || !Number.isFinite(selectionTimeoutMs) || selectionTimeoutMs <= 0 || selectionTimeoutMs > 2_147_483_647 ||
         !Number.isFinite(readyTimeoutMs) || readyTimeoutMs <= 0 || !Number.isInteger(maxLifetimeMs) || maxLifetimeMs < 2 || maxLifetimeMs > 2_147_483_647) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot requires a Session factory and finite selection and lifetime limits');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Bot requires a Session factory and finite selection and lifetime limits');
     }
-    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
+    if (this.stopping) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
     if (this.getCoreStatus(coreId)?.state !== 'IDLE' || this.taskService.getActiveExecutionForCore(coreId)) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core is occupied');
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Core is occupied');
     }
     const startedAt = Date.now();
     const hardDeadlineAt = Math.min(startedAt + maxLifetimeMs, this.runDeadlineAt ?? Infinity);
-    if (hardDeadlineAt <= startedAt) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Mission run deadline already elapsed');
+    if (hardDeadlineAt <= startedAt) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Mission run deadline already elapsed');
     const bot = this.taskService.registerBot({ missionId, coreId, coordinationPermissions: this.coordinationPermissions, selectionDeadline: new Date(Math.min(startedAt + selectionTimeoutMs, hardDeadlineAt)).toISOString(), hardDeadline: new Date(hardDeadlineAt).toISOString() });
     const binding: any = { botId: bot.bot_id, coreId, session: null, starting: true, selectionTimer: null, hardTimer: null };
     this.botBindings.set(bot.bot_id, binding);
     this.#setCoreState(coreId, { state: 'STARTING', bot_id: bot.bot_id, execution_id: null, task_id: null });
     const controller = new AbortController();
-    binding.cancelStartup = () => controller.abort(new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped'));
+    binding.cancelStartup = () => controller.abort(new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped'));
     const cancelled = new Promise<any>((_: any, reject: any) => controller.signal.addEventListener('abort', () => reject(controller.signal.reason), { once: true }));
     void cancelled.catch(() => undefined);
     const stopUnbound = (reason: any) => {
@@ -159,7 +159,7 @@ export class Runtime {
     const assertRuntimeStartupOpen = () => {
       if (controller.signal.aborted) throw controller.signal.reason;
       if (this.stopping || Date.now() >= (this.runDeadlineAt ?? Infinity)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during Bot startup');
       }
     };
     const assertStartupAllowed = () => {
@@ -178,7 +178,7 @@ export class Runtime {
     const prepared = factory.then((session: any) => {
       binding.session = session;
       binding.starting = false;
-      if (!session || typeof session.stop !== 'function') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Bot Session must support confirmed stop');
+      if (!session || typeof session.stop !== 'function') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Bot Session must support confirmed stop');
       this.identitySessions.add(session);
       session.on?.('close', () => stopUnbound('process-exited'));
       session.on?.('processError', () => stopUnbound('process-error'));
@@ -193,7 +193,7 @@ export class Runtime {
     });
     try {
       const session = await Promise.race([prepared, cancelled]);
-      if (session.closed) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped');
+      if (session.closed) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped');
       assertStartupAllowed();
       await Promise.race([(async () => {
         await session.waitForReady({ timeoutMs: readyTimeoutMs });
@@ -202,7 +202,7 @@ export class Runtime {
         assertStartupAllowed();
         await session.setAutoRetry?.(true);
       })(), cancelled]);
-      if (session.closed) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped');
+      if (session.closed) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot startup was stopped');
       assertRuntimeStartupOpen();
       const ready = this.taskService.markBotReady(bot.bot_id);
       this.#setCoreState(coreId, { state: 'DISCOVERING', session_id: session.sessionId ?? null });
@@ -229,18 +229,18 @@ export class Runtime {
     const binding: any = this.botBindings.get(botId);
     if (bot?.state === 'CLOSED' && !binding) return { bot };
     if (!bot || !binding || bot.state !== 'CLOSING' || bot.execution_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'unbound Bot cleanup requires its retained resource binding');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'unbound Bot cleanup requires its retained resource binding');
     }
     this.#setCoreState(binding.coreId, { state: 'CLOSING' });
     const stoppedSession = binding.session;
     await stoppedSession?.stop?.();
-    if (stoppedSession?.closed === false) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot stop was not confirmed');
+    if (stoppedSession?.closed === false) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot stop was not confirmed');
     const stopped = await this.sandboxManager?.stopExecution(bot.resource_key);
     if (stopped === false && this.taskService.getBot(botId)?.sandbox_create_state === 'UNKNOWN') {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Unknown sandbox creation requires confirmed cleanup');
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Unknown sandbox creation requires confirmed cleanup');
     }
     if (binding.session !== stoppedSession || this.taskService.getBot(botId).sandbox_id !== bot.sandbox_id) return this.#releaseBotResources(botId);
-    if (binding.starting) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot factory has not settled; late resources remain owned');
+    if (binding.starting) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot factory has not settled; late resources remain owned');
     const closed = this.taskService.finalizeBotClose(botId);
     clearTimeout(binding.selectionTimer);
     clearTimeout(binding.hardTimer);
@@ -366,7 +366,7 @@ export class Runtime {
     const task = execution && this.taskService.getTask(execution.task_id);
     if (!bot || !execution || execution.owner_ref !== actorRef || execution.task_id !== taskId ||
         bot.mission_id !== task?.mission_id || execution.workspace_input?.workspace_id !== this.missionWorkspaceId) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace request must match its durable Bot, Task and Mission');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace request must match its durable Bot, Task and Mission');
     }
     if (receiptOnly) return execution;
     const binding: any = this.botBindings.get(actorRef);
@@ -374,14 +374,14 @@ export class Runtime {
     if (this.stopping || bot.state !== 'ACTIVE' || bot.execution_id !== executionId || execution.state !== 'RUNNING' ||
         execution.fencing_version !== fencingVersion || !binding || binding.closing || !binding.session || binding.session.closed ||
         !active || active.closing || active.session !== binding.session || execution.core_id !== bot.core_id) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace contribution requires the current active Bot binding');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace contribution requires the current active Bot binding');
     }
     this.taskService.assertBotDeadline(actorRef);
     return execution;
   }
 
   async dispatchExecutionWorkspace(operation: any, input: any, identity: any) {
-    if (!this.executionWorkspace) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Execution Workspace control is unavailable');
+    if (!this.executionWorkspace) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Execution Workspace control is unavailable');
     return this.executionWorkspace.dispatch(operation, input, identity);
   }
 
@@ -416,8 +416,8 @@ export class Runtime {
   async #ensureSandbox(execution: any, workspace: any) {
     if (!this.sandboxManager) return;
     const bot = this.taskService.getBot(execution.owner_ref);
-    if (!bot || !workspace?.public_workspace_input) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot Sandbox preparation requires pinned public Workspace input');
-    if (bot.execution_id !== execution.execution_id) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot does not own this Execution');
+    if (!bot || !workspace?.public_workspace_input) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot Sandbox preparation requires pinned public Workspace input');
+    if (bot.execution_id !== execution.execution_id) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot does not own this Execution');
     this.sandboxManager.bindBotExecution({ botId: bot.bot_id, executionId: execution.execution_id,
       workspaceRef: workspace.workspace_ref, bindingVersion: execution.fencing_version });
     await this.sandboxManager.syncWorkspace({ executionId: execution.execution_id, workspaceRef: workspace.workspace_ref, manifest: workspace.public_workspace_input.manifest });
@@ -435,7 +435,7 @@ export class Runtime {
   }
 
   #trackStartup(start: any) {
-    if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime is stopping');
+    if (this.stopping) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Runtime is stopping');
     const starting = start().finally(() => this.startupPromises.delete(starting));
     this.startupPromises.add(starting);
     return starting;
@@ -448,19 +448,19 @@ export class Runtime {
   async #bindAgentExecution(executionId: any, session: any = null, { workspaceRef, coreId = null }: any = {}) {
     this.logger?.append({ event: 'runtime.bind_execution', execution_id: executionId });
     if (!session || typeof session.stop !== 'function') {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Original Bot Session is required');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Original Bot Session is required');
     }
     const execution = this.#getExecution(executionId);
-    if (execution.state !== 'CREATED') throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, `Runtime can only bind CREATED executions, got ${execution.state}`);
-    if (this.activeProcesses.size >= this.maxWorkers) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
+    if (execution.state !== 'CREATED') throw new MurmError(ERROR_CODES.NOT_ALLOWED, `Runtime can only bind CREATED executions, got ${execution.state}`);
+    if (this.activeProcesses.size >= this.maxWorkers) throw new MurmError(ERROR_CODES.CONFLICT, 'Runtime capacity is exhausted');
     const selectedCoreId = this.#resolveCoreId(execution, coreId);
     this.#assertCoreAvailable(selectedCoreId, execution.execution_id);
     let workspace: any = null;
     let current = execution;
     const registeredBot = this.taskService.getBot(execution.owner_ref);
-    if (!registeredBot) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Execution startup requires a registered Bot');
+    if (!registeredBot) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Execution startup requires a registered Bot');
     if (this.botBindings.get(registeredBot.bot_id)?.session !== session || registeredBot.core_id !== selectedCoreId) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task take must bind its original Bot Session and Core');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task take must bind its original Bot Session and Core');
     }
     const boundSession = session;
     let preparationLeaseTimer: any = null;
@@ -472,7 +472,7 @@ export class Runtime {
       const reserved = this.#getExecution(executionId);
       if (this.stopping || owner?.state !== 'PREPARING' || owner.execution_id !== executionId ||
           reserved.state !== 'CREATED' || reserved.fencing_version !== execution.fencing_version) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot preparation no longer owns its reservation');
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot preparation no longer owns its reservation');
       }
       this.heartbeat(executionId);
     };
@@ -493,12 +493,12 @@ export class Runtime {
       if (bot) {
         const retained = this.botBindings.get(bot.bot_id);
         if (!retained || retained.session !== boundSession || bot.core_id !== selectedCoreId || bot.state !== 'PREPARING') {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task take must bind its original Bot Session and Core');
+          throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task take must bind its original Bot Session and Core');
         }
         clearTimeout(retained.selectionTimer);
         await this.#ensureSandbox(current, workspace);
         if (retained.closing || boundSession.closed || this.stopping || this.taskService.getBot(bot.bot_id)?.state !== 'PREPARING') {
-          throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during Task preparation');
+          throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during Task preparation');
         }
       }
       if (preparationLeaseError) throw preparationLeaseError;
@@ -516,11 +516,11 @@ export class Runtime {
         this.taskService.assertBotDeadline(bot.bot_id);
         await this.sandboxManager.grantBotProject({ executionId: current.execution_id });
         const latestBot = this.taskService.getBot(bot.bot_id);
-        if (latestBot.state !== 'ACTIVE' || this.botBindings.get(bot.bot_id)?.closing || boundSession.closed || this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project grant');
+        if (latestBot.state !== 'ACTIVE' || this.botBindings.get(bot.bot_id)?.closing || boundSession.closed || this.stopping) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot stopped during project grant');
         this.taskService.assertMissionResearchOpen(bot.mission_id);
         this.taskService.assertBotDeadline(bot.bot_id);
       }
-      if (this.stopping) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during startup');
+      if (this.stopping) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Runtime stopped during startup');
       this.#registerActiveProcess(current, workspace, boundSession, { coreId: selectedCoreId });
       return { execution: current, workspace, session: boundSession };
     } catch (error: any) {
@@ -538,7 +538,7 @@ export class Runtime {
    */
   async sweepExecutionTimeouts(at: any = new Date(this.clock()), { executionIds = null }: any = {}) {
     const atDate = at instanceof Date ? at : new Date(at);
-    if (Number.isNaN(atDate.getTime())) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'timeout sweep time must be a valid Date');
+    if (Number.isNaN(atDate.getTime())) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'timeout sweep time must be a valid Date');
     const executionFilter = executionIds === null ? null : new Set(executionIds);
     const events: any[] = [];
     for (const execution of this.taskService.listActiveExecutions()) {
@@ -561,7 +561,7 @@ export class Runtime {
   heartbeat(executionId: any, payload: any = {}) {
     this.logger?.append({ event: 'runtime.heartbeat', execution_id: executionId });
     const execution = this.#getExecution(executionId);
-    if (this.activeProcesses.get(executionId)?.closing) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Closing Execution cannot renew its lease');
+    if (this.activeProcesses.get(executionId)?.closing) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Closing Execution cannot renew its lease');
     const result = this.taskService.dispatch('heartbeat', payload, this.#executionEnvelope(execution, operationId('heartbeat')));
     const active = this.activeProcesses.get(executionId);
     if (active) {
@@ -575,7 +575,7 @@ export class Runtime {
     const bot = this.taskService.getBot(execution.owner_ref);
     if (!bot) return;
     if (bot.state !== 'CLOSED' && !this.botBindings.has(bot.bot_id)) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot has no in-process resource owner; isolation remains unconfirmed');
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot has no in-process resource owner; isolation remains unconfirmed');
     }
     const intent = this.taskService.requestBotStop(bot.bot_id, reason, { terminalState, leaseExpiredAt });
     if (!intent) return null;
@@ -641,7 +641,7 @@ export class Runtime {
     const bot = this.taskService.getBot(this.#getExecution(id).owner_ref);
     const retainedBot = bot ? this.botBindings.get(bot.bot_id) : null;
     if (bot && bot.state !== 'CLOSED' && !retainedBot) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot has no in-process resource owner; isolation remains unconfirmed');
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Persisted Bot has no in-process resource owner; isolation remains unconfirmed');
     }
     if (retainedBot) retainedBot.closing = true;
     if (active) {
@@ -651,7 +651,7 @@ export class Runtime {
     }
     if (retainedBot?.session && retainedBot.session !== active?.session) {
       await retainedBot.session.stop();
-      if (retainedBot.session.closed === false) throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot stop was not confirmed');
+      if (retainedBot.session.closed === false) throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot stop was not confirmed');
       this.identitySessions.delete(retainedBot.session);
     }
     await this.#stopSandbox(id);
@@ -661,13 +661,13 @@ export class Runtime {
   async #releaseExecutionResources(id: any): Promise<any> {
     const before = this.#getExecution(id);
     if (before.state === 'CLOSING' && !this.activeProcesses.has(id)) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
     }
     await this.#stopExecutionResources(id);
     await this.executionWorkspace?.reconcile(id, { closedConfirmed: true });
     if (this.#getExecution(id).state === 'CLOSING') {
       if (!this.activeProcesses.has(id)) {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
+        throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'closing Execution requires resource reconciliation before release');
       }
       // Finish may commit while a pre-existing release awaits the provider.
       // Recheck it after stopping, including a reusable Session.
@@ -769,7 +769,7 @@ export class Runtime {
 
   #getExecution(executionId: any) {
     const execution = this.taskService.getExecution(requireString(executionId, 'execution_id'));
-    if (!execution) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
+    if (!execution) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `unknown execution: ${executionId}`);
     return execution;
   }
 
@@ -795,9 +795,9 @@ export class Runtime {
 
   async #prepareWorkspace(execution: any, workspaceRef: any = null) {
     const task = this.taskService.getTask(execution.task_id);
-    if (!task) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, `Task is missing for execution: ${execution.execution_id}`);
+    if (!task) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, `Task is missing for execution: ${execution.execution_id}`);
     if (execution.workspace_ref) {
-      throw new SwarmEnvError(ERROR_CODES.FENCED, 'clean Execution preparation cannot replace an already recorded Workspace', {
+      throw new MurmError(ERROR_CODES.FENCED, 'clean Execution preparation cannot replace an already recorded Workspace', {
         execution_id: execution.execution_id,
         workspace_ref: execution.workspace_ref,
       });
@@ -818,16 +818,16 @@ export class Runtime {
     const registeredBot = this.taskService.getBot(execution.owner_ref);
     const publicWorkspaceId = this.missionWorkspaceId ?? task.workspace?.workspace_id;
     if (!registeredBot || !this.missionWorkspace || !publicWorkspaceId) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Registered Bot take requires the authoritative Mission Workspace');
+      throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Registered Bot take requires the authoritative Mission Workspace');
     }
     const publicSnapshot = await this.missionWorkspace.exportRevision({ workspaceId: publicWorkspaceId, revision: task.workspace?.revision ?? 'main' });
     if (publicSnapshot && (publicSnapshot.mission_id !== task.mission_id ||
         (task.workspace?.workspace_id && task.workspace.workspace_id !== publicSnapshot.workspace_id))) {
-      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Task Workspace inputs must belong to the Bot Mission');
+      throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Task Workspace inputs must belong to the Bot Mission');
     }
     if (publicSnapshot) {
       if (execution.input_material_refs.length && typeof this.contextService?.readTakeMaterialInputs !== 'function') {
-        throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Task input Materials require the authoritative Context Service');
+        throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Task input Materials require the authoritative Context Service');
       }
       publicSnapshot.material_inputs = this.contextService?.readTakeMaterialInputs?.({
         missionId: registeredBot.mission_id, materialIds: execution.input_material_refs,
@@ -867,7 +867,7 @@ export class Runtime {
         current = this.#getExecution(execution.execution_id);
       }
     }
-    throw new SwarmEnvError(ERROR_CODES.STALE_VERSION, 'could not persist Workspace reference after concurrent updates');
+    throw new MurmError(ERROR_CODES.STALE_VERSION, 'could not persist Workspace reference after concurrent updates');
   }
 
   // A Bot owns one Session; release confirms its stop before freeing capacity.
@@ -875,7 +875,7 @@ export class Runtime {
     if (!active?.session) return;
     await active.session.stop?.();
     if (active.session.closed === false) {
-      throw new SwarmEnvError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot process stop was not confirmed', { execution_id: executionId });
+      throw new MurmError(ERROR_CODES.SERVICE_UNAVAILABLE, 'Bot process stop was not confirmed', { execution_id: executionId });
     }
     if (active.session.boundExecutionId === executionId) active.session.boundExecutionId = null;
     if (active.session.identitySession === true) this.identitySessions.delete(active.session);
@@ -1046,7 +1046,7 @@ export class Runtime {
     if (requestedCoreId !== null && requestedCoreId !== undefined) {
       const selected = requireString(requestedCoreId, 'core_id');
       if (persisted !== null && persisted !== selected) {
-        throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Execution is bound to another Core', {
+        throw new MurmError(ERROR_CODES.CONFLICT, 'Execution is bound to another Core', {
           execution_id: execution.execution_id,
           expected_core_id: persisted,
           received_core_id: selected,
@@ -1073,10 +1073,10 @@ export class Runtime {
     if (coreId === null) return;
     const current = this.coreStates.get(coreId);
     if (current?.bot_id && this.taskService.getBot(current.bot_id)?.execution_id !== executionId) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns a Bot', { core_id: coreId, bot_id: current.bot_id });
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Core already owns a Bot', { core_id: coreId, bot_id: current.bot_id });
     }
     if (current && current.execution_id !== null && current.execution_id !== executionId) {
-      throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
+      throw new MurmError(ERROR_CODES.CONFLICT, 'Core already owns an active Execution', {
         core_id: coreId,
         execution_id: current.execution_id,
       });
@@ -1106,7 +1106,7 @@ export class Runtime {
    */
   setRunDeadline(runDeadlineAt: any) {
     if (runDeadlineAt !== null && runDeadlineAt !== undefined && !Number.isFinite(runDeadlineAt)) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'runDeadlineAt must be an epoch millisecond value');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'runDeadlineAt must be an epoch millisecond value');
     }
     this.runDeadlineAt = runDeadlineAt ?? null;
   }
@@ -1118,7 +1118,7 @@ export class Runtime {
     const untilRunDeadline = this.runDeadlineAt === null ? Number.POSITIVE_INFINITY : this.runDeadlineAt - at;
     const bot = execution?.owner_ref ? this.taskService.getBot(execution.owner_ref) : null;
     const untilBotDeadline = bot ? Date.parse(bot.hard_deadline) - at : Infinity;
-    if (untilBotDeadline <= 0 || untilRunDeadline <= 0) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Bot or Mission deadline elapsed before activation');
+    if (untilBotDeadline <= 0 || untilRunDeadline <= 0) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Bot or Mission deadline elapsed before activation');
     const timeoutMs = Math.max(1, Math.min(taskTimeout, this.executionTimeoutMs, untilRunDeadline, untilBotDeadline));
     const reminderMs = Math.max(0, Math.min(timeoutMs - 1, timeoutMs - leadMs));
     const startedAt = new Date(at).toISOString();

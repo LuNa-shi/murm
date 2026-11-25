@@ -3,7 +3,7 @@ import test from 'node:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { ERROR_CODES, MurmError } from '../src/errors.js';
 import { ServiceRegistry } from '../src/sdk/service-registry.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
@@ -117,7 +117,7 @@ test('service bundle rejects a help ref that is not a bundle resource', async ()
         help: { when: 'Read external docs.', ref: 'https://example.invalid/docs' },
       }],
     });
-    await assert.rejects(loadServiceBundle(dir, { rootDir: root }), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID);
+    await assert.rejects(loadServiceBundle(dir, { rootDir: root }), (error) => error instanceof MurmError && error.code === ERROR_CODES.SERVICE_MANIFEST_INVALID);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

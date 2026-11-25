@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { randomUUID } from 'node:crypto';
-import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { ERROR_CODES, MurmError } from '../errors.js';
 import { stableStringify } from '../protocol/envelope.js';
 import { validateFixtureManifest } from './fixture.js';
 import { checkerIdentity, normalizeCheckerResult, normalizePreflight } from './check-result.js';
@@ -301,11 +301,11 @@ export class LeanChecker {
 
   async check({ workspace_source, targetTask, workspace, fixtureManifest, assertCanStart = () => {}, startProcess = (launch: any) => { assertCanStart(); return launch(); } }: any) {
     validateFixtureManifest(fixtureManifest);
-    if (!workspace_source || typeof workspace_source.content !== 'string') throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content is required');
+    if (!workspace_source || typeof workspace_source.content !== 'string') throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content is required');
     const workspace_sourceHash = sha256(workspace_source.content);
-    if (workspace_source.content_hash && workspace_source.content_hash !== workspace_sourceHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content_hash does not match content');
+    if (workspace_source.content_hash && workspace_source.content_hash !== workspace_sourceHash) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'workspace_source content_hash does not match content');
     const inputSnapshotHash = workspace?.input_snapshot_hash ?? workspace?.manifest?.input_snapshot_hash;
-    if (!inputSnapshotHash) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace input_snapshot_hash is required');
+    if (!inputSnapshotHash) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace input_snapshot_hash is required');
     await mkdir(this.workRoot, { recursive: true });
     const directory = this.logger
       ? join(this.workRoot, `workspace_source-${workspace_sourceHash}-${randomUUID()}`)

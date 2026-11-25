@@ -5,7 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { ERROR_CODES, MurmError } from '../src/errors.js';
 import { JudgeService } from '../src/judge/judge-service.js';
 import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { agentCheckResult } from '../src/judge/check-result.js';
@@ -556,7 +556,7 @@ test('JudgeService stores CheckResult truth, keeps Task untouched, and deduplica
   assert.equal(judge.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get(), undefined);
   await assert.rejects(
     () => judge.checkWorkspaceSource({ ...input, workspace_source_id: 'material-2', workspace_source: workspace_source('changed', 'material-2') }, makeEnvelope({ operationId: 'judge-op-3', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 })),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.CONFLICT,
   );
   judge.close();
 });
@@ -621,11 +621,11 @@ test('Judge rejects results whose Task or Workspace binding has drifted', async 
   };
   await assert.rejects(
     () => judge.checkWorkspaceSource({ ...input, target_task: { ...targetTask, spec_version: 2 } }, makeEnvelope({ operationId: 'drifted-task', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 })),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   await assert.rejects(
     () => judge.checkWorkspaceSource({ ...input, workspace: { input_snapshot_hash: 'different-input' } }, makeEnvelope({ operationId: 'drifted-input', actorRef: 'judge:test', taskId: targetTask.task_id, executionId: 'execution-proof', specVersion: 1, stateVersion: 1 })),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   judge.close();
 });
@@ -645,11 +645,11 @@ test('Judge operation replay and mismatched fixture bindings are explicit', asyn
   assert.equal(first.verdict, 'FAIL');
   assert.throws(
     () => judge.dispatch('submit_check_result', { ...payload, workspace_source_id: 'material-2', workspace_source: workspace_source('changed', 'material-2') }, makeEnvelope({ operationId: 'submit-2', actorRef: 'judge:lean', taskId: 'task-proof', specVersion: 1 })),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.CONFLICT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.CONFLICT,
   );
   await assert.rejects(
     () => judge.checkWorkspaceSource({ ...payload, request_key: 'bad-binding', checker_version: 'different' }),
-    (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT,
+    (error) => error instanceof MurmError && error.code === ERROR_CODES.INVALID_CONTRACT,
   );
   judge.close();
 });

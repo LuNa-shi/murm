@@ -9,7 +9,7 @@ import { LeanChecker } from '../src/judge/lean-adapter.js';
 import { TaskService } from '../src/task/task-service.js';
 import { createServiceHost } from '../src/sdk/service-host.js';
 import { builtInServiceManifest, createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
-import { ERROR_CODES, SwarmEnvError } from '../src/errors.js';
+import { ERROR_CODES, MurmError } from '../src/errors.js';
 
 const SERVICE_IDS = new Set(['task', 'context', 'judge', 'catalog']);
 const serviceId = process.env.SWARMENV_SERVICE_ID ?? '';
@@ -92,19 +92,19 @@ function dispatch(capability: any, input: any, envelope: any, role: any = null) 
   }
   if (capability.operation === 'task_take' &&
       [input?.owner_ref, input?.ownerRef, input?.actor_ref].some((value: any) => value !== undefined && value !== envelope.actor_ref)) {
-    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot assign another Task owner');
+    throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot assign another Task owner');
   }
   if ((input?.actor_ref !== undefined && input.actor_ref !== envelope.actor_ref) ||
       (input?.actorRef !== undefined && input.actorRef !== envelope.actor_ref)) {
-    throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot delegate the authenticated actor');
+    throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service credentials cannot delegate the authenticated actor');
   }
   const service = serviceId === 'task' ? taskService : serviceId === 'context' ? contextService : judgeService;
   if (!service) throw new Error(`isolated ${serviceId} Service is not available in this process`);
   if (serviceId === 'context' && typeof contextService.taskService?.materialScope !== 'function') {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Context requires an authenticated Mission authority and lifecycle commit boundary');
+    throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Context requires an authenticated Mission authority and lifecycle commit boundary');
   }
   if (serviceId === 'judge' && !judgeService.taskService) {
-    throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Judge requires local Task lifecycle authority and a trusted Workspace source');
+    throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Judge requires local Task lifecycle authority and a trusted Workspace source');
   }
   if (serviceId === 'task') {
     const bot = taskService.getBot(envelope.actor_ref);
@@ -113,11 +113,11 @@ function dispatch(capability: any, input: any, envelope: any, role: any = null) 
       const taskId = input.task_id ?? input.taskId ?? envelope.task_id;
       if ((requestedMission !== undefined && requestedMission !== bot.mission_id) ||
           (taskId && taskService.getTask(taskId)?.mission_id !== bot.mission_id)) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Bot Mission');
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Bot Mission');
       }
       if (['task_list', 'task_status', 'mission_get'].includes(capability.operation)) input = { ...input, mission_id: bot.mission_id };
       if (envelope.execution_id && taskService.getExecution(envelope.execution_id)?.owner_ref !== bot.bot_id) {
-        throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Bot Execution');
+        throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Service request does not belong to the Bot Execution');
       }
     }
   }

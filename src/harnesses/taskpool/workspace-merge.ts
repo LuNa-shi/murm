@@ -1,4 +1,4 @@
-import { ERROR_CODES, SwarmEnvError } from '../../errors.js';
+import { ERROR_CODES, MurmError } from '../../errors.js';
 import { assertNewExecutionWork } from '../../task/execution-budget.js';
 import { publishWorkspace } from '../../runtime/workspace-publication.js';
 
@@ -8,7 +8,7 @@ export function createWorkspaceMergeService({ taskService, workspace, workspaceI
   if (checker && (typeof checker.check !== 'function' ||
       !['checker_ref', 'checker_version', 'environment_ref'].every((key: any) => typeof checker.identity?.[key] === 'string' && checker.identity[key]) ||
       !Number.isFinite(checker.timeoutMs) || checker.timeoutMs <= 0)) {
-    throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge checker requires fixed identity and a positive timeout');
+    throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge checker requires fixed identity and a positive timeout');
   }
   const adapter: any = checker ? { identity: Object.freeze(structuredClone(checker.identity)),
     timeoutMs: checker.timeoutMs, check: checker.check.bind(checker) } : null;
@@ -29,9 +29,9 @@ export function createWorkspaceMergeService({ taskService, workspace, workspaceI
   }
   async function merge(input: any, identity: any) {
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some((key: any) => key !== 'from') || !/^\d+\.\d+$/.test(input.from ?? '')) {
-      throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires --from a fixed public revision');
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires --from a fixed public revision');
     }
-    if (typeof identity.requestId !== 'string' || !identity.requestId) throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Merge requires a stable request ID');
+    if (typeof identity.requestId !== 'string' || !identity.requestId) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Merge requires a stable request ID');
     const initial = assertExecutionWorkspace(identity, { receiptOnly: true });
     const task = taskService.getTask(initial.task_id);
     const requiredCheck = taskService.getMission(task.mission_id).merge_required_check;
@@ -43,7 +43,7 @@ export function createWorkspaceMergeService({ taskService, workspace, workspaceI
     const checkPolicy: any = { policy_version: 'workspace-merge-v2', mission: requiredCheck ?? null,
       task: { spec_version: task.spec_version, delivery_check: deliveryCheck ?? null }, configured: requirements.length ? adapter?.identity ?? null : null };
     const guard = () => {
-      if (closing) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Workspace merge service is stopping');
+      if (closing) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace merge service is stopping');
       const execution = assertExecutionWorkspace(identity, { newWork: true });
       assertNewExecutionWork(execution);
       return execution;
@@ -52,11 +52,11 @@ export function createWorkspaceMergeService({ taskService, workspace, workspaceI
       requestId: `execution:${identity.executionId}:merge:${identity.requestId}`,
       source: { operation: 'merge', mission_id: task.mission_id, task_id: task.task_id, execution_id: initial.execution_id, bot_id: initial.owner_ref, fencing_version: identity.fencingVersion },
       checkPolicy, guard,
-      checker: unavailableCheck ? async () => { throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission or Task requires an unavailable trusted final-tree checker', { policy: checkPolicy }); } : requirements.length ? async (plan: any) => {
+      checker: unavailableCheck ? async () => { throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Mission or Task requires an unavailable trusted final-tree checker', { policy: checkPolicy }); } : requirements.length ? async (plan: any) => {
         const execution = guard();
-        if (activeCheck) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Previous final-tree checker has not confirmed completion; use a new attempt after it settles');
+        if (activeCheck) throw new MurmError(ERROR_CODES.WORKSPACE_BUSY, 'Previous final-tree checker has not confirmed completion; use a new attempt after it settles');
         const remaining = Math.min(adapter.timeoutMs, Date.parse(execution.handoff_deadline ?? execution.execution_deadline) - Date.now());
-        if (!Number.isFinite(remaining) || remaining <= 0) throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'No final-tree check budget remains');
+        if (!Number.isFinite(remaining) || remaining <= 0) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'No final-tree check budget remains');
         const controller: any = new AbortController();
         const aborted = () => controller.abort();
         identity.signal?.addEventListener('abort', aborted, { once: true });
@@ -80,10 +80,10 @@ export function createWorkspaceMergeService({ taskService, workspace, workspaceI
         let timer: any;
         try {
           const result = await Promise.race([active.promise,
-            new Promise<any>((_: any, reject: any) => { timer = setTimeout(() => { reject(new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline')); controller.abort(); }, remaining); })]);
-          if (Date.now() >= deadline) throw new SwarmEnvError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline');
+            new Promise<any>((_: any, reject: any) => { timer = setTimeout(() => { reject(new MurmError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline')); controller.abort(); }, remaining); })]);
+          if (Date.now() >= deadline) throw new MurmError('SERVICE_TIMEOUT', 'Final-tree check exceeded its deadline');
           if (result?.check_mode === 'lean-module' || result?.scope === 'module') {
-            throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires a complete check; module-scoped evidence is insufficient');
+            throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace merge requires a complete check; module-scoped evidence is insufficient');
           }
           const checkedPaths = Array.isArray(result?.checked_paths) ? result.checked_paths : [];
           return { verdict: result?.verdict, check_result_id: typeof result?.check_result_id === 'string' ? result.check_result_id.slice(0, 256) : null,

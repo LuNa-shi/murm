@@ -1,11 +1,11 @@
-import { SwarmEnvError } from '../../errors.js';
+import { MurmError } from '../../errors.js';
 import { listTools } from '../../sdk/service-catalog.js';
 import { makeEnvelope } from '../../protocol/envelope.js';
 import { executionEnvelope, inputFingerprint } from './prepare-inputs.js';
 import { taskPoolCoordinationPermissions } from './coordination-permissions.js';
 
 const operations=['mission_get','mission_submit','mission_submission_get'];
-const deny=(message: any)=>{throw new SwarmEnvError('NOT_ALLOWED',message);};
+const deny=(message: any)=>{throw new MurmError('NOT_ALLOWED',message);};
 
 /** A caller-owned Mission store/checker exposed through the ordinary Core Bridge. */
 export function createTaskPoolMissionService({runtime,taskService,missionWorkspace,missionId,workspaceId,
@@ -14,7 +14,7 @@ export function createTaskPoolMissionService({runtime,taskService,missionWorkspa
     typeof workspaceId!=='string' || !workspaceId || typeof deadline!=='function' ||
     missionCoordination?.db!==taskService.db || missionCoordination?.workspace!==missionWorkspace ||
     typeof missionCoordination?.submit!=='function' || typeof missionCoordination?.describe!=='function') {
-    throw new SwarmEnvError('INVALID_CONTRACT','Flat Mission Service requires the caller-owned local Mission coordination store');
+    throw new MurmError('INVALID_CONTRACT','Flat Mission Service requires the caller-owned local Mission coordination store');
   }
   const permissions=taskPoolCoordinationPermissions(coordinationPermissions);
   const getRuntime=()=>typeof runtime==='function'?runtime():runtime;
@@ -43,16 +43,16 @@ export function createTaskPoolMissionService({runtime,taskService,missionWorkspa
     }))};
   return {manifest,adapter:{async invoke({capability,input,caller,envelope,signal,assertAuthorized}: any) {
     const operation=capability.operation,submit=operation==='mission_submit';
-    if(!operations.includes(operation) || !input || typeof input!=='object' || Array.isArray(input)) throw new SwarmEnvError('INVALID_CONTRACT','Unsupported Mission request');
+    if(!operations.includes(operation) || !input || typeof input!=='object' || Array.isArray(input)) throw new MurmError('INVALID_CONTRACT','Unsupported Mission request');
     const allowed=submit?['material_ids']:operation==='mission_get'?['mission_id']:['mission_id','submission_id'];
-    if(Object.keys(input).some((key: any)=>!allowed.includes(key))) throw new SwarmEnvError('INVALID_CONTRACT','Mission request cannot select caller or checker authority');
+    if(Object.keys(input).some((key: any)=>!allowed.includes(key))) throw new MurmError('INVALID_CONTRACT','Mission request cannot select caller or checker authority');
     if(input.mission_id!==undefined && input.mission_id!==missionId) deny('Mission read belongs to another Mission');
-    if(typeof envelope?.operation_id!=='string' || !envelope.operation_id) throw new SwarmEnvError('INVALID_CONTRACT','Mission request needs stable identity');
+    if(typeof envelope?.operation_id!=='string' || !envelope.operation_id) throw new MurmError('INVALID_CONTRACT','Mission request needs stable identity');
     const original=binding(caller,submit);
     function guard(write: any=submit) {
       assertAuthorized?.();signal?.throwIfAborted();
       const current=binding(caller,write);
-      if(current.execution?.execution_id!==original.execution?.execution_id || current.execution?.fencing_version!==original.execution?.fencing_version) throw new SwarmEnvError('FENCED','Mission caller binding changed');
+      if(current.execution?.execution_id!==original.execution?.execution_id || current.execution?.fencing_version!==original.execution?.fencing_version) throw new MurmError('FENCED','Mission caller binding changed');
       return current;
     }
     const live=await original.core.get(original.bot.bot_id);

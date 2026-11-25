@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import { SwarmEnvError } from '../../errors.js';
+import { MurmError } from '../../errors.js';
 import { executionEnvelope, prepareTaskPoolInputs } from './prepare-inputs.js';
 
-const failure = (message: any) => new SwarmEnvError('NOT_ALLOWED', message);
+const failure = (message: any) => new MurmError('NOT_ALLOWED', message);
 const errorInfo = (error: any) => ({ code: error?.code ?? 'SERVICE_UNAVAILABLE', message: error?.message ?? 'Flat handoff failed' });
 
 export function startPreparationHeartbeat({ taskService, missionId, botId, executionId, expectedFence, intervalMs, isClosing, checkSignal }: any) {

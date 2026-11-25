@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
 import { makeEnvelope } from '../src/protocol/envelope.js';
-import { SwarmEnvError, ERROR_CODES } from '../src/errors.js';
+import { MurmError, ERROR_CODES } from '../src/errors.js';
 import { TaskService } from '../src/task/task-service.js';
 
 function env() {
@@ -204,7 +204,7 @@ test('only depends_on gates the flat eligible view and cycles are rejected', () 
     task_id: 'task:cycle',
     summary: 'cycle', goal: 'cycle', expected_output: 'cycle', acceptance_conditions: [],
     depends_on: ['task:cycle'],
-  }, op('task:cycle', 'agent:test')), (error) => error instanceof SwarmEnvError && error.code === ERROR_CODES.INVALID_CONTRACT);
+  }, op('task:cycle', 'agent:test')), (error) => error instanceof MurmError && error.code === ERROR_CODES.INVALID_CONTRACT);
   service.close();
 });
 

@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MissionWorkspace } from '../src/runtime/mission-workspace.js';
-import { SwarmEnvError } from '../src/errors.js';
+import { MurmError } from '../src/errors.js';
 const run = promisify(execFile);
 
 async function fixture(t, options = {}) {
@@ -211,7 +211,7 @@ test('a lost checker attempt cannot select a newer main or charge its original r
 test('checker infrastructure failure has the same canonical outcome on initial response and replay', async t => {
   const { store, workspaceId } = await fixture(t);
   const source = await store.save({ workspaceId, files: { 'initial.txt': 'uncertain check\n' } });
-  const request = { workspaceId, fromRevision: source.revision, requestId: 'merge:checker-unavailable', checker: async () => { throw new SwarmEnvError('SERVICE_UNAVAILABLE', 'checker unavailable', undefined, { retryable: true }); } };
+  const request = { workspaceId, fromRevision: source.revision, requestId: 'merge:checker-unavailable', checker: async () => { throw new MurmError('SERVICE_UNAVAILABLE', 'checker unavailable', undefined, { retryable: true }); } };
   const errors = [];
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try { await store.merge(request); assert.fail('request must fail'); }
