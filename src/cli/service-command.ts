@@ -24,6 +24,10 @@ export function operationForCommand(service: string, command: string): string | 
 export function serviceCommand(service: string, operation: string): string {
   const group = service === 'context' ? 'material' : service === 'task' && operation === 'bot_exit' ? 'bot' : service;
   const aliases = serviceAliases(group);
-  const command = Object.keys(aliases).find(alias => aliases[alias] === operation) ?? operation;
+  const alias = Object.keys(aliases).find(command => aliases[command] === operation);
+  if (service === 'material' || service === 'service' || (!alias && operationForCommand(group, operation))) {
+    return `swarm service invoke ${service} ${operation}`;
+  }
+  const command = alias ?? operation;
   return `swarm ${group} ${command}`;
 }

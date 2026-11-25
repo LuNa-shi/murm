@@ -458,7 +458,7 @@ The host may register `createFlatMissionService` as Service `mission`, using the
 
 ### Flat CLI operation guidance
 
-The Bash CLI and Core's system prompt share their mapping between Service operations and command aliases. On the v2 Bridge, a registered operation with no static alias can be invoked by its manifest operation name. The CLI checks unaliased commands against authorized metadata. Known group-level help is offline. Help for an operation without local instructions is read through the Bridge.
+The Bash CLI and Core's system prompt share their mapping between Service operations and command aliases. On the v2 Bridge, a registered operation with no static alias can be invoked by its manifest operation name. The CLI checks unaliased commands against authorized metadata. If a Service ID or operation name collides with a CLI command, the startup directory uses `swarm service invoke SERVICE_ID OPERATION`. This form calls the exact registry ID and operation through the same v2 authorization and input validation. Known group-level help is offline. Help for an operation without local instructions is read through the Bridge.
 
 `swarm task view` accepts a nonnegative `--contract-history-after-version` and `--contract-history-limit` from 1 through 100. Flat checks Mission scope and takes a public Workspace preview, then forwards the pagination fields to the domain reader. Follow the returned `contract_history_page.next_after_version` until complete.
 

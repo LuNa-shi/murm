@@ -87,7 +87,7 @@ Use a stable --request-id. After a lost response, use swarm judge result --reque
 });
 
 function usage(scope: any = 'top', commandName: any = null) {
-  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  bot spawn|get|send|stop     Core direct-child control when granted\n  task ${TASK_COMMANDS}\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|public-diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
+  if (scope === 'top') return `Usage: swarm <service> <command> [options]\n\nServices:\n  service list|view <id>     Discover configured service manifests\n  service invoke <id> <op>  Call a registered operation by its exact ID\n  bot spawn|get|send|stop     Core direct-child control when granted\n  task ${TASK_COMMANDS}\n  material list|view|search|publish|consume|dispute|supersede|unsupersede\n  workspace view|history|status|diff|public-diff|files|read|search|save|apply|merge\n  mission view|submit|submission view\n  judge check|result\n  <configured service> <manifest operation>\n\nOptions:\n  --json                     Pretty-print a JSON result\n  --input <file>             Read JSON input from a file\n  --stdin                    Read JSON input from stdin\n  --request-id <id>          Stable identity for a write; reuse after an unknown response\n  --help                     Show this help\n\nBots use their protected Bridge binding; caller flags cannot authorize another identity.\nOperator service endpoints use SWARMENV_<SERVICE>_SERVICE_URL,\nSWARMENV_SERVICE_ENDPOINTS, and optional service tokens. Requests are non-interactive JSON.`;
   if (scope === 'service') return 'Usage: swarm service list|view <service-id> [--json]\n\nLists configured service manifests or shows one manifest through the Bot Bridge. No network is required for --help.';
   if (commandName && (COMMAND_HELP as Record<string, any>)[scope]?.[commandName]) return `Usage: swarm ${scope} ${commandName} [options]\n\n${(COMMAND_HELP as Record<string, any>)[scope][commandName]}\n\nCommon options:\n  --input <file>             Read a JSON request body\n  --stdin                    Read a JSON request body from stdin\n  --json                     Pretty-print the JSON result\n  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response\n  --timeout-ms <milliseconds>Bound the HTTP request (default ${operationTimeoutMs((COMMAND_OPERATIONS as Record<string, any>)[scope]?.[commandName] ?? commandName)})\n  --help                     Show this command help`;
   const commands = scope === 'task' ? `\n\nCommands: ${TASK_COMMANDS}. See swarm service view task --json for the operations enabled by the host.` : '';
@@ -334,7 +334,10 @@ async function invoke(service: any, commandName: any, options: any, args: any = 
       const metadata = await manifest(service);
       const capability = metadata.capabilities?.find((item: { operation: string; name: string; timeout_ms?: number }) =>
         item.operation === operation || (!alias && item.name === operation));
-      if (!capability && !alias) throw new Error(`service ${service} does not advertise capability ${operation}`);
+      if (!capability && !alias) {
+        if (knownGroup) throw new Error(`unknown ${service} command: ${commandName}`);
+        throw new Error(`service ${service} does not advertise capability ${operation}`);
+      }
       return bridgeCall(capability?.operation ?? operation, input, options, transportService(service), capability?.timeout_ms);
     }
     // Legacy Bridges retain their operation-only request and one delivery.
@@ -351,8 +354,33 @@ async function invoke(service: any, commandName: any, options: any, args: any = 
   });
 }
 
+function writeManifestHelp(stdout: any, command: string, provider: any, capabilities: any[]) {
+  stdout.write(`Usage: ${command} [--input <json-file> | --stdin] [--request-id <id>]\n${provider.purpose}\n`);
+  stdout.write('Use an actual input schema property name as a flag, replacing underscores with hyphens. Use a JSON object with --input or --stdin for structured input.\n');
+  for (const capability of capabilities) stdout.write(`${capability.operation}: ${capability.description}\n${capability.help.when}\nside_effect=${capability.side_effect}; idempotent=${capability.idempotent}\nInput schema: ${JSON.stringify(capability.input_schema)}\nOutput schema: ${JSON.stringify(capability.output_schema)}\nErrors: ${JSON.stringify(capability.errors)}\n`);
+  return 0;
+}
+
+async function invokeRegisteredService(args: string[], options: any, stdout: any) {
+  const [service, operation] = args;
+  if (args.length !== 2 || !service || !operation) {
+    if (options.help) { stdout.write('Usage: swarm service invoke <service-id> <operation> [--input <json-file> | --stdin]\n'); return 0; }
+    throw new Error('service invoke requires one registered service ID and one operation');
+  }
+  if (!process.env.SWARMENV_BRIDGE_URL || process.env.SWARMENV_BRIDGE_CONTRACT_VERSION !== '2') {
+    throw new Error('service invoke requires a Core v2 Bridge');
+  }
+  const provider = await bridgeCall('get_service_metadata', { service });
+  const capability = provider.capabilities?.find((item: any) => item.operation === operation);
+  if (!capability) throw new Error(`service ${service} does not advertise capability ${operation}`);
+  if (options.help) return writeManifestHelp(stdout, `swarm service invoke ${service} ${operation}`, provider, [capability]);
+  const input = commandInput('', '', options, [], { ...(await inputFrom(options)), ...flagInput(options) });
+  return writeResult(await bridgeCall(operation, input, options, service, capability.timeout_ms), options, stdout);
+}
+
 export async function runSwarmCli(argv: any = process.argv.slice(2), { stdout = process.stdout }: any = {}) {
   const { positionals, options } = parseArgs(argv);
+  if (positionals[0] === 'service' && positionals[1] === 'invoke') return invokeRegisteredService(positionals.slice(2), options, stdout);
   if (positionals[0] === 'context') throw new Error('unknown command group: context');
   const [helpService, helpCommand] = positionals;
   const localHelp: Readonly<Record<string, Readonly<Record<string, string>>>> = COMMAND_HELP;
@@ -367,10 +395,7 @@ export async function runSwarmCli(argv: any = process.argv.slice(2), { stdout = 
     const operation = operationForCommand(helpService, helpCommand) ?? helpCommand;
     const capabilities = operation ? provider.capabilities.filter((item: any) => item.operation === operation || item.name === operation) : provider.capabilities;
     if (!capabilities.length) throw new Error('Service does not advertise this operation');
-    stdout.write(`Usage: swarm ${helpService} ${helpCommand ?? '<operation>'} [--input <json-file> | --stdin] [--request-id <id>]\n${provider.purpose}\n`);
-    stdout.write('Use an actual input schema property name as a flag, replacing underscores with hyphens. Use a JSON object with --input or --stdin for structured input.\n');
-    for (const capability of capabilities) stdout.write(`${capability.operation}: ${capability.description}\n${capability.help.when}\nside_effect=${capability.side_effect}; idempotent=${capability.idempotent}\nInput schema: ${JSON.stringify(capability.input_schema)}\nOutput schema: ${JSON.stringify(capability.output_schema)}\nErrors: ${JSON.stringify(capability.errors)}\n`);
-    return 0;
+    return writeManifestHelp(stdout, `swarm ${helpService} ${helpCommand ?? '<operation>'}`, provider, capabilities);
   }
   if (options.help) {
     if (positionals[0] === 'mission' && positionals[1] === 'submission') {

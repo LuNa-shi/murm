@@ -51,3 +51,20 @@ test('registered operations in a known command group can run exactly as advertis
   const { stdout } = await execute(process.execPath, ['dist/scripts/swarm.js', 'task', '--help'], { env: offline, timeout: 1000 });
   assert.match(stdout, /Usage: swarm task/);
 });
+
+for (const id of ['service', 'material']) {
+  test(`startup command can address a registered Service named ${id} without CLI aliasing`, async t => {
+    const manifest = notesManifest(id);
+    const { bridge, credentials, bot } = await setup(t, { invoke({ input }) {
+      return { key: input.key, text: 'fixed', author: 'bot-one' };
+    } }, { manifest });
+    bot.services = { [id]: ['get'] };
+    const system = renderStartupPrompt(bridge.visibleServices(bot.services));
+    const advertised = system.match(/`swarm (service invoke [^`]+)`/)?.[1].split(' ');
+    assert.deepEqual(advertised, ['service', 'invoke', id, 'get']);
+    const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
+    const cli = (...args) => execute(process.execPath, ['dist/scripts/swarm.js', ...args], { env, timeout: 5000 });
+    assert.match((await cli(...advertised, '--help')).stdout, /Input schema/);
+    assert.deepEqual(JSON.parse((await cli(...advertised, '--key', 'one')).stdout), { key: 'one', text: 'fixed', author: 'bot-one' });
+  });
+}

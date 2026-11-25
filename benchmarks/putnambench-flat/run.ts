@@ -92,6 +92,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
     deadline, isStopping: () => Boolean(window?.signal.aborted || signal.aborted), maxFinalChecks: null,
   });
   try {
+    const originalSource = new TextDecoder('utf-8', { fatal: true }).decode(problem.source);
     taskService.setCheckResultReader((id: string) => judgeService.getCheckResult(id));
     taskService.createMission({
       mission_id: missionId, goal,
@@ -117,7 +118,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
         selectionMs, hardBudgetMs: durationMs + setupAllowanceMs, stallMs: durationMs,
         continuationLimit: Number.MAX_SAFE_INTEGER, discoveryLimit: Number.MAX_SAFE_INTEGER, heartbeatMs: 1000,
         materialNotificationMode: 'steer',
-        discoveryContext: putnamDiscoveryContext(problem.problem_file, problem.source), discoveryWorkflow: collaboration,
+        discoveryContext: putnamDiscoveryContext(problem.problem_file, originalSource), discoveryWorkflow: collaboration,
         beforeInitialDispatch({ signal }: { signal: AbortSignal }) {
           signal.throwIfAborted();
           if (startedAt) return;

@@ -15,11 +15,11 @@
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "46c393fafbda6a47dc5a1061ec2eb2c8cf1be1307693531400bd07df2d647dcf"
+      "sha256": "dbcfb6cc8347b1865354c28be73c5b8d257af5dcf7bed380f05b00583a0397a2"
     },
     {
       "path": "src/cli/service-command.ts",
-      "sha256": "b448f575774ce844d71bdf915ea70aebd6f8cd931f538291e5db8a4627da77da"
+      "sha256": "56b198574806f5362c99b67e79087334a18d3c8554b9984788de9b5d02fabb61"
     },
     {
       "path": "src/core/index.ts",
@@ -63,7 +63,7 @@
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "5a6340b00b3c636177df34eb899d3c6619693015451d3b1b2ae7ee43b2439cbd"
+      "sha256": "3baec34a32f06e2c816150e1262d7a1e61869a7456dd4963975fc75c6f81c769"
     },
     {
       "path": "examples/subagents-environment/main.ts",

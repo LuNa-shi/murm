@@ -260,10 +260,12 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         assert.deepEqual(Buffer.from(exported.files['lemma.bin']), Buffer.from(a.binary, 'hex'));
         assert.equal(Buffer.from(exported.files['consumer.txt']).toString(), 'CONSUMER_PROGRESS\nADOPTED_LEMMA\n');
         assert.equal(exported.manifest['lemma.bin'].content_hash, sha256(Buffer.from(a.binary, 'hex')));
-        const use = exported.source.material_uses[0];
+        const integratedSource = (await workspace.listRevisions({ workspaceId: initial.workspace_id }))
+          .find(row => row.revision === integrated.revision)?.source;
+        const use = integratedSource.material_uses[0];
         assert.equal(use.material_id, a.material);
         assert.equal(use.content_hash, context.getMaterial(a.material).content_hash);
-        assert.equal(exported.source.execution_id, b.execution);
+        assert.equal(integratedSource.execution_id, b.execution);
         for (const role of roles.slice(0, capacity)) await evidenceFor(role);
         assert.equal(tasks.listTasks({ missionId, availableOnly: false }).length, capacity + 3);
         evidence.session = before; evidence.hash = exported.manifest['lemma.bin'].content_hash;
@@ -290,7 +292,9 @@ async function checkNativeAdoption(t, materialNotificationMode) {
       },
     });
     assert.equal(failure, undefined, failure);
-    assert.ok(arrivals >= roles.length * 2 + 4 && arrivals <= 20);
+    assert.equal(report.businessFailure?.code, 'FLAT_BUSINESS_FAILED', report.businessFailure?.message);
+    assert.ok(evidence.replacement, 'Drive must complete the entire route and cleanly replace B');
+    assert.ok(arrivals >= roles.length * 2 + 4 && arrivals <= 20, `Unexpected provider request count: ${arrivals}`);
     assert.equal(starts, roles.length); assert.equal(notificationInputs, 1);
     for (const role of roles) {
       const expected = Object.entries(evidence[role].services).flatMap(([service, operations]) =>
