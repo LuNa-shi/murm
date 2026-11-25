@@ -1,6 +1,6 @@
 # ProgramBench Pastel validation across three MAS
 
-Status **REGISTERED**. The owner approved three parallel 30-minute runs with three Bot slots per run in [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209).
+Status **SETTLED · acceptance unmet**. The owner approved three parallel 30-minute runs with three Bot slots per run in [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209).
 
 | Run | Environment | Cooperation channel |
 |---|---|---|
@@ -25,7 +25,6 @@ Status **REGISTERED**. The owner approved three parallel 30-minute runs with thr
 
 The per-environment prompts, profiles and Service contracts are fixed by the tested runtime commit and the recorded runner fingerprints. The operator starts all three environments from one launch. Each run keeps its own setup duration and active window.
 
-
 The host runner SHA-256 values were recorded at registration.
 
 | Runner | SHA-256 |
@@ -42,12 +41,32 @@ The host runner SHA-256 values were recorded at registration.
 
 ## Results
 
-Pending execution.
+All three environments reached their 1,800-second deadline and recorded live, metered `kimi_proxy/k3` use. No run froze a candidate. The official evaluator therefore had no submission to build or score.
+
+| Run | Setup | Active window, UTC on 2026-11-25 | Bot identities ready / metered | K3 requests forwarded / metered / usage unknown | Candidate and score |
+|---|---:|---|---:|---:|---|
+| `EXP-20261125-01` | 4.295 s | 02:38:09.921 to 03:08:09.921 | 3 / 3 | 89 / 87 / 2 | No archive or score |
+| `EXP-20261125-02` | 8.424 s | 02:38:14.155 to 03:08:14.155 | 34 / 34 | 404 / 371 / 33 | No archive or score |
+| `EXP-20261125-03` | 71.400 s | 02:39:17.364 to 03:09:17.364 | 3 / 2 | 50 / 50 / 0 | No archive or score |
+
+Flat used three concurrent Bot slots and recycled them after failed work. The ready and metered columns count distinct Bot identities over the window. Known input/output token totals were 2,490,676 / 133,143 for Subagents, 2,687,935 / 133,757 for Flat, and 1,278,529 / 91,971 for Agensh. The closeout ledger had zero pending model attempts for every run.
+
+| Environment | Verified handoff and last observed milestone | Runtime and cleanup |
+|---|---|---|
+| Subagents | Two children started and received instructions. One child produced completed results at 82.1 s and 549.5 s. The parent admitted both result deliveries. The second child had no completed turn by the deadline. The parent made no candidate publication. | `637917be-74f2-47b3-8d0c-1e1d3cfd5881` closed. Cleanup complete. |
+| Flat | 31 successful Task takes and 31 Executions ended as `domain-deadline`. Each had a 60-second limit. The Bridge recorded 46 `task_list` invalid responses. No Material was published. Parser and formatter were OPEN after cleanup. Integration remained BLOCKED. | `cb3b649f-2630-4e42-9ae8-fcb145024bc4` closed. Cleanup complete. |
+| Agensh | Peer A completed at 592.7 s, wrote a Board fact and opened PR 2. The host merged its pinned head `a6868397c1ee07c296cb3b0e23519430d89ba776` into `c4f24617129c6eea1d9e28c95cf28121da38682c`. Peer B had metered work and no completed turn by the deadline. Peer C was ready but received no integration input. | `b1c27b51-c659-4baa-a4e9-b6e29fc78c2a` recorded pending Core cleanup with `ARTIFACT_EXPORT_FAILED` for peer C. Gitea and Board cleanup completed. |
+
+The separate operator cleanup confirmed the remaining Agensh sandbox belonged to this Runtime, deleted it through OpenSandbox and confirmed a subsequent provider lookup returned 404. A final Docker query found zero containers owned by any of the three Runtime IDs. The original Agensh Core cleanup and export receipt remains pending.
 
 ## Analysis
 
-Pending execution.
+Subagents verified delivery from a completed child to the parent. Agensh verified an authored PR and the host merge of its fixed head. The records do not establish cross-Bot adoption into a timed candidate. The Agensh driver waits for both contributor turns and merges before sending integration work to peer C. With only one contributor completed, the integrator had no model activity. These are observations of the frozen drivers and one run per environment.
+
+Flat completed discovery, take and workspace handoff for already registered work. The host created the two producer Tasks and their dependent integration Task before the window. The Flat Bot manifest has no `task_create` grant, so discovery assumes the host supplies the initial Task graph. The observed path stalled after take. The runner used the Flat Service default of 60 seconds, and every started Execution ended through that deadline without publication. Independently, when an active Execution appeared on a list page, the Task Service returned a SQLite row with a null prototype. The authenticated Bridge rejected that nested value as invalid JSON. [Flat list repair and regression](https://github.com/LuNa-shi/SwarmEnv/pull/210)
+
+A separate scripted Responses run used the list repair and configured a 90-second Task limit. The formatter took 62.83 seconds to finish, and the integrator froze a candidate at 69.24 seconds with two source adoptions and complete cleanup. This verifies the fixed-Task path under a longer limit with a controlled workload. How K3 behaves under the changed limit remains open.
 
 ## Next steps
 
-Execute the registered matrix and record per-run artifact, collaboration, usage, evaluator and cleanup receipts.
+The original three records are complete. Issue #209 tracks the draft list repair. A hosted Flat rerun requires a new approved registration. Bot-proposed Task creation would require its own reviewed scope and authorization model.
