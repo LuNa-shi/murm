@@ -1,6 +1,6 @@
 # EXP-20261125-09 · Flat PutnamBench 2025 B1
 
-Status · REGISTERED
+Status · STOPPED AFTER CONFIRMED MATERIAL ROUTING GUIDANCE DEFECT
 
 Repeat of [EXP-20261125-08](EXP-20261125-08-flat-putnambench-b1.md) under the owner's authorization to rerun with independent review and stop at confirmed deviations. Medium effort kept all four initial selection streams reasoning through both the five-minute and ten-minute selection windows without producing a proposal. This diagnostic sends low effort upstream during authorized selection and lets proof work retain Pi's effort. The ten-minute selection allowance, one-hour research window, exact B1 and empty Task pool stay fixed. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
@@ -44,3 +44,25 @@ node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_
 Watch the fixed first four Bot identities from TaskService and reconcile actual accepted proposals, exclusive take and active Execution receipts with private Service traces. Record elapsed time to first proposal, take, save and subsequent collaboration, including the state at the original 300-second boundary where applicable. If all four first selection deadlines pass without an accepted proposal or take anywhere, stop the runner with SIGTERM and inspect the exact point where the workflow stopped. Repeated provider rejection of the new setting, confirmed leakage into work or closeout, repeated valid Service errors and confirmed Worker, checker or cleanup defects also trigger an early stop. Isolated rejected guesses and expected exclusive-claim races do not establish a system defect when another Bot progresses.
 
 If the selection transition works, continue observing save, public publication, a second Bot's actual apply, main integration and independent original-theorem acceptance until a confirmed defect or the bounded window closes.
+
+## Results
+
+Three independent prelaunch reviews checked the fixed implementation, controls, registration and Worker image. Research opened at `09:36:48.985 UTC` and ran for 1,147.345 seconds before the verified launcher received SIGTERM. Flat recorded `host-stop` and closed model admission and all resources. Peak concurrency was four. Five Bots closed, including one initial Bot whose selection lease expired and whose slot was reclaimed before another Bot took work. Cleanup reported complete, with no tracked checker or merge pending and no owned Worker containers remaining.
+
+The first proposal was accepted after 18.695 seconds and the first Execution activated after 25.154 seconds. Three initial Bots and the replacement collectively created and claimed four Tasks. One Bot claimed a Task proposed by another. An exclusive take race produced one expected `CONFLICT`. Four Executions overlapped. All five participating Bots obtained the original Workspace source. There were 67 successful Mathlib searches.
+
+The real gateway sent `medium → low` on all 21 admitted selection requests and `medium → medium` on all 40 admitted work requests. Of 61 actual requests, 56 completed and five had unknown outcomes after interruptions. The completed ledger counted 1,480,004 input and 133,184 output tokens. Unknown requests have no metered usage in the local ledger.
+
+An active Bot published one immutable text Material at `09:54:02.167 UTC`. It made five unsuccessful link calls, including two `input` links aimed at peer Tasks and three `response` calls with its own Task ID. The third `response` call omitted `receiving_task_id`. The durable link and notification were never created. The operator stopped once the reported inputs confirmed that the available command guidance was steering the active Bot through the wrong recipient binding.
+
+The Workspace still contained only the seed revision `0.1` and tree `15cdae59fe9ba1dada06eb14959403ab364ac8bd`. The run recorded no saves, apply operations, ordinary checks, merges, or Mission submissions. The post-stop verifier reported `ERROR` for the same fixed tree under operator cancellation. There is no original-theorem acceptance or cross-Bot proof adoption for this run.
+
+## Analysis
+
+The selection intervention let four genuine hosted Bots form and claim work in this observation. The same provider still held one initial Bot in selection through its deadline. The gateway evidence confirms the effort setting remained scoped to selection.
+
+`swarm task link --help` gave a self-link example, told the Bot to fill `task_id` with its current Task, and did not give a working example for directing a response. For a `response` link the service requires `task_id` to be the receiving Task. The current authenticated Execution already identifies the producer. A separately provided `receiving_task_id` must equal `task_id`. The recorded requests exercised the expected authorization and contract rejections.
+
+## Next steps
+
+Give the producing Bot an executable receiver-first response example and verify that it creates exactly one notification for the other active Execution. Independently review the fixed run inputs before restarting with the same provider, selection behavior, four slots, fixture and one-hour allowance.
