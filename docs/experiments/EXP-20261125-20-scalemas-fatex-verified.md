@@ -1,6 +1,6 @@
 # EXP-20261125-20 — ScaleMAS FATE-X with verified completion
 
-Status **REGISTERED** under [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202). Comparison run [EXP-20261125-19](EXP-20261125-19-scalemas-fatex-31.md) used the same original problem and four GPT-6.1 Sol peers. All four ended on rejected proofs after 1m23.436s. The owner retained the 30-minute limit and requested an explicit initial instruction to work until the proof passes.
+Status **SETTLED · 30m · 0 PROOFS PASSED · VERIFIED REUSE IN A PROOF DRAFT** under [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7167462274). Comparison run [EXP-20261125-19](EXP-20261125-19-scalemas-fatex-31.md) used the same original problem and four GPT-6.1 Sol peers. All four ended on rejected proofs after 1m23.436s. The owner retained the 30-minute limit and requested an explicit initial instruction to work until the proof passes.
 
 ## Setup
 
@@ -16,3 +16,36 @@ One four-peer shared run on [FATE-X #31](https://github.com/frenzymath/FATE-X/bl
 | Launcher SHA-256 | `c3126af97de6e70043cf444153cad893b7f6d5c863421634cfc58b6fe6b52616`. GPT wrapper `4cef7547ddee553ef3b0911410d0b2a1a9df76e42496e356dd827fe9e761f15c`, time wrapper `aaff234ff2fe2f61fe95809c483c73323f52499fb83a7153c18ea7f6874b2b00`. |
 
 Verify the full initial task and developer text in all four live provider requests. Audit each accepted finish against that peer’s earlier working check and the submitted digest. Report working time, continuation and end reasons, check and operation limits reached, actual final verdicts and standalone regrade. Audit shared publications, exact cross-peer delivery and substantive use in later proof work separately. Observed differences concern a changed completion policy and prompt in two individual runs.
+
+## Results
+
+Work started at 15:58:47.755 UTC on November 25. Every peer ended at the work deadline, between 30m00.000s and 30m00.006s after the common start. Setup took 24.505 seconds. The 15-minute checkpoint recorded four active peers, four drafts, 33 contributions and 89–100 Service operations used per peer. The four frozen candidates came from eight accepted draft submissions. No peer received a passing working check or submitted an accepted finish. The independent score and standalone regrade both rejected all four final drafts with `LEAN_REJECTED`. All four Session archives validated, and the launcher exited 0 with complete cleanup and zero remaining containers for the Runtime.
+
+The live first requests from all four peers matched the pinned developer and user messages byte for byte. The provider returned 416 completed responses identifying `gpt-6.1-sol` from 418 gateway requests. The two incomplete streams had unknown usage. Known provider usage was 24,807,099 input tokens and 101,003 output tokens.
+
+| Observed measure | Prior same task | Verified completion |
+| --- | ---: | ---: |
+| Work duration | 1m23.436s | 30m00.006s |
+| Successful shared searches / visits | 7 / 0 | 35 / 4 |
+| Distinct publications / publishers | 2 / 2 | 35 / 4 |
+| Cross-peer hits, including repeated reads | 1 | 147 |
+| Distinct reader–contribution pairs from other peers | 1 | 66 |
+| Mathlib searches | 38 | 271 |
+| Working Lean verdicts / passes | 5 / 0 | 39 / 0 |
+| Frozen candidate submissions / independent passes | 4 / 0 | 4 / 0 |
+
+At 7m12.377s, one peer published a Lean block for irreducibility of the transformed quadric. A different peer searched for it at 7m36.164s and retrieved it by address at 8m10.824s. The search receipt, Session tool result and successful next model request record the exact contribution. The recipient’s earlier working checks contained none of the 23 artifact lines of at least 35 characters. Its subsequent checks and final frozen draft included 22 of those lines after removing whitespace. It combined the block with its own coordinate change to establish the domain step. The working check on the resulting domain draft left the unique factorization step unresolved. The recipient published its combined work and cited the source in its final draft. In total, four accepted publications and five accepted drafts cited another peer’s contribution. Three of the four frozen drafts retained such a citation.
+
+Two peers exhausted the 100-operation allowance and three reached ten working Lean trials. The two peers that naturally settled before the deadline received 172 and one continuations respectively. The larger count came from repeated reports that the operation allowance was exhausted and further checking was unavailable. Two other peers issued successful Bash wait commands totaling about ten and 12 minutes 40 seconds respectively, measured from their archived tool calls and results. The full 30-minute window includes such waits and repeated responses. It does not measure 30 minutes of active proof construction.
+
+The four focused Service and installed Worker tests passed. The controlled Worker showed the initial time and finish instructions, continued in the same Session after a known unfinished reply, checked the exact proof, accepted its finish and independently graded it as passing. The full `npm test` suite had 1,234 passes, 67 skips and zero failures. Architecture generation and checking, whitespace checks and both review axes completed successfully.
+
+## Analysis
+
+This run establishes substantial adoption of another peer’s Lean work in an independently graded draft, with a trace from publication to delivery, working checks and candidate assembly. The team still had no passing solution. The earlier run ended on rejected proofs. Under verified completion, all four stayed eligible through the deadline and made more attempts, with observable reuse in an unfinished proof. The instruction and exit policy changed together between two single runs. The data do not isolate either change’s effect.
+
+The persistence rule also continued a peer after it had no Service operations left. This increased model work without reopening its checker or enabling a valid finish. The operation and check limits, intentional waits and time cap bound what the run establishes about sustained theorem proving.
+
+## Next steps
+
+The requested rerun, standalone regrading and cleanup are complete. The strongest observed collaboration outcome is reuse in the domain portion of a rejected final draft.
