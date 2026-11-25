@@ -159,13 +159,13 @@ CREATE TABLE IF NOT EXISTS runtime_model_policies (
 
 ### Mission submission coordinator
 
-Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `cc106519bc1627edd25a71ebc0c7d16ead16264819dd4ce03448037f1591b2e0`.
+Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `2bcd64f9bf4b6e53634e0a42432bb4261bd2362500b6d4f3b55fd0bdd25d5cfe`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_final_check_policies (
         mission_id TEXT PRIMARY KEY,
-        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
-        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+        max_checks INTEGER CHECK(max_checks IS NULL OR max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND (max_checks IS NULL OR max_concurrent <= max_checks))
       );
       CREATE TABLE IF NOT EXISTS mission_final_check_admissions (
         mission_id TEXT NOT NULL,
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595`.
+Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `09d2504960d665ea5a9d393bd7b059c7415fb96302e3b27e392c36105e5f6a1e`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -791,8 +791,8 @@ CREATE TABLE mission_final_check_admissions (
 ```sql
 CREATE TABLE mission_final_check_policies (
         mission_id TEXT PRIMARY KEY,
-        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
-        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+        max_checks INTEGER CHECK(max_checks IS NULL OR max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND (max_checks IS NULL OR max_concurrent <= max_checks))
       );
 ```
 

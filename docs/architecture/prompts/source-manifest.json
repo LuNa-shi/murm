@@ -47,7 +47,7 @@
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "50a87f3622f318ecfd543b1a9d1e772a98dd8f903922cfea041c53fb3a09d035"
+      "sha256": "5169332b457e1e71b9ed89ecbdb6eab581d76e6cf5fdc2bdbfce27afbeffc37a"
     },
     {
       "path": "examples/subagents-environment/main.ts",
