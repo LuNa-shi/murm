@@ -273,7 +273,7 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         assert.equal((await runtime.send(bBot, 'FLAT_NATIVE_FINISH', { requestId: 'native-finish-turn', mode: 'followUp' })).status, 'accepted');
         const replacement = await evidenceFor('C');
         const cBot = tasks.getExecution(replacement.execution).owner_ref;
-        assert.equal(tasks.getTask(replacement.task).creation.actor_ref, aBot);
+        assert.equal(tasks.getTask(replacement.task).created_by, aBot);
         while ((await runtime.get(cBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
         const rows = controller.snapshot().bots;
         assert.equal(tasks.getTask(b.task).state, 'DONE');
