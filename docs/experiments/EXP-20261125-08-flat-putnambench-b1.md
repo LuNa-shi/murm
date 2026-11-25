@@ -1,6 +1,6 @@
 # EXP-20261125-08 · Flat PutnamBench 2025 B1
 
-Status · REGISTERED
+Status · STOPPED · selection cutoff reproduced at ten minutes
 
 Repeat of [EXP-20261125-07](EXP-20261125-07-flat-putnambench-b1.md) under the owner's authorization to rerun with independent review and stop at confirmed deviations. Corrected startup guidance reached all four Bots in the previous run. Their first long reasoning streams were interrupted at the original five-minute Bot selection deadlines before any proposal. This run lengthens that internal selection window to ten minutes to observe whether those streams reach an autonomous proposal and take. The benchmark's ordinary default remains five minutes. The full research window stays at one hour. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
@@ -44,3 +44,25 @@ node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_
 Watch the fixed first four Bot identities from TaskService and reconcile actual accepted proposals, exclusive take and active Execution receipts with private Service traces. Record elapsed time to first proposal, take, save and subsequent collaboration, including the state at the original 300-second boundary where applicable. If all four first selection deadlines pass without an accepted proposal or take anywhere, stop the runner with SIGTERM and inspect the exact point where the workflow stopped. Confirmed worker, provider, repeated valid Service, checker or cleanup defects also trigger an early stop. Isolated rejected guesses and expected exclusive-claim races do not establish a system defect when another Bot progresses.
 
 If the selection transition works, continue observing save, public publication, a second Bot's actual apply, main integration and independent original-theorem acceptance until a confirmed defect or the bounded window closes.
+
+## Results
+
+The research window opened at 09:19:33.109 UTC after 17.823 seconds of Runtime setup. Both the launch identity and the final receipt recorded a 600,000 ms selection window. The operator sent SIGTERM at the first cohort's last selection deadline with zero proposals or takes. Research lasted 597.847 seconds.
+
+| Observation | Result |
+|---|---|
+| Model | The upstream's response events identified model `k3`. The four original selection streams requested medium reasoning. Core recorded 16 admitted requests, nine completed with 22,597 input and 1,485 output tokens, four interrupted after upstream HTTP 200, and three interrupted during refill or stop without an upstream status. Billed cost and incomplete usage are unknown. |
+| Selection | All four original Bots successfully read the fixed B1. At the preceding run's five-minute cutoff, all four were still reasoning and had emitted no function call. Their streams continued up to between 70,879 and 103,008 reasoning characters without a function call, completed output item or terminal response. |
+| Persisted work | Zero Tasks, Executions, Materials, added revisions or Mission submissions. Main remained `0.1` at tree `15cdae59fe9ba1dada06eb14959403ab364ac8bd`. |
+| Checker | The operator stop canceled the post-stop assessment, reported as ERROR `treecheck:8b1ae536-2579-473b-896f-756d90e05b6b`. The launch's locked seed preflight validated project compilation and rejected the unchanged seed as a final proof. |
+| Cleanup | Four slots at peak. All seven admitted domain Bots closed. No live sandbox, pending checker or pending merge remained for this run. |
+
+The full deterministic regression for `cb9a6489` completed with 1,243 passed, zero failed and 68 skipped. It ran independently of the hosted model receipts.
+
+## Analysis
+
+Increasing the selection allowance from five to ten minutes extended the uninterrupted reasoning streams. It did not reach the first proposal in this trial. The traces continued to receive HTTP 200 reasoning events from K3. A create or take request never reached the Flat service. The observations show the stoppage occurring before Task creation and do not determine how K3 would respond to a different reasoning setting.
+
+## Next steps
+
+Keep the ten-minute diagnostic window and configure low effort only for the authorized selection phase. Check the actual upstream payload and whether K3 emits a proposal and take, then verify that newly admitted research requests use the original effort.
