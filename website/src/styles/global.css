@@ -260,11 +260,22 @@ html[data-theme='dark'] .astro-code span {
   pointer-events: none;
 }
 
+/* Ambient Translucent ASCII Murmuration Sky Canvas */
+.murm-sky-canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  display: block;
+}
+
 /* Landing Page (Open Canvas, No Top Bar) */
 .landing-shell {
+  position: relative;
+  z-index: 1;
   max-width: 1080px;
   margin: 0 auto;
-  padding: 20px 24px 96px;
+  padding: 20px 24px 88px;
 }
 
 .landing-corner {
@@ -322,6 +333,20 @@ html[data-theme='dark'] .astro-code span {
   display: flex;
   justify-content: center;
   margin-bottom: 12px;
+}
+
+.hero-mark svg {
+  transition: transform 0.35s ease;
+}
+
+.hero-mark:hover svg {
+  transform: translateY(-3px) scale(1.02);
+}
+
+.corner-icon-btn[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .hero-brand {
@@ -404,13 +429,40 @@ html[data-theme='dark'] .astro-code span {
   transform: translateY(-1px);
 }
 
-.pillars {
+/* ===== Schematic Pillar Cards (01/SANDBOX, 02/BRIDGE, 03/TRACE) ===== */
+.pillar-deck {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 20px;
-  padding-top: 34px;
+  gap: 16px;
+  padding-top: 28px;
   border-top: 1px solid var(--border);
-  text-align: center;
+  text-align: left;
+}
+
+.pillar-card {
+  display: flex;
+  flex-direction: column;
+  border: 1.5px solid var(--ink);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: 3px 3px 0 var(--ink);
+  overflow: hidden;
+  transition: transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.pillar-card:hover {
+  transform: translate(-1px, -2px);
+  box-shadow: 4px 5px 0 var(--ink);
+}
+
+.pillar-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
 }
 
 .pillar-index {
@@ -419,28 +471,132 @@ html[data-theme='dark'] .astro-code span {
   font-size: 11px;
   color: var(--accent);
   letter-spacing: 0.04em;
-  margin-bottom: 6px;
 }
 
-.pillar h3 {
-  margin: 0 0 4px;
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 660;
-  letter-spacing: -0.02em;
+.pillar-chip {
+  font-family: var(--font-pixel);
+  font-size: 9.5px;
+  color: var(--ink-muted);
+  letter-spacing: 0.03em;
 }
 
-.pillar p {
+.pillar-sketch {
+  background: var(--sch-surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.pillar-sketch svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  font-family: var(--font-sans);
+}
+
+.ps-pixel {
+  fill: var(--ink-muted);
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+}
+
+.ps-pixel-accent {
+  fill: var(--sch-indigo);
+  font-family: var(--font-pixel);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+}
+
+.ps-pixel-dark {
+  fill: var(--ink);
+  font-family: var(--font-pixel);
+  font-size: 9.5px;
+  letter-spacing: 0.03em;
+}
+
+.ps-mini-ink {
+  fill: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 600;
+}
+
+.ps-label {
+  fill: var(--ink);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.ps-muted {
+  fill: var(--ink-muted);
+  font-size: 9.5px;
+}
+
+.ps-tool {
+  fill: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+}
+
+.ps-file {
+  fill: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: 9.2px;
+}
+
+.ps-hand {
+  fill: var(--sch-indigo);
+  font-family: var(--font-hand);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pillar-body {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 11px 13px 12px;
+}
+
+.pillar-body h3 {
   margin: 0;
-  font-size: 14px;
+  font-family: var(--font-display);
+  font-size: 15.5px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+.pillar-body p {
+  margin: 0;
+  font-size: 12.6px;
   color: var(--ink-secondary);
 }
 
 .landing-section {
+  position: relative;
   padding: 58px 0 0;
   margin-top: 56px;
   border-top: 1px solid var(--border);
 }
+
+/* Precision Vercel-inspired corner crosshairs on section hairlines */
+.landing-section::before,
+.landing-section::after {
+  content: '+';
+  position: absolute;
+  top: -11px;
+  font-family: var(--font-pixel);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--border-strong);
+  background: var(--bg);
+  padding: 2px 4px;
+  pointer-events: none;
+}
+
+.landing-section::before { left: -4px; }
+.landing-section::after { right: -4px; }
 
 .section-header {
   display: flex;
@@ -491,25 +647,94 @@ html[data-theme='dark'] .astro-code span {
   border-bottom-color: var(--accent);
 }
 
-/* 6 Concepts 3x2 Symmetric Grid */
+/* ===== Interactive Core Model Blueprint + Synchronized 6-Concept Grid ===== */
+.core-blueprint {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.blueprint-svg {
+  min-width: 820px;
+}
+
+.bp-node {
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  outline: none;
+}
+
+.bp-node.dimmed {
+  opacity: 0.2;
+}
+
+.bp-node:hover .bp-card-rect,
+.bp-node:focus-visible .bp-card-rect,
+.bp-node.focused .bp-card-rect {
+  stroke: var(--sch-indigo);
+  stroke-width: 2.2;
+}
+
+.bp-edge {
+  transition: opacity 0.2s ease;
+}
+
+.bp-edge.dimmed {
+  opacity: 0.14;
+}
+
+.bp-edge-label {
+  fill: var(--ink-secondary);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+}
+
+.bp-node-title {
+  fill: var(--ink);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.bp-node-sub {
+  fill: var(--ink-secondary);
+  font-size: 11.5px;
+}
+
+/* 6 Concepts 3x2 Symmetric Interactive Grid */
 .concept-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
+  gap: 12px;
 }
 
 .concept-card {
-  padding: 18px 20px;
+  padding: 15px 17px;
   border: 1.5px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--bg-elevated);
   transition: border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
 }
 
-.concept-card:hover {
+.concept-btn {
+  display: flex;
+  flex-direction: column;
+  text-align: left;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.concept-card:hover,
+.concept-btn.active {
   border-color: var(--ink);
   box-shadow: 3px 3px 0 var(--ink);
   transform: translate(-1px, -1px);
+}
+
+.concept-btn.active {
+  border-color: var(--accent);
 }
 
 .concept-top {
@@ -517,12 +742,25 @@ html[data-theme='dark'] .astro-code span {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 8px;
+  margin-bottom: 7px;
+}
+
+.concept-id-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.concept-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  flex: none;
 }
 
 .concept-card code {
   font-family: var(--font-pixel);
-  font-size: 14.5px;
+  font-size: 14px;
   color: var(--ink);
 }
 
@@ -545,10 +783,17 @@ html[data-theme='dark'] .astro-code span {
 }
 
 .concept-card p {
-  margin: 0;
-  font-size: 13.6px;
+  margin: 0 0 10px;
+  font-size: 13.2px;
   color: var(--ink-secondary);
-  line-height: 1.58;
+  line-height: 1.54;
+}
+
+.concept-code-foot {
+  margin-top: auto;
+  font-family: var(--font-mono);
+  font-size: 11.2px;
+  color: var(--ink-muted);
 }
 
 /* ===== Proposal 2 Elevated: 5-Across Visual Filmstrip + Live Expanding Stage + Zoom Lightbox ===== */
@@ -1046,9 +1291,85 @@ html[data-theme='dark'] .astro-code span {
   color: var(--ink-secondary);
 }
 
+/* ===== ASCII Murmuration Horizon Strip (Bottom Band) ===== */
+.horizon-section {
+  margin-top: 64px;
+}
+
+.horizon-frame {
+  border: 1.5px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  overflow: hidden;
+  transition: border-color 0.16s ease;
+}
+
+.horizon-frame:hover {
+  border-color: var(--ink);
+}
+
+.horizon-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-subtle);
+}
+
+.horizon-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-pixel);
+  font-size: 11px;
+  color: var(--ink);
+  letter-spacing: 0.04em;
+}
+
+.horizon-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+
+.horizon-meta {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  color: var(--ink-muted);
+  letter-spacing: 0.04em;
+}
+
+.horizon-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.horizon-pre {
+  margin: 0;
+  padding: 14px 16px;
+  font-family: var(--font-pixel);
+  font-size: 13.5px;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  background: var(--sch-surface);
+  background-image: radial-gradient(var(--border-strong) 0.65px, transparent 0.65px);
+  background-size: 16px 16px;
+  overflow: hidden;
+  user-select: none;
+  cursor: crosshair;
+  white-space: pre;
+  min-height: 158px;
+}
+
 .landing-footer {
-  margin-top: 72px;
-  padding-top: 26px;
+  margin-top: 32px;
+  padding-top: 24px;
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: space-between;
@@ -1440,7 +1761,8 @@ html[data-theme='dark'] .astro-code span {
 @media (max-width: 860px) {
   .search-trigger span, .search-trigger kbd { display: none; }
   .mobile-menu-btn { display: inline-flex; }
-  .pillars, .concept-grid { grid-template-columns: 1fr; }
+  .pillar-deck, .concept-grid { grid-template-columns: 1fr; }
+  .horizon-meta { display: none; }
   .click-hint { margin-left: 0; }
   .docs-shell { grid-template-columns: 1fr; }
   .docs-sidebar {

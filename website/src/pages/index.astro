@@ -1,6 +1,9 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import MurmLogo from '../components/MurmLogo.astro';
+import MurmurationCanvas from '../components/MurmurationCanvas.astro';
+import PillarSchematics from '../components/PillarSchematics.astro';
+import CoreModelBlueprint from '../components/CoreModelBlueprint.astro';
 import HarnessShowcase from '../components/HarnessShowcase.astro';
 import { withBase } from '../lib/url';
 ---
@@ -11,11 +14,19 @@ import { withBase } from '../lib/url';
   showTopNav={false}
   paperGrid={true}
 >
+  <MurmurationCanvas mode="backdrop" />
+
   <main class="landing-shell">
     <div class="landing-corner" aria-label="Quick links">
       <a class="corner-link" href={withBase('/docs/quickstart/')}>Docs</a>
       <span class="corner-sep" aria-hidden="true">/</span>
       <a class="corner-link" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
+      <button type="button" class="corner-icon-btn" data-murm-toggle aria-label="Toggle ambient flock animation" title="Pause / resume ambient flock">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 14c3-4 6-4 9 0 3-4 6-4 9 0" />
+          <path d="M6 9c2-2.5 4-2.5 6 0 2-2.5 4-2.5 6 0" opacity="0.6" />
+        </svg>
+      </button>
       <button type="button" class="corner-icon-btn" data-theme-toggle aria-label="Toggle color theme" title="Toggle light / dark theme">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
           <circle cx="12" cy="12" r="4" />
@@ -42,25 +53,7 @@ import { withBase } from '../lib/url';
         <span class="hero-hand-note" aria-hidden="true">one runtime, swap any coordination topology!</span>
       </div>
 
-      <div class="pillars">
-        <div class="pillar">
-          <span class="pillar-index">01 / SANDBOX</span>
-          <h3>Run agents</h3>
-          <p>Isolated execution</p>
-        </div>
-
-        <div class="pillar">
-          <span class="pillar-index">02 / BRIDGE</span>
-          <h3>Compose services</h3>
-          <p>Flexible coordination</p>
-        </div>
-
-        <div class="pillar">
-          <span class="pillar-index">03 / TRACE</span>
-          <h3>Observe runs</h3>
-          <p>Transparent execution</p>
-        </div>
-      </div>
+      <PillarSchematics />
     </section>
 
     <section class="landing-section">
@@ -75,50 +68,7 @@ import { withBase } from '../lib/url';
         <a class="section-link" href={withBase('/docs/concepts/')}>Explore concepts →</a>
       </div>
 
-      <div class="concept-grid">
-        <div class="concept-card">
-          <div class="concept-top">
-            <code>Agent</code>
-            <span class="concept-tag tag-author">Authoring</span>
-          </div>
-          <p>An independent execution unit with a persistent session, private workspace, and 4 local tools.</p>
-        </div>
-        <div class="concept-card">
-          <div class="concept-top">
-            <code>Service</code>
-            <span class="concept-tag tag-author">Authoring</span>
-          </div>
-          <p>Composable shared capability (task pool, mailbox, board, substrate) invoked through the Bridge.</p>
-        </div>
-        <div class="concept-card">
-          <div class="concept-top">
-            <code>Harness</code>
-            <span class="concept-tag tag-author">Authoring</span>
-          </div>
-          <p>Your host-side TypeScript logic deciding who spawns, how events route, and when work finishes.</p>
-        </div>
-        <div class="concept-card">
-          <div class="concept-top">
-            <code>Runtime</code>
-            <span class="concept-tag tag-runtime">Execution</span>
-          </div>
-          <p>The control plane managing agent lifecycles, input delivery, controlled file handoffs, and cleanup.</p>
-        </div>
-        <div class="concept-card">
-          <div class="concept-top">
-            <code>Sandbox</code>
-            <span class="concept-tag tag-runtime">Execution</span>
-          </div>
-          <p>Isolated container boundary enforcing filesystem quotas, network allowlists, and clean exports.</p>
-        </div>
-        <div class="concept-card">
-          <div class="concept-top">
-            <code>Run</code>
-            <span class="concept-tag tag-runtime">Execution</span>
-          </div>
-          <p>One concrete execution archived to disk with sessions, model traces, service calls, and reports.</p>
-        </div>
-      </div>
+      <CoreModelBlueprint />
     </section>
 
     <section class="landing-section">
@@ -135,6 +85,8 @@ import { withBase } from '../lib/url';
 
       <HarnessShowcase />
     </section>
+
+    <MurmurationCanvas mode="horizon" />
 
     <footer class="landing-footer">
       <span class="footer-brand">MURM · <code>@swarmenv/core</code> 0.2.0 (<code>ac72c76</code>)</span>
