@@ -1,6 +1,6 @@
 # ScaleMAS one-problem FATE-M acceptance
 
-Status **REGISTERED**. The owner authorized K3, one original problem, four peers, and no K3 usage ceiling. Each of the three conditions runs once. [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) · [Phase design review](https://github.com/LuNa-shi/SwarmEnv/pull/214)
+Status **COMPLETE**. The owner authorized K3, one original problem, four peers, and no K3 usage ceiling. Each of the three conditions ran once. [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) · [Phase design review #214](https://github.com/LuNa-shi/SwarmEnv/pull/214) · [Implementation review #215](https://github.com/LuNa-shi/SwarmEnv/pull/215) · [Preregistered configuration](https://github.com/LuNa-shi/SwarmEnv/blob/64734edeefd1cd95833bc479143425a3aab162b4/docs/experiments/EXP-20261125-scalemas-fate.md)
 
 ## Setup
 
@@ -26,12 +26,28 @@ Status **REGISTERED**. The owner authorized K3, one original problem, four peers
 
 ## Results
 
-Pending execution.
+| Condition | Runtime | Work interval (UTC) | Setup | Work | Final cleanup | Score | Passed final proofs |
+|---|---|---|---:|---:|---:|---:|---:|
+| Shared | `e11535a5-5624-4349-9dd0-5cd73d0cba6b` | 07:51:03.825–07:53:15.176 | 24.348 s | 131.351 s | 0.562 s | 16.314 s | 4/4 |
+| Private | `ac769482-77dd-4062-bbb1-b23e9ee2ba5b` | 07:53:56.912–07:57:04.812 | 24.837 s | 187.900 s | 0.555 s | 16.723 s | 4/4 |
+| None | `4937b058-d3e3-47c4-808e-06627684df20` | 07:57:46.612–08:00:18.163 | 24.502 s | 151.551 s | 0.546 s | 15.908 s | 4/4 |
+
+Work starts when all four peers are ready and ends when the last peer finishes. Final cleanup is measured from that finish to the Environment close report. Earlier peer cleanup overlaps work. The three sequential launches took approximately 9 min 55 s including setup, close and scoring. The matrix exited 0, all 12 peers submitted and ended before the deadline, and each team scored 1/1. The standalone scorer reproduced the verdicts and proof hashes for all 12 final submissions. All 12 Session archives and stop receipts were present. A Docker query using each Runtime's label returned zero remaining containers.
+
+| Condition | Core model attempts | HTTP 200 with usage | Usage unknown | Known input tokens | Known output tokens | Library operations |
+|---|---:|---:|---:|---:|---:|---|
+| Shared | 48 | 44 | 4 | 241,282 | 8,831 | One publication. No reads or cross-peer references. |
+| Private | 48 | 44 | 4 | 241,331 | 10,201 | One personal publication and one personal search. |
+| None | 42 | 38 | 4 | 190,280 | 9,631 | Library tools absent. |
+
+All four peers in each group used the live model. Core recorded 138 attempts with zero pending attempts and zero lost trace records. The 12 transport interruptions began after the corresponding final submission was recorded, during peer shutdown. Their usage and the monetary cost remain unknown. The metered totals are 672,893 input and 28,663 output tokens across 126 responses.
+
+The controlled, installed-package test independently exercised handoff in native Pi/OpenSandbox Runtime `b461f6bf-1203-4ab9-810b-300cdc9a83db`. Core recorded publication at sequence 18 and confirmed producer cleanup at 24. A Docker lookup confirmed deletion before the consumer continued in its existing Session. The consumer searched at 28, visited at 32, published a successor citing the exact original bytes at 36, and submitted the proof at 44. The proof passed both scorers. Fault probes on the installed package also verified atomic rollback of content and citation weight after an injected SQLite receipt failure, stable retry and exact decay, durable failure before allocation for a missing fixture, and one unknown input preserved alongside independently pending cleanup.
 
 ## Analysis
 
-Pending execution.
+The installed configuration delivered correct, reproducible final proofs in all three conditions. The live shared run recorded a publication and zero cross-peer adoption. The controlled native handoff establishes that the publication survives physical removal and can be used in a later peer's proof. The one-problem comparison observes a tied team outcome. The three durations are individual observations from independent four-peer groups. Estimating a change in success rate or time due to sharing would require more problems and repeats.
 
 ## Next steps
 
-Run the registered conditions, independently regrade their frozen bundles, and record measured setup, work, scoring and cleanup durations.
+The registered one-problem matrix and its regrade are complete. The design and implementation are pending owner review in #214 and #215.
