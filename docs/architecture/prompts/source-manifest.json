@@ -55,11 +55,11 @@
     },
     {
       "path": "examples/scalemas-environment/fate-service.ts",
-      "sha256": "5ec5e638915df27a275a77bdf8b100514196ac6d903493b64d536e2eed509373"
+      "sha256": "84bc88ef2379e8102d7e0426de584c238c2a3346c1ff55c70887b87306bb58b5"
     },
     {
       "path": "src/environments/scalemas/paper-substrate.ts",
-      "sha256": "d8211f82023f333d847e77aa6b24c4e773f060e19c16b9b609f3c9f21a562aaa"
+      "sha256": "f884707ff33449aa1effe2f76dcc2c8748780cc50feadcea0943f1829aa8c6d7"
     },
     {
       "path": "src/environments/flat/controller.ts",

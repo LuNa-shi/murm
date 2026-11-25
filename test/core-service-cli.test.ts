@@ -17,6 +17,9 @@ test('public Bash CLI discovers permitted operations, renders manifest help and 
   const discovery = JSON.parse((await cli('service', 'view', 'notes')).stdout);
   assert.deepEqual(discovery.capabilities.map(item => item.operation), ['put', 'get']);
   const help = (await cli('notes', 'put', '--help')).stdout;
+  assert.match(help, /Usage: swarm notes put \[--input <json-file> \| --stdin\]/);
+  assert.match(help, /Use an actual input schema property name as a flag/);
+  assert.doesNotMatch(help, /--field/);
   assert.match(help, /Publish a fixed note/);
   assert.match(help, /maxLength/);
   assert.match(help, /idempotent/);

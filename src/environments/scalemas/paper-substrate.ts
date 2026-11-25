@@ -24,15 +24,15 @@ export const referenceHelp = 'Give a non-empty rationale. Cite only visible cont
 const operations = {
   search: {
     description: 'Find contributions visible to you by lemma, subgoal, or blocker. Returns matching contributions in full.',
-    help: 'Provide a query with 1–64 distinct terms and a result limit.',
+    help: 'Provide a query with 1–64 distinct terms and a result limit.\nExample command\n  swarm substrate search --query "SUBGOAL_KEYWORDS" --limit 8',
   },
   visit: {
     description: 'Read contributions at known content addresses.',
-    help: 'Use exact content addresses returned by search or publish.',
+    help: 'Use exact content addresses returned by search or publish.\nExample command\n  swarm substrate visit --input visit.json',
   },
   publish: {
     description: 'Publish reusable intermediate work in this run.',
-    help: `Give sub_task and artifact as non-empty text with at most ${maxContentTokens} tokens combined. ${referenceHelp} Use refs: [] when you used no references.`,
+    help: `Give sub_task and artifact as non-empty text with at most ${maxContentTokens} tokens combined. ${referenceHelp} Use refs: [] when you used no references.\nExample command\n  swarm substrate publish --input contribution.json`,
   },
 };
 const tokenize = (value: string) => value.normalize('NFC').toLowerCase().match(/[\p{L}\p{M}\p{N}]+/gu) ?? [];

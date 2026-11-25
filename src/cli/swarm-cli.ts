@@ -348,7 +348,9 @@ export async function runSwarmCli(argv: any = process.argv.slice(2), { stdout = 
     if (positionals[0] === 'bot' && !positionals[1] && provider.id !== 'bot') { stdout.write(usage('bot') + '\n'); return 0; }
     const capabilities = positionals[1] ? provider.capabilities.filter((item: any) => item.operation === positionals[1] || item.name === positionals[1]) : provider.capabilities;
     if (!capabilities.length) throw new Error('Service does not advertise this operation');
-    stdout.write(`Usage: swarm ${positionals[0]} <operation> [--input file | --stdin | --field value] [--request-id id]\n${provider.purpose}\n`);
+    const operation = positionals[1] ?? '<operation>';
+    stdout.write(`Usage: swarm ${positionals[0]} ${operation} [--input <json-file> | --stdin] [--request-id <id>]\n${provider.purpose}\n`);
+    stdout.write('Use an actual input schema property name as a flag, replacing underscores with hyphens. Use a JSON object with --input or --stdin for structured input.\n');
     for (const capability of capabilities) stdout.write(`${capability.operation}: ${capability.description}\n${capability.help.when}\nside_effect=${capability.side_effect}; idempotent=${capability.idempotent}\nInput schema: ${JSON.stringify(capability.input_schema)}\nOutput schema: ${JSON.stringify(capability.output_schema)}\nErrors: ${JSON.stringify(capability.errors)}\n`);
     return 0;
   }

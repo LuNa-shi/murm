@@ -20,9 +20,9 @@ const descriptions: Record<string, string> = {
 };
 
 const operationHelp: Record<string, string> = {
-  search_mathlib: 'Use a lemma, a specific query, or a known mathlib: address as the query.',
-  check_lean: 'Supply a Lean proof term, usually beginning with by.',
-  submit: `Supply a Lean proof term, usually beginning with by. ${referenceHelp} Use refs: [] when you used no references.`,
+  search_mathlib: 'Use a lemma name, a specific query, or a known mathlib: address.\nExample command\n  swarm fate search_mathlib --query "LEMMA_NAME"',
+  check_lean: 'Supply a Lean proof term, usually beginning with by.\nExample command\n  swarm fate check_lean --input proof.json',
+  submit: `Supply a Lean proof term, usually beginning with by. ${referenceHelp} Use refs: [] when you used no references.\nExample command\n  swarm fate submit --input submission.json`,
 };
 
 export type MathlibMatch = { name: string; type: string | null; module: string | null; source: string | null };
