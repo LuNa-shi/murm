@@ -1,7 +1,7 @@
 ---
 title: Subagents
 description: Hierarchical recursive delegation, non-waking mailbox messaging, context forking, and safe interrupts built on one custom collaboration Service.
-section: BUILT-IN PROGRAMS
+section: BUILT-IN HARNESSES
 order: 6
 ---
 

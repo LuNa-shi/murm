@@ -1,11 +1,11 @@
 ---
-title: Flat
+title: TaskPool
 description: Shared task pool, read-only discovery to host-granted writes, Model Access Policy lease guards, and versioned main merges for long-running projects.
-section: BUILT-IN PROGRAMS
+section: BUILT-IN HARNESSES
 order: 7
 ---
 
-**Flat** is built for long-running projects where individual workers may time out or rotate. There is no permanent manager: identical participants discover work from a shared **Task** pool, publish immutable **Materials**, and merge verified changes into a versioned **Workspace `main`**. Source code: [src/environments/flat](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/flat).
+**TaskPool** *(repository module: `src/environments/flat`)* is built for long-running projects where individual workers may time out or rotate. There is no permanent manager: identical participants discover work from a shared **Task** pool, publish immutable **Materials**, and merge verified changes into a versioned **Workspace `main`**. Source code: [src/environments/flat](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/flat).
 
 ## 1. Registered Services
 
@@ -18,7 +18,7 @@ order: 7
 
 ## 2. Runtime primitives used
 
-Flat combines three Runtime mechanisms to enforce strict task ownership:
+TaskPool combines three Runtime mechanisms to enforce strict task ownership:
 
 ### 1. Read-only discovery followed by `files.prepare` + `files.grant`
 
@@ -45,7 +45,7 @@ await runtime.files.grant({ requestId: `${handoffId}:grant`, prepared });
 
 Consider a classic lease-expiry race:
 
-> Agent A holds a 5-minute lease on Task 1 and stalls. At minute 5, the controller reclaims Task 1 and assigns it to Agent B. During the seconds before Agent A's container finishes tearing down, Agent A might still fire another model call on stale state.
+> Worker A holds a 5-minute lease on Task 1 and stalls. At minute 5, the controller reclaims Task 1 and assigns it to Worker B. During the seconds before Worker A's container finishes tearing down, Worker A might still fire another model call on stale state.
 
 `modelAccessPolicy` attaches a synchronous gate right in front of the host **Model Gateway** ([model-access-policy.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/model-access-policy.ts)):
 
@@ -79,7 +79,7 @@ If the lease expires or its `fencing_version` advances, the Gateway immediately 
 
 ### 3. Auto-continuation and slot replacement
 
-Flat separates turn completion (`settled`) from task completion (`task finish`): if an agent pauses before calling `task finish`, the controller follows up automatically; if a lease expires or stalls, the controller calls `runtime.stop()` and spawns a fresh replacement into the freed slot.
+TaskPool separates turn completion (`settled`) from task completion (`task finish`): if a worker pauses before calling `task finish`, the controller follows up automatically; if a lease expires or stalls, the controller calls `runtime.stop()` and spawns a fresh replacement into the freed slot.
 
 ## 3. Host control loop
 

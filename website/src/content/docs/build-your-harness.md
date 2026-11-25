@@ -1,13 +1,13 @@
 ---
-title: Build Your Own Program
-description: Assemble custom Services, role Profiles, host control loops, and safe closeout to implement a new multi-agent topology without editing the Runtime.
+title: Build Your Own Harness
+description: Assemble custom Services, role Profiles, host control loops, and safe closeout to implement a new multi-agent harness without editing the Runtime.
 section: DEVELOPERS
 order: 11
 ---
 
-Building a new multi-agent system in `murm` means writing a plain TypeScript application (**Program**) against `@swarmenv/core` — zero edits to the Runtime, Worker image, or `swarm` CLI.
+Building a new multi-agent system in `murm` means writing a plain TypeScript **Harness** against `@swarmenv/core` — zero edits to the Runtime, Worker image, or `swarm` CLI.
 
-Every Program combines four building blocks: **shared Services**, **role Profiles**, a **host control loop**, and **resilient closeout**.
+Every Harness combines four building blocks: **shared Services**, **role Profiles**, a **host control loop**, and **resilient closeout**.
 
 ## 1. Answer three design questions first
 
@@ -144,7 +144,7 @@ const profiles: Record<string, Profile> = {
 ```
 
 Common optional capabilities:
-- **Let agents spawn sub-agents**: grant built-in `bot` operations (`{ bot: ['spawn', 'get', 'send', 'stop'] }`), restrict allowed roles with `spawnProfiles`, enable context inheritance via `allowContextFork: true`, or wrap them in a domain Service like [Subagents](../programs/subagents/).
+- **Let agents spawn sub-agents**: grant built-in `bot` operations (`{ bot: ['spawn', 'get', 'send', 'stop'] }`), restrict allowed roles with `spawnProfiles`, enable context inheritance via `allowContextFork: true`, or wrap them in a domain Service like [Subagents](../harnesses/subagents/).
 - **Share a repository across agents**: pass `workspace: { id: 'shared-repo', mode: 'read-write' }` in `runtime.spawn()`.
 - **Access internal services (such as Gitea)**: whitelist the origin in `Profile.network.allow` and inject per-agent tokens via `spawn({ secretEnv })`.
 
@@ -195,11 +195,11 @@ runtime.onEvent((event) => {
 
 ### Pattern C: Reconciliation loop (task pools, leases, and automatic replacement)
 
-Treat your domain database as the source of truth: on `settled`, continue with `mode: 'followUp'` if the business task is still active; run a periodic `setInterval` to renew heartbeats, stop expired workers, and refill idle slots (see [Flat Controller](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/controller.ts)).
+Treat your domain database as the source of truth: on `settled`, continue with `mode: 'followUp'` if the business task is still active; run a periodic `setInterval` to renew heartbeats, stop expired workers, and refill idle slots (see [TaskPool Controller](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/flat/controller.ts)).
 
 ## 5. Resilient closeout and verification
 
-Wrap your Program with [runWithReport](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/shared/run-report.ts) so **program errors**, **cleanup errors**, and **report-save errors** are preserved independently without masking one another:
+Wrap your Harness with [runWithReport](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/shared/run-report.ts) so **harness errors**, **cleanup errors**, and **report-save errors** are preserved independently without masking one another:
 
 ```ts
 const report = await runWithReport({

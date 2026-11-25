@@ -1,31 +1,31 @@
 ---
-title: Lead-helper
+title: Lead-Worker
 description: Staged direction-and-feedback loop combining transactional SQLite Board claims, causal read gates, and Git commit SHA-256 verification.
-section: BUILT-IN PROGRAMS
+section: BUILT-IN HARNESSES
 order: 10
 ---
 
-**Lead-helper** fits teams that need one clear owner of direction while forcing field constraints discovered during execution back into the next round of planning. One **lead** and 2–7 **helpers** coordinate through a local SQLite **Board** and personal Gitea branches. Source code: [src/environments/lead-helper](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/lead-helper).
+**Lead-Worker** *(repository module: `src/environments/lead-helper`)* fits teams that need one clear owner of direction while forcing field constraints discovered during execution back into the next round of planning. One **lead** and 2–7 **workers** (`helper` roles in code) coordinate through a local SQLite **Board** and personal Gitea branches. Source code: [src/environments/lead-helper](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/lead-helper).
 
 ## 1. Registered Services
 
-Lead-helper registers two Services with asymmetric role permissions ([board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/board.ts)):
+Lead-Worker registers two Services with asymmetric role permissions ([board.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/lead-helper/board.ts)):
 
 - **`board` (transactional SQLite state machine)**:
   - `lead`: `read`, `list_subtasks`, `announce` (set/revise direction), `assign`, `create_subtask`, `update_subtask`, `note`.
-  - `helper`: `read`, `list_subtasks`, `create_subtask`, `claim` (exclusive transactional claim), `update_subtask`, `note` (feedback), `landed`, `complete`.
+  - `helper` (worker): `read`, `list_subtasks`, `create_subtask`, `claim` (exclusive transactional claim), `update_subtask`, `note` (feedback), `landed`, `complete`.
 - **`gitea`**: `pull_request_write` for both roles, paired with native `git` pushes to personal branches.
 
 The `board` Service enforces three strict invariants:
 1. **Exclusive transactional claims**: `claim` checks `expected_revision` inside `BEGIN IMMEDIATE` to assign a single permanent `owner`.
-2. **Read-before-write causal gates**: `lead` cannot `announce` citing `feedback_ids` unless `reads` proves it read them; `helper` cannot `complete` unless it read the latest `direction_id`.
+2. **Read-before-write causal gates**: `lead` cannot `announce` citing `feedback_ids` unless `reads` proves it read them; workers cannot `complete` unless they read the latest `direction_id`.
 3. **Byte-level Git verification**: `complete` submits `{ commit, path, sha256, bytes }`, which the Board verifies live against Gitea via `git.verifyDelivery` before committing.
 
 ## 2. Runtime primitives used
 
 - **Fixed team with isolated credentials**: spawns `lead` and `helper1..helperN` upfront with distinct Profiles, Gitea `bindings`, `secretEnv.GITEA_TOKEN`, and required `collect(includeGit: true)`. Built-in `bot` Service is disabled.
 - **Fatal failure fence**: `runtime.onEvent` watches for any `fatal` error or unexpected `exit`, calling `board.fence()` to freeze writes while preserving ownership state and failure artifacts.
-- **Staged turn orchestration**: uses `runInput` across alternating lead/helper stages in persistent sessions.
+- **Staged turn orchestration**: uses `runInput` across alternating lead/worker stages in persistent sessions.
 
 ## 3. Host control loop
 
@@ -36,7 +36,7 @@ The `board` Service enforces three strict invariants:
 await dispatch('lead', 'lead-initialize', { type: 'initialize', goal, helpers });
 assertInitialBoardReady(board.snapshot());
 
-// Step 2: Helpers concurrently claim subtasks, push Git commits, and post feedback
+// Step 2: Workers concurrently claim subtasks, push Git commits, and post feedback
 await Promise.all(
   helperRoles.map((role) =>
     dispatch(role, `${role}-initial`, { type: 'helper-initial' })
@@ -51,7 +51,7 @@ await dispatch('lead', 'lead-adjust', {
   supplement,
 });
 
-// Step 4: Same helpers read the revised direction in their preserved sessions and ship round 2
+// Step 4: Same workers read the revised direction in their preserved sessions and ship round 2
 await Promise.all(
   helperRoles.map((role) =>
     dispatch(role, `${role}-followup`, { type: 'helper-followup' })

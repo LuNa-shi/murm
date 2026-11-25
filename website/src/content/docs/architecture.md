@@ -5,13 +5,13 @@ section: ARCHITECTURE
 order: 3
 ---
 
-Every `murm` run operates across two explicit trust boundaries: the **Trusted Host** executes your Program, holds all upstream secrets, and writes authoritative logs; **Isolated Sandboxes** contain each agent's filesystem, shell execution, and network access.
+Every `murm` run operates across two explicit trust boundaries: the **Trusted Host** executes your Harness, holds all upstream secrets, and writes authoritative logs; **Isolated Sandboxes** contain each agent's filesystem, shell execution, and network access.
 
 ![murm System Architecture: Trusted Host and Isolated Sandboxes](../../assets/images/architecture-overview.jpg)
 
 ## 1. Host vs. Sandbox responsibilities
 
-- **Trusted Host**: runs your **Program** and **Runtime**. Creating a Runtime automatically starts two run-scoped local HTTP servers:
+- **Trusted Host**: runs your **Harness** (host TS logic) and **Runtime**. Creating a Runtime automatically starts two run-scoped local HTTP servers:
   - **Service Bridge**: receives `swarm` CLI requests from containers, verifies identity and schemas, and dispatches to registered Services.
   - **Model Gateway**: proxies `/v1/responses` calls from Pi, injects upstream API keys on the host, enforces timeouts/limits, and records raw traces.
 - **Isolated Sandboxes**: each `runtime.spawn()` launches a dedicated Docker container through OpenSandbox with enforced disk quotas and network allowlists, running a **Worker** supervisor alongside the **Pi Agent**.
@@ -49,7 +49,7 @@ All `/v1/responses` calls from Pi flow through the host **Model Gateway**:
 
 - **Keys stay on the host**: upstream `Authorization` headers live solely in host configuration; containers never see raw model credentials.
 - **Unified limits and recording**: the Gateway enforces per-request timeouts (default 120s) and output caps, saving redacted request/response traces under `model-trace/<attemptId>/`.
-- **Optional `modelAccessPolicy` gate**: lease-based Programs such as [Flat](../programs/flat/) can attach a synchronous authorization hook to abort streaming calls the instant a task lease expires or changes fencing version. Most Programs (Subagents, Agensh, ScaleMAS) leave this unset.
+- **Optional `modelAccessPolicy` gate**: lease-based harnesses such as [TaskPool](../harnesses/taskpool/) can attach a synchronous authorization hook to abort streaming calls the instant a task lease expires or changes fencing version. Most harnesses (Subagents, PeerMesh, Substrate) leave this unset.
 
 ## 5. Durable Run directory layout
 
@@ -65,7 +65,7 @@ outputDir/<runId>/
 ├── bots/<agentId>/
 │   ├── session/                 # Native Pi JSONL conversation archive
 │   └── artifacts/files/         # Files exported via Profile/Spawn collect specs
-└── environment-report.json      # Program delivery outcome & independent error slots
+└── environment-report.json      # Harness delivery outcome & independent error slots
 ```
 
 Next, read [Anatomy of a Run](../run-lifecycle/) to walk through these primitives inside a concrete multi-turn collaboration.

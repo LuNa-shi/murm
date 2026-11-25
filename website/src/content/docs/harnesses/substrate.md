@@ -1,15 +1,15 @@
 ---
-title: ScaleMAS
-description: Zero-queue, zero-routing parallel research where equal peers publish, search, visit, and cite immutable artifacts in a single SQLite substrate.
-section: BUILT-IN PROGRAMS
+title: Substrate
+description: Zero-queue, zero-routing parallel research where equal peers publish, search, visit, and cite immutable artifacts in a single SQLite store.
+section: BUILT-IN HARNESSES
 order: 9
 ---
 
-**ScaleMAS** shows how minimal a multi-agent Program can be: no task table, no central manager, and no private messages. Three to eight equal peers research concurrently around one **immutable shared substrate** — searching and reading prior findings, then publishing self-contained follow-ups with explicit citations. Source code: [src/environments/scalemas](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/scalemas).
+**Substrate** *(repository module: `src/environments/scalemas`)* shows how minimal a multi-agent Harness can be: no task table, no central manager, and no private messages. Three to eight equal peers research concurrently around one **immutable shared substrate** — searching and reading prior findings, then publishing self-contained follow-ups with explicit citations. Source code: [src/environments/scalemas](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/scalemas).
 
 ## 1. Registered Service
 
-ScaleMAS registers a single SQLite-backed **`substrate` Service** ([substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/scalemas/substrate.ts)) with three operations:
+Substrate registers a single SQLite-backed **`substrate` Service** ([substrate.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/scalemas/substrate.ts)) with three operations:
 
 | Operation | Input | Storage & Ordering Guarantees |
 | --- | --- | --- |
@@ -21,7 +21,7 @@ Because published entries are immutable, revising an earlier claim means publish
 
 ## 2. Runtime primitives used
 
-ScaleMAS touches only four baseline Runtime calls:
+Substrate touches only four baseline Runtime calls:
 - `createRuntime({ services: substrate.services, maxBots: poolSize, profiles: { peer } })`
 - `runtime.spawn({ profile: 'peer', files: { 'question.txt': ... } })`
 - `runInput` (`runtime.send(..., { mode: 'followUp' })` + `settled` wait)

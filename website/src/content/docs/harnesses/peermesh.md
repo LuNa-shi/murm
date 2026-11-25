@@ -1,15 +1,15 @@
 ---
-title: Agensh
+title: PeerMesh
 description: Peer-to-peer engineering team coordinating through overlapping Board claims, team chat channels, per-peer serial routers, and Git pull requests.
-section: BUILT-IN PROGRAMS
+section: BUILT-IN HARNESSES
 order: 8
 ---
 
-**Agensh** models a flat team of peer engineers without a central dispatcher or exclusive locks. Peers develop on personal Git branches, post overlapping soft intentions (`CLAIM`) and progress (`FACT`, `PATCH_SUMMARY`) on a shared Board, negotiate splits in team chat, and open PRs merged by host verification. Source code: [src/environments/agensh](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/agensh).
+**PeerMesh** *(repository module: `src/environments/agensh`)* models a flat team of peer engineers without a central dispatcher or exclusive locks. Peers develop on personal Git branches, post overlapping soft intentions (`CLAIM`) and progress (`FACT`, `PATCH_SUMMARY`) on a shared Board, negotiate splits in team chat, and open PRs merged by host verification. Source code: [src/environments/agensh](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments/agensh).
 
 ## 1. Registered Services
 
-Before spawning agents, the host provisions an isolated Gitea repository, Mattermost channel, per-peer credentials, and a local Agensh Board process, exposing three scoped Services ([services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/agensh/services.ts)):
+Before spawning agents, the host provisions an isolated Gitea repository, Mattermost channel, per-peer credentials, and a local Board process, exposing three scoped Services ([services.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/environments/agensh/services.ts)):
 
 | Service | Operations | Guardrails |
 | --- | --- | --- |

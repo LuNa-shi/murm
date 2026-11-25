@@ -26,7 +26,7 @@ createRuntime(options: CreateRuntimeOptions): Promise<Runtime>
 - `services`: populated `ServiceRegistry` (ID `bot` is reserved for the built-in bot Service).
 - `maxBots`: positive integer bounding concurrent resource slots.
 - `outputDir`: root directory; run artifacts are written to `outputDir/<runtime.id>/`.
-- `modelAccessPolicy` *(optional)*: synchronous Model Gateway hook (`authorize(caller): ModelPermit | null`, `withCommit(commit)`) for lease-gated Programs such as [Flat](../../programs/flat/).
+- `modelAccessPolicy` *(optional)*: synchronous Model Gateway hook (`authorize(caller): ModelPermit | null`, `withCommit(commit)`) for lease-gated harnesses such as [TaskPool](../../harnesses/taskpool/).
 
 ## Agent lifecycle: `spawn`, `get`, `list`
 
@@ -47,7 +47,7 @@ runtime.list(filter?: BotListFilter): Promise<BotInfo[]>
 runtime.send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>
 runtime.send(botId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>
 
-// Convenience aliases (prefer unified send in new Programs)
+// Convenience aliases (prefer unified send in new Harnesses)
 runtime.start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>
 runtime.steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>
 

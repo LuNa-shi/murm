@@ -15,7 +15,7 @@ Complete public TypeScript definitions matching `@swarmenv/core` `0.2.0` at comm
 | `Agent` | `BotInfo`, `BotStatus`, `BotEvent`, `Profile` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/types.ts) |
 | `Service` | `ServiceRegistry`, `ServiceManifest`, `ServiceAdapter`, `ServiceRequest` | [src/core/service-types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/service-types.ts) |
 | `Sandbox` | `createPiOpenSandboxBackend`, `PiOpenSandboxBackendConfig` | [src/core/backend-config.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/backend-config.ts) |
-| `Program` | `src/environments/*`, `examples/*-environment/` | [src/environments/](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments) |
+| `Harness` | `Environment` (`src/environments/*`, `examples/*-environment/`) | [src/environments/](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments) |
 | `Run` | `runtime.id` + `outputDir/<runtimeId>/` + `CloseReceipt` | [src/core/run-records.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/run-records.ts) |
 
 ## Runtime control surface

@@ -1,13 +1,13 @@
 ---
 import BaseLayout from '../layouts/BaseLayout.astro';
 import MurmLogo from '../components/MurmLogo.astro';
-import SwimlaneSchematic from '../components/SwimlaneSchematic.astro';
+import HarnessShowcase from '../components/HarnessShowcase.astro';
 import { withBase } from '../lib/url';
 ---
 
 <BaseLayout
-  title="murm · Build your own agent systems"
-  description="A minimal, extensible multi-agent harness with composable coordination services."
+  title="murm · Build your own multi-agent harness"
+  description="A minimal runtime for building multi-agent harnesses with composable coordination services."
   showTopNav={false}
   paperGrid={true}
 >
@@ -30,12 +30,8 @@ import { withBase } from '../lib/url';
       </div>
       <p class="hero-brand">murm</p>
       <h1 class="hero-title">
-        Build your own<span class="circled-word">agent systems<svg viewBox="0 0 360 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 342 26 C 288 4, 72 4, 18 34 C 1 54, 16 96, 128 104 C 248 111, 348 92, 354 56 C 358 32, 314 14, 250 13" /></svg></span>
+        Build your own <span class="circled-word">multi-agent harness<svg viewBox="0 0 420 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 402 25 C 338 4, 80 4, 18 34 C 1 54, 18 96, 152 104 C 296 111, 408 92, 414 56 C 418 32, 366 14, 290 13" /></svg></span>
       </h1>
-      <p class="hero-subtitle">
-        A minimal, extensible multi-agent harness with <span class="marker-highlight">composable coordination services</span>.
-        Leave sandbox isolation, session lifecycle, and run recording to the Runtime — keep coordination logic in your Program.
-      </p>
 
       <div class="hero-cta-wrap">
         <div class="hero-cta">
@@ -43,26 +39,26 @@ import { withBase } from '../lib/url';
           <a class="btn btn-outline" href={withBase('/docs/concepts/')}>Read the Docs</a>
           <a class="btn btn-outline" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
         </div>
-        <span class="hero-hand-note" aria-hidden="true">same runtime, any coordination topology!</span>
+        <span class="hero-hand-note" aria-hidden="true">one runtime, swap any coordination topology!</span>
       </div>
 
       <div class="pillars">
         <div class="pillar">
           <span class="pillar-index">01 / SANDBOX</span>
           <h3>Run agents</h3>
-          <p>Isolated containers with persistent multi-turn sessions</p>
+          <p>Isolated execution</p>
         </div>
 
         <div class="pillar">
           <span class="pillar-index">02 / BRIDGE</span>
           <h3>Compose services</h3>
-          <p>Schema-validated shared state with unforgeable caller identity</p>
+          <p>Flexible coordination</p>
         </div>
 
         <div class="pillar">
           <span class="pillar-index">03 / TRACE</span>
           <h3>Observe runs</h3>
-          <p>Structured sessions, model traces, and service call records</p>
+          <p>Transparent execution</p>
         </div>
       </div>
     </section>
@@ -73,7 +69,7 @@ import { withBase } from '../lib/url';
           <p class="section-eyebrow">01 · CORE MODEL</p>
           <h2 class="section-title">Six orthogonal concepts</h2>
           <p class="section-desc">
-            Author a <span class="marker-highlight">Program</span> by combining Agents and Services; the Runtime provisions isolated Sandboxes and persists every Run.
+            Author a <span class="marker-highlight">Harness</span> by composing Agents and Services; the Runtime provisions Sandboxes and persists every Run.
           </p>
         </div>
         <a class="section-link" href={withBase('/docs/concepts/')}>Explore concepts →</a>
@@ -96,7 +92,7 @@ import { withBase } from '../lib/url';
         </div>
         <div class="concept-card">
           <div class="concept-top">
-            <code>Program</code>
+            <code>Harness</code>
             <span class="concept-tag tag-author">Authoring</span>
           </div>
           <p>Your host-side TypeScript logic deciding who spawns, how events route, and when work finishes.</p>
@@ -128,114 +124,23 @@ import { withBase } from '../lib/url';
     <section class="landing-section">
       <div class="section-header">
         <div>
-          <p class="section-eyebrow">02 · EXECUTION FLOW</p>
-          <h2 class="section-title">How isolated agents coordinate in parallel</h2>
+          <p class="section-eyebrow">02 · ONE RUNTIME, FIVE HARNESSES</p>
+          <h2 class="section-title">Five coordination topologies on one core</h2>
           <p class="section-desc">
-            A Subagents run across three sandboxes: delegating work, steering active agents without waking idle ones, and handing off verified tests.
+            Select any visual card to switch the live execution flow, or click the diagram to <span class="marker-highlight">zoom in</span>. Zero Runtime edits across all five.
           </p>
         </div>
-        <a class="section-link" href={withBase('/docs/run-lifecycle/')}>Read run lifecycle →</a>
+        <a class="section-link" href={withBase('/docs/harnesses/')}>Compare all five →</a>
       </div>
 
-      <SwimlaneSchematic />
-    </section>
-
-    <section class="landing-section">
-      <div class="section-header">
-        <div>
-          <p class="section-eyebrow">03 · ONE RUNTIME, FIVE PROGRAMS</p>
-          <h2 class="section-title">Five multi-agent topologies on one core</h2>
-          <p class="section-desc">
-            Swap coordination styles by replacing your Program and Services — the underlying Runtime and sandbox stay <span class="marker-highlight">untouched</span>.
-          </p>
-        </div>
-        <a class="section-link" href={withBase('/docs/programs/')}>Compare all five →</a>
-      </div>
-
-      <div class="programs-bento">
-        <a class="card program-card" href={withBase('/docs/programs/subagents/')}>
-          <div class="card-head-row">
-            <span class="card-kicker">TREE · MAILBOX</span>
-            <svg class="topo-glyph" viewBox="0 0 44 32" width="40" height="28" aria-hidden="true">
-              <path d="M22 8V15M22 15L10 24M22 15L34 24" stroke="currentColor" stroke-width="1.6" fill="none" />
-              <circle cx="22" cy="7" r="4" fill="var(--accent)" />
-              <circle cx="10" cy="25" r="3.5" fill="var(--teal)" />
-              <circle cx="34" cy="25" r="3.5" fill="var(--amber)" />
-            </svg>
-          </div>
-          <h3>Subagents</h3>
-          <p>Recursive named delegation from Root with optional context forking, non-waking mailbox delivery, and safe interrupts.</p>
-          <div class="card-meta"><span>collaboration</span><span>→</span></div>
-        </a>
-
-        <a class="card program-card" href={withBase('/docs/programs/flat/')}>
-          <div class="card-head-row">
-            <span class="card-kicker">POOL · LEASE</span>
-            <svg class="topo-glyph" viewBox="0 0 44 32" width="40" height="28" aria-hidden="true">
-              <rect x="6" y="5" width="32" height="9" rx="2.5" stroke="currentColor" stroke-width="1.5" fill="var(--marker-yellow)" />
-              <path d="M13 14V22M22 14V22M31 14V22" stroke="currentColor" stroke-width="1.5" />
-              <circle cx="13" cy="25" r="3" fill="var(--ink)" />
-              <circle cx="22" cy="25" r="3" fill="var(--ink)" />
-              <circle cx="31" cy="25" r="3" fill="var(--ink)" />
-            </svg>
-          </div>
-          <h3>Flat</h3>
-          <p>Read-only discovery, exclusive task claims, host-granted write access, lease-gated model calls, and versioned main merges.</p>
-          <div class="card-meta"><span>task · workspace</span><span>→</span></div>
-        </a>
-
-        <a class="card program-card" href={withBase('/docs/programs/agensh/')}>
-          <div class="card-head-row">
-            <span class="card-kicker">PEERS · GIT PR</span>
-            <svg class="topo-glyph" viewBox="0 0 44 32" width="40" height="28" aria-hidden="true">
-              <path d="M22 7L10 25H34Z" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2" fill="none" />
-              <circle cx="22" cy="7" r="3.5" fill="var(--accent)" />
-              <circle cx="10" cy="25" r="3.5" fill="var(--accent)" />
-              <circle cx="34" cy="25" r="3.5" fill="var(--accent)" />
-            </svg>
-          </div>
-          <h3>Agensh</h3>
-          <p>Equal peers negotiating via overlapping claims, team chat channels, per-peer serial routers, and verified Git PRs.</p>
-          <div class="card-meta"><span>board · chat · git</span><span>→</span></div>
-        </a>
-
-        <a class="card program-card program-card-wide" href={withBase('/docs/programs/scalemas/')}>
-          <div class="card-head-row">
-            <span class="card-kicker">IMMUTABLE STORE · CITATIONS</span>
-            <svg class="topo-glyph" viewBox="0 0 48 32" width="44" height="28" aria-hidden="true">
-              <rect x="4" y="19" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5" fill="none" />
-              <rect x="20" y="19" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.5" fill="none" />
-              <rect x="14" y="4" width="16" height="9" rx="2" stroke="currentColor" stroke-width="1.5" fill="var(--accent-soft)" />
-              <path d="M11 19L19 13M26 19L23 13M34 15H44" stroke="currentColor" stroke-width="1.5" />
-            </svg>
-          </div>
-          <h3>ScaleMAS</h3>
-          <p>Zero task queues and zero message routing — equal peers publish, search, read, and cite immutable artifacts in SQLite.</p>
-          <div class="card-meta"><span>substrate Service</span><span>→</span></div>
-        </a>
-
-        <a class="card program-card program-card-wide" href={withBase('/docs/programs/lead-helper/')}>
-          <div class="card-head-row">
-            <span class="card-kicker">DIRECTION · FEEDBACK LOOP</span>
-            <svg class="topo-glyph" viewBox="0 0 48 32" width="44" height="28" aria-hidden="true">
-              <rect x="14" y="4" width="20" height="9" rx="4.5" stroke="currentColor" stroke-width="1.5" fill="var(--marker-yellow)" />
-              <path d="M18 13C10 17 10 24 16 25M30 13C38 17 38 24 32 25" stroke="var(--accent)" stroke-width="1.6" fill="none" />
-              <circle cx="20" cy="25" r="3" fill="var(--teal)" />
-              <circle cx="28" cy="25" r="3" fill="var(--teal)" />
-            </svg>
-          </div>
-          <h3>Lead-helper</h3>
-          <p>A lead sets direction while helpers claim subtasks transactionally, ship verified Git commits, and feed findings back into the next round.</p>
-          <div class="card-meta"><span>board · gitea</span><span>→</span></div>
-        </a>
-      </div>
+      <HarnessShowcase />
     </section>
 
     <footer class="landing-footer">
       <span class="footer-brand">MURM · <code>@swarmenv/core</code> 0.2.0 (<code>ac72c76</code>)</span>
       <div class="footer-links">
         <a href={withBase('/docs/quickstart/')}>Quick Start</a>
-        <a href={withBase('/docs/build-your-program/')}>Build a Program</a>
+        <a href={withBase('/docs/build-your-harness/')}>Build a Harness</a>
         <a href={withBase('/docs/reference/api/')}>API Reference</a>
         <a href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
       </div>

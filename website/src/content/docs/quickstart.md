@@ -1,15 +1,15 @@
 ---
 title: Quick Start
-description: Prepare the local sandbox environment, launch your first multi-agent collaboration session, and inspect the recorded run directory.
+description: Prepare the local sandbox environment, launch your first multi-agent harness, and inspect the recorded run directory.
 section: GETTING STARTED
 order: 1
 ---
 
 ## What you need before starting
 
-In `murm`, every **Agent** runs inside an isolated Docker container (**Sandbox**) so concurrent edits and shell commands never interfere with each other or the host machine. Before running an example, prepare two things:
+In `murm`, every **Agent** runs inside an isolated Docker container (**Sandbox**) so concurrent edits and shell commands never interfere with each other or the host machine. Before running a harness, prepare two things:
 
-1. **Sandbox runtime**: A local OpenSandbox instance (Docker provider) and a single **standard sandbox image** bundling `Pi 1.3.0`, the `swarm` CLI, and the lightweight Worker supervisor. Build it once; every Program reuses the same image.
+1. **Sandbox runtime**: A local OpenSandbox instance (Docker provider) and a single **standard sandbox image** bundling `Pi 1.3.0`, the `swarm` CLI, and the lightweight Worker supervisor. Build it once; every Harness reuses the same image.
 2. **Model endpoint**: Any `/v1/responses`-compatible model endpoint (built-in example configs use `kimi_proxy/k3`). API keys stay strictly on the host and never enter a container.
 
 ## 1. Clone and build
@@ -31,9 +31,9 @@ docker build -f services/opensandbox-agent/Dockerfile -t murm-worker:local .
 
 Start your local OpenSandbox daemon (default endpoint `http://127.0.0.1:8080/v1`).
 
-## 2. Run your first multi-agent session: interactive Subagents
+## 2. Run your first multi-agent harness: interactive Subagents
 
-Start with **[Subagents](../programs/subagents/)**. You give a high-level goal to `/root`, and `/root` breaks the task down, spawns named child agents in parallel, exchanges messages, and integrates the results.
+Start with **[Subagents](../harnesses/subagents/)**. You give a high-level goal to `/root`, and `/root` breaks the task down, spawns named child agents in parallel, exchanges messages, and integrates the results.
 
 ```bash
 export SWARMENV_SUBAGENTS_IMAGE='murm-worker:local'
@@ -65,7 +65,7 @@ When a run completes, the Runtime persists a redacted, structured archive under 
 
 ## 4. Minimal custom-Service example: Notes
 
-If you want the smallest possible reference before authoring your own Program (2 agents, 1 in-process Service, zero external servers), run **Notes**:
+If you want the smallest possible reference before authoring your own Harness (2 agents, 1 in-process Service, zero external servers), run **Notes**:
 
 ```bash
 export SWARMENV_NOTES_IMAGE='murm-worker:local'
@@ -84,7 +84,7 @@ To import the runtime package outside this repository:
 
 ```bash
 repo=/absolute/path/to/SwarmEnv
-mkdir my-murm-program && cd my-murm-program
+mkdir my-murm-harness && cd my-murm-harness
 npm pack "$repo" --pack-destination .
 npm init -y && npm pkg set type=module
 npm install --omit=dev --ignore-scripts ./swarmenv-core-0.2.0.tgz
@@ -98,5 +98,5 @@ Three public entrypoints are available: `@swarmenv/core`, `@swarmenv/core/servic
 | --- | --- |
 | Build a crisp mental model of the six core abstractions | [Core Concepts](../concepts/) |
 | Trace how the host, containers, Bridge, and Model Gateway connect | [System Architecture](../architecture/) |
-| Compare five built-in multi-agent topologies | [Five Topologies Overview](../programs/) |
-| Build your own Service and Program from scratch | [Build Your Own Program](../build-your-program/) |
+| Compare five built-in multi-agent harnesses | [Five Topologies Overview](../harnesses/) |
+| Build your own Service and Harness from scratch | [Build Your Own Harness](../build-your-harness/) |

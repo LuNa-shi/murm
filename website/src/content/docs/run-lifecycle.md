@@ -11,7 +11,7 @@ API tables are easier to internalize through a concrete timeline. Walk through o
 
 ## Phase 1: Start a Run and spawn idle agents
 
-Your Program calls `createRuntime()`, freezing the Profile and Service registries and creating `outputDir/<runId>/`. No containers exist yet.
+Your Harness calls `createRuntime()`, freezing the Profile and Service registries and creating `outputDir/<runId>/`. No containers exist yet.
 
 Calling `runtime.spawn()` registers an `agentId`, reserves a capacity **Slot** (bounded by `maxBots`), boots the sandbox and Pi session, and returns with `status: 'idle'` — no inference starts automatically:
 
@@ -33,7 +33,7 @@ const tester = await runtime.spawn({
 });
 ```
 
-Separating `spawn` from the first input lets your Program wire routing tables, parent-child links, and listeners cleanly before any model call fires.
+Separating `spawn` from the first input lets your Harness wire routing tables, parent-child links, and listeners cleanly before any model call fires.
 
 ## Phase 2: Deliver work with unified `send`
 
@@ -76,7 +76,7 @@ If a transient transport error produces `status: 'unknown'`, re-issue the exact 
 | Scenario | Runtime file primitive | Behavior |
 | --- | --- | --- |
 | **Concurrent edits on one codebase** (Subagents) | `spawn({ workspace: { id, mode: 'read-write' } })` | Multiple agents mount one shared runtime directory while keeping sessions and tokens isolated |
-| **Read-only discovery, write after claim** (Flat) | Start with `writable: false` → `files.prepare()` → `files.grant()` | Agent cannot mutate files until the host validates a claim and grants the trusted `PreparedFiles` handle |
+| **Read-only discovery, write after claim** (TaskPool) | Start with `writable: false` → `files.prepare()` → `files.grant()` | Agent cannot mutate files until the host validates a claim and grants the trusted `PreparedFiles` handle |
 | **Consistent mid-run read for checks or commits** | `runtime.files.snapshot(agentId, { requestId, paths })` | Worker pauses writers briefly and returns consistent file bytes, version, and digest |
 
 For final deliverables, declare `collect` on a Profile or `spawn` call (`paths`, `includeGit`, `maxBytes`, and `required`).
@@ -103,16 +103,16 @@ if (interrupted.status === 'interrupted') {
 }
 ```
 
-`interrupt` cancels in-flight Bridge calls for that agent, aborts the active turn, flushes unconsumed inputs, and returns `discardedInputHashes` (SHA-256 digests) so your Program can recover dropped notifications losslessly.
+`interrupt` cancels in-flight Bridge calls for that agent, aborts the active turn, flushes unconsumed inputs, and returns `discardedInputHashes` (SHA-256 digests) so your Harness can recover dropped notifications losslessly.
 
 ## Phase 5: Archive-before-delete closeout
 
 Follow a strict four-step teardown sequence:
 
-1. Stop your Program's own timers, pollers, and external event feeds;
+1. Stop your Harness's own timers, pollers, and external event feeds;
 2. Call `await runtime.close({ timeoutMs: 30_000 })`;
 3. The Runtime runs: **reject new calls → stop Pi processes → archive native sessions & `collect` files → delete sandboxes & free slots → shut down Bridge/Gateway and write `runtime.json`**;
-4. Only after `close()` completes should your Program close its own databases or revoke temporary external credentials.
+4. Only after `close()` completes should your Harness close its own databases or revoke temporary external credentials.
 
 Receipts report two independent axes:
 - **`execution` (`'stopped' | 'unknown'`)**: whether agent execution is confirmed halted;
@@ -120,4 +120,4 @@ Receipts report two independent axes:
 
 If a required `collect` export or session archive fails, the Runtime keeps the container intact and returns `cleanup: 'pending'` with the exact pending actions so you can retry `stop()` or `close()` without losing deliverables.
 
-Next, see how five distinct multi-agent systems are built on these exact primitives in [Five Topologies Overview](../programs/).
+Next, see how five distinct multi-agent harnesses are built on these exact primitives in [Five Topologies Overview](../harnesses/).

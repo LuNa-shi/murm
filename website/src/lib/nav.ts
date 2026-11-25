@@ -24,20 +24,20 @@ export const DOC_NAV: NavGroup[] = [
     ],
   },
   {
-    label: 'BUILT-IN PROGRAMS',
+    label: 'BUILT-IN HARNESSES',
     items: [
-      { title: 'Five Topologies Overview', slug: 'programs' },
-      { title: 'Subagents', slug: 'programs/subagents' },
-      { title: 'Flat', slug: 'programs/flat' },
-      { title: 'Agensh', slug: 'programs/agensh' },
-      { title: 'ScaleMAS', slug: 'programs/scalemas' },
-      { title: 'Lead-helper', slug: 'programs/lead-helper' },
+      { title: 'Five Topologies Overview', slug: 'harnesses' },
+      { title: 'Subagents', slug: 'harnesses/subagents' },
+      { title: 'TaskPool', slug: 'harnesses/taskpool' },
+      { title: 'PeerMesh', slug: 'harnesses/peermesh' },
+      { title: 'Substrate', slug: 'harnesses/substrate' },
+      { title: 'Lead-Worker', slug: 'harnesses/lead-worker' },
     ],
   },
   {
     label: 'DEVELOPERS',
     items: [
-      { title: 'Build Your Own Program', slug: 'build-your-program' },
+      { title: 'Build Your Own Harness', slug: 'build-your-harness' },
     ],
   },
   {
