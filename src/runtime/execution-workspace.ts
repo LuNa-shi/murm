@@ -99,7 +99,7 @@ export class ExecutionWorkspace {
 
   async #capture(execution: any, identity: any) {
     this.guard(identity);
-    const snapshot = await this.sandbox.snapshotBotProject({ executionId: execution.execution_id });
+    const snapshot = await this.sandbox.snapshotBotProject({ executionId: execution.execution_id, requestId: `flat:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}` });
     this.guard(identity);
     return this.#decodeSnapshot(snapshot, execution);
   }
@@ -154,7 +154,13 @@ export class ExecutionWorkspace {
       // A prior process can have committed Git before its SQL acknowledgement.
       // Reconcile captured operations before selecting the next saved parent.
       for (const pending of this.db.prepare("SELECT * FROM execution_workspace_requests WHERE execution_id = ? AND phase IN ('capturing', 'captured', 'installing', 'installed') ORDER BY created_at, request_id").all(execution.execution_id)) {
-        if (pending.phase === 'capturing') this.#fail(pending, new SwarmEnvError(ERROR_CODES.WORKSPACE_REQUEST_ABORTED, 'Snapshot owner ended before recording its immutable input; use a new request ID'));
+        if (pending.phase === 'capturing') {
+          if (this.sandbox.recoverSnapshot) {
+            if (pending.request_id === requestId) continue;
+            throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, 'An earlier snapshot awaits its original request ID', undefined, { retryable: true });
+          }
+          this.#fail(pending, new SwarmEnvError(ERROR_CODES.WORKSPACE_REQUEST_ABORTED, 'Snapshot owner ended before recording its immutable input; use a new request ID'));
+        }
         else {
           const source = JSON.parse(pending.captured_json).source;
           try {
@@ -178,7 +184,7 @@ export class ExecutionWorkspace {
         return operation === 'diff' ? { ...view, changes: view.changed_paths.map((path: any) => ({ path, before: current.manifest[path] ?? null, after: snapshot.manifest[path] ?? null })) } : view;
       }
       const timestamp = new Date().toISOString();
-      this.db.prepare(`INSERT INTO execution_workspace_requests (execution_id, request_id, fingerprint, phase, created_at, updated_at) VALUES (?, ?, ?, 'capturing', ?, ?)`)
+      this.db.prepare(`INSERT OR IGNORE INTO execution_workspace_requests (execution_id, request_id, fingerprint, phase, created_at, updated_at) VALUES (?, ?, ?, 'capturing', ?, ?)`)
         .run(execution.execution_id, requestId, fingerprint, timestamp, timestamp);
       try {
         const snapshot = await this.#capture(execution, identity);
@@ -206,6 +212,11 @@ export class ExecutionWorkspace {
         const row = this.#request(execution.execution_id, requestId);
         if (row.phase === 'capturing') {
           const known = [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.INVALID_CONTRACT].includes(error.code);
+          const definitive = known || ['NOT_ALLOWED', 'FENCED', 'CONFLICT'].includes(error.code);
+          if (this.sandbox.recoverSnapshot && !definitive) {
+            this.onPending?.(execution.execution_id);
+            throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, 'Snapshot receipt is unknown; retry the original request ID', undefined, { retryable: true, cause: error });
+          }
           const outcome = new SwarmEnvError(known ? error.code : ERROR_CODES.WORKSPACE_REQUEST_ABORTED,
             known ? `${error.message}; use a new request ID` : 'Snapshot did not complete; use a new request ID', { ...error.details, cause_code: error.code ?? 'SNAPSHOT_ERROR' });
           this.#fail(row, outcome);
