@@ -26,6 +26,8 @@ node benchmarks/putnambench-flat/main.ts run trusted-checker-config.json /path/t
   EXP-YYYYMMDD-NN sha256:<worker-image-id>
 ```
 
+The default research window is 3,600 seconds. To spend only the time remaining after an interrupted trial, register the shorter window and pass its duration in whole seconds after the image ID. Selection allows up to 300 seconds per Bot within that shared window, matching the original Putnam runner.
+
 The runner claims the experiment directory once. It keeps the original fixture, databases, Core traces, version metadata and final receipts private under that directory. Use the Git tree ID from the receipt to replay the final candidate and the revision ancestry and Lean proof to verify actual adoption. The fixed final assessment, Mission submission, stop reason and resource result are independent fields.
 
 ## Local checks

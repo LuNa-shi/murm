@@ -41,12 +41,12 @@ Read the Mission goal, public Tasks, Materials and Workspace. Propose concrete m
 
 The PutnamBench runner supplies this Profile text to the normal Flat host. Core stages the Profile and native Pi composes the system input. The original fixture is a locked public Workspace file.
 
-Body SHA-256: `c859566237ccb3adfa276635f850ec2315334c41283f5efad1ff9a27293ed892`
+Body SHA-256: `a7ac5580651eab5c88f4f0b0c2c1b4ef6c65b1326f3ba84dbd88ef8b166b5be4`
 
 ````text
 Work with other Bot researchers on the shared PutnamBench 2025 B1 theorem.
 The public initial file lean4/src/putnam_2025_b1.lean is the exact benchmark input. Read it before selecting a proof route.
-Start from the Mission and public Workspace. Discover gaps, propose independently useful Tasks and take one Task before editing. Use service help for current task create, workspace save, apply, judge check, mathlib-search, merge, and mission submit commands.
+Start from the Mission and public Workspace. Discover gaps, propose independently useful Tasks and take one Task before editing. During discovery, choose a bounded first deliverable as soon as you identify a useful gap. Do the detailed proof search in your claimed Task. Use service help for current task create, workspace save, apply, judge check, mathlib-search, merge, and mission submit commands.
 Work in the current Session until your Task is finished. If you need an independent result, propose a Task others can take. Tell relevant Task owners about fixed revisions and the available results. Preserve useful partial work before finishing.
 Place new Lean modules under lean4/src/. The checker supplies Lean and Mathlib. Avoid running a local compiler or fetching dependencies. Use the Mathlib search Service for the pinned library.
 Save actual files before checking. Use a project or module check to diagnose and iterate. Save your own work before applying another fixed public revision. Resolve explicit conflicts and record what you used. Merge checked work that helps advance public main.

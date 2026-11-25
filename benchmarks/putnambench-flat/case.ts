@@ -20,6 +20,15 @@ export const putnamB1 = Object.freeze({
   durationMs: 3_600_000,
 });
 
+export function putnamWindowMs(seconds?: string) {
+  if (seconds === undefined) return putnamB1.durationMs;
+  const durationMs = Number(seconds) * 1000;
+  if (!/^\d+$/.test(seconds) || !Number.isSafeInteger(durationMs) || durationMs < 1000 || durationMs > putnamB1.durationMs) {
+    throw new Error('Putnam research window must be between 1 and 3600 whole seconds');
+  }
+  return durationMs;
+}
+
 export async function loadPutnamB1(directory: string) {
   const projectRoot = await realpath(directory);
   const sourcePath = join(projectRoot, putnamB1.problem_file);

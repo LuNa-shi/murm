@@ -20,7 +20,7 @@ const closeTimeoutMs = 60_000;
 
 const prompt = `Work with other Bot researchers on the shared PutnamBench 2025 B1 theorem.
 The public initial file lean4/src/putnam_2025_b1.lean is the exact benchmark input. Read it before selecting a proof route.
-Start from the Mission and public Workspace. Discover gaps, propose independently useful Tasks and take one Task before editing. Use service help for current task create, workspace save, apply, judge check, mathlib-search, merge, and mission submit commands.
+Start from the Mission and public Workspace. Discover gaps, propose independently useful Tasks and take one Task before editing. During discovery, choose a bounded first deliverable as soon as you identify a useful gap. Do the detailed proof search in your claimed Task. Use service help for current task create, workspace save, apply, judge check, mathlib-search, merge, and mission submit commands.
 Work in the current Session until your Task is finished. If you need an independent result, propose a Task others can take. Tell relevant Task owners about fixed revisions and the available results. Preserve useful partial work before finishing.
 Place new Lean modules under lean4/src/. The checker supplies Lean and Mathlib. Avoid running a local compiler or fetching dependencies. Use the Mathlib search Service for the pinned library.
 Save actual files before checking. Use a project or module check to diagnose and iterate. Save your own work before applying another fixed public revision. Resolve explicit conflicts and record what you used. Merge checked work that helps advance public main.
@@ -103,7 +103,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
       coordinationPermissions: ['mission_submit'], closeTimeoutMs,
       handoff: { executionTimeoutMs: durationMs, handoffLeadMs: Math.min(60_000, Math.floor(durationMs / 4)) },
       controller: {
-        selectionMs: Math.min(120_000, durationMs), hardBudgetMs: durationMs + setupAllowanceMs, stallMs: durationMs,
+        selectionMs: Math.min(300_000, durationMs), hardBudgetMs: durationMs + setupAllowanceMs, stallMs: durationMs,
         continuationLimit: Number.MAX_SAFE_INTEGER, discoveryLimit: Number.MAX_SAFE_INTEGER, heartbeatMs: 1000,
         beforeInitialDispatch({ signal }: { signal: AbortSignal }) {
           signal.throwIfAborted();
