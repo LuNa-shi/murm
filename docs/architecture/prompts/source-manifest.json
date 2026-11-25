@@ -15,7 +15,7 @@
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "18dd810d9189366cc739e9d226c0080d5260d94c801dd126a08dd282b33ca818"
+      "sha256": "f59dcabd8444f940415a9dcd9ebf34acc2bb2201c3df48e23fb1cfff94dfe759"
     },
     {
       "path": "src/cli/service-command.ts",
@@ -577,7 +577,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-taskpool-harness.md",
-      "sha256": "c30a842f3e0f85ccd8d8a3b8c1890de5732db215dc3e51371135b96b4d50baba"
+      "sha256": "adff6d2010d3619b5359c5eca7b67c8aa8e4f928f193d1d8c0cfb97f9d63cdba"
     }
   ]
 }
