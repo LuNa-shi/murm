@@ -143,7 +143,7 @@
       "role": "Shared Pastel trial lifecycle, window start, Core model accounting, and private closeout receipt"
     },
     {
-      "path": "benchmarks/programbench-pastel/run-window.ts",
+      "path": "benchmarks/shared/run-window.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -151,7 +151,7 @@
       "role": "Monotonic Responses admission, active stream cancellation, and deadline-bound checkpoint persistence"
     },
     {
-      "path": "benchmarks/programbench-pastel/run-window.test.ts",
+      "path": "benchmarks/shared/run-window.test.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
