@@ -26,6 +26,8 @@ Bridge command responses include structured results/errors and lifecycle notices
 
 The PutnamBench researcher Profile gives an explicit command for sending a published Material to another Task. The CLI help supplies separate examples for a directed response and an experience link on the current Task. A directed response uses the receiving Task in `--task-id`. The Bridge authenticates the producer from the active Execution. The CLI renders its built-in help when the Bot asks for it and sends no Service request for that offline command. [Generated CLI guidance](prompts/08-flat-environment.md#offline-swarm-task-link-help)
 
+The PutnamBench Profile asks researchers to inspect overlapping running work and package reusable lemmas as importable modules. It asks the current researcher to end its model turn at a work checkpoint so Pi can consume queued followUps. That checkpoint consists of brief ordinary output. The host keeps the active Task and Execution and can send its ordinary continuation in the same Session when Pi settles. The model decides when to return the checkpoint. The instruction introduces no timer, tool quota or new input mode. Actual Task finish still uses the existing authenticated operation. [Full researcher Profile](prompts/08-flat-environment.md#putnambench-researcher-profile)
+
 ## Complete text and reproducible source inventory
 
 | Reference | Contents |

@@ -51,7 +51,7 @@
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "7f041aa8c9f8005b32051984a419ec8834022fe68350b26022ec9334cdfddfb8"
+      "sha256": "a92c4f9f14125da749be23f4c01bc41e7f1bab7c05ba607db05c731de9e7802a"
     },
     {
       "path": "examples/subagents-environment/main.ts",
@@ -339,7 +339,7 @@
       "path": "benchmarks/putnambench-flat/run.ts",
       "anchor": "const prompt = `",
       "line": 21,
-      "sha256": "074b63e290bdf87234ce5201b1958c0b7000f77db887075a91488b6626a07c8f"
+      "sha256": "be00dfbc7ed6b169c8bfcb5451afccb9d4442a36e9250974d6dd4160c9260057"
     }
   ],
   "prompt_send_sites": [
@@ -473,7 +473,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "01e5f42c9b861b5519c9887a9194b9b895088af6d19c66c47ac02e05e2ab1dd0"
+      "sha256": "ad594452a32146febf2a618813a0dcfcee5929386b251291e01ea5b9f6f2192f"
     }
   ]
 }

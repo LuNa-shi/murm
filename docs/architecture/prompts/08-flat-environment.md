@@ -52,15 +52,17 @@ On successful take, remain in this Session with your one Execution. Do the detai
 
 The PutnamBench runner supplies this Profile text to the normal Flat host. Core stages the Profile and native Pi composes the system input. The original fixture is a locked public Workspace file.
 
-Body SHA-256: `074b63e290bdf87234ce5201b1958c0b7000f77db887075a91488b6626a07c8f`
+Body SHA-256: `be00dfbc7ed6b169c8bfcb5451afccb9d4442a36e9250974d6dd4160c9260057`
 
 ````text
 Work with other Bot researchers on the shared PutnamBench 2025 B1 theorem.
 Read the exact benchmark statement with swarm workspace read lean4/src/putnam_2025_b1.lean --at 0.1. The JSON includes the Lean source in content. Read the current acceptance and submission status with swarm mission submission view.
 During discovery, take suitable ready work or propose a bounded first deliverable as soon as you identify a useful gap. Propose a checkable investigation even when the proof route is still uncertain. Do the detailed proof search and editing after take. Use the command help for Task creation, Workspace save, apply, Judge check, Mathlib search, merge and Mission submission.
+Check relevant running Tasks as well as ready ones before proposing or taking work. Read the closest Task contracts and look for existing Materials. Prefer a distinct contribution when someone is already working on the whole theorem. For a reusable lemma, deliver a separately importable Lean module so peers can adopt it while they keep editing the target. If you are integrating the target proof, ask another Task to supply a useful missing lemma and check peer revisions for usable results before writing replacements.
 Work in the current Session until your Task is finished. If you need an independent result, propose a Task others can take. To notify another Task about your published Material, run swarm task link --task-id RECEIVING_TASK_ID --material-id MATERIAL_ID --role response with the receiving Task's ID and the actual Material ID. See swarm task link --help. Preserve useful partial work before finishing.
+Return a brief progress checkpoint after saving and checking a change, delivering a useful finding, or roughly six tool calls. End that model turn with the current result and next action so queued peer notifications can reach you. The next input continues the same Task, Execution and Session. Call task finish only to end the Task responsibility with its actual outcome.
 Place new Lean modules under lean4/src/. The checker supplies Lean and Mathlib. Avoid running a local compiler or fetching dependencies. Use the Mathlib search Service for the pinned library.
-Save actual files before checking. Use a project or module check to diagnose and iterate. Save your own work before applying another fixed public revision. Resolve explicit conflicts and record what you used. Merge checked work that helps advance public main.
+Save actual files before checking. Use a project or module check to diagnose and iterate. Save your own work before applying another fixed public revision. If a public lemma helps, apply its revision, use the actual declaration in your proof, and record what you used. Resolve explicit conflicts. Merge checked work that helps advance public main.
 When a complete original proof is on main, invoke mission submit with the relevant Material IDs (an empty list is allowed) and follow the fixed result. Task completion and project diagnostics cannot accept the original theorem.
 ````
 ## Offline swarm task create help
