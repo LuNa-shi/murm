@@ -1,6 +1,6 @@
 # Pastel acceptance with early delegation
 
-Status **REGISTERED**. Repeat of [EXP-20261125-04](EXP-20261125-04-issue199-pastel.md) for [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199). The owner authorized a one-hour window and removal of the host's request count and output token caps, and asked for stronger guidance to use Subagents.
+Status **SETTLED · Deadline without a full delivery or usable child handoff**. Repeat of [EXP-20261125-04](EXP-20261125-04-issue199-pastel.md) for [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199). The owner authorized a one-hour window and removal of the host's request count and output token caps, and asked for stronger guidance to use Subagents.
 
 ## Setup
 
@@ -20,12 +20,18 @@ Status **REGISTERED**. Repeat of [EXP-20261125-04](EXP-20261125-04-issue199-past
 
 ## Results
 
-Pending.
+| Check | Finding |
+| --- | --- |
+| Window | 3,600 seconds, 186 forwarded requests. Core recorded 184 completed and two failed requests. The largest recorded response used 10,818 output tokens. |
+| Task | The new HSL requirement first appeared in Root model request 2, at 12.232 seconds. The deadline ended the run without a Root completion. The export contained the source, build script and README. The offline check stopped when it found the required `test.js` absent. |
+| Delegation and parallel work | Root chose two assignments and spawned `/root/golden_prober` at 160.464 seconds and `/root/core_impl` at 193.881 seconds. The children's recorded model work overlapped for 3,055.336 seconds. |
+| Delivery to active children | Root sent each child a request for an immediate handoff at about 3,206 seconds. Both messages entered actual model requests, sequences 169 and 170. Neither child reported a usable result to Root before the deadline, so adoption could not be established. |
+| Cleanup | Runtime `2224655a-8927-4aeb-aa4d-d4ae794dddab` closed. Three executions stopped, three Session archives and 186 request/result pairs were present, and provider lookups returned HTTP 404 for all three sandbox IDs. |
 
 ## Analysis
 
-Pending.
+Both children continued investigating rounding behavior after being assigned distinct work. Root also investigated related behavior while writing the candidate. This run exercised autonomous delegation, real parallel model work and active input delivery. Dependable handoff and complete task delivery were still missing when the window closed.
 
 ## Next steps
 
-Execute the registered run.
+The next attempt asks for a verified interim contribution via the Service, distinct assignments, representative checks and an early buildable delivery with all required files.
