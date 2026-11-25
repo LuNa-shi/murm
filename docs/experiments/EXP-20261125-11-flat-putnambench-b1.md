@@ -1,6 +1,6 @@
 # EXP-20261125-11 · Flat PutnamBench 2025 B1
 
-Status · REGISTERED
+Status · STOPPED EARLY · Checkpoint behavior absent
 
 Repeat of [EXP-20261125-10](EXP-20261125-10-flat-putnambench-b1.md) for the remaining proof-adoption criterion. EXP-10 verified the original theorem and observed two cross-Bot apply operations. The accepted proof was the submitter's pre-apply proof, and none of the queued Material notifications reached the model in that run. This run changes only the researcher Profile. It asks Bots to detect overlapping work, deliver reusable lemmas in importable modules and return short work checkpoints that let queued peer results enter an existing Session. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
@@ -42,3 +42,18 @@ node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_
 Track first-cohort Task formation, individual session checkpoints and trusted phase traces. For a directed Material, reconcile publication, routing, Core input admission, recipient model input and processing. Track separately importable producer files, recipient read/apply in the original Session and Execution, recipient proof changes, fixed final main and actual dependency from the final theorem.
 
 Stop on trusted Mission acceptance, the common deadline or a confirmed workflow deviation. Stop early for a first cohort with every selection deadline elapsed and no accepted proposal or take, rejection of the registered model setting, phase-policy leakage, or a confirmed Worker, Service, checker or cleanup defect. If an eligible queued notice remains absent after its recipient returns a checkpoint and has a subsequent admitted input, reconcile the native queue before proceeding. Ordinary conflicts or single invalid guesses remain part of the run. Final assessment and cleanup are always recorded.
+
+## Results
+
+- At `11:10:38.627 UTC` the window opened with four slots. The first successful Task creation and take entered the Bridge at about `+13.6 s` and `+16.3 s`. Four Tasks and four Executions formed from the empty pool. One initial Bot exhausted its selection window, closed and was replaced. Peak concurrency was four.
+- Every active owner continued through more than six tools inside its original discovery input. No active owner returned a progress checkpoint or settled while working. There were 61 successful Mathlib searches, no post-seed save, no Judge check, no Material, no apply and no Mission submission.
+- The operator stopped the run after `1,652.321 s`. Core and controller audit recorded `host-stop`, five closed Bots, five released slots, no live container, and no pending checker or merge. The frozen candidate remained the seed `0.1`, tree `15cdae59fe9ba1dada06eb14959403ab364ac8bd`. The post-stop assessment recorded `ERROR` after the operator cancellation. The startup check had already rejected the incomplete seed.
+- Trusted gateway receipts recorded 83 real `kimi_proxy/k3` requests. Of these, 78 completed with metered usage of 2,937,724 input and 194,614 output tokens. Five interrupted requests lack metered usage. Twenty selection requests used upstream `low`. Sixty-three work requests retained Pi `medium`.
+
+## Analysis
+
+The Profile instruction did not produce model-chosen checkpoints in this run. The absence of a saved result also meant no Material notification entered the queue, so this trial did not exercise notification delivery. EXP-10 separately established that a `followUp` could be admitted yet remain outside subsequent model inputs during a long Pi tool loop. Pi drains `followUp` when that loop would otherwise end. A native tool continuation offers an earlier input boundary while preserving the Bot's active Session and Execution. The observed search count and lack of saves do not identify which Profile instruction drove the research pattern.
+
+## Next steps
+
+Verify an opt-in Material delivery mode against a controlled native tool loop, then repeat the same real benchmark after prelaunch review. Keep the directed receipt and actual proof dependency separate in the audit.
