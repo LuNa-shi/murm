@@ -122,8 +122,8 @@ test('matching frozen archive installs its exact bytes outside checkout without 
   const result = await execute(process.execPath, ['--input-type=module', '-e', `
     import assert from 'node:assert/strict';
     import { marker } from '@swarmenv/core';
-    import { name as input } from './run-input.js';
-    import { name as reader } from './read-result.js';
+    import { name as input } from './run-input.mjs';
+    import { name as reader } from './read-result.mjs';
     assert.equal(marker, 'frozen-candidate');
     assert.equal(input, 'run-input');
     assert.equal(reader, 'read-result');
