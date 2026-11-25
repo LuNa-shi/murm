@@ -15,15 +15,27 @@
     },
     {
       "path": "src/cli/swarm-cli.ts",
-      "sha256": "f22188299b28001174b1de93c57b1043be1df8aed931f8862257f0215dbd868f"
+      "sha256": "46c393fafbda6a47dc5a1061ec2eb2c8cf1be1307693531400bd07df2d647dcf"
+    },
+    {
+      "path": "src/cli/service-command.ts",
+      "sha256": "b448f575774ce844d71bdf915ea70aebd6f8cd931f538291e5db8a4627da77da"
     },
     {
       "path": "src/core/index.ts",
       "sha256": "2210258384ebee02c6d3ab5416dd0846dffc1e22e403702e284862ec211f391c"
     },
     {
+      "path": "src/core/bridge.ts",
+      "sha256": "b222d2be7d421e39a0b1808517635c8c05337c5763773d02e6f40ba6468b36bf"
+    },
+    {
+      "path": "src/core/startup-prompt.ts",
+      "sha256": "e2c972ed13ddb476540d00b6bc9350ca9f05adce40a7f28971400c8441d0fd73"
+    },
+    {
       "path": "src/core/pi-opensandbox-backend.ts",
-      "sha256": "57c14b43eba80e8933975c52a40c7db8b5b668b2bd752d84e5792c9aad888bfb"
+      "sha256": "b2b197b6437d303987d8789b8b32f49a8ca74f8172e24d403083fc7f8ec93eef"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
@@ -43,7 +55,7 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "sha256": "e0aab4a720b465adf8467a04af7896b2447230c0069e2e180102973217265fb5"
+      "sha256": "4d718d125e2b409f3b8b5c0ab6d92f85c3eb9d2bba7891c58fcff62162dce76c"
     },
     {
       "path": "src/environments/flat/environment.ts",
@@ -51,7 +63,7 @@
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "db00c38178aa178e9e247e5eb7ca8b9ac23d558df29e68b0d23a61fddffd643e"
+      "sha256": "5a6340b00b3c636177df34eb899d3c6619693015451d3b1b2ae7ee43b2439cbd"
     },
     {
       "path": "examples/subagents-environment/main.ts",
@@ -306,16 +318,22 @@
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
     },
     {
-      "path": "src/environments/flat/controller.ts",
-      "anchor": "export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE = `",
-      "line": 8,
-      "sha256": "e0bd2dfc2680afddd596bb035c9366e8dd50c076fddfd628ee92c6d831a2b823"
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "anchor": "const goal = `",
+      "line": 21,
+      "sha256": "ce58d7166338dcad86cd17d3b8dc10d82ac847699f139bb8c067742bfe28299b"
     },
     {
-      "path": "src/environments/flat/controller.ts",
-      "anchor": "return `Mission ",
-      "line": 14,
-      "sha256": "3ba07752364313cf01952793024f5162defd9885b526070ff06cc5d809d26cf9"
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "anchor": "source: string) => `",
+      "line": 29,
+      "sha256": "47e3711115465c2e932e77d4c60a02758ab24ce81e08b9c83e1517c764489357"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "anchor": "const collaboration = `",
+      "line": 23,
+      "sha256": "697bc515efa28cd4d3ddd4d2cfa7d51e151af042fc3f5ca4c37b0a002585f4e6"
     },
     {
       "path": "src/environments/flat/environment.ts",
@@ -332,14 +350,8 @@
     {
       "path": "src/environments/flat/controller.ts",
       "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
-      "line": 25,
+      "line": 30,
       "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
-    },
-    {
-      "path": "benchmarks/putnambench-flat/run.ts",
-      "anchor": "const prompt = `",
-      "line": 21,
-      "sha256": "4cb2d88fe307d5e6f03a8957098cb83e479bd9207855c9aa8cf2d0db1851c186"
     }
   ],
   "prompt_send_sites": [
@@ -350,7 +362,7 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "line": 132,
+      "line": 143,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
@@ -460,6 +472,10 @@
       "sha256": "5e582c31c2ee70324811cb278feb5ba115396a4cc65cbd1d5e2256af15c0bd8a"
     },
     {
+      "path": "docs/architecture/prompts/01-core-startup.md",
+      "sha256": "fc54ac800848c6d521724485ab4ea07feb424db4e3ce6d5b6279568505686344"
+    },
+    {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
       "sha256": "f597ea752377ae8159bac007ab20fd590726947f12e3ff6cd991134be7ac4f44"
     },
@@ -473,7 +489,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "6c838ddf7216159ec5efd141c45f422cb17da48ab0c3ec698d0b0d38129392a9"
+      "sha256": "bb49b6ea22bb853a4cd54073210f6dd19f25867eb1fded7c2ac876f946e76517"
     }
   ]
 }

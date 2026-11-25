@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { serviceCommand } from '../src/cli/service-command.js';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -23,16 +24,33 @@ import { openSandboxBotKey } from '../src/runtime/opensandbox-metadata.js';
 const execute = promisify(execFile);
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-function script(role, revision = null, notification = null) {
+function script(role, revision = null, notification = null, recipient = null) {
   const commands = role === 'finish' ? `
 finished=cli('task','finish','--outcome','done','--request-id','B-finish')
 result={'role':'finish','same_process':os.getcwd()==before,'finished':finished}
+` : role === 'route' ? `
+args=('task','link','--task-id',${JSON.stringify(recipient)},'--material-id',${JSON.stringify(notification?.material_id)},'--role','response')
+link=cli(*args,'--request-id','A-route')
+assert cli(*args,'--request-id','A-route')==link
+result={'role':'route','same_process':os.getcwd()==before,'link':link['link']}
 ` : revision === null ? `
-listed=cli('task','list','--state','ready','--request-id',ROLE+'-list')
-created=cli('task','create','--gap','Exercise native collaborative file transfer','--priority','medium','--summary','Native '+ROLE,'--expected-output','Saved exact guest bytes','--acceptance-conditions','["Public bytes match guest bytes"]','--request-id',ROLE+'-create')
-task=created['task']['task_id']
+services=cli('service','list')['services']
+listed=cli('task','list','--states','["ready","running"]','--request-id',ROLE+'-list')
+public=cli('workspace','public-diff','--from','0.1','--to','main','--request-id',ROLE+'-public-diff')
+assert public['from']['revision']=='0.1'
+def propose(summary, request):
+ return cli('task','create','--gap','Exercise native collaborative file transfer','--priority','medium','--summary',summary,'--expected-output','Saved exact guest bytes','--acceptance-conditions','["Public bytes match guest bytes"]','--request-id',request)['task']['task_id']
+if ROLE=='C':
+ task=next(row['task_id'] for row in listed['tasks'] if row['available'] and row['summary']=='Extra active0')
+else:
+ task=propose('Native '+ROLE,ROLE+'-create')
+ if ROLE=='A':
+  assert propose('Extra discovery','A-extra-discovery')!=task
 taken=cli('task','take',task,'--request-id',ROLE+'-take')
 assert taken['execution']['state']=='RUNNING'
+if ROLE=='A':
+ extras=[propose('Extra active'+str(i),'A-extra-active'+str(i)) for i in range(2)]
+ assert len(set(extras+[task]))==3
 assert os.getcwd()==before
 if ROLE=='A':
  text=('native λ '+secrets.token_hex(32)+'\\n').encode('utf8')
@@ -42,21 +60,28 @@ if ROLE=='A':
 else:
  open('consumer.txt','wb').write(b'CONSUMER_PROGRESS\\n')
 saved=cli('workspace','save','--request-id',ROLE+'-save')
-material=cli('material','publish','--content','Native '+ROLE+' saved '+saved['revision'],'--request-id',ROLE+'-material')
+material=cli('material','publish','--content',json.dumps({'revision':saved['revision'],'path':'lemma.txt' if ROLE=='A' else 'consumer.txt','outcome':'native file evidence'}),'--request-id',ROLE+'-material')
 cli('task','link','--task-id',task,'--material-id',material['material']['material_id'],'--role','experience','--request-id',ROLE+'-link')
-result={'role':ROLE,'task':task,'execution':taken['execution']['execution_id'],'revision':saved['revision'],'same_process':os.getcwd()==before,'material':material['material']['material_id']}
+result={'role':ROLE,'task':task,'execution':taken['execution']['execution_id'],'revision':saved['revision'],'same_process':os.getcwd()==before,'material':material['material']['material_id'],'services':{service['id']:[cap['operation'] for cap in service['capabilities']] for service in services}}
 if ROLE=='A':
  result.update({'text':text.hex(),'binary':binary.hex()})
 ` : `
 material=cli('material','view',${JSON.stringify(notification?.material_id ?? '')})
-assert ${JSON.stringify(revision)} in json.dumps(material)
+assert material['material']['content']['revision']==${JSON.stringify(revision)}
+assert material['material']['content']['path']=='lemma.txt'
+published=cli('workspace','read','lemma.txt','--at',material['material']['content']['revision'])
+assert 'native λ ' in published['content']
+before_apply=cli('workspace','status','--request-id','B-status')
+assert not before_apply['dirty']
 assert open('consumer.txt','rb').read()==b'CONSUMER_PROGRESS\\n'
 applied=cli('workspace','apply','--from',${JSON.stringify(revision)},'--request-id','B-apply')
 assert open('consumer.txt','rb').read()==b'CONSUMER_PROGRESS\\n'
 text=open('lemma.txt','rb').read()
 binary=open('lemma.bin','rb').read()
 open('consumer.txt','ab').write(b'ADOPTED_LEMMA\\n')
-saved=cli('workspace','save','--request-id','B-integrated-save')
+material_ids=json.dumps([${JSON.stringify(notification?.material_id ?? '')}])
+cli('material','consume','--material-ids',material_ids,'--action','workspace','--impact','Applied the exact published lemma revision and amended the downstream file','--request-id','B-use')
+saved=cli('workspace','save','--material-ids',material_ids,'--request-id','B-integrated-save')
 feedback=cli('task','feedback','--notification-id',${JSON.stringify(notification?.notification_id ?? '')},'--decision','adopted','--action','applied_revision_and_saved_proof_progress','--request-id','B-adoption-feedback')
 result={'feedback':feedback,'role':'B-apply','revision':saved['revision'],'text':text.hex(),'binary':binary.hex(),'same_process':os.getcwd()==before,'applied':applied,'parents':saved['parents']}
 `;
@@ -85,7 +110,11 @@ async function checkNativeAdoption(t, materialNotificationMode) {
   tasks.createMission({ mission_id: missionId, goal: 'Controlled native save and adoption check' }, makeEnvelope({ actorRef: 'host' }));
   const initial = await workspace.create({ missionId, workspaceId: 'native-workspace', initialFiles: { 'input.txt': 'fixed input\n' } });
   assert.equal(tasks.listTasks({ missionId, availableOnly: false }).length, 0);
-  const evidence = {}, events = [], admissions = [];
+  const evidence = {}, events = [], admissions = [], firstPrompts = new Map();
+  const roles = materialNotificationMode === 'steer' ? ['A', 'B', 'D', 'E', 'C'] : ['A', 'B', 'C'];
+  const capacity = roles.length - 1;
+  const findNotice = () => evidence.B && tasks.listUnprocessedNotifications(evidence.B.task, evidence.B.execution)
+    .find(row => row.notification_type === 'material_available' && row.material_id === evidence.A?.material);
   let arrivals = 0, starts = 0, notificationInputs = 0, adoptionNotification, failure, runtimeId, report;
   const continueB = Promise.withResolvers();
   const awaiting = new Map();
@@ -97,7 +126,7 @@ async function checkNativeAdoption(t, materialNotificationMode) {
   };
   const server = createServer(async (request, response) => {
     try {
-      assert.ok(++arrivals <= 10 && Date.now() < deadlineAt);
+      assert.ok(++arrivals <= 20 && Date.now() < deadlineAt);
       assert.equal(request.method, 'POST'); assert.equal(request.url, '/v1/responses');
       const chunks = []; let bytes = 0;
       for await (const chunk of request) { bytes += chunk.length; assert.ok(bytes < 4 * 1024 ** 2); chunks.push(chunk); }
@@ -106,6 +135,8 @@ async function checkNativeAdoption(t, materialNotificationMode) {
       const lastUser = body.input.filter(row => row.role === 'user').at(-1);
       const text = typeof lastUser?.content === 'string' ? lastUser.content : lastUser?.content?.map(row => row.text ?? '').join('');
       const finishing = text === 'FLAT_NATIVE_FINISH';
+      const routing = text === 'FLAT_NATIVE_ROUTE';
+      adoptionNotification ??= findNotice();
       const apply = adoptionNotification && text?.includes(adoptionNotification.notification_id) ? [text, evidence.A.revision] : null;
       if (apply) {
         assert.ok(text.includes(adoptionNotification.material_id));
@@ -121,7 +152,8 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         }
       }
       let item;
-      const role = finishing ? 'finish' : apply ? 'B-apply' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_C') ? 'C' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_A') ? 'A' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_B') ? 'B' : null;
+      const role = finishing ? 'finish' : routing ? 'route' : apply ? 'B-apply'
+        : roles.find(name => body.input.some(row => row.type === 'function_call' && row.call_id === `native_${name}`));
       const output = role && body.input.findLast(row => row.type === 'function_call_output' && row.call_id === `native_${role}`)?.output;
       if (typeof output === 'string') {
         const result = JSON.parse(output.trim());
@@ -136,9 +168,22 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         }
       } else {
         if (apply) notificationInputs++;
-        const next = finishing ? 'finish' : apply ? 'B-apply' : ['A', 'B', 'C'][starts++];
-        assert.ok(finishing || apply || starts <= 3);
-        item = { type: 'function_call', id: `native_call_${next}`, call_id: `native_${next}`, name: 'bash', arguments: JSON.stringify({ command: script(next, apply?.[1] ?? null, apply ? adoptionNotification : null), timeout: 120 }) };
+        const next = finishing ? 'finish' : routing ? 'route' : apply ? 'B-apply' : roles[starts++];
+        assert.ok(next);
+        if (roles.includes(next)) {
+          const developer = body.input.find(row => row.role === 'developer')?.content;
+          const system = typeof developer === 'string' ? developer : developer?.map(row => row.text ?? '').join('');
+          assert.deepEqual(body.tools.map(tool => tool.name), ['read', 'write', 'edit', 'bash']);
+          assert.match(system, /<services>/);
+          assert.doesNotMatch(system, /<(docs|added_system_prompt)>/);
+          assert.match(text, /Mission: flat:native-workspace/);
+          assert.match(text, /FIXED_NATIVE_ORIGINAL_PROBLEM/);
+          assert.match(text, /multiple Tasks during discovery and during your Execution/);
+          firstPrompts.set(next, system);
+        }
+        const material = routing ? { material_id: evidence.A.material } : apply ? adoptionNotification : null;
+        item = { type: 'function_call', id: `native_call_${next}`, call_id: `native_${next}`, name: 'bash', arguments: JSON.stringify({
+          command: script(next, apply?.[1] ?? null, material, routing ? evidence.B.task : null), timeout: 120 }) };
       }
       response.writeHead(200, { 'content-type': 'text/event-stream' }); response.end(streamResponse('k3', arrivals, item));
     } catch (error) {
@@ -161,8 +206,8 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
         isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }),
       model: 'default', image, outputDir, taskService: tasks, contextService: context, missionWorkspace: workspace, workspaceManager: manager,
-      missionId, workspaceId: initial.workspace_id, capacity: 2, deadlineAt, autonomousTasks: true, workspaceCapture: 'core',
-      controller: { discoveryPrompt: 'FLAT_NATIVE_START', automaticContinuation: false, deliverNotifications: true, materialNotificationMode, selectionMs: 180_000, hardBudgetMs: 210_000, stallMs: 180_000,
+      missionId, workspaceId: initial.workspace_id, capacity, deadlineAt, autonomousTasks: true, workspaceCapture: 'core', prompt: '',
+      controller: { discoveryContext: 'FIXED_NATIVE_ORIGINAL_PROBLEM', automaticContinuation: false, deliverNotifications: true, materialNotificationMode, selectionMs: 180_000, hardBudgetMs: 210_000, stallMs: 180_000,
         beforeInitialDispatch({ botIds }) { admissions.push([...botIds]); } },
       handoff: { executionTimeoutMs: 180_000 }, closeTimeoutMs: 40_000,
       async drive(controller, runtime) {
@@ -180,10 +225,14 @@ async function checkNativeAdoption(t, materialNotificationMode) {
           while ((await runtime.get(bBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
         }
         const before = await sessionEvidence(bContainer, execute);
-        adoptionNotification = tasks.enqueueNotification({ deliveryKey: 'native-adopt-A', missionId,
-          recipientTaskId: b.task, recipientExecutionId: b.execution, type: 'material_available', materialId: a.material,
-          sourceTaskId: a.task, sourceExecutionId: a.execution,
-          payload: { material_id: a.material, revision: a.revision } });
+        const aBot = tasks.getExecution(a.execution).owner_ref;
+        while ((await runtime.get(aBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
+        assert.equal((await runtime.send(aBot, 'FLAT_NATIVE_ROUTE', { requestId: 'native-route-turn', mode: 'followUp' })).status, 'accepted');
+        const routed = await evidenceFor('route');
+        assert.equal(routed.link.task_id, b.task);
+        assert.equal(routed.link.producer_execution_id, a.execution);
+        adoptionNotification ??= findNotice();
+        assert.ok(adoptionNotification, 'A response link must create a durable notice for B');
         await controller.tick();
         const admitted = controller.snapshot().inputs.find(row => row.requestId === `flat:notification:${b.execution}:${adoptionNotification.notification_id}`);
         assert.equal(admitted?.receipt.disposition, materialNotificationMode === 'steer' ? 'queued' : 'started');
@@ -211,12 +260,18 @@ async function checkNativeAdoption(t, materialNotificationMode) {
         assert.deepEqual(Buffer.from(exported.files['lemma.bin']), Buffer.from(a.binary, 'hex'));
         assert.equal(Buffer.from(exported.files['consumer.txt']).toString(), 'CONSUMER_PROGRESS\nADOPTED_LEMMA\n');
         assert.equal(exported.manifest['lemma.bin'].content_hash, sha256(Buffer.from(a.binary, 'hex')));
-        assert.equal(tasks.listTasks({ missionId, availableOnly: false }).length, 2);
+        const use = exported.source.material_uses[0];
+        assert.equal(use.material_id, a.material);
+        assert.equal(use.content_hash, context.getMaterial(a.material).content_hash);
+        assert.equal(exported.source.execution_id, b.execution);
+        for (const role of roles.slice(0, capacity)) await evidenceFor(role);
+        assert.equal(tasks.listTasks({ missionId, availableOnly: false }).length, capacity + 3);
         evidence.session = before; evidence.hash = exported.manifest['lemma.bin'].content_hash;
         const bSlot = controller.snapshot().bots.find(row => row.botId === bBot).slot;
         assert.equal((await runtime.send(bBot, 'FLAT_NATIVE_FINISH', { requestId: 'native-finish-turn', mode: 'followUp' })).status, 'accepted');
         const replacement = await evidenceFor('C');
         const cBot = tasks.getExecution(replacement.execution).owner_ref;
+        assert.equal(tasks.getTask(replacement.task).creation.actor_ref, aBot);
         while ((await runtime.get(cBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
         const rows = controller.snapshot().bots;
         assert.equal(tasks.getTask(b.task).state, 'DONE');
@@ -235,7 +290,14 @@ async function checkNativeAdoption(t, materialNotificationMode) {
       },
     });
     assert.equal(failure, undefined, failure);
-    assert.ok(arrivals >= 9 && arrivals <= 10); assert.equal(starts, 3); assert.equal(notificationInputs, 1);
+    assert.ok(arrivals >= roles.length * 2 + 4 && arrivals <= 20);
+    assert.equal(starts, roles.length); assert.equal(notificationInputs, 1);
+    for (const role of roles) {
+      const expected = Object.entries(evidence[role].services).flatMap(([service, operations]) =>
+        operations.map(operation => serviceCommand(service, operation))).sort();
+      const advertised = [...firstPrompts.get(role).matchAll(/^- `(swarm [^`]+)`/gm)].map(match => match[1]).sort();
+      assert.deepEqual(advertised, expected, `Service grants and startup directory differ for ${role}`);
+    }
     assert.equal(report.businessFailure?.code, 'FLAT_BUSINESS_FAILED');
     assert.equal(report.cleanupFailure, null); assert.equal(report.cleanup.cleanup, 'complete');
     assert.deepEqual(await ownedContainers(runtimeId), []);

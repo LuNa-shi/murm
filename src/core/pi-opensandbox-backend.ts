@@ -1,6 +1,7 @@
 import type { BotEvent, ErrorInfo, FileSnapshot, InputMode, InterruptReceipt, Profile, SpawnOptions, SteerOptions } from './types.js';
 import type { SessionFork } from '../../scripts/core-session-fork.js';
 import type { createCoreBridge } from './bridge.js';
+import { renderStartupPrompt } from './startup-prompt.js';
 import type { createCoreModelAccess } from './model-access.js';
 
 export type BackendEvent = {
@@ -334,8 +335,9 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
         args: ['--mode', 'rpc', '--session-dir', '/workspace/runtime/pi-session',
           ...(forkSession ? ['--session', '/workspace/runtime/pi-session/fork.jsonl'] : ['--session-id', randomUUID()]),
           '--tools', 'read,write,edit,bash', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files',
-          '--append-system-prompt', '/workspace/runtime/profile-prompt.txt', '--provider', model.provider, '--model', model.model],
-        systemPrompt: profile.prompt, systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
+          '--system-prompt', '/workspace/runtime/profile-prompt.txt', '--provider', model.provider, '--model', model.model],
+        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt),
+        systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
         files: options.files, forkSession, workspace,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },

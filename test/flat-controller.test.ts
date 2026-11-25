@@ -631,6 +631,7 @@ test('autonomous discovery sends original selection guidance with the live run a
   const runDeadline = Date.now() + 35000;
   let admitted = false;
   const f = await fixture(t, { autonomousTasks: true, selectionMs: 15000,
+    discoveryContext: 'Original problem:\nexample : True := by trivial',
     activeDeadline: () => admitted ? runDeadline : runDeadline + 10000,
     beforeInitialDispatch() { admitted = true; } });
   const bot = f.tasks.getBot(f.bot.botId);
@@ -638,9 +639,12 @@ test('autonomous discovery sends original selection guidance with the live run a
   for (const value of [bot.bot_id, bot.selection_deadline, bot.hard_deadline, new Date(runDeadline).toISOString(), f.tasks.getMission(f.missionId).goal]) {
     assert.ok(sent.includes(value), 'Discovery input should include current public Mission and Bot timing');
   }
-  assert.match(sent, /swarm task list --state ready/);
+  assert.ok(sent.includes(`swarm task list --states '["ready","running"]'`));
+  assert.match(sent, /If the pool is empty, propose a first concrete/);
+  assert.match(sent, /multiple Tasks during discovery and during your Execution/);
+  assert.match(sent, /example : True := by trivial/);
   assert.match(sent, /swarm task create --help/);
-  assert.match(sent, /bounded investigation/);
+  assert.match(sent, /distinct, checkable contribution/);
   assert.match(sent, /remain in this Session/);
 });
 

@@ -5,22 +5,27 @@ import { stableStringify } from '../../protocol/envelope.js';
 import { createFlatBotCoordinator } from './bot-coordinator.js';
 import { executionEnvelope } from './prepare-inputs.js';
 
-export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE = `Find work before the selection deadline. Start with swarm task list --state ready and inspect relevant public files and Materials using swarm workspace files --at main and swarm material list. Use swarm service list to see the Services available to you. You can read the public Workspace before take; your private project is prepared at take.
-Prefer a suitable existing Task. Read its contract with swarm task view and take it by ID with swarm task take. If the Mission is open and nothing suitable is ready, use swarm task create to propose a concrete missing deliverable. See swarm task create --help for an executable example. A bounded investigation with a checkable output is enough to propose work before you have a complete solution. Refresh the relevant Task list before creating or taking work so you can reuse new work and avoid duplicates. An empty list is a reason to propose work, not to exit.
-An unbound Bot can propose multiple independent Tasks and can revise or cancel unowned work with observed versions. An active Bot can propose further work while keeping its Task. Proposals need a short summary, concrete gap, expected output, acceptance conditions and an advisory high, medium, or low priority. Someone else can take your proposal. If a take loses a race, check the Task list again within the remaining time.
-On successful take, remain in this Session with your one Execution. Do the detailed investigation and editing there. Finish the Task with its actual outcome and end this Bot. Stop expanding work after Mission acceptance or stop.`;
+export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE = `During discovery, inspect the public Workspace, Tasks, and Materials. Your private project is read-only until you take a Task.
 
-export function buildFlatAutonomousDiscoveryMessage({ mission, bot, runDeadline }: any) {
-  return `Mission ${mission.mission_id}
+Run swarm task list --states '["ready","running"]'. Read relevant Task contracts with swarm task view. If the pool is empty, propose a first concrete piece of work. If a Task already covers the Mission-wide deliverable, find a distinct, checkable contribution to it. Refresh the list before creating or taking a Task. If another Bot wins a take, check the list again.
+
+You may propose multiple Tasks during discovery and during your Execution. Use a separate swarm task create call for each concrete gap and deliverable. See swarm task create --help. Other Bots can take your proposals. Take one suitable available Task with swarm task take. After it succeeds, remain in this Session with your one Execution and do detailed work there. If you discover a blocker another Bot can resolve, propose that work and continue the parts of your Task you can advance.`;
+
+export function buildFlatAutonomousDiscoveryMessage({ mission, bot, runDeadline, discoveryContext, discoveryWorkflow }: any) {
+  return `Mission: ${mission.mission_id}
 Goal: ${mission.goal}
 Acceptance: ${JSON.stringify(mission.acceptance_conditions)}
 Bot: ${bot.bot_id}
 Selection deadline: ${bot.selection_deadline}
 Bot hard deadline: ${bot.hard_deadline}
-Run deadline: ${runDeadline}
+Mission deadline: ${runDeadline}${discoveryContext ? `\n\n${discoveryContext}` : ''}
 
-${FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}`;
+${FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}
+
+${discoveryWorkflow ?? FLAT_TASK_FINISH_GUIDANCE}`;
 }
+
+export const FLAT_TASK_FINISH_GUIDANCE = 'When your responsibility ends, report the actual outcome with swarm task finish and end this Bot. Stop work when the Mission is accepted or stopped.';
 
 export const FLAT_DISCOVERY_MESSAGE='Read public Tasks and take suitable work. Continue in this Session after take.';
 
@@ -31,9 +36,12 @@ const deny=(message: any)=>{throw new SwarmEnvError('NOT_ALLOWED',message);};
  * Core owns resources; this controller owns only flat policy and domain cleanup. */
 export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,activeDeadline=()=>deadlineAt,coordinationPermissions=[],
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
-  stopTimeoutMs=30_000,autonomousTasks=false,discoveryPrompt,
+  stopTimeoutMs=30_000,autonomousTasks=false,discoveryPrompt,discoveryContext,discoveryWorkflow,
   continuationPrompt,workspaceSaveAvailable=true,completionPolicy='tasks',deliverNotifications=true,materialNotificationMode='followUp',
   afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }: any) {
+  if ([discoveryContext, discoveryWorkflow].some(value => value !== undefined && typeof value !== 'string')) {
+    throw new TypeError('Flat discovery context and workflow must be host-supplied text');
+  }
   if(!['tasks','mission'].includes(completionPolicy) || !['steer','followUp'].includes(materialNotificationMode) || typeof deliverNotifications!=='boolean' || typeof autonomousTasks!=='boolean' || !runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
     ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() || typeof activeDeadline!=='function' ||
     ![selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every((x: any)=>x>0) || heartbeatMs>10000 ||
@@ -124,7 +132,10 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
         return input;
       }
       text ??= autonomousTasks
-        ? buildFlatAutonomousDiscoveryMessage({ mission: taskService.getMission(missionId), bot: owner, runDeadline: new Date(workDeadline()).toISOString() })
+        ? buildFlatAutonomousDiscoveryMessage({
+            mission: taskService.getMission(missionId), bot: owner, runDeadline: new Date(workDeadline()).toISOString(),
+            discoveryContext: row.discoveries === 1 ? discoveryContext : undefined, discoveryWorkflow,
+          })
         : FLAT_DISCOVERY_MESSAGE;
     }
     if(notificationId) taskService.recordNotificationAttempt(notificationId);

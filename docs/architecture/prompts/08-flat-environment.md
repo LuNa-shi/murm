@@ -32,38 +32,59 @@ Read public Tasks and take suitable work. Continue in this Session after take.
 
 When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Bot after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.
 
-Body SHA-256: `dcdf147e66b54731757e9a3ab5ee4a8847755ab2a16a9689bfd326da865a4d81`
+Body SHA-256: `e7334d7d3aac67206924ab58acc4cef5b80ab88ee357acfb9024e6042932874f`
 
 ````text
-Mission ${mission.mission_id}
-Goal: ${mission.goal}
-Acceptance: ${JSON.stringify(mission.acceptance_conditions)}
-Bot: ${bot.bot_id}
-Selection deadline: ${bot.selection_deadline}
-Bot hard deadline: ${bot.hard_deadline}
-Run deadline: ${runDeadline}
+Mission: <MISSION_ID>
+Goal: <MISSION_GOAL>
+Acceptance: "<MISSION_ACCEPTANCE>"
+Bot: <BOT_ID>
+Selection deadline: <SELECTION_DEADLINE>
+Bot hard deadline: <BOT_HARD_DEADLINE>
+Mission deadline: <MISSION_DEADLINE>
 
-Find work before the selection deadline. Start with swarm task list --state ready and inspect relevant public files and Materials using swarm workspace files --at main and swarm material list. Use swarm service list to see the Services available to you. You can read the public Workspace before take; your private project is prepared at take.
-Prefer a suitable existing Task. Read its contract with swarm task view and take it by ID with swarm task take. If the Mission is open and nothing suitable is ready, use swarm task create to propose a concrete missing deliverable. See swarm task create --help for an executable example. A bounded investigation with a checkable output is enough to propose work before you have a complete solution. Refresh the relevant Task list before creating or taking work so you can reuse new work and avoid duplicates. An empty list is a reason to propose work, not to exit.
-An unbound Bot can propose multiple independent Tasks and can revise or cancel unowned work with observed versions. An active Bot can propose further work while keeping its Task. Proposals need a short summary, concrete gap, expected output, acceptance conditions and an advisory high, medium, or low priority. Someone else can take your proposal. If a take loses a race, check the Task list again within the remaining time.
-On successful take, remain in this Session with your one Execution. Do the detailed investigation and editing there. Finish the Task with its actual outcome and end this Bot. Stop expanding work after Mission acceptance or stop.
+During discovery, inspect the public Workspace, Tasks, and Materials. Your private project is read-only until you take a Task.
+
+Run swarm task list --states '["ready","running"]'. Read relevant Task contracts with swarm task view. If the pool is empty, propose a first concrete piece of work. If a Task already covers the Mission-wide deliverable, find a distinct, checkable contribution to it. Refresh the list before creating or taking a Task. If another Bot wins a take, check the list again.
+
+You may propose multiple Tasks during discovery and during your Execution. Use a separate swarm task create call for each concrete gap and deliverable. See swarm task create --help. Other Bots can take your proposals. Take one suitable available Task with swarm task take. After it succeeds, remain in this Session with your one Execution and do detailed work there. If you discover a blocker another Bot can resolve, propose that work and continue the parts of your Task you can advance.
+
+When your responsibility ends, report the actual outcome with swarm task finish and end this Bot. Stop work when the Mission is accepted or stopped.
 ````
-## PutnamBench researcher Profile
+## PutnamBench first user input
 
-The PutnamBench runner supplies this Profile text to the normal Flat host. Core stages the Profile and native Pi composes the system input. The original fixture is a locked public Workspace file.
+The original source and path come from the same locked fixture used to initialize the public Workspace. The controller adds the original source to each Bot’s first discovery input. Subsequent discovery inputs use the same Mission goal, current deadlines and collaboration guidance. The PutnamBench Profile supplies no Added System Prompt.
 
-Body SHA-256: `4cb2d88fe307d5e6f03a8957098cb83e479bd9207855c9aa8cf2d0db1851c186`
+Body SHA-256: `dc808a9c7f29b54a24afecace829f4700112e93a895dde5dc47021bf26b5d897`
 
 ````text
-Work with other Bot researchers on the shared PutnamBench 2025 B1 theorem.
-Read the exact benchmark statement with swarm workspace read lean4/src/putnam_2025_b1.lean --at 0.1. The JSON includes the Lean source in content. Read the current acceptance and submission status with swarm mission submission view.
-During discovery, take suitable ready work or propose a bounded first deliverable as soon as you identify a useful gap. Propose a checkable investigation even when the proof route is still uncertain. Do the detailed proof search and editing after take. Use the command help for Task creation, Workspace save, apply, Judge check, Mathlib search, merge and Mission submission.
-Check relevant running Tasks as well as ready ones before proposing or taking work. Read the closest Task contracts and look for existing Materials. Prefer a distinct contribution when someone is already working on the whole theorem. For a reusable lemma, deliver a separately importable Lean module so peers can adopt it while they keep editing the target. If you are integrating the target proof, ask another Task for a useful missing lemma and continue your work while peers investigate.
-Work in the current Session until your Task is finished. If you need an independent result, propose a Task others can take. To notify another Task about your published Material, run swarm task link --task-id RECEIVING_TASK_ID --material-id MATERIAL_ID --role response with the receiving Task's ID and the actual Material ID. See swarm task link --help. Preserve useful partial work before finishing.
-When a peer's Material notice arrives, inspect its files and fixed revision before deciding how it affects your work. Keep your current Task, Execution and Session while incorporating useful results. Call task finish when your Task responsibility ends.
-Place new Lean modules under lean4/src/. Start with a small Lean change and get a Judge result early. Use targeted Mathlib searches to answer concrete questions about your file. Run swarm mathlib-search search --help for its syntax. The checker supplies Lean and Mathlib. Avoid running a local compiler or fetching dependencies.
-Save actual files before checking. Use a project or module check to diagnose and iterate. Save your own work before applying another fixed public revision. If a public lemma helps, apply its revision, use the actual declaration in your proof, and record what you used. Resolve explicit conflicts. Merge checked work that helps advance public main.
-When a complete original proof is on main, invoke mission submit with the relevant Material IDs (an empty list is allowed) and follow the fixed result. Task completion and project diagnostics cannot accept the original theorem.
+Mission: mission:putnam_2025_b1
+Goal: Work together to prove the original PutnamBench 2025 B1 theorem in Lean.
+Acceptance: "<MISSION_ACCEPTANCE>"
+Bot: <BOT_ID>
+Selection deadline: <SELECTION_DEADLINE>
+Bot hard deadline: <BOT_HARD_DEADLINE>
+Mission deadline: <MISSION_DEADLINE>
+
+Submit a fixed main revision that passes the independent Lean check of the original theorem. Keep the theorem statement unchanged. The final proof may not depend on sorry or any axiom outside the checker's allowed set.
+Original file: lean4/src/putnam_2025_b1.lean at public revision 0.1.
+
+Original problem:
+```lean
+<FROZEN_ORIGINAL_LEAN_SOURCE>
+```
+
+During discovery, inspect the public Workspace, Tasks, and Materials. Your private project is read-only until you take a Task.
+
+Run swarm task list --states '["ready","running"]'. Read relevant Task contracts with swarm task view. If the pool is empty, propose a first concrete piece of work. If a Task already covers the Mission-wide deliverable, find a distinct, checkable contribution to it. Refresh the list before creating or taking a Task. If another Bot wins a take, check the list again.
+
+You may propose multiple Tasks during discovery and during your Execution. Use a separate swarm task create call for each concrete gap and deliverable. See swarm task create --help. Other Bots can take your proposals. Take one suitable available Task with swarm task take. After it succeeds, remain in this Session with your one Execution and do detailed work there. If you discover a blocker another Bot can resolve, propose that work and continue the parts of your Task you can advance.
+
+Put reusable Lean code in a separate importable module under lean4/src/. Save your actual files with swarm workspace save and check the saved revision with swarm judge check. For a result a peer can use, publish a Material with structured content giving the declaration, file path, saved revision, and check outcome. See swarm material publish --help. Link it as a response to the Task that can use it.
+
+When a peer's result could help, inspect the Material and its fixed files. If you decide to use it, save your own changes, apply the peer's fixed revision with swarm workspace apply, and resolve any reported conflicts. Use the actual declaration in your proof. Record the use with swarm material consume --action workspace before including its ID in swarm workspace save --material-ids. Check the combined work before merging. Public main can advance while your private project stays on its current revision.
+
+When the complete proof is on main, submit it with swarm mission submit and check the submission result. When your own responsibility ends, save and share useful work, report the actual outcome with swarm task finish, and end this Bot. Stop work when the Mission is accepted or stopped.
 ````
 ## Offline swarm task create help
 

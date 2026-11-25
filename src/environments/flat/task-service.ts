@@ -44,15 +44,17 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     ...(request.error ? { error: request.error } : {}), ...(request.stopped ? { stopped: request.stopped } : {}),
     ...(request.cleanupError ? { cleanupError: request.cleanupError } : {}), ...(request.intentError ? { intentError: request.intentError } : {}) });
   const createTool = listTools('task').find((tool: any) => tool.operation === 'task_create');
+  const viewProperties = { task_id: taskId, contract_history_after_version: { type: 'integer', minimum: 0 },
+    contract_history_limit: { type: 'integer', minimum: 1, maximum: 100 } };
   const createProperties = Object.fromEntries(Object.entries(createTool.parameters.properties).filter(([key]) => !['mission_id', 'workspace', 'timebox_ms'].includes(key)));
   const manifest: any = { id: 'task', title: 'Flat Tasks', purpose: 'Discover and exclusively take fixed Mission work with controlled file handoff',
     provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [
-      ...(autonomousTasks ? [{ name: 'create', operation: 'task_create', description: 'Propose concrete Mission work while UNBOUND or while keeping the current Execution', side_effect: 'write', idempotent: true, help: { when: 'Discover a missing lemma or other useful independent responsibility' }, errors: [], input_schema: { ...createTool.parameters, properties: createProperties }, output_schema: { type: 'object' } }] : []),
+      ...(autonomousTasks ? [{ name: 'create', operation: 'task_create', description: 'Propose one concrete Task. You may call it repeatedly during discovery or while executing your current Task.', side_effect: 'write', idempotent: true, help: { when: 'Discover a missing lemma or other useful independent responsibility' }, errors: [], input_schema: { ...createTool.parameters, properties: createProperties }, output_schema: { type: 'object' } }] : []),
       ...enabledTools.map((tool: any) => ({ name: tool.operation.slice(5), operation: tool.operation, description: tool.description, side_effect: 'write', idempotent: true, help: { when: tool.operation === 'task_dependency_replace' ? 'An explicitly granted Bot may repair an unowned blocked Task using observed versions' : 'An UNBOUND Bot may correct unowned Mission work using observed versions' }, errors: [], input_schema: tool.parameters, output_schema: { type: 'object' } })),
-      { name: 'list', operation: 'task_list', description: 'List this Mission Tasks while the project is readonly', side_effect: 'read', idempotent: true,
+      { name: 'list', operation: 'task_list', description: 'List Tasks by state, including work already in progress.', side_effect: 'read', idempotent: true,
         help: { when: 'Discover work before taking a Task' }, errors: [], input_schema: objectSchema({ state: { type: 'string' }, query: { type: 'string', maxLength: 4000 }, states: { type: 'array', items: { type: 'string' } }, limit: { type: 'integer', minimum: 1, maximum: 100 }, cursor: { type: 'string' }, available_only: { type: 'boolean' } }), output_schema: { type: 'object' } },
       { name: 'view', operation: 'task_view', description: 'Read a Task contract and current provenance in this Mission', side_effect: 'read', idempotent: true,
-        help: { when: 'Inspect one Task before take' }, errors: [], input_schema: { ...objectSchema({ task_id: taskId }), required: ['task_id'] }, output_schema: { type: 'object' } },
+        help: { when: 'Inspect one Task before take' }, errors: [], input_schema: { ...objectSchema(viewProperties), required: ['task_id'] }, output_schema: { type: 'object' } },
       { name: 'take', operation: 'task_take', description: 'Atomically reserve one Task, prepare fixed inputs and grant the current Bot write access', side_effect: 'write', idempotent: true,
         help: { when: 'Take selected work; retry an unknown result using the same request ID' }, errors: [{ code: 'CONFLICT', retryable: false }, { code: 'NOT_ALLOWED', retryable: false }], input_schema: { ...objectSchema({ task_id: taskId }), required: ['task_id'] }, output_schema: { type: 'object' } },
     ] };
@@ -70,7 +72,8 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
     const creating = operation === 'task_create';
     const coordination = enabledCoordination.includes(operation);
     const replacement = operation === 'task_dependency_replace';
-    const allowed = creating ? Object.keys(createProperties) : coordination ? Object.keys(capability.input_schema.properties) : operation === 'task_list' ? ['state', 'states', 'query', 'limit', 'cursor', 'available_only'] : ['task_id'];
+    const allowed = creating ? Object.keys(createProperties) : coordination ? Object.keys(capability.input_schema.properties) : operation === 'task_list' ? ['state', 'states', 'query', 'limit', 'cursor', 'available_only']
+      : operation === 'task_view' ? Object.keys(viewProperties) : ['task_id'];
     if (Object.keys(input).some((key: any) => !allowed.includes(key)) || (!creating && operation !== 'task_list' && (typeof input.task_id !== 'string' || !input.task_id))) invalid('Flat Task payload cannot supply actor, owner, Execution or resource identity');
     const core = getRuntime();
     if (!core?.id || caller?.runtimeId !== core.id || caller.profile !== profile || typeof caller.botId !== 'string' ||
@@ -139,7 +142,7 @@ export function createFlatTaskService({ runtime, taskService, missionId, mission
       eligibleBot(bot.bot_id, core.id);
       if (snapshot.mission_id !== missionId) denied('Preview Workspace belongs to another Mission');
       previews.set(bot.bot_id, { revision: snapshot.revision, workspace_id: workspaceId });
-      return taskService.dispatch(operation, { task_id: task.task_id }, makeEnvelope({ actorRef: bot.bot_id, taskId: task.task_id }));
+      return taskService.dispatch(operation, input, makeEnvelope({ actorRef: bot.bot_id, taskId: task.task_id }));
     }
     const id = `flat:${inputFingerprint([core.id, bot.bot_id, envelope.operation_id])}`;
     // Claim conflicts never enter compensation. No Core stop is issued for a

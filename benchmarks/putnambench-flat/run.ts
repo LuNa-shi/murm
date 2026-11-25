@@ -18,15 +18,21 @@ const workspaceId = 'putnam-2025-b1';
 const setupAllowanceMs = 180_000;
 const closeTimeoutMs = 60_000;
 
-const prompt = `Work with other Bot researchers on the shared PutnamBench 2025 B1 theorem.
-Read the exact benchmark statement with swarm workspace read lean4/src/putnam_2025_b1.lean --at 0.1. The JSON includes the Lean source in content. Read the current acceptance and submission status with swarm mission submission view.
-During discovery, take suitable ready work or propose a bounded first deliverable as soon as you identify a useful gap. Propose a checkable investigation even when the proof route is still uncertain. Do the detailed proof search and editing after take. Use the command help for Task creation, Workspace save, apply, Judge check, Mathlib search, merge and Mission submission.
-Check relevant running Tasks as well as ready ones before proposing or taking work. Read the closest Task contracts and look for existing Materials. Prefer a distinct contribution when someone is already working on the whole theorem. For a reusable lemma, deliver a separately importable Lean module so peers can adopt it while they keep editing the target. If you are integrating the target proof, ask another Task for a useful missing lemma and continue your work while peers investigate.
-Work in the current Session until your Task is finished. If you need an independent result, propose a Task others can take. To notify another Task about your published Material, run swarm task link --task-id RECEIVING_TASK_ID --material-id MATERIAL_ID --role response with the receiving Task's ID and the actual Material ID. See swarm task link --help. Preserve useful partial work before finishing.
-When a peer's Material notice arrives, inspect its files and fixed revision before deciding how it affects your work. Keep your current Task, Execution and Session while incorporating useful results. Call task finish when your Task responsibility ends.
-Place new Lean modules under lean4/src/. Start with a small Lean change and get a Judge result early. Use targeted Mathlib searches to answer concrete questions about your file. Run swarm mathlib-search search --help for its syntax. The checker supplies Lean and Mathlib. Avoid running a local compiler or fetching dependencies.
-Save actual files before checking. Use a project or module check to diagnose and iterate. Save your own work before applying another fixed public revision. If a public lemma helps, apply its revision, use the actual declaration in your proof, and record what you used. Resolve explicit conflicts. Merge checked work that helps advance public main.
-When a complete original proof is on main, invoke mission submit with the relevant Material IDs (an empty list is allowed) and follow the fixed result. Task completion and project diagnostics cannot accept the original theorem.`;
+const goal = `Work together to prove the original PutnamBench 2025 B1 theorem in Lean.`;
+
+const collaboration = `Put reusable Lean code in a separate importable module under lean4/src/. Save your actual files with swarm workspace save and check the saved revision with swarm judge check. For a result a peer can use, publish a Material with structured content giving the declaration, file path, saved revision, and check outcome. See swarm material publish --help. Link it as a response to the Task that can use it.
+
+When a peer's result could help, inspect the Material and its fixed files. If you decide to use it, save your own changes, apply the peer's fixed revision with swarm workspace apply, and resolve any reported conflicts. Use the actual declaration in your proof. Record the use with swarm material consume --action workspace before including its ID in swarm workspace save --material-ids. Check the combined work before merging. Public main can advance while your private project stays on its current revision.
+
+When the complete proof is on main, submit it with swarm mission submit and check the submission result. When your own responsibility ends, save and share useful work, report the actual outcome with swarm task finish, and end this Bot. Stop work when the Mission is accepted or stopped.`;
+
+const putnamDiscoveryContext = (path: string, source: string) => `Submit a fixed main revision that passes the independent Lean check of the original theorem. Keep the theorem statement unchanged. The final proof may not depend on sorry or any axiom outside the checker's allowed set.
+Original file: ${path} at public revision 0.1.
+
+Original problem:
+\`\`\`lean
+${source.trimEnd()}
+\`\`\``;
 
 type Problem = Awaited<ReturnType<typeof loadPutnamB1>>;
 type Checks = Awaited<ReturnType<typeof preparePutnamChecks>>;
@@ -88,7 +94,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
   try {
     taskService.setCheckResultReader((id: string) => judgeService.getCheckResult(id));
     taskService.createMission({
-      mission_id: missionId, goal: 'Prove the original PutnamBench 2025 B1 Lean theorem.',
+      mission_id: missionId, goal,
       acceptance_conditions: { required_check: verifier.identity }, merge_required_check: mergeChecker.identity,
     }, makeEnvelope({ actorRef: 'host' }));
     await missionWorkspace.create({ missionId, workspaceId, initialFiles: { [problem.problem_file]: problem.source } });
@@ -101,7 +107,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
     const runSignal = AbortSignal.any([signal, ownDeadline.signal, window.signal]);
     const report = await runFlatEnvironment({
       backend: backend(window.upstream), model: 'default', image, outputDir: directory, signal: runSignal,
-      prompt, taskService, contextService, missionWorkspace, workspaceManager, missionId, workspaceId,
+      prompt: '', taskService, contextService, missionWorkspace, workspaceManager, missionId, workspaceId,
       deadlineAt: initialDeadline, activeDeadline: deadline, capacity: problem.capacity,
       autonomousTasks: true, completionPolicy: 'mission', workspaceCapture: 'core', mathlibSearch,
       judgeService, workspaceProjectCheck: true, workspaceMergeChecker: mergeChecker, missionCoordination,
@@ -111,6 +117,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
         selectionMs, hardBudgetMs: durationMs + setupAllowanceMs, stallMs: durationMs,
         continuationLimit: Number.MAX_SAFE_INTEGER, discoveryLimit: Number.MAX_SAFE_INTEGER, heartbeatMs: 1000,
         materialNotificationMode: 'steer',
+        discoveryContext: putnamDiscoveryContext(problem.problem_file, problem.source), discoveryWorkflow: collaboration,
         beforeInitialDispatch({ signal }: { signal: AbortSignal }) {
           signal.throwIfAborted();
           if (startedAt) return;

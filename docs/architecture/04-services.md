@@ -455,3 +455,11 @@ The Flat Core v2 Workspace registration can explicitly compose the same extracte
 ## Optional Flat Mission Service
 
 The host may register `createFlatMissionService` as Service `mission`, using the existing CLI operations `mission_get`, `mission_submit` and `mission_submission_get`. The optional `runFlatEnvironment` dependency is the caller-owned local Mission coordination store, not a new Core capability. Submit requires the explicit host policy, current persisted `mission_submit` grant and frozen Profile access; reads stay in the configured Mission. Task/Execution identity comes from the actual Bot binding, and replay repeats admission before the original store is called. The complete [Mission Service lifecycle](03-mission-task.md#optional-current-core-mission-service) covers snapshot/checker ownership, scoped request IDs, post-read authority, failures and caller-owned shutdown. The retained v1 Mission route remains executable and its tests are retained.
+
+### Flat CLI operation guidance
+
+The Bash CLI and Core's system prompt share their mapping between Service operations and command aliases. On the v2 Bridge, a registered operation with no static alias can be invoked by its manifest operation name. The CLI checks unaliased commands against authorized metadata. Known group-level help is offline. Help for an operation without local instructions is read through the Bridge.
+
+`swarm task view` accepts a nonnegative `--contract-history-after-version` and `--contract-history-limit` from 1 through 100. Flat checks Mission scope and takes a public Workspace preview, then forwards the pagination fields to the domain reader. Follow the returned `contract_history_page.next_after_version` until complete.
+
+Before taking work, use `swarm workspace public-diff --from R --to R` to compare fixed public revisions. The existing `swarm workspace diff` with both revision flags calls the same operation. Without flags, `diff` reads the active Execution's local changes. Workspace apply requires a clean saved project. Material publication can store a structured fixed revision and evidence in `content`. A response link authenticates the producer and addresses the receiving Task. To cite a Material in a save, record a `workspace` consumption on the current Execution. The save links the exact observed Material version, content hash and impact.

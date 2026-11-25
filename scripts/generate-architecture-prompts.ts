@@ -13,6 +13,8 @@ import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, BOT_MATERIAL_CONTI
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
+import { buildFlatAutonomousDiscoveryMessage } from '../src/environments/flat/controller.js';
+import { renderStartupPrompt } from '../src/core/startup-prompt.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const outputDir = 'docs/architecture/prompts';
@@ -24,8 +26,8 @@ const sourcePaths = [
   'src/agent/bot-contract.ts',
   'src/agent/capability-profile.ts',
   'src/agent/services-bridge.ts',
-  'src/cli/swarm-cli.ts',
-  'src/core/index.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
+  'src/cli/swarm-cli.ts', 'src/cli/service-command.ts',
+  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
   'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts',
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',
   'benchmarks/putnambench-flat/run.ts',
@@ -159,6 +161,9 @@ for (const [index, line] of sources.get('examples/subagents-environment/controll
   if (line.includes('await runtime.send(')) sendSites.push({ path: 'examples/subagents-environment/controller.ts', line: index + 1, expression: line.trim() });
 }
 const scaleMASPath = 'src/environments/scalemas/index.ts';
+output('01-core-startup.md', header('Core startup system prompt',
+  'The backend passes this file through Pi --system-prompt. The current working directory is appended by Pi. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
+  + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([])));
 output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
   'All three peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
   + block('Peer Profile prompt', between(scaleMASPath, "export const peerPrompt = '", "';\n"))
@@ -189,9 +194,20 @@ leadHelperDoc += block('Staged corrective input composition and send', between('
 output('08-lead-helper-environment.md', leadHelperDoc);
 const flatControllerPath = 'src/environments/flat/controller.ts';
 const flatEnvironmentPath = 'src/environments/flat/environment.ts';
-const autonomousDiscoveryBody = between(flatControllerPath, 'export const FLAT_AUTONOMOUS_DISCOVERY_MESSAGE = `', '`;');
-const autonomousDiscovery = ('Mission ' + between(flatControllerPath, 'return `Mission ', '`;'))
-  .replace('${FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}', autonomousDiscoveryBody);
+const putnamPath = 'benchmarks/putnambench-flat/run.ts';
+const discoveryFields = {
+  mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: '<MISSION_ACCEPTANCE>' },
+  bot: { bot_id: '<BOT_ID>', selection_deadline: '<SELECTION_DEADLINE>', hard_deadline: '<BOT_HARD_DEADLINE>' },
+  runDeadline: '<MISSION_DEADLINE>',
+};
+const autonomousDiscovery = buildFlatAutonomousDiscoveryMessage(discoveryFields);
+const putnamDiscovery = buildFlatAutonomousDiscoveryMessage({
+  ...discoveryFields,
+  mission: { ...discoveryFields.mission, mission_id: 'mission:putnam_2025_b1', goal: between(putnamPath, 'const goal = `', '`;') },
+  discoveryContext: evaluate('`' + between(putnamPath, 'source: string) => `', '`;') + '`',
+    { path: 'lean4/src/putnam_2025_b1.lean', source: '<FROZEN_ORIGINAL_LEAN_SOURCE>' }),
+  discoveryWorkflow: between(putnamPath, 'const collaboration = `', '`;'),
+});
 const sampleCloseout = { at: Date.parse('2026-01-01T00:00:30.000Z'), workspaceSaveAvailable: false };
 const warningDeadline = '2026-01-01T00:01:00.000Z';
 const flatCliHelp = await Promise.all(['create', 'link'].map(async command => {
@@ -209,8 +225,8 @@ output('08-flat-environment.md', header('Flat discovery and continuation prompts
   + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
   + block('Autonomous discovery input', autonomousDiscovery,
     'When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Bot after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.')
-  + block('PutnamBench researcher Profile', between('benchmarks/putnambench-flat/run.ts', 'const prompt = `', '`;'),
-    'The PutnamBench runner supplies this Profile text to the normal Flat host. Core stages the Profile and native Pi composes the system input. The original fixture is a locked public Workspace file.')
+  + block('PutnamBench first user input', putnamDiscovery,
+    'The original source and path come from the same locked fixture used to initialize the public Workspace. The controller adds the original source to each Bot’s first discovery input. Subsequent discovery inputs use the same Mission goal, current deadlines and collaboration guidance. The PutnamBench Profile supplies no Added System Prompt.')
   + flatCliHelp.join('')
   + block('Default ordinary continuation with a snapshot binding', BOT_CONTINUATION_MESSAGE)
   + block('Default ordinary continuation without a snapshot binding', BOT_MATERIAL_CONTINUATION_MESSAGE,

@@ -17,25 +17,36 @@ const publicationRequestId = (runtimeId: any, botId: any, requestId: any) =>
 const text: any = { type:'string', minLength:1, maxLength:4000 };
 const ids: any = { type:'array', items:text, maxItems:100, uniqueItems:true };
 const object = (properties: any, required: any=[]) => ({type:'object', properties, required, additionalProperties:false});
-const capability = (name: any, operation: any, input_schema: any, side_effect: any='write') => ({name, operation, input_schema,
-  output_schema:{type:'object'}, side_effect, idempotent:true, description:`Flat ${name} with trusted Task provenance`,
+const capability = (name: string, operation: string, input_schema: any, description: string, side_effect='write') => ({name, operation, input_schema,
+  output_schema:{type:'object'}, side_effect, idempotent:true, description,
   help:{when:'Use the current Bot Task binding; reuse the same request ID after an unknown response'}, errors:[]});
 // Preserve the published domain input contracts while Core supplies trusted identity.
-const catalogSchemas: any = new Map(listTools().map((tool: any) => [tool.operation, tool.parameters]));
-const catalogCapability = (name: any, operation: any, sideEffect: any='write') => capability(name, operation, catalogSchemas.get(operation), sideEffect);
+type CatalogTool = { operation: string; parameters: unknown; description: string };
+const catalog = new Map<string, CatalogTool>(listTools().map((tool: CatalogTool) => [tool.operation, tool]));
+const catalogCapability = (name: string, operation: string, sideEffect='write') => {
+  const tool = catalog.get(operation)!;
+  return capability(name, operation, tool.parameters, tool.description, sideEffect);
+};
+const purposes: Record<string, string> = {
+  workspace: 'Read the public tree and save, apply, or merge fixed project revisions.',
+  context: 'Find peer results, publish reusable Materials, and record what you used.',
+  judge: 'Check saved Lean source and retrieve diagnostic results.',
+  task: 'Link Materials and report the outcome of owned work.',
+};
 const coreFileSeed = (files: Record<string, string>) =>
   Object.fromEntries(Object.entries(files).map(([path, data]) => [path, { encoding: 'base64', data }]));
 const liveWorkspaceOperations: any = new Set(['workspace_save','workspace_apply','workspace_status','workspace_current_diff']);
 const definitions: any = {
   workspace:[
     catalogCapability('merge','workspace_merge'),
-    capability('save','workspace_save',object({resolved:{type:'boolean'},material_ids:ids})),
-    capability('apply','workspace_apply',object({from:text},['from'])),
-    capability('status','workspace_status',object({}),'read'),
-    capability('diff','workspace_current_diff',object({}),'read'),
-    capability('view','workspace_public_view',object({}),'read'),
-    capability('read','workspace_public_read',object({path:text,revision:text,max_bytes:{type:'integer',minimum:1,maximum:1000000}},['path']),'read'),
-    capability('files','workspace_public_files',object({path:text,revision:text,limit:{type:'integer',minimum:1,maximum:100},cursor:text}),'read'),
+    capability('save','workspace_save',object({resolved:{type:'boolean'},material_ids:ids}),'Save the actual files in your active Execution as a fixed public revision.'),
+    capability('apply','workspace_apply',object({from:text},['from']),'Apply a fixed public revision to your current Execution and Session. Save your local changes first.'),
+    capability('status','workspace_status',object({}),'Inspect the current Execution project, saved revision, changes, and conflicts.','read'),
+    capability('diff','workspace_current_diff',object({}),'Compare the current Execution project against its last save.','read'),
+    capability('public-diff','workspace_public_diff',object({from:text,to:text,path:text,limit:{type:'integer',minimum:1,maximum:100},cursor:text},['from','to']),'Compare two fixed public project revisions.','read'),
+    capability('view','workspace_public_view',object({}),'Read the current public Workspace and main revision.','read'),
+    capability('read','workspace_public_read',object({path:text,revision:text,max_bytes:{type:'integer',minimum:1,maximum:1000000}},['path']),'Read a file from a fixed public revision.','read'),
+    capability('files','workspace_public_files',object({path:text,revision:text,limit:{type:'integer',minimum:1,maximum:100},cursor:text}),'List files in the public Workspace at a given revision.','read'),
   ],
   context:[
     catalogCapability('publish','context_publish_material'),
@@ -44,7 +55,7 @@ const definitions: any = {
     catalogCapability('unsupersede','material_unsupersede'),
     catalogCapability('view','context_get_material','read'),
     catalogCapability('list','read_materials','read'),
-    capability('consume','consume_materials',object({material_ids:ids,action:{enum:['route','task','workspace','integration']},impact:text},['material_ids','action','impact'])),
+    capability('consume','consume_materials',object({material_ids:ids,action:{enum:['route','task','workspace','integration']},impact:text},['material_ids','action','impact']),'Record how published Material changed your current work.'),
   ],
   judge:[
     catalogCapability('check','workspace_check'),
@@ -198,7 +209,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
   taskService.setWorkspaceDeliveryReader(({missionId:requestedMission,workspaceId:requestedWorkspace,revision}: any)=>
     requestedMission===missionId && requestedWorkspace===workspaceId ? missionWorkspace.readDeliveryRevision({missionId,workspaceId,revision}):null);
   async function workspaceOperation(operation: any,input: any,current: any,id: any,signal: any,assertAuthorized: any) {
-    if (['workspace_public_view', 'workspace_public_read', 'workspace_public_files'].includes(operation)) {
+    if (['workspace_public_view', 'workspace_public_read', 'workspace_public_files', 'workspace_public_diff'].includes(operation)) {
       const metadata = await missionWorkspace.get({ workspaceId, signal });
       if (metadata.mission_id !== missionId) fail('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       if (operation === 'workspace_public_view') return metadata;
@@ -347,7 +358,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     workspace_merge: workspaceMergeChecker?.timeoutMs ?? 0,
   };
   const registrations=Object.entries((definitions as Record<string, any>)).filter(([id]: any)=>id!=='judge'||judgeService).map(([id,capabilities]: any)=>({
-    manifest:{id,title:`Flat ${id}`,purpose:'Publish and read durable flat results with actual Task ownership',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(({operation}: any)=>
+    manifest:{id,title:`Flat ${id}`,purpose:purposes[id],provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(({operation}: any)=>
       (operation!=='workspace_merge'||merge) && (operation!=='workspace_apply'||workspaceCapture==='core') && (!liveWorkspaceOperations.has(operation)||captureAvailable))
       .map((cap: any) => {
         const budget = checkerBudgets[cap.operation as keyof typeof checkerBudgets];

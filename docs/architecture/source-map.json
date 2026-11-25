@@ -591,6 +591,15 @@
       "role": "Authenticated per-Core tool endpoint, binding and lifecycle orchestration"
     },
     {
+      "path": "src/cli/service-command.ts",
+      "category": "service and Agent integration",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Shared mapping between registered Service operations and model-visible CLI commands"
+    },
+    {
       "path": "src/cli/swarm-cli.ts",
       "category": "service and Agent integration",
       "chapters": [
@@ -1272,6 +1281,16 @@
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
+    },
+    {
+      "path": "src/core/startup-prompt.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Core sandbox startup system prompt, authorized Service directory and optional Added System Prompt"
     },
     {
       "path": "src/core/bridge.ts",

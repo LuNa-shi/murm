@@ -9,7 +9,8 @@ export interface Backend {
 }
 
 export interface Profile {
-  prompt: string;
+  /** Optional Environment instructions added to the standard startup prompt. */
+  prompt?: string;
   model: string;
   image: string;
   writable: boolean;

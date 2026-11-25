@@ -39,7 +39,7 @@ This section is generated from executable exports and checked against the source
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
 | [src/core/index.ts](../../src/core/index.ts) | `2210258384ebee02c6d3ab5416dd0846dffc1e22e403702e284862ec211f391c` |
-| [src/core/types.ts](../../src/core/types.ts) | `287bdc27062cd7636496f833d8d2f8d9d55d1b146486366ed0b98b06fd76d901` |
+| [src/core/types.ts](../../src/core/types.ts) | `ca93b47dafef81c7d0bc9418c8a8ef3858bbf7a0ef1cd222f935be9a3c4693a0` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `3d9b797156e9c13cfeea316025584f4aa379007b80831413df0cb9d588719583` |
 | [src/core/services.ts](../../src/core/services.ts) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
@@ -3103,7 +3103,8 @@ export interface Backend {
     readonly [backendBrand]: true;
 }
 export interface Profile {
-    prompt: string;
+    /** Optional Environment instructions added to the standard startup prompt. */
+    prompt?: string;
     model: string;
     image: string;
     writable: boolean;

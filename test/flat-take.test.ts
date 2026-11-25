@@ -71,7 +71,11 @@ test('actual CLI subprocess discovers and takes through the Core v2 Bridge with 
   const cli = async (...args) => JSON.parse((await runProcess(process.execPath, ['dist/scripts/swarm.js', ...args],
     { env, timeout: 10_000 })).stdout);
   assert.ok((await cli('task', 'list', '--state', 'ready', '--request-id', 'cli-list')).tasks.some(task => task.task_id === f.task.task_id));
-  assert.equal((await cli('task', 'view', f.task.task_id, '--request-id', 'cli-view')).task.task_id, f.task.task_id);
+  const viewed = await cli('task', 'view', f.task.task_id, '--contract-history-after-version', '0', '--contract-history-limit', '1', '--request-id', 'cli-view');
+  assert.equal(viewed.task.task_id, f.task.task_id);
+  assert.equal(viewed.contract_history.length, 1);
+  const next = await cli('task', 'view', f.task.task_id, '--contract-history-after-version', String(viewed.contract_history[0].spec_version));
+  assert.deepEqual(next.contract_history, []);
   const taken = await cli('task', 'take', f.task.task_id, '--request-id', 'cli-take');
   assert.equal(taken.execution.state, 'RUNNING'); assert.equal(taken.execution.owner_ref, bot.id);
   const running = (await cli('task', 'list', '--state', 'running', '--request-id', 'cli-running-list')).tasks;
