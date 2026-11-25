@@ -146,13 +146,13 @@ export class CoreWorkDir {
       let record = this.#installs.get(input.requestId);
       if (record && record.identity !== identity) throw failure('CONFLICT', 'Install requestId has different files or expected digest');
       if (!record) {
+        await this.#installer.initialize();
         if (this.installPending) throw failure('CONFLICT', 'An installation awaits acknowledgement');
         const before = await this.#capture(snapshotCollectionSpec({ paths: ['.'], includeGit: false, maxBytes: 16 * 1024 ** 2, required: true }));
         if (decodeFileSeed(before).digest !== input.expectedDigest) throw failure('WORKSPACE_BUSY', 'workDir changed after capture');
         const source = decodeProjectFiles(Object.fromEntries(decodeFileSeed(before).entries.map(entry => [entry.path, entry.bytes.toString('base64')])));
         const files = Object.fromEntries(target.entries.map(entry => [entry.path, entry.bytes.toString('base64')]));
         const tree = decodeProjectFiles(files);
-        await this.#installer.initialize();
         record = { identity, version: input.version, digest: target.digest, input: {
           request_id: input.requestId, execution_id: 'core-files', binding_version: input.version,
           expected_content_hash: source.content_hash, content_hash: tree.content_hash, files,

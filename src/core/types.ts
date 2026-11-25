@@ -220,6 +220,7 @@ export interface Runtime {
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {
     snapshot(botId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>;
+    installStatus(botId: string, options: { requestId: string }): Promise<FileInstall | null>;
     install(botId: string, options: { requestId: string; expected: FileSnapshot; files: FileSeed }): Promise<FileInstall>;
     confirm(botId: string, options: { requestId: string }): Promise<FileInstall>;
     prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;

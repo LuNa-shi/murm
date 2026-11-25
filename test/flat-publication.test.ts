@@ -10,7 +10,6 @@ import { decodeFileSeed } from '../scripts/core-file-seed.js';
 import { createHash } from 'node:crypto';
 import { prepareFlatInputs } from '../src/environments/flat/prepare-inputs.js';
 import { SwarmEnvError } from '../src/errors.js';
-import { decodeFileSeed } from '../scripts/core-file-seed.js';
 import { stableStringify, makeEnvelope } from '../src/protocol/envelope.js';
 
 async function fixture(t, options = {}) {
@@ -314,4 +313,50 @@ test('Core snapshot save recovers the original bytes after a lost reply and adap
   assert.equal(ids.length, 2);
   assert.equal(f.workspace.readDeliveryRevision({ workspaceId: f.workspaceId, missionId: f.missionId, revision: saved.revision }).source.fencing_version, f.execution.fencing_version);
   assert.deepEqual(await f.call('workspace', 'workspace_save', {}, 'same-save'), saved);
+});
+
+test('Flat apply keeps the original owner and records both proof parents before subsequent save', async t => {
+  let files = { 'input.txt': { encoding: 'utf8', data: 'fixed λ\n' }, 'own.lean': { encoding: 'utf8', data: 'my progress\n' } };
+  const snapshots = new Map();
+  const installs = new Map();
+  let confirmations = 0;
+  let loseConfirmation = true;
+  const runtime = { id: 'runtime:apply', async get(id) { return { id, profile: 'researcher', status: 'running' }; }, files: {
+    async snapshot(botId, input) {
+      if (!snapshots.has(input.requestId)) snapshots.set(input.requestId, { botId, requestId: input.requestId, version: snapshots.size + 1,
+        files: structuredClone(files), digest: decodeFileSeed(files).digest });
+      return snapshots.get(input.requestId);
+    },
+    async installStatus(botId, input) { return installs.get(input.requestId) ?? null; },
+    async install(botId, input) {
+      assert.equal(input.expected.digest, decodeFileSeed(files).digest);
+      files = structuredClone(input.files);
+      const receipt = { botId, requestId: input.requestId, digest: decodeFileSeed(files).digest, version: 2, phase: 'installed' };
+      installs.set(input.requestId, receipt); return receipt;
+    },
+    async confirm(botId, input) {
+      confirmations++;
+      const receipt = { ...installs.get(input.requestId), phase: 'committed' };
+      installs.set(input.requestId, receipt);
+      if (loseConfirmation) { loseConfirmation = false; throw Object.assign(new Error('lost committed response'), { code: 'OPERATION_UNKNOWN' }); }
+      return receipt;
+    },
+  } };
+  const f = await fixture(t, { runtime, workspaceCapture: 'core' });
+  const incoming = await f.workspace.save({ workspaceId: f.workspaceId, baseRevision: '0.1', files: { 'input.txt': 'fixed λ\n', 'lemma.lean': 'peer lemma\n' } });
+  await assert.rejects(f.call('workspace', 'workspace_apply', { from: incoming.revision }, 'dirty'), { code: 'WORKSPACE_BUSY' });
+  const own = await f.call('workspace', 'workspace_save', {}, 'own');
+  await assert.rejects(f.call('workspace', 'workspace_apply', { from: incoming.revision }, 'adopt'), { code: 'WORKSPACE_RESULT_UNKNOWN' });
+  f.restartPublication();
+  const applied = await f.call('workspace', 'workspace_apply', { from: incoming.revision }, 'adopt');
+  assert.deepEqual(applied.parents, [own.revision, incoming.revision]);
+  assert.equal(applied.conflicts.length, 0);
+  assert.equal(f.tasks.getExecution(f.execution.execution_id).owner_ref, f.botId);
+  assert.equal(f.tasks.getExecution(f.execution.execution_id).state, 'RUNNING');
+  assert.equal(confirmations, 1);
+  const saved = await f.call('workspace', 'workspace_save', {}, 'combined');
+  const exported = await f.workspace.exportRevision({ workspaceId: f.workspaceId, revision: saved.revision });
+  assert.equal(Buffer.from(exported.files['own.lean']).toString(), 'my progress\n');
+  assert.equal(Buffer.from(exported.files['lemma.lean']).toString(), 'peer lemma\n');
+  assert.deepEqual(saved.parents, [own.revision, incoming.revision]);
 });

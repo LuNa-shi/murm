@@ -107,7 +107,7 @@ export function createFileControls<Bot extends FileBot, Timeout extends symbol>(
           const error = caught as Error & { code: string };
           if (!request.uncertain && knownRejections.has(error.code)) {
             request.rejection = problem(error.code, error.message, type, botId, id);
-            state.operation = undefined;
+            if (request.type !== 'files.confirm') state.operation = undefined;
             throw request.rejection;
           }
           request.uncertain = true;
@@ -209,6 +209,14 @@ export function createFileControls<Bot extends FileBot, Timeout extends symbol>(
       });
   }
 
+  async function installStatus(botId: string, options: { requestId: string }): Promise<FileInstall | null> {
+    const id = options?.requestId;
+    if (!validId(id)) throw problem('INVALID_CONTRACT', 'Installation query requires a requestId', 'files.installStatus', botId, id);
+    const bot = findBot(botId, 'files.installStatus', id);
+    const request = states.get(bot)!.installs.get(id);
+    return request?.confirmation?.receipt ?? request?.receipt ?? null;
+  }
+
   async function install(botId: string, options: Parameters<Runtime['files']['install']>[1]): Promise<FileInstall> {
     const type = 'files.install';
     const id = options?.requestId;
@@ -260,6 +268,6 @@ export function createFileControls<Bot extends FileBot, Timeout extends symbol>(
   return {
     register,
     canSend(bot: Bot) { return !['files.grant', 'files.install', 'files.confirm'].includes(states.get(bot)!.operation?.type ?? ''); },
-    api: Object.freeze({ prepare, grant, snapshot, install, confirm }),
+    api: Object.freeze({ prepare, grant, snapshot, install, installStatus, confirm }),
   };
 }
