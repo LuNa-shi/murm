@@ -1,413 +1,225 @@
 ---
-interface Props {
-  mode: 'backdrop' | 'horizon';
-}
-
-const { mode } = Astro.props;
 ---
 
-{mode === 'backdrop' ? (
-  <canvas
-    class="murm-sky-canvas"
-    data-murm-sky
-    aria-hidden="true"
-  ></canvas>
-) : (
-  <section class="horizon-section" aria-label="Interactive ASCII murmuration horizon">
-    <div class="horizon-frame" data-murm-horizon>
-      <div class="horizon-bar">
-        <span class="horizon-title">
-          <span class="horizon-dot" aria-hidden="true"></span>
-          MURMURATION.ASCII
-        </span>
-        <span class="horizon-meta" data-horizon-meta>28 BOIDS · MURMURATION FLOCK · CLICK SKY TO SCATTER</span>
-        <div class="horizon-actions">
-          <button type="button" class="stage-btn" data-murm-scatter>Scatter</button>
-          <button type="button" class="stage-btn" data-murm-toggle aria-pressed="false">
-            <span data-murm-toggle-label>Pause</span>
-          </button>
-        </div>
-      </div>
-      <pre class="horizon-pre" data-horizon-pre aria-hidden="true"></pre>
-    </div>
-  </section>
-)}
+<canvas
+  class="murm-sky-canvas"
+  data-murm-sky
+  aria-hidden="true"
+></canvas>
 
-{mode === 'backdrop' && (
-  <script is:inline>
-    (function initMurmurationEngine() {
-      if (window.__murmEngineInit) return;
-      window.__murmEngineInit = true;
+<script is:inline>
+  (function initSlowMotionBirds() {
+    if (window.__murmBirdsInit) return;
+    window.__murmBirdsInit = true;
 
-      const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const canvas = document.querySelector('[data-murm-sky]');
-      const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+    const canvas = document.querySelector('[data-murm-sky]');
+    const ctx = canvas && canvas.getContext ? canvas.getContext('2d') : null;
+    if (!canvas || !ctx) return;
 
-      let paused = reduced;
-      let width = window.innerWidth;
-      let height = window.innerHeight;
-      let dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let paused = reduced;
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    let dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-      // Gentle cursor repulsion
-      const pointer = { x: -9999, y: -9999, active: false };
-      window.addEventListener('pointermove', (e) => {
-        pointer.x = e.clientX;
-        pointer.y = e.clientY;
-        pointer.active = true;
-      }, { passive: true });
-      window.addEventListener('pointerleave', () => {
-        pointer.active = false;
-      }, { passive: true });
+    // 6 graceful soaring birds in a loose diagonal passage (bottom-left -> top-right)
+    // Carefully seeded so 2-3 large birds & their broad cast shadows are visible right on load
+    const SEED_FLOCK = [
+      { rx: 0.72, ry: 0.22, span: 126, alt: 0.92, speed: 0.28, angle: -0.34, phase: 0.4,  freq: 0.00105, alpha: 0.19 },
+      { rx: 0.18, ry: 0.54, span: 142, alt: 1.08, speed: 0.32, angle: -0.30, phase: 2.3,  freq: 0.00092, alpha: 0.17 },
+      { rx: 0.84, ry: 0.36, span: 94,  alt: 0.76, speed: 0.24, angle: -0.36, phase: 4.1,  freq: 0.00118, alpha: 0.16 },
+      { rx: 0.34, ry: 0.82, span: 108, alt: 0.86, speed: 0.26, angle: -0.32, phase: 1.5,  freq: 0.00100, alpha: 0.15 },
+      { rx: 0.56, ry: 0.14, span: 72,  alt: 0.62, speed: 0.21, angle: -0.38, phase: 5.0,  freq: 0.00128, alpha: 0.13 },
+      { rx: -0.08, ry: 0.74, span: 84, alt: 0.70, speed: 0.23, angle: -0.33, phase: 3.2,  freq: 0.00112, alpha: 0.14 },
+    ];
 
-      // Full-screen translucent ASCII Boids flock
-      const BIRD_COUNT = width < 768 ? 24 : 44;
-      const GLYPHS_NEAR = ['\\v/', '~v~', '/^\\', '-v-'];
-      const GLYPHS_MID = ['v', '~', '^', 'v'];
-      const GLYPHS_FAR = ['·', '~', 'v', '·'];
+    let birds = [];
 
-      const boids = [];
-      for (let i = 0; i < BIRD_COUNT; i++) {
-        const layer = i % 5 === 0 ? 2 : i % 2 === 0 ? 1 : 0; // 2=near, 1=mid, 0=far
-        const flock = i % 2;
-        const angle = (Math.random() - 0.5) * 1.4;
-        const speed = 0.75 + layer * 0.25 + Math.random() * 0.4;
-        boids.push({
-          x: Math.random() * width,
-          y: flock === 0 ? Math.random() * (height * 0.48) : height * 0.55 + Math.random() * (height * 0.42),
-          vx: Math.cos(angle) * speed * (flock === 0 ? 1 : -1),
-          vy: Math.sin(angle) * speed * 0.45,
-          layer,
-          flock,
-          phase: Math.random() * Math.PI * 2,
-          flapSpeed: 0.08 + Math.random() * 0.05,
-        });
-      }
+    function resetFlock() {
+      const mobile = width < 768;
+      const list = mobile ? SEED_FLOCK.slice(0, 4) : SEED_FLOCK;
+      const scaleFactor = mobile ? 0.72 : 1;
+      birds = list.map((s) => ({
+        x: s.rx * width,
+        y: s.ry * height,
+        span: s.span * scaleFactor,
+        alt: s.alt,
+        speed: s.speed,
+        angle: s.angle,
+        phase: s.phase,
+        freq: s.freq,
+        alpha: s.alpha,
+        swayPhase: s.phase * 1.7,
+      }));
+    }
 
-      // Bottom ASCII Horizon Strip Boids (pure monospace character grid)
-      const H_ROWS = 7;
-      let H_COLS = 96;
-      const hBoids = [];
-      for (let i = 0; i < 28; i++) {
-        hBoids.push({
-          x: Math.random() * 96,
-          y: 1.2 + Math.random() * (H_ROWS - 2.4),
-          vx: 0.22 + Math.random() * 0.16,
-          vy: (Math.random() - 0.5) * 0.06,
-          phase: Math.random() * Math.PI * 2,
-          depth: i % 3, // 2=lead, 1=mid, 0=distant
-        });
-      }
-
-      function resize() {
-        width = window.innerWidth;
-        height = window.innerHeight;
-        dpr = Math.min(window.devicePixelRatio || 1, 2);
-        if (canvas) {
-          canvas.width = Math.floor(width * dpr);
-          canvas.height = Math.floor(height * dpr);
-          canvas.style.width = width + 'px';
-          canvas.style.height = height + 'px';
-        }
-        const pre = document.querySelector('[data-horizon-pre]');
-        if (pre) {
-          const rect = pre.getBoundingClientRect();
-          H_COLS = Math.max(40, Math.min(104, Math.floor((rect.width - 36) / 9.4)));
-        }
-      }
-
-      function scatterAll(nx, ny) {
-        for (const b of boids) {
-          b.vx += (Math.random() - 0.5) * 2.2;
-          b.vy += (Math.random() - 0.5) * 1.6;
-        }
-        const cx = typeof nx === 'number' ? nx : H_COLS * 0.5;
-        const cy = typeof ny === 'number' ? ny : H_ROWS * 0.5;
-        for (const h of hBoids) {
-          const dx = h.x - cx;
-          const dy = h.y - cy;
-          const dist = Math.hypot(dx, dy) + 0.8;
-          h.vx += (dx / dist) * 0.42 + (Math.random() - 0.5) * 0.18;
-          h.vy += (dy / dist) * 0.28 + (Math.random() - 0.5) * 0.12;
-        }
-      }
-
-      function stepBackdrop(t) {
-        if (!ctx || !canvas) return;
-        const isDark = document.documentElement.dataset.theme === 'dark';
-        const colInk = isDark ? '226, 232, 240' : '28, 29, 26';
-        const colCobalt = isDark ? '124, 147, 255' : '44, 76, 222';
-
-        // Two slow organic wind attractors (top hero sky + lower margin ribbon)
-        const target0 = {
-          x: width * (0.5 + 0.34 * Math.cos(t * 0.00028)),
-          y: height * (0.22 + 0.1 * Math.sin(t * 0.00056)),
-        };
-        const target1 = {
-          x: width * (0.5 - 0.36 * Math.cos(t * 0.00024 + 1.2)),
-          y: height * (0.76 + 0.09 * Math.sin(t * 0.00048 + 0.6)),
-        };
-
-        for (let i = 0; i < boids.length; i++) {
-          const b = boids[i];
-          let ax = 0, ay = 0, cx = 0, cy = 0, sx = 0, sy = 0;
-          let alignN = 0, cohN = 0;
-
-          for (let j = 0; j < boids.length; j++) {
-            if (i === j) continue;
-            const o = boids[j];
-            if (o.flock !== b.flock) continue;
-            const dx = o.x - b.x;
-            const dy = o.y - b.y;
-            const d2 = dx * dx + dy * dy;
-            if (d2 < 7800 && d2 > 1) {
-              ax += o.vx; ay += o.vy; alignN++;
-              cx += o.x; cy += o.y; cohN++;
-              if (d2 < 900) {
-                const inv = 1 / Math.sqrt(d2);
-                sx -= dx * inv;
-                sy -= dy * inv;
-              }
-            }
-          }
-
-          if (alignN > 0) {
-            b.vx += ((ax / alignN) - b.vx) * 0.028;
-            b.vy += ((ay / alignN) - b.vy) * 0.028;
-          }
-          if (cohN > 0) {
-            b.vx += ((cx / cohN) - b.x) * 0.00032;
-            b.vy += ((cy / cohN) - b.y) * 0.00032;
-          }
-          b.vx += sx * 0.055;
-          b.vy += sy * 0.055;
-
-          const tgt = b.flock === 0 ? target0 : target1;
-          b.vx += (tgt.x - b.x) * 0.00011;
-          b.vy += (tgt.y - b.y) * 0.00014;
-
-          if (pointer.active) {
-            const pdx = b.x - pointer.x;
-            const pdy = b.y - pointer.y;
-            const pd2 = pdx * pdx + pdy * pdy;
-            if (pd2 < 16000 && pd2 > 1) {
-              const pd = Math.sqrt(pd2);
-              const f = (1 - pd / 126) * 0.22;
-              b.vx += (pdx / pd) * f;
-              b.vy += (pdy / pd) * f;
-            }
-          }
-
-          // Clamp velocity smoothly
-          const maxSpd = 1.45 + b.layer * 0.35;
-          const minSpd = 0.55;
-          const spd = Math.hypot(b.vx, b.vy) || 0.001;
-          if (spd > maxSpd) {
-            b.vx = (b.vx / spd) * maxSpd;
-            b.vy = (b.vy / spd) * maxSpd;
-          } else if (spd < minSpd) {
-            b.vx = (b.vx / spd) * minSpd;
-            b.vy = (b.vy / spd) * minSpd;
-          }
-
-          b.x += b.vx;
-          b.y += b.vy;
-          b.phase += b.flapSpeed;
-
-          // Soft wrap horizontally & cushion vertically
-          if (b.x < -36) b.x = width + 32;
-          if (b.x > width + 36) b.x = -32;
-          if (b.y < 18) b.vy += 0.06;
-          if (b.y > height - 18) b.vy -= 0.06;
-        }
-
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ctx.clearRect(0, 0, width, height);
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-
-        for (const b of boids) {
-          const frame = Math.floor((Math.sin(b.phase) + 1) * 1.99) % 4;
-          let glyph, size, alpha, rgb;
-          if (b.layer === 2) {
-            glyph = GLYPHS_NEAR[frame];
-            size = 11.5;
-            alpha = isDark ? 0.22 : 0.16;
-            rgb = colCobalt;
-          } else if (b.layer === 1) {
-            glyph = GLYPHS_MID[frame];
-            size = 11;
-            alpha = isDark ? 0.17 : 0.13;
-            rgb = b.flock === 0 ? colCobalt : colInk;
-          } else {
-            glyph = GLYPHS_FAR[frame];
-            size = 10;
-            alpha = isDark ? 0.12 : 0.09;
-            rgb = colInk;
-          }
-
-          const tilt = Math.max(-0.32, Math.min(0.32, Math.atan2(b.vy, Math.abs(b.vx) + 0.25) * 0.7));
-          ctx.save();
-          ctx.translate(b.x, b.y);
-          ctx.rotate(tilt);
-          ctx.font = size + 'px "Departure Mono", ui-monospace, monospace';
-          ctx.fillStyle = 'rgba(' + rgb + ',' + alpha + ')';
-          ctx.fillText(glyph, 0, 0);
-          ctx.restore();
-        }
-      }
-
-      function stepHorizon(t, advance) {
-        const pre = document.querySelector('[data-horizon-pre]');
-        if (!pre) return;
-
-        const leadX = (t * 0.0085) % H_COLS;
-        const leadY = H_ROWS * 0.5 + Math.sin(t * 0.0014) * 1.7;
-
-        if (advance) {
-          for (let i = 0; i < hBoids.length; i++) {
-            const h = hBoids[i];
-            let ax = 0, ay = 0, cx = 0, cy = 0, sx = 0, sy = 0, n = 0;
-            for (let j = 0; j < hBoids.length; j++) {
-              if (i === j) continue;
-              const o = hBoids[j];
-              let dx = o.x - h.x;
-              if (dx > H_COLS * 0.5) dx -= H_COLS;
-              if (dx < -H_COLS * 0.5) dx += H_COLS;
-              const dy = o.y - h.y;
-              const d2 = dx * dx * 0.22 + dy * dy;
-              if (d2 < 14 && d2 > 0.01) {
-                ax += o.vx; ay += o.vy;
-                cx += dx; cy += dy;
-                n++;
-                if (d2 < 1.9) {
-                  sx -= dx * 0.09;
-                  sy -= dy * 0.16;
-                }
-              }
-            }
-            if (n > 0) {
-              h.vx += ((ax / n) - h.vx) * 0.04 + (cx / n) * 0.006;
-              h.vy += ((ay / n) - h.vy) * 0.05 + (cy / n) * 0.014;
-            }
-            h.vx += sx;
-            h.vy += sy;
-
-            // Gentle murmuration wave pull along wrapped horizon
-            let toLeadX = leadX - h.x;
-            if (toLeadX > H_COLS * 0.5) toLeadX -= H_COLS;
-            if (toLeadX < -H_COLS * 0.5) toLeadX += H_COLS;
-            const waveY = leadY + Math.sin(h.x * 0.14 - t * 0.0022) * 1.15;
-            h.vx += toLeadX * 0.0012 + 0.004;
-            h.vy += (waveY - h.y) * 0.018;
-
-            h.vx = Math.max(0.12, Math.min(0.56, h.vx));
-            h.vy = Math.max(-0.22, Math.min(0.22, h.vy));
-            h.x = (h.x + h.vx + H_COLS) % H_COLS;
-            h.y += h.vy;
-            if (h.y < 0.5) { h.y = 0.5; h.vy = Math.abs(h.vy) * 0.6; }
-            if (h.y > H_ROWS - 0.6) { h.y = H_ROWS - 0.6; h.vy = -Math.abs(h.vy) * 0.6; }
-            h.phase += 0.16;
-          }
-        }
-
-        // Compose clean ASCII grid
-        const grid = Array.from({ length: H_ROWS }, () => Array(H_COLS).fill(' '));
-
-        // Subtle atmospheric horizon wisps
-        const wispA = Math.floor((t * 0.0018) % H_COLS);
-        const wispB = Math.floor((t * 0.0012 + H_COLS * 0.52) % H_COLS);
-        const drawStr = (row, col, s) => {
-          for (let k = 0; k < s.length; k++) {
-            const c = (col + k + H_COLS) % H_COLS;
-            if (grid[row] && grid[row][c] === ' ') grid[row][c] = s[k];
-          }
-        };
-        drawStr(1, wispA, '· · ~');
-        drawStr(5, wispB, '~ · ·');
-
-        // Plot birds sorted back-to-front so lead silhouettes win overlap
-        const sorted = hBoids.slice().sort((a, b) => a.depth - b.depth);
-        for (const h of sorted) {
-          const r = Math.max(0, Math.min(H_ROWS - 1, Math.floor(h.y)));
-          const c = Math.floor(h.x) % H_COLS;
-          const up = Math.sin(h.phase) > 0;
-          if (h.depth === 2) {
-            const s = up ? '\\v/' : '~v~';
-            for (let k = 0; k < 3; k++) {
-              const cc = (c + k - 1 + H_COLS) % H_COLS;
-              grid[r][cc] = s[k];
-            }
-          } else if (h.depth === 1) {
-            grid[r][c] = up ? 'v' : '^';
-          } else {
-            grid[r][c] = up ? '~' : '·';
-          }
-        }
-
-        pre.textContent = grid.map((row) => row.join('')).join('\n');
-      }
-
-      function syncToggleButtons() {
-        document.querySelectorAll('[data-murm-toggle]').forEach((btn) => {
-          btn.setAttribute('aria-pressed', paused ? 'true' : 'false');
-          const lbl = btn.querySelector('[data-murm-toggle-label]');
-          if (lbl) lbl.textContent = paused ? 'Resume' : 'Pause';
-        });
-      }
-
-      document.addEventListener('click', (e) => {
-        const target = e.target;
-        if (!(target instanceof Element)) return;
-        const toggleBtn = target.closest('[data-murm-toggle]');
-        if (toggleBtn) {
-          paused = !paused;
-          syncToggleButtons();
-          return;
-        }
-        const scatterBtn = target.closest('[data-murm-scatter]');
-        if (scatterBtn) {
-          scatterAll();
-          if (paused) {
-            paused = false;
-            syncToggleButtons();
-          }
-          return;
-        }
-        const horizonPre = target.closest('[data-horizon-pre]');
-        if (horizonPre) {
-          const rect = horizonPre.getBoundingClientRect();
-          const nx = ((e.clientX - rect.left) / Math.max(1, rect.width)) * H_COLS;
-          const ny = ((e.clientY - rect.top) / Math.max(1, rect.height)) * H_ROWS;
-          scatterAll(nx, ny);
-        }
-      });
-
-      function boot() {
-        resize();
-        syncToggleButtons();
-        stepBackdrop(0);
-        stepHorizon(0, false);
-      }
-
-      window.addEventListener('resize', resize, { passive: true });
-      if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', boot, { once: true });
+    function resize() {
+      const prevW = width || window.innerWidth;
+      const prevH = height || window.innerHeight;
+      width = window.innerWidth;
+      height = window.innerHeight;
+      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      canvas.style.width = width + 'px';
+      canvas.style.height = height + 'px';
+      if (!birds.length) {
+        resetFlock();
       } else {
-        boot();
+        for (const b of birds) {
+          b.x = (b.x / prevW) * width;
+          b.y = (b.y / prevH) * height;
+        }
       }
+    }
 
-      let lastHorizonTick = 0;
-      function loop(now) {
-        if (!paused && !document.hidden) {
-          stepBackdrop(now);
-          if (now - lastHorizonTick > 78) {
-            stepHorizon(now, true);
-            lastHorizonTick = now;
+    // Draw one sculptural soaring swift/swallow silhouette from above (wings arch forward at wrist, sweep gracefully back to slender tips)
+    function traceBirdPath(c, span, flap) {
+      const s = span * 0.5;
+      // Organic slow-motion wing flex: wrist rises gently, outer primaries sweep back gracefully
+      const wristX = s * (0.44 - Math.max(0, flap) * 0.05);
+      const wristY = -s * (0.24 - flap * 0.06);
+      const tipX = s * (1.0 - Math.abs(flap) * 0.14);
+      const tipY = s * (0.18 + flap * 0.26);
+
+      c.beginPath();
+      // Slender head / beak pointing along -Y
+      c.moveTo(0, -s * 0.40);
+      c.bezierCurveTo(s * 0.07, -s * 0.34, s * 0.09, -s * 0.24, s * 0.13, -s * 0.18);
+      // Right wing leading edge: shoulder -> arched wrist -> swept-back tapered tip
+      c.bezierCurveTo(s * 0.28, wristY - s * 0.06, wristX + s * 0.26, wristY - s * 0.04, tipX, tipY);
+      // Right wing trailing edge: graceful inward curve back to body waist
+      c.bezierCurveTo(s * 0.68, tipY - s * 0.04, s * 0.34, s * 0.04, s * 0.07, s * 0.14);
+      // Elegant forked swallow tail
+      c.lineTo(s * 0.14, s * 0.50);
+      c.lineTo(0, s * 0.30);
+      c.lineTo(-s * 0.14, s * 0.50);
+      c.lineTo(-s * 0.07, s * 0.14);
+      // Left wing trailing edge -> swept tip
+      c.bezierCurveTo(-s * 0.34, s * 0.04, -s * 0.68, tipY - s * 0.04, -tipX, tipY);
+      // Left wing leading edge -> wrist -> head
+      c.bezierCurveTo(-(wristX + s * 0.26), wristY - s * 0.04, -s * 0.28, wristY - s * 0.06, -s * 0.13, -s * 0.18);
+      c.bezierCurveTo(-s * 0.09, -s * 0.24, -s * 0.07, -s * 0.34, 0, -s * 0.40);
+      c.closePath();
+    }
+
+    function drawFrame(now, dt) {
+      const isDark = document.documentElement.dataset.theme === 'dark';
+      const birdRgb = isDark ? '210, 220, 240' : '30, 34, 42';
+      const shadowRgb = isDark ? '74, 104, 230' : '22, 28, 42';
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, width, height);
+
+      const pad = 210;
+
+      for (const b of birds) {
+        // Gentle slow thermal drift + diagonal glide
+        const heading = b.angle + Math.sin(now * 0.00022 + b.swayPhase) * 0.055;
+        if (dt > 0) {
+          const step = b.speed * (dt / 16.67);
+          b.x += Math.cos(heading) * step;
+          b.y += Math.sin(heading) * step;
+
+          // Seamless re-entry from lower-left / bottom corridor once off-screen
+          if (b.x > width + pad || b.y < -pad) {
+            if (Math.random() < 0.6) {
+              b.x = -pad * 0.75 - Math.random() * 80;
+              b.y = height * (0.32 + Math.random() * 0.68);
+            } else {
+              b.x = width * (0.04 + Math.random() * 0.58);
+              b.y = height + pad * 0.65 + Math.random() * 60;
+            }
           }
         }
-        requestAnimationFrame(loop);
+
+        // Slow, natural soaring wingbeat (mostly long glide, gentle slow stroke)
+        const cyc = now * b.freq + b.phase;
+        const raw = Math.sin(cyc);
+        const flap = raw * 0.68 + Math.sin(cyc * 2) * 0.12;
+
+        // Smooth fade near outer viewport edges so birds arrive & depart peacefully
+        const edgeX = Math.min((b.x + pad) / 140, (width + pad - b.x) / 140, 1);
+        const edgeY = Math.min((b.y + pad) / 140, (height + pad - b.y) / 140, 1);
+        const vis = Math.max(0, Math.min(edgeX, edgeY));
+        if (vis <= 0.01) continue;
+
+        // Rotate silhouette so beak (+0,-1 in local coords) points along heading
+        const rot = heading + Math.PI * 0.5;
+
+        // 1. LARGE SOFT CAST SHADOW on the paper surface (projected offset down-right)
+        const sx = b.x + b.alt * 78;
+        const sy = b.y + b.alt * 102;
+        const shadowSpan = b.span * (1.42 + b.alt * 0.28);
+        const shadowAlpha = (isDark ? 0.08 : 0.078) * vis;
+
+        // Broad atmospheric penumbra cloud beneath the bird
+        const penumbraR = shadowSpan * 0.68;
+        const grad = ctx.createRadialGradient(sx, sy, shadowSpan * 0.06, sx, sy, penumbraR);
+        grad.addColorStop(0, 'rgba(' + shadowRgb + ',' + (shadowAlpha * 0.72).toFixed(4) + ')');
+        grad.addColorStop(0.55, 'rgba(' + shadowRgb + ',' + (shadowAlpha * 0.28).toFixed(4) + ')');
+        grad.addColorStop(1, 'rgba(' + shadowRgb + ',0)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, penumbraR, penumbraR * 0.68, heading, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Soft diffused silhouette shadow
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.rotate(rot);
+        ctx.scale(1.12, 0.88);
+        if ('filter' in ctx) {
+          ctx.filter = 'blur(' + Math.round(10 + b.alt * 7) + 'px)';
+        }
+        traceBirdPath(ctx, shadowSpan, flap * 0.75);
+        ctx.fillStyle = 'rgba(' + shadowRgb + ',' + (shadowAlpha * 1.15).toFixed(4) + ')';
+        ctx.fill();
+        ctx.restore();
+
+        // 2. LARGE SLOW-MOTION SOARING BIRD SILHOUETTE
+        ctx.save();
+        ctx.translate(b.x, b.y);
+        ctx.rotate(rot);
+        traceBirdPath(ctx, b.span, flap);
+        ctx.fillStyle = 'rgba(' + birdRgb + ',' + (b.alpha * vis).toFixed(4) + ')';
+        ctx.fill();
+        ctx.restore();
       }
-      requestAnimationFrame(loop);
-    })();
-  </script>
-)}
+    }
+
+    function syncToggleButtons() {
+      document.querySelectorAll('[data-murm-toggle]').forEach((btn) => {
+        btn.setAttribute('aria-pressed', paused ? 'true' : 'false');
+        btn.setAttribute('title', paused ? 'Resume soaring birds' : 'Pause soaring birds');
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      const target = e.target;
+      if (!(target instanceof Element)) return;
+      if (target.closest('[data-murm-toggle]')) {
+        paused = !paused;
+        syncToggleButtons();
+      }
+    });
+
+    resize();
+    window.addEventListener('resize', resize, { passive: true });
+    syncToggleButtons();
+
+    // Render initial serene frame immediately
+    let lastNow = performance.now();
+    drawFrame(lastNow, 0);
+
+    function tick(now) {
+      const dt = Math.min(64, Math.max(0, now - lastNow));
+      lastNow = now;
+      if (!paused && !document.hidden) {
+        drawFrame(now, dt);
+      }
+      requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+  })();
+</script>

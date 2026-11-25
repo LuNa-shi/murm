@@ -1,200 +1,51 @@
 ---
 ---
 
-<div class="pillar-deck" aria-label="Three core runtime guarantees">
-  <!-- 01 / SANDBOX -->
-  <article class="pillar-card">
-    <div class="pillar-card-top">
-      <span class="pillar-index">01 / SANDBOX</span>
-      <span class="pillar-chip">DOCKER · QUOTA</span>
-    </div>
-    <div class="pillar-sketch" aria-hidden="true">
-      <svg viewBox="0 0 310 124" width="310" height="124">
-        <defs>
-          <pattern id="pg-1" width="16" height="16" patternUnits="userSpaceOnUse">
-            <path d="M 16 0 L 0 0 0 16" fill="none" stroke="var(--sch-grid)" stroke-width="0.8" />
-          </pattern>
-          <marker id="pa-1" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
-            <path d="M 1.5 2 L 8 5 L 1.5 8" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </marker>
-        </defs>
-        <rect x="0" y="0" width="310" height="124" fill="var(--sch-surface)" />
-        <rect x="0" y="0" width="310" height="124" fill="url(#pg-1)" />
+<div class="slogan-row" aria-label="Three core runtime promises">
+  <div class="slogan-item">
+    <!-- Crisp pixel container/sandbox glyph -->
+    <svg class="px-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
+      <rect x="4" y="4" width="16" height="2" />
+      <rect x="4" y="18" width="16" height="2" />
+      <rect x="4" y="6" width="2" height="12" />
+      <rect x="18" y="6" width="2" height="12" />
+      <rect x="4" y="11" width="16" height="2" />
+      <rect x="8" y="7.5" width="2" height="2" />
+      <rect x="8" y="14.5" width="2" height="2" />
+      <rect x="12" y="14.5" width="4" height="2" opacity="0.55" />
+    </svg>
+    <span class="slogan-kicker">01 / SANDBOX</span>
+    <h3>Run agents</h3>
+    <p>Isolated execution. Keys stay on host, workspaces stay clean.</p>
+  </div>
 
-        <!-- Host side (left) -->
-        <rect x="12" y="20" width="70" height="58" rx="4" class="sch-card" />
-        <rect x="12" y="20" width="70" height="4" rx="1.5" fill="var(--sch-indigo)" />
-        <text x="47" y="38" text-anchor="middle" class="ps-pixel">HOST</text>
-        <rect x="20" y="47" width="54" height="20" rx="3" fill="var(--marker-yellow)" stroke="var(--ink)" stroke-width="1.1" />
-        <text x="47" y="60" text-anchor="middle" class="ps-mini-ink">API KEYS</text>
+  <div class="slogan-item">
+    <!-- Crisp pixel bridge/plug glyph -->
+    <svg class="px-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
+      <rect x="3" y="9" width="5" height="6" />
+      <rect x="16" y="5" width="5" height="4" />
+      <rect x="16" y="15" width="5" height="4" />
+      <rect x="8" y="11" width="5" height="2" />
+      <rect x="11" y="6" width="2" height="12" />
+      <rect x="13" y="6" width="3" height="2" />
+      <rect x="13" y="16" width="3" height="2" />
+    </svg>
+    <span class="slogan-kicker">02 / BRIDGE</span>
+    <h3>Compose services</h3>
+    <p>Flexible coordination. Plug any shared state through one schema bridge.</p>
+  </div>
 
-        <!-- Dashed Gateway Pipe -->
-        <path class="sch-flow-line" d="M 82 49 L 116 49" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" marker-end="url(#pa-1)" />
-
-        <!-- OpenSandbox container boundary (right) -->
-        <rect x="118" y="10" width="180" height="104" rx="6" fill="var(--accent-soft)" fill-opacity="0.32" stroke="var(--ink)" stroke-width="1.3" stroke-dasharray="4 3" />
-        <text x="128" y="24" class="ps-pixel-accent">OPENSANDBOX</text>
-
-        <!-- Worker supervising Pi -->
-        <rect x="128" y="32" width="160" height="24" rx="3.5" class="sch-card" />
-        <rect x="128" y="32" width="4" height="24" rx="1.5" fill="var(--sch-teal)" />
-        <text x="139" y="47.5" class="ps-label">Worker</text>
-        <text x="278" y="47.5" text-anchor="end" class="ps-muted">files · export</text>
-
-        <rect x="128" y="64" width="160" height="24" rx="3.5" class="sch-card" />
-        <rect x="128" y="64" width="4" height="24" rx="1.5" fill="var(--sch-indigo)" />
-        <text x="139" y="79.5" class="ps-label">Pi Session</text>
-        <text x="278" y="79.5" text-anchor="end" class="ps-muted">persistent</text>
-
-        <!-- 4 Local tools -->
-        <rect x="128" y="94" width="35" height="14" rx="2.5" fill="var(--sch-card-bg)" stroke="var(--border-strong)" stroke-width="1" />
-        <text x="145.5" y="103.5" text-anchor="middle" class="ps-tool">read</text>
-        <rect x="169" y="94" width="38" height="14" rx="2.5" fill="var(--sch-card-bg)" stroke="var(--border-strong)" stroke-width="1" />
-        <text x="188" y="103.5" text-anchor="middle" class="ps-tool">write</text>
-        <rect x="213" y="94" width="35" height="14" rx="2.5" fill="var(--sch-card-bg)" stroke="var(--border-strong)" stroke-width="1" />
-        <text x="230.5" y="103.5" text-anchor="middle" class="ps-tool">edit</text>
-        <rect x="254" y="94" width="34" height="14" rx="2.5" fill="var(--sch-card-bg)" stroke="var(--border-strong)" stroke-width="1" />
-        <text x="271" y="103.5" text-anchor="middle" class="ps-tool">bash</text>
-
-        <!-- Hand note -->
-        <text x="47" y="99" text-anchor="middle" class="ps-hand">keys stay</text>
-        <text x="47" y="113" text-anchor="middle" class="ps-hand">on host!</text>
-      </svg>
-    </div>
-    <div class="pillar-body">
-      <h3>Run agents</h3>
-      <p>Isolated execution</p>
-    </div>
-  </article>
-
-  <!-- 02 / BRIDGE -->
-  <article class="pillar-card">
-    <div class="pillar-card-top">
-      <span class="pillar-index">02 / BRIDGE</span>
-      <span class="pillar-chip">SCHEMA · AUTH</span>
-    </div>
-    <div class="pillar-sketch" aria-hidden="true">
-      <svg viewBox="0 0 310 124" width="310" height="124">
-        <defs>
-          <pattern id="pg-2" width="16" height="16" patternUnits="userSpaceOnUse">
-            <path d="M 16 0 L 0 0 0 16" fill="none" stroke="var(--sch-grid)" stroke-width="0.8" />
-          </pattern>
-          <marker id="pa-2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
-            <path d="M 1.5 2 L 8 5 L 1.5 8" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </marker>
-          <marker id="pa-2i" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
-            <path d="M 1.5 2 L 8 5 L 1.5 8" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </marker>
-        </defs>
-        <rect x="0" y="0" width="310" height="124" fill="var(--sch-surface)" />
-        <rect x="0" y="0" width="310" height="124" fill="url(#pg-2)" />
-
-        <!-- Agent CLI box -->
-        <rect x="12" y="34" width="76" height="44" rx="4" class="sch-card" />
-        <rect x="12" y="34" width="76" height="4" rx="1.5" fill="var(--sch-indigo)" />
-        <text x="50" y="53" text-anchor="middle" class="ps-pixel">SWARM CLI</text>
-        <text x="50" y="68" text-anchor="middle" class="ps-muted">agent call</text>
-
-        <!-- Arrow to Bridge -->
-        <path class="sch-flow-line" d="M 88 56 L 112 56" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" marker-end="url(#pa-2i)" />
-
-        <!-- Bridge Gate -->
-        <rect x="117" y="27" width="84" height="60" rx="5" class="sch-shadow" />
-        <rect x="114" y="24" width="84" height="60" rx="5" class="sch-card sch-card-yellow" />
-        <text x="156" y="44" text-anchor="middle" class="ps-pixel-dark">BRIDGE</text>
-        <text x="156" y="59" text-anchor="middle" class="ps-mini-ink">caller id</text>
-        <text x="156" y="73" text-anchor="middle" class="ps-mini-ink">json schema</text>
-
-        <!-- Fan out arrows -->
-        <path class="sch-flow-line" d="M 198 42 C 210 42, 210 24, 224 24" fill="none" stroke="var(--sch-teal)" stroke-width="1.7" marker-end="url(#pa-2)" />
-        <path class="sch-flow-line" d="M 198 54 L 224 54" fill="none" stroke="var(--sch-teal)" stroke-width="1.7" marker-end="url(#pa-2)" />
-        <path class="sch-flow-line" d="M 198 66 C 210 66, 210 84, 224 84" fill="none" stroke="var(--sch-teal)" stroke-width="1.7" marker-end="url(#pa-2)" />
-
-        <!-- Service sockets -->
-        <rect x="226" y="13" width="72" height="22" rx="3.5" class="sch-card" />
-        <rect x="226" y="13" width="4" height="22" rx="1.5" fill="var(--sch-amber)" />
-        <text x="237" y="27.5" class="ps-label">task</text>
-
-        <rect x="226" y="43" width="72" height="22" rx="3.5" class="sch-card" />
-        <rect x="226" y="43" width="4" height="22" rx="1.5" fill="var(--sch-teal)" />
-        <text x="237" y="57.5" class="ps-label">board</text>
-
-        <rect x="226" y="73" width="72" height="22" rx="3.5" fill="var(--accent-soft)" stroke="var(--sch-indigo)" stroke-width="1.2" stroke-dasharray="3 2.5" />
-        <text x="262" y="87.5" text-anchor="middle" class="ps-pixel-accent">+ custom</text>
-
-        <!-- Hand note -->
-        <text x="108" y="111" text-anchor="middle" class="ps-hand">plug any service!</text>
-      </svg>
-    </div>
-    <div class="pillar-body">
-      <h3>Compose services</h3>
-      <p>Flexible coordination</p>
-    </div>
-  </article>
-
-  <!-- 03 / TRACE -->
-  <article class="pillar-card">
-    <div class="pillar-card-top">
-      <span class="pillar-index">03 / TRACE</span>
-      <span class="pillar-chip">JSONL · AUDIT</span>
-    </div>
-    <div class="pillar-sketch" aria-hidden="true">
-      <svg viewBox="0 0 310 124" width="310" height="124">
-        <defs>
-          <pattern id="pg-3" width="16" height="16" patternUnits="userSpaceOnUse">
-            <path d="M 16 0 L 0 0 0 16" fill="none" stroke="var(--sch-grid)" stroke-width="0.8" />
-          </pattern>
-          <marker id="pa-3" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5.5" markerHeight="5.5" orient="auto-start-reverse">
-            <path d="M 1.5 2 L 8 5 L 1.5 8" fill="none" stroke="var(--sch-amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </marker>
-        </defs>
-        <rect x="0" y="0" width="310" height="124" fill="var(--sch-surface)" />
-        <rect x="0" y="0" width="310" height="124" fill="url(#pg-3)" />
-
-        <!-- Mini waterfall timeline box -->
-        <rect x="12" y="14" width="162" height="80" rx="4.5" class="sch-card" />
-        <rect x="12.8" y="14.8" width="160.4" height="15.2" rx="3.5" fill="var(--sch-header)" />
-        <line x1="12.8" y1="30" x2="173.2" y2="30" stroke="var(--border)" stroke-width="1" />
-        <text x="20" y="25.5" class="ps-pixel">TRACE TIMELINE</text>
-
-        <!-- Lane labels -->
-        <text x="19" y="44" class="ps-tool">IN</text>
-        <text x="19" y="62" class="ps-tool">LLM</text>
-        <text x="19" y="80" class="ps-tool">OPS</text>
-
-        <!-- Waterfall segments -->
-        <rect x="44" y="36" width="16" height="9" rx="2" fill="var(--sch-blue)" />
-        <rect x="92" y="36" width="14" height="9" rx="2" fill="var(--sch-teal)" />
-        <rect x="138" y="36" width="18" height="9" rx="2" fill="var(--sch-blue)" />
-
-        <rect x="52" y="54" width="24" height="9" rx="2" fill="var(--sch-purple)" />
-        <rect x="98" y="54" width="26" height="9" rx="2" fill="var(--sch-purple)" />
-        <rect x="142" y="54" width="22" height="9" rx="2" fill="var(--sch-indigo)" />
-
-        <rect x="64" y="72" width="28" height="9" rx="2" fill="var(--sch-amber)" />
-        <rect x="108" y="72" width="18" height="9" rx="2" fill="var(--sch-amber)" />
-        <rect x="132" y="72" width="28" height="9" rx="2" fill="var(--sch-teal)" />
-
-        <!-- Flow to Run archive -->
-        <path class="sch-flow-line" d="M 174 54 L 198 54" fill="none" stroke="var(--sch-amber)" stroke-width="1.8" marker-end="url(#pa-3)" />
-
-        <!-- Run folder artifact box -->
-        <rect x="203" y="19" width="95" height="72" rx="4.5" class="sch-shadow" />
-        <rect x="200" y="16" width="95" height="72" rx="4.5" class="sch-card" />
-        <rect x="200.8" y="16.8" width="93.4" height="15.4" rx="3.5" fill="var(--marker-yellow)" />
-        <line x1="200.8" y1="32.2" x2="294.2" y2="32.2" stroke="var(--ink)" stroke-width="1" opacity="0.28" />
-        <text x="208" y="27.5" class="ps-pixel-dark">RUN/&lt;ID&gt;</text>
-        <text x="208" y="45" class="ps-file">evidence.jsonl</text>
-        <text x="208" y="60" class="ps-file">service-calls</text>
-        <text x="208" y="75" class="ps-file">sessions/</text>
-
-        <!-- Hand note -->
-        <text x="154" y="112" text-anchor="middle" class="ps-hand">auto-archived &amp; redacted</text>
-      </svg>
-    </div>
-    <div class="pillar-body">
-      <h3>Observe runs</h3>
-      <p>Transparent execution</p>
-    </div>
-  </article>
+  <div class="slogan-item">
+    <!-- Crisp pixel trace/timeline glyph -->
+    <svg class="px-icon" viewBox="0 0 24 24" width="24" height="24" fill="currentColor" shape-rendering="crispEdges" aria-hidden="true">
+      <rect x="3" y="4" width="2" height="16" />
+      <rect x="3" y="18" width="18" height="2" />
+      <rect x="7" y="6" width="6" height="2.5" />
+      <rect x="10" y="10.5" width="8" height="2.5" opacity="0.72" />
+      <rect x="13" y="14.5" width="6" height="2.5" />
+    </svg>
+    <span class="slogan-kicker">03 / TRACE</span>
+    <h3>Observe runs</h3>
+    <p>Transparent execution. Every session, call, and trace archived on disk.</p>
+  </div>
 </div>

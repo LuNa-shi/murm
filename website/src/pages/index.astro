@@ -3,8 +3,10 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import MurmLogo from '../components/MurmLogo.astro';
 import MurmurationCanvas from '../components/MurmurationCanvas.astro';
 import PillarSchematics from '../components/PillarSchematics.astro';
+import NoRebuildGrid from '../components/NoRebuildGrid.astro';
 import CoreModelBlueprint from '../components/CoreModelBlueprint.astro';
 import HarnessShowcase from '../components/HarnessShowcase.astro';
+import DomainStrip from '../components/DomainStrip.astro';
 import { withBase } from '../lib/url';
 ---
 
@@ -14,14 +16,14 @@ import { withBase } from '../lib/url';
   showTopNav={false}
   paperGrid={true}
 >
-  <MurmurationCanvas mode="backdrop" />
+  <MurmurationCanvas />
 
   <main class="landing-shell">
     <div class="landing-corner" aria-label="Quick links">
       <a class="corner-link" href={withBase('/docs/quickstart/')}>Docs</a>
       <span class="corner-sep" aria-hidden="true">/</span>
       <a class="corner-link" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
-      <button type="button" class="corner-icon-btn" data-murm-toggle aria-label="Toggle ambient flock animation" title="Pause / resume ambient flock">
+      <button type="button" class="corner-icon-btn" data-murm-toggle aria-label="Toggle soaring birds animation" title="Pause soaring birds">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
           <path d="M3 14c3-4 6-4 9 0 3-4 6-4 9 0" />
           <path d="M6 9c2-2.5 4-2.5 6 0 2-2.5 4-2.5 6 0" opacity="0.6" />
@@ -35,6 +37,7 @@ import { withBase } from '../lib/url';
       </button>
     </div>
 
+    <!-- Beat 1: Open Hero + Airy 3-Slogan Row -->
     <section class="hero">
       <div class="hero-mark">
         <MurmLogo variant="hero" />
@@ -56,13 +59,17 @@ import { withBase } from '../lib/url';
       <PillarSchematics />
     </section>
 
-    <section class="landing-section">
+    <!-- Beat 2: Quiet Editorial Manifesto (pi.dev-inspired open grid) -->
+    <NoRebuildGrid />
+
+    <!-- Beat 3: Clean Single-Layer 2-Plane Core Model -->
+    <section class="landing-section" data-reveal>
       <div class="section-header">
         <div>
           <p class="section-eyebrow">01 · CORE MODEL</p>
           <h2 class="section-title">Six orthogonal concepts</h2>
           <p class="section-desc">
-            Author a <span class="marker-highlight">Harness</span> by composing Agents and Services; the Runtime provisions Sandboxes and persists every Run.
+            Author a <span class="marker-highlight">Harness</span> on the top plane; let the Runtime isolate, bridge, and archive everything below.
           </p>
         </div>
         <a class="section-link" href={withBase('/docs/concepts/')}>Explore concepts →</a>
@@ -71,13 +78,14 @@ import { withBase } from '../lib/url';
       <CoreModelBlueprint />
     </section>
 
-    <section class="landing-section">
+    <!-- Beat 4: The One Visual Centerpiece — Five Harnesses on One Core -->
+    <section class="landing-section" data-reveal>
       <div class="section-header">
         <div>
           <p class="section-eyebrow">02 · ONE RUNTIME, FIVE HARNESSES</p>
           <h2 class="section-title">Five coordination topologies on one core</h2>
           <p class="section-desc">
-            Select any visual card to switch the live execution flow, or click the diagram to <span class="marker-highlight">zoom in</span>. Zero Runtime edits across all five.
+            Select any card to switch the live execution flow, or click the diagram to <span class="marker-highlight">zoom in</span>. Zero Runtime edits across all five.
           </p>
         </div>
         <a class="section-link" href={withBase('/docs/harnesses/')}>Compare all five →</a>
@@ -86,7 +94,8 @@ import { withBase } from '../lib/url';
       <HarnessShowcase />
     </section>
 
-    <MurmurationCanvas mode="horizon" />
+    <!-- Beat 5: Airy Cross-Domain Platform Strip -->
+    <DomainStrip />
 
     <footer class="landing-footer">
       <span class="footer-brand">MURM · <code>@swarmenv/core</code> 0.2.0 (<code>ac72c76</code>)</span>

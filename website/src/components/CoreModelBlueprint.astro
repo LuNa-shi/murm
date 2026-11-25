@@ -1,421 +1,172 @@
 ---
 const CONCEPTS = {
   all: {
-    index: 'OVERVIEW',
-    name: 'Two Planes, Six Primitives',
-    plane: 'ARCHITECTURE',
-    summary: 'Author a Harness by wiring Agents and Services on the top plane; the Runtime provisions isolated Sandboxes and persists every Run on the bottom plane.',
-    primitive: 'createRuntime({ backend, profiles, services, maxBots, outputDir })',
-    symbol: '@swarmenv/core',
+    tag: 'OVERVIEW',
+    code: 'createRuntime({ backend, profiles, services, maxBots, outputDir })',
+    note: 'Author on the top plane; let murm isolate, bridge, and archive everything below the boundary.',
   },
   harness: {
-    index: '01 · HARNESS',
-    name: 'Harness',
-    plane: 'AUTHORING',
-    summary: 'Your host-side TypeScript program deciding who spawns, how events route, and when collaboration terminates.',
-    primitive: 'runtime.onEvent((e) => runtime.send(target, payload))',
-    symbol: 'src/environments/*',
+    tag: 'HARNESS · AUTHORING',
+    code: 'runtime.onEvent((e) => runtime.send(targetId, nextTask))  // src/environments/*',
+    note: 'Your host TypeScript logic deciding who spawns, how events route, and when a run finishes.',
   },
   agent: {
-    index: '02 · AGENT',
-    name: 'Agent',
-    plane: 'AUTHORING',
-    summary: 'An independent execution unit with a persistent Pi session, private workspace, and 4 local tools (read, write, edit, bash).',
-    primitive: 'runtime.spawn({ requestId, profile: "worker", forkFrom? })',
-    symbol: 'BotInfo · Profile',
+    tag: 'AGENT · AUTHORING',
+    code: 'runtime.spawn({ requestId, profile: "worker", forkFrom? })  // BotInfo · Profile',
+    note: 'An independent worker with a persistent Pi session, private workspace, and 4 local tools.',
   },
   service: {
-    index: '03 · SERVICE',
-    name: 'Service',
-    plane: 'AUTHORING',
-    summary: 'Composable shared capability (task pool, mailbox, board, substrate) exposed to agents over the Bridge via JSON Schema.',
-    primitive: 'services.registerService({ manifest, adapter })',
-    symbol: 'ServiceRegistry',
+    tag: 'SERVICE · AUTHORING',
+    code: 'services.registerService({ manifest, adapter })  // ServiceRegistry',
+    note: 'Pluggable shared state (task pool, mailbox, board, substrate) validated by JSON Schema.',
   },
   runtime: {
-    index: '04 · RUNTIME',
-    name: 'Runtime',
-    plane: 'EXECUTION',
-    summary: 'Passive control plane managing lifecycles, unified send delivery, Service Bridge, Model Gateway, and archive-before-delete cleanup.',
-    primitive: 'await runtime.send(id, msg, { mode: "steer", wakeIfIdle: false })',
-    symbol: 'createRuntime()',
+    tag: 'RUNTIME · EXECUTION',
+    code: 'await runtime.send(id, msg, { mode: "steer", wakeIfIdle: false })  // createRuntime()',
+    note: 'Passive control plane coordinating lifecycles, Bridge auth, Model Gateway, and cleanup.',
   },
   sandbox: {
-    index: '05 · SANDBOX',
-    name: 'Sandbox',
-    plane: 'EXECUTION',
-    summary: 'Isolated OpenSandbox container running Worker + Pi with strict filesystem quotas, network allowlists, and clean file exports.',
-    primitive: 'runtime.files.prepare / grant / snapshot',
-    symbol: 'OpenSandbox + Worker',
+    tag: 'SANDBOX · EXECUTION',
+    code: 'runtime.files.prepare / grant / snapshot  // OpenSandbox + Worker',
+    note: 'Isolated container enforcing filesystem quotas, network allowlists, and clean file exports.',
   },
   run: {
-    index: '06 · RUN',
-    name: 'Run',
-    plane: 'EXECUTION',
-    summary: 'One concrete execution durably archived on disk with redacted traces, service calls, native sessions, and reports.',
-    primitive: 'outputDir/<runId>/{runtime.json, evidence.jsonl, bots/}',
-    symbol: 'runtime.id · CloseReceipt',
+    tag: 'RUN · EXECUTION',
+    code: 'outputDir/<runId>/{runtime.json, evidence.jsonl, service-calls.jsonl, bots/}',
+    note: 'One concrete execution archived to disk with redacted traces, native sessions, and reports.',
   },
 };
 ---
 
-<div class="core-blueprint" data-core-blueprint>
-  <figure class="schematic-card blueprint-card">
-    <div class="schematic-head">
-      <div class="schematic-title-wrap">
-        <span class="pixel-badge">CORE ARCHITECTURE</span>
-        <span class="schematic-sub">Hover or click any node to trace how authoring meets execution</span>
-      </div>
-      <div class="stage-controls">
-        <button type="button" class="phase-btn active" data-bp-select="all">ALL</button>
-        <button type="button" class="phase-btn" data-bp-select="harness">HARNESS</button>
-        <button type="button" class="phase-btn" data-bp-select="agent">AGENT</button>
-        <button type="button" class="phase-btn" data-bp-select="service">SERVICE</button>
-        <button type="button" class="phase-btn" data-bp-select="runtime">RUNTIME</button>
-        <button type="button" class="phase-btn" data-bp-select="sandbox">SANDBOX</button>
-        <button type="button" class="phase-btn" data-bp-select="run">RUN</button>
-      </div>
+<div class="cm-shell" data-core-model>
+  <!-- Top Plane: Authoring -->
+  <div class="cm-plane">
+    <div class="cm-plane-label">
+      <span class="cm-plane-kicker">AUTHORING</span>
+      <span class="cm-plane-sub">What you write</span>
     </div>
 
-    <div class="schematic-canvas-scroll">
-      <svg class="schematic-svg blueprint-svg" viewBox="0 0 1060 326" width="1060" height="326" role="img" aria-label="Interactive two-plane murm core model architecture diagram">
-        <defs>
-          <pattern id="g-core" width="24" height="24" patternUnits="userSpaceOnUse">
-            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="var(--sch-grid)" stroke-width="0.9" />
-          </pattern>
-          <marker id="cb-co" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-            <path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-indigo)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </marker>
-          <marker id="cb-te" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-            <path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-teal)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </marker>
-          <marker id="cb-am" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-            <path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-amber)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </marker>
-          <marker id="cb-pu" viewBox="0 0 10 10" refX="8.2" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
-            <path d="M 1 1.5 L 8.2 5 L 1 8.5" fill="none" stroke="var(--sch-purple)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" />
-          </marker>
-        </defs>
-
-        <!-- Drafting surface + grid -->
-        <rect x="0" y="0" width="1060" height="326" fill="var(--sch-surface)" />
-        <rect x="176" y="0" width="884" height="326" fill="url(#g-core)" />
-        <rect x="0" y="0" width="176" height="326" fill="var(--sch-header)" />
-        <line x1="176" y1="0" x2="176" y2="326" class="sch-ink-rule" />
-
-        <!-- Plane band labels on left rail -->
-        <rect x="16" y="60" width="8" height="8" rx="1" fill="var(--sch-indigo)" />
-        <text x="32" y="68" class="sch-agent-pixel">AUTHORING</text>
-        <text x="32" y="87" class="sch-agent-role">What you write</text>
-        <text x="32" y="105" class="sch-agent-role">TypeScript · policies</text>
-
-        <line x1="0" y1="168" x2="176" y2="168" class="sch-ink-rule" />
-
-        <rect x="16" y="220" width="8" height="8" rx="1" fill="var(--sch-teal)" />
-        <text x="32" y="228" class="sch-agent-pixel">EXECUTION</text>
-        <text x="32" y="247" class="sch-agent-role">What murm runs</text>
-        <text x="32" y="265" class="sch-agent-role">Containers · traces</text>
-
-        <!-- Center Plane Separation Line (badge sits cleanly in Col 1–Col 2 gap) -->
-        <line x1="176" y1="168" x2="1060" y2="168" stroke="var(--border-strong)" stroke-width="1.4" stroke-dasharray="6 5" />
-        <rect x="374" y="157" width="180" height="22" rx="3" fill="var(--sch-surface)" stroke="var(--border-strong)" stroke-width="1" />
-        <text x="464" y="171.5" text-anchor="middle" class="sch-pixel-head">ISOLATION BOUNDARY</text>
-
-        <!-- Zero-Crossing Connecting Edges -->
-        <!-- Harness -> Service (overhead registration arc) -->
-        <g class="bp-edge" data-bp-links="harness service">
-          <path class="sch-flow-line" d="M 358 52 C 358 17, 858 17, 858 49" fill="none" stroke="var(--sch-purple)" stroke-width="1.7" marker-end="url(#cb-pu)" />
-          <rect x="546" y="12" width="124" height="17" rx="3" fill="var(--sch-surface)" />
-          <text x="608" y="24" text-anchor="middle" class="bp-edge-label">registerService()</text>
-        </g>
-
-        <!-- Harness -> Agent -->
-        <g class="bp-edge" data-bp-links="harness agent">
-          <path class="sch-flow-line" d="M 428 89 L 495 89" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#cb-co)" />
-          <text x="462" y="79" text-anchor="middle" class="bp-edge-label">profiles</text>
-        </g>
-
-        <!-- Agent -> Service -->
-        <g class="bp-edge" data-bp-links="agent service">
-          <path class="sch-flow-line" d="M 714 89 L 781 89" fill="none" stroke="var(--sch-indigo)" stroke-width="2" marker-end="url(#cb-co)" />
-          <text x="748" y="79" text-anchor="middle" class="bp-edge-label">Bridge</text>
-        </g>
-
-        <!-- Harness -> Runtime -->
-        <g class="bp-edge" data-bp-links="harness runtime">
-          <path class="sch-flow-line" d="M 320 126 L 320 203" fill="none" stroke="var(--sch-indigo)" stroke-width="2.1" marker-end="url(#cb-co)" />
-          <text x="308" y="162" text-anchor="end" class="bp-edge-label">spawn / send</text>
-        </g>
-
-        <!-- Agent -> Sandbox -->
-        <g class="bp-edge" data-bp-links="agent sandbox">
-          <path class="sch-flow-line" d="M 606 126 L 606 203" fill="none" stroke="var(--sch-teal)" stroke-width="1.9" marker-end="url(#cb-te)" />
-          <text x="618" y="162" text-anchor="start" class="bp-edge-label">runs inside</text>
-        </g>
-
-        <!-- Service -> Run -->
-        <g class="bp-edge" data-bp-links="service run">
-          <path class="sch-flow-line" d="M 900 126 L 900 203" fill="none" stroke="var(--sch-amber)" stroke-width="1.9" marker-end="url(#cb-am)" />
-          <text x="912" y="162" text-anchor="start" class="bp-edge-label">call log</text>
-        </g>
-
-        <!-- Runtime -> Sandbox -->
-        <g class="bp-edge" data-bp-links="runtime sandbox">
-          <path class="sch-flow-line" d="M 428 243 L 495 243" fill="none" stroke="var(--sch-teal)" stroke-width="2" marker-end="url(#cb-te)" />
-          <text x="462" y="233" text-anchor="middle" class="bp-edge-label">provision</text>
-        </g>
-
-        <!-- Sandbox -> Run -->
-        <g class="bp-edge" data-bp-links="sandbox run">
-          <path class="sch-flow-line" d="M 714 243 L 781 243" fill="none" stroke="var(--sch-amber)" stroke-width="2" marker-end="url(#cb-am)" />
-          <text x="748" y="233" text-anchor="middle" class="bp-edge-label">archive</text>
-        </g>
-
-        <!-- Hand-drawn lab-notebook annotations (clean bottom margin) -->
-        <g class="bp-edge" data-bp-links="harness runtime">
-          <path d="M 218 305 L 424 303" stroke="var(--marker-yellow)" stroke-width="10" stroke-linecap="round" opacity="0.9" />
-          <text x="321" y="308" text-anchor="middle" class="sch-hand-sm">swap Harness, keep Runtime!</text>
-        </g>
-        <g class="bp-edge" data-bp-links="run sandbox">
-          <text x="900" y="308" text-anchor="middle" class="sch-hand-blue-sm">auto-redacted on disk</text>
-        </g>
-
-        <!-- === 6 INTERACTIVE CONCEPT NODES === -->
-        <!-- 01: HARNESS -->
-        <g class="bp-node" data-bp-node="harness" tabindex="0" role="button" aria-label="Inspect Harness concept">
-          <rect x="215" y="55" width="216" height="74" rx="6" class="sch-shadow" />
-          <rect x="212" y="52" width="216" height="74" rx="6" class="sch-card sch-card-yellow bp-card-rect" />
-          <text x="226" y="73" class="ps-pixel-dark">01 · HARNESS</text>
-          <text x="414" y="73" text-anchor="end" class="ps-pixel-dark">TS</text>
-          <text x="226" y="94" class="bp-node-title">Your coordination logic</text>
-          <text x="226" y="112" class="bp-node-sub">Roles, routing &amp; stop rules</text>
-        </g>
-
-        <!-- 02: AGENT -->
-        <g class="bp-node" data-bp-node="agent" tabindex="0" role="button" aria-label="Inspect Agent concept">
-          <rect x="501" y="55" width="216" height="74" rx="6" class="sch-shadow" />
-          <rect x="498" y="52" width="216" height="74" rx="6" class="sch-card bp-card-rect" />
-          <rect x="498" y="52" width="216" height="5" rx="2" fill="var(--sch-indigo)" />
-          <text x="512" y="73" class="sch-card-pixel">02 · AGENT</text>
-          <text x="700" y="73" text-anchor="end" class="sch-card-pixel">BOT</text>
-          <text x="512" y="94" class="bp-node-title">Persistent Pi session</text>
-          <text x="512" y="112" class="bp-node-sub">read · write · edit · bash</text>
-        </g>
-
-        <!-- 03: SERVICE -->
-        <g class="bp-node" data-bp-node="service" tabindex="0" role="button" aria-label="Inspect Service concept">
-          <rect x="787" y="55" width="232" height="74" rx="6" class="sch-shadow" />
-          <rect x="784" y="52" width="232" height="74" rx="6" class="sch-card bp-card-rect" />
-          <rect x="784" y="52" width="232" height="5" rx="2" fill="var(--sch-purple)" />
-          <text x="798" y="73" class="sch-card-pixel">03 · SERVICE</text>
-          <text x="1002" y="73" text-anchor="end" class="sch-card-pixel">MANIFEST</text>
-          <text x="798" y="94" class="bp-node-title">Pluggable shared tools</text>
-          <text x="798" y="112" class="bp-node-sub">Task pool · mailbox · board · git</text>
-        </g>
-
-        <!-- 04: RUNTIME -->
-        <g class="bp-node" data-bp-node="runtime" tabindex="0" role="button" aria-label="Inspect Runtime concept">
-          <rect x="215" y="209" width="216" height="74" rx="6" class="sch-shadow" />
-          <rect x="212" y="206" width="216" height="74" rx="6" class="sch-card bp-card-rect" />
-          <rect x="212" y="206" width="216" height="5" rx="2" fill="var(--sch-indigo)" />
-          <text x="226" y="227" class="sch-card-pixel">04 · RUNTIME</text>
-          <text x="414" y="227" text-anchor="end" class="sch-card-pixel">CORE</text>
-          <text x="226" y="248" class="bp-node-title">Control plane &amp; gateway</text>
-          <text x="226" y="266" class="bp-node-sub">Lifecycle · Bridge · Model Gate</text>
-        </g>
-
-        <!-- 05: SANDBOX -->
-        <g class="bp-node" data-bp-node="sandbox" tabindex="0" role="button" aria-label="Inspect Sandbox concept">
-          <rect x="501" y="209" width="216" height="74" rx="6" class="sch-shadow" />
-          <rect x="498" y="206" width="216" height="74" rx="6" class="sch-card bp-card-rect" />
-          <rect x="498" y="206" width="216" height="5" rx="2" fill="var(--sch-teal)" />
-          <text x="512" y="227" class="sch-card-pixel">05 · SANDBOX</text>
-          <text x="700" y="227" text-anchor="end" class="sch-card-pixel">DOCKER</text>
-          <text x="512" y="248" class="bp-node-title">Isolated Worker + Pi</text>
-          <text x="512" y="266" class="bp-node-sub">Quotas · allowlist · file handoff</text>
-        </g>
-
-        <!-- 06: RUN -->
-        <g class="bp-node" data-bp-node="run" tabindex="0" role="button" aria-label="Inspect Run concept">
-          <rect x="787" y="209" width="232" height="74" rx="6" class="sch-shadow" />
-          <rect x="784" y="206" width="232" height="74" rx="6" class="sch-card bp-card-rect" />
-          <rect x="784" y="206" width="232" height="5" rx="2" fill="var(--sch-amber)" />
-          <text x="798" y="227" class="sch-card-pixel">06 · RUN</text>
-          <text x="1002" y="227" text-anchor="end" class="sch-card-pixel">ARCHIVE</text>
-          <text x="798" y="248" class="bp-node-title">Redacted execution bundle</text>
-          <text x="798" y="266" class="bp-node-sub">Sessions · traces · service calls</text>
-        </g>
-      </svg>
-    </div>
-
-    <!-- Live Inspector Footer -->
-    <figcaption class="schematic-caption stage-footer">
-      <div class="stage-caption-main">
-        <span class="caption-step" data-bp-badge>OVERVIEW</span>
-        <span data-bp-summary>{CONCEPTS.all.summary}</span>
-      </div>
-      <div class="stage-tech-pills">
-        <span><strong>Primitive:</strong> <code data-bp-primitive>{CONCEPTS.all.primitive}</code></span>
-        <span><strong>Symbol:</strong> <code data-bp-symbol>{CONCEPTS.all.symbol}</code></span>
-      </div>
-    </figcaption>
-  </figure>
-
-  <!-- Synchronized 6-Concept Compact Selector Grid -->
-  <div class="concept-grid concept-grid-linked">
-    <button type="button" class="concept-card concept-btn" data-bp-card="harness">
-      <div class="concept-top">
-        <span class="concept-id-wrap">
-          <span class="concept-dot" style="background:var(--sch-indigo)"></span>
+    <div class="cm-row">
+      <button type="button" class="cm-cell cm-cell-primary" data-cm-item="harness">
+        <span class="cm-cell-head">
           <code>Harness</code>
+          <span class="cm-pill cm-pill-author">TS</span>
         </span>
-        <span class="concept-tag tag-author">Authoring</span>
-      </div>
-      <p>Host TypeScript logic deciding who spawns, how events route, and when work finishes.</p>
-      <span class="concept-code-foot">src/environments/*</span>
-    </button>
+        <span class="cm-cell-desc">Control loop, roles &amp; stop rules</span>
+      </button>
 
-    <button type="button" class="concept-card concept-btn" data-bp-card="agent">
-      <div class="concept-top">
-        <span class="concept-id-wrap">
-          <span class="concept-dot" style="background:var(--sch-blue)"></span>
+      <span class="cm-arrow" aria-hidden="true">→</span>
+
+      <button type="button" class="cm-cell" data-cm-item="agent">
+        <span class="cm-cell-head">
           <code>Agent</code>
+          <span class="cm-pill cm-pill-author">Bot</span>
         </span>
-        <span class="concept-tag tag-author">Authoring</span>
-      </div>
-      <p>Independent execution unit with a persistent session, private workspace, and 4 local tools.</p>
-      <span class="concept-code-foot">BotInfo · Profile</span>
-    </button>
+        <span class="cm-cell-desc">Persistent session · 4 local tools</span>
+      </button>
 
-    <button type="button" class="concept-card concept-btn" data-bp-card="service">
-      <div class="concept-top">
-        <span class="concept-id-wrap">
-          <span class="concept-dot" style="background:var(--sch-purple)"></span>
+      <span class="cm-arrow" aria-hidden="true">→</span>
+
+      <button type="button" class="cm-cell" data-cm-item="service">
+        <span class="cm-cell-head">
           <code>Service</code>
+          <span class="cm-pill cm-pill-author">Schema</span>
         </span>
-        <span class="concept-tag tag-author">Authoring</span>
-      </div>
-      <p>Composable shared capability (task pool, mailbox, board, substrate) called over the Bridge.</p>
-      <span class="concept-code-foot">ServiceRegistry</span>
-    </button>
+        <span class="cm-cell-desc">Pluggable shared state &amp; tools</span>
+      </button>
+    </div>
+  </div>
 
-    <button type="button" class="concept-card concept-btn" data-bp-card="runtime">
-      <div class="concept-top">
-        <span class="concept-id-wrap">
-          <span class="concept-dot" style="background:var(--sch-indigo)"></span>
+  <!-- Quiet Isolation Boundary aligned directly under the 3 columns -->
+  <div class="cm-boundary" aria-hidden="true">
+    <div class="cm-boundary-label">BOUNDARY</div>
+    <div class="cm-boundary-cols">
+      <span class="cm-down">↓ <small>spawn / send</small></span>
+      <span></span>
+      <span class="cm-down">↓ <small>runs inside</small></span>
+      <span></span>
+      <span class="cm-down">↓ <small>call log</small></span>
+    </div>
+  </div>
+
+  <!-- Bottom Plane: Execution -->
+  <div class="cm-plane">
+    <div class="cm-plane-label">
+      <span class="cm-plane-kicker cm-kicker-exec">EXECUTION</span>
+      <span class="cm-plane-sub">What murm runs</span>
+    </div>
+
+    <div class="cm-row">
+      <button type="button" class="cm-cell" data-cm-item="runtime">
+        <span class="cm-cell-head">
           <code>Runtime</code>
+          <span class="cm-pill cm-pill-exec">Core</span>
         </span>
-        <span class="concept-tag tag-runtime">Execution</span>
-      </div>
-      <p>Control plane managing lifecycles, input delivery, controlled file handoffs, and cleanup.</p>
-      <span class="concept-code-foot">createRuntime()</span>
-    </button>
+        <span class="cm-cell-desc">Lifecycle, Bridge &amp; Model Gate</span>
+      </button>
 
-    <button type="button" class="concept-card concept-btn" data-bp-card="sandbox">
-      <div class="concept-top">
-        <span class="concept-id-wrap">
-          <span class="concept-dot" style="background:var(--sch-teal)"></span>
+      <span class="cm-arrow" aria-hidden="true">→</span>
+
+      <button type="button" class="cm-cell" data-cm-item="sandbox">
+        <span class="cm-cell-head">
           <code>Sandbox</code>
+          <span class="cm-pill cm-pill-exec">Docker</span>
         </span>
-        <span class="concept-tag tag-runtime">Execution</span>
-      </div>
-      <p>Isolated container boundary enforcing filesystem quotas, network allowlists, and clean exports.</p>
-      <span class="concept-code-foot">OpenSandbox + Worker</span>
-    </button>
+        <span class="cm-cell-desc">Isolated Worker + Pi container</span>
+      </button>
 
-    <button type="button" class="concept-card concept-btn" data-bp-card="run">
-      <div class="concept-top">
-        <span class="concept-id-wrap">
-          <span class="concept-dot" style="background:var(--sch-amber)"></span>
+      <span class="cm-arrow" aria-hidden="true">→</span>
+
+      <button type="button" class="cm-cell" data-cm-item="run">
+        <span class="cm-cell-head">
           <code>Run</code>
+          <span class="cm-pill cm-pill-exec">Archive</span>
         </span>
-        <span class="concept-tag tag-runtime">Execution</span>
-      </div>
-      <p>One concrete execution archived to disk with sessions, model traces, service calls, and reports.</p>
-      <span class="concept-code-foot">outputDir/&lt;runId&gt;/</span>
-    </button>
+        <span class="cm-cell-desc">Redacted traces &amp; sessions</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Quiet Single-Line Primitive Inspector -->
+  <div class="cm-inspector">
+    <span class="cm-ins-tag" data-cm-tag>{CONCEPTS.all.tag}</span>
+    <span class="cm-ins-note" data-cm-note>{CONCEPTS.all.note}</span>
+    <code class="cm-ins-code" data-cm-code>{CONCEPTS.all.code}</code>
   </div>
 </div>
 
 <script define:vars={{ CONCEPTS }}>
-  (function initCoreBlueprint() {
-    const root = document.querySelector('[data-core-blueprint]');
+  (function initCoreModel() {
+    const root = document.querySelector('[data-core-model]');
     if (!root) return;
 
-    let lockedKey = 'all';
+    const items = root.querySelectorAll('[data-cm-item]');
+    const tagEl = root.querySelector('[data-cm-tag]');
+    const noteEl = root.querySelector('[data-cm-note]');
+    const codeEl = root.querySelector('[data-cm-code]');
+    let locked = 'all';
 
-    const tabs = root.querySelectorAll('[data-bp-select]');
-    const nodes = root.querySelectorAll('[data-bp-node]');
-    const edges = root.querySelectorAll('[data-bp-links]');
-    const cards = root.querySelectorAll('[data-bp-card]');
-    const badgeEl = root.querySelector('[data-bp-badge]');
-    const summaryEl = root.querySelector('[data-bp-summary]');
-    const primEl = root.querySelector('[data-bp-primitive]');
-    const symEl = root.querySelector('[data-bp-symbol]');
-
-    function render(key) {
+    function show(key) {
       const k = CONCEPTS[key] ? key : 'all';
-      const meta = CONCEPTS[k];
-
-      tabs.forEach((btn) => {
-        btn.classList.toggle('active', btn.getAttribute('data-bp-select') === k);
+      const data = CONCEPTS[k];
+      items.forEach((btn) => {
+        const bk = btn.getAttribute('data-cm-item');
+        btn.classList.toggle('is-active', k !== 'all' && bk === k);
+        btn.classList.toggle('is-muted', k !== 'all' && bk !== k);
       });
-
-      cards.forEach((card) => {
-        card.classList.toggle('active', card.getAttribute('data-bp-card') === k);
-      });
-
-      nodes.forEach((node) => {
-        const nk = node.getAttribute('data-bp-node');
-        const active = k === 'all' || nk === k;
-        node.classList.toggle('dimmed', !active);
-        node.classList.toggle('focused', k !== 'all' && nk === k);
-      });
-
-      edges.forEach((edge) => {
-        const links = (edge.getAttribute('data-bp-links') || '').split(/\s+/);
-        const match = k === 'all' || links.includes(k);
-        edge.classList.toggle('dimmed', !match);
-      });
-
-      if (badgeEl) badgeEl.textContent = meta.index;
-      if (summaryEl) summaryEl.textContent = meta.summary;
-      if (primEl) primEl.textContent = meta.primitive;
-      if (symEl) symEl.textContent = meta.symbol;
+      if (tagEl) tagEl.textContent = data.tag;
+      if (noteEl) noteEl.textContent = data.note;
+      if (codeEl) codeEl.textContent = data.code;
     }
 
-    function toggleLock(key) {
-      lockedKey = lockedKey === key ? 'all' : key;
-      render(lockedKey);
-    }
-
-    tabs.forEach((btn) => {
+    items.forEach((btn) => {
+      const k = btn.getAttribute('data-cm-item');
       btn.addEventListener('click', () => {
-        lockedKey = btn.getAttribute('data-bp-select') || 'all';
-        render(lockedKey);
+        locked = locked === k ? 'all' : k;
+        show(locked);
       });
+      btn.addEventListener('mouseenter', () => show(k));
+      btn.addEventListener('mouseleave', () => show(locked));
     });
-
-    nodes.forEach((node) => {
-      const k = node.getAttribute('data-bp-node');
-      node.addEventListener('click', () => toggleLock(k));
-      node.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          toggleLock(k);
-        }
-      });
-      node.addEventListener('mouseenter', () => render(k));
-      node.addEventListener('mouseleave', () => render(lockedKey));
-    });
-
-    cards.forEach((card) => {
-      const k = card.getAttribute('data-bp-card');
-      card.addEventListener('click', () => toggleLock(k));
-      card.addEventListener('mouseenter', () => render(k));
-      card.addEventListener('mouseleave', () => render(lockedKey));
-    });
-
-    render('all');
   })();
 </script>

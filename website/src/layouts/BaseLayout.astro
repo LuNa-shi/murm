@@ -3,6 +3,9 @@ import '@fontsource-variable/space-grotesk';
 import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';
 import '@fontsource/caveat/700.css';
+import '@fontsource/newsreader/400.css';
+import '@fontsource/newsreader/400-italic.css';
+import '@fontsource/newsreader/500-italic.css';
 import '../styles/global.css';
 import TopNav from '../components/TopNav.astro';
 import SearchModal from '../components/SearchModal.astro';
@@ -18,7 +21,7 @@ interface Props {
 
 const {
   title,
-  description = 'A minimal, extensible multi-agent harness with composable coordination services.',
+  description = 'A minimal runtime for building multi-agent harnesses with composable coordination services.',
   showTopNav = true,
   showMobileMenu = false,
   paperGrid = false,
@@ -39,6 +42,10 @@ const {
         const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
         const theme = stored || (prefersDark ? 'dark' : 'light');
         document.documentElement.dataset.theme = theme;
+        const reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        if (!reduced && 'IntersectionObserver' in window) {
+          document.documentElement.classList.add('reveal-ready');
+        }
       })();
     </script>
   </head>
@@ -78,6 +85,25 @@ const {
           });
           pre.appendChild(btn);
         });
+
+        // Progressive scroll-reveal rhythm (calm, unhurried entrance)
+        const revealEls = document.querySelectorAll('[data-reveal]');
+        if (revealEls.length && document.documentElement.classList.contains('reveal-ready')) {
+          const io = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (entry.isIntersecting) {
+                  entry.target.classList.add('is-visible');
+                  io.unobserve(entry.target);
+                }
+              }
+            },
+            { threshold: 0.08, rootMargin: '0px 0px -36px 0px' }
+          );
+          revealEls.forEach((el) => io.observe(el));
+        } else {
+          revealEls.forEach((el) => el.classList.add('is-visible'));
+        }
       })();
     </script>
   </body>
