@@ -24,11 +24,11 @@ Install the `murm-core-0.2.0.tgz` candidate and update imports from `@swarmenv/c
 
 | Previous Harness | Current name | Source |
 |---|---|---|
-| Subagents | Subagents | [examples/subagents](examples/subagents) |
-| TaskPool | TaskPool | [src/harnesses/taskpool](src/harnesses/taskpool) |
-| PeerMesh | PeerMesh | [src/harnesses/peermesh](src/harnesses/peermesh) |
-| scaleMAS | Substrate | [src/harnesses/substrate](src/harnesses/substrate) |
-| lead-helper | Lead-Worker | [src/harnesses/lead-worker](src/harnesses/lead-worker) |
+| `subagents` | Subagents | [examples/subagents](examples/subagents) |
+| `flat` | TaskPool | [src/harnesses/taskpool](src/harnesses/taskpool) |
+| `agensh` | PeerMesh | [src/harnesses/peermesh](src/harnesses/peermesh) |
+| `scaleMAS` | Substrate | [src/harnesses/substrate](src/harnesses/substrate) |
+| `lead-helper` | Lead-Worker | [src/harnesses/lead-worker](src/harnesses/lead-worker) |
 
 Use `dist/scripts/run-harness.js` to start a foreground Harness and `dist/scripts/read-harness-result.js` to inspect a saved Run. The previous command paths and `flat` / `agensh` mode values remain accepted. The Agent-side Service CLI remains `swarm`. Existing `SWARMENV_*` settings, Worker image contracts and saved Run formats still apply. [Command and record details](docs/architecture/17-harness-reporting.md#foreground-harness-control)
 

@@ -4,7 +4,7 @@ import { randomBytes, createHash } from 'node:crypto';
 import { mkdir, chmod, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createDeadline, createCleanupBudget } from './agensh-deadline.js';
-import { httpClient } from '../../src/environments/agensh/http.js';
+import { httpClient } from '../../src/harnesses/peermesh/http.js';
 
 export const facilityImages = Object.freeze({
   mysql: 'sha256:a81d043930e51745522bd5c430961cf8286f0a23f0a9a2a6e0108f7ea71b0902',
