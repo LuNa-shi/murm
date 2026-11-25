@@ -42,10 +42,23 @@ The run started at 11:59:24.391 UTC on 2026-11-25 after 77.56 seconds of setup. 
 
 The controlled two-peer probe used native Pi 1.3.0 against a local scripted Responses endpoint with real Gitea, Mattermost and Board. A's in-progress Bash finished, both B's DM and Board update appeared in A's immediate next model request, and A settled once. B completed a verified merge from `work/self-chosen-probe`. The first probe exposed Pi's one-at-a-time default. The implementation selects the existing `all` mode to admit both pending notices at the same execution boundary. The final `npm test` run passed 1,235 and skipped 65 opt-in tests. Type-check, architecture generation and verification, and whitespace checks also passed. Standards review found a bounded-close defect in the draft, resolved with a router-drain deadline and a held-steer regression. Spec review found no blocker.
 
+### ProgramBench evaluation of the final archives
+
+After the live run, the owner requested the official task score. The SwarmEnv submission was packaged directly from Git at the pinned `main` revision. The comparison reused the archived native Agensh submission from [EXP-20261125-06](EXP-20261125-06-native-agensh-pandoc.md). Both were evaluated with [ProgramBench `27f02157`](https://github.com/facebookresearch/programbench/tree/27f02157c785f8da3647aa6dbbe6b9137f99f10e), the [test data at `5954a195`](https://huggingface.co/datasets/programbench/ProgramBench-Tests/tree/5954a1957b5e0d770ec2c5523506abd212806315), and the same cleanroom image pinned above. `programbench info` applies the benchmark's ignored-branch and ignored-test filters. The score is the proportion of included cases marked passed.
+
+| Submission at cutoff | `08afe9ff1778` | `ea7a9f0674dc` | Total passed | Score | CLI display |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| SwarmEnv `383f612c` | 99 / 248 | 868 / 4,966 | 967 / 5,214 | 18.55% | 19 |
+| Native Agensh `630e6279` | 12 / 248 | 51 / 4,966 | 63 / 5,214 | 1.21% | 1 |
+
+Both evaluations matched all 5,214 expected scored cases. SwarmEnv recorded 4,247 test failures and native Agensh recorded 5,151. Neither evaluation reported top-level, branch or system errors or evaluator warnings. The SwarmEnv `submission.tar.gz` SHA-256 was `9f5a8e08ecc9fe3c9109f03730f5c04b14f5f5ece8b1d1128c44acf7424f064a`. The native archive SHA-256 was `74ff3dfa60a174725a4e6fd0f15bbd549854fad2d2d1194a99526312d5f7992e`. Scoring used the fixed archives and made no model calls.
+
 ## Analysis
 
 Both hypotheses were supported by the Pandoc observation. Compared with the previous SwarmEnv run, self-chosen branches now entered the verified PR path and DMs visibly reached running peers. Compared with native Agensh, the basic collaboration behaviors occurred in both systems. SwarmEnv's Core steer delivers an additional prompt at a Pi execution boundary. Native Agensh appends notices to an eligible MCP tool response. The two systems also differ in startup timing, prompts and tools, so the observed merge counts and timings describe these runs.
 
+The SwarmEnv archive passed 904 more cases, a 17.34 percentage point difference under the same evaluator. Both archives leave most of this Pandoc task unresolved. These are single-run results with different prompts, seed trees, runtime, and time anchors. The evaluation measures the delivered programs, while the collaboration observations come from the live evidence above.
+
 ## Next steps
 
-The pinned result, its archive, the independent smoke result and the collaboration indices are the evidence for #201. The independent check covers buildability and one reference sample. The original ProgramBench evaluator was outside this run's check.
+The pinned result, its archive, the independent smoke result, the official task score and the collaboration indices are the evidence for #201. This report covers one ProgramBench task and one live run per compared system.
