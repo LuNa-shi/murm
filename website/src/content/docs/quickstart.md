@@ -1,20 +1,16 @@
 ---
 title: 安装与快速上手
-description: 在几分钟内准备好运行环境，启动第一个多智能体协作会话，并在 Multi-Agent Trace Viewer 中可视化回放整次运行。
+description: 在几分钟内准备好运行环境，启动第一个多智能体协作会话，并检查整次运行留下的结构化轨迹。
 section: 快速开始
 order: 1
 ---
-
-> **命名说明**：本文档站采用全新品牌 **`murm`** 与六概念模型（`Agent`、`Service`、`Sandbox`、`Runtime`、`Run`、`Program`）。当前仓库基线（[`ac72c76`](https://github.com/LuNa-shi/SwarmEnv/commit/ac72c76)）的代码包名为 `@swarmenv/core` `0.2.0`，下文所有命令与代码均直接对应最新可运行源码；完整映射见 [TypeScript 类型与映射](../reference/types/)。
 
 ## 先花 30 秒看懂你需要准备什么
 
 在 `murm` 中，每个 **Agent** 默认运行在一个隔离的 Docker 容器（**Sandbox**）里，保证并发改代码、跑测试时互不干扰、不污染宿主机。为了在容器里运行模型会话并提供协作命令，启动前需要准备好两样基础部件：
 
-1. **Sandbox 运行环境**：本地运行的 OpenSandbox（Docker provider）以及一份**标准 Sandbox 镜像**（仓库里称为 Worker 镜像——它只是把 `Pi 1.3.0`、`swarm` CLI 和轻量管理进程打进容器的基础镜像，用户不需要自己修改它，建好一次后所有 Program 复用同一镜像）。
+1. **Sandbox 运行环境**：本地运行的 OpenSandbox（Docker provider）以及一份**标准 Sandbox 镜像**（把 `Pi 1.3.0`、`swarm` CLI 和轻量监管进程打进容器的基础镜像；构建一次后，所有 Program 复用同一镜像）。
 2. **模型端点**：任意兼容 `/v1/responses` 的模型服务（内置示例配置使用 `kimi_proxy/k3`）。API Key 仅留在宿主进程中，不会进入容器。
-
-> **关于零容器本地接入**：当前版本专注于强隔离、可复现的 `Pi + OpenSandbox` 后端；如果你只想先感受多智能体协作轨迹与调试体验，可以直接打开本站内置的 [Multi-Agent Trace Viewer](../../trace-viewer/)，无需启动任何容器即可回放真实 44 分钟的 3-Agent 实测记录。
 
 ## 1. 获取源码并构建
 
@@ -73,7 +69,7 @@ npm run view -- ../subagents-runs/<runId>
 - **逐轮事件与交接流**：展开任意一次工具调用、`collaboration.spawn_agent` 或 `send_message` 的完整入参与返回值；
 - **清理与归档状态**：一眼确认所有会话归档、导出文件与沙箱清理是否全部完成。
 
-你也可以直接在在线版的 [Multi-Agent Trace Viewer](../../trace-viewer/) 页面点击右上角 **Load Run Dir** 选择本地目录（数据完全在浏览器本地解析，不会上传）。
+你也可以直接在在线版 [Trace Viewer](../../trace-viewer/) 页面点击 **选择本地 Run 目录** 打开本机记录（数据完全在浏览器本地解析，不会上传）。
 
 ## 4. 最小开发示例：用 Notes 看清自定义 Service
 

@@ -1,7 +1,6 @@
 export interface NavItem {
   title: string;
   slug: string;
-  badge?: string;
 }
 
 export interface NavGroup {
@@ -28,7 +27,7 @@ export const DOC_NAV: NavGroup[] = [
     label: '内置协作 Program',
     items: [
       { title: '五种协作机制总览', slug: 'programs' },
-      { title: 'Subagents · 层级委派', slug: 'programs/subagents', badge: '84.37% fd' },
+      { title: 'Subagents · 层级委派', slug: 'programs/subagents' },
       { title: 'Flat · 公共任务池', slug: 'programs/flat' },
       { title: 'Agensh · 同级协商', slug: 'programs/agensh' },
       { title: 'ScaleMAS · 成果库研究', slug: 'programs/scalemas' },

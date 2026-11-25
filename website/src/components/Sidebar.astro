@@ -25,7 +25,6 @@ const active = normalizeSlug(currentSlug);
                 aria-current={isCurrent ? 'page' : undefined}
               >
                 <span>{item.title}</span>
-                {item.badge && <span class="sidebar-badge">{item.badge}</span>}
               </a>
             </li>
           );
@@ -35,12 +34,11 @@ const active = normalizeSlug(currentSlug);
   ))}
 
   <div class="sidebar-group">
-    <div class="sidebar-label">开发者工具</div>
+    <div class="sidebar-label">工具</div>
     <ul class="sidebar-list">
       <li>
         <a class="sidebar-link" href={withBase('/trace-viewer/')}>
-          <span>Multi-Agent Trace Viewer</span>
-          <span class="sidebar-badge">Live</span>
+          <span>Trace Viewer</span>
         </a>
       </li>
     </ul>

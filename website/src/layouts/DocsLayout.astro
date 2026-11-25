@@ -20,7 +20,7 @@ interface Props {
 
 const { title, description, section, currentSlug, headings } = Astro.props;
 const { prev, next } = getPrevNext(currentSlug);
-const activeSection = currentSlug.startsWith('programs') ? 'programs' : 'docs';
+const activeSection = 'docs' as const;
 const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 ---
 

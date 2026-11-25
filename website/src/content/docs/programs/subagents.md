@@ -3,12 +3,9 @@ title: Subagents · 层级委派与消息协作
 description: 拆解 Subagents Program 如何通过 collaboration Service、成员邮箱与 wakeIfIdle 条件投递，实现递归委派、实时纠偏与长时并行开发。
 section: 内置协作 Program
 order: 6
-badge: 84.37% fd
 ---
 
 **Subagents** 是“一个主控 Agent 拆解问题、按需递归创建具名子 Agent 并行推进、在过程中实时互通发现并最终整合”的标准实现。完整代码位于 [examples/subagents-environment](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/examples/subagents-environment)。
-
-> 你可以在 [Multi-Agent Trace Viewer](../../../trace-viewer/) 中直接查看这套 Program 在 44 分钟 ProgramBench `fd` 任务中的真实多泳道运行轨迹（84.37% 官方测试通过率）。
 
 ## 1. 这个 Program 注册了什么 Service？
 

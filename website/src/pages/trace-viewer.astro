@@ -5,26 +5,22 @@ import { withBase } from '../lib/url';
 ---
 
 <BaseLayout
-  title="Multi-Agent Trace Viewer · murm"
-  description="Inspect multi-agent swimlane timelines, model turns, tool calls, and Service handoffs."
+  title="Trace Viewer · murm"
+  description="Inspect local murm run directories in the browser without uploading any files."
   activeSection="trace-viewer"
 >
-  <main style="max-width:1320px;margin:0 auto;padding:32px 24px 72px;">
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;flex-wrap:wrap;gap:16px;margin-bottom:22px;">
+  <main class="tv-page">
+    <div class="tv-page-head">
       <div>
-        <div style="font-size:12px;font-weight:650;letter-spacing:0.08em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;">
-          Developer Tools
-        </div>
-        <h1 style="margin:0 0 8px;font-size:28px;font-weight:700;letter-spacing:-0.03em;">
-          Multi-Agent Trace Viewer
-        </h1>
-        <p style="margin:0;color:var(--ink-secondary);max-width:740px;font-size:14.8px;">
-          检查多智能体运行的泳道时间轴、工具调用、Service 交接与收尾回执。点击右上角 <strong>Load Run Dir</strong> 可直接打开本地的 <code>outputDir/&lt;runtimeId&gt;/</code> 目录（纯浏览器本地解析，数据不上传服务器），或在仓库内运行 <code>npm run view -- &lt;run-dir&gt;</code>。
+        <p class="section-eyebrow">Local Run Inspector</p>
+        <h1>Trace Viewer</h1>
+        <p>
+          读取本地 <code>outputDir/&lt;runId&gt;/</code> 目录，在浏览器中按 Agent 泳道检查事件流水、Service 调用与收尾回执。
         </p>
       </div>
-      <a class="btn btn-secondary" href={withBase('/docs/reference/deploy/')}>本地查看与部署说明 →</a>
+      <a class="section-link" href={withBase('/docs/reference/deploy/')}>查看本地启动方式 →</a>
     </div>
 
-    <TraceViewer compact={false} defaultTraceId="subagents-fd" />
+    <TraceViewer />
   </main>
 </BaseLayout>

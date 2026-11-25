@@ -35,7 +35,7 @@ npm run view -- /path/to/your/runs/<runtimeId>
 
 ### 方式二：在静态网页中直接选择目录
 
-打开已发布的在线版 [Multi-Agent Trace Viewer](../../../trace-viewer/)，点击右上角 **Load Run Dir** 选择本地的 `outputDir/<runtimeId>/` 目录。解析逻辑完全运行在浏览器本地内存中，你的私有代码、日志与对话记录不会上传到任何远端服务器。
+打开已发布的在线版 [Trace Viewer](../../../trace-viewer/)，点击 **选择本地 Run 目录** 打开本机的 `outputDir/<runtimeId>/` 文件夹。解析逻辑完全运行在浏览器本地内存中，你的私有代码、日志与对话记录不会上传到任何远端服务器。
 
 ## 3. 发布到 GitHub Pages
 

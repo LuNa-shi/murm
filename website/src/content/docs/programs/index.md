@@ -15,7 +15,7 @@ order: 5
 
 | Program | 注册的 Service | 用到的关键 Runtime 原语 | 宿主控制循环如何驱动 Agent | 交付与验证方式 |
 | --- | --- | --- | --- | --- |
-| **[Subagents](./subagents/)** | `collaboration`（6 个操作：委派、消息、追问、等待、打断、列队） | `spawn(forkFrom)`、`send(wakeIfIdle: false)`、`interrupt(discardedInputHashes)`、共享 `workspace` | **事件与邮箱驱动**：监听子 Agent `settled` 与成员消息；对方忙碌则实时 `steer`，空闲则暂存邮箱等待 `wait_agent` 或 `followup_task` | 共享工作区文件或消息文本；[在 Trace Viewer 查看 fd 实测](../../trace-viewer/) |
+| **[Subagents](./subagents/)** | `collaboration`（6 个操作：委派、消息、追问、等待、打断、列队） | `spawn(forkFrom)`、`send(wakeIfIdle: false)`、`interrupt(discardedInputHashes)`、共享 `workspace` | **事件与邮箱驱动**：监听子 Agent `settled` 与成员消息；对方忙碌则实时 `steer`，空闲则暂存邮箱等待 `wait_agent` 或 `followup_task` | 共享工作区文件或消息文本 |
 | **[Flat](./flat/)** | `task`、`material`、`workspace`、`judge` | `writable: false` 启动、`files.prepare` + `files.grant`、`modelAccessPolicy`、自动补位 `stop`/`spawn` | **状态对账循环**：`take` 触发准备并解锁写权限；`settled` 未 `finish` 则自动发续轮输入；定时心跳续约与超期换人 | 不可变 Material 引用 + 检查通过后合入公共 Workspace `main` |
 | **[Agensh](./agensh/)** | `message`（Mattermost）、`gitea`、`agensh-context`（软意向 Board）+ 原生 `git` | `bindings`、`network.allow`、`secretEnv`、`collect(includeGit: true)` | **每成员串行 Router**：拉取外部聊天/PR 事件、拼接最新 Board 视图，以 `followUp` 逐批喂入原会话，空闲时触发 nudge | 各 peer 推独立分支提 PR，宿主 `createAgenshDelivery` 核对提交合并到 `main` |
 | **[ScaleMAS](./scalemas/)** | SQLite `substrate`（`publish`、`search`、`visit`） | `spawn(files)`、`runInput` 串行回合封装 | **并发固定轮次**：不设任务池也不做消息路由，宿主用 `Promise.all` 并发驱动每只 peer 跑完 `maxRounds` 轮自主探索 | 不可变内容地址 `content:<hash>` 与显式引用图，配合宿主读取审计 |
