@@ -34,9 +34,12 @@ test('Flat can finish with a public Material when no live Workspace capture is c
       const bridge=new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname='127.0.0.1'; env.SWARMENV_BRIDGE_URL=bridge.origin;
       const cli=async (...args)=>JSON.parse((await promisify(execFile)(process.execPath,['dist/scripts/swarm.js',...args],{env,timeout:5000})).stdout);
       const manifest=await cli('service','view','workspace');
-      assert.deepEqual(manifest.capabilities.map(row=>row.name),['view','read','files']);
+      assert.deepEqual(manifest.capabilities.map(row=>row.name),['public-diff','view','read','files']);
       const workspace=await cli('workspace','view');
       assert.equal(workspace.workspace_id,stores.workspaceId);
+      const diff=await cli('workspace','public-diff','--from',workspace.main_revision,'--to','main','--request-id','public-diff');
+      assert.equal(diff.from.revision,workspace.main_revision);
+      assert.equal(diff.to.revision,workspace.main_revision);
       await cli('task','take',stores.task.task_id,'--request-id','take');
       await assert.rejects(cli('workspace','save','--request-id','unavailable'),error=>JSON.parse(error.stderr).code==='NOT_ALLOWED');
       const material=await cli('material','publish','--content','Fixed public observation','--request-id','publish');
