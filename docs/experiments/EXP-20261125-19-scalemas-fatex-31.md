@@ -1,6 +1,6 @@
 # EXP-20261125-19 — ScaleMAS on FATE-X problem 31
 
-Status **REGISTERED** under [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202). The owner requested one run on a substantially harder task after [the FATE-H #2 GPT run](EXP-20261125-18-scalemas-gpt-30min.md) ended in 5m24s with four passing proofs and no cross-peer reads.
+Status **SETTLED · 1m23.436s · 0 PROOFS PASSED · 1 CROSS-PEER READ · NO OBSERVED REUSE** under [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7166982329). The owner requested one run on a substantially harder task after [the FATE-H #2 GPT run](EXP-20261125-18-scalemas-gpt-30min.md) ended in 5m24s with four passing proofs and no cross-peer reads.
 
 ## Setup
 
@@ -18,3 +18,32 @@ Use the original FATE-X #31 task, proving that the complex multivariate polynomi
 | Window | One group, up to 1,800 seconds after four peers are ready, with a passive checkpoint at 900 seconds and natural early settlement. Same 100 distinct Service operations and ten working Lean checks per peer. Model permissions are time-bound. Setup, cleanup and independent grading are bounded separately. |
 
 Compare timing and use descriptively with the prior GPT group on a different problem. Record voluntary publications and their timing, subsequent cross-peer deliveries, and use in a later proof attempt, publication or final proof. Require the exact delivered work and the recipient's later work as evidence for adoption. Score only each peer's actual final submission and run standalone regrading. A correct proof, cross-peer delivery and substantive reuse are separate observations.
+
+## Results
+
+The four peers started work at 15:32:19.005 UTC on November 25 and all settled through `finish: true` by 15:33:42.441 UTC. Work lasted 1m23.436s and setup took 24.717s. Per-peer work ended between 40.908s and 83.436s, after 11–19 of the 100 available Service operations and one or two of the ten available Lean checks. The 15-minute checkpoint remained `not_reached`. All four submitted candidates matched proofs that had already been rejected during work. Independent grading and a fresh standalone regrade both rejected all four with `LEAN_REJECTED`. All four Session archive digests and stop receipts validated. The launcher exited 0, cleanup was complete and the Runtime had zero remaining containers.
+
+All four peers received byte-identical first developer and user messages and the same `bash`, `edit`, `read` and `write` tool definitions. The official formal statement appeared in tool output forwarded to each peer. All 36 gateway requests retained the expected developer text and `medium` reasoning effort. The provider returned 32 completed responses identifying `gpt-6.1-sol`, with known usage of 256,051 input tokens and 3,562 output tokens. The four other streams were the last request per peer and closed just after their accepted finish caused the peer to stop. Their usage is unknown.
+
+| Observed measure | FATE-H #2 | FATE-X #31 |
+| --- | ---: | ---: |
+| Work duration | 5m24.177s | 1m23.436s |
+| Successful shared searches | 10 | 7 |
+| Peers searching the shared library | 4 | 4 |
+| Distinct publications / publishers | 5 / 4 | 2 / 2 |
+| Cross-peer reads / evidenced reuse | 0 / 0 | 1 / 0 |
+| Mathlib searches | 178 | 38 |
+| Working Lean verdicts / passes | 33 / 4 | 5 / 0 |
+| Final submissions / passing proofs | 4 / 4 | 4 / 0 |
+
+The first contribution appeared 44.389s after work started. It proposed a linear change of variables and a localization argument via Nagata’s criterion, marked as unverified in Lean. A different peer searched for that route and received the exact contribution at 49.584s. The Service receipt, native Session tool result and next model request agree on the contribution content. That next request started at 53.964s and completed successfully. The receiver had already searched Mathlib for the same criterion and related facts before the publication. Its subsequent Lean check corrected the newline escaping in a generic theorem-search attempt. It submitted that rejected attempt without a reference and produced no follow-on contribution. The second publication, at 66.960s, recorded an unresolved descent blocker. No peer subsequently searched or visited the library. One publisher had first passed inline JSON to a file-path flag and then tried a write to `/tmp` that failed. Its third attempt succeeded through standard input.
+
+## Analysis
+
+The harder fixture yielded an actual cross-peer delivery on the normal runtime path. All peers used the shared search, and one relevant result reached a live model context before that peer finished. That recipient was already investigating the same route. The two artifacts summarized ideas and blockers and did not provide a verified Lean lemma the receiver could apply. The trace supports delivery and shows no substantive downstream proof use.
+
+All four peers moved from a short Mathlib search and generic proof probes to a deliberate final submission after one or two working checks each. Time and operation capacity remained for each peer when it finished. The run establishes that the four peers did not solve the harder fixture with the work they chose to do. Their early settlement leaves the outcome of sustained work on this fixture unknown. This is a descriptive comparison of two individual groups on different tasks.
+
+## Next steps
+
+The requested hard-task rerun, independent regrading and cleanup are complete. Natural reuse in later proof work remains unobserved in these two GPT runs.
