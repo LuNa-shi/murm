@@ -164,6 +164,8 @@ recorded impact. A merge records the source revision’s explicit uses, while pa
 direct revisions with `workspace history --all --material-id ID`, and inspect Material
 corrections and the affected files before deciding whether they require revalidation.
 
+The Mission submission store defaults to four cumulative machine-check admissions and one concurrent final check. A host can explicitly configure `maxFinalChecks: null` to remove the cumulative admission cap; the Putnam benchmark selects this mode while retaining its one-hour Mission deadline, finite `maxConcurrentFinalChecks`, and per-check `timeoutMs`. Omitting the option retains four. A timed-out check occupies its concurrent slot until its actual checker promise settles, even in unlimited mode. Cached results and original-ID replay do not consume another admission. The fixed per-Mission policy and admission/settlement counts persist in SQLite. Reopening with a different cap or concurrency rejects new admission with `SERVICE_NOT_READY`; it does not rewrite the original policy. Existing databases with a required integer cap are migrated transactionally to the nullable policy schema, preserving their original limits and usage. `getFinalCheckBudget` reports an explicit null `max_checks` for unlimited Missions and keeps the finite active/admitted counts visible.
+
 ## Public Workspace publication records
 
 Normal public writes retain committed events in `.swarm-history/`, including

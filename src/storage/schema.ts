@@ -284,8 +284,8 @@ CREATE TABLE IF NOT EXISTS take_keys (
 export const MISSION_SUBMISSION_SCHEMA_SQL = `
       CREATE TABLE IF NOT EXISTS mission_final_check_policies (
         mission_id TEXT PRIMARY KEY,
-        max_checks INTEGER NOT NULL CHECK(max_checks > 0),
-        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND max_concurrent <= max_checks)
+        max_checks INTEGER CHECK(max_checks IS NULL OR max_checks > 0),
+        max_concurrent INTEGER NOT NULL CHECK(max_concurrent > 0 AND (max_checks IS NULL OR max_concurrent <= max_checks))
       );
       CREATE TABLE IF NOT EXISTS mission_final_check_admissions (
         mission_id TEXT NOT NULL,
