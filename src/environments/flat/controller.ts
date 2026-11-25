@@ -14,13 +14,13 @@ const deny=(message: any)=>{throw new SwarmEnvError('NOT_ALLOWED',message);};
 
 /** One serialized source for discovery, continuation and directed user input.
  * Core owns resources; this controller owns only flat policy and domain cleanup. */
-export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,coordinationPermissions=[],
+export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,activeDeadline=()=>deadlineAt,coordinationPermissions=[],
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
   stopTimeoutMs=30_000,discoveryPrompt=FLAT_DISCOVERY_MESSAGE,
   continuationPrompt,workspaceSaveAvailable=true,completionPolicy='tasks',deliverNotifications=true,
   afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }: any) {
   if(!['tasks','mission'].includes(completionPolicy) || typeof deliverNotifications!=='boolean' || !runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
-    ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() ||
+    ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() || typeof activeDeadline!=='function' ||
     ![selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every((x: any)=>x>0) || heartbeatMs>10000 ||
     ![continuationLimit,discoveryLimit].every((x: any)=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function' || (beforeInitialDispatch!==undefined && typeof beforeInitialDispatch!=='function') || typeof automaticContinuation!=='boolean' || typeof refillWhenNoReadyTask!=='boolean') throw new TypeError('Flat controller requires finite ordered work budgets and trusted Runtime/domain stores');
   const coordinator=createFlatBotCoordinator({runtime,taskService,missionId,coordinationPermissions});
@@ -32,7 +32,8 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
   }
   let chain=Promise.resolve(),timer: any,deadlineTimer: any,started=false,closing=false,completion: any=null,generation=0;
   const complete=Promise.withResolvers();
-  const remaining=()=>Math.max(0,deadlineAt-Date.now());
+  const workDeadline=()=>Math.min(deadlineAt,activeDeadline());
+  const remaining=()=>Math.max(0,workDeadline()-Date.now());
   const snapshot=()=>structuredClone({runtimeId:runtime.id,missionId,closing,completion,bots:[...bots.values()],inputs,decisions,failures});
   const record=(reason: any,row: any,extra: any={})=>{
     const owner=row&&taskService.getBot(row.botId),execution=owner?.execution_id&&taskService.getExecution(owner.execution_id);
@@ -195,7 +196,7 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
       if([...bots.values()].some((row: any)=>row.slot===index && !row.released)) continue;
       if (!canRefill()) return;
       if(!refillWhenNoReadyTask && spawned>=ready) {record('refill-awaits-ready-task',null);break;}
-      const serial=++generation,now=Date.now(),hard=Math.min(deadlineAt,now+hardBudgetMs),selection=Math.min(hard,now+selectionMs);
+      const serial=++generation,now=Date.now(),hard=Math.min(workDeadline(),now+hardBudgetMs),selection=Math.min(hard,now+selectionMs);
       if(selection<=now) return;
       const legacySlotId=`flat:slot:${index}`,requestId=`flat:spawn:${serial}`;
       const bot=await coordinator.spawn({legacySlotId,requestId,profile,writable:false,selectionDeadline:new Date(selection).toISOString(),hardDeadline:new Date(hard).toISOString()});

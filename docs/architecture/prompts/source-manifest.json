@@ -39,15 +39,15 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "sha256": "dd11de384a62da18a0f5d88501d9a79df76016464e24b3dccbd9d0f49f6dc8ac"
+      "sha256": "c42cd885c419e3e792e7727adc061f6935494c21b4029eee1361fd71d7b06570"
     },
     {
       "path": "src/environments/flat/environment.ts",
-      "sha256": "a3056827e13303941c6cca29c4cd2f72e306cfc3a7f3383d8274d35dd1eb1924"
+      "sha256": "68a8160f8351997916b814c22856c2dc6fae71f7bff55c0d3e061795f6a75f93"
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "8910e6abc45b68fd00140bb58604e7a22169372a9069bef285ae8fe0d7d3c2a9"
+      "sha256": "50a87f3622f318ecfd543b1a9d1e772a98dd8f903922cfea041c53fb3a09d035"
     },
     {
       "path": "examples/subagents-environment/main.ts",
@@ -340,7 +340,7 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "line": 105,
+      "line": 106,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],

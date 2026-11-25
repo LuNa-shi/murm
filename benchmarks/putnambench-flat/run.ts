@@ -107,6 +107,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
         continuationLimit: Number.MAX_SAFE_INTEGER, discoveryLimit: Number.MAX_SAFE_INTEGER, heartbeatMs: 1000,
         beforeInitialDispatch({ signal }: { signal: AbortSignal }) {
           signal.throwIfAborted();
+          if (startedAt) return;
           clearTimeout(setupTimer);
           startedAt = window!.start();
           researchDeadline = Date.parse(startedAt) + durationMs;

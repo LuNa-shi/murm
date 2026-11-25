@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { DatabaseSync } from 'node:sqlite';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -88,6 +89,26 @@ test('Flat registers only public Workspace reads without a trusted snapshot bind
     await assert.rejects(fixtureState.call('workspace', operation), { code: 'NOT_FOUND' });
   }
   assert.equal((await fixtureState.workspace.listRevisions({ workspaceId: fixtureState.workspaceId })).length, 1);
+});
+
+test('Flat advertises enough transport time for a trusted project checker', t => {
+  const db = new DatabaseSync(':memory:');
+  t.after(() => db.close());
+  const taskService = { db, setWorkspaceDeliveryReader() {} };
+  const publication = createFlatPublicationServices({
+    runtime: () => ({}), taskService, contextService: {}, missionWorkspace: {},
+    missionId: 'bench', workspaceId: 'bench', deadline: () => Date.now() + 3_600_000,
+    judgeService: { taskService, processTimeoutMs: 300_000, missionBudget: { queueWaitMs: 120_000 }, dispatch() {} },
+    workspaceMergeChecker: {
+      identity: { checker_ref: 'lean', checker_version: '4.33.1', environment_ref: 'locked' },
+      timeoutMs: 300_000, check() {},
+    },
+  });
+  const capabilities = publication.registrations.flatMap(({ manifest }) => manifest.capabilities);
+  const timeout = operation => capabilities.find(capability => capability.operation === operation)?.timeout_ms;
+  assert.ok(timeout('workspace_check') > 720_000);
+  assert.ok(timeout('workspace_merge') > 300_000);
+  assert.equal(timeout('get_check_result'), undefined);
 });
 
 test('fencing during a trusted capture prevents Workspace publication',async t=>{

@@ -23,6 +23,8 @@ const capability = (name: any, operation: any, input_schema: any, side_effect: a
 // Preserve the published domain input contracts while Core supplies trusted identity.
 const catalogSchemas: any = new Map(listTools().map((tool: any) => [tool.operation, tool.parameters]));
 const catalogCapability = (name: any, operation: any, sideEffect: any='write') => capability(name, operation, catalogSchemas.get(operation), sideEffect);
+const coreFileSeed = (files: Record<string, string>) =>
+  Object.fromEntries(Object.entries(files).map(([path, data]) => [path, { encoding: 'base64', data }]));
 const liveWorkspaceOperations: any = new Set(['workspace_save','workspace_apply','workspace_status','workspace_current_diff']);
 const definitions: any = {
   workspace:[
@@ -99,7 +101,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
   }
   function installReceipt(input: any, execution: any, receipt: any) {
     if (receipt) {
-      const files = Object.fromEntries(Object.entries(input.files).map(([path, data]) => [path, { encoding: 'base64', data }]));
+      const files = coreFileSeed(input.files);
       if (receipt.botId !== execution.owner_ref || receipt.requestId !== input.request_id ||
           receipt.digest !== decodeFileSeed(files).digest || !['installed', 'committed'].includes(receipt.phase)) {
         fail('INVALID_CONTRACT', 'Core install receipt differs from the fixed apply tree');
@@ -149,7 +151,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
         const execution = taskService.getExecution(input.executionId);
         const core = getRuntime();
         const expected = await core.files.snapshot(execution.owner_ref, { requestId: input.snapshot_request_id, paths: ['.'], includeGit: false, maxBytes: 16 * 1024 * 1024 });
-        const files = Object.fromEntries(Object.entries(input.files).map(([path, data]) => [path, { encoding: 'base64', data }]));
+        const files = coreFileSeed(input.files);
         const receipt = await core.files.install(execution.owner_ref, { requestId: input.request_id, expected, files });
         return installReceipt(input, execution, receipt);
       },
@@ -339,9 +341,20 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     if(operation==='workspace_merge') reauthorize(request);
     return structuredClone(result);
   }
+  const checkerBudgets = {
+    // Judge can wait for admission and run both a preflight and a source check.
+    workspace_check: (judgeService?.missionBudget?.queueWaitMs ?? 0) + 2 * (judgeService?.processTimeoutMs ?? 0),
+    workspace_merge: workspaceMergeChecker?.timeoutMs ?? 0,
+  };
   const registrations=Object.entries((definitions as Record<string, any>)).filter(([id]: any)=>id!=='judge'||judgeService).map(([id,capabilities]: any)=>({
     manifest:{id,title:`Flat ${id}`,purpose:'Publish and read durable flat results with actual Task ownership',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(({operation}: any)=>
-      (operation!=='workspace_merge'||merge) && (operation!=='workspace_apply'||workspaceCapture==='core') && (!liveWorkspaceOperations.has(operation)||captureAvailable))},
+      (operation!=='workspace_merge'||merge) && (operation!=='workspace_apply'||workspaceCapture==='core') && (!liveWorkspaceOperations.has(operation)||captureAvailable))
+      .map((cap: any) => {
+        const budget = checkerBudgets[cap.operation as keyof typeof checkerBudgets];
+        return Number.isFinite(budget) && budget > 0
+          ? { ...cap, timeout_ms: Math.min(86_400_000, Math.max(30_000, Math.ceil(budget) + 5_000)) }
+          : cap;
+      })},
     adapter:{invoke:(request: any)=>invoke(id,request)},
   }));
   return {registrations, reconcileWorkspace:(executionId: any,options: any)=>workspace.reconcile(executionId,options), close(){closing=true;for(const row of applyRecovery.values()) clearTimeout(row.timer);applyRecovery.clear();if(merge) void merge.close({timeoutMs:0});return judgeStatus();}, judgeStatus, mergeStatus,

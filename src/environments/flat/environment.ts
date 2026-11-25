@@ -63,7 +63,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       runtime=await createRuntime({backend,profiles:{researcher},services,maxBots:capacity,outputDir,
         modelAccessPolicy:createFlatModelAccessPolicy({runtimeId:()=>runtime?.id,taskService,missionId,deadline,isStopping:()=>controller?.snapshot().closing??false})});
       try {
-        controller=createFlatController({...(autonomousTasks?{discoveryPrompt:FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}:{}),...controllerOptions,completionPolicy,runtime,taskService,missionId,capacity,deadlineAt,coordinationPermissions:permissions,
+        controller=createFlatController({...(autonomousTasks?{discoveryPrompt:FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}:{}),...controllerOptions,completionPolicy,runtime,taskService,missionId,capacity,deadlineAt,activeDeadline:deadline,coordinationPermissions:permissions,
           workspaceSaveAvailable,afterStopped:(id: any,options: any)=>publication.reconcileWorkspace(id,options)});
       } catch(error: any) {
         try {
