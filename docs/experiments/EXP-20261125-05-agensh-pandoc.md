@@ -22,12 +22,30 @@ Observe self-selected work, reuse of another peer's output, delivery via PR, lat
 
 ## Results
 
-Registered before launch. Results pending.
+The four peers started at 08:09:52.787 UTC on 2026-11-25 after 78.36 seconds of setup. The project deadline stopped admission at 09:09:52.790 UTC, after 3,600,003 ms. The host observed the run without sending input, assigning work or merging branches. The last status sample at 59m30s showed all four peers working. Four requests were still in flight at shutdown.
+
+| Peer | Provider attempts | HTTP successes | Completed usage records | Known input tokens | Known output tokens |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| A | 104 | 103 | 103 | 7,411,170 | 101,606 |
+| B | 182 | 182 | 181 | 14,733,582 | 101,405 |
+| C | 112 | 112 | 111 | 9,715,323 | 121,366 |
+| D | 175 | 175 | 174 | 12,928,968 | 110,805 |
+| Total | 573 | 572 | 569 | 44,789,043 | 435,182 |
+
+Usage is counted from completed provider records. Requests interrupted at the deadline have unknown final usage. Thirty-one completed requests exceeded the previous run's 65-second watchdog. The longest completed request took 338.57 seconds. Pi supplied its normal `max_output_tokens` values, ranging from 92,842 to 128,000. The gateway forwarded them unchanged on all 573 requests. All 569 metered requests ended with provider status `completed`, and the largest recorded response used 13,762 output tokens.
+
+All four peers read the project issue and Board and chose work themselves. The Board accepted nine `CLAIM` entries. The messaging service accepted nine direct messages and three team posts. One of C's team posts reached model input on D's second turn at 27m36s and on A's second turn at 56m56s. No direct message reached a new model turn before the cutoff. B and C used Git to inspect code from D's pushed implementation branch. The run produced four pushed work branches. No PR was created or merged. D's PR submissions from a branch outside its configured work branch were denied, and one merge request for the project issue number was rejected.
+
+The pinned shared archive independently unpacked to `main` at `5267b1e31fee49aba89fe1db4ce97a897ccbec2b`. Its SHA-256 was `8449381dcdd5081df4692d496dc0d77c2f00fb699fcb8c47002203b04cdca789`. It contained the initial README only. The independent build check found no `compile.sh`, so no task score was produced. The archived pushed branches were `peer-a/core-skeleton` (`e358fd105cf5`), `test-corpus` (`466de34fc3c0`), `work-b` (`1492983d7e20`) and `work-d-core` (`48701e12f509`). A verified full-history Git bundle holds all pushed refs and has SHA-256 `99398b93551593e1cd43cd9f3d9b5b2ba84bb8f803fab72765346006d0dc7331`.
+
+The Core close receipt remained `CLEANUP_PENDING`. OpenSandbox expired all four sandboxes 4.179 to 16.268 seconds before the project deadline. Each sandbox was already gone when Core attempted to stop its Worker. Its unpushed workspace files and Session archive could not be recovered. After verifying the shared archive, backing up all pushed refs, and independently confirming all four sandboxes were absent, the operator stopped the retained run process and removed its four local facility containers and network. Raw evidence, the as-launched script and the operator receipt are retained outside Git.
 
 ## Analysis
 
-Pending.
+The repeat demonstrates self-selected work, use of shared collaboration facilities and later model turns on existing peers. Git traces establish that peers inspected another peer's pushed code. The unchanged `main` gives no evidence that peer work was integrated into the shared delivery. The branch rejection shows a difference between the peers' branch choices in this run and the set the Service accepts for opening PRs.
+
+The project clock and sandbox lifetime had different start points. The sandbox provider's one-hour default was measured from each allocation, while the work window started later, when the peers were ready. The project deadline fired on schedule, after the sandboxes had already expired and destroyed ephemeral state. The terminal shared archive came from Gitea, which remained available during close.
 
 ## Next steps
 
-Observe the registered run through its deadline and verify the shared archive and cleanup.
+The follow-up sets the sandbox lifetime explicitly to cover the foreground startup and work window plus the close wait. The same one-hour project deadline governs work. The installed example requests 3,750 seconds of sandbox lifetime and the corrected local Pandoc launcher requests 3,900 seconds to cover its longer close wait. The follow-up has a local regression check. It has no live one-hour validation against this run.
