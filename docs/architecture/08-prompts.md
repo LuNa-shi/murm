@@ -24,6 +24,8 @@ The Flat controller composes durable handoff warnings and eligible Material or d
 
 Bridge command responses include structured results/errors and lifecycle notices. Native Bash carries these back into the model conversation; the Bridge does not create a separate turn for a tool response. Workspace conflicts also write an ordinary README artifact: it becomes model input only when read. Judge results carry actual checker diagnostics; successful request transport is not proof acceptance. Fixed guidance fields are catalogued separately from dynamic Task, Material, provider and checker content.
 
+The PutnamBench researcher Profile gives an explicit command for sending a published Material to another Task. The CLI help supplies separate examples for a directed response and an experience link on the current Task. A directed response uses the receiving Task in `--task-id`. The Bridge authenticates the producer from the active Execution. The CLI renders its built-in help when the Bot asks for it and sends no Service request for that offline command. [Generated CLI guidance](prompts/08-flat-environment.md#offline-swarm-task-link-help)
+
 ## Complete text and reproducible source inventory
 
 | Reference | Contents |

@@ -36,11 +36,12 @@ Use swarm service view task --json to see the enabled operations and complete in
 Candidate summaries include gap and priority; inspect their relevance and choose freely. Follow next_cursor even after an empty page, then view Task details before taking. Creation order is stable within a scan; state and readiness are live at each page.`,
     view: 'Required: <task-id> (or --task-id). Read a Task contract, gap, priority, versions, dependencies, Materials and Executions. Use --contract-history-after-version and --contract-history-limit (1-100) to continue contract_history_page.next_after_version.',
     take: 'Take an eligible Task by its positional ID. Example: swarm task take T1 --request-id take-t1 (replace T1 with the returned task_id). The result includes the Execution and pinned inputs. If the response is unknown, reuse the same request ID with the same Task.',
-    link: `Link a published Material to a Task. Provide --task-id, --material-id and --role (input, response, handoff, or experience).
-Plan to create the link during an active Execution, before soft closeout.
-To cite your own published Material when finishing, link it to your current Task with --role experience.
-Example: swarm task link --task-id T1 --material-id M1 --role experience --request-id link-m1
-Replace T1 and M1 with the current task_id and the published material_id. Response and handoff links require the producing Execution. A response targets a different receiving Task.`,
+    link: `Link a published Material during an active Execution. The role determines which Task ID to use.
+To send your published Material to another Task, use the receiving Task's ID in --task-id and choose --role response. The authenticated Execution supplies the producer. Omit --receiving-task-id, or give it the same ID as --task-id. Flat queues a notice for the receiving Task.
+  swarm task link --task-id RECEIVING_TASK_ID --material-id MATERIAL_ID --role response --request-id send-m1-to-recipient
+To attach Material as input to your own work, use --role input and your current Task's ID. To cite your own published Material when finishing, link it to your current Task with --role experience.
+  swarm task link --task-id CURRENT_TASK_ID --material-id MATERIAL_ID --role experience --request-id link-m1-to-current
+Replace each placeholder with the corresponding actual ID. Response and handoff links require the producing Execution.`,
     finish: `Finish the current Task with outcome done, incomplete, blocked, or cancelled. For a declared Workspace delivery, provide --workspace-revision and any required --check-result-id.
 Publication records who produced a Material. To explicitly cite that Material in a done result, first create a Task link with swarm task link.
 Example after linking: swarm task finish --outcome done --material-ids '["M1"]' --request-id finish-t1

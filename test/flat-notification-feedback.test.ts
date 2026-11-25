@@ -10,6 +10,7 @@ import { createFlatTaskStores } from './fixtures/flat-task-stores.js';
 import { controls } from './fixtures/flat-controller-backend.js';
 import { createFlatTaskService } from '../src/environments/flat/task-service.js';
 import { createFlatPublicationServices } from '../src/environments/flat/publication-services.js';
+import { runSwarmCli } from '../src/cli/swarm-cli.js';
 import { ServiceRegistry } from '../src/core/services.js';
 import { makeEnvelope } from '../src/protocol/envelope.js';
 const hooks=registerHooks({resolve(specifier,context,next) {
@@ -54,6 +55,32 @@ const feedbackArgs=(notificationId,requestId='handle')=>['task','feedback','--no
 function notice(f,{taskId=f.task.task_id,executionId=f.tasks.getBot(f.bots[0].id).execution_id,key='fixed',missionId=f.missionId}={}) {
   return f.tasks.enqueueNotification({deliveryKey:key,missionId,recipientTaskId:taskId,recipientExecutionId:executionId,type:'handoff_warning',payload:{execution_id:executionId,deadline:new Date(Date.now()+60000).toISOString()}});
 }
+
+test('the documented response link notifies the Task receiving a published Material', async t => {
+  let help = '';
+  await runSwarmCli(['task', 'link', '--help'], { stdout: { write: chunk => { help += chunk; } } });
+  const example = help.match(/^\s*swarm (task link .*--role response.*)$/m)?.[1];
+  assert.ok(example, 'directed response links need an executable example');
+
+  const f = await fixture(t);
+  const recipient = f.tasks.createTask({ mission_id: f.missionId, gap: 'Check a separate claim', priority: 'medium',
+    summary: 'Recipient work', expected_output: 'Check', acceptance_conditions: ['Recorded'], workspace_id: f.workspaceId },
+  makeEnvelope({ actorRef: 'host' })).task;
+  await f.cliFor(f.bots[1], 'task', 'take', recipient.task_id, '--request-id', 'take-recipient');
+  const { material } = await f.cli('material', 'publish', '--content', 'A relevant result for the recipient', '--request-id', 'publish-result');
+  const args = example.replaceAll('RECEIVING_TASK_ID', recipient.task_id).replaceAll('MATERIAL_ID', material.material_id).split(/\s+/);
+
+  const { link } = await f.cli(...args);
+  assert.equal(link.producer_task_id, f.task.task_id);
+  assert.equal(link.receiving_task_id, recipient.task_id);
+  const executionId = f.tasks.getBot(f.bots[1].id).execution_id;
+  const [notification] = f.tasks.listUnprocessedNotifications(recipient.task_id, executionId);
+  assert.equal(notification.notification_type, 'material_available');
+  assert.equal(notification.material_id, material.material_id);
+  assert.equal(notification.recipient_execution_id, executionId);
+  assert.deepEqual(await f.cli(...args), { link });
+  assert.equal(f.tasks.listUnprocessedNotifications(recipient.task_id, executionId).length, 1);
+});
 
 test('current Core Task CLI handles its durable notification once with actual actor and stable replay',async t=>{
   const f=await fixture(t),notification=notice(f);

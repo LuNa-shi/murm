@@ -7,7 +7,7 @@ Core selects the four native tools read/write/edit/bash. The synthetic namespace
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Built-in Services
 
-Body SHA-256: `07dc33a6ec1b7eabdca25c325dd4873d219da1a51905ee016b4e22ef40ec7c22`
+Body SHA-256: `0bc7504089fbe376c006c3a2193231b3a4f75fc6706ab30fcc0faa892e4d7097`
 
 ````text
 [
@@ -45,7 +45,7 @@ Body SHA-256: `07dc33a6ec1b7eabdca25c325dd4873d219da1a51905ee016b4e22ef40ec7c22`
     "name": "mission",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm mission --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -55,7 +55,7 @@ Body SHA-256: `07dc33a6ec1b7eabdca25c325dd4873d219da1a51905ee016b4e22ef40ec7c22`
     "name": "task",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm task --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -65,7 +65,7 @@ Body SHA-256: `07dc33a6ec1b7eabdca25c325dd4873d219da1a51905ee016b4e22ef40ec7c22`
     "name": "workspace",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm workspace --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -75,7 +75,7 @@ Body SHA-256: `07dc33a6ec1b7eabdca25c325dd4873d219da1a51905ee016b4e22ef40ec7c22`
     "name": "bot",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm bot --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -85,7 +85,7 @@ Body SHA-256: `07dc33a6ec1b7eabdca25c325dd4873d219da1a51905ee016b4e22ef40ec7c22`
 ````
 ## With optional Mathlib Search
 
-Body SHA-256: `9d30a87fc80682d09ebd6543a56a45e742ae9da323b9341ab952d98d5c6b2a66`
+Body SHA-256: `e69b7c12b81ef742ff32f2de30223a1923cfd6d25e4b0d8e4b54de9dc8e8b743`
 
 ````text
 [
@@ -148,7 +148,7 @@ Body SHA-256: `9d30a87fc80682d09ebd6543a56a45e742ae9da323b9341ab952d98d5c6b2a66`
     "name": "mission",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm mission --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -158,7 +158,7 @@ Body SHA-256: `9d30a87fc80682d09ebd6543a56a45e742ae9da323b9341ab952d98d5c6b2a66`
     "name": "task",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm task --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -168,7 +168,7 @@ Body SHA-256: `9d30a87fc80682d09ebd6543a56a45e742ae9da323b9341ab952d98d5c6b2a66`
     "name": "workspace",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm workspace --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],
@@ -178,7 +178,7 @@ Body SHA-256: `9d30a87fc80682d09ebd6543a56a45e742ae9da323b9341ab952d98d5c6b2a66`
     "name": "bot",
     "provider_service": "task",
     "provider_version": "builtin-1",
-    "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5",
+    "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74",
     "help": "swarm bot --help",
     "manifest_help": "swarm service view task --json",
     "documentation": [],

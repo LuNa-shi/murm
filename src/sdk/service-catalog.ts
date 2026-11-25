@@ -174,9 +174,9 @@ const publicTaskTools = [
   },
   {
     name: 'task_link_material', service: 'task', operation: 'task_link_material', version: '1.0',
-    description: 'Link an immutable Material to a Task with an input, response, handoff, or experience role.',
+    description: 'Link an immutable Material to a Task. For a response, use the receiving Task as task_id; the authenticated Execution supplies the producer. An input link targets the current Task.',
     scope: 'task-write', side_effect: true,
-    parameters: { type: 'object', required: ['task_id', 'material_id', 'role'], properties: { task_id: { type: 'string' }, material_id: { type: 'string' }, role: { type: 'string', enum: ['input', 'response', 'handoff', 'experience'] }, receiving_task_id: { type: 'string' } }, additionalProperties: false },
+    parameters: { type: 'object', required: ['task_id', 'material_id', 'role'], properties: { task_id: { type: 'string' }, material_id: { type: 'string' }, role: { type: 'string', enum: ['input', 'response', 'handoff', 'experience'] }, receiving_task_id: { type: 'string', description: 'For a response this field is optional and must equal task_id when provided.' } }, additionalProperties: false },
   },
   {
     name: 'task_finish', service: 'task', operation: 'task_finish', version: '1.0',

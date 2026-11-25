@@ -30,7 +30,7 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `cee8156288678efa0ec1b47ab31ec74cabdf75afcaae50b5b4fe244c86a7ae81` |
+| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `58dc15ec4ed3cca5ee3e1a2c131b17813f7703e598001748259b5c5064abf5ce` |
 | [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `98d9ded93d7254f1813080c71862e0b8a305de12704219046156e16bd5787623` |
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `ef5119f0fa92a587850498a8ae2d1fc19c35d45f1cd3df9301916460433a34c2` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `059326242222f5a036a03b33fb0e7b260fb0f527dfd771822755db2419ef5253` |
@@ -283,7 +283,7 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "8bc5e48288688875536fd1ae6e6ea1131167e3d0e626fd537593c34c7360e7e5"
+  "manifest_hash": "52f1a1603173e7a749e57d4c07bb0953b26f32772e4a615f7740e21706044e74"
 }
 ```
 
@@ -818,13 +818,13 @@ An UNBOUND Bot may revise an open, unowned Task in its Mission, including previo
 
 #### task.task_link_material
 
-Link an immutable Material to a Task with an input, response, handoff, or experience role.
+Link an immutable Material to a Task. For a response, use the receiving Task as task_id; the authenticated Execution supplies the producer. An input link targets the current Task.
 
 ```json
 {
   "name": "task_link_material",
   "operation": "task_link_material",
-  "description": "Link an immutable Material to a Task with an input, response, handoff, or experience role.",
+  "description": "Link an immutable Material to a Task. For a response, use the receiving Task as task_id; the authenticated Execution supplies the producer. An input link targets the current Task.",
   "input_schema": {
     "type": "object",
     "required": [
@@ -849,7 +849,8 @@ Link an immutable Material to a Task with an input, response, handoff, or experi
         ]
       },
       "receiving_task_id": {
-        "type": "string"
+        "type": "string",
+        "description": "For a response this field is optional and must equal task_id when provided."
       }
     },
     "additionalProperties": false
@@ -877,9 +878,9 @@ Link an immutable Material to a Task with an input, response, handoff, or experi
   "requires_binding": false,
   "scope": "task-write",
   "help": {
-    "when": "Link an immutable Material to a Task with an input, response, handoff, or experience role.",
+    "when": "Link an immutable Material to a Task. For a response, use the receiving Task as task_id; the authenticated Execution supplies the producer. An input link targets the current Task.",
     "ref": "service://task/task_link_material",
-    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Link an immutable Material to a Task with an input, response, handoff, or experience role.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Durable Task goals, takes, structure, and completion evidence.\nUse when: Link an immutable Material to a Task. For a response, use the receiving Task as task_id; the authenticated Execution supplies the producer. An input link targets the current Task.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/task_link_material",

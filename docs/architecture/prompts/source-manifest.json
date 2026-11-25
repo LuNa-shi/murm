@@ -14,6 +14,10 @@
       "sha256": "f2ba8c143c277f817a49248e85c1499dd27083be081d8deefd663cd9ce4b8fd5"
     },
     {
+      "path": "src/cli/swarm-cli.ts",
+      "sha256": "f22188299b28001174b1de93c57b1043be1df8aed931f8862257f0215dbd868f"
+    },
+    {
       "path": "src/core/index.ts",
       "sha256": "2210258384ebee02c6d3ab5416dd0846dffc1e22e403702e284862ec211f391c"
     },
@@ -47,7 +51,7 @@
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "8fee9fe6e3a32b4860835e7b51ce505fab1a3bc96520ae2ccec1eca7082148db"
+      "sha256": "7f041aa8c9f8005b32051984a419ec8834022fe68350b26022ec9334cdfddfb8"
     },
     {
       "path": "examples/subagents-environment/main.ts",
@@ -107,7 +111,7 @@
     },
     {
       "path": "src/sdk/service-catalog.ts",
-      "sha256": "cee8156288678efa0ec1b47ab31ec74cabdf75afcaae50b5b4fe244c86a7ae81"
+      "sha256": "58dc15ec4ed3cca5ee3e1a2c131b17813f7703e598001748259b5c5064abf5ce"
     },
     {
       "path": "src/sdk/builtin-registry.ts",
@@ -335,7 +339,7 @@
       "path": "benchmarks/putnambench-flat/run.ts",
       "anchor": "const prompt = `",
       "line": 21,
-      "sha256": "e413390a531428c818d966111b64c20faef59e12b6476b05427ba0e20f9ee7c8"
+      "sha256": "074b63e290bdf87234ce5201b1958c0b7000f77db887075a91488b6626a07c8f"
     }
   ],
   "prompt_send_sites": [
@@ -433,7 +437,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "babebae23f1ed5de549496eec57b36a29c42f7249f1dc8238d79d382d41a6bb7"
+      "sha256": "f7d98b2b28c99fe833500ef4c1ecdeb89aa06259618254279ca2670e7c7e61d4"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
@@ -469,7 +473,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "099079a9fc63f9153d928f888f71275985e2c2fc4d7d04e26035a0301113726e"
+      "sha256": "01e5f42c9b861b5519c9887a9194b9b895088af6d19c66c47ac02e05e2ab1dd0"
     }
   ]
 }

@@ -10,6 +10,7 @@ import vm from 'node:vm';
 import { parentPromptFor, initialGoalFor } from '../examples/subagents-environment/prompts.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
 import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, BOT_MATERIAL_CONTINUATION_MESSAGE, BOT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory } from '../src/agent/bot-contract.js';
+import { runSwarmCli } from '../src/cli/swarm-cli.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
 
@@ -23,6 +24,7 @@ const sourcePaths = [
   'src/agent/bot-contract.ts',
   'src/agent/capability-profile.ts',
   'src/agent/services-bridge.ts',
+  'src/cli/swarm-cli.ts',
   'src/core/index.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
   'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts',
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',
@@ -192,6 +194,13 @@ const autonomousDiscovery = ('Mission ' + between(flatControllerPath, 'return `M
   .replace('${FLAT_AUTONOMOUS_DISCOVERY_MESSAGE}', autonomousDiscoveryBody);
 const sampleCloseout = { at: Date.parse('2026-01-01T00:00:30.000Z'), workspaceSaveAvailable: false };
 const warningDeadline = '2026-01-01T00:01:00.000Z';
+const flatCliHelp = await Promise.all(['create', 'link'].map(async command => {
+  let help = '';
+  const status = await runSwarmCli(['task', command, '--help'], { stdout: { write: (chunk: string) => { help += chunk; } } });
+  assert.equal(status, 0);
+  return block(`Offline swarm task ${command} help`, help.trimEnd(),
+    'The CLI returns this help to native Bash on request without contacting the Bridge or a Service.');
+}));
 output('08-flat-environment.md', header('Flat discovery and continuation prompts',
   'After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The trusted Core capture or explicit snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.')
   + block('Default researcher Profile prompt', between(flatEnvironmentPath, "prompt='", "',\n"))
@@ -202,6 +211,7 @@ output('08-flat-environment.md', header('Flat discovery and continuation prompts
     'When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Bot after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.')
   + block('PutnamBench researcher Profile', between('benchmarks/putnambench-flat/run.ts', 'const prompt = `', '`;'),
     'The PutnamBench runner supplies this Profile text to the normal Flat host. Core stages the Profile and native Pi composes the system input. The original fixture is a locked public Workspace file.')
+  + flatCliHelp.join('')
   + block('Default ordinary continuation with a snapshot binding', BOT_CONTINUATION_MESSAGE)
   + block('Default ordinary continuation without a snapshot binding', BOT_MATERIAL_CONTINUATION_MESSAGE,
     'The host can override controller.continuationPrompt in either configuration. During soft closeout the controller selects the built-in text for the registered Workspace capabilities.')

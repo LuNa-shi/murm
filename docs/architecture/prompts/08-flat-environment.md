@@ -52,16 +52,63 @@ On successful take, remain in this Session with your one Execution. Do the detai
 
 The PutnamBench runner supplies this Profile text to the normal Flat host. Core stages the Profile and native Pi composes the system input. The original fixture is a locked public Workspace file.
 
-Body SHA-256: `e413390a531428c818d966111b64c20faef59e12b6476b05427ba0e20f9ee7c8`
+Body SHA-256: `074b63e290bdf87234ce5201b1958c0b7000f77db887075a91488b6626a07c8f`
 
 ````text
 Work with other Bot researchers on the shared PutnamBench 2025 B1 theorem.
 Read the exact benchmark statement with swarm workspace read lean4/src/putnam_2025_b1.lean --at 0.1. The JSON includes the Lean source in content. Read the current acceptance and submission status with swarm mission submission view.
 During discovery, take suitable ready work or propose a bounded first deliverable as soon as you identify a useful gap. Propose a checkable investigation even when the proof route is still uncertain. Do the detailed proof search and editing after take. Use the command help for Task creation, Workspace save, apply, Judge check, Mathlib search, merge and Mission submission.
-Work in the current Session until your Task is finished. If you need an independent result, propose a Task others can take. Tell relevant Task owners about fixed revisions and the available results. Preserve useful partial work before finishing.
+Work in the current Session until your Task is finished. If you need an independent result, propose a Task others can take. To notify another Task about your published Material, run swarm task link --task-id RECEIVING_TASK_ID --material-id MATERIAL_ID --role response with the receiving Task's ID and the actual Material ID. See swarm task link --help. Preserve useful partial work before finishing.
 Place new Lean modules under lean4/src/. The checker supplies Lean and Mathlib. Avoid running a local compiler or fetching dependencies. Use the Mathlib search Service for the pinned library.
 Save actual files before checking. Use a project or module check to diagnose and iterate. Save your own work before applying another fixed public revision. Resolve explicit conflicts and record what you used. Merge checked work that helps advance public main.
 When a complete original proof is on main, invoke mission submit with the relevant Material IDs (an empty list is allowed) and follow the fixed result. Task completion and project diagnostics cannot accept the original theorem.
+````
+## Offline swarm task create help
+
+The CLI returns this help to native Bash on request without contacting the Bridge or a Service.
+
+Body SHA-256: `1ea3b83974cb42d5d374723bfdfa1d78448cf509ee8003801321111c4ca96591`
+
+````text
+Usage: swarm task create [options]
+
+Propose a concrete missing deliverable when the host enables autonomous Tasks. An active Bot keeps its current Execution.
+Required: --summary, --gap, --expected-output, --priority (high, medium, or low), and --acceptance-conditions (a nonempty JSON array or object).
+  swarm task create --summary "Check a boundary case" --gap "The current argument leaves one case open" --expected-output "A reproducible check" --acceptance-conditions '["State the inputs and result"]' --priority medium --request-id propose-boundary
+Replace the example with your actual proposal. You can also pass the same fields in JSON through --input or --stdin. The Service binds the Mission and Workspace. The result includes task.task_id. Use that ID with swarm task take if you choose to claim it.
+Use swarm service view task --json to see the enabled operations and complete input schemas.
+
+Common options:
+  --input <file>             Read a JSON request body
+  --stdin                    Read a JSON request body from stdin
+  --json                     Pretty-print the JSON result
+  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response
+  --timeout-ms <milliseconds>Bound the HTTP request (default 30000)
+  --help                     Show this command help
+````
+## Offline swarm task link help
+
+The CLI returns this help to native Bash on request without contacting the Bridge or a Service.
+
+Body SHA-256: `ab8ce338998a16dc6a12e1e02c212abd1b31e3cf5d3c96aa00498198b12261ef`
+
+````text
+Usage: swarm task link [options]
+
+Link a published Material during an active Execution. The role determines which Task ID to use.
+To send your published Material to another Task, use the receiving Task's ID in --task-id and choose --role response. The authenticated Execution supplies the producer. Omit --receiving-task-id, or give it the same ID as --task-id. Flat queues a notice for the receiving Task.
+  swarm task link --task-id RECEIVING_TASK_ID --material-id MATERIAL_ID --role response --request-id send-m1-to-recipient
+To attach Material as input to your own work, use --role input and your current Task's ID. To cite your own published Material when finishing, link it to your current Task with --role experience.
+  swarm task link --task-id CURRENT_TASK_ID --material-id MATERIAL_ID --role experience --request-id link-m1-to-current
+Replace each placeholder with the corresponding actual ID. Response and handoff links require the producing Execution.
+
+Common options:
+  --input <file>             Read a JSON request body
+  --stdin                    Read a JSON request body from stdin
+  --json                     Pretty-print the JSON result
+  --request-id <id>        Stable request ID; reuse the same ID and payload after unknown response
+  --timeout-ms <milliseconds>Bound the HTTP request (default 30000)
+  --help                     Show this command help
 ````
 ## Default ordinary continuation with a snapshot binding
 
