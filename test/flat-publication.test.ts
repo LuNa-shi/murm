@@ -10,7 +10,6 @@ import { decodeFileSeed } from '../scripts/core-file-seed.js';
 import { createHash } from 'node:crypto';
 import { prepareFlatInputs } from '../src/environments/flat/prepare-inputs.js';
 import { SwarmEnvError } from '../src/errors.js';
-import { decodeFileSeed } from '../scripts/core-file-seed.js';
 import { stableStringify, makeEnvelope } from '../src/protocol/envelope.js';
 
 async function fixture(t, options = {}) {
