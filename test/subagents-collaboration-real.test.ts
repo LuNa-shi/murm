@@ -26,7 +26,7 @@ test('normal Subagents resumes a waiting parent after the first child and accept
   let releaseSlow;
   const slowMayFinish = new Promise(resolve => { releaseSlow = resolve; });
 
-  function tool(id, command, timeout = 22) {
+  function tool(id, command, timeout = 35) {
     return { type: 'function_call', name: 'bash', id: 'fc_' + id, call_id: id, arguments: JSON.stringify({ command, timeout }) };
   }
   function text(id, value) {
@@ -80,10 +80,21 @@ test('normal Subagents resumes a waiting parent after the first child and accept
         while (!slowStarted && Date.now() < deadline) await delay(25);
         assert.ok(slowStarted && !slowFinished, 'the other Child is still executing when Root sees the first result');
         firstResultObserved = true;
+        result = tool('team-guards', `set -eu
+swarm collaboration list_agents --path-prefix /root/fast
+swarm collaboration list_agents --path-prefix /root/fastest
+if swarm collaboration send_message --target /other/fast --message outside --request-id outside 2>&1; then exit 31; fi
+if swarm collaboration spawn_agent --task-name extra --message extra --fork-turns none --request-id extra 2>&1; then exit 32; fi`);
+      } else if (output('team-guards') && !output('wait-user')) {
+        const [matching, adjacent, outside, full] = String(output('team-guards')).trim().split('\n').map(JSON.parse);
+        assert.deepEqual(matching.map(member => member.path).sort(), ['/root/fast', '/root/fast/grand']);
+        assert.deepEqual(adjacent, []);
+        assert.equal(outside.code, 'NOT_ALLOWED');
+        assert.equal(full.code, 'CONFLICT');
         result = call('wait_agent', { timeout_ms: 10_000 }, 'wait-user');
       } else {
-        assert.equal(output('wait-first') !== undefined, false, 'Root did not receive an empty first wait');
-        result = call('wait_agent', { timeout_ms: 10_000 }, 'wait-first');
+        assert.equal(output('wait-first') !== undefined, false, 'Root saw no child result before its first wait expired');
+        result = call('wait_agent', { timeout_ms: 30_000 }, 'wait-first');
       }
       response.writeHead(200, { 'content-type': 'text/event-stream' });
       response.end(streamResponse('k3', number, result));
@@ -101,12 +112,12 @@ test('normal Subagents resumes a waiting parent after the first child and accept
     return new Promise(resolve => server.close(resolve));
   });
   const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
-  const config = { image, outputDir, maxAgents: 4, maxDepth: 2, workTimeoutMs: 60_000, closeTimeoutMs: 25_000, goal: 'ROOT_TASK',
+  const config = { image, outputDir, maxAgents: 4, maxDepth: 2, workTimeoutMs: 90_000, closeTimeoutMs: 25_000, goal: 'ROOT_TASK',
     backend: {
       sandbox: { lifecycleBaseUrl: process.env.SWARMENV_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
         endpointHost: process.env.SWARMENV_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', apiKey: process.env.SWARMENV_CORE_TEST_API_KEY },
       bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-      modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 512, requestTimeoutMs: 25_000 },
+      modelGateway: { host: '0.0.0.0', advertiseHost: host, maxOutputTokens: 512, requestTimeoutMs: 60_000 },
       models: { default: { provider: 'kimi_proxy', model: 'k3',
         upstream: { url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {} } } },
       isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
