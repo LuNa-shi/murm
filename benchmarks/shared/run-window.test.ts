@@ -150,3 +150,26 @@ test('a deadline receipt reports the configured duration with a fractional monot
   assert.equal(receipt.stopReason, 'deadline');
   assert.equal(receipt.closedElapsedMs, durationMs);
 });
+
+test('the registered comparison model is forwarded and a different model is rejected', async t => {
+  const forwarded = [];
+  const upstreamUrl = await serve(t, async (request, response) => {
+    const chunks = [];
+    for await (const chunk of request) chunks.push(chunk);
+    forwarded.push(JSON.parse(Buffer.concat(chunks).toString('utf8')));
+    response.writeHead(200, { 'content-type': 'text/event-stream' });
+    response.end(completion);
+  });
+  const window = await createRunWindow({ directory: await directory(t), upstreamUrl, model: 'gpt-6.1-sol', maxOutputTokens: null });
+  t.after(() => window.close());
+  window.start();
+  const rejected = await send(window.upstream.url, window.upstream.headers);
+  assert.equal(rejected.status, 400);
+  assert.equal((await rejected.json()).error.code, 'invalid_request');
+  const accepted = await send(window.upstream.url, window.upstream.headers, { model: 'gpt-6.1-sol' });
+  assert.equal(accepted.status, 200);
+  await accepted.text();
+  assert.deepEqual(forwarded.map(body => body.model), ['gpt-6.1-sol']);
+  assert.equal(forwarded[0].max_output_tokens, undefined);
+  assert.equal(window.receipt().attempts.length, 1);
+});

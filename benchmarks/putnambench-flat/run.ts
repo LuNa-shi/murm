@@ -102,7 +102,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
     const preflight = await judgeChecker.preflight({ fixtureManifest: fixture });
     if (preflight.status !== 'healthy') throw new Error('Putnam Judge preflight did not verify the locked fixture');
     window = await createRunWindow({
-      directory: join(directory, 'window'), upstreamUrl: upstream.url, upstreamHeaders: upstream.headers,
+      directory: join(directory, 'window'), upstreamUrl: upstream.url, upstreamHeaders: upstream.headers, model: problem.model,
       durationMs, maxConcurrent: problem.capacity, maxRequests: null, maxOutputTokens: null,
     });
     const runSignal = AbortSignal.any([signal, ownDeadline.signal, window.signal]);

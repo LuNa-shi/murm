@@ -15,6 +15,7 @@ const positiveInteger = (value: number) => Number.isSafeInteger(value) && value 
 interface RunWindowOptions {
   directory: string;
   upstreamUrl: string;
+  model?: string;
   upstreamHeaders?: HeadersInit;
   durationMs?: number;
   maxRequests?: number | null;
@@ -41,7 +42,7 @@ interface Checkpoint {
 }
 
 export async function createRunWindow({
-  directory, upstreamUrl, upstreamHeaders = {}, durationMs = 1_800_000,
+  directory, upstreamUrl, model = 'k3', upstreamHeaders = {}, durationMs = 1_800_000,
   maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, now = () => performance.now(),
 }: RunWindowOptions) {
   if (![durationMs, maxConcurrent].every(positiveInteger) || durationMs > 2_147_483_647 ||
@@ -49,6 +50,7 @@ export async function createRunWindow({
       (maxOutputTokens !== null && (!positiveInteger(maxOutputTokens) || maxOutputTokens < 16))) {
     throw new Error('Invalid benchmark run bounds');
   }
+  if (typeof model !== 'string' || model.trim() !== model || !model) throw new Error('Invalid run window model');
   const target = new URL(upstreamUrl);
   if (!['http:', 'https:'].includes(target.protocol) || target.username || target.password ||
       target.search || target.hash || !target.pathname.endsWith('/v1/responses')) {
@@ -117,7 +119,7 @@ export async function createRunWindow({
     } catch {
       return reply(response, 400, 'invalid_json');
     }
-    if (body?.model !== 'k3' || body.stream !== true || body.store !== false ||
+    if (body?.model !== model || body.stream !== true || body.store !== false ||
         Object.hasOwn(body, 'max_completion_tokens') ||
         (body.max_output_tokens !== undefined && (!positiveInteger(body.max_output_tokens) || body.max_output_tokens < 16))) {
       return reply(response, 400, 'invalid_request');
