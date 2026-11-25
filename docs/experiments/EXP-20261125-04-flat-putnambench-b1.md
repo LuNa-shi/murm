@@ -42,7 +42,7 @@ The command exited before Runtime allocation and before any upstream model dispa
 
 ## Analysis
 
-The launch used a restrictive process umask while the build emits executable checker dependencies under the standard build mode. The artifact lock detected the permission difference and prevented execution. Under the standard build mode, the checker artifacts match the existing lock.
+The launch used a restrictive process umask while the build uses process umask for checker artifact permissions. The artifact lock detected the permission difference and prevented execution. Under the standard build mode, the checker artifacts match the existing lock.
 
 ## Next steps
 

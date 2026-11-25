@@ -1,6 +1,6 @@
 # EXP-20261125-05 · Flat PutnamBench 2025 B1
 
-Status · REGISTERED
+Status · OPERATOR STOP · selection window defect
 
 Repeat of [EXP-20261125-04](EXP-20261125-04-flat-putnambench-b1.md), which stopped before model dispatch. The implementation, fixture, Worker, model, checker lock and run allowance retain their original pins. The launcher rebuilds with the file mode expected by the pinned checker.
 
@@ -41,12 +41,14 @@ node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_
 
 ## Results
 
-Pending the registered run.
+The research window opened at 07:32:02.431 UTC and ran for 294.099 seconds before an operator stop. Setup took 17.056 seconds after locked checker preflight. The controlled ledger recorded 90 admitted responses, 78 completed K3 responses and 12 interrupted or unknown responses. The metered completed subset used 227,674 input and 9,420 output tokens. The record contains no actual billing amount.
+
+Twelve Bots were provisioned with a peak of four and all resources were cleaned up. The first eight Bots reached their selection deadline. They read the original source and no Task proposal or take settled. There were no Executions, materials, checker submissions or published work revisions. The retained candidate was the seed main 0.1, tree `15cdae59fe9ba1dada06eb14959403ab364ac8bd`. The interrupted run recorded an ERROR for its post-stop assessment. The separate locked seed preflight established that this original placeholder is rejected.
 
 ## Analysis
 
-Pending the fixed candidate, source and runtime records.
+The first eight Sessions streamed K3 reasoning after reading the fixture and lost authority at the 120-second selection boundary. The original Putnam runner allowed 300 seconds. No Task claim or subsequent mathematical evidence was available to assess collaboration or proof completion. Core model ledger receipts are authoritative for tool-visible completions. The window transport projection marked all calls aborted and is unsuitable for completion counts on this run.
 
 ## Next steps
 
-Run the registered evaluation, replay the fixed final candidate, and inspect the model ledger and proof lineage.
+Use the unspent portion of the one-hour research allowance in [EXP-20261125-06](EXP-20261125-06-flat-putnambench-b1.md), with the selection correction and the original checker lock.
