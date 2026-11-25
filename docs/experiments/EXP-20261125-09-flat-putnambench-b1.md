@@ -53,7 +53,7 @@ The first proposal was accepted after 18.695 seconds and the first Execution act
 
 The real gateway sent `medium → low` on all 21 admitted selection requests and `medium → medium` on all 40 admitted work requests. Of 61 actual requests, 56 completed and five had unknown outcomes after interruptions. The completed ledger counted 1,480,004 input and 133,184 output tokens. Unknown requests have no metered usage in the local ledger.
 
-An active Bot published one immutable text Material at `09:54:02.167 UTC`. It made five unsuccessful link calls, including two `input` links aimed at peer Tasks and three `response` calls with its own Task ID. The third `response` call omitted `receiving_task_id`. The durable link and notification were never created. The operator stopped once the reported inputs confirmed that the available command guidance was steering the active Bot through the wrong recipient binding.
+An active Bot published one immutable text Material at `09:54:02.167 UTC`. It made five unsuccessful link calls, including two `input` links aimed at peer Tasks and three `response` calls with its own Task ID. The third `response` call omitted `receiving_task_id`. The durable link and notification were never created. The operator stopped after confirming the repeated recipient binding errors and the missing working example in the available guidance.
 
 The Workspace still contained only the seed revision `0.1` and tree `15cdae59fe9ba1dada06eb14959403ab364ac8bd`. The run recorded no saves, apply operations, ordinary checks, merges, or Mission submissions. The post-stop verifier reported `ERROR` for the same fixed tree under operator cancellation. There is no original-theorem acceptance or cross-Bot proof adoption for this run.
 
@@ -61,7 +61,7 @@ The Workspace still contained only the seed revision `0.1` and tree `15cdae59fe9
 
 The selection intervention let four genuine hosted Bots form and claim work in this observation. The same provider still held one initial Bot in selection through its deadline. The gateway evidence confirms the effort setting remained scoped to selection.
 
-`swarm task link --help` gave a self-link example, told the Bot to fill `task_id` with its current Task, and did not give a working example for directing a response. For a `response` link the service requires `task_id` to be the receiving Task. The current authenticated Execution already identifies the producer. A separately provided `receiving_task_id` must equal `task_id`. The recorded requests exercised the expected authorization and contract rejections.
+`swarm task link --help` gave a self-link example and did not demonstrate the receiving Task argument for a response. The researcher Profile asked Bots to tell relevant Task owners about results without naming the operation. A review of the session did not find the Bot invoking the old help. For a `response` link the service requires `task_id` to be the receiving Task. The current authenticated Execution already identifies the producer. A separately provided `receiving_task_id` must equal `task_id`. The recorded requests exercised the expected authorization and contract rejections.
 
 ## Next steps
 
