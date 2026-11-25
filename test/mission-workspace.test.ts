@@ -127,3 +127,22 @@ test('Workspace registry keeps public diff inside the registered Bot Mission', a
     await assert.rejects(dispatchMissionWorkspaceRead({ taskService, missionWorkspace }, 'workspace_public_diff', { ...payload, workspace_id: 'W-foreign' }, envelope), { code: 'NOT_ALLOWED' });
   }
 });
+
+test('live apply plans preserve both versions and explicit conflict alternatives', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'swarmenv-live-apply-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const store = new MissionWorkspace({ rootDir: root });
+  const created = await store.create({ missionId: 'mission:live-apply', workspaceId: 'live-apply', initialFiles: { 'proof.lean': 'base\n' } });
+  const current = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'proof.lean': 'current\n', 'own.lean': 'own\n' } });
+  const incoming = await store.save({ workspaceId: created.workspace_id, baseRevision: '0.1', files: { 'proof.lean': 'incoming\n', 'peer.lean': 'peer\n' } });
+  const plan = await store.planApply({ workspaceId: created.workspace_id, baseRevision: current.revision, fromRevision: incoming.revision, requestId: 'conflict' });
+  assert.deepEqual(plan.parents, [current.revision, incoming.revision]);
+  assert.equal(plan.files['own.lean'], 'own\n'); assert.equal(plan.files['peer.lean'], 'peer\n');
+  assert.equal(plan.conflicts.length, 1);
+  const conflict = plan.conflicts[0];
+  assert.deepEqual(conflict.paths, ['proof.lean']);
+  assert.equal(Buffer.from(plan.files[`${conflict.artifact_root}/base/proof.lean`]).toString(), 'base\n');
+  assert.equal(Buffer.from(plan.files[`${conflict.artifact_root}/current/proof.lean`]).toString(), 'current\n');
+  assert.equal(Buffer.from(plan.files[`${conflict.artifact_root}/incoming/proof.lean`]).toString(), 'incoming\n');
+  assert.equal((await store.get({ workspaceId: created.workspace_id })).main_revision, '0.1');
+});

@@ -23,11 +23,12 @@ const capability = (name: any, operation: any, input_schema: any, side_effect: a
 // Preserve the published domain input contracts while Core supplies trusted identity.
 const catalogSchemas: any = new Map(listTools().map((tool: any) => [tool.operation, tool.parameters]));
 const catalogCapability = (name: any, operation: any, sideEffect: any='write') => capability(name, operation, catalogSchemas.get(operation), sideEffect);
-const liveWorkspaceOperations: any = new Set(['workspace_save','workspace_status','workspace_current_diff']);
+const liveWorkspaceOperations: any = new Set(['workspace_save','workspace_apply','workspace_status','workspace_current_diff']);
 const definitions: any = {
   workspace:[
     catalogCapability('merge','workspace_merge'),
     capability('save','workspace_save',object({resolved:{type:'boolean'},material_ids:ids})),
+    capability('apply','workspace_apply',object({from:text},['from'])),
     capability('status','workspace_status',object({}),'read'),
     capability('diff','workspace_current_diff',object({}),'read'),
     capability('view','workspace_public_view',object({}),'read'),
@@ -96,8 +97,67 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     }
     return {core,bot,execution};
   }
+  function installReceipt(input: any, execution: any, receipt: any) {
+    if (receipt) {
+      const files = Object.fromEntries(Object.entries(input.files).map(([path, data]) => [path, { encoding: 'base64', data }]));
+      if (receipt.botId !== execution.owner_ref || receipt.requestId !== input.request_id ||
+          receipt.digest !== decodeFileSeed(files).digest || !['installed', 'committed'].includes(receipt.phase)) {
+        fail('INVALID_CONTRACT', 'Core install receipt differs from the fixed apply tree');
+      }
+    }
+    return { request_id: input.request_id, execution_id: execution.execution_id, binding_version: execution.fencing_version,
+      phase: receipt?.phase ?? 'not_found', content_hash: input.content_hash,
+      fingerprint: inputFingerprint({ expected_content_hash: input.expected_content_hash, content_hash: input.content_hash }) };
+  }
+  const applyRecovery = new Map<string, { attempts: number; timer?: ReturnType<typeof setTimeout> }>();
+  function recoverApply(executionId: string, kind?: string) {
+    if (kind !== 'apply' || closing || applyRecovery.has(executionId)) return;
+    const record = { attempts: 0, timer: undefined as ReturnType<typeof setTimeout> | undefined };
+    applyRecovery.set(executionId, record);
+    const retry = async () => {
+      if (closing) { applyRecovery.delete(executionId); return; }
+      try {
+        await workspace.reconcile(executionId);
+        applyRecovery.delete(executionId);
+      } catch {
+        record.attempts++;
+        if (record.attempts < 11 && Date.now() + 1000 < deadline() && !closing) {
+          record.timer = setTimeout(() => void retry(), 1000);
+          record.timer.unref();
+          return;
+        }
+        try {
+          const execution = taskService.getExecution(executionId);
+          taskService.requestBotStop(execution.owner_ref, 'workspace-apply-reconciliation-failed', { terminalState: 'FAILED' });
+          const stopped = await getRuntime().stop(execution.owner_ref, { timeoutMs: 30000 });
+          if (stopped.execution === 'stopped') await workspace.reconcile(executionId, { closedConfirmed: true });
+        } catch { /* Controller close retains unconfirmed ownership and cleanup. */ }
+        applyRecovery.delete(executionId);
+      }
+    };
+    record.timer = setTimeout(() => void retry(), 1000);
+    record.timer.unref();
+  }
   const workspace: any = new ExecutionWorkspace({taskService,contextService,workspace:missionWorkspace,
-    sandboxManager:{recoverSnapshot: workspaceCapture === 'core', async snapshotBotProject({executionId,requestId}: any) {
+    sandboxManager:{
+      async queryBotProjectInstall(input: any) {
+        const execution = taskService.getExecution(input.executionId);
+        const receipt = await getRuntime().files.installStatus(execution.owner_ref, { requestId: input.request_id });
+        return installReceipt(input, execution, receipt);
+      },
+      async installBotProject(input: any) {
+        const execution = taskService.getExecution(input.executionId);
+        const core = getRuntime();
+        const expected = await core.files.snapshot(execution.owner_ref, { requestId: input.snapshot_request_id, paths: ['.'], includeGit: false, maxBytes: 16 * 1024 * 1024 });
+        const files = Object.fromEntries(Object.entries(input.files).map(([path, data]) => [path, { encoding: 'base64', data }]));
+        const receipt = await core.files.install(execution.owner_ref, { requestId: input.request_id, expected, files });
+        return installReceipt(input, execution, receipt);
+      },
+      async confirmBotProjectInstall(input: any) {
+        const execution = taskService.getExecution(input.executionId);
+        return installReceipt(input, execution, await getRuntime().files.confirm(execution.owner_ref, { requestId: input.request_id }));
+      },
+      recoverSnapshot: workspaceCapture === 'core', async snapshotBotProject({executionId,requestId}: any) {
       const execution=taskService.getExecution(executionId);
       if (workspaceCapture === 'core') {
         const core = getRuntime();
@@ -114,7 +174,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       if(typeof snapshotProject!=='function') fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
       return snapshotProject({botId:execution.owner_ref,executionId,fencingVersion:execution.fencing_version,requestId});
     }},
-    guard: assertWorkspace,
+    guard: assertWorkspace, onPending: recoverApply,
   });
   function assertWorkspace(identity: any,{receiptOnly=false}: any={}) {
     const execution=taskService.getExecution(identity.executionId), bot=taskService.getBot(identity.actorRef);
@@ -149,7 +209,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
         fencingVersion:current.execution.fencing_version,requestId:id,signal,assertAuthorized});
     }
     if(!captureAvailable) fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
-    return workspace.dispatch(({workspace_save:'save',workspace_status:'status',workspace_current_diff:'diff'} as Record<string, string>)[operation],input,
+    return workspace.dispatch(({workspace_save:'save',workspace_apply:'apply',workspace_status:'status',workspace_current_diff:'diff'} as Record<string, string>)[operation],input,
       {actorRef:current.bot.bot_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,fencingVersion:current.execution.fencing_version,requestId:id,signal,assertAuthorized});
   }
   async function judgeOperation(operation: any,input: any,current: any,id: any,caller: any,signal: any,assertAuthorized: any,call: any) {
@@ -281,10 +341,10 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
   }
   const registrations=Object.entries((definitions as Record<string, any>)).filter(([id]: any)=>id!=='judge'||judgeService).map(([id,capabilities]: any)=>({
     manifest:{id,title:`Flat ${id}`,purpose:'Publish and read durable flat results with actual Task ownership',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(({operation}: any)=>
-      (operation!=='workspace_merge'||merge) && (!liveWorkspaceOperations.has(operation)||captureAvailable))},
+      (operation!=='workspace_merge'||merge) && (operation!=='workspace_apply'||workspaceCapture==='core') && (!liveWorkspaceOperations.has(operation)||captureAvailable))},
     adapter:{invoke:(request: any)=>invoke(id,request)},
   }));
-  return {registrations, reconcileWorkspace:(executionId: any,options: any)=>workspace.reconcile(executionId,options), close(){closing=true;if(merge) void merge.close({timeoutMs:0});return judgeStatus();}, judgeStatus, mergeStatus,
+  return {registrations, reconcileWorkspace:(executionId: any,options: any)=>workspace.reconcile(executionId,options), close(){closing=true;for(const row of applyRecovery.values()) clearTimeout(row.timer);applyRecovery.clear();if(merge) void merge.close({timeoutMs:0});return judgeStatus();}, judgeStatus, mergeStatus,
     async waitForMerges({timeoutMs}: any={}) {
       if(!Number.isFinite(timeoutMs)||timeoutMs<=0) fail('INVALID_CONTRACT','Merge close wait must be positive and finite');
       let timer: any;

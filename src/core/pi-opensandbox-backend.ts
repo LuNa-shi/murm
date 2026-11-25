@@ -76,7 +76,7 @@ interface WorkerReply {
 interface SandboxManager {
   agentRpc(botId: string, input: Record<string, unknown>, options: { timeoutMs: number; since?: number }): Promise<WorkerReply>;
   coreFileOperation(botId: string, action: 'snapshot', input: SnapshotOptions): Promise<Omit<FileSnapshot, 'botId'>>;
-  coreFileOperation(botId: string, action: 'prepare' | 'grant', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
+  coreFileOperation(botId: string, action: 'prepare' | 'grant' | 'install' | 'confirm', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
   coreFileOperation(botId: string, action: 'pause' | 'resume', input: { requestId: string }): Promise<{ paused: boolean; requestId: string }>;
   coreSessionSnapshot(botId: string): Promise<SessionFork>;
   collectCoreSession(botId: string): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
@@ -266,8 +266,8 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
   }
 
   function fileOperation(botId: string, action: 'snapshot', input: SnapshotOptions): Promise<Omit<FileSnapshot, 'botId'>>;
-  function fileOperation(botId: string, action: 'prepare' | 'grant', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
-  function fileOperation(botId: string, action: 'snapshot' | 'prepare' | 'grant', input: unknown) {
+  function fileOperation(botId: string, action: 'prepare' | 'grant' | 'install' | 'confirm', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
+  function fileOperation(botId: string, action: 'snapshot' | 'prepare' | 'grant' | 'install' | 'confirm', input: unknown) {
     const bot = bots.get(botId);
     if (!bot || bot.stopping || bot.exited || bot.historyLost || closing) {
       throw Object.assign(new Error('Core Bot is unavailable for file control'), { code: 'NOT_ALLOWED' });
@@ -372,6 +372,11 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       workspace.captureWork = work.catch(() => undefined);
       return work;
     },
+    async installFiles(botId: string, input: any) {
+      if (bots.get(botId)?.workspace) throw Object.assign(new Error('Live install requires a private workDir'), { code: 'NOT_ALLOWED' });
+      return await fileOperation(botId, 'install', input) as any;
+    },
+    async confirmFiles(botId: string, input: any) { return await fileOperation(botId, 'confirm', input) as any; },
     prepareFiles(botId: string, input: { version: number; files: NonNullable<SpawnOptions['files']> }) { return fileOperation(botId, 'prepare', input); },
     grantFiles(botId: string, input: { version: number; digest: string }) { return fileOperation(botId, 'grant', input); },
     async send(botId: string, input: string, { mode, inputId, steeringMode, executionEpoch }: { mode: InputMode; inputId: string; steeringMode?: SteerOptions['steeringMode']; executionEpoch?: number }): Promise<BackendInputReceipt> {

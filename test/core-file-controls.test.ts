@@ -154,3 +154,36 @@ test('only the host can select a scoped shared workspace or a frozen private cop
     await assert.rejects(runtime.spawn({ profile: 'worker', requestId: 'readonly-writable', workspace: { id: 'project', mode: 'read-only' }, writable: true }), { code: 'INVALID_CONTRACT' });
   } finally { await cleanup(); }
 });
+
+test('live install holds new inputs until confirmation and recovers original install receipts', async t => {
+  let installs = 0;
+  let confirms = 0;
+  const source = { 'proof.lean': { encoding: 'utf8', data: 'before' } };
+  const target = { 'proof.lean': { encoding: 'utf8', data: 'after' } };
+  const { runtime, cleanup } = await openHarness(t, { async fileOperation(action, input) {
+    if (action === 'snapshot') return { body: { result: { requestId: input.requestId, version: 1, files: source, digest: decodeFileSeed(source).digest } } };
+    if (action === 'install') {
+      if (++installs === 1) return { disconnect: true };
+      return { body: { result: { requestId: input.requestId, version: input.version, digest: decodeFileSeed(input.files).digest, phase: 'installed' } } };
+    }
+    assert.equal(action, 'confirm'); confirms++;
+    return { body: { result: { requestId: input.requestId, version: input.version, digest: input.digest, phase: 'committed' } } };
+  } });
+  try {
+    const bot = await runtime.spawn({ requestId: 'install-bot', profile: 'worker', writable: true, files: source });
+    const expected = await runtime.files.snapshot(bot.id, { requestId: 'before', paths: ['.'] });
+    const options = { requestId: 'apply', expected, files: target };
+    await assert.rejects(runtime.files.install(bot.id, options), { code: 'OPERATION_UNKNOWN' });
+    await assert.rejects(runtime.send(bot.id, 'cannot resume yet', { requestId: 'held' }), { code: 'NOT_ALLOWED' });
+    const installed = await runtime.files.install(bot.id, options);
+    assert.equal(installed.phase, 'installed');
+    assert.equal(installed.digest, decodeFileSeed(target).digest);
+    await assert.rejects(runtime.files.install(bot.id, { ...options, files: source }), { code: 'CONFLICT' });
+    await assert.rejects(runtime.files.snapshot(bot.id, { requestId: 'while-held', paths: ['.'] }), { code: 'CONFLICT' });
+    const committed = await runtime.files.confirm(bot.id, { requestId: 'apply' });
+    assert.equal(committed.phase, 'committed');
+    assert.deepEqual(await runtime.files.confirm(bot.id, { requestId: 'apply' }), committed);
+    assert.equal(confirms, 1); assert.equal(installs, 2);
+    assert.equal((await runtime.send(bot.id, 'continue original session', { requestId: 'resume' })).status, 'accepted');
+  } finally { await cleanup(); }
+});
