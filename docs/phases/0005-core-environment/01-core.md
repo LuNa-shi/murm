@@ -242,6 +242,10 @@ createRuntime、spawn、files.prepare/grant 与 send 的单次宿主等待也必
 
 Profile 由宿主建立并冻结。`model` 选择 backend 配置中的模型别名；`image` 包含角色所需私有命令；`writable` 和 collect 是资源默认值；`services` 列出可调用的 Service operations。宿主 spawn 可覆盖本稿明确开放的资源参数；Bot 不能通过工作输入修改这些政策。
 
+普通 Agent 的 system prompt 由 Core 统一装配。开头介绍隔离 sandbox 和 `swarm` CLI，随后列出实际原生工具与 `<services>`。Service 注册者通过 manifest 提供用途和每项操作的简短说明。Core 只显示当前 Profile 获准调用的已注册操作，使用与 `swarm service list` 相同的权限过滤。目录给出命令和用途，详细参数与校验要求通过 `swarm <service> <operation> --help` 查阅。普通启动不注入 Pi 开发文档目录。
+
+`Profile.prompt` 是可选的 Added System Prompt，默认留空。Environment 在确有需要时用它提供简短的角色或协作说明，具体任务通过后续 user message 发送。启动目录是发现信息，实际 Service 调用继续由 Bridge 按可信身份和权限校验。
+
 `Profile.env` 是宿主显式给该角色的非秘密环境变量；不会任意继承宿主环境。`SpawnOptions.secretEnv` 是宿主发给特定 Bot 使用的受限凭据。目标 Bot 能读取这些凭据；其值不进入 BotInfo、事件和普通日志。真正的模型 upstream 凭据、Worker 管理 token 和 Core 保留字段由受信侧管理，禁止覆盖。
 
 `Profile.network.allow` 指定额外目标；Bridge 与模型 gateway 自动加入。当前 backend 首版只接受非 loopback IPv4 字面量的 HTTP(S) origin，按目标 IP/port 放行。Gitea 同一端点的 REST 操作仍受该账户的 upstream ACL 约束，不提供 Git-only 路径限制。此能力需要修改当前只允许 Bridge 与 gateway 的网络规则。[当前网络隔离](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/runtime/docker-bot-network.js)
@@ -486,7 +490,7 @@ export interface ServiceAdapter {
 export declare function createInProcessAdapter(implementation: ServiceAdapter): ServiceAdapter;
 
 export interface Profile {
-  prompt: string;
+  prompt?: string;
   model: string;
   image: string;
   writable: boolean;
