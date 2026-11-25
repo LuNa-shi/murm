@@ -219,6 +219,7 @@ test('send independently selects timing and waking, and audits the trusted host 
   const legacy = { requestId: 'legacy-steer', source: 'external-message-service', steeringMode: 'all' };
   const legacySteer = await runtime.steer(bot.id, 'steer as before', legacy);
   assert.deepEqual(await runtime.send(bot.id, 'steer as before', legacy), legacySteer);
+  transport.next = async id => transport.confirm(id, 'queued');
   const options = { requestId: 'push', source: 'external-message-service', steeringMode: 'all', wakeIfIdle: false };
   const steered = await runtime.send(bot.id, 'push now', options);
   assert.equal(steered.disposition, 'queued');
