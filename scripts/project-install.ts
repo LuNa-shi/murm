@@ -67,7 +67,7 @@ export class ProjectInstaller {
   }
 
   async initialize() {
-    await mkdir(this.controlDir, { mode: 0o700 });
+    await mkdir(this.controlDir, { mode: 0o700, recursive: true });
     await chown(this.controlDir, 0, 0);
     await chmod(this.controlDir, 0o700);
   }
@@ -191,7 +191,10 @@ export class ProjectInstaller {
     const key = this.#key(input);
     const target = decodeProjectFiles(input.files);
     if (target.content_hash !== input.content_hash || !/^[a-f0-9]{64}$/.test(input.expected_content_hash)) throw invalid('Install manifest hashes disagree');
-    const fingerprint = hash(canonical({ expected_content_hash: input.expected_content_hash, content_hash: target.content_hash }));
+    const fileModes = input.file_modes;
+    if (fileModes !== undefined && (!fileModes || Object.keys(fileModes).sort().join('\0') !== Object.keys(target.bytes).sort().join('\0') ||
+        Object.values(fileModes).some(mode => ![0o644, 0o755].includes(mode as number)))) throw invalid('Install file modes disagree with the complete tree');
+    const fingerprint = hash(canonical({ ...(fileModes ? { file_modes: fileModes } : {}), expected_content_hash: input.expected_content_hash, content_hash: target.content_hash }));
     if (existsSync(key)) {
       const previous = JSON.parse(readFileSync(key, 'utf8'));
       if (previous.fingerprint !== fingerprint) throw invalid('Install request ID was reused with a different tree');
@@ -201,6 +204,11 @@ export class ProjectInstaller {
     const original = await this.snapshot(input);
     if (original.content_hash !== input.expected_content_hash) throw Object.assign(busy('Project changed after apply capture; save before applying again'), { applyBlocker: 'dirty' });
     const changed = changes(original.manifest, target.manifest);
+    if (fileModes) for (const path of Object.keys(fileModes)) {
+      try {
+        if (((await lstat(join(this.projectDir, path))).mode & 0o7777) !== fileModes[path] && !changed.includes(path)) changed.push(path);
+      } catch (error: any) { if (!['ENOENT', 'ENOTDIR'].includes(error.code)) throw error; }
+    }
     const replacedDirectories: any[] = [];
     const modes = Object.create(null);
     for (const path of changed) {
@@ -234,7 +242,7 @@ export class ProjectInstaller {
     catch (error: any) { try { unlinkSync(`${key}.capture`); } catch {} throw error; }
     try {
       this.fault?.('before_write');
-      await this.#writeTree(decodeProjectFiles(original.files).bytes, target.bytes, changed, modes);
+      await this.#writeTree(decodeProjectFiles(original.files).bytes, target.bytes, changed, fileModes ?? modes);
       this.fault?.('after_write');
       this.assertOpen(input);
       const observed = await this.snapshot(input);

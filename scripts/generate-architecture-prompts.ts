@@ -11,8 +11,11 @@ import { rootPrompt, childPrompt } from '../examples/subagents-environment/promp
 import { parentPromptFor, initialGoalFor } from '../test-support/subagents/communication-fixture-prompts.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
 import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, BOT_MATERIAL_CONTINUATION_MESSAGE, BOT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory } from '../src/agent/bot-contract.js';
+import { runSwarmCli } from '../src/cli/swarm-cli.js';
 import { createBuiltinServiceRegistry } from '../src/sdk/builtin-registry.js';
 import { loadServiceBundle } from '../src/sdk/service-bundle.js';
+import { buildFlatAutonomousDiscoveryMessage } from '../src/environments/flat/controller.js';
+import { renderStartupPrompt } from '../src/core/startup-prompt.js';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const outputDir = 'docs/architecture/prompts';
@@ -24,9 +27,11 @@ const sourcePaths = [
   'src/agent/bot-contract.ts',
   'src/agent/capability-profile.ts',
   'src/agent/services-bridge.ts',
-  'src/core/index.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
+  'src/cli/swarm-cli.ts', 'src/cli/service-command.ts',
+  'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
   'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts',
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',
+  'benchmarks/putnambench-flat/run.ts',
   'benchmarks/programbench-pastel/subagents-example.ts',
   'examples/subagents-environment/main.ts', 'examples/subagents-environment/controller.ts',
   'examples/subagents-environment/prompts.ts', 'examples/subagents-environment/collaboration-service.ts',
@@ -89,7 +94,7 @@ let turnsDoc = header('Complete flat continuation messages', 'The flat controlle
 turnsDoc += block('Flat bound continuation', BOT_CONTINUATION_MESSAGE);
 turnsDoc += block('Soft closeout continuation', `${buildBotSoftCloseoutNotice('<EXECUTION_ID>', '2026-01-01T00:01:00.000Z', Date.parse('2026-01-01T00:00:30.000Z'))}\n${BOT_SOFT_CLOSEOUT_MESSAGE}`);
 output('03-runtime-turns.md', turnsDoc);
-let runtimeDoc = header('Complete Runtime notification messages', 'The Flat controller admits durable handoff warnings through its serialized followUp path using buildBotNotification from bot-contract.js. The retained Runtime no longer sends notification inputs. Material/dependency variants below are retained formatter output with no automatic send path in the current Flat host. Synthetic identifiers below illustrate the exact current body; composition alone does not establish delivery.');
+let runtimeDoc = header('Complete Runtime notification messages', 'The Flat controller composes durable handoff warnings and eligible Material/dependency notices using buildBotNotification from bot-contract.js. Serialized admission uses followUp by default. PutnamBench selects steer for Material notices so Pi can include them at a tool continuation. The retained Runtime no longer sends notification inputs. The controller records eligibility and input admission. Synthetic identifiers below illustrate the exact current body. Confirm model visibility from the actual provider input.');
 for (const notification_type of ['handoff_warning', 'material_available', 'dependency_satisfied']) runtimeDoc += block(notification_type, buildBotNotification({ notification_type, notification_id: '<NOTIFICATION_ID>', material_id: '<MATERIAL_ID>', source_task_id: '<SOURCE_TASK_ID>', source_execution_id: '<SOURCE_EXECUTION_ID>', recipient_task_id: '<TASK_ID>', payload: { execution_id: '<EXECUTION_ID>', deadline: '2099-01-01T00:00:00.000Z' } }, { at: Date.parse('2098-12-31T23:59:30.000Z') }));
 output('04-runtime-messages.md', runtimeDoc);
 
@@ -166,6 +171,9 @@ for (const path of ['examples/subagents-environment/controller.ts', 'test-suppor
   }
 }
 const scaleMASPath = 'src/environments/scalemas/index.ts';
+output('01-core-startup.md', header('Core startup system prompt',
+  'The backend passes this file through Pi --system-prompt. The current working directory is appended by Pi. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
+  + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([])));
 output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
   'All three peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
   + block('Peer Profile prompt', between(scaleMASPath, "export const peerPrompt = '", "';\n"))
@@ -205,14 +213,40 @@ leadHelperDoc += block('Staged corrective input composition and send', between('
 output('08-lead-helper-environment.md', leadHelperDoc);
 const flatControllerPath = 'src/environments/flat/controller.ts';
 const flatEnvironmentPath = 'src/environments/flat/environment.ts';
+const putnamPath = 'benchmarks/putnambench-flat/run.ts';
+const discoveryFields = {
+  mission: { mission_id: '<MISSION_ID>', goal: '<MISSION_GOAL>', acceptance_conditions: '<MISSION_ACCEPTANCE>' },
+  bot: { bot_id: '<BOT_ID>', selection_deadline: '<SELECTION_DEADLINE>', hard_deadline: '<BOT_HARD_DEADLINE>' },
+  runDeadline: '<MISSION_DEADLINE>',
+};
+const autonomousDiscovery = buildFlatAutonomousDiscoveryMessage(discoveryFields);
+const putnamDiscovery = buildFlatAutonomousDiscoveryMessage({
+  ...discoveryFields,
+  mission: { ...discoveryFields.mission, mission_id: 'mission:putnam_2025_b1', goal: between(putnamPath, 'const goal = `', '`;') },
+  discoveryContext: evaluate('`' + between(putnamPath, 'source: string) => `', '`;') + '`',
+    { path: 'lean4/src/putnam_2025_b1.lean', source: '<FROZEN_ORIGINAL_LEAN_SOURCE>' }),
+  discoveryWorkflow: between(putnamPath, 'const collaboration = `', '`;'),
+});
 const sampleCloseout = { at: Date.parse('2026-01-01T00:00:30.000Z'), workspaceSaveAvailable: false };
 const warningDeadline = '2026-01-01T00:01:00.000Z';
+const flatCliHelp = await Promise.all(['create', 'link'].map(async command => {
+  let help = '';
+  const status = await runSwarmCli(['task', command, '--help'], { stdout: { write: (chunk: string) => { help += chunk; } } });
+  assert.equal(status, 0);
+  return block(`Offline swarm task ${command} help`, help.trimEnd(),
+    'The CLI returns this help to native Bash on request without contacting the Bridge or a Service.');
+}));
 output('08-flat-environment.md', header('Flat discovery and continuation prompts',
-  'After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The optional trusted snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.')
+  'After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The trusted Core capture or explicit snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.')
   + block('Default researcher Profile prompt', between(flatEnvironmentPath, "prompt='", "',\n"))
   + block('Profile suffix when live Workspace save is unavailable', between(flatEnvironmentPath, "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '", "';"),
-    'The host appends this suffix after two newlines to the default or host-supplied Profile prompt when it omits snapshotProject.')
+    'The host appends this suffix after two newlines to the default or host-supplied Profile prompt when it has neither a Core nor an injected live capture binding.')
   + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
+  + block('Autonomous discovery input', autonomousDiscovery,
+    'When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Bot after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.')
+  + block('PutnamBench first user input', putnamDiscovery,
+    'The original source and path come from the same locked fixture used to initialize the public Workspace. The controller adds the original source to each Bot’s first discovery input. Subsequent discovery inputs use the same Mission goal, current deadlines and collaboration guidance. The PutnamBench Profile supplies no Added System Prompt.')
+  + flatCliHelp.join('')
   + block('Default ordinary continuation with a snapshot binding', BOT_CONTINUATION_MESSAGE)
   + block('Default ordinary continuation without a snapshot binding', BOT_MATERIAL_CONTINUATION_MESSAGE,
     'The host can override controller.continuationPrompt in either configuration. During soft closeout the controller selects the built-in text for the registered Workspace capabilities.')

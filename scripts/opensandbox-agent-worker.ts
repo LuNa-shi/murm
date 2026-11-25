@@ -397,9 +397,9 @@ function withBotPaused<T>(operation: (paused: number[]) => T | Promise<T>) {
       return { ...result, paused_process_count: paused.size };
     } finally {
       if (project.closing) await stopBot();
-      else if (project.installPending || snapshotHolds.size) {
+      else if ((project.installPending || coreWorkDir?.installPending) || snapshotHolds.size) {
         for (const pid of paused) heldWriters.add(pid);
-        if (project.installPending) installHoldTimer ??= setTimeout(() => { void stopBot().catch(() => undefined); }, 30_000);
+        if (project.installPending || coreWorkDir?.installPending) installHoldTimer ??= setTimeout(() => { void stopBot().catch(() => undefined); }, 30_000);
       } else {
         clearTimeout(installHoldTimer ?? undefined); installHoldTimer = null;
         for (const pid of new Set([...paused, ...heldWriters])) {
@@ -441,10 +441,10 @@ function stopBot() {
 function controlCoreFiles(action: any, input: any) {
   requireOpenWorkDir();
   if (!coreWorkDir || !child?.pid) throw Object.assign(new Error('Core file control requires a live Core Bot'), { code: 'NOT_ALLOWED' });
-  return withBotPaused(async () => {
-    try { return await coreWorkDir[action](input); }
+  return withBotPaused(async (pids: number[]) => {
+    try { return await coreWorkDir[action](input, pids); }
     catch (error: any) {
-      if (action !== 'snapshot' && error.code === 'OPERATION_UNKNOWN') project.beginClose();
+      if (action !== 'snapshot' && ['OPERATION_UNKNOWN', 'WORKSPACE_RECONCILIATION_REQUIRED'].includes(error.code)) project.beginClose();
       throw error;
     }
   });
@@ -481,6 +481,10 @@ const server = createServer(async (request: any, response: any) => {
         response.off('close', disconnected);
         response.end();
       }
+      return;
+    }
+    if (request.method === 'POST' && ['/core/files/install', '/core/files/confirm'].includes(url.pathname)) {
+      send(response, 200, { ok: true, result: await controlCoreFiles(url.pathname.split('/').at(-1), await body(request, 32 * 1024 ** 2)) });
       return;
     }
     if (request.method === 'POST' && url.pathname === '/core/files/prepare') {

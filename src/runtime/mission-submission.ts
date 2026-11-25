@@ -63,9 +63,10 @@ export class MissionSubmissionStore {
       throw new TypeError('Select either the configured machine checker or explicit manual Mission review');
     }
     if (manualReview && !database) throw new TypeError('Manual review requires a trusted shared owner-private database');
-    if (!Number.isSafeInteger(maxFinalChecks) || maxFinalChecks < 1 || maxFinalChecks > 10_000 ||
-        !Number.isSafeInteger(maxConcurrentFinalChecks) || maxConcurrentFinalChecks < 1 || maxConcurrentFinalChecks > maxFinalChecks) {
-      throw new TypeError('Mission final checker budget requires finite positive request and concurrent limits');
+    if ((maxFinalChecks !== null && (!Number.isSafeInteger(maxFinalChecks) || maxFinalChecks < 1 || maxFinalChecks > 10_000)) ||
+        !Number.isSafeInteger(maxConcurrentFinalChecks) || maxConcurrentFinalChecks < 1 ||
+        maxConcurrentFinalChecks > 10_000 || (maxFinalChecks !== null && maxConcurrentFinalChecks > maxFinalChecks)) {
+      throw new TypeError('Mission final checker budget requires a positive request limit or explicit null and a finite positive concurrent limit');
     }
     this.maxFinalChecks = maxFinalChecks;
     this.maxConcurrentFinalChecks = maxConcurrentFinalChecks;
@@ -89,6 +90,17 @@ export class MissionSubmissionStore {
     this.shuttingDown = false;
     this.shutdownPromise = null;
     this.db.exec(MISSION_SUBMISSION_SCHEMA_SQL);
+    // Existing databases fixed max_checks as NOT NULL. Rebuild only that policy
+    // table, preserving every Mission's original integer limit and admissions.
+    const columns = this.db.prepare('PRAGMA table_info(mission_final_check_policies)').all();
+    if (columns.some((column: any) => column.name === 'max_checks' && column.notnull)) {
+      this.#transaction(() => {
+        this.db.exec('ALTER TABLE mission_final_check_policies RENAME TO mission_final_check_policies_previous');
+        this.db.exec(MISSION_SUBMISSION_SCHEMA_SQL);
+        this.db.exec(`INSERT INTO mission_final_check_policies SELECT * FROM mission_final_check_policies_previous;
+          DROP TABLE mission_final_check_policies_previous;`);
+      });
+    }
   }
 
   #transaction(action: any) {
@@ -134,14 +146,14 @@ export class MissionSubmissionStore {
     const usage = this.db.prepare(`SELECT COUNT(*) AS admitted_checks,
       COUNT(*) FILTER (WHERE settled_at IS NULL) AS active_checks
       FROM mission_final_check_admissions WHERE mission_id = ?`).get(missionId);
-    return { max_checks: policy?.max_checks ?? this.maxFinalChecks, max_concurrent: policy?.max_concurrent ?? this.maxConcurrentFinalChecks, ...usage };
+    return { max_checks: policy ? policy.max_checks : this.maxFinalChecks, max_concurrent: policy?.max_concurrent ?? this.maxConcurrentFinalChecks, ...usage };
   }
 
   #assertFinalCheckAvailable(missionId: any) {
     if (this.manualReview) return;
     const budget = this.getFinalCheckBudget(missionId);
     if (budget.max_checks !== this.maxFinalChecks || budget.max_concurrent !== this.maxConcurrentFinalChecks) throw new SwarmEnvError(ERROR_CODES.SERVICE_NOT_READY, 'Mission final checker budget differs from the fixed policy');
-    if (budget.admitted_checks >= budget.max_checks) throw new SwarmEnvError('CHECKER_BUDGET_EXHAUSTED', 'Mission final checker budget is exhausted', budget);
+    if (budget.max_checks !== null && budget.admitted_checks >= budget.max_checks) throw new SwarmEnvError('CHECKER_BUDGET_EXHAUSTED', 'Mission final checker budget is exhausted', budget);
     if (budget.active_checks >= budget.max_concurrent) throw new SwarmEnvError('CHECKER_BUSY', 'Previous final checker has not confirmed resource cleanup', budget, { retryable: true });
   }
 

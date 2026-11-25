@@ -52,6 +52,15 @@ test('swarm CLI exposes offline help at every level', async () => {
   const stdout = { write: (value) => { output += value; } };
   assert.equal(await runSwarmCli(['--help'], { stdout }), 0);
   assert.match(output, /SWARMENV_<SERVICE>_SERVICE_URL/);
+  assert.match(output, /task create\|list\|view/);
+  output = '';
+  await runSwarmCli(['task', '--help'], { stdout });
+  assert.match(output, /create\|list\|view/);
+  output = '';
+  await runSwarmCli(['task', 'create', '--help'], { stdout });
+  assert.match(output, /high, medium, or low/);
+  assert.match(output, /--acceptance-conditions '\["[^"]+"\]'/);
+  assert.match(output, /task\.task_id/);
   output = '';
   await runSwarmCli(['task', 'view', '--help'], { stdout });
   assert.match(output, /Required: <task-id>/);

@@ -2,6 +2,7 @@ import { assertServiceCommitSettled } from '../sdk/service-commit-gate.js';
 import { createHash } from 'node:crypto';
 import { stableStringify } from '../protocol/envelope.js';
 import { ERROR_CODES, SwarmEnvError } from '../errors.js';
+import { assertNewExecutionWork } from '../task/execution-budget.js';
 import { publishWorkspace } from './workspace-publication.js';
 
 const hash = (value: any) => createHash('sha256').update(value).digest('hex');
@@ -99,7 +100,7 @@ export class ExecutionWorkspace {
 
   async #capture(execution: any, identity: any) {
     this.guard(identity);
-    const snapshot = await this.sandbox.snapshotBotProject({ executionId: execution.execution_id });
+    const snapshot = await this.sandbox.snapshotBotProject({ executionId: execution.execution_id, requestId: `flat:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}` });
     this.guard(identity);
     return this.#decodeSnapshot(snapshot, execution);
   }
@@ -131,8 +132,8 @@ export class ExecutionWorkspace {
   }
 
   async dispatch(operation: any, input: any, identity: any) {
-    if (!['save', 'status', 'diff'].includes(operation)) throw invalid('Unknown Execution Workspace operation');
-    const allowed = operation === 'save' ? ['resolved', 'material_ids'] : [];
+    if (!['save', 'apply', 'status', 'diff'].includes(operation)) throw invalid('Unknown Execution Workspace operation');
+    const allowed = operation === 'save' ? ['resolved', 'material_ids'] : operation === 'apply' ? ['from'] : [];
     if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some((key: any) => !allowed.includes(key))) throw invalid('Workspace input cannot supply files, paths, lineage or identity');
     if (input.material_ids !== undefined && (!Array.isArray(input.material_ids) || input.material_ids.length > 20 ||
         new Set(input.material_ids).size !== input.material_ids.length ||
@@ -141,6 +142,9 @@ export class ExecutionWorkspace {
     }
     if (input.resolved !== undefined && typeof input.resolved !== 'boolean') throw invalid('resolved must be boolean');
     const execution = this.guard(identity, { receiptOnly: true });
+    if (operation === 'apply') {
+      if (typeof input.from !== 'string' || !/^\d+\.\d+$/.test(input.from)) throw invalid('Apply requires a fixed public revision');
+    }
     const state = this.#state(execution);
     const requestId = identity.requestId;
     if (typeof requestId !== 'string' || !requestId) throw invalid('Workspace operation requires a stable request ID');
@@ -154,7 +158,13 @@ export class ExecutionWorkspace {
       // A prior process can have committed Git before its SQL acknowledgement.
       // Reconcile captured operations before selecting the next saved parent.
       for (const pending of this.db.prepare("SELECT * FROM execution_workspace_requests WHERE execution_id = ? AND phase IN ('capturing', 'captured', 'installing', 'installed') ORDER BY created_at, request_id").all(execution.execution_id)) {
-        if (pending.phase === 'capturing') this.#fail(pending, new SwarmEnvError(ERROR_CODES.WORKSPACE_REQUEST_ABORTED, 'Snapshot owner ended before recording its immutable input; use a new request ID'));
+        if (pending.phase === 'capturing') {
+          if (this.sandbox.recoverSnapshot) {
+            if (pending.request_id === requestId) continue;
+            throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, 'An earlier snapshot awaits its original request ID', undefined, { retryable: true });
+          }
+          this.#fail(pending, new SwarmEnvError(ERROR_CODES.WORKSPACE_REQUEST_ABORTED, 'Snapshot owner ended before recording its immutable input; use a new request ID'));
+        }
         else {
           const source = JSON.parse(pending.captured_json).source;
           try {
@@ -172,17 +182,18 @@ export class ExecutionWorkspace {
       }
       const active = this.guard(identity);
       const current = this.#state(active);
+      if (operation === 'apply' && !original) assertNewExecutionWork(active);
       if (['status', 'diff'].includes(operation)) {
         const snapshot = await this.#capture(execution, identity);
         const view = this.#view(current, snapshot);
         return operation === 'diff' ? { ...view, changes: view.changed_paths.map((path: any) => ({ path, before: current.manifest[path] ?? null, after: snapshot.manifest[path] ?? null })) } : view;
       }
       const timestamp = new Date().toISOString();
-      this.db.prepare(`INSERT INTO execution_workspace_requests (execution_id, request_id, fingerprint, phase, created_at, updated_at) VALUES (?, ?, ?, 'capturing', ?, ?)`)
+      this.db.prepare(`INSERT OR IGNORE INTO execution_workspace_requests (execution_id, request_id, fingerprint, phase, created_at, updated_at) VALUES (?, ?, ?, 'capturing', ?, ?)`)
         .run(execution.execution_id, requestId, fingerprint, timestamp, timestamp);
       try {
         const snapshot = await this.#capture(execution, identity);
-        const captured: any = { kind: operation, workspace_id: current.workspace_id, base_revision: current.last_saved_revision ?? current.initial_revision, parents: current.parents,
+        let captured: any = { kind: operation, workspace_id: current.workspace_id, base_revision: current.last_saved_revision ?? current.initial_revision, parents: current.parents,
           state_version: current.version, manifest: snapshot.manifest, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]: any) => [path, bytes.toString('base64')])),
           source: { mission_id: this.tasks.getTask(execution.task_id).mission_id, task_id: execution.task_id, execution_id: execution.execution_id, bot_id: execution.owner_ref, fencing_version: execution.fencing_version },
           conflicts: current.conflicts };
@@ -192,7 +203,15 @@ export class ExecutionWorkspace {
           captured.source.material_uses = context.readWorkspaceMaterialUses({ missionId: captured.source.mission_id,
             taskId: execution.task_id, executionId: execution.execution_id, materialIds: input.material_ids });
         }
-        if (input.resolved) captured.conflicts = this.#resolveConflicts(current.conflicts, snapshot.files);
+        if (operation === 'apply') {
+          assertNewExecutionWork(active);
+          if (this.#view(current, snapshot).dirty) throw new SwarmEnvError(ERROR_CODES.WORKSPACE_BUSY, 'Save unsaved project changes before apply', { apply_blocker: 'dirty' });
+          const plan = await this.workspace.planApply({ workspaceId: current.workspace_id, baseRevision: captured.base_revision, fromRevision: input.from, requestId });
+          if (plan.expected_content_hash !== snapshot.content_hash) throw invalid('Apply base differs from the current saved project');
+          captured = { kind: 'apply', state_version: current.version, source: captured.source, ...plan,
+            snapshot_request_id: `flat:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}`,
+            files: Object.fromEntries(Object.entries(plan.files).map(([path, bytes]: any) => [path, Buffer.from(bytes).toString('base64')])) };
+        } else if (input.resolved) captured.conflicts = this.#resolveConflicts(current.conflicts, snapshot.files);
         this.db.exec('BEGIN IMMEDIATE');
         try {
           assertServiceCommitSettled(this.db);
@@ -206,6 +225,11 @@ export class ExecutionWorkspace {
         const row = this.#request(execution.execution_id, requestId);
         if (row.phase === 'capturing') {
           const known = [ERROR_CODES.WORKSPACE_BUSY, ERROR_CODES.INVALID_CONTRACT].includes(error.code);
+          const definitive = known || ['NOT_ALLOWED', 'FENCED', 'CONFLICT'].includes(error.code);
+          if (this.sandbox.recoverSnapshot && !definitive) {
+            this.onPending?.(execution.execution_id);
+            throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, 'Snapshot receipt is unknown; retry the original request ID', undefined, { retryable: true, cause: error });
+          }
           const outcome = new SwarmEnvError(known ? error.code : ERROR_CODES.WORKSPACE_REQUEST_ABORTED,
             known ? `${error.message}; use a new request ID` : 'Snapshot did not complete; use a new request ID', { ...error.details, cause_code: error.code ?? 'SNAPSHOT_ERROR' });
           this.#fail(row, outcome);
@@ -235,14 +259,13 @@ export class ExecutionWorkspace {
     return [];
   }
 
-  // Recovery only: no dispatch can create an apply capture. Retain original durable
-  // plans and worker acknowledgement ownership until completion or confirmed stop.
+  // Persist lineage before confirming the Worker acknowledgement and resuming writers.
   async #completeApply(row: any, identity: any, { closedConfirmed = false }: any = {}) {
     const captured: any = JSON.parse(row.captured_json);
     const execution = this.guard(identity, { receiptOnly: true });
     if (captured.source.execution_id !== execution.execution_id || captured.source.bot_id !== execution.owner_ref || captured.source.fencing_version !== identity.fencingVersion) throw invalid('Apply capture identity differs from its E');
     const workerId = `apply:${hash(stableStringify([row.execution_id, row.request_id]))}`;
-    const workerInput = { executionId: row.execution_id, request_id: workerId, expected_content_hash: captured.expected_content_hash, content_hash: captured.content_hash, files: captured.files };
+    const workerInput = { executionId: row.execution_id, request_id: workerId, snapshot_request_id: captured.snapshot_request_id, expected_content_hash: captured.expected_content_hash, content_hash: captured.content_hash, files: captured.files };
     const expectedFingerprint = hash(stableStringify({ expected_content_hash: captured.expected_content_hash, content_hash: captured.content_hash }));
     const verify = (receipt: any) => {
       if (!receipt || receipt.execution_id !== row.execution_id || receipt.binding_version !== identity.fencingVersion || receipt.request_id !== workerId) throw invalid('Worker install receipt does not match its request');
@@ -319,7 +342,7 @@ export class ExecutionWorkspace {
       return JSON.parse(row.result_json);
     } catch (error: any) {
       if (this.#request(row.execution_id, row.request_id).phase === 'failed') throw error;
-      this.onPending?.(row.execution_id);
+      this.onPending?.(row.execution_id, 'apply');
       throw new SwarmEnvError(ERROR_CODES.WORKSPACE_RESULT_UNKNOWN, 'Apply result is pending reconciliation; retry the original request ID', undefined, { retryable: true, cause: error });
     }
   }

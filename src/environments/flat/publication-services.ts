@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+import { decodeFileSeed } from '../../../scripts/core-file-seed.js';
 import { flatCoordinationPermissions } from './coordination-permissions.js';
 import { createWorkspaceMergeService } from './workspace-merge.js';
 import { MISSION_WORKSPACE_READS } from './public-workspace-reads.js';
@@ -15,22 +17,36 @@ const publicationRequestId = (runtimeId: any, botId: any, requestId: any) =>
 const text: any = { type:'string', minLength:1, maxLength:4000 };
 const ids: any = { type:'array', items:text, maxItems:100, uniqueItems:true };
 const object = (properties: any, required: any=[]) => ({type:'object', properties, required, additionalProperties:false});
-const capability = (name: any, operation: any, input_schema: any, side_effect: any='write') => ({name, operation, input_schema,
-  output_schema:{type:'object'}, side_effect, idempotent:true, description:`Flat ${name} with trusted Task provenance`,
+const capability = (name: string, operation: string, input_schema: any, description: string, side_effect='write') => ({name, operation, input_schema,
+  output_schema:{type:'object'}, side_effect, idempotent:true, description,
   help:{when:'Use the current Bot Task binding; reuse the same request ID after an unknown response'}, errors:[]});
 // Preserve the published domain input contracts while Core supplies trusted identity.
-const catalogSchemas: any = new Map(listTools().map((tool: any) => [tool.operation, tool.parameters]));
-const catalogCapability = (name: any, operation: any, sideEffect: any='write') => capability(name, operation, catalogSchemas.get(operation), sideEffect);
-const liveWorkspaceOperations: any = new Set(['workspace_save','workspace_status','workspace_current_diff']);
+type CatalogTool = { operation: string; parameters: unknown; description: string };
+const catalog = new Map<string, CatalogTool>(listTools().map((tool: CatalogTool) => [tool.operation, tool]));
+const catalogCapability = (name: string, operation: string, sideEffect='write') => {
+  const tool = catalog.get(operation)!;
+  return capability(name, operation, tool.parameters, tool.description, sideEffect);
+};
+const purposes: Record<string, string> = {
+  workspace: 'Read the public tree and save, apply, or merge fixed project revisions.',
+  context: 'Find peer results, publish reusable Materials, and record what you used.',
+  judge: 'Check saved Lean source and retrieve diagnostic results.',
+  task: 'Link Materials and report the outcome of owned work.',
+};
+const coreFileSeed = (files: Record<string, string>) =>
+  Object.fromEntries(Object.entries(files).map(([path, data]) => [path, { encoding: 'base64', data }]));
+const liveWorkspaceOperations: any = new Set(['workspace_save','workspace_apply','workspace_status','workspace_current_diff']);
 const definitions: any = {
   workspace:[
     catalogCapability('merge','workspace_merge'),
-    capability('save','workspace_save',object({resolved:{type:'boolean'},material_ids:ids})),
-    capability('status','workspace_status',object({}),'read'),
-    capability('diff','workspace_current_diff',object({}),'read'),
-    capability('view','workspace_public_view',object({}),'read'),
-    capability('read','workspace_public_read',object({path:text,revision:text,max_bytes:{type:'integer',minimum:1,maximum:1000000}},['path']),'read'),
-    capability('files','workspace_public_files',object({path:text,revision:text,limit:{type:'integer',minimum:1,maximum:100},cursor:text}),'read'),
+    capability('save','workspace_save',object({resolved:{type:'boolean'},material_ids:ids}),'Save the actual files in your active Execution as a fixed public revision.'),
+    capability('apply','workspace_apply',object({from:text},['from']),'Apply a fixed public revision to your current Execution and Session. Save your local changes first.'),
+    capability('status','workspace_status',object({}),'Inspect the current Execution project, saved revision, changes, and conflicts.','read'),
+    capability('diff','workspace_current_diff',object({}),'Compare the current Execution project against its last save.','read'),
+    capability('public-diff','workspace_public_diff',object({from:text,to:text,path:text,limit:{type:'integer',minimum:1,maximum:100},cursor:text},['from','to']),'Compare two fixed public project revisions.','read'),
+    capability('view','workspace_public_view',object({}),'Read the current public Workspace and main revision.','read'),
+    capability('read','workspace_public_read',object({path:text,revision:text,max_bytes:{type:'integer',minimum:1,maximum:1000000}},['path']),'Read a file from a fixed public revision.','read'),
+    capability('files','workspace_public_files',object({path:text,revision:text,limit:{type:'integer',minimum:1,maximum:100},cursor:text}),'List files in the public Workspace at a given revision.','read'),
   ],
   context:[
     catalogCapability('publish','context_publish_material'),
@@ -39,7 +55,7 @@ const definitions: any = {
     catalogCapability('unsupersede','material_unsupersede'),
     catalogCapability('view','context_get_material','read'),
     catalogCapability('list','read_materials','read'),
-    capability('consume','consume_materials',object({material_ids:ids,action:{enum:['route','task','workspace','integration']},impact:text},['material_ids','action','impact'])),
+    capability('consume','consume_materials',object({material_ids:ids,action:{enum:['route','task','workspace','integration']},impact:text},['material_ids','action','impact']),'Record how published Material changed your current work.'),
   ],
   judge:[
     catalogCapability('check','workspace_check'),
@@ -54,11 +70,14 @@ const definitions: any = {
 
 /** Host composition only. Task policy and durable publication remain outside Core. */
 export function createFlatPublicationServices({ runtime, taskService, contextService, missionId, missionWorkspace, workspaceId,
-  profile='researcher', deadline, coordinationPermissions=[], onFinish=()=>{}, snapshotProject, judgeService = null, workspaceProjectCheck = false, workspaceMergeChecker = null }: any) {
+  profile='researcher', deadline, coordinationPermissions=[], onFinish=()=>{}, snapshotProject, workspaceCapture, judgeService = null, workspaceProjectCheck = false, workspaceMergeChecker = null }: any) {
   if (!runtime || !taskService || !contextService || !missionWorkspace || typeof missionId!=='string' || !missionId ||
       typeof workspaceId!=='string' || !workspaceId || typeof deadline!=='function' || typeof onFinish!=='function') fail('INVALID_CONTRACT','Flat publication requires trusted Runtime, stores and finite Mission budget');
   if (typeof workspaceProjectCheck!=='boolean') fail('INVALID_CONTRACT','Flat Judge project mode must be boolean');
   if (judgeService && (judgeService.taskService !== taskService || typeof judgeService.dispatch !== 'function')) fail('INVALID_CONTRACT','Flat Judge and Task authority must match');
+  if (workspaceCapture !== undefined && workspaceCapture !== 'core') fail('INVALID_CONTRACT', 'Flat workspaceCapture must select core');
+  if (workspaceCapture === 'core' && snapshotProject !== undefined) fail('INVALID_CONTRACT', 'Choose one trusted Flat capture binding');
+  const captureAvailable = workspaceCapture === 'core' || typeof snapshotProject === 'function';
   const permissions=flatCoordinationPermissions(coordinationPermissions);
   const getRuntime=()=>typeof runtime==='function'?runtime():runtime;
   const requests: any=new Map();
@@ -91,13 +110,84 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     }
     return {core,bot,execution};
   }
+  function installReceipt(input: any, execution: any, receipt: any) {
+    if (receipt) {
+      const files = coreFileSeed(input.files);
+      if (receipt.botId !== execution.owner_ref || receipt.requestId !== input.request_id ||
+          receipt.digest !== decodeFileSeed(files).digest || !['installed', 'committed'].includes(receipt.phase)) {
+        fail('INVALID_CONTRACT', 'Core install receipt differs from the fixed apply tree');
+      }
+    }
+    return { request_id: input.request_id, execution_id: execution.execution_id, binding_version: execution.fencing_version,
+      phase: receipt?.phase ?? 'not_found', content_hash: input.content_hash,
+      fingerprint: inputFingerprint({ expected_content_hash: input.expected_content_hash, content_hash: input.content_hash }) };
+  }
+  const applyRecovery = new Map<string, { attempts: number; timer?: ReturnType<typeof setTimeout> }>();
+  function recoverApply(executionId: string, kind?: string) {
+    if (kind !== 'apply' || closing || applyRecovery.has(executionId)) return;
+    const record = { attempts: 0, timer: undefined as ReturnType<typeof setTimeout> | undefined };
+    applyRecovery.set(executionId, record);
+    const retry = async () => {
+      if (closing) { applyRecovery.delete(executionId); return; }
+      try {
+        await workspace.reconcile(executionId);
+        applyRecovery.delete(executionId);
+      } catch {
+        record.attempts++;
+        if (record.attempts < 11 && Date.now() + 1000 < deadline() && !closing) {
+          record.timer = setTimeout(() => void retry(), 1000);
+          record.timer.unref();
+          return;
+        }
+        try {
+          const execution = taskService.getExecution(executionId);
+          taskService.requestBotStop(execution.owner_ref, 'workspace-apply-reconciliation-failed', { terminalState: 'FAILED' });
+          const stopped = await getRuntime().stop(execution.owner_ref, { timeoutMs: 30000 });
+          if (stopped.execution === 'stopped') await workspace.reconcile(executionId, { closedConfirmed: true });
+        } catch { /* Controller close retains unconfirmed ownership and cleanup. */ }
+        applyRecovery.delete(executionId);
+      }
+    };
+    record.timer = setTimeout(() => void retry(), 1000);
+    record.timer.unref();
+  }
   const workspace: any = new ExecutionWorkspace({taskService,contextService,workspace:missionWorkspace,
-    sandboxManager:{async snapshotBotProject({executionId}: any) {
-      if(typeof snapshotProject!=='function') fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
+    sandboxManager:{
+      async queryBotProjectInstall(input: any) {
+        const execution = taskService.getExecution(input.executionId);
+        const receipt = await getRuntime().files.installStatus(execution.owner_ref, { requestId: input.request_id });
+        return installReceipt(input, execution, receipt);
+      },
+      async installBotProject(input: any) {
+        const execution = taskService.getExecution(input.executionId);
+        const core = getRuntime();
+        const expected = await core.files.snapshot(execution.owner_ref, { requestId: input.snapshot_request_id, paths: ['.'], includeGit: false, maxBytes: 16 * 1024 * 1024 });
+        const files = coreFileSeed(input.files);
+        const receipt = await core.files.install(execution.owner_ref, { requestId: input.request_id, expected, files });
+        return installReceipt(input, execution, receipt);
+      },
+      async confirmBotProjectInstall(input: any) {
+        const execution = taskService.getExecution(input.executionId);
+        return installReceipt(input, execution, await getRuntime().files.confirm(execution.owner_ref, { requestId: input.request_id }));
+      },
+      recoverSnapshot: workspaceCapture === 'core', async snapshotBotProject({executionId,requestId}: any) {
       const execution=taskService.getExecution(executionId);
-      return snapshotProject({botId:execution.owner_ref,executionId,fencingVersion:execution.fencing_version});
+      if (workspaceCapture === 'core') {
+        const core = getRuntime();
+        if (typeof core?.files?.snapshot !== 'function') fail('SERVICE_NOT_READY', 'Core file snapshot capability is unavailable');
+        const snapshot = await core.files.snapshot(execution.owner_ref, { requestId, paths: ['.'], includeGit: false, maxBytes: 16 * 1024 * 1024 });
+        if (snapshot.botId !== execution.owner_ref || snapshot.requestId !== requestId || !Number.isSafeInteger(snapshot.version) || snapshot.version < 1) fail('INVALID_CONTRACT', 'Core snapshot receipt has a different identity');
+        const decoded = decodeFileSeed(snapshot.files);
+        if (decoded.digest !== snapshot.digest) fail('INVALID_CONTRACT', 'Core snapshot bytes differ from its digest');
+        const digest = (bytes: any) => createHash('sha256').update(bytes).digest('hex');
+        const files = Object.fromEntries(decoded.entries.map(({ path, bytes }) => [path, bytes.toString('base64')]));
+        const manifest = Object.fromEntries(decoded.entries.map(({ path, bytes }) => [path, { bytes: bytes.length, content_hash: digest(bytes) }]));
+        return { execution_id: executionId, binding_version: execution.fencing_version, state: 'ACTIVE', files, manifest, content_hash: digest(stableStringify(manifest)) };
+      }
+      if(typeof snapshotProject!=='function') fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
+      return snapshotProject({botId:execution.owner_ref,executionId,fencingVersion:execution.fencing_version,requestId});
     }},
-    guard: assertWorkspace,
+    guard: assertWorkspace, onPending: recoverApply,
   });
   function assertWorkspace(identity: any,{receiptOnly=false}: any={}) {
     const execution=taskService.getExecution(identity.executionId), bot=taskService.getBot(identity.actorRef);
@@ -119,7 +209,7 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
   taskService.setWorkspaceDeliveryReader(({missionId:requestedMission,workspaceId:requestedWorkspace,revision}: any)=>
     requestedMission===missionId && requestedWorkspace===workspaceId ? missionWorkspace.readDeliveryRevision({missionId,workspaceId,revision}):null);
   async function workspaceOperation(operation: any,input: any,current: any,id: any,signal: any,assertAuthorized: any) {
-    if (['workspace_public_view', 'workspace_public_read', 'workspace_public_files'].includes(operation)) {
+    if (['workspace_public_view', 'workspace_public_read', 'workspace_public_files', 'workspace_public_diff'].includes(operation)) {
       const metadata = await missionWorkspace.get({ workspaceId, signal });
       if (metadata.mission_id !== missionId) fail('NOT_ALLOWED', 'Flat Workspace belongs to another Mission');
       if (operation === 'workspace_public_view') return metadata;
@@ -131,9 +221,9 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
       return merge.merge(input,{actorRef:current.bot.bot_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,
         fencingVersion:current.execution.fencing_version,requestId:id,signal,assertAuthorized});
     }
-    if(typeof snapshotProject!=='function') fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
-    return workspace.dispatch(({workspace_save:'save',workspace_status:'status',workspace_current_diff:'diff'} as Record<string, string>)[operation],input,
-      {actorRef:current.bot.bot_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,fencingVersion:current.execution.fencing_version,requestId:id,signal});
+    if(!captureAvailable) fail('SERVICE_NOT_READY','No supported trusted live Core snapshot binding is configured');
+    return workspace.dispatch(({workspace_save:'save',workspace_apply:'apply',workspace_status:'status',workspace_current_diff:'diff'} as Record<string, string>)[operation],input,
+      {actorRef:current.bot.bot_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,fencingVersion:current.execution.fencing_version,requestId:id,signal,assertAuthorized});
   }
   async function judgeOperation(operation: any,input: any,current: any,id: any,caller: any,signal: any,assertAuthorized: any,call: any) {
     const execution=current.execution;
@@ -262,12 +352,23 @@ export function createFlatPublicationServices({ runtime, taskService, contextSer
     if(operation==='workspace_merge') reauthorize(request);
     return structuredClone(result);
   }
+  const checkerBudgets = {
+    // Judge can wait for admission and run both a preflight and a source check.
+    workspace_check: (judgeService?.missionBudget?.queueWaitMs ?? 0) + 2 * (judgeService?.processTimeoutMs ?? 0),
+    workspace_merge: workspaceMergeChecker?.timeoutMs ?? 0,
+  };
   const registrations=Object.entries((definitions as Record<string, any>)).filter(([id]: any)=>id!=='judge'||judgeService).map(([id,capabilities]: any)=>({
-    manifest:{id,title:`Flat ${id}`,purpose:'Publish and read durable flat results with actual Task ownership',provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(({operation}: any)=>
-      (operation!=='workspace_merge'||merge) && (!liveWorkspaceOperations.has(operation)||typeof snapshotProject==='function'))},
+    manifest:{id,title:`Flat ${id}`,purpose:purposes[id],provider_version:'1',contract_version:'2',endpoint:{transport:'in-process'},capabilities:capabilities.filter(({operation}: any)=>
+      (operation!=='workspace_merge'||merge) && (operation!=='workspace_apply'||workspaceCapture==='core') && (!liveWorkspaceOperations.has(operation)||captureAvailable))
+      .map((cap: any) => {
+        const budget = checkerBudgets[cap.operation as keyof typeof checkerBudgets];
+        return Number.isFinite(budget) && budget > 0
+          ? { ...cap, timeout_ms: Math.min(86_400_000, Math.max(30_000, Math.ceil(budget) + 5_000)) }
+          : cap;
+      })},
     adapter:{invoke:(request: any)=>invoke(id,request)},
   }));
-  return {registrations, reconcileWorkspace:(executionId: any,options: any)=>workspace.reconcile(executionId,options), close(){closing=true;if(merge) void merge.close({timeoutMs:0});return judgeStatus();}, judgeStatus, mergeStatus,
+  return {registrations, reconcileWorkspace:(executionId: any,options: any)=>workspace.reconcile(executionId,options), close(){closing=true;for(const row of applyRecovery.values()) clearTimeout(row.timer);applyRecovery.clear();if(merge) void merge.close({timeoutMs:0});return judgeStatus();}, judgeStatus, mergeStatus,
     async waitForMerges({timeoutMs}: any={}) {
       if(!Number.isFinite(timeoutMs)||timeoutMs<=0) fail('INVALID_CONTRACT','Merge close wait must be positive and finite');
       let timer: any;

@@ -9,7 +9,8 @@ export interface Backend {
 }
 
 export interface Profile {
-  prompt: string;
+  /** Optional Environment instructions added to the standard startup prompt. */
+  prompt?: string;
   model: string;
   image: string;
   writable: boolean;
@@ -76,6 +77,14 @@ export interface FileSnapshot {
   readonly version: number;
   readonly digest: string;
   readonly files: FileSeed;
+}
+
+export interface FileInstall {
+  readonly botId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly digest: string;
+  readonly phase: 'installed' | 'committed';
 }
 
 export interface GrantReceipt {
@@ -222,6 +231,9 @@ export interface Runtime {
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {
     snapshot(botId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>;
+    installStatus(botId: string, options: { requestId: string }): Promise<FileInstall | null>;
+    install(botId: string, options: { requestId: string; expected: FileSnapshot; files: FileSeed }): Promise<FileInstall>;
+    confirm(botId: string, options: { requestId: string }): Promise<FileInstall>;
     prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
     grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
   };

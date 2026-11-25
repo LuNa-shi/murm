@@ -62,7 +62,7 @@ The benchmark runs its TypeScript source directly with Node. Build SwarmEnv firs
 
 ```sh
 ./node_modules/.bin/tsc --project benchmarks/programbench-pastel/tsconfig.json
-node --test benchmarks/programbench-pastel/run-window.test.ts
+node --test benchmarks/shared/run-window.test.ts
 for mode in subagents flat agensh; do
   node benchmarks/programbench-pastel/pastel-open-local.ts "$mode" "$worker" 30000 || exit
 done

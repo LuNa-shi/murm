@@ -1,6 +1,7 @@
 import type { BotEvent, ErrorInfo, FileSnapshot, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from './types.js';
 import type { SessionFork } from '../../scripts/core-session-fork.js';
 import type { createCoreBridge } from './bridge.js';
+import { renderStartupPrompt } from './startup-prompt.js';
 import type { createCoreModelAccess } from './model-access.js';
 
 export type BackendEvent = {
@@ -78,7 +79,7 @@ interface WorkerReply {
 interface SandboxManager {
   agentRpc(botId: string, input: Record<string, unknown>, options: { timeoutMs: number; since?: number }): Promise<WorkerReply>;
   coreFileOperation(botId: string, action: 'snapshot', input: SnapshotOptions): Promise<Omit<FileSnapshot, 'botId'>>;
-  coreFileOperation(botId: string, action: 'prepare' | 'grant', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
+  coreFileOperation(botId: string, action: 'prepare' | 'grant' | 'install' | 'confirm', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
   coreFileOperation(botId: string, action: 'pause' | 'resume', input: { requestId: string }): Promise<{ paused: boolean; requestId: string }>;
   coreSessionSnapshot(botId: string): Promise<SessionFork>;
   collectCoreSession(botId: string): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
@@ -184,6 +185,10 @@ export function createPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig): 
   if (outputPolicy !== undefined && outputPolicy !== null && (!Number.isSafeInteger(outputPolicy) || outputPolicy < 16)) {
     throw invalid('modelGateway.maxOutputTokens must be null or a safe integer of at least 16');
   }
+  const selectionReasoningEffort = config.modelGateway.selectionReasoningEffort;
+  if (selectionReasoningEffort !== undefined && selectionReasoningEffort !== 'low') {
+    throw invalid('modelGateway.selectionReasoningEffort must be low when configured');
+  }
   if (!Number.isSafeInteger(config.isolation.disk?.bytes) || !Number.isSafeInteger(config.isolation.disk?.inodes)) throw invalid('Explicit disk byte and inode limits are required');
   try { new DockerBotDisk(config.isolation.disk); } catch (caught) {
     const error = caught as Error & { code: string }; throw invalid(error.message); }
@@ -268,8 +273,8 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
   }
 
   function fileOperation(botId: string, action: 'snapshot', input: SnapshotOptions): Promise<Omit<FileSnapshot, 'botId'>>;
-  function fileOperation(botId: string, action: 'prepare' | 'grant', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
-  function fileOperation(botId: string, action: 'snapshot' | 'prepare' | 'grant', input: unknown) {
+  function fileOperation(botId: string, action: 'prepare' | 'grant' | 'install' | 'confirm', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
+  function fileOperation(botId: string, action: 'snapshot' | 'prepare' | 'grant' | 'install' | 'confirm', input: unknown) {
     const bot = bots.get(botId);
     if (!bot || bot.stopping || bot.exited || bot.historyLost || closing) {
       throw Object.assign(new Error('Core Bot is unavailable for file control'), { code: 'NOT_ALLOWED' });
@@ -332,8 +337,9 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
         args: ['--mode', 'rpc', '--session-dir', '/workspace/runtime/pi-session',
           ...(forkSession ? ['--session', '/workspace/runtime/pi-session/fork.jsonl'] : ['--session-id', randomUUID()]),
           '--tools', 'read,write,edit,bash', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files',
-          '--append-system-prompt', '/workspace/runtime/profile-prompt.txt', '--provider', model.provider, '--model', model.model],
-        systemPrompt: profile.prompt, systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
+          '--system-prompt', '/workspace/runtime/profile-prompt.txt', '--provider', model.provider, '--model', model.model],
+        systemPrompt: renderStartupPrompt(bridge.visibleServices(profile.services), profile.prompt),
+        systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
         files: options.files, forkSession, workspace,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
@@ -374,6 +380,11 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       workspace.captureWork = work.catch(() => undefined);
       return work;
     },
+    async installFiles(botId: string, input: any) {
+      if (bots.get(botId)?.workspace) throw Object.assign(new Error('Live install requires a private workDir'), { code: 'NOT_ALLOWED' });
+      return await fileOperation(botId, 'install', input) as any;
+    },
+    async confirmFiles(botId: string, input: any) { return await fileOperation(botId, 'confirm', input) as any; },
     prepareFiles(botId: string, input: { version: number; files: NonNullable<SpawnOptions['files']> }) { return fileOperation(botId, 'prepare', input); },
     grantFiles(botId: string, input: { version: number; digest: string }) { return fileOperation(botId, 'grant', input); },
     async send(botId: string, input: string, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle }: { mode: InputMode; inputId: string; steeringMode?: SendOptions['steeringMode']; executionEpoch: number; wakeIfIdle: boolean }): Promise<BackendInputReceipt> {

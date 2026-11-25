@@ -133,7 +133,7 @@ export async function inspectFrozenInputs(worker) {
   ]);
   const [localWorker, runnerFiles, catalog, evaluatorPins, agenshImages, hostDistributionSha256] = await Promise.all([
     exec('docker', ['image', 'inspect', worker, '--format', '{{json .}}'], { timeout: 10_000 }),
-    Promise.all(runnerNames.map(async name => [name, sha256(await readFile(join(directory, name)))])),
+    Promise.all(runnerNames.map(async name => [name, sha256(await readFile(join(directory, name === 'run-window.ts' ? '../shared/run-window.ts' : name)))])),
     assertShippedModelPair({ provider, model }),
     inspectEvaluatorInputs(),
     resolveAgenshImages(),

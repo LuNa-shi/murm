@@ -34,9 +34,12 @@ test('Flat can finish with a public Material when no live Workspace capture is c
       const bridge=new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname='127.0.0.1'; env.SWARMENV_BRIDGE_URL=bridge.origin;
       const cli=async (...args)=>JSON.parse((await promisify(execFile)(process.execPath,['dist/scripts/swarm.js',...args],{env,timeout:5000})).stdout);
       const manifest=await cli('service','view','workspace');
-      assert.deepEqual(manifest.capabilities.map(row=>row.name),['view','read','files']);
+      assert.deepEqual(manifest.capabilities.map(row=>row.name),['public-diff','view','read','files']);
       const workspace=await cli('workspace','view');
       assert.equal(workspace.workspace_id,stores.workspaceId);
+      const diff=await cli('workspace','public-diff','--from',workspace.main_revision,'--to','main','--request-id','public-diff');
+      assert.equal(diff.from.revision,workspace.main_revision);
+      assert.equal(diff.to.revision,workspace.main_revision);
       await cli('task','take',stores.task.task_id,'--request-id','take');
       await assert.rejects(cli('workspace','save','--request-id','unavailable'),error=>JSON.parse(error.stderr).code==='NOT_ALLOWED');
       const material=await cli('material','publish','--content','Fixed public observation','--request-id','publish');
@@ -625,4 +628,37 @@ test('four current CLI discovery Bots take exclusive work and reuse only a physi
   const saved = JSON.parse(await readFile(join(root, report.runtimeId, 'runtime.json'), 'utf8'));
   assert.equal(saved.status, 'closed');
   assert.deepEqual(saved.bots, report.cleanup.bots);
+});
+
+test('the ordinary Flat host exposes Mathlib search only to its current researcher Execution', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'flat-mathlib-'));
+  const stores = await createFlatTaskStores(root);
+  t.after(async () => { stores.close(); await rm(root, { recursive: true, force: true }); });
+  transport.reset(); controls.credentials.clear(); controls.stopError = null; controls.destroyError = null;
+  const accept = id => { transport.confirm(id, 'started'); transport.next = accept; };
+  transport.next = accept;
+  const searched = [];
+  const report = await runFlatEnvironment({
+    ...stores, taskService: stores.tasks, contextService: stores.context, missionWorkspace: stores.workspace,
+    workspaceManager: stores.manager, outputDir: root, deadlineAt: Date.now() + 10_000,
+    backend: {}, model: 'default', image: 'fixture', capacity: 1,
+    handoff: { handoffLeadMs: 500 },
+    mathlibSearch: { mathlibRevision: 'fixed-library', leanVersion: '4.33.1', readiness: async () => true,
+      async search(input) { searched.push(input.query); return { results: [{ name: 'Nat.add_comm' }] }; } },
+    async drive(controller) {
+      const [{ botId }] = controller.snapshot().bots;
+      const credentials = controls.credentials.get(botId);
+      const env = { ...process.env, ...credentials.environment, ...credentials.secretEnvironment };
+      const bridge = new URL(env.SWARMENV_BRIDGE_URL); bridge.hostname = '127.0.0.1'; env.SWARMENV_BRIDGE_URL = bridge.origin;
+      const cli = async (...args) => JSON.parse((await promisify(execFile)(process.execPath,
+        ['dist/scripts/swarm.js', ...args], { env, timeout: 5000 })).stdout);
+      await assert.rejects(cli('mathlib-search', 'search', '--query', 'Nat.add_comm'), error => JSON.parse(error.stderr).code === 'NOT_ALLOWED');
+      await cli('task', 'take', stores.task.task_id, '--request-id', 'take');
+      assert.deepEqual((await cli('mathlib-search', 'search', '--query', 'Nat.add_comm')).results, [{ name: 'Nat.add_comm' }]);
+      controller.halt('controlled-host-stop');
+    },
+  });
+  assert.equal(report.businessFailure?.code, 'FLAT_BUSINESS_FAILED', JSON.stringify(report.businessFailure));
+  assert.deepEqual(searched, ['Nat.add_comm']);
+  assert.equal(report.cleanup.cleanup, 'complete');
 });

@@ -153,7 +153,61 @@
       "role": "Pastel slice through the ordinary Subagents entry, in-flight user input and independent offline checker"
     },
     {
-      "path": "benchmarks/programbench-pastel/run-window.ts",
+      "path": "benchmarks/putnambench-flat/case.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Locked PutnamBench case identity and exact upstream input validation"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/case.test.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Original PutnamBench statement replacement rejection regression"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/lean.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Locked three-layer Putnam Lean deployment and matching Mathlib search"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/main.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Opt-in PutnamBench preflight and registered hosted entry"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/06-observability-experiments.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Putnam Flat stores, input window, candidate and receipt composition"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/tsconfig.json",
+      "category": "development benchmarks",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Opt-in TypeScript check for the Putnam benchmark driver"
+    },
+    {
+      "path": "benchmarks/shared/run-window.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -161,7 +215,7 @@
       "role": "Monotonic Responses admission, active stream cancellation, and deadline-bound checkpoint persistence"
     },
     {
-      "path": "benchmarks/programbench-pastel/run-window.test.ts",
+      "path": "benchmarks/shared/run-window.test.ts",
       "category": "development benchmarks",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -547,6 +601,15 @@
       "role": "Authenticated per-Core tool endpoint, binding and lifecycle orchestration"
     },
     {
+      "path": "src/cli/service-command.ts",
+      "category": "service and Agent integration",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/08-prompts.md"
+      ],
+      "role": "Shared mapping between registered Service operations and model-visible CLI commands"
+    },
+    {
       "path": "src/cli/swarm-cli.ts",
       "category": "service and Agent integration",
       "chapters": [
@@ -820,6 +883,15 @@
         "docs/architecture/13-historical-resume.md"
       ],
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
+    },
+    {
+      "path": "src/environments/flat/mathlib-service.ts",
+      "category": "runtime implementation",
+      "chapters": [
+        "docs/architecture/04-services.md",
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Core-authorized same-version Mathlib search for the current Flat Execution"
     },
     {
       "path": "src/environments/flat/mission-service.ts",
@@ -1219,6 +1291,16 @@
         "docs/architecture/17-environment-reporting.md"
       ],
       "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
+    },
+    {
+      "path": "src/core/startup-prompt.ts",
+      "category": "programmable Core",
+      "chapters": [
+        "docs/architecture/08-prompts.md",
+        "docs/architecture/15-core-runtime.md",
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Core sandbox startup system prompt, authorized Service directory and optional Added System Prompt"
     },
     {
       "path": "src/core/bridge.ts",

@@ -3,7 +3,7 @@
   "sources": [
     {
       "path": "src/agent/bot-contract.ts",
-      "sha256": "c3cc8d1e990624772e85bc67c5319b6a9346b3afc6809be54ba67b33da31e6bc"
+      "sha256": "2dd43b79c5634b7af33c3dee0835f473a9db088436c07cdb947ea08f949fdb76"
     },
     {
       "path": "src/agent/capability-profile.ts",
@@ -14,16 +14,32 @@
       "sha256": "f2ba8c143c277f817a49248e85c1499dd27083be081d8deefd663cd9ce4b8fd5"
     },
     {
+      "path": "src/cli/swarm-cli.ts",
+      "sha256": "18dd810d9189366cc739e9d226c0080d5260d94c801dd126a08dd282b33ca818"
+    },
+    {
+      "path": "src/cli/service-command.ts",
+      "sha256": "67ac954a55204ddc46fdf8c0462067b3da94c41f6c688ab4a23f15e2f88ce87f"
+    },
+    {
       "path": "src/core/index.ts",
       "sha256": "18b7084a77c8f7758ad697aaf4a5158670c9cb66b4843703291bb19a6ae4cfed"
     },
     {
+      "path": "src/core/bridge.ts",
+      "sha256": "b222d2be7d421e39a0b1808517635c8c05337c5763773d02e6f40ba6468b36bf"
+    },
+    {
+      "path": "src/core/startup-prompt.ts",
+      "sha256": "e2c972ed13ddb476540d00b6bc9350ca9f05adce40a7f28971400c8441d0fd73"
+    },
+    {
       "path": "src/core/pi-opensandbox-backend.ts",
-      "sha256": "ee942c02aa931bf9bd38d93fa231fa43b47d357533e8f3aa14aae8ffb62f16ac"
+      "sha256": "02e5fde141e6eff1b242d3ea42b3f09a22b5340256141a817823a30e446720ba"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "4ebb56f87e744766f55d2185972bbd59e99d636ab36dc828eec2cb1bc2a0c09c"
+      "sha256": "05dd10f01dbd32ad72b24fbf155c7c8d6c0b49e86802191c60bee565c1c01acc"
     },
     {
       "path": "examples/notes-environment/main.ts",
@@ -39,11 +55,15 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "sha256": "97817d01c3ce6a34b60887d459513e8e818678c76a1d3d6f7fe6930d300aa988"
+      "sha256": "4d718d125e2b409f3b8b5c0ab6d92f85c3eb9d2bba7891c58fcff62162dce76c"
     },
     {
       "path": "src/environments/flat/environment.ts",
-      "sha256": "6123abd043dbcd014a00cdc85d755539f2686d726fe8b5b537b93a56bc4ac4ac"
+      "sha256": "a90e3a2cf4d0b013fbeb637afb4ce14d9d8a5e4876ee4e2f9c74d2f82de87ca0"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "sha256": "83a3e1c8b84556c26c5370439f6c643fa7ca0e55a28074ba25c63ec26afce423"
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
@@ -119,11 +139,11 @@
     },
     {
       "path": "src/runtime/mission-workspace.ts",
-      "sha256": "12a377fa5203b300315fa09b1c03f5a0c9a6959b6c22c3c75b4cc7bfe73cba78"
+      "sha256": "e7784ac7001599551bdea9cebf089ddd59cf8ee3dae3de3175c8ebb95016a8fd"
     },
     {
       "path": "src/sdk/service-catalog.ts",
-      "sha256": "0e284ab9a0d04987bbf3d48988dad86a6cd9ad491c1d38adf3cc8390a5dae399"
+      "sha256": "58dc15ec4ed3cca5ee3e1a2c131b17813f7703e598001748259b5c5064abf5ce"
     },
     {
       "path": "src/sdk/builtin-registry.ts",
@@ -147,7 +167,7 @@
     },
     {
       "path": "src/task/task-service.ts",
-      "sha256": "0842ce7bae7bd01b6dab03359682c50f7335321799dbc81f08e5d5229bd74df1"
+      "sha256": "0b2df9c04e4f3ed93290d1ad6baca8e26ac70d52f8c8c9ede0e5667d3df266a5"
     },
     {
       "path": "src/task/task-types.ts",
@@ -366,21 +386,39 @@
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
     },
     {
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "anchor": "const goal = `",
+      "line": 21,
+      "sha256": "ce58d7166338dcad86cd17d3b8dc10d82ac847699f139bb8c067742bfe28299b"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "anchor": "source: string) => `",
+      "line": 29,
+      "sha256": "47e3711115465c2e932e77d4c60a02758ab24ce81e08b9c83e1517c764489357"
+    },
+    {
+      "path": "benchmarks/putnambench-flat/run.ts",
+      "anchor": "const collaboration = `",
+      "line": 23,
+      "sha256": "697bc515efa28cd4d3ddd4d2cfa7d51e151af042fc3f5ca4c37b0a002585f4e6"
+    },
+    {
       "path": "src/environments/flat/environment.ts",
       "anchor": "prompt='",
-      "line": 15,
+      "line": 16,
       "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
     },
     {
       "path": "src/environments/flat/environment.ts",
       "anchor": "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '",
-      "line": 12,
+      "line": 13,
       "sha256": "7ddd3c046642e46ad91153885ed29729e1d733c4c0f6420da7200f750ff28a4d"
     },
     {
       "path": "src/environments/flat/controller.ts",
       "anchor": "export const FLAT_DISCOVERY_MESSAGE='",
-      "line": 8,
+      "line": 30,
       "sha256": "6d7ca4f8f3cea518e14e04e880e364dda393b6346b39942805c5939f5958e9a8"
     }
   ],
@@ -402,7 +440,7 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "line": 100,
+      "line": 143,
       "expression": "const receipt=await runtime.send(row.botId,text,{requestId,mode});"
     }
   ],
@@ -418,6 +456,12 @@
       "line": 540,
       "field": "action",
       "sha256": "7af334feba548e61407fc567e864d00b71807635e1f20077aee4c8a64ad0e75e"
+    },
+    {
+      "path": "src/runtime/mission-workspace.ts",
+      "line": 10,
+      "field": "guidance",
+      "sha256": "18cebaa7bc8bb2d860f6fbfb457f2ff28866d9c9935ea78da8ef4c317c3e32db"
     },
     {
       "path": "src/runtime/workspace-contract.ts",
@@ -463,19 +507,19 @@
     },
     {
       "path": "src/task/task-service.ts",
-      "line": 1493,
+      "line": 1498,
       "field": "guidance",
       "sha256": "7e00a9a0673a67a15ea3cc67a3ce0331614bdf9a024122bbf2821ad7cb98844f"
     },
     {
       "path": "src/task/task-service.ts",
-      "line": 1611,
+      "line": 1616,
       "field": "action",
       "sha256": "70a498eddce49593102846ed8118dedcdecf655b005c16de55ca82d1e39c4c9f"
     },
     {
       "path": "src/task/task-service.ts",
-      "line": 1761,
+      "line": 1766,
       "field": "guidance",
       "sha256": "0c29e58c66dcf4acc44d132fc797f70b6ecbf208337c14f45e8bfe0b5717385b"
     }
@@ -483,7 +527,7 @@
   "generated_bodies": [
     {
       "path": "docs/architecture/prompts/02-task-loop-and-tools.md",
-      "sha256": "2211fbddbcf092874ce4e3db8214e7bb6c71e9e51e13c1b340778bce46528719"
+      "sha256": "f7d98b2b28c99fe833500ef4c1ecdeb89aa06259618254279ca2670e7c7e61d4"
     },
     {
       "path": "docs/architecture/prompts/03-runtime-turns.md",
@@ -491,11 +535,11 @@
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "6f9698c49338f73048589c12b0d1e439af07b3caa476f1a8a503a5141621bb1a"
+      "sha256": "bd5be448feb3efb939e55143a80fead8825705ffe66ea8b025831d9834d87f75"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
-      "sha256": "7e4dbca89dcccfc0b0eb1863756d3f685fb02a54c4aaea970cc010d079c5e684"
+      "sha256": "0dd9780f082c954cdf7cfa5514190b3770539f0f56f7d904d71ca19c6a3df180"
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
@@ -504,6 +548,10 @@
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
       "sha256": "05ff0bff9d7af4722422121f92f65f84399a995abb1e976eb92a703544824474"
+    },
+    {
+      "path": "docs/architecture/prompts/01-core-startup.md",
+      "sha256": "fc54ac800848c6d521724485ab4ea07feb424db4e3ce6d5b6279568505686344"
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
@@ -519,7 +567,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "71c28c18542c852e50df770029a35b58bc2cc01e3943318f7199a25e6c568bf7"
+      "sha256": "bb49b6ea22bb853a4cd54073210f6dd19f25867eb1fded7c2ac876f946e76517"
     }
   ]
 }
