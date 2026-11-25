@@ -55,7 +55,7 @@ Durable state can outlive a Session, but runtime recovery still has to validate 
 
 ## Updating and checking
 
-`node scripts/generate-architecture-api.mjs` refreshes the schema text from the executable exports. `--check` verifies it without writes. A newly added table, column, constraint or index therefore creates a reviewable documentation difference. Runtime state-machine and migration changes also require updates to this narrative and the relevant lifecycle chapter.
+`node dist/scripts/generate-architecture-api.js` refreshes the schema text from the executable exports. `--check` verifies it without writes. A newly added table, column, constraint or index therefore creates a reviewable documentation difference. Runtime state-machine and migration changes also require updates to this narrative and the relevant lifecycle chapter.
 
 <!-- BEGIN GENERATED REFERENCE -->
 
@@ -65,7 +65,7 @@ The SQL below is the complete exported create-schema text, including checks, key
 
 ### Automatic service history
 
-Source: [src/replay/service-history.js](../../src/replay/service-history.js); source SHA-256: `135cc4ffcaa4a0995c094cbe92e7fae116e7726bbe30c81c915989546dca9c28`.
+Source: [src/replay/service-history.ts](../../src/replay/service-history.ts); source SHA-256: `17fe42059e4a7d46915f24f6291f8749f507ed80fe64014ccb871928300f5063`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS replay_tables (
@@ -103,7 +103,7 @@ CREATE INDEX IF NOT EXISTS replay_events_transaction ON replay_events(transactio
 
 ### Task-owned independent service commit gates
 
-Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+Source: [src/storage/service-peer-schema.ts](../../src/storage/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS service_commit_gate (
@@ -118,7 +118,7 @@ CREATE TABLE IF NOT EXISTS service_commit_events (
 
 ### Context peer receipts
 
-Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+Source: [src/storage/service-peer-schema.ts](../../src/storage/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS context_peer_receipts (
@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS context_peer_receipts (
 
 ### Judge peer launch phases
 
-Source: [src/storage/service-peer-schema.js](../../src/storage/service-peer-schema.js); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
+Source: [src/storage/service-peer-schema.ts](../../src/storage/service-peer-schema.ts); source SHA-256: `8892bf1f9b21f49f844fd26133d144154aaab1f4684ead3c9b5fbcbf430f1947`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS judge_peer_phases (
@@ -139,7 +139,7 @@ CREATE TABLE IF NOT EXISTS judge_peer_phases (
 
 ### Core Runtime model attempts
 
-Source: [src/agent/responses-budget-gateway.js](../../src/agent/responses-budget-gateway.js); source SHA-256: `4e0d76364251aafc56452c59d8b7665507448196233228afe906fc604acf9ce0`.
+Source: [src/agent/responses-budget-gateway.ts](../../src/agent/responses-budget-gateway.ts); source SHA-256: `b9484df79e0e0057ff4e9e209a325cb91d537edf412c1ca76184db475792cc34`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS runtime_model_policies (
@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS runtime_model_policies (
 
 ### Mission submission coordinator
 
-Source: [src/runtime/mission-submission.js](../../src/runtime/mission-submission.js); source SHA-256: `21104a3b8d5ce8b79c142e221a6ec10083d137d9d209f3daf937f8df783354a5`.
+Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `cc106519bc1627edd25a71ebc0c7d16ead16264819dd4ce03448037f1591b2e0`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_final_check_policies (
@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS mission_final_check_policies (
 
 ### Owner-local manual Mission review
 
-Source: [src/runtime/manual-mission-review.js](../../src/runtime/manual-mission-review.js); source SHA-256: `89b60230346c38dbf73a86e277950448385383f2e66ed3452518ea3d7d36d4bd`.
+Source: [src/runtime/manual-mission-review.ts](../../src/runtime/manual-mission-review.ts); source SHA-256: `7a21ed804008b3496822dda2ee4195eba876c8ae7f558beb4acffe2df9a340eb`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_manual_reviews (
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.js](../../src/runtime/execution-workspace.js); source SHA-256: `949e13fe701ffcf693bfba1409fadcd80460fb21119f4de52a404931ee79922a`.
+Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `966f025a945f2f7875b6fce2f1cb4d3e0a9aef8e9e1af7c0e7c3180a590d3347`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -229,7 +229,7 @@ CREATE TABLE IF NOT EXISTS execution_workspace_state (
 
 ### Task and Execution database
 
-Source: [src/storage/schema.js](../../src/storage/schema.js); source SHA-256: `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595`.
+Source: [src/storage/schema.ts](../../src/storage/schema.ts); source SHA-256: `1ff81dfccbefc01fa0e8d96bec0fb6b9cbd6bb334c584b1068120a5c0db53595`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -513,7 +513,7 @@ CREATE TABLE IF NOT EXISTS take_keys (
 
 ### Context database
 
-Source: [src/storage/context-schema.js](../../src/storage/context-schema.js); source SHA-256: `beb3d52d141f9d4e0b02aff35f578907b9997835fd3084580ef18bd29a985ae7`.
+Source: [src/storage/context-schema.ts](../../src/storage/context-schema.ts); source SHA-256: `beb3d52d141f9d4e0b02aff35f578907b9997835fd3084580ef18bd29a985ae7`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -621,7 +621,7 @@ CREATE INDEX IF NOT EXISTS material_consumptions_material_scan
 
 ### Judge database
 
-Source: [src/storage/judge-schema.js](../../src/storage/judge-schema.js); source SHA-256: `7fceae1e3ec7c8c5c53e4c94313e5995898a71907a3a7c8b092cb727b3239142`.
+Source: [src/storage/judge-schema.ts](../../src/storage/judge-schema.ts); source SHA-256: `b2f060d3f4854661833921fdc3889a20e9890d1dbbeca35995487227dca70373`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS operations (
@@ -710,7 +710,7 @@ CREATE TABLE IF NOT EXISTS checker_preflights (
 
 ### Observation database
 
-Source: [src/observability/observation-store.js](../../src/observability/observation-store.js); source SHA-256: `b2f03ce533d84621a645671e3f37ab327f5323d2068fcc8ba1c9d6c23b81f269`.
+Source: [src/observability/observation-store.ts](../../src/observability/observation-store.ts); source SHA-256: `a4247af39e55b8146a85d0689ecb5a7397d83376daa2a757cf0b2082de7ec206`.
 
 ```sql
 PRAGMA foreign_keys = ON;
@@ -765,7 +765,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.js](../../src/task/task-service.js); SHA-256: `a80936319ad9cfdd0ceca51dbc9725ce1ba8ce0322443f45ac4af9468a9e7c8e`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `0842ce7bae7bd01b6dab03359682c50f7335321799dbc81f08e5d5229bd74df1`.
 
 #### mission_final_check_active
 

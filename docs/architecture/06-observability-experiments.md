@@ -22,7 +22,7 @@ The legacy Bridge emits its normal operation logs without a separate work-unit o
 
 The run also appends observations to `ObservationStore`. Each event has an ID, experiment-local sequence, timestamp, source/kind, optional Core/Session/Task/Execution/correlation IDs, visibility, original payload, Agent payload and original payload hash. Sequence has a unique `(experiment_id, sequence)` constraint and normally uses the current maximum plus one. Duplicate IDs/sequences are not silently merged by `append`. Append emits in-process events after writing; the long-lived HTTP observer also reads SQLite because its writer commonly lives in another process.
 
-Sources: [durable logger](../../src/observability/durable-event-log.js), [Observation Store](../../src/observability/observation-store.js), [Runtime](../../src/runtime/runtime.js).
+Sources: [durable logger](../../src/observability/durable-event-log.ts), [Observation Store](../../src/observability/observation-store.ts), [Runtime](../../src/runtime/runtime.ts).
 
 ## 2. Store, redaction and projections
 
@@ -40,11 +40,11 @@ Each observation stores two payload columns. Agent projection recursively redact
 
 An `ObservationStoreCollection` discovers several stores and supplies a read projection. The experiment list de-duplicates IDs using newer metadata, but event retrieval uses the first store containing the experiment; it does not merge two complete histories with the same experiment ID. This matters when copying/importing the same run into several roots.
 
-Sources: [store and collection](../../src/observability/observation-store.js), [store tests](../../test/observation-store.test.js).
+Sources: [store and collection](../../src/observability/observation-store.ts), [store tests](../../test/observation-store.test.ts).
 
 ## 3. Server lifecycle and complete HTTP surface
 
-The persistent entry is `scripts/serve-observability.mjs`. It defaults to `experiments`, loopback host, port 8787, database `<root>/.observability/observability.sqlite`, and metadata `<root>/.observability/server.json`. Repeated `--root` and `--scan-root` add roots; conventional `.worktrees`/`.worktree` paths are inferred even before they exist. Discovery scans for `observability.sqlite` to depth 5, excluding `.git` and `node_modules` directories. This keeps worktree-local historical runs visible to one server.
+The persistent entry is `dist/scripts/serve-observability.js`. It defaults to `experiments`, loopback host, port 8787, database `<root>/.observability/observability.sqlite`, and metadata `<root>/.observability/server.json`. Repeated `--root` and `--scan-root` add roots; conventional `.worktrees`/`.worktree` paths are inferred even before they exist. Discovery scans for `observability.sqlite` to depth 5, excluding `.git` and `node_modules` directories. This keeps worktree-local historical runs visible to one server.
 
 A healthy existing daemon identified by metadata is reused when its host, access mode and authentication version match the requested listener. Reuse returns that daemon's metadata with `reused: true` and exits without importing files or changing its registered observations. A new server returns its listener, database and discovery roots. New daemon metadata is written through temporary-file rename. SIGINT/SIGTERM closes the server/stores and removes metadata only if it still belongs to that process.
 
@@ -94,7 +94,7 @@ Common event filters include `after_sequence`, `execution_id` on the event route
 
 Operator admission covers event, detail, report and owner-service routes. Direct attached Task/Context routes can return owner-service data, Workspace projections can include path metadata, and report analysis Markdown is capped at 80,000 characters per file. Operator access grants access to those route-specific projections.
 
-Sources: [server](../../src/observability/observability-server.js), [daemon entry/discovery](../../scripts/serve-observability.mjs), [server tests](../../test/observability-server.test.js), [worktree discovery tests](../../test/observability-worktree-discovery.test.js).
+Sources: [server](../../src/observability/observability-server.ts), [daemon entry/discovery](../../scripts/serve-observability.ts), [server tests](../../test/observability-server.test.ts), [worktree discovery tests](../../test/observability-worktree-discovery.test.ts).
 
 ## 4. Bounds, SSE and non-UI consumers
 
@@ -108,12 +108,12 @@ SSE reads SQLite every 250 ms in batches of up to 1000 new events and sends a ke
 
 Registry updates use filesystem watches debounced by 50 ms, plus a 2-second rescan while subscribers/waiters exist. SSE publishes registry revision changes; the fallback long request waits up to 25 seconds. Watches are advisory and can miss an inaccessible/removed path; rescan/restart supplies later recovery.
 
-The retained pure `src/observability/observation-projection.js` folds bounded Task, Execution and Material observations plus a timeline into data objects. It derives queues, correlates tool calls and creates Core trace data, using plain JavaScript format helpers. Node consumers can import these modules directly; they are not new public Core package exports, and the HTTP server keeps its existing bounded projections. Material consumers are inferred from read/consume/use/action-like event names and references, rather than certified useful reuse. These functions remain covered by the Node projection test after removal of the React hook and components.
+The retained pure `src/observability/observation-projection.ts` folds bounded Task, Execution and Material observations plus a timeline into data objects. It derives queues, correlates tool calls and creates Core trace data, using plain JavaScript format helpers. Node consumers can import these modules directly; they are not new public Core package exports, and the HTTP server keeps its existing bounded projections. Material consumers are inferred from read/consume/use/action-like event names and references, rather than certified useful reuse. These functions remain covered by the Node projection test after removal of the React hook and components.
 
 For registered Observation Stores, the following loopback commands access the same retained query and streaming endpoints without a browser. Select an actual ID from the experiment registry before running the ID-specific commands. A remote or password-protected listener still requires its configured operator authentication.
 
 ```sh
-node scripts/serve-observability.mjs --root experiments --port 8787
+node dist/scripts/serve-observability.js --root experiments --port 8787
 curl --fail http://127.0.0.1:8787/api/experiments
 curl --fail "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/overview"
 curl --fail "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/events?after_sequence=0&limit=100"
@@ -122,13 +122,13 @@ curl --no-buffer "http://127.0.0.1:8787/api/experiments/${EXPERIMENT_ID}/stream?
 
 These APIs inspect registered observation databases; they do not automatically import a Core Runtime's evidence or replace live Environment control. Current-run input, status, stop and saved-result commands are documented in [Environment reporting](17-environment-reporting.md#foreground-environment-control). The old graphical navigation, theme, chart rendering and browser-local refresh/cache policy have no replacement UI. Their required data access remains in the documented APIs and pure modules. [Launch and migration](07-run-configuration.md#optional-services-and-observer-migration) maps each retired group to its retained owner and checks.
 
-Sources: [server projection](../../src/observability/observability-server.js), [observation projection](../../src/observability/observation-projection.js), [format](../../src/observability/format.js), [projection test](../../test/observation-projection.test.js).
+Sources: [server projection](../../src/observability/observability-server.ts), [observation projection](../../src/observability/observation-projection.ts), [format](../../src/observability/format.ts), [projection test](../../test/observation-projection.test.ts).
 
 ## 5. Workspace views
 
 `FileWorkspaceProvider` follows only a `workspace_ref` already present in the selected Execution's observed assignment/Workspace events. It reads `.swarm/workspace.json` and numeric revision JSON files, returning file metadata and revision/checkpoint lineage. It does not expose an arbitrary path-reading endpoint. Its initial event lookup is one 1000-row page, so an older/sparse projection can fail to find the latest Workspace. A deleted/moved local Workspace cannot be reconstructed from a path string alone.
 
-Sources: [Workspace provider](../../src/observability/workspace-provider.js), [Workspace observer tests](../../test/observability-workspace.test.js).
+Sources: [Workspace provider](../../src/observability/workspace-provider.ts), [Workspace observer tests](../../test/observability-workspace.test.ts).
 
 ## Historical research tooling
 

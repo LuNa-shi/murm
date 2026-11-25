@@ -1,0 +1,100 @@
+import type { CollectionSpec, FileSeed, Profile, SpawnOptions } from './types.js';
+import type { PiOpenSandboxBackendConfig } from './backend-config.js';
+import type { ServiceRegistration } from './services.js';
+
+import { isIPv4 } from 'node:net';
+import { snapshotFileSeed } from '../../scripts/core-file-seed.js';
+import { snapshotCollectionSpec } from '../../scripts/core-collection.js';
+
+export function validId(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(value);
+}
+
+function record(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
+}
+
+function strings(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(validId) && new Set(value).size === value.length;
+}
+
+export function validateEnvironment(value: unknown, name: string) {
+  if (value === undefined) return;
+  if (!record(value)) throw new TypeError(`${name} must be a map of environment variables`);
+  const reserved = /^(?:SWARMENV_|PI_|PATH$|HOME$|TMPDIR$|TMP$|TEMP$|USER$|LOGNAME$|SHELL$|PWD$|OLDPWD$|NODE_OPTIONS$|BASH_ENV$|ENV$|LD_|XDG_)/;
+  for (const [key, item] of Object.entries(value)) {
+    if (!/^[A-Z_][A-Z0-9_]*$/.test(key) || reserved.test(key) ||
+        typeof item !== 'string' || item.length > 4096 || item.includes('\0')) {
+      throw new TypeError(`${name} contains an invalid or reserved key: ${key}`);
+    }
+  }
+}
+
+function origin(value: unknown) {
+  if (typeof value !== 'string' || !/^https?:\/\/\d+\.\d+\.\d+\.\d+(?::\d+)?\/?$/.test(value)) return false;
+  const url = new URL(value);
+  return isIPv4(url.hostname) && !url.hostname.startsWith('127.') && url.hostname !== '0.0.0.0' && url.port !== '0';
+}
+
+function snapshotCollection(value: CollectionSpec | undefined) {
+  if (value === undefined) return undefined;
+  if (!record(value)) throw new TypeError('collect must be a CollectionSpec object');
+  return snapshotCollectionSpec(value);
+}
+
+export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, models: PiOpenSandboxBackendConfig['models'], registrations: ReadonlyMap<string, ServiceRegistration>): Map<string, Profile> {
+  if (!record(profiles) || Object.keys(profiles).length === 0) throw new TypeError('At least one Profile is required');
+  const snapshots = new Map<string, Profile>();
+  for (const [name, input] of Object.entries(profiles)) {
+    if (!validId(name) || !record(input) || typeof input.prompt !== 'string' ||
+        typeof input.writable !== 'boolean' || typeof input.image !== 'string' || !input.image.trim() ||
+        !record(input.services)) throw new TypeError(`Invalid Profile: ${name}`);
+    if (typeof input.model !== 'string' || !Object.hasOwn(models, input.model)) {
+      throw new TypeError(`Profile ${name} references unknown model ${input.model}`);
+    }
+    validateEnvironment(input.env, `Profile ${name} env`);
+    if (input.network !== undefined && (!record(input.network) ||
+        !Array.isArray(input.network.allow) || !input.network.allow.every(origin))) {
+      throw new TypeError(`Profile ${name} network must contain non-loopback IPv4 HTTP(S) origins`);
+    }
+    const collect = snapshotCollection(input.collect);
+    if (input.spawnProfiles !== undefined && !strings(input.spawnProfiles)) {
+      throw new TypeError(`Profile ${name} has invalid spawnProfiles`);
+    }
+    for (const [service, operations] of Object.entries(input.services)) {
+      const registration = registrations.get(service);
+      if (!strings(operations) || !registration || operations.some(operation =>
+        !registration.manifest.capabilities.some(capability => capability.operation === operation))) {
+        throw new TypeError(`Profile ${name} references unknown Service operations in ${service}`);
+      }
+    }
+    snapshots.set(name, { ...structuredClone(input), ...(collect === undefined ? {} : { collect }) });
+  }
+  for (const [name, profile] of snapshots) {
+    if (profile.spawnProfiles?.some(target => !snapshots.has(target))) {
+      throw new TypeError(`Profile ${name} references an unknown spawn Profile`);
+    }
+  }
+  return snapshots;
+}
+
+export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string, Profile>, registrations: ReadonlyMap<string, ServiceRegistration>): SpawnOptions {
+  if (!record(input) || !validId(input.requestId) || !profiles.has(input.profile) ||
+      Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect'].includes(key)) ||
+      (input.writable !== undefined && typeof input.writable !== 'boolean') ||
+      (input.parentId !== undefined && !validId(input.parentId))) {
+    throw new TypeError('Invalid spawn request or unsupported spawn options');
+  }
+  validateEnvironment(input.secretEnv, 'secretEnv');
+  if (input.bindings !== undefined && (!record(input.bindings) || Object.entries(input.bindings).some(([service, binding]) =>
+    !registrations.has(service) || typeof binding !== 'string' || !binding))) {
+    throw new TypeError('Invalid Service bindings');
+  }
+  const snapshot = structuredClone(input);
+  const collect = snapshotCollection(input.collect) ?? profiles.get(input.profile)!.collect;
+  if (collect !== undefined) snapshot.collect = collect;
+  if (input.files !== undefined) snapshot.files = snapshotFileSeed(input.files).files as FileSeed;
+  if (snapshot.secretEnv) snapshot.secretEnv = Object.fromEntries(Object.entries(snapshot.secretEnv).sort());
+  if (snapshot.bindings) snapshot.bindings = Object.fromEntries(Object.entries(snapshot.bindings).sort());
+  return snapshot;
+}

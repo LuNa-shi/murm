@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noCheck": true,
+    "noResolve": true,
+    "declaration": false
+  },
+  "include": ["test/**/*.ts"]
+}

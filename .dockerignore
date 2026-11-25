@@ -1,0 +1,9 @@
+.git
+.worktree
+.worktrees
+node_modules
+dist
+.env
+experiments
+reports
+third_party

@@ -12,9 +12,10 @@
         "ajv": "8.20.0"
       },
       "bin": {
-        "swarm": "scripts/swarm.mjs"
+        "swarm": "dist/scripts/swarm.js"
       },
       "devDependencies": {
+        "@types/node": "26.6.5",
         "typescript": "^7.0.2"
       },
       "engines": {
