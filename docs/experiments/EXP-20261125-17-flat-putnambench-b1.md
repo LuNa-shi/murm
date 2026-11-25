@@ -4,7 +4,7 @@ Status · REGISTERED
 
 Model · `gpt_proxy/gpt-6.1-sol`
 
-Conditional model comparison against [EXP-20261125-15](EXP-20261125-15-flat-putnambench-b1.md), authorized if the K3 run does not meet delivery. The original case, first inputs and Service instructions, Lean, four slots, 30-minute shared window and selection effort remain fixed. Only the provider/model selection and the launcher needed to select it change. A matched pair of individual runs can show observed differences in progression and results. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
+Conditional model comparison against [EXP-20261125-15](EXP-20261125-15-flat-putnambench-b1.md), authorized if the K3 run does not meet delivery. The original case, first inputs and Service instructions, Lean, four slots, 30-minute shared window and selection effort remain fixed. The provider/model selection and its launcher change. The host deployment lock was refreshed after an operating-system package update. A matched pair of individual runs can show observed differences in progression and results. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
 ## Setup
 
@@ -13,7 +13,7 @@ Conditional model comparison against [EXP-20261125-15](EXP-20261125-15-flat-putn
 | Issue, design and implementation | [#200](https://github.com/LuNa-shi/SwarmEnv/issues/200), [#212](https://github.com/LuNa-shi/SwarmEnv/pull/212), [#213](https://github.com/LuNa-shi/SwarmEnv/pull/213). Main design commit `68eb83e0550109924c56035b4e90077deb399228`, design Git blob `0db49d8de9a83426fe374aa40b7800089622e230`. |
 | Tested implementation | `988659381e7dea788c48487be4951f1a53fccba0`. Worker image `sha256:bdfdb07686ce0a2b01b2cbb32980c8570260698202f5ce118e535fa1a63c722f`, with matching revision label. |
 | Original fixture | PutnamBench `a635813f5edf297d928f9bd5ef8324a26bdde09c`, `lean4/src/putnam_2025_b1.lean`, target `putnam_2025_b1`, SHA-256 `80d035ae3e86493d3a09f8acc39601e6dba4e380e217c085c491e202b7ced6c7`. One Mission, original Lean source in the first user message and initial Workspace, and an empty Task pool. The run excludes prior attempts, reference solutions and preassigned Tasks. |
-| Lean and verifier | Lean 4.33.1, Mathlib `0df444a360eaa60ab8c11dca51a86af692955474`, artifact lock `6a6b65cb5d0ae4a91d5b5c72e41da7c579c01a26ed0ea2614e610783ea5d0d4a`, `lean-final-tree` version `1`. Per checker process budget is 300,000 ms, 4 GiB memory, 0 swap, 64 tasks, 200% CPU. |
+| Lean and verifier | Lean 4.33.1, Mathlib `0df444a360eaa60ab8c11dca51a86af692955474`, artifact lock `75e288d8644e93325f4e932fcbf9dace9a4d1e214242caff5169658657c03030`, `lean-final-tree` version `1`. Per checker process budget is 300,000 ms, 4 GiB memory, 0 swap, 64 tasks, 200% CPU. |
 | Model and resources | Real hosted `gpt_proxy/gpt-6.1-sol`, four concurrent Bot slots, one Execution per Bot, refill after confirmed cleanup. Selection sends `low`. Work and closeout retain Pi effort. No request count, token or fee cap. |
 | Window | Up to 1,800,000 ms of research after all four initial slots are ready, up to 600,000 ms per Bot for selection within that common limit, followed by bounded independent assessment and cleanup. |
 | Acceptance | Verify the original theorem on the fixed final main with the independent locked Lean checker. For collaboration acceptance, establish that one Bot's saved proof declaration is used by a different Bot in the latter's existing Session and Execution, reaches fixed final main and participates in the target proof's dependencies. Record both findings separately. |
@@ -36,6 +36,8 @@ Conditional model comparison against [EXP-20261125-15](EXP-20261125-15-flat-putn
 | `docs/architecture/10-service-api-reference.md` | `1e2d90bd52307329c2f4de1bfbbbf683dce0d2832b177bf59ee5ebc4bef9e622` |
 
 The Putnam Profile leaves Added System Prompt empty. Core renders the startup directory from the same authorized registered manifests used by the CLI. The experiment will check the actual provider input for each Bot, including replacements.
+
+An OS package update changed `python3-oauthlib` inside the host-library mount. Initial offline preflight rejected the old lock. The trusted lock command verified the same source pins, dependencies and deployment configuration and changed only the `host-library-0` entry. Its new SHA-256 is `fcfab40eac05b93a87c92e40707c3e97b2e2c631ba7d2f175b75ce3bb0f91d0e`. The Lean, Mathlib, Comparator, exporter, verifier and explicit tool artifacts retain their hashes.
 
 ## Launch
 
