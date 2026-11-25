@@ -10,8 +10,8 @@
       "default": "./dist/src/core/index.js"
     },
     "./services": {
-      "types": "./dist/src/core/services.d.ts",
-      "default": "./dist/src/core/services.js"
+      "types": "./dist/src/core/public-services.d.ts",
+      "default": "./dist/src/core/public-services.js"
     },
     "./backends/pi-opensandbox": {
       "types": "./dist/src/core/backends/pi-opensandbox.d.ts",

@@ -120,3 +120,37 @@ test('a grant racing Bot stop retains its request and cannot return a new writab
     await assert.rejects(runtime.files.grant({ ...request, requestId: 'new-grant' }), { code: 'NOT_ALLOWED' });
   } finally { release.resolve(); await cleanup(); }
 });
+
+test('host snapshots retain stable bytes and replay after cleanup while rejecting changed selection', async t => {
+  const { digest } = decodeFileSeed(payload);
+  let calls = 0;
+  const { runtime, cleanup } = await openHarness(t, { async fileOperation(action, input) {
+    assert.equal(action, 'snapshot'); calls++;
+    return { body: { result: { requestId: input.requestId, version: 1, digest, files: payload } } };
+  } });
+  try {
+    const bot = await runtime.spawn({ profile: 'worker', requestId: 'snapshot-bot', writable: true });
+    const options = { requestId: 'capture', paths: ['bin/sample'] };
+    const receipt = await runtime.files.snapshot(bot.id, options);
+    assert.deepEqual(receipt.files, payload); assert.equal(receipt.digest, digest);
+    assert.equal(receipt.botId, bot.id); assert.equal(receipt.version, 1);
+    await assert.rejects(runtime.files.snapshot(bot.id, { ...options, paths: ['different'] }), { code: 'CONFLICT' });
+    await runtime.stop(bot.id);
+    assert.deepEqual(await runtime.files.snapshot(bot.id, options), receipt);
+    assert.equal(calls, 1);
+    await assert.rejects(runtime.files.snapshot(bot.id, { ...options, requestId: 'new' }), { code: 'NOT_ALLOWED' });
+  } finally { await cleanup(); }
+});
+
+test('only the host can select a scoped shared workspace or a frozen private copy', async t => {
+  let started;
+  const { runtime, cleanup } = await openHarness(t, { onStart(body) { started = body; } });
+  try {
+    const bot = await runtime.spawn({ profile: 'worker', requestId: 'frozen', workspace: { mode: 'frozen-copy', files: payload }, writable: true });
+    assert.deepEqual(started.files, payload);
+    assert.equal((await runtime.stop(bot.id)).cleanup, 'complete');
+    await assert.rejects(runtime.spawn({ profile: 'worker', requestId: 'invalid-shared', workspace: { id: '../escape', mode: 'read-write' } }), { code: 'INVALID_CONTRACT' });
+    await assert.rejects(runtime.spawn({ profile: 'worker', requestId: 'shared-seed', workspace: { id: 'project', mode: 'read-write' }, files: payload }), { code: 'INVALID_CONTRACT' });
+    await assert.rejects(runtime.spawn({ profile: 'worker', requestId: 'readonly-writable', workspace: { id: 'project', mode: 'read-only' }, writable: true }), { code: 'INVALID_CONTRACT' });
+  } finally { await cleanup(); }
+});

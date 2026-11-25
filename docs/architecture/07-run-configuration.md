@@ -19,7 +19,7 @@ deliberately invalid inputs and partial mocks. The separate installed-consumer
 check typechecks valid and invalid uses of the generated public declarations.
 
 All three package exports resolve to JavaScript and declarations under
-`dist/src/core/`. `npm pack` runs the build through `prepack`. Install the resulting
+`dist/src/core/`. The Service entry uses an explicit facade that preserves its eight existing value exports and keeps host credential registration internal. `npm pack` runs the build through `prepack`. Install the resulting
 archive with `npm install --omit=dev` to run the same JavaScript without a compiler
 or loader. The installed `swarm` binary, host scripts and in-place example modules
 come from `dist/`. Run `npm run docs:generate` to rebuild documentation references,
@@ -57,7 +57,7 @@ The shipped `.env.example` lists host variables consumed by the Notes configurat
 
 | Entry | Configuration and behavior |
 |---|---|
-| Public `createRuntime` | Frozen backend, Profiles, Services, maximum Bot capacity and output directory. The host calls spawn, send, get, stop and close. [Core Runtime](15-core-runtime.md) |
+| Public `createRuntime` | Frozen backend, Profiles, Services, maximum Bot capacity and output directory. The host calls spawn, start, steer, interrupt, list, get, stop and close. The compatible send entry remains available. [Core Runtime](15-core-runtime.md) |
 | `runFlatEnvironment` | Host-owned Task, Context and Workspace services, Mission/Workspace IDs, image/model, capacity and finite deadlines. The controller owns discovery, continuation and directed feedback. Production live capture must be configured before allocation. [Execution](02-execution.md) |
 | `runAgenshTeam` | Two to eight distinct peers, image/model, output directory, authenticated Git/message/Board facilities and finite router/close limits. [Agensh](18-agensh-environment.md) |
 | `dist/scripts/run-environment.js --config <module>` | Trusted local module selecting flat or agensh. JSON-line status, input and stop reuse the same Environment. [Foreground control](17-environment-reporting.md#foreground-environment-control) |

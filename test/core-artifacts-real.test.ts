@@ -154,7 +154,7 @@ test('required artifacts survive a recoverable host save failure and remain read
   assert.equal(pending.execution, 'stopped'); assert.equal(pending.cleanup, 'pending');
   assert.deepEqual(pending.artifacts, []); assert.ok(pending.errors.some(error => error.code === 'ARTIFACT_WRITE_FAILED'));
   assert.equal(pending.pending.kind, 'bot'); assert.equal(pending.pending.id, bot.id);
-  assert.equal(pending.pending.action, 'collect-artifacts');
+  assert.equal(pending.pending.action, 'archive-session');
   assert.equal(pending.pending.sandboxId, sandboxId);
   assert.equal((await runtime.get(bot.id)).status, 'closing');
   assert.deepEqual(await ownedContainers(runtime.id), active);

@@ -26,6 +26,7 @@ interface BridgeOptions {
   serviceTimeoutMs?: number;
   onOwned?: (owner: { close(): Promise<void> }) => void;
   recordService?: (record: ServiceInvocationRecord) => void;
+  traceService?: (record: Record<string, unknown>) => void;
 }
 
 interface BridgeFailure extends Error {
@@ -51,7 +52,7 @@ function invalid(message: string): never {
   throw new SwarmEnvError(ERROR_CODES.INVALID_CONTRACT, message);
 }
 
-export async function createCoreBridge({ runtimeId, configuration, getBot, registrations, serviceTimeoutMs = 30_000, onOwned, recordService }: BridgeOptions) {
+export async function createCoreBridge({ runtimeId, configuration, getBot, registrations, serviceTimeoutMs = 30_000, onOwned, recordService, traceService }: BridgeOptions) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof getBot !== 'function' || !(registrations instanceof Map)) {
     invalid('Bridge requires runtime identity, Bot lookup and Service registrations');
   }
@@ -74,6 +75,9 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
     let body: BridgeBody | undefined;
     let controller: AbortController | undefined;
     let instrumented = false;
+    let trace;
+    let traceOutput;
+    let traceError;
     const authorization = request.headers.authorization;
     const token = typeof authorization === 'string' && authorization.startsWith('Bearer ') ? authorization.slice(7) : null;
     const botId = tokens.get(token);
@@ -119,14 +123,22 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
         if (!manifest) throw new SwarmEnvError('NOT_ALLOWED', 'Service is unavailable to this Profile');
         reply(response, 200, { ok: true, result: manifest }); return;
       }
+      trace = { runtimeId, caller: { runtimeId, botId, profile: current.profile,
+        ...(Object.hasOwn(current.bindings ?? {}, body.service_id) ? { binding: current.bindings![body.service_id] } : {}) },
+        service: body.service_id, operation: body.operation, operation_id: body.operation_id,
+        input: Object.hasOwn(body, 'payload') ? body.payload : {}, startedAt: new Date().toISOString() };
+      traceService?.({ ...trace, phase: 'started' });
       const registration = registrations.get(body.service_id);
       if (!registration || !allows(body.service_id, body.operation)) throw new SwarmEnvError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
       const binding = Object.hasOwn(current.bindings ?? {}, body.service_id) && typeof current.bindings![body.service_id] === 'string'
         ? current.bindings![body.service_id] : undefined;
       const caller = { runtimeId, botId: botId!, profile: current.profile, ...(binding === undefined ? {} : { binding }) };
       response.once('close', () => {
-        if (!response.writableFinished) recordService?.({ runtimeId, botId: botId!, profile: current.profile, serviceId: body!.service_id,
+        if (!response.writableFinished) {
+          controller?.abort();
+          recordService?.({ runtimeId, botId: botId!, profile: current.profile, serviceId: body!.service_id,
           operation: body!.operation, operationId: body!.operation_id, state: 'response', outcome: 'unknown' });
+        }
       });
       controller = new AbortController();
       active.set(controller, botId);
@@ -137,9 +149,12 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
           const latest=live();
           if(latest.profile!==caller.profile || !latest.services?.[body!.service_id]?.includes(body!.operation)) throw new SwarmEnvError('NOT_ALLOWED','Service caller authority was revoked');
         } }, serviceTimeoutMs);
+      traceOutput = result;
       reply(response, 200, { ok: true, result });
     } catch (caught) {
       const error = caught as BridgeFailure;
+      traceError = { code: error.code ?? 'SERVICE_UNAVAILABLE', message: error.message,
+        details: error.details ?? {}, retryable: error.retryable ?? false };
       request.resume();
       const code = error.code ?? 'SERVICE_UNAVAILABLE';
       const authenticated = botId && getBot(botId);
@@ -153,11 +168,16 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
         ['INVALID_CONTRACT', 'SERVICE_INPUT_INVALID'].includes(code) ? 400 : code === 'CONFLICT' ? 409 : 503;
       reply(response, status, { ok: false, error: { code, message: error.message, retryable: error.retryable ?? false,
         details: { ...error.details, ...(body?.operation_id ? { operation_id: body.operation_id, operation: body.operation, service_id: body.service_id } : {}) } } });
-    } finally { if (controller) active.delete(controller); }
+    } finally {
+      if (controller) active.delete(controller);
+      if (trace) traceService?.({ ...trace, phase: 'settled', endedAt: new Date().toISOString(),
+        ...(traceError ? { error: traceError } : { output: traceOutput }) });
+    }
   });
   server.requestTimeout = WAIT_TIMEOUT_MS;
   server.headersTimeout = Math.min(10_000, WAIT_TIMEOUT_MS);
-  server.timeout = WAIT_TIMEOUT_MS;
+  // Invocation deadlines are owned by the registered capability, including long waits.
+  server.timeout = 0;
   function close() {
     if (closePromise) return closePromise;
     closing = true;
@@ -185,8 +205,14 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
     });
   });
   const publicUrl = configuration.publicUrl.replaceAll('{port}', String((server.address() as AddressInfo).port)).replace(/\/$/, '');
+  function cancelBotCalls(botId: string) {
+    for (const [controller, callerId] of active) {
+      if (callerId === botId) controller.abort();
+    }
+  }
   return {
     publicUrl,
+    cancelBotCalls,
     credentialsForBot(botId: string) {
       const bot = getBot(botId);
       if (closing || !bot || bot.unavailable || ['exited', 'closing', 'closed'].includes(bot.status)) {
@@ -205,11 +231,7 @@ export async function createCoreBridge({ runtimeId, configuration, getBot, regis
       const token = botTokens.get(botId);
       tokens.delete(token);
       botTokens.delete(botId);
-      if (abortActive) {
-        for (const [controller, callerId] of active) {
-          if (callerId === botId) controller.abort();
-        }
-      }
+      if (abortActive) cancelBotCalls(botId);
     },
     close,
   };

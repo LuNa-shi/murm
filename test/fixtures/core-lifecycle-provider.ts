@@ -110,6 +110,11 @@ export async function createLifecycleProvider(t, { fileOperation, onStart, onCol
       onStart?.(body, result);
       return send({ result });
     }
+    if (path === '/worker/core/session/archive') {
+      response.writeHead(200, { 'content-type': 'application/x-ndjson' });
+      response.end(JSON.stringify({ type: 'end', totalBytes: 0, fileCount: 0, directoryCount: 0 }) + '\n');
+      return;
+    }
     if (onCollect && path === '/worker/core/files/collect') {
       const result = await onCollect(body);
       if (result.error) return send({ ok: false, ...result.error }, 400);

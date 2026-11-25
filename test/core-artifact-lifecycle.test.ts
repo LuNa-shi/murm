@@ -65,7 +65,7 @@ test('required artifacts block deletion and retain the Slot until verified host 
     assert.equal(failed.execution, 'stopped');
     assert.equal(failed.cleanup, 'pending');
     assert.equal(failed.errors[0].code, 'ARTIFACT_WRITE_FAILED');
-    assert.equal(failed.pending.action, 'collect-artifacts');
+    assert.equal(failed.pending.action, 'archive-session');
     assert.equal(failed.pending.sandboxId, 'fixture-1');
     assert.equal(uploads, 0);
     await assert.rejects(spawn('blocked-capacity'), { code: 'CONFLICT' });
@@ -76,6 +76,7 @@ test('required artifacts block deletion and retain the Slot until verified host 
     const early = await earlyStop;
     assert.equal(early.execution, 'stopped');
     assert.equal(early.pending.action, 'collect-artifacts');
+    assert.equal(JSON.parse(await readFile(early.sessionArchive, 'utf8')).botId, bot.id);
     assert.equal((await runtime.get(bot.id)).lastStop.pending.action, 'collect-artifacts');
     const closing = runtime.close({ timeoutMs: 25 });
     const pendingClose = await closing;

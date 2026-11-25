@@ -308,3 +308,29 @@ for (const size of [4, 8]) test(`public CLI maintains a ${size}-Bot parent tree 
   assert.ok(registrations.every(row => row.source === `bot:${parent.id}`));
   assert.equal(new Set(registrations.map(row => row.inputId)).size, 2 * (size - 1));
 });
+
+test('host forks live Bots and rejects stopped sources before allocating a Slot', async t => {
+  const { runtime, parent } = await setup(t);
+  const child = await runtime.spawn({ profile: 'child', forkFrom: parent.id, requestId: 'fork-live' });
+  assert.equal(transport.spawns.get(child.id).options.forkFrom, parent.id);
+  assert.deepEqual(await runtime.spawn({ profile: 'child', forkFrom: parent.id, requestId: 'fork-live' }), child);
+  await assert.rejects(runtime.spawn({ profile: 'child', forkFrom: 'missing', requestId: 'fork-missing' }), { code: 'NOT_FOUND' });
+  await runtime.stop(parent.id);
+  await assert.rejects(runtime.spawn({ profile: 'child', forkFrom: parent.id, requestId: 'fork-stopped' }), { code: 'NOT_ALLOWED' });
+  assert.equal(transport.spawns.size, 2);
+});
+
+test('Bot context fork requires the caller Profile permission and uses its own Session', async t => {
+  const { runtime, parent, call } = await setup(t);
+  assert.equal((await call('spawn', { profile: 'child', fork: true }, 'denied-fork')).error.code, 'NOT_ALLOWED');
+  assert.equal(transport.spawns.size, 1);
+  const base = { prompt: 'fixed', model: 'default', image: 'test', writable: true, services: {} };
+  const allowed = await setup(t, { profiles: {
+    parent: { ...base, services: { bot: ['spawn'] }, spawnProfiles: ['child'], allowContextFork: true }, child: base,
+  } });
+  const result = await allowed.call('spawn', { profile: 'child', fork: true }, 'fork');
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(transport.spawns.get(result.result.bot.id).options.forkFrom, allowed.parent.id);
+  assert.equal(result.result.bot.parentId, allowed.parent.id);
+  assert.equal((await allowed.call('spawn', { profile: 'child', fork: false }, 'fork')).error.code, 'CONFLICT');
+});

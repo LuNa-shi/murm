@@ -24,7 +24,10 @@ export function createPiRpcSubmissions({ write }: any) {
       const entry = submissions.get(id);
       return entry ? snapshot(entry) : { state: 'not_found' };
     },
-    async submit(message: any, timeoutMs: any) {
+    completion(id: string) {
+      return submissions.get(id)?.done;
+    },
+    async submit(message: any, timeoutMs: number) {
       if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 600_000) {
         throw Object.assign(new Error('Invalid Pi RPC wait limit'), { code: 'INVALID_CONTRACT' });
       }

@@ -45,3 +45,20 @@ test('trusted Worker denies a prepared ancestor symlink before granting or chang
   assert.equal(await readFile(join(outside, 'file'), 'utf8'), 'fixed');
   assert.equal((await lstat(path)).mode & 0o777, 0o555);
 });
+
+test('trusted snapshot returns fixed binary bytes and never recaptures an existing request', async t => {
+  const { path, worker } = await fixture(t);
+  await worker.initialize({ writable: true });
+  await writeFile(join(path, 'result'), Buffer.from([0, 255, 128]));
+  const options = { requestId: 'capture', paths: ['result'], includeGit: false, maxBytes: 1024, required: true };
+  const first = await worker.snapshot(options);
+  assert.equal(first.files.result.data, 'AP+A');
+  await writeFile(join(path, 'result'), 'changed');
+  assert.deepEqual(await worker.snapshot(options), first);
+  await assert.rejects(worker.snapshot({ ...options, paths: ['other'] }), { code: 'CONFLICT' });
+  const second = await worker.snapshot({ ...options, requestId: 'second' });
+  assert.equal(second.version, first.version + 1);
+  assert.equal(Buffer.from(second.files.result.data, 'base64').toString(), 'changed');
+  await symlink('/etc/passwd', join(path, 'escape'));
+  await assert.rejects(worker.snapshot({ ...options, requestId: 'escape', paths: ['escape'] }), { code: 'INVALID_CONTRACT' });
+});

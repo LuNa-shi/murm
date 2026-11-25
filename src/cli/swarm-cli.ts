@@ -248,12 +248,12 @@ async function listServices() {
   return { services: result };
 }
 
-async function bridgeCall(operation: any, payload: any, options: any = {}, serviceId: any = undefined) {
+async function bridgeCall(operation: string, payload: unknown, options: any = {}, serviceId?: string, capabilityTimeoutMs?: number) {
   const token = process.env.SWARMENV_BRIDGE_TOKEN;
   if (!token) throw new Error('SWARMENV_BRIDGE_TOKEN is required for Bot operations');
   const requestId = options['request-id'] ?? `cli:${operation === 'task_take' ? 'take' : operation}:${randomUUID()}`;
   try { return await request(`${process.env.SWARMENV_BRIDGE_URL!.replace(/\/$/, '')}/call`, {
-    method: 'POST', token, timeoutMs: operationTimeoutMs(operation, options['timeout-ms']),
+    method: 'POST', token, timeoutMs: options['timeout-ms'] === undefined && capabilityTimeoutMs !== undefined ? capabilityTimeoutMs + 1000 : operationTimeoutMs(operation, options['timeout-ms']),
     body: { operation, service_id: serviceId, operation_id: requestId, payload },
   }); } catch (error: any) {
     if (requestId && (error.code === 'SERVICE_TIMEOUT' || !error.code || /^(ECONN|EPIPE|ENET|EHOST|EAI_)/.test(error.code))) {
@@ -314,7 +314,7 @@ async function invoke(service: any, commandName: any, options: any, args: any = 
       if (input.input !== undefined && input.input !== input.text) throw new Error('conflicting input');
       input.input = input.text; delete input.text;
     }
-    return bridgeCall(commandName, input, options, 'bot');
+    return bridgeCall(commandName, input, options, 'bot', metadata.capabilities.find((item: { operation: string; timeout_ms?: number }) => item.operation === commandName)?.timeout_ms);
   }
   if (Object.hasOwn(COMMAND_OPERATIONS, service) && !Object.hasOwn((COMMAND_OPERATIONS as Record<string, any>)[service], commandName)) {
     throw new Error(`unknown ${service} command: ${commandName}`);
@@ -329,12 +329,14 @@ async function invoke(service: any, commandName: any, options: any, args: any = 
     if (!(COMMAND_OPERATIONS as Record<string, any>)[service]) {
       const metadata = await manifest(service);
       if (!metadata.capabilities?.some((item: any) => item.operation === operation || item.name === operation)) throw new Error(`service ${service} does not advertise capability ${operation}`);
-      return bridgeCall(operation, input, options, transportService(service));
+      return bridgeCall(operation, input, options, transportService(service), metadata.capabilities.find((item: any) => item.operation === operation || item.name === operation)?.timeout_ms);
     }
-    // Core supplies this reserved routing hint with the protected connection.
+    if (process.env.SWARMENV_BRIDGE_CONTRACT_VERSION === '2') {
+      const metadata = await manifest(service);
+      return bridgeCall(operation, input, options, transportService(service), metadata.capabilities.find((item: { operation: string; timeout_ms?: number }) => item.operation === operation)?.timeout_ms);
+    }
     // Legacy Bridges retain their operation-only request and one delivery.
-    return bridgeCall(operation, input, options,
-      process.env.SWARMENV_BRIDGE_CONTRACT_VERSION === '2' ? transportService(service) : undefined);
+    return bridgeCall(operation, input, options);
   }
   const provider = await manifest(service);
   const capability = provider.capabilities?.find((candidate: any) => candidate.operation === operation || candidate.name === operation);

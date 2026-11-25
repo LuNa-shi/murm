@@ -38,10 +38,11 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `f2ba8c143c277f817a49248e85c1499dd27083be081d8deefd663cd9ce4b8fd5` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
-| [src/core/index.ts](../../src/core/index.ts) | `c3b64be3e0fb91c5772b7b9c61256c58ff819be4379da13fc91a3a4d6d7ab9c5` |
-| [src/core/types.ts](../../src/core/types.ts) | `3dec827cbfec564603467fe9ca1aa88373b43622d5b3c9f3c2221f4581f13c8a` |
-| [src/core/services.ts](../../src/core/services.ts) | `1fda50fc0e8a0ba8c3fc8d32f009d49decdaa136b1d99f7d64587a21c50abbe2` |
-| [src/core/service-types.ts](../../src/core/service-types.ts) | `7da3a31ce167260a41db03684371b2c7041a878391de614b9035a78695c12e29` |
+| [src/core/index.ts](../../src/core/index.ts) | `2210258384ebee02c6d3ab5416dd0846dffc1e22e403702e284862ec211f391c` |
+| [src/core/types.ts](../../src/core/types.ts) | `853ee823d27de900b68b419e288b53366af107effa366babc47aef288514bd0f` |
+| [src/core/public-services.ts](../../src/core/public-services.ts) | `3d9b797156e9c13cfeea316025584f4aa379007b80831413df0cb9d588719583` |
+| [src/core/services.ts](../../src/core/services.ts) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
+| [src/core/service-types.ts](../../src/core/service-types.ts) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `6df9b7fd2bb6e6b704e50f3560dfbb6c6adc8d79320b19e7e4ef8a7fe73344f3` |
 
@@ -3081,7 +3082,7 @@ This section records catalog declarations used by trusted service composition bu
 
 ### Phase 0005 Core public declarations
 
-These are the declarations exposed by the private checkout package. [Core Runtime](15-core-runtime.md) describes the executable contracts and limits.
+These are the package entrypoint declarations and the declarations they reference. [Core Runtime](15-core-runtime.md) describes the executable contracts and limits.
 
 #### dist/src/core/index.d.ts
 
@@ -3095,6 +3096,7 @@ export declare function createRuntime(options: CreateRuntimeOptions): Promise<Ru
 
 ```ts
 import type { ServiceRegistry } from './services.js';
+export {};
 declare const backendBrand: unique symbol;
 export interface Backend {
     readonly [backendBrand]: true;
@@ -3106,6 +3108,7 @@ export interface Profile {
     writable: boolean;
     services: Readonly<Record<string, readonly string[]>>;
     spawnProfiles?: readonly string[];
+    allowContextFork?: boolean;
     env?: Readonly<Record<string, string>>;
     network?: {
         allow: readonly string[];
@@ -3156,12 +3159,27 @@ export interface PreparedFiles {
     readonly version: number;
     readonly digest: string;
 }
+export interface FileSnapshot {
+    readonly botId: string;
+    readonly requestId: string;
+    readonly version: number;
+    readonly digest: string;
+    readonly files: FileSeed;
+}
 export interface GrantReceipt {
     readonly botId: string;
     readonly version: number;
     readonly writable: true;
 }
+export type WorkspaceOptions = {
+    id: string;
+    mode: 'read-only' | 'read-write';
+} | {
+    mode: 'frozen-copy';
+    files: FileSeed;
+};
 export interface SpawnOptions {
+    forkFrom?: string;
     requestId: string;
     profile: string;
     parentId?: string;
@@ -3169,6 +3187,7 @@ export interface SpawnOptions {
     files?: FileSeed;
     bindings?: Readonly<Record<string, string>>;
     secretEnv?: Readonly<Record<string, string>>;
+    workspace?: WorkspaceOptions;
     collect?: CollectionSpec;
 }
 export interface ErrorInfo {
@@ -3186,17 +3205,27 @@ export interface ResourceError extends Error {
     reportPath?: string;
     details: readonly ErrorInfo[];
 }
+export type BotStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+export interface BotListFilter {
+    parentId?: string | null;
+    status?: BotStatus | readonly BotStatus[];
+}
 export interface BotInfo {
     id: string;
     profile: string;
     parentId?: string;
-    status: 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+    status: BotStatus;
     cursor: number;
     latestOutput?: string;
     lastError?: ErrorInfo;
     lastStop?: StopReceipt;
 }
 export type InputMode = 'steer' | 'followUp';
+export interface SteerOptions {
+    requestId: string;
+    source?: string;
+    steeringMode?: 'all' | 'one-at-a-time';
+}
 export type InputReceipt = {
     inputId: string;
     status: 'accepted';
@@ -3205,6 +3234,10 @@ export type InputReceipt = {
     inputId: string;
     status: 'unknown';
 };
+export interface InterruptReceipt {
+    interruptId: string;
+    status: 'interrupted' | 'unknown';
+}
 export type BotInitialInputResult = InputReceipt | {
     status: 'rejected';
     error: ErrorInfo;
@@ -3237,7 +3270,7 @@ export type BotEvent = {
 export interface PendingCleanup {
     kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
     id: string;
-    action: 'await-startup' | 'stop-execution' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+    action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
     error?: ErrorInfo;
     resourceKey?: string;
     sandboxId?: string;
@@ -3249,6 +3282,7 @@ export interface StopReceipt {
     execution: 'stopped' | 'unknown';
     cleanup: 'complete' | 'pending';
     artifacts: readonly string[];
+    sessionArchive?: string;
     errors: readonly ErrorInfo[];
     pending?: PendingCleanup;
 }
@@ -3270,6 +3304,15 @@ export interface Runtime {
     readonly id: string;
     spawn(options: SpawnOptions): Promise<BotInfo>;
     get(botId: string): Promise<BotInfo>;
+    list(filter?: BotListFilter): Promise<BotInfo[]>;
+    start(botId: string, input: string, options: {
+        requestId: string;
+    }): Promise<InputReceipt>;
+    steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
+    interrupt(botId: string, options: {
+        requestId: string;
+        timeoutMs?: number;
+    }): Promise<InterruptReceipt>;
     send(botId: string, input: string, options: {
         requestId: string;
         mode?: InputMode;
@@ -3282,6 +3325,12 @@ export interface Runtime {
         timeoutMs?: number;
     }): Promise<CloseReceipt>;
     readonly files: {
+        snapshot(botId: string, options: {
+            requestId: string;
+            paths: readonly string[];
+            includeGit?: boolean;
+            maxBytes?: number;
+        }): Promise<FileSnapshot>;
         prepare(botId: string, options: {
             requestId: string;
             files: FileSeed;
@@ -3292,13 +3341,20 @@ export interface Runtime {
         }): Promise<GrantReceipt>;
     };
 }
-export {};
+```
+
+#### dist/src/core/public-services.d.ts
+
+```ts
+export { ServiceRegistry, builtinBotRegistration, createHttpJsonAdapter, createInProcessAdapter, getAdapterMetadata, invokeService, isJson, snapshotServiceRegistry, } from './services.js';
+export type { AdapterMetadata, ServiceInvocation, ServiceInvocationRecord, ServiceRegistration } from './services.js';
+export type * from './service-types.js';
 ```
 
 #### dist/src/core/services.d.ts
 
 ```ts
-import type { JsonValue, ServiceManifest, ServiceCaller, ServiceAdapter } from './service-types.js';
+import type { JsonValue, ServiceManifest, ServiceCaller, ServiceRequest, ServiceAdapter } from './service-types.js';
 export type * from './service-types.js';
 export interface ServiceRegistration {
     manifest: ServiceManifest;
@@ -3333,6 +3389,8 @@ export interface ServiceInvocationRecord {
         retryable: boolean;
     };
 }
+/** Register host authentication material with the private trace redactor. */
+export declare function registerServicePrivateValues(registrations: ReadonlyMap<string, ServiceRegistration>, register: (values: readonly string[]) => void): void;
 /** Internal non-credential effective adapter configuration for run evidence. */
 export declare function getAdapterMetadata(adapter: ServiceAdapter): Readonly<AdapterMetadata> | undefined;
 export declare function isJson(value: unknown, seen?: Set<object>, depth?: number): value is JsonValue;
@@ -3349,7 +3407,9 @@ export declare function createHttpJsonAdapter({ token, timeoutMs, fetchImpl }?: 
     token?: string;
     timeoutMs?: number;
     fetchImpl?: typeof fetch;
-}): ServiceAdapter;
+}): Readonly<{
+    invoke({ manifest, capability, input, envelope, caller, signal }: ServiceRequest): Promise<JsonValue>;
+}>;
 ```
 
 #### dist/src/core/service-types.d.ts
@@ -3389,6 +3449,8 @@ export interface ServiceCapability {
         retryable: boolean;
     }[];
     path?: string;
+    /** Host-registered invocation deadline, 1..86400000 ms. Defaults to 30000. */
+    timeout_ms?: number;
 }
 export interface ServiceCaller {
     runtimeId: string;
@@ -3411,6 +3473,10 @@ export interface ServiceRequest {
 }
 export interface ServiceAdapter {
     invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
+    /** Optional bounded host-only snapshot called during Runtime close. */
+    exportState?(options: {
+        signal: AbortSignal;
+    }): JsonValue | Promise<JsonValue>;
 }
 ```
 

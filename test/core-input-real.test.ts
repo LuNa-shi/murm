@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -8,7 +8,7 @@ import { test } from 'node:test';
 import { createInputUpstream } from './fixtures/core-input-upstream.js';
 import { ownedContainers } from './fixtures/core-runtime-containers.js';
 
-test('real Pi preserves Session and files across two rounds and consumes busy steer before followUp', {
+test('real Pi batches steer before start and preserves Session and files across a fenced interrupt', {
   skip: process.env.SWARMENV_CORE_INPUT_REAL_TEST !== '1' && 'Controlled Pi/OpenSandbox input acceptance requires independent review and explicit opt-in',
   timeout: 180_000,
 }, async t => {
@@ -69,13 +69,13 @@ test('real Pi preserves Session and files across two rounds and consumes busy st
     events.push({ type: event.type, seq: event.seq, outcome: event.outcome, expected: event.expected, errorCode: event.error?.code });
     if (event.type === 'settled') { settled.push(event); wake?.(); }
   });
-  async function waitSettled(index) {
+  async function waitSettled(index, outcome = 'completed') {
     const deadline = Date.now() + 40_000;
     while (settled.length <= index) {
       if (Date.now() >= deadline) throw new Error('CONTROLLED_SETTLED_TIMEOUT');
       await Promise.race([new Promise(resolve => { wake = resolve; }), delay(100)]);
     }
-    assert.equal(settled[index].outcome, 'completed');
+    assert.equal(settled[index].outcome, outcome);
     return settled[index];
   }
   async function send(input, requestId, mode) {
@@ -102,18 +102,48 @@ test('real Pi preserves Session and files across two rounds and consumes busy st
     await delay(50);
   }
   assert.equal((await runtime.get(bot.id)).status, 'running');
-  const steer = await send('STEER_AT_TOOL_BOUNDARY', 'busy-steer');
-  const followUp = await send('FOLLOW_UP_AFTER_CURRENT', 'busy-follow-up', 'followUp');
-  assert.equal(steer.disposition, 'queued');
+  const steers = await Promise.all(['A', 'B'].map(suffix => runtime.steer(bot.id, `STEER_AT_TOOL_BOUNDARY_${suffix}`, {
+    requestId: `busy-steer-${suffix}`, steeringMode: 'all', source: 'controlled-upstream',
+  })));
+  const followUp = await runtime.start(bot.id, 'FOLLOW_UP_AFTER_CURRENT', { requestId: 'busy-follow-up' });
+  assert.ok(steers.every(steer => steer.status === 'accepted' && steer.disposition === 'queued'));
   assert.equal(followUp.disposition, 'queued');
   resources.bashStillRunningAfterQueue = await docker('test', '-e', '/workspace/project/busy-finished.txt').then(() => false, () => true);
   assert.equal(resources.bashStillRunningAfterQueue, true);
   assert.equal((await waitSettled(2)).output, 'BUSY_ROUND_OK');
   assert.equal(settled.length, 3, 'Busy inputs may share one settled; no per-input completion assumption');
-  assert.deepEqual(upstream.receipt(), { requests: 7, failure: undefined, persistedRead: true, bashCompleted: true, steerAtBoundary: true, followUpAfterCurrent: true });
+  assert.equal((await runtime.start(bot.id, 'INTERRUPT_HELD_TOOL', { requestId: 'held-tool' })).disposition, 'started');
+  const interruptDeadline = Date.now() + 10_000;
+  while (!(await docker('test', '-e', '/workspace/project/interrupt-ready.txt').then(() => true, () => false))) {
+    assert.ok(Date.now() < interruptDeadline, 'Pi never entered the Bash operation to interrupt');
+    await delay(50);
+  }
+  assert.equal((await runtime.start(bot.id, 'CANCEL_QUEUED_PHASE', { requestId: 'old-queued' })).disposition, 'queued');
+  const interrupt = await runtime.interrupt(bot.id, { requestId: 'interrupt' });
+  assert.equal(interrupt.status, 'interrupted');
+  await waitSettled(3, 'aborted');
+  assert.equal(await sessionFiles(), firstSession);
+  assert.equal((await runtime.steer(bot.id, 'RESUME_AFTER_INTERRUPT', { requestId: 'resume', steeringMode: 'one-at-a-time' })).disposition, 'started');
+  assert.deepEqual(await runtime.interrupt(bot.id, { requestId: 'interrupt' }), interrupt);
+  assert.equal((await waitSettled(4)).output, 'RESUMED_OK');
+  assert.equal((await runtime.start(bot.id, 'FAIL_MODEL', { requestId: 'failed' })).disposition, 'started');
+  await waitSettled(5, 'failed');
+  assert.deepEqual(upstream.receipt(), { requests: 11, failure: undefined, persistedRead: true, bashCompleted: true,
+    steerAtBoundary: true, followUpAfterCurrent: true, resumedAfterInterrupt: true });
   resources.sameContainer = JSON.stringify(await ownedContainers(runtime.id)) === JSON.stringify(active);
   assert.equal(resources.sameContainer, true);
-  assert.equal((await runtime.stop(bot.id, { timeoutMs: 30_000 })).cleanup, 'complete');
+  const stop = await runtime.stop(bot.id, { timeoutMs: 30_000 });
+  assert.equal(stop.cleanup, 'complete');
+  const session = await readFile(join(stop.sessionArchive, '..', 'files', firstSession.split('/').at(-1)), 'utf8');
+  for (const marker of ['ROUND_ONE_OK', 'INTERRUPT_HELD_TOOL', 'RESUMED_OK', 'FAIL_MODEL']) assert.ok(session.includes(marker));
+  assert.ok(!session.includes('CANCEL_QUEUED_PHASE'));
+  const modelTrace = join(outputDir, runtime.id, 'model-trace');
+  const attempts = await readdir(modelTrace);
+  assert.equal(attempts.length, 11);
+  const modelResults = await Promise.all(attempts.map(async id =>
+    JSON.parse(await readFile(join(modelTrace, id, 'result.json'), 'utf8'))));
+  assert.equal(modelResults.filter(result => result.state === 'completed').length, 10);
+  assert.equal(modelResults.filter(result => result.state === 'failed').length, 1);
   assert.deepEqual(await ownedContainers(runtime.id), []);
   assert.equal(events.filter(event => event.type === 'exit' && event.expected).length, 1);
 });

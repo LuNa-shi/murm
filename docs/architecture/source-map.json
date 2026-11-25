@@ -1794,6 +1794,46 @@
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
       ]
+    },
+    {
+      "path": "scripts/mount-shared-workspace.py",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Trusted local Docker project mounts and shared tmpfs cleanup"
+    },
+    {
+      "path": "src/core/service-trace.ts",
+      "category": "observability and evidence",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Full Bridge operation trace and optional Service state snapshots"
+    },
+    {
+      "path": "src/core/public-services.ts",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Curated runtime values at the public Services entry point"
+    },
+    {
+      "path": "src/core/model-trace.ts",
+      "category": "observability and evidence",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Full private model request and response trace writer"
+    },
+    {
+      "path": "scripts/core-session-fork.ts",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Native Pi Session prefix, tool pairing and credential removal"
     }
   ]
 }

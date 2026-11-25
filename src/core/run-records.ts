@@ -5,6 +5,7 @@ import type { ServiceRegistration } from './services.js';
 import { createHash } from 'node:crypto';
 import { appendFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { StringDecoder } from 'node:string_decoder';
 import { defaultTimedResponsesLimits } from '../agent/responses-budget-gateway.js';
 import { getAdapterMetadata } from './services.js';
 import { readFileSync } from 'node:fs';
@@ -15,28 +16,94 @@ const packageInfo = JSON.parse(readFileSync(findPackageJSON(import.meta.url)!, '
 const queueLimit = 4096;
 const queueBytesLimit = 8 * 1024 ** 2;
 const redactMarker = '[redacted]';
+const credentialField = /^(?:authorization|proxy.authorization|api.?key|access.?token|refresh.?token|client.?secret|password|secret.?env)$/i;
 
 export function createRedactor(values: readonly unknown[] = []) {
   const secrets = new Set<string>();
   let pattern: RegExp | undefined;
+  let longest = 0;
+
+  function addSecret(value: string) {
+    for (const text of [value, JSON.stringify(value).slice(1, -1), encodeURIComponent(value.toWellFormed())]) {
+      secrets.add(text);
+      longest = Math.max(longest, text.length);
+    }
+  }
 
   function add(values: readonly unknown[]) {
     for (const value of values) {
       if (typeof value !== 'string' || !value) continue;
-      secrets.add(value);
+      addSecret(value);
       const credential = /^(?:Bearer|Basic)\s+(\S+)$/i.exec(value)?.[1];
-      if (credential) secrets.add(credential);
+      if (credential) addSecret(credential);
     }
     pattern = undefined;
   }
 
-  function text(value: string): string;
-  function text<T>(value: T): T;
-  function text(value: unknown): unknown {
-    if (typeof value !== 'string' || !secrets.size) return value;
+  function matchingSecrets() {
     pattern ??= new RegExp([...secrets].sort((a, b) => b.length - a.length)
       .map(secret => secret.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')).join('|'), 'g');
-    return value.replace(pattern, redactMarker);
+    return pattern;
+  }
+
+  function text(value: string): string;
+  function text(value: unknown): unknown;
+  function text(value: unknown): unknown {
+    return typeof value === 'string' && secrets.size ? value.replace(matchingSecrets(), redactMarker) : value;
+  }
+
+  function value(data: unknown): unknown {
+    if (Array.isArray(data)) return data.map(value);
+    if (data && typeof data === 'object') return Object.fromEntries(Object.entries(data).map(([key, item]) =>
+      [text(key), credentialField.test(key) ? redactMarker : value(item)]));
+    return text(data);
+  }
+
+  function stream() {
+    const decoder = new StringDecoder('utf8');
+    let pending = '';
+    return {
+      write(bytes: Uint8Array) {
+        pending += decoder.write(bytes);
+        let safeEnd = Math.max(0, pending.length - longest);
+        if (safeEnd === 0) return '';
+        // A match starting in the stable prefix can also consume the padded suffix.
+        for (const match of secrets.size ? pending.matchAll(matchingSecrets()) : []) {
+          if (match.index >= safeEnd) break;
+          safeEnd = Math.max(safeEnd, match.index + match[0].length);
+        }
+        if (pending.charCodeAt(safeEnd - 1) >= 0xD800 && pending.charCodeAt(safeEnd - 1) <= 0xDBFF) safeEnd--;
+        const result = text(pending.slice(0, safeEnd));
+        pending = pending.slice(safeEnd);
+        return result;
+      },
+      end() {
+        const result = text(pending + decoder.end());
+        pending = '';
+        return result;
+      },
+    };
+  }
+
+  function jsonl() {
+    const decoder = new StringDecoder('utf8');
+    let pending = '';
+    function redactLine(line: string) {
+      if (!line.trim()) return line;
+      const record = JSON.parse(line);
+      const redacted = JSON.stringify(value(record));
+      return redacted === JSON.stringify(record) ? line : redacted;
+    }
+    return {
+      write(bytes: Uint8Array) {
+        const lines = (pending + decoder.write(bytes)).split('\n');
+        pending = lines.pop()!;
+        return lines.map(line => redactLine(line) + '\n').join('');
+      },
+      end() {
+        return redactLine(pending + decoder.end());
+      },
+    };
   }
 
   function error(caught: unknown, fallback = 'SERVICE_UNAVAILABLE'): ErrorInfo {
@@ -49,7 +116,7 @@ export function createRedactor(values: readonly unknown[] = []) {
   }
 
   add(values);
-  return { add, text, error };
+  return { add, text, value, stream, jsonl, error };
 }
 
 export function runtimeConfiguration({ config, profiles, registrations, maxBots, modelAccessPolicy, defaultTimeoutMs }: {

@@ -1,3 +1,4 @@
+import type { createModelTrace } from '../core/model-trace.js';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { createServer } from 'node:http';
 import { Readable, Transform } from 'node:stream';
@@ -183,7 +184,7 @@ function terminalMeter(model: any, onUsage: any) {
           const usage = event.response?.usage;
           if (event.response?.model !== model ||
               !integer(usage?.input_tokens) || !integer(usage?.output_tokens)) continue;
-          try { onUsage(usage.input_tokens, usage.output_tokens); } catch (error: any) { callback(error); return; }
+          try { onUsage(usage.input_tokens, usage.output_tokens, status); } catch (error) { callback(error); return; }
           overflow = true;
           break;
         }
@@ -223,6 +224,8 @@ export class ResponsesBudgetGateway {
   declare policy: any;
   declare headers: any;
   declare pin: any;
+  declare transformPayload: (input: any) => any;
+  declare beginTrace: ReturnType<typeof createModelTrace>['begin'] | undefined;
 
   #tokens: any = new Map<any, any>();
   #server: any;
@@ -230,7 +233,7 @@ export class ResponsesBudgetGateway {
   #working: any = new Set();
   #controllers: any = new Map<any, any>();
   #stopPromise: any;
-  constructor({ db, upstream, timeBounds, validateBot, withLifecycleWrite = (commit: any) => commit(), fetchImpl = globalThis.fetch }: any = {}) {
+  constructor({ db, upstream, timeBounds, validateBot, withLifecycleWrite = (commit: any) => commit(), fetchImpl = globalThis.fetch, transformPayload = (payload: unknown) => payload, beginTrace }: any = {}) {
     if (!db?.prepare || typeof validateBot !== 'function' || typeof fetchImpl !== 'function') {
       throw new TypeError('Database, synchronous Bot authority, and fetch are required');
     }
@@ -241,6 +244,8 @@ export class ResponsesBudgetGateway {
     this.validateBot = validateBot;
     this.withLifecycleWrite = withLifecycleWrite;
     this.fetch = fetchImpl;
+    this.transformPayload = transformPayload;
+    this.beginTrace = beginTrace;
     this.policy = Object.freeze(timedPolicy(upstream, timeBounds));
     this.headers = new Headers(upstream.headers);
     this.headers.set('accept', 'text/event-stream');
@@ -433,13 +438,17 @@ export class ResponsesBudgetGateway {
     if (response.destroyed || request.aborted) return;
     const maxOutputTokens = this.policy.maxOutputTokens === null ? body.max_output_tokens
       : Math.min(body.max_output_tokens ?? this.policy.maxOutputTokens, this.policy.maxOutputTokens);
-    const payload = {
+    const payload = this.transformPayload({
       ...body, model: this.policy.model, stream: true, store: false,
       ...(maxOutputTokens === undefined ? {} : { max_output_tokens: maxOutputTokens }),
       ...(this.policy.serviceTier === null ? {} : { service_tier: this.policy.serviceTier }),
-    };
+    });
     const fingerprint = createHash('sha256').update(JSON.stringify(canonicalPayload(body))).digest('hex');
     let runtimeId: any, botId: any, receipt: any, cancelWatch: any, upstreamWork: any;
+    let trace: ReturnType<ReturnType<typeof createModelTrace>['begin']> | undefined;
+    let upstreamStatus: number | undefined, terminalStatus: string | undefined;
+    let usage: { inputTokens: number; outputTokens: number } | undefined;
+    let failure: { name: string; code?: string; message: string } | undefined;
     const controller = new AbortController();
     const disconnect = () => controller.abort();
     let usageRecorded = false;
@@ -456,6 +465,8 @@ export class ResponsesBudgetGateway {
         this.#controllers.set(controller, token);
         cancelWatch = this.#watchAuthority({ ...admission, token, controller });
         response.once('close', disconnect);
+        trace = this.beginTrace?.({ runtimeId, botId, requestId, startedAt: new Date().toISOString(),
+          before: body, after: payload });
         upstreamWork = this.fetch(this.policy.url, {
           method: 'POST', headers: this.headers, redirect: 'error', signal: controller.signal,
           body: JSON.stringify(payload),
@@ -468,7 +479,8 @@ export class ResponsesBudgetGateway {
         response.end(receipt);
         return;
       }
-      const upstream: any = await upstreamWork;
+      const upstream: Response = await upstreamWork;
+      upstreamStatus = upstream.status;
       const upstreamId = upstream.headers.get('x-request-id');
       if (upstreamId && /^[A-Za-z0-9_.:-]{1,256}$/.test(upstreamId)) {
         this.db.prepare(`UPDATE runtime_model_attempts SET upstream_request_id = ?
@@ -487,31 +499,39 @@ export class ResponsesBudgetGateway {
           retryAfterSeconds, runtimeId, botId, requestId);
       if (rejectionKind) {
         reason = 'upstream_http_error';
-        await upstream.body?.cancel();
+        if (trace && upstream.body) {
+          for await (const bytes of upstream.body) await trace.write(bytes);
+        } else await upstream.body?.cancel();
         throw new GatewayError(upstream.status === 429 ? 429 : 502, 'upstream_rejected');
       }
       response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
-      const meter = terminalMeter(this.policy.model, (inputTokens: any, outputTokens: any) => {
+      const meter = terminalMeter(this.policy.model, (inputTokens: number, outputTokens: number, status: string) => {
         this.db.prepare(`UPDATE runtime_model_attempts SET input_tokens = ?, output_tokens = ?, settled = 1
           WHERE runtime_id = ? AND bot_id = ? AND request_id = ? AND settled = 0`)
           .run(inputTokens, outputTokens, runtimeId, botId, requestId);
         usageRecorded = true;
+        terminalStatus = status;
+        usage = { inputTokens, outputTokens };
       });
       const capture = new Transform({
         transform(chunk: any, encoding: any, callback: any) {
           receiptBytes += chunk.length;
           if (stableId && receiptBytes <= maximumReceiptBytes) receiptChunks.push(chunk);
           else receiptChunks.length = 0;
-          callback(null, chunk);
+          if (trace) trace.write(chunk).then(() => callback(null, chunk), callback);
+          else callback(null, chunk);
         },
       });
-      await pipeline(Readable.fromWeb(upstream.body), meter, capture, response, { signal: controller.signal });
+      await pipeline(Readable.fromWeb(upstream.body as import('node:stream/web').ReadableStream<Uint8Array>), capture, meter, response, { signal: controller.signal });
       reason = usageRecorded ? (stableId ? 'receipt_too_large' : null) : 'no_trusted_terminal_usage';
       if (usageRecorded && receiptChunks.length) {
         this.db.prepare(`UPDATE runtime_model_attempts SET state = 'completed', receipt = ?
           WHERE runtime_id = ? AND bot_id = ? AND request_id = ?`)
           .run(Buffer.concat(receiptChunks), runtimeId, botId, requestId);
       }
+    } catch (error: any) {
+      failure = { name: error.name, code: error.code, message: error.message };
+      throw error;
     } finally {
       cancelWatch?.();
       controller.abort();
@@ -524,6 +544,8 @@ export class ResponsesBudgetGateway {
       if (runtimeId && !receipt) this.db.prepare(`UPDATE runtime_model_attempts SET state = ?, reason = ?
         WHERE runtime_id = ? AND bot_id = ? AND request_id = ? AND state = 'pending'`)
         .run(usageRecorded ? 'completed' : 'unknown', reason, runtimeId, botId, requestId);
+      await (trace as ReturnType<ReturnType<typeof createModelTrace>['begin']> | undefined)?.finish({ endedAt: new Date().toISOString(), upstreamStatus, usage, reason, terminalStatus,
+        state: failure || terminalStatus === 'failed' ? 'failed' : terminalStatus ?? 'unknown', error: failure });
     }
   }
 }

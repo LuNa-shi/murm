@@ -1,4 +1,5 @@
 import type { BotInfo, ErrorInfo, ModelAccessPolicy, PendingCleanup } from './types.js';
+import type { createModelTrace } from './model-trace.js';
 import type { PiOpenSandboxBackendConfig } from './backend-config.js';
 
 interface ModelBot {
@@ -20,6 +21,7 @@ interface ModelOptions {
   config: PiOpenSandboxBackendConfig;
   getBot(id: string): ModelBot | undefined;
   modelAccessPolicy?: ModelAccessPolicy;
+  modelTrace?: ReturnType<typeof createModelTrace>;
   onOwned?: (owner: ModelOwner) => void;
 }
 
@@ -73,15 +75,10 @@ function isEmptyPiToolMessage(item: ResponseInput, index: number, input: Respons
   return calls.size === 0;
 }
 
-function kimiResponsesTransport(fetch: typeof globalThis.fetch) {
-  return (url: Parameters<typeof fetch>[0], options?: RequestInit) => {
-    const payload = JSON.parse(options!.body as string);
-    if (Array.isArray(payload.input)) {
-      const input = payload.input.filter((item: ResponseInput, index: number, items: ResponseInput[]) => !isEmptyPiToolMessage(item, index, items));
-      if (input.length !== payload.input.length) return fetch(url, { ...options, body: JSON.stringify({ ...payload, input }) });
-    }
-    return fetch(url, options);
-  };
+function kimiResponsesPayload(payload: { input?: unknown; [key: string]: unknown }) {
+  if (!Array.isArray(payload.input)) return payload;
+  const input = payload.input.filter((item, index, items) => !isEmptyPiToolMessage(item, index, items));
+  return input.length === payload.input.length ? payload : { ...payload, input };
 }
 
 function synchronousPolicy(policy: ModelAccessPolicy | undefined): <T>(commit: () => T) => T {
@@ -110,7 +107,7 @@ function synchronousPolicy(policy: ModelAccessPolicy | undefined): <T>(commit: (
   };
 }
 
-export async function createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy, onOwned }: ModelOptions) {
+export async function createCoreModelAccess({ runtimeId, outputDir, config, getBot, modelAccessPolicy, modelTrace, onOwned }: ModelOptions) {
   if (typeof runtimeId !== 'string' || !runtimeId || typeof outputDir !== 'string' || !outputDir ||
       typeof getBot !== 'function' || !config?.models || !Object.keys(config.models).length) {
     throw invalid('Model access requires Runtime identity, output directory, models and Bot authority');
@@ -181,7 +178,8 @@ export async function createCoreModelAccess({ runtimeId, outputDir, config, getB
       await chmod(path, 0o600);
       const gatewayOptions = { db: entry.db,
         upstream: { ...entry.model.upstream, model: entry.model.model }, timeBounds: gatewayConfig,
-        ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { fetchImpl: kimiResponsesTransport(globalThis.fetch) } : {}),
+        ...(entry.model.provider === 'kimi_proxy' && entry.model.model === 'k3' ? { transformPayload: kimiResponsesPayload } : {}),
+        beginTrace: modelTrace ? (request: Record<string, unknown>) => modelTrace.begin({ ...request, modelAlias: alias, provider: entry.model.provider }) : undefined,
         withLifecycleWrite,
         validateBot: ({ runtimeId: callerRuntimeId, botId }: { runtimeId: string; botId: string }) => {
           if (callerRuntimeId !== runtimeId) return null;

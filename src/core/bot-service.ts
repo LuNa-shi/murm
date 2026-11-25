@@ -6,6 +6,7 @@ interface BotAuthority {
   unavailable: boolean;
   services: Readonly<Record<string, readonly string[]>>;
   spawnProfiles?: readonly string[];
+  allowContextFork?: boolean;
   parentId?: string;
 }
 
@@ -30,6 +31,7 @@ interface BotInput {
   input?: string;
   mode?: InputMode;
   bot_id: string;
+  fork?: boolean;
 }
 
 interface BotServiceFailure extends Error {
@@ -80,8 +82,9 @@ const outputs: Record<string, Record<string, unknown>> = {
   ] } }, ['bot', 'initialInput']),
 };
 const jsonSnapshot = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value));
-const definitions: [string, string, Record<string, unknown>][] = [
-  ['spawn', 'Create a direct child using its Profile defaults; initialInput reports admission, not completion.', object({ profile: id, input: { type: 'string' }, mode }, ['profile'])],
+const botStopView = ({ sessionArchive: _sessionArchive, ...receipt }: StopReceipt) => receipt;
+const definitions: readonly [string, string, Record<string, unknown>][] = [
+  ['spawn', 'Create a direct child using its Profile defaults; initialInput reports admission, not completion.', object({ profile: id, input: { type: 'string' }, mode, fork: { type: 'boolean' } }, ['profile'])],
   ['get', 'Inspect yourself or one direct child in this Runtime.', object({ bot_id: id }, ['bot_id'])],
   ['send', 'Continue yourself or one direct child; omitted mode is steer. Reuse request-id after unknown.', object({ bot_id: id, input: { type: 'string' }, mode }, ['bot_id', 'input'])],
   ['stop', 'Stop and collect one direct child; pending cleanup can be retried. Self-stop is unavailable.', object({ bot_id: id }, ['bot_id'])],
@@ -103,7 +106,8 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }: 
     if (!validId(requestId)) throw Object.assign(new Error('Bot request-id must contain 1-128 identifier characters'), { code: 'INVALID_CONTRACT' });
     if (operation === 'spawn') {
       if (!parent.spawnProfiles?.includes(input.profile)) deny('Profile is not allowed for child spawn');
-      const parameters = { profile: input.profile, ...(input.input === undefined ? {} : { input: input.input }), mode: input.mode ?? 'steer' };
+      if (input.fork && parent.allowContextFork !== true) deny('Profile does not permit Context Fork');
+      const parameters = { profile: input.profile, fork: input.fork === true, ...(input.input === undefined ? {} : { input: input.input }), mode: input.mode ?? 'steer' };
       const key = JSON.stringify([source, 'spawn', requestId]);
       const fingerprint = JSON.stringify(parameters);
       let request = requests.get(key);
@@ -115,7 +119,7 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }: 
       if (!request.work) request.work = (async () => {
         // Core registers parentId and binds events before spawn returns. Even a
         // fast first input therefore has a publicly queryable relationship.
-        try { request!.bot ??= await spawn({ profile: input.profile, parentId: caller.botId, requestId }, source); }
+        try { request!.bot ??= await spawn({ profile: input.profile, parentId: caller.botId, requestId, ...(parameters.fork ? { forkFrom: caller.botId } : {}) }, source); }
         catch (caught) {
           const error = caught as BotServiceFailure;
           // Startup may already own a child even when its receipt is unknown.
@@ -141,8 +145,12 @@ export function createBotService({ runtimeId, getBot, spawn, get, send, stop }: 
     }
     const target = getBot(input.bot_id);
     if (!target || !(target.parentId === caller.botId || (operation !== 'stop' && input.bot_id === caller.botId))) deny('Target must be yourself or a direct child; stop requires a child');
-    if (operation === 'get') return jsonSnapshot(await get(input.bot_id));
+    if (operation === 'get') {
+      const snapshot = await get(input.bot_id);
+      if (snapshot.lastStop) snapshot.lastStop = botStopView(snapshot.lastStop);
+      return jsonSnapshot(snapshot);
+    }
     if (operation === 'send') return jsonSnapshot(await send(input.bot_id, input.input!, { requestId, mode: input.mode }, source));
-    return jsonSnapshot(await stop(input.bot_id));
+    return jsonSnapshot(botStopView(await stop(input.bot_id)));
   } });
 }

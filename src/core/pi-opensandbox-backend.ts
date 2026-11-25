@@ -1,4 +1,5 @@
-import type { BotEvent, ErrorInfo, InputMode, Profile, SpawnOptions } from './types.js';
+import type { BotEvent, ErrorInfo, FileSnapshot, InputMode, InterruptReceipt, Profile, SpawnOptions, SteerOptions } from './types.js';
+import type { SessionFork } from '../../scripts/core-session-fork.js';
 import type { createCoreBridge } from './bridge.js';
 import type { createCoreModelAccess } from './model-access.js';
 
@@ -18,7 +19,17 @@ interface InputSubmission {
   work?: Promise<BackendInputReceipt>;
 }
 
+type SharedWorkspace = Extract<NonNullable<SpawnOptions['workspace']>, { id: string }>;
+interface WorkspaceOwners {
+  owners: Set<string>;
+  ready: Promise<void>;
+  retiring?: Promise<unknown>;
+  captureWork?: Promise<unknown>;
+}
+type SnapshotOptions = Parameters<import('./types.js').Runtime['files']['snapshot']>[1];
+
 interface BackendBot {
+  workspace?: SharedWorkspace;
   id: string;
   manager: SandboxManager;
   onEvent(event: BackendEvent): void;
@@ -46,7 +57,7 @@ type WorkerRecord = { worker_sequence: number } & (
     } }
   | { type: 'worker_error'; message: string }
   | { type: 'worker_exit'; code?: string | number; signal?: string }
-  | { type: 'agent_start' | 'agent_settled' }
+  | { type: 'agent_start' | 'agent_settled'; aborted?: boolean }
 );
 
 interface WorkerReply {
@@ -56,6 +67,7 @@ interface WorkerReply {
     command?: string;
     success?: boolean;
     error?: string;
+    code?: string;
     data?: { disposition?: 'started' | 'queued' | 'handled' };
   };
   status?: string;
@@ -63,7 +75,11 @@ interface WorkerReply {
 
 interface SandboxManager {
   agentRpc(botId: string, input: Record<string, unknown>, options: { timeoutMs: number; since?: number }): Promise<WorkerReply>;
-  coreFileOperation(botId: string, action: string, input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
+  coreFileOperation(botId: string, action: 'snapshot', input: SnapshotOptions): Promise<Omit<FileSnapshot, 'botId'>>;
+  coreFileOperation(botId: string, action: 'prepare' | 'grant', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
+  coreFileOperation(botId: string, action: 'pause' | 'resume', input: { requestId: string }): Promise<{ paused: boolean; requestId: string }>;
+  coreSessionSnapshot(botId: string): Promise<SessionFork>;
+  collectCoreSession(botId: string): AsyncIterable<import('./artifact-collection.js').ArtifactRecord>;
   ensureExecution(options: Record<string, unknown>): Promise<{ sandbox_id: string }>;
   agentVersions(options: { executionId: string }): Promise<{ piVersion?: string; [key: string]: unknown }>;
   startAgent(options: Record<string, unknown>): Promise<unknown>;
@@ -194,6 +210,7 @@ export function claimPiOpenSandboxBackend(handle: Backend) {
 
 export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig, { runtimeId, bridge, modelAccess, registerPrivateValues = () => {} }: BackendOptions) {
   const bots = new Map<string, BackendBot>();
+  const workspaces = new Map<string, WorkspaceOwners>();
   let closing = false;
   const network = new DockerBotNetwork() as unknown as BotNetwork;
   const disk = new DockerBotDisk(config.isolation.disk);
@@ -224,7 +241,8 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
         if (bot.output) bot.onEvent({ type: 'output', text: bot.output });
       }
       if (record.type === 'agent_settled') {
-        bot.onEvent({ type: 'settled', outcome: bot.outcome ?? 'completed', output: bot.output, ...(bot.error ? { error: bot.error } : {}) });
+        const outcome = record.aborted ? 'aborted' : bot.outcome ?? 'completed';
+        bot.onEvent({ type: 'settled', outcome, output: bot.output, ...(bot.error ? { error: bot.error } : {}) });
       }
       if (record.type === 'worker_exit') {
         bot.exited = true;
@@ -247,20 +265,43 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
     }
   }
 
-  function fileOperation(botId: string, action: string, input: unknown) {
+  function fileOperation(botId: string, action: 'snapshot', input: SnapshotOptions): Promise<Omit<FileSnapshot, 'botId'>>;
+  function fileOperation(botId: string, action: 'prepare' | 'grant', input: unknown): Promise<{ version: number; digest: string; writable?: boolean }>;
+  function fileOperation(botId: string, action: 'snapshot' | 'prepare' | 'grant', input: unknown) {
     const bot = bots.get(botId);
     if (!bot || bot.stopping || bot.exited || bot.historyLost || closing) {
       throw Object.assign(new Error('Core Bot is unavailable for file control'), { code: 'NOT_ALLOWED' });
     }
-    return bot.manager.coreFileOperation(botId, action, input);
+    return action === 'snapshot' ? bot.manager.coreFileOperation(botId, action, input as SnapshotOptions)
+      : bot.manager.coreFileOperation(botId, action, input);
   }
 
   return {
     async spawn({ botId, profile, options = {} as SpawnOptions, signal, onEvent, onExecutionStart, recordAllocation }: BackendSpawnOptions) {
       if (closing || signal?.aborted) throw Object.assign(new Error('Backend is closing'), { code: 'NOT_ALLOWED' });
+      let forkSession;
+      if (options.forkFrom !== undefined) {
+        const source = bots.get(options.forkFrom);
+        if (!source || source.stopping || source.exited || source.historyLost) throw Object.assign(new Error('Context Fork source is unavailable'), { code: 'NOT_ALLOWED' });
+        forkSession = await source.manager.coreSessionSnapshot(source.id);
+        if (source.stopping || source.exited || source.historyLost || signal?.aborted || closing) throw Object.assign(new Error('Context Fork source stopped during capture'), { code: 'NOT_ALLOWED' });
+      }
       const manager = new (OpenSandboxManager as unknown as SandboxManagerConstructor)({ ...config.sandbox, image: profile.image });
       const bot: BackendBot = { id: botId, manager, onEvent, onExecutionStart, cursor: 0, output: '', error: null, stopping: false, exited: false, pollController: new AbortController() };
       bots.set(botId, bot);
+      const workspace = options.workspace?.mode !== 'frozen-copy' ? options.workspace : undefined;
+      if (workspace) {
+        let entry = workspaces.get(workspace.id);
+        if (entry?.retiring) { await entry.retiring; entry = workspaces.get(workspace.id); }
+        if (!entry) {
+          entry = { owners: new Set(), ready: disk.sharedWorkspace('create', { runtimeId, workspaceId: workspace.id }) };
+          workspaces.set(workspace.id, entry);
+        }
+        bot.workspace = workspace;
+        entry.owners.add(botId);
+        await entry.ready;
+        await entry.captureWork;
+      }
       const assertOpen = () => {
         if (closing || bot.stopping || signal?.aborted) throw Object.assign(new Error('Bot startup is closing'), { code: 'NOT_ALLOWED' });
       };
@@ -279,17 +320,20 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       await network.isolate({ sandboxId: sandbox.sandbox_id, bot: identity, bridgeUrl: bridge.publicUrl, modelUrl: credentials.baseUrl, additionalEndpoints: profile.network?.allow ?? [] });
       assertOpen();
       const quota = await disk.isolate({ sandboxId: sandbox.sandbox_id, bot: identity });
+      if (workspace) await disk.sharedWorkspace('attach', { runtimeId, workspaceId: workspace.id, mode: workspace.mode,
+        sandboxId: sandbox.sandbox_id, bot: identity });
       const versions = await manager.agentVersions({ executionId: botId });
       if (versions.piVersion !== '1.3.0') throw invalid('Backend requires Pi 1.3.0');
       assertOpen();
       const model = config.models[profile.model];
       await manager.startAgent({ executionId: botId, command: 'pi',
-        args: ['--mode', 'rpc', '--session-dir', '/workspace/runtime/pi-session', '--session-id', randomUUID(),
+        args: ['--mode', 'rpc', '--session-dir', '/workspace/runtime/pi-session',
+          ...(forkSession ? ['--session', '/workspace/runtime/pi-session/fork.jsonl'] : ['--session-id', randomUUID()]),
           '--tools', 'read,write,edit,bash', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-context-files',
           '--append-system-prompt', '/workspace/runtime/profile-prompt.txt', '--provider', model.provider, '--model', model.model],
         systemPrompt: profile.prompt, systemPromptPath: '/workspace/runtime/profile-prompt.txt', resources: [],
         writable: options.writable ?? profile.writable,
-        files: options.files,
+        files: options.files, forkSession, workspace,
         env: { ...(profile.env ?? {}), ...bridgeCredentials.environment, ...credentials.environment },
         secretEnvironment: { ...(options.secretEnv ?? {}), ...bridgeCredentials.secretEnvironment, ...credentials.secretEnvironment },
         projectQuota: quota, modelCatalogResource: credentials.catalogResource, beforeAgentStart: assertOpen });
@@ -301,9 +345,36 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       bot.polling = poll(bot);
       return { sandboxId: sandbox.sandbox_id, versions };
     },
+    async snapshotFiles(botId: string, input: SnapshotOptions) {
+      const bot = bots.get(botId);
+      if (!bot?.workspace) return fileOperation(botId, 'snapshot', input);
+      const workspace = workspaces.get(bot.workspace.id)!;
+      const before = workspace.captureWork ?? Promise.resolve();
+      const work = before.then(async () => {
+        const owners = [...workspace.owners].map(id => bots.get(id));
+        if (owners.some(owner => !owner?.started || owner.stopping || owner.exited)) throw Object.assign(new Error('Shared workspace owners are changing'), { code: 'WORKSPACE_BUSY' });
+        const fence = randomUUID();
+        const paused: BackendBot[] = [];
+        try {
+          const results = await Promise.allSettled(owners.map(async owner => {
+            paused.push(owner!);
+            const reply = await owner!.manager.coreFileOperation(owner!.id, 'pause', { requestId: fence });
+            if (reply?.paused !== true || reply.requestId !== fence) throw new Error('Shared writer fence was not confirmed');
+          }));
+          if (results.some(result => result.status === 'rejected')) {
+            throw Object.assign(new Error('Shared workspace writers could not all be paused'), { code: 'WORKSPACE_BUSY' });
+          }
+          return await fileOperation(botId, 'snapshot', input);
+        } finally {
+          await Promise.all(paused.map(owner => owner.manager.coreFileOperation(owner.id, 'resume', { requestId: fence }).catch(() => undefined)));
+        }
+      });
+      workspace.captureWork = work.catch(() => undefined);
+      return work;
+    },
     prepareFiles(botId: string, input: { version: number; files: NonNullable<SpawnOptions['files']> }) { return fileOperation(botId, 'prepare', input); },
     grantFiles(botId: string, input: { version: number; digest: string }) { return fileOperation(botId, 'grant', input); },
-    async send(botId: string, input: string, { mode, inputId }: { mode: InputMode; inputId: string }): Promise<BackendInputReceipt> {
+    async send(botId: string, input: string, { mode, inputId, steeringMode, executionEpoch }: { mode: InputMode; inputId: string; steeringMode?: SteerOptions['steeringMode']; executionEpoch?: number }): Promise<BackendInputReceipt> {
       const bot = bots.get(botId);
       if (!bot) throw Object.assign(new Error('Bot is unavailable'), { code: 'NOT_ALLOWED' });
       bot.submissions ??= new Map();
@@ -326,7 +397,9 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
             // A prior attempt, including a failed socket, can only be queried.
             // Never transparently resubmit an uncertain prompt to Pi.
             result = await bot.manager.agentRpc(botId, dispatch
-              ? { type: 'prompt', id: inputId, message: input, streamingBehavior: mode }
+              ? { type: 'prompt', id: inputId, message: input, streamingBehavior: mode,
+                ...(executionEpoch ? { executionEpoch } : {}),
+                ...(steeringMode === undefined ? {} : { steeringMode }) }
               : { type: 'get_rpc_result', id: inputId, since: bot.cursor }, { timeoutMs: 30000, since: bot.cursor });
           } catch {
             // Transport status codes also cover Worker-side failures after
@@ -338,7 +411,9 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
             status: 'unknown', reason: result.status === 'pending' ? 'worker-pending' : 'worker-uncorrelated-reply',
           };
           if (result.response?.success !== true) {
-            if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), { code: 'INVALID_CONTRACT', inputRejected: true });
+            if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), {
+              code: result.response.code === 'NOT_ALLOWED' ? 'NOT_ALLOWED' : 'INVALID_CONTRACT', inputRejected: true,
+            });
             return { status: 'unknown', reason: 'worker-prompt-status-missing' };
           }
           const disposition = result.response.data?.disposition;
@@ -348,6 +423,16 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
         })().finally(() => { submission!.work = undefined; });
       }
       return submission.work;
+    },
+    async interrupt(botId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Pick<InterruptReceipt, 'status'>> {
+      const bot = bots.get(botId);
+      if (!bot || bot.stopping || bot.exited || bot.historyLost || closing) return { status: 'unknown' };
+      const result = await bot.manager.agentRpc(botId, { type: 'core_interrupt', id: interruptId, executionEpoch },
+        { timeoutMs: 30_000, since: bot.cursor });
+      consume(bot, result.records ?? []);
+      const confirmed = !bot.historyLost && !bot.exited && !bot.stopping && result.response?.id === interruptId &&
+        result.response.command === 'core_interrupt' && result.response.success === true;
+      return { status: confirmed ? 'interrupted' : 'unknown' };
     },
     async stopExecution(botId: string) {
       const bot = bots.get(botId);
@@ -362,6 +447,11 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
         bot.onEvent({ type: 'exit', reason: 'Worker confirmed Pi stopped', expected: true });
       }
       return { collectable: stopped };
+    },
+    async *collectSession(botId: string) {
+      const bot = bots.get(botId);
+      if (!bot?.executionStopped) throw Object.assign(new Error('Session archive requires confirmed execution stop'), { code: 'NOT_ALLOWED' });
+      yield* bot.manager.collectCoreSession(botId);
     },
     async *collect(botId: string, specification: NonNullable<Profile['collect']>) {
       const bot = bots.get(botId);
@@ -386,6 +476,15 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       bot.pollController.abort();
       await bot.manager.stopExecution(botId);
       await bot.polling;
+      if (bot.workspace) {
+        const workspaceId = bot.workspace.id;
+        const entry = workspaces.get(workspaceId)!;
+        entry.owners.delete(botId);
+        if (!entry.owners.size) {
+          entry.retiring = disk.sharedWorkspace('delete', { runtimeId, workspaceId }).then(() => workspaces.delete(workspaceId));
+          try { await entry.retiring; } catch (error) { entry.retiring = undefined; throw error; }
+        }
+      }
       bots.delete(botId);
     },
     async close() {

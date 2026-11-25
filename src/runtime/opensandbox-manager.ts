@@ -609,7 +609,7 @@ export class OpenSandboxManager {
     }
   }
 
-  async startAgent({ writable = false, files, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null }: any = {}) {
+  async startAgent({ writable = false, files, forkSession, workspace, executionId, command: agentCommand, args = [], cwd = '/workspace/project', env = {}, secretEnvironment = {}, systemPrompt = null, systemPromptPath = null, resources, projectQuota = null, modelCatalogResource = null, beforeAgentStart = null }: any = {}) {
     const contract = { protocolVersion: 'swarmenv-core-v1', resources: [] };
     const record: any = this.#record(executionId);
     const signature = (values: any) => Array.isArray(values) && values.every((item: any) => item && typeof item.path === 'string' && /^[a-f0-9]{64}$/.test(item.sha256))
@@ -638,6 +638,7 @@ export class OpenSandboxManager {
       extraHeaders: workerHeaders,
       body: {
         command: required(agentCommand, 'agent_command'),
+        ...(forkSession === undefined ? {} : { fork_session: forkSession }),
         args,
         cwd,
         env: envs(env, { allowSecrets: true }),
@@ -649,6 +650,7 @@ export class OpenSandboxManager {
         resources,
         contract_version: contract.protocolVersion,
         writable,
+        ...(workspace ? { shared_workspace: workspace } : {}),
         ...(files === undefined ? {} : { files }),
         ...(projectQuota ? { project_quota: projectQuota } : {}),
         ...(modelCatalogResource ? { model_catalog_resource: modelCatalogResource } : {}),
@@ -668,7 +670,8 @@ export class OpenSandboxManager {
       throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest the pinned Pi model catalog');
     }
     const fileReceipt = startup.body?.result?.project_files;
-    if (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest) {
+    if (workspace && JSON.stringify(startup.body?.result?.shared_workspace) !== JSON.stringify(workspace)) throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'Worker did not attest shared workspace');
+    if (!workspace && (fileReceipt?.version !== expectedVersion || fileReceipt.writable !== writable || fileReceipt.digest !== expectedDigest)) {
       throw new SwarmEnvError(ERROR_CODES.BOT_STARTUP_CONTRACT, 'worker did not attest initial Core files and workDir permissions');
     }
     record.agent = { endpoint, token: workerToken, worker_port: this.workerPort, started_at: this.now(), contract: receipt };
@@ -753,8 +756,20 @@ export class OpenSandboxManager {
   prepareBotProject({ executionId, manifest }: any) { return this.#projectCall(executionId, 'prepare', manifest); }
   grantBotProject({ executionId }: any) { return this.#projectCall(executionId, 'grant'); }
 
-  async coreFileOperation(executionId: any, action: any, input: any) {
-    const record: any = this.#record(executionId);
+  async coreSessionSnapshot(executionId: string) {
+    const record = this.#record(executionId);
+    if (record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise || record.executionStopped) {
+      throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Context Fork requires a live Bot Worker');
+    }
+    const response = await this.#request(`${record.agent.endpoint}/core/session/snapshot`, {
+      absolute: true, method: 'POST', extraHeaders: { authorization: `Bearer ${record.agent.token}` },
+      body: {}, timeoutMs: 15_000,
+    });
+    return responseValue(response.body);
+  }
+
+  async coreFileOperation(executionId: string, action: string, input: unknown) {
+    const record = this.#record(executionId);
     if (record.agent?.contract?.version !== 'swarmenv-core-v1' || record.stopPromise) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core files require the live Bot Worker');
     }
@@ -817,20 +832,25 @@ export class OpenSandboxManager {
       executionStopped: record?.executionStopped === true };
   }
 
-  async *collectCoreFiles(executionId: any, input: any) {
+  async *collectCoreSession(executionId: string) {
+    yield* this.collectCoreFiles(executionId, { paths: ['.'], includeGit: false, required: true, maxBytes: Number.MAX_SAFE_INTEGER }, { session: true });
+  }
+
+  async *collectCoreFiles(executionId: string, input: unknown, { session = false } = {}) {
     const spec = snapshotCollectionSpec(input);
     const record: any = this.#record(executionId);
     if (!record.executionStopped || !record.coreAgent || !record.agent || record.stopPromise) {
       throw new SwarmEnvError(ERROR_CODES.NOT_ALLOWED, 'Core collection requires a confirmed stopped Bot and retained Worker');
     }
     const fingerprint = JSON.stringify(spec);
-    if (record.collectionSpec && record.collectionSpec !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot collection policy is immutable');
-    record.collectionSpec = fingerprint;
+    const policyKey = session ? 'sessionCollectionSpec' : 'collectionSpec';
+    if (record[policyKey] && record[policyKey] !== fingerprint) throw new SwarmEnvError(ERROR_CODES.CONFLICT, 'Bot collection policy is immutable');
+    record[policyKey] = fingerprint;
     const controller = new AbortController();
-    const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), 30_000);
+    const deadline = setTimeout(() => controller.abort(new Error('Core collection transport deadline')), session ? 610_000 : 30_000);
     let response;
     try {
-      response = await this.fetch(`${record.agent.endpoint}/core/files/collect`, { method: 'POST',
+      response = await this.fetch(`${record.agent.endpoint}${session ? '/core/session/archive' : '/core/files/collect'}`, { method: 'POST',
         headers: { authorization: `Bearer ${record.agent.token}`, 'content-type': 'application/json', accept: 'application/x-ndjson' },
         body: JSON.stringify(spec), signal: controller.signal, redirect: 'error' });
       if (!response.ok || !response.body || response.headers.get('content-type')?.split(';')[0] !== 'application/x-ndjson') {

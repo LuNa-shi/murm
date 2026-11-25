@@ -1,5 +1,7 @@
 import type { ServiceRegistry } from './services.js';
 
+export {};
+
 declare const backendBrand: unique symbol;
 
 export interface Backend {
@@ -13,6 +15,7 @@ export interface Profile {
   writable: boolean;
   services: Readonly<Record<string, readonly string[]>>;
   spawnProfiles?: readonly string[];
+  allowContextFork?: boolean;
   env?: Readonly<Record<string, string>>;
   network?: { allow: readonly string[] };
   collect?: CollectionSpec;
@@ -66,13 +69,26 @@ export interface PreparedFiles {
   readonly digest: string;
 }
 
+export interface FileSnapshot {
+  readonly botId: string;
+  readonly requestId: string;
+  readonly version: number;
+  readonly digest: string;
+  readonly files: FileSeed;
+}
+
 export interface GrantReceipt {
   readonly botId: string;
   readonly version: number;
   readonly writable: true;
 }
 
+export type WorkspaceOptions =
+  | { id: string; mode: 'read-only' | 'read-write' }
+  | { mode: 'frozen-copy'; files: FileSeed };
+
 export interface SpawnOptions {
+  forkFrom?: string;
   requestId: string;
   profile: string;
   parentId?: string;
@@ -80,6 +96,7 @@ export interface SpawnOptions {
   files?: FileSeed;
   bindings?: Readonly<Record<string, string>>;
   secretEnv?: Readonly<Record<string, string>>;
+  workspace?: WorkspaceOptions;
   collect?: CollectionSpec;
 }
 
@@ -100,11 +117,18 @@ export interface ResourceError extends Error {
   details: readonly ErrorInfo[];
 }
 
+export type BotStatus = 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+
+export interface BotListFilter {
+  parentId?: string | null;
+  status?: BotStatus | readonly BotStatus[];
+}
+
 export interface BotInfo {
   id: string;
   profile: string;
   parentId?: string;
-  status: 'starting' | 'idle' | 'running' | 'exited' | 'closing' | 'closed';
+  status: BotStatus;
   cursor: number;
   latestOutput?: string;
   lastError?: ErrorInfo;
@@ -113,9 +137,20 @@ export interface BotInfo {
 
 export type InputMode = 'steer' | 'followUp';
 
+export interface SteerOptions {
+  requestId: string;
+  source?: string;
+  steeringMode?: 'all' | 'one-at-a-time';
+}
+
 export type InputReceipt =
   | { inputId: string; status: 'accepted'; disposition: 'started' | 'queued' | 'handled' }
   | { inputId: string; status: 'unknown' };
+
+export interface InterruptReceipt {
+  interruptId: string;
+  status: 'interrupted' | 'unknown';
+}
 
 export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;
 
@@ -135,7 +170,7 @@ export type BotEvent = { botId: string; seq: number } & (
 export interface PendingCleanup {
   kind: 'bot' | 'bridge' | 'model' | 'backend' | 'report';
   id: string;
-  action: 'await-startup' | 'stop-execution' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
   error?: ErrorInfo;
   resourceKey?: string;
   sandboxId?: string;
@@ -148,6 +183,7 @@ export interface StopReceipt {
   execution: 'stopped' | 'unknown';
   cleanup: 'complete' | 'pending';
   artifacts: readonly string[];
+  sessionArchive?: string;
   errors: readonly ErrorInfo[];
   pending?: PendingCleanup;
 }
@@ -166,11 +202,16 @@ export interface Runtime {
   readonly id: string;
   spawn(options: SpawnOptions): Promise<BotInfo>;
   get(botId: string): Promise<BotInfo>;
+  list(filter?: BotListFilter): Promise<BotInfo[]>;
+  start(botId: string, input: string, options: { requestId: string }): Promise<InputReceipt>;
+  steer(botId: string, input: string, options: SteerOptions): Promise<InputReceipt>;
+  interrupt(botId: string, options: { requestId: string; timeoutMs?: number }): Promise<InterruptReceipt>;
   send(botId: string, input: string, options: { requestId: string; mode?: InputMode }): Promise<InputReceipt>;
   onEvent(handler: (event: BotEvent) => void): () => void;
   stop(botId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {
+    snapshot(botId: string, options: { requestId: string; paths: readonly string[]; includeGit?: boolean; maxBytes?: number }): Promise<FileSnapshot>;
     prepare(botId: string, options: { requestId: string; files: FileSeed }): Promise<PreparedFiles>;
     grant(options: { requestId: string; prepared: PreparedFiles }): Promise<GrantReceipt>;
   };

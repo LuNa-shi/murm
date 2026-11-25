@@ -37,7 +37,8 @@ COPY --from=typescript-build --chown=0:0 /build/dist/src /opt/swarmenv/dist/src
 COPY --from=typescript-build --chown=0:0 \
   /build/dist/scripts/opensandbox-agent-worker.js /build/dist/scripts/sandbox-project.js \
   /build/dist/scripts/core-file-seed.js /build/dist/scripts/core-work-dir.js /build/dist/scripts/core-collection.js \
-  /build/dist/scripts/pi-rpc-submissions.js /build/dist/scripts/project-install.js /build/dist/scripts/project-processes.js \
+  /build/dist/scripts/pi-rpc-submissions.js /build/dist/scripts/core-session-fork.js \
+  /build/dist/scripts/project-install.js /build/dist/scripts/project-processes.js \
   /build/dist/scripts/swarm.js /build/dist/scripts/git-credential-agensh.js /opt/swarmenv/dist/scripts/
 COPY --chown=0:0 services/opensandbox-agent/pi-models.json /opt/swarmenv/pi-agent/models.json
 # Git archives may mark source directories group-writable. Protect all

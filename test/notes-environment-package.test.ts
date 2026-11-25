@@ -64,9 +64,12 @@ const hooks=registerHooks({load(url,context,nextLoad) {
 }});
 let createRuntime,ServiceRegistry,createPiOpenSandboxBackend;
 try {
- ({createRuntime}=await import('@swarmenv/core'));
- ({ServiceRegistry}=await import('@swarmenv/core/services'));
- ({createPiOpenSandboxBackend}=await import('@swarmenv/core/backends/pi-opensandbox'));
+ const core=await import('@swarmenv/core');
+ const services=await import('@swarmenv/core/services');
+ const backend=await import('@swarmenv/core/backends/pi-opensandbox');
+ ({createRuntime}=core);
+ ({ServiceRegistry}=services);
+ ({createPiOpenSandboxBackend}=backend);
 } finally {hooks.deregister()}
 const domainRoots=['dist/src/task/','dist/src/context/','dist/src/judge/','dist/src/environments/flat/'];
 assert.deepEqual([...loaded].filter(path=>path==='dist/src/agent/bot-contract.js'||domainRoots.some(root=>path.startsWith(root))),[],
@@ -159,7 +162,10 @@ const config: PiOpenSandboxBackendConfig = {
   isolation: { network: 'local-docker', disk: { bytes: 67108864, inodes: 4096 } },
 };
 const registry = new ServiceRegistry();
-const adapter = createInProcessAdapter({ invoke: request => ({ author: request.caller.botId }) });
+const adapter = createInProcessAdapter({
+  invoke: request => { request.assertAuthorized(); return { author: request.caller.botId }; },
+  exportState: ({ signal }) => { signal.throwIfAborted(); return { entries: [] }; },
+});
 registry.registerService({ manifest: { id: 'notes', title: 'Notes', purpose: 'Store notes', provider_version: '1',
   contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [] }, adapter });
 createHttpJsonAdapter({ token: 'host-only', timeoutMs: 1000 });
@@ -167,6 +173,12 @@ const runtime: Runtime = await createRuntime({ backend: createPiOpenSandboxBacke
   profiles: { reader: { prompt: 'Read', model: 'default', image: 'image', writable: false, services: {} } },
   services: registry, maxBots: 2, outputDir: './output' });
 const bot = await runtime.spawn({ requestId: 'spawn', profile: 'reader' });
+await runtime.list({ parentId: null, status: ['idle', 'starting'] });
+await runtime.start(bot.id, 'Read a note', { requestId: 'start' });
+await runtime.steer(bot.id, 'Read this too', { requestId: 'steer', source: 'mail', steeringMode: 'all' });
+await runtime.interrupt(bot.id, { requestId: 'interrupt', timeoutMs: 1000 });
+const files = await runtime.files.snapshot(bot.id, { requestId: 'snapshot', paths: ['note.txt'] });
+await runtime.spawn({ requestId: 'fork', profile: 'reader', forkFrom: bot.id, workspace: { mode: 'frozen-copy', files: files.files } });
 await runtime.send(bot.id, 'Read a note', { requestId: 'input', mode: 'followUp' });
 // @ts-expect-error Core accepts only documented input modes.
 await runtime.send(bot.id, 'Read a note', { requestId: 'invalid', mode: 'later' });
@@ -180,7 +192,7 @@ await runtime.close();
   const compiler = fileURLToPath(new URL('./bin/tsc', import.meta.resolve('typescript/package.json')));
   const compilerOptions = { cwd: installed.directory, env: installed.env, timeout: 30_000 };
   const typed = await execute(process.execPath, [compiler, '--project', 'tsconfig.json', '--pretty', 'false', '--listFiles'], compilerOptions);
-  for (const declaration of ['index.d.ts', 'services.d.ts', 'backends/pi-opensandbox.d.ts']) {
+  for (const declaration of ['index.d.ts', 'public-services.d.ts', 'backends/pi-opensandbox.d.ts']) {
     assert.ok(typed.stdout.split('\n').includes(join(installed.directory, 'node_modules/@swarmenv/core/dist/src/core', declaration)));
   }
   await writeFile(join(installed.directory, 'consumer.mts'), consumer.replaceAll(/\/\/ @ts-expect-error[^\n]*\n/g, ''));

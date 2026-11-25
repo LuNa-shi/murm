@@ -1,4 +1,4 @@
-import type { FileSeed, GrantReceipt, PreparedFiles, Runtime } from './types.js';
+import type { FileSeed, FileSnapshot, GrantReceipt, PreparedFiles, Runtime } from './types.js';
 
 interface FileBot {
   info: { id: string };
@@ -28,11 +28,18 @@ interface GrantRequest extends FileRequest<GrantReceipt> {
   prepared: PreparedFiles;
 }
 
+type SnapshotOptions = Parameters<Runtime['files']['snapshot']>[1];
+type SnapshotReply = Omit<FileSnapshot, 'botId'>;
+interface SnapshotRequest extends FileRequest<FileSnapshot> {
+  identity: string;
+}
+
 interface FileState {
   writable: boolean;
   version: number;
   prepares: Map<string, PrepareRequest>;
   grants: Map<string, GrantRequest>;
+  snapshots: Map<string, SnapshotRequest>;
   operation?: FileRequest<unknown>;
   prepared?: PreparedFiles;
 }
@@ -40,6 +47,7 @@ interface FileState {
 interface FileControlsOptions<Bot extends FileBot, Timeout extends symbol> {
   backend: {
     prepareFiles(botId: string, input: { version: number; files: FileSeed }): Promise<WorkerFileReply>;
+    snapshotFiles(botId: string, input: SnapshotOptions): Promise<SnapshotReply>;
     grantFiles(botId: string, input: { version: number; digest: string }): Promise<WorkerFileReply>;
   };
   findBot(botId: string, operation: string, requestId: string): Bot;
@@ -50,6 +58,7 @@ interface FileControlsOptions<Bot extends FileBot, Timeout extends symbol> {
 }
 
 import { snapshotFileSeed } from '../../scripts/core-file-seed.js';
+import { snapshotCollectionSpec } from '../../scripts/core-collection.js';
 import { validId } from './config.js';
 
 const knownRejections = new Set(['CONFLICT', 'INVALID_CONTRACT', 'NOT_ALLOWED', 'WORKSPACE_BUSY']);
@@ -58,7 +67,7 @@ export function createFileControls<Bot extends FileBot, Timeout extends symbol>(
   const states = new WeakMap<Bot, FileState>();
 
   function register(bot: Bot, { writable, seeded }: { writable: boolean; seeded: boolean }) {
-    states.set(bot, { writable, version: writable || seeded ? 1 : 0, prepares: new Map(), grants: new Map() });
+    states.set(bot, { writable, version: writable || seeded ? 1 : 0, prepares: new Map(), grants: new Map(), snapshots: new Map() });
   }
 
   function admit(bot: Bot, state: FileState, request: FileRequest<unknown>) {
@@ -68,7 +77,7 @@ export function createFileControls<Bot extends FileBot, Timeout extends symbol>(
     state.operation = request;
   }
 
-  async function run<Receipt>(bot: Bot, state: FileState, request: FileRequest<Receipt>, invoke: () => Promise<WorkerFileReply>, accept: (reply: WorkerFileReply, unknown: () => Error) => Receipt): Promise<Receipt> {
+  async function run<Receipt, Reply extends WorkerFileReply>(bot: Bot, state: FileState, request: FileRequest<Receipt>, invoke: () => Promise<Reply>, accept: (reply: Reply, unknown: () => Error) => Receipt): Promise<Receipt> {
     const { id: botId } = bot.info;
     const { type, id } = request;
     const unknown = () => problem('OPERATION_UNKNOWN', 'Worker has not confirmed the file operation', type, botId, id, 'pending');
@@ -156,9 +165,42 @@ export function createFileControls<Bot extends FileBot, Timeout extends symbol>(
       });
   }
 
+  async function snapshot(botId: string, options: SnapshotOptions): Promise<FileSnapshot> {
+    const type = 'files.snapshot';
+    const id = options?.requestId;
+    if (!validId(id)) throw problem('INVALID_CONTRACT', 'File snapshot requires a requestId', type, botId, id);
+    let selection;
+    try {
+      if (Object.keys(options).some(key => !['requestId', 'paths', 'includeGit', 'maxBytes'].includes(key))) throw new TypeError('Unsupported snapshot options');
+      selection = snapshotCollectionSpec({ paths: options.paths, includeGit: options.includeGit ?? false,
+        maxBytes: options.maxBytes ?? 16 * 1024 ** 2, required: true });
+      if (selection.maxBytes > 16 * 1024 ** 2) throw new TypeError('Snapshot maxBytes exceeds 16 MiB');
+    } catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, type, botId, id); }
+    const bot = findBot(botId, type, id);
+    const state = states.get(bot)!;
+    const identity = JSON.stringify(selection);
+    let request = state.snapshots.get(id);
+    if (request && request.identity !== identity) throw problem('CONFLICT', 'Snapshot requestId has a different selection', type, botId, id);
+    if (!request) {
+      if (!isLive(bot)) throw problem('NOT_ALLOWED', 'Bot is unavailable for file snapshot', type, botId, id);
+      if (state.operation) throw problem('CONFLICT', 'The Bot has another pending file operation', type, botId, id);
+      request = { type, id, identity };
+      state.operation = request;
+      state.snapshots.set(id, request);
+    }
+    return run(bot, state, request, () => backend.snapshotFiles(botId, { requestId: id, ...selection }),
+      (reply, unknown) => {
+        if (reply?.requestId !== id || !Number.isSafeInteger(reply.version) || reply.version < 1) throw unknown();
+        const seed = snapshotFileSeed(reply.files);
+        if (seed.digest !== reply.digest) throw unknown();
+        for (const file of Object.values(seed.files)) Object.freeze(file);
+        return Object.freeze({ botId, requestId: id, version: reply.version, digest: seed.digest, files: Object.freeze(seed.files) });
+      });
+  }
+
   return {
     register,
     canSend(bot: Bot) { return states.get(bot)!.operation?.type !== 'files.grant'; },
-    api: Object.freeze({ prepare, grant }),
+    api: Object.freeze({ prepare, grant, snapshot }),
   };
 }

@@ -5,11 +5,17 @@ import { once } from 'node:events';
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
 
 for (const contractVersion of [undefined, '2']) for (const timeoutMs of [undefined, 2_430_000]) test(`swarm take preserves its request ID after transport loss (Bridge: ${contractVersion ?? 'legacy'}, timeout: ${timeoutMs ?? 'default'})`, async t => {
-  let invocation; let calls = 0;
-  const server = createServer(async request => {
+  let invocation; let calls = 0; let metadataCalls = 0;
+  const server = createServer(async (request, response) => {
     let body = '';
     for await (const chunk of request) body += chunk;
-    invocation = JSON.parse(body); calls++;
+    const input = JSON.parse(body);
+    if (input.operation === 'get_service_metadata') {
+      metadataCalls++;
+      response.end(JSON.stringify({ ok: true, result: { capabilities: [{ operation: 'task_take', timeout_ms: 30_000 }] } }));
+      return;
+    }
+    invocation = input; calls++;
     request.socket.destroy();
   });
   server.listen(0, '127.0.0.1');
@@ -31,6 +37,7 @@ for (const contractVersion of [undefined, '2']) for (const timeoutMs of [undefin
     assert.equal(invocation.operation, 'task_take');
     assert.equal(invocation.service_id, contractVersion ? 'task' : undefined);
     assert.equal(calls, 1);
+    assert.equal(metadataCalls, contractVersion ? 1 : 0);
     assert.match(invocation.operation_id, /^cli:take:/);
     assert.equal(error.details.request_id, invocation.operation_id);
     assert.equal(error.details.request_outcome, 'unknown');
