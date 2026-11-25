@@ -4,7 +4,7 @@
 
 Runtime baseline: `1c2d5d5825d3511aa47d0964c11f44d107d28da5`; review date: 2026-11-16. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **196 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **208 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -179,6 +179,23 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`. Root files: `p
 |---|---|---|---|
 | [src/runtime/workspace-contract.ts](../../src/runtime/workspace-contract.ts) | Workspace path normalization, input/output contracts and required-input validation | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `62281cf9f9842eef0da944b7b2a31ed2b39f58ce5a5c71361cd3f2d65c5b30f5` |
 | [src/runtime/workspace-manager.ts](../../src/runtime/workspace-manager.ts) | Execution-owned filesystem, manifests, revisions, local Git and snapshots | [05-workspace-continuity](05-workspace-continuity.md), [09-known-boundaries](09-known-boundaries.md) | `68c1eca2ab1cfcf195bbf130ee8c555fb6138024c6ffe47b515c39beb5a0d035` |
+
+### development benchmarks (12)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [benchmarks/programbench-pastel/Dockerfile](../../benchmarks/programbench-pastel/Dockerfile) | Development-only Worker overlay for the pinned Pastel reference and public documentation | [17-environment-reporting](17-environment-reporting.md) | `0348b5d98c586aafcfdc8575009bdaae515784a1f7a8cc73eff00ac15e8fa2aa` |
+| [benchmarks/programbench-pastel/local-integration.mjs](../../benchmarks/programbench-pastel/local-integration.mjs) | Common case input, loopback Responses fixture, Docker OpenSandbox settings, and private run paths | [17-environment-reporting](17-environment-reporting.md) | `8192ed424c9fa90488555731144222497e329ffdb4758dfa73168546e1b44004` |
+| [benchmarks/programbench-pastel/pack-submission.py](../../benchmarks/programbench-pastel/pack-submission.py) | Bounded deterministic source-only ProgramBench archive builder | [17-environment-reporting](17-environment-reporting.md) | `d254d92aaf8c3a02f67dded3c677f00fac97e878e3efd2b6df861dfd5dc16846` |
+| [benchmarks/programbench-pastel/pastel-matrix.mjs](../../benchmarks/programbench-pastel/pastel-matrix.mjs) | Hosted matrix admission, fixture fingerprints, candidate and adoption audit, and official evaluation | [17-environment-reporting](17-environment-reporting.md) | `f5e278e6efb27a8e902fa7d0ef2248836805deebf436a69b1b8fe6d2267e8be6` |
+| [benchmarks/programbench-pastel/pastel-open-agensh.mjs](../../benchmarks/programbench-pastel/pastel-open-agensh.mjs) | Pastel Board and pinned Git contribution handoff between three peer Bots | [17-environment-reporting](17-environment-reporting.md) | `47bd2cfe7285cb11132427d6b7f5bfbca9016a8b3c18a338cc8ea4acdca3a5df` |
+| [benchmarks/programbench-pastel/pastel-open-flat.mjs](../../benchmarks/programbench-pastel/pastel-open-flat.mjs) | Pastel Task and Execution setup with Material attachment publication and integration evidence | [17-environment-reporting](17-environment-reporting.md) | `4747e3ff1690d28049a7f45f294090b4c7535d243a43fbb9c6187cdf7e9d77b5` |
+| [benchmarks/programbench-pastel/pastel-open-local.mjs](../../benchmarks/programbench-pastel/pastel-open-local.mjs) | Opt-in same-case controlled verification with actual Bots, Services, and source-adoption assertions | [17-environment-reporting](17-environment-reporting.md) | `af5d142b70512dd7ff73860db21b59fb07f6e753cfa33f52e24058ed40939403` |
+| [benchmarks/programbench-pastel/pastel-open-subagents.mjs](../../benchmarks/programbench-pastel/pastel-open-subagents.mjs) | Pastel parent and child dispatch, result routing, and authenticated source checkpoint publication | [17-environment-reporting](17-environment-reporting.md) | `8797812ade16c4236dfe7a1e30f9c2c911c11fb6fc65b1ace28666483487890c` |
+| [benchmarks/programbench-pastel/pastel-open.mjs](../../benchmarks/programbench-pastel/pastel-open.mjs) | Shared Pastel trial lifecycle, window start, Core model accounting, and private closeout receipt | [17-environment-reporting](17-environment-reporting.md) | `3427f657fd00c1e26b2a792b2a0a1b16f87557b05dc11cd155529d143608b5b0` |
+| [benchmarks/programbench-pastel/run-window.mjs](../../benchmarks/programbench-pastel/run-window.mjs) | Monotonic Responses admission, active stream cancellation, and deadline-bound checkpoint persistence | [17-environment-reporting](17-environment-reporting.md) | `ee35265b93c656268eb42ce7e8abbab2f36944445324631c9dfd08dcd40e20a4` |
+| [benchmarks/programbench-pastel/run-window.test.mjs](../../benchmarks/programbench-pastel/run-window.test.mjs) | Deterministic Core gateway and run-window admission, cancellation, and persistence regressions | [17-environment-reporting](17-environment-reporting.md) | `2114dc989052d0e7e6b4f3974c9c85c041d8e212db141f161912975d04e9b1ca` |
+| [benchmarks/programbench-pastel/source-checkpoint.mjs](../../benchmarks/programbench-pastel/source-checkpoint.mjs) | Validate and stage source files before packaging and recording a timed checkpoint | [17-environment-reporting](17-environment-reporting.md) | `de255ec3897e6bb9dfd8619cca915fb46755f3a55628ded19cfde2c80d85540a` |
 
 ### documentation tooling (4)
 
