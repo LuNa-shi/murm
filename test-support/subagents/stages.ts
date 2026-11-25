@@ -1,4 +1,4 @@
-import { createSubagentsController } from './controller.js';
+import { createSubagentsController } from './communication-fixture-controller.js';
 
 /** Read the staged result without changing the settled text used for routing and adoption. */
 export function readSubagentsStageResult(output: any) {

@@ -39,7 +39,7 @@ function valid(condition: unknown, message: string): asserts condition {
 export async function saveBotArtifacts({ outputDir, botId, collect, records, bounds, destination = 'artifacts', redactStream, privateFiles = false }: {
   outputDir: string;
   botId: string;
-  collect: Required<CollectionSpec>;
+  collect: CollectionSpec;
   records: () => AsyncIterable<ArtifactRecord>;
   bounds: { bytes: number; inodes: number };
   destination?: string;
@@ -122,7 +122,7 @@ export async function saveBotArtifacts({ outputDir, botId, collect, records, bou
       }
     }
     valid(complete, 'Artifact stream ended without final confirmation');
-    valid(collect.paths.every(path => path === '.' || seen.has(path)) && (!collect.includeGit || directories.includes('.git')),
+    valid(collect.paths.every(path => path === '.' || seen.has(path)) && (!collect.includeGit || collect.allowMissingGit || directories.includes('.git')),
       'Artifact stream omitted a requested file or directory');
     files.sort((a, b) => a.path < b.path ? -1 : a.path > b.path ? 1 : 0);
     directories.sort();

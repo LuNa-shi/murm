@@ -1,4 +1,4 @@
-import type { BotEvent, ErrorInfo, FileSnapshot, InputMode, InterruptReceipt, Profile, SpawnOptions, SteerOptions } from './types.js';
+import type { BotEvent, ErrorInfo, FileSnapshot, InputMode, InterruptReceipt, Profile, SpawnOptions, SendOptions } from './types.js';
 import type { SessionFork } from '../../scripts/core-session-fork.js';
 import type { createCoreBridge } from './bridge.js';
 import { renderStartupPrompt } from './startup-prompt.js';
@@ -10,13 +10,15 @@ export type BackendEvent = {
 
 export type BackendInputReceipt =
   | { status: 'unknown'; reason: string }
+  | { status: 'not-accepted'; reason: 'idle' }
   | { status: 'accepted'; disposition: 'started' | 'queued' | 'handled' };
 
 interface InputSubmission {
   input: string;
   mode: InputMode;
+  wakeIfIdle: boolean;
   first: boolean;
-  receipt?: Extract<BackendInputReceipt, { status: 'accepted' }>;
+  receipt?: Exclude<BackendInputReceipt, { status: 'unknown' }>;
   work?: Promise<BackendInputReceipt>;
 }
 
@@ -69,7 +71,7 @@ interface WorkerReply {
     success?: boolean;
     error?: string;
     code?: string;
-    data?: { disposition?: 'started' | 'queued' | 'handled' };
+    data?: { disposition?: 'started' | 'queued' | 'handled'; discardedInputHashes?: string[] };
   };
   status?: string;
 }
@@ -385,22 +387,23 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
     async confirmFiles(botId: string, input: any) { return await fileOperation(botId, 'confirm', input) as any; },
     prepareFiles(botId: string, input: { version: number; files: NonNullable<SpawnOptions['files']> }) { return fileOperation(botId, 'prepare', input); },
     grantFiles(botId: string, input: { version: number; digest: string }) { return fileOperation(botId, 'grant', input); },
-    async send(botId: string, input: string, { mode, inputId, steeringMode, executionEpoch }: { mode: InputMode; inputId: string; steeringMode?: SteerOptions['steeringMode']; executionEpoch?: number }): Promise<BackendInputReceipt> {
+    async send(botId: string, input: string, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle }: { mode: InputMode; inputId: string; steeringMode?: SendOptions['steeringMode']; executionEpoch: number; wakeIfIdle: boolean }): Promise<BackendInputReceipt> {
       const bot = bots.get(botId);
       if (!bot) throw Object.assign(new Error('Bot is unavailable'), { code: 'NOT_ALLOWED' });
       bot.submissions ??= new Map();
       let submission = bot.submissions.get(inputId);
-      if (submission && (submission.input !== input || submission.mode !== mode)) {
+      if (submission && (submission.input !== input || submission.mode !== mode || submission.wakeIfIdle !== wakeIfIdle)) {
         throw Object.assign(new Error('Input identity has different parameters'), { code: 'CONFLICT' });
       }
       if (!submission) {
         if (bot.stopping || bot.exited || bot.historyLost || closing) throw Object.assign(new Error('Bot is unavailable'), { code: 'NOT_ALLOWED' });
-        submission = { input, mode, first: true };
+        submission = { input, mode, wakeIfIdle, first: true };
         bot.submissions.set(inputId, submission);
       }
       if (submission!.receipt) return submission!.receipt;
       if (!submission.work) {
         const dispatch = submission.first;
+        const command = wakeIfIdle ? 'prompt' : mode === 'steer' ? 'steer' : 'follow_up';
         submission.first = false;
         submission.work = (async (): Promise<BackendInputReceipt> => {
           let result;
@@ -408,7 +411,8 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
             // A prior attempt, including a failed socket, can only be queried.
             // Never transparently resubmit an uncertain prompt to Pi.
             result = await bot.manager.agentRpc(botId, dispatch
-              ? { type: 'prompt', id: inputId, message: input, streamingBehavior: mode,
+              ? { type: command, id: inputId, message: input,
+                ...(wakeIfIdle ? { streamingBehavior: mode } : { onlyWhileActive: true }),
                 ...(executionEpoch ? { executionEpoch } : {}),
                 ...(steeringMode === undefined ? {} : { steeringMode }) }
               : { type: 'get_rpc_result', id: inputId, since: bot.cursor }, { timeoutMs: 30000, since: bot.cursor });
@@ -418,9 +422,13 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
             return { status: 'unknown', reason: 'worker-transport' };
           }
           consume(bot, result.records ?? []);
-          if (result.response?.id !== inputId || result.response?.command !== 'prompt') return {
+          if (result.response?.id !== inputId || result.response?.command !== command) return {
             status: 'unknown', reason: result.status === 'pending' ? 'worker-pending' : 'worker-uncorrelated-reply',
           };
+          if (!wakeIfIdle && result.response.success === false && result.response.code === 'NO_ACTIVE_EXECUTION') {
+            submission!.receipt = { status: 'not-accepted', reason: 'idle' };
+            return submission!.receipt;
+          }
           if (result.response?.success !== true) {
             if (result.response?.success === false) throw Object.assign(new Error(result.response.error ?? 'Pi rejected input'), {
               code: result.response.code === 'NOT_ALLOWED' ? 'NOT_ALLOWED' : 'INVALID_CONTRACT', inputRejected: true,
@@ -428,14 +436,14 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
             return { status: 'unknown', reason: 'worker-prompt-status-missing' };
           }
           const disposition = result.response.data?.disposition;
-          if (!['started', 'queued', 'handled'].includes(disposition!)) return { status: 'unknown', reason: 'worker-disposition-missing' };
+          if (!(wakeIfIdle ? ['started', 'queued', 'handled'] : ['queued', 'handled']).includes(disposition!)) return { status: 'unknown', reason: 'worker-disposition-missing' };
           submission!.receipt = { status: 'accepted', disposition: disposition! };
           return submission!.receipt;
         })().finally(() => { submission!.work = undefined; });
       }
       return submission.work;
     },
-    async interrupt(botId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Pick<InterruptReceipt, 'status'>> {
+    async interrupt(botId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Omit<InterruptReceipt, 'interruptId'>> {
       const bot = bots.get(botId);
       if (!bot || bot.stopping || bot.exited || bot.historyLost || closing) return { status: 'unknown' };
       const result = await bot.manager.agentRpc(botId, { type: 'core_interrupt', id: interruptId, executionEpoch },
@@ -443,7 +451,11 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       consume(bot, result.records ?? []);
       const confirmed = !bot.historyLost && !bot.exited && !bot.stopping && result.response?.id === interruptId &&
         result.response.command === 'core_interrupt' && result.response.success === true;
-      return { status: confirmed ? 'interrupted' : 'unknown' };
+      if (!confirmed) return { status: 'unknown' };
+      const hashes = result.response?.data?.discardedInputHashes;
+      return { status: 'interrupted',
+        ...(Array.isArray(hashes) && hashes.length && hashes.every(hash => typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash))
+          ? { discardedInputHashes: hashes } : {}) };
     },
     async stopExecution(botId: string) {
       const bot = bots.get(botId);

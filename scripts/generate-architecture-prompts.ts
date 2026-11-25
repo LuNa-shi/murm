@@ -7,7 +7,8 @@ import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
-import { parentPromptFor, initialGoalFor } from '../examples/subagents-environment/prompts.js';
+import { rootPrompt, childPrompt } from '../examples/subagents-environment/prompts.js';
+import { parentPromptFor, initialGoalFor } from '../test-support/subagents/communication-fixture-prompts.js';
 import { AGENT_ROLES, buildCapabilityProfile } from '../src/agent/capability-profile.js';
 import { BOT_CONTINUATION_MESSAGE, BOT_SOFT_CLOSEOUT_MESSAGE, BOT_MATERIAL_CONTINUATION_MESSAGE, BOT_MATERIAL_SOFT_CLOSEOUT_MESSAGE, buildBotSoftCloseoutNotice, buildBotNotification, botServiceDirectory } from '../src/agent/bot-contract.js';
 import { runSwarmCli } from '../src/cli/swarm-cli.js';
@@ -31,7 +32,10 @@ const sourcePaths = [
   'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts',
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',
   'benchmarks/putnambench-flat/run.ts',
-  'examples/subagents-environment/main.ts', 'examples/subagents-environment/controller.ts', 'examples/subagents-environment/prompts.ts',
+  'benchmarks/programbench-pastel/subagents-example.ts',
+  'examples/subagents-environment/main.ts', 'examples/subagents-environment/controller.ts',
+  'examples/subagents-environment/prompts.ts', 'examples/subagents-environment/collaboration-service.ts',
+  'test-support/subagents/communication-fixture.ts', 'test-support/subagents/communication-fixture-controller.ts', 'test-support/subagents/communication-fixture-prompts.ts',
   'src/environments/agensh/index.ts', 'src/environments/agensh/router.ts', 'src/environments/agensh/routed.ts', 'src/environments/agensh/team.ts',
   'test/fixtures/agensh-team-kimi.ts', 'test/agensh-team-kimi-real.test.ts',
   'src/environments/lead-helper/prompts.ts', 'src/environments/lead-helper/index.ts',
@@ -149,16 +153,22 @@ output('07-notes-environment.md', header('Installed Notes Environment prompts',
   + block('Writer publication', notesInput.put)
   + block('Reader retrieval', notesInput.get)
   + block('Reader follow-up', notesInput.follow));
-const subagentsPath = 'examples/subagents-environment/prompts.ts';
+const subagentsPath = 'test-support/subagents/communication-fixture-prompts.ts';
 output('08-subagents-environment.md', header('Subagents Environment prompts',
-  'The host stages Profile prompts verbatim. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Bot Service requests.')
-  + block('Parent Profile prompt', evaluate(between(subagentsPath, 'export const parentPrompt = ', ';\n')))
+  'The ordinary Environment stages the Root and Child Profile prompts verbatim and sends user or model-authored task text through the collaboration controller. The separate communication fixture stages its own Profile prompts. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in communication-fixture-controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Bot Service requests.')
+  + block('Root Profile prompt', rootPrompt)
+  + block('Recursive Child Profile prompt', childPrompt)
+  + block('Pastel example initial task', evaluate(between('benchmarks/programbench-pastel/subagents-example.ts', 'const initial = ', ';\nconst supplement')))
+  + block('Pastel example HSL supplement', evaluate(between('benchmarks/programbench-pastel/subagents-example.ts', 'const supplement = ', ';\nconst probes')))
+  + block('Fixture Parent Profile prompt', evaluate(between(subagentsPath, 'export const parentPrompt = ', ';\n')))
   + block('Child Profile prompt', evaluate(between(subagentsPath, 'export const childPrompt = ', ';\n')))
   + block('Default initial goal', evaluate(between(subagentsPath, 'export const initialGoal = ', ';\n')))
   + [3, 4, 5, 6, 7].map((childCount: any) => block(`Parent Profile prompt: ${childCount + 1} Bots`, parentPromptFor(childCount))
     + block(`Default initial goal: ${childCount + 1} Bots`, initialGoalFor(childCount))).join(''));
-for (const [index, line] of sources.get('examples/subagents-environment/controller.ts')!.split('\n').entries()) {
-  if (line.includes('await runtime.send(')) sendSites.push({ path: 'examples/subagents-environment/controller.ts', line: index + 1, expression: line.trim() });
+for (const path of ['examples/subagents-environment/controller.ts', 'test-support/subagents/communication-fixture-controller.ts']) {
+  for (const [index, line] of sources.get(path)!.split('\n').entries()) {
+    if (line.includes('await runtime.send(')) sendSites.push({ path, line: index + 1, expression: line.trim() });
+  }
 }
 const scaleMASPath = 'src/environments/scalemas/index.ts';
 output('01-core-startup.md', header('Core startup system prompt',
@@ -170,10 +180,19 @@ output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
   + block('Cycle instruction', between(scaleMASPath, "export const cyclePrompt = '", "';\n"))
   + block('Exact input composition', between(scaleMASPath, '                  const text = ', '\n                  const sendInput'),
     'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.'));
-output('08-agensh-environment.md', header('Agensh peer and serial router prompts',
-  'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper with explicit followUp. There are no mid-turn notices.')
-  + block('Peer Profile prompt', between('src/environments/agensh/index.ts', 'export const peerPrompt = `', '`;'))
-  + block('Serial batch instruction', between('src/environments/agensh/router.ts', "export const routerInstruction = '", "';"))
+output('08-agensh-environment.md', header('Agensh peer, batch and notice prompts',
+  'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper. The project path uses Core start for ordinary batches and Core steer for eligible peer notices during an active batch. The compatibility paths use explicit followUp.')
+  + block('Compatibility peer Profile prompt', between('src/environments/agensh/index.ts', 'export const peerPrompt = `', '`;'))
+  + block('Project peer Profile prompt', between('src/environments/agensh/index.ts', 'export const projectPeerPrompt = `', '`;'))
+  + block('Project kickoff text', between('src/environments/agensh/team.ts', 'const goal = `', '`;'),
+    'issueNumber comes from the newly provisioned Gitea project issue. The title comes from trusted project configuration. All peers receive the same text.')
+  + block('Exact serial input composition', between('src/environments/agensh/router.ts', 'const input = `', '`;'),
+    'The Router owns the batch identity and source metadata. Context is the current Board read for the mapped viewer. Kickoff, external input and nudges travel through this same composition.')
+  + block('Compatibility batch instruction', between('src/environments/agensh/router.ts', "export const routerInstruction = '", "';"))
+  + block('Project batch instruction', between('src/environments/agensh/router.ts', "export const projectRouterInstruction = '", "';"))
+  + block('Project peer notice instruction', between('src/environments/agensh/router.ts', "export const noticeInstruction = '", "';"))
+  + block('Exact steer input composition', between('src/environments/agensh/router.ts', 'const steerText = `', '`;'),
+    'The same router selects an eligible DM or admitted Board entry. Its event metadata comes from the authorized Mattermost source or Board admission. Core sends steer as a separate same-Session prompt at the next Pi execution boundary. It appears in model context when Pi consumes the queued input, separately from the ordinary batch JSON.')
   + block('Configured idle nudge', between('src/environments/agensh/router.ts', "export const idleNudgeInput = '", "';"))
   + block('Opt-in hosted acceptance common instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveCommon = `', '`;'))
   + block('Opt-in hosted A initial instructions', between('test/fixtures/agensh-team-kimi.ts', 'export const liveAInitial = `', '`;'))

@@ -1,4 +1,4 @@
-import type { BotEvent, BotInfo, BotListFilter, CollectionSpec, CreateRuntimeOptions, ErrorInfo, InputMode, InputReceipt, InterruptReceipt, Profile, Runtime, SteerOptions } from './types.js';
+import type { BotEvent, BotInfo, BotListFilter, CollectionSpec, ConditionalInputReceipt, CreateRuntimeOptions, ErrorInfo, InputReceipt, InterruptReceipt, Profile, Runtime, SendOptions } from './types.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -21,14 +21,15 @@ interface InterruptRequest {
   interruptId: string;
   executionEpoch: number;
   confirmed?: boolean;
+  discardedInputHashes?: readonly string[];
   work?: Promise<void>;
 }
 
 interface InputRequest {
   inputId: string;
   dispatched?: boolean;
-  run(): Promise<InputReceipt>;
-  result?: Promise<InputReceipt>;
+  run(): Promise<ConditionalInputReceipt>;
+  result?: Promise<ConditionalInputReceipt>;
 }
 
 interface RuntimeBot {
@@ -100,7 +101,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     registrations = snapshotServiceRegistry(options.services);
     registerServicePrivateValues(registrations, redactor.add);
     registrations.set('bot', createBotService({ runtimeId, getBot: id => getBot(id),
-      spawn: (input, caller) => spawn(input, caller), get, send: (id, input, options, caller) => send(id, input, options, caller), stop }));
+      spawn: (input, caller) => spawn(input, caller), get, send, stop }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
     modelAccessPolicy = options.modelAccessPolicy;
     outputDir = join(resolve(options.outputDir), runtimeId);
@@ -488,17 +489,19 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       (status === undefined || statuses.includes(info.status))).map(botSnapshot);
   }
 
-  async function send(botId: string, input: string, options: SteerOptions & { mode?: InputMode }, caller = 'host', operation = 'send'): Promise<InputReceipt> {
+  function send(botId: string, input: string, options: SendOptions & { wakeIfIdle?: true }, caller?: string, operation?: string): Promise<InputReceipt>;
+  function send(botId: string, input: string, options: SendOptions, caller?: string, operation?: string): Promise<ConditionalInputReceipt>;
+  async function send(botId: string, input: string, options: SendOptions, caller = 'host', operation = 'send'): Promise<ConditionalInputReceipt> {
     const requestId = options?.requestId;
     const mode = options?.mode === undefined ? 'steer' : options.mode;
-    const { source, steeringMode } = operation === 'steer' ? options : {};
-    if (!validId(requestId) || typeof input !== 'string' || !['steer', 'followUp'].includes(mode) ||
+    const { source, steeringMode, wakeIfIdle = true } = options ?? {};
+    if (!validId(requestId) || typeof input !== 'string' || !['steer', 'followUp'].includes(mode) || typeof wakeIfIdle !== 'boolean' ||
         (source !== undefined && (typeof source !== 'string' || !source.trim() || source.length > 256)) ||
-        (steeringMode !== undefined && !['all', 'one-at-a-time'].includes(steeringMode))) {
+        (steeringMode !== undefined && (mode !== 'steer' || !['all', 'one-at-a-time'].includes(steeringMode)))) {
       throw problem('INVALID_CONTRACT', 'Input needs text, a requestId and valid delivery options', operation, botId, requestId);
     }
     const bot = findBot(botId, operation, requestId);
-    const parameters = { input, mode, source, steeringMode };
+    const parameters = { input, mode, source, steeringMode, wakeIfIdle };
     let request: InputRequest | undefined;
     try { request = inputRequests.get(caller, botId, requestId, parameters); }
     catch (caught) {
@@ -512,7 +515,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       const inputId = randomUUID();
       const executionEpoch = bot.executionEpoch;
       const identity = { botId, requestId: redactor.text(requestId), inputId, caller,
-        source: redactor.text(source) ?? caller, mode, steeringMode };
+        source: redactor.text(source) ?? caller, mode, steeringMode, wakeIfIdle };
       records.record('input', { ...identity, state: 'registered' });
       const releaseActivity = () => {
         bot.activityClaims.delete(request);
@@ -528,11 +531,12 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         try {
           entry.dispatched = true;
           records.record('input', { ...identity, state: querying ? 'receipt-query' : 'dispatched' });
-          const receipt = await backend.send(botId, input, { mode, inputId, steeringMode, executionEpoch });
-          if (receipt.status === 'accepted' && receipt.disposition === 'handled') releaseActivity();
-          records.record('input', { ...identity, state: receipt.status, disposition: receipt.disposition,
-            reason: receipt.reason, cursor: bot.info.cursor });
-          return receipt.status === 'accepted' ? { inputId, status: 'accepted', disposition: receipt.disposition } : { inputId, status: 'unknown' };
+          const receipt = await backend.send(botId, input, { mode, inputId, steeringMode, executionEpoch, wakeIfIdle });
+          if (wakeIfIdle && receipt.status === 'not-accepted') throw new Error('Backend declined an input with waking enabled');
+          if (receipt.status === 'not-accepted' || (receipt.status === 'accepted' && receipt.disposition === 'handled')) releaseActivity();
+          records.record('input', { ...identity, state: receipt.status,
+            ...(receipt.status === 'accepted' ? { disposition: receipt.disposition } : { reason: receipt.reason }), cursor: bot.info.cursor });
+          return receipt.status === 'unknown' ? { inputId, status: 'unknown' } : { inputId, ...receipt };
         } catch (error: any) {
           if (knownInputRejections.has(error.code) && (!querying || error.inputRejected)) {
             releaseActivity();
@@ -544,7 +548,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         }
       } };
       request = entry;
-      bot.activityClaims.add(request);
+      if (wakeIfIdle) bot.activityClaims.add(request);
       refreshActivity(bot);
       inputRequests.reserve(caller, botId, requestId, parameters, () => entry);
     }
@@ -557,7 +561,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     }
     const result = await observe(request.result);
     if (result === timedOut) records.record('input', { botId, requestId: redactor.text(requestId), inputId: request.inputId,
-      caller, source: redactor.text(source) ?? caller, mode, steeringMode, state: 'unknown', reason: 'host-wait-expired' });
+      caller, source: redactor.text(source) ?? caller, mode, steeringMode, wakeIfIdle, state: 'unknown', reason: 'host-wait-expired' });
     return result === timedOut ? { inputId: request.inputId, status: 'unknown' } : structuredClone(result);
   }
 
@@ -576,7 +580,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       bridge.cancelBotCalls(botId);
     }
     const identity = { botId, requestId: redactor.text(requestId), interruptId: request.interruptId, executionEpoch: request.executionEpoch };
-    if (request.confirmed) return { interruptId: request.interruptId, status: 'interrupted' };
+    const receipt = (): InterruptReceipt => ({
+      interruptId: request.interruptId, status: request.confirmed ? 'interrupted' : 'unknown',
+      ...(request.discardedInputHashes ? { discardedInputHashes: [...request.discardedInputHashes] } : {}),
+    });
+    if (request.confirmed) return receipt();
     if (!request.work && !closing && isLive(bot)) {
       records.record('interrupt', { ...identity, state: 'dispatched' });
       request.work = Promise.resolve().then(async () => {
@@ -584,6 +592,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         const result = await backend.interrupt(botId, request);
         if (result.status === 'interrupted' && isLive(bot)) {
           request.confirmed = true;
+          request.discardedInputHashes = result.discardedInputHashes;
           bot.interruption = undefined;
           bot.nativeExecuting = false;
           bot.activityClaims.clear();
@@ -597,7 +606,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     if (request.work && await observe(request.work, timeoutMs) === timedOut) {
       records.record('interrupt', { ...identity, state: 'unknown', reason: 'host-wait-expired' });
     }
-    return { interruptId: request.interruptId, status: request.confirmed ? 'interrupted' : 'unknown' };
+    return receipt();
   }
 
   function onEvent(handler: (event: BotEvent) => void) {
@@ -677,11 +686,19 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     }]) : structuredClone(result);
   }
 
+  function hostSend(id: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
+  function hostSend(id: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
+  function hostSend(id: string, input: string, options: SendOptions) {
+    return send(id, input, options);
+  }
+
   return Object.freeze<Runtime>({
     id: runtimeId, spawn: input => spawn(input), get, list,
     start: (id, input, options) => send(id, input, { requestId: options?.requestId, mode: 'followUp' }, 'host', 'start'),
-    steer: (id, input, options) => send(id, input, { ...options, mode: 'steer' }, 'host', 'steer'),
-    send: (id, input, options) => send(id, input, options),
+    steer: (id, input, options) => send(id, input, {
+      requestId: options?.requestId, source: options?.source, steeringMode: options?.steeringMode, mode: 'steer',
+    }, 'host', 'steer'),
+    send: hostSend,
     interrupt, onEvent, stop, close, files: fileControls.api,
   });
 }

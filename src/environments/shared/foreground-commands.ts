@@ -41,7 +41,7 @@ function boundedLines(oversized: any) {
 }
 
 /** Ordinary commands are serial; stop seals admission even during an active command. */
-export async function runForegroundCommands(host: any, { input = process.stdin, output = process.stdout }: any = {}) {
+export async function runForegroundCommands(host: any, { input = process.stdin, output = process.stdout, keepOpenOnEof = false }: any = {}) {
   const status = await host.status();
   if (host.signal.aborted) return { reason: 'host-stop' };
   const framed = boundedLines(() => {
@@ -86,7 +86,7 @@ export async function runForegroundCommands(host: any, { input = process.stdin, 
           if (!sealed && !host.signal.aborted) write({ type: 'reply', id: command.id, result });
         } catch (error: any) { if (!sealed && !host.signal.aborted) reportError(command, error); }
       }
-    } finally { active = false; if (ended && !sealed) finish('input-ended'); }
+    } finally { active = false; if (ended && !sealed && !keepOpenOnEof) finish('input-ended'); }
   }
   const admit = (line: any) => {
     if (sealed || host.signal.aborted) return;
@@ -116,7 +116,7 @@ export async function runForegroundCommands(host: any, { input = process.stdin, 
   framed.on('error', inputFailed);
   lines.on('error', inputFailed);
   lines.on('line', admit);
-  lines.on('close', () => { ended = true; if (!active && !sealed) finish('input-ended'); });
+  lines.on('close', () => { ended = true; if (!active && !sealed && !keepOpenOnEof) finish('input-ended'); });
   host.signal.addEventListener('abort', abort, { once: true });
   input.pipe(framed);
   try {

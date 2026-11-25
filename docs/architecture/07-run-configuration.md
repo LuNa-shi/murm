@@ -57,7 +57,7 @@ The shipped `.env.example` lists host variables consumed by the Notes configurat
 
 | Entry | Configuration and behavior |
 |---|---|
-| Public `createRuntime` | Frozen backend, Profiles, Services, maximum Bot capacity and output directory. The host calls spawn, start, steer, interrupt, list, get, stop and close. The compatible send entry remains available. [Core Runtime](15-core-runtime.md) |
+| Public `createRuntime` | Frozen backend, Profiles, Services, maximum Bot capacity and output directory. The host calls spawn, send, interrupt, list, get, stop and close. The compatible send entry remains available. [Core Runtime](15-core-runtime.md) |
 | `runFlatEnvironment` | Host-owned Task, Context and Workspace services, Mission/Workspace IDs, image/model, capacity and finite deadlines. The controller owns discovery, continuation and directed feedback. Production live capture must be configured before allocation. [Execution](02-execution.md) |
 | `runAgenshTeam` | Two to eight distinct peers, image/model, output directory, authenticated Git/message/Board facilities and finite router/close limits. [Agensh](18-agensh-environment.md) |
 | `dist/scripts/run-environment.js --config <module>` | Trusted local module selecting flat or agensh. JSON-line status, input and stop reuse the same Environment. [Foreground control](17-environment-reporting.md#foreground-environment-control) |

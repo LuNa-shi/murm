@@ -3,13 +3,13 @@ import type { Runtime, BotEvent, InputReceipt } from '../../core/index.js';
 type SettledEvent = Extract<BotEvent, { type: 'settled' }>;
 type AcceptedInput = Extract<InputReceipt, { status: 'accepted' }>;
 interface InputGuard { active: boolean; unresolved: boolean; used: Set<string> }
-interface RunInputOptions { requestId: string; timeoutMs: number; signal?: AbortSignal }
+interface RunInputOptions { requestId: string; timeoutMs: number; signal?: AbortSignal; operation?: 'send' | 'start'; onStarted?: () => void }
 export interface RunInputResult { inputId: string; receipt: AcceptedInput; settled: SettledEvent }
 
 const runtimeGuards: any = new WeakMap<Runtime, Map<string, InputGuard>>();
 
 /** Wait for one explicitly owned input on an idle Bot. The caller must exclude all other input sources. */
-export async function runInput(runtime: Runtime, botId: string, input: string, { requestId, timeoutMs, signal }: RunInputOptions = {} as RunInputOptions): Promise<RunInputResult> {
+export async function runInput(runtime: Runtime, botId: string, input: string, { requestId, timeoutMs, signal, operation = 'send', onStarted }: RunInputOptions = {} as RunInputOptions): Promise<RunInputResult> {
   const failure = (code: string, details?: Record<string, unknown>) => Object.assign(new Error(code), { code, runtimeId: runtime.id, botId, requestId, ...details });
   if (typeof requestId !== 'string' || !requestId || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2147483647) {
     throw failure('invalid_wait_options');
@@ -70,12 +70,16 @@ export async function runInput(runtime: Runtime, botId: string, input: string, {
         });
         if (done) { unsubscribe(); return; }
         submitted = true;
-        receipt = await runtime.send(botId, input, { requestId, mode: 'followUp' });
+        receipt = operation === 'start' ? await runtime.start(botId, input, { requestId })
+          : await runtime.send(botId, input, { requestId, mode: 'followUp' });
         if (done) return;
         if (receipt.status === 'unknown') finish(failure('input_unknown', diagnostic()), true);
         else if (receipt.disposition === 'queued') finish(failure('exclusive_input_was_queued', diagnostic()), true);
         else if (receipt.disposition === 'handled') finish(failure('input_handled_without_model_run', diagnostic()));
-        else complete();
+        else {
+          if (!settled) onStarted?.();
+          complete();
+        }
       } catch (error: any) { finish(error || failure('send_failed', diagnostic()), submitted); }
     })();
   });

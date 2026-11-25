@@ -23,9 +23,10 @@ function pathName(path: unknown, root = false) {
 
 export function snapshotCollectionSpec(input: any) {
   if (!input || typeof input !== 'object' || Array.isArray(input) ||
-      Object.keys(input).some(key => !['paths', 'includeGit', 'maxBytes', 'required'].includes(key)) ||
+      Object.keys(input).some(key => !['paths', 'includeGit', 'allowMissingGit', 'maxBytes', 'required'].includes(key)) ||
       !Array.isArray(input.paths) || input.paths.length > MAX_COLLECTION_ENTRIES ||
       typeof input.includeGit !== 'boolean' || typeof input.required !== 'boolean' ||
+      (input.allowMissingGit !== undefined && (typeof input.allowMissingGit !== 'boolean' || !input.includeGit)) ||
       !Number.isSafeInteger(input.maxBytes) || input.maxBytes < 1) {
     throw failure('Collection requires paths, includeGit, required and a positive safe integer maxBytes');
   }
@@ -33,7 +34,8 @@ export function snapshotCollectionSpec(input: any) {
   if (!input.includeGit && paths.some(path => path === '.git' || path.startsWith('.git/'))) {
     throw failure('Collection paths requesting root .git require includeGit');
   }
-  const spec = { paths, includeGit: input.includeGit, maxBytes: input.maxBytes, required: input.required };
+  const spec = { paths, includeGit: input.includeGit, maxBytes: input.maxBytes, required: input.required,
+    ...(input.allowMissingGit === true ? { allowMissingGit: true } : {}) };
   if (Buffer.byteLength(JSON.stringify(spec)) > MAX_COLLECTION_LINE_BYTES) throw failure('Collection path metadata exceeds the supported limit');
   return Object.freeze({ ...spec, paths: Object.freeze(paths) });
 }
@@ -127,7 +129,12 @@ export async function* collectCoreWorkDir(root: string, input: any, { signal, ma
   try {
     // Shorter ancestors first ensure every requested directory gets traversed,
     // even when paths overlap. Parent directories are emitted exactly once.
-    const paths = [...new Set([...spec.paths, ...(spec.includeGit ? ['.git'] : [])])].sort((a: any, b: any) => a.split('/').length - b.split('/').length || a.localeCompare(b));
+    const paths = [...new Set([...spec.paths, ...(spec.includeGit && !spec.allowMissingGit ? ['.git'] : [])])];
+    if (spec.includeGit && spec.allowMissingGit && !paths.includes('.git')) {
+      try { await lstat(join(root, '.git')); paths.push('.git'); }
+      catch (error: any) { if (error.code !== 'ENOENT') throw error; }
+    }
+    paths.sort((a: any, b: any) => a.split('/').length - b.split('/').length || a.localeCompare(b));
     for (const path of paths) {
       if (path !== '.') {
         const parts = path.split('/');

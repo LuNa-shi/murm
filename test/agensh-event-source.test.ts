@@ -99,3 +99,46 @@ test('cancelling a subscription during ingestion prevents dispatch of remaining 
   assert.deepEqual(source.snapshot().records.map(record => record.eventId), delivered);
   assert.deepEqual(failures, []);
 });
+
+test('polling collects all new pages and advances a Mattermost cursor without duplicate inputs', async t => {
+  const comments = [], posts = [], trace = [], delivered = [], failures = [];
+  const server = createServer((request, response) => {
+    const url = new URL(request.url, 'http://localhost');
+    trace.push(url);
+    const page = Number(url.searchParams.get('page'));
+    response.setHeader('content-type', 'application/json');
+    if (url.pathname.endsWith('/comments')) return response.end(JSON.stringify(comments.slice((page - 1) * 50, page * 50)));
+    const newestFirst = posts.slice().reverse();
+    const before = url.searchParams.get('before');
+    const start = before ? newestFirst.findIndex(row => row.id === before) + 1 : 0;
+    const rows = newestFirst.slice(start, start + 50);
+    response.end(JSON.stringify({ order: rows.map(row => row.id), posts: Object.fromEntries(rows.map(row => [row.id, row])) }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  const source = await createAgenshEventSubscription({
+    facilities: { endpoints: { gitea: origin, message: origin }, repository: { owner: 'owner', name: 'repo' }, channelId: 'channel',
+      peer: { gitea: { username: 'worker', accountId: '101', token: 'git-token' }, message: { accountId: 'worker', token: 'mm-token' } } },
+    mapping: { workerId: 'worker', botId: 'bot' }, pollIntervalMs: 60_000, maxPolls: 2, onFailure: failure => failures.push(failure),
+    ingest: event => { delivered.push(event); return { batchId: event.eventId }; },
+  });
+  t.after(() => source.stop());
+  for (let index = 1; index <= 55; index++) {
+    comments.push({ id: index, user: { id: 200 }, body: 'comment', updated_at: '2026-11-24T00:00:00.000Z' });
+    posts.push({ id: String(index), user_id: 'author', channel_id: 'channel', create_at: index, message: 'post' });
+  }
+  await source.poll();
+  await source.poll();
+  assert.equal(delivered.length, 110);
+  assert.equal(new Set(delivered.map(event => event.eventId)).size, 110);
+  assert.equal(delivered.at(-1).origin.senderId, 'author');
+  assert.equal(delivered.at(-1).eventId, 'post:55');
+  assert.ok(trace.some(url => url.searchParams.has('before')));
+  assert.ok(trace.some(url => url.searchParams.has('since')));
+  assert.deepEqual(failures, [{ code: 'ROUTER_SOURCE_POLL_LIMIT' }]);
+  assert.equal(source.snapshot().closed, true);
+  assert.equal(source.snapshot().exhausted, true);
+  await assert.rejects(source.poll(), { code: 'ROUTER_SOURCE_STOPPED' });
+});
