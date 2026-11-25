@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { basename, join } from 'node:path';
 import { runPastel } from './pastel-open.ts';
+import { task } from './case.ts';
 import { auditPastelReceipt } from './pastel-matrix.ts';
 import { inputTexts, localUpstream, message, tool, toolOutput } from './local-integration.ts';
 
@@ -36,10 +37,10 @@ def verify():
 const command = source => `PYTHONDONTWRITEBYTECODE=1 python3 - <<'PY'\n${common}\n${source}\nPY`;
 const seen = new Set();
 const childSource = { 'PARSER': { 'colors.py': parser }, 'FORMATTER': { 'formatting.py': formatting } };
-const tag = 'OPEN_LOCAL_CHILD';
+const childTask = role => 'OPEN_LOCAL_CHILD ' + role + '\n\n' + task;
 
 function subagents(input, number, texts) {
-  const child = Object.keys(childSource).find(key => texts.some(value => value === `${tag} ${key}`));
+  const child = Object.keys(childSource).find(key => texts.includes(childTask(key)));
   if (child) {
     const referenceResult = toolOutput(input, 'probe');
     if (referenceResult === undefined) return tool('probe', `${reference} format hex red blue`);
@@ -47,10 +48,13 @@ function subagents(input, number, texts) {
     return message(number, JSON.stringify({ files: childSource[child], observation: referenceResult.trim() }));
   }
   if (!seen.has('spawn')) {
+    assert.ok(texts.some(value => value.startsWith(task + '\n\n')));
     seen.add('spawn');
+    const assignments = Object.fromEntries(Object.keys(childSource).map(role => [role, childTask(role)]));
     return tool('delegate', command(`
-for role in ('PARSER','FORMATTER'):
-    result=cli('bot','spawn','--request-id','child-'+role,payload={'profile':'child','input':'${tag} '+role,'mode':'followUp'})
+assignments=json.loads(${JSON.stringify(JSON.stringify(assignments))})
+for role, assignment in assignments.items():
+    result=cli('bot','spawn','--request-id','child-'+role,payload={'profile':'child','input':assignment,'mode':'followUp'})
     print(result['bot']['id'])
 `), 55);
   }

@@ -8,7 +8,7 @@ const execute = promisify(execFile);
 
 test('public Bash CLI discovers permitted operations, renders manifest help and invokes with a stable request ID', async t => {
   let saved;
-  const { credentials, bot } = await setup(t, { invoke({ input, caller, capability, envelope }) {
+  const { bridge, credentials, bot } = await setup(t, { invoke({ input, caller, capability, envelope }) {
     assert.equal(envelope.operation_id, 'cli-write');
     if (capability.operation === 'put') saved = { ...input, author: caller.botId };
     return saved ?? null;
@@ -27,6 +27,12 @@ test('public Bash CLI discovers permitted operations, renders manifest help and 
   const written = JSON.parse((await cli('notes', 'put', '--key', 'one', '--text', 'fixed', '--request-id', 'cli-write')).stdout);
   assert.deepEqual(written, { key: 'one', text: 'fixed', author: 'bot-one' });
   bot.services.notes = ['get'];
+  const manifests = JSON.parse((await cli('service', 'list')).stdout).services;
+  assert.deepEqual(manifests, bridge.visibleServices(bot.services));
+  const system = renderStartupPrompt(manifests, '  ');
+  assert.equal(system.match(/<services>/g)?.length, 1);
+  assert.match(system, /swarm notes get/);
+  assert.doesNotMatch(system, /swarm notes put|<added_system_prompt>/);
   assert.deepEqual(JSON.parse((await cli('service', 'view', 'notes')).stdout).capabilities.map(item => item.operation), ['get']);
   await assert.rejects(cli('notes', 'put', '--key', 'one', '--text', 'changed', '--request-id', 'forbidden'));
   assert.equal(saved.text, 'fixed');

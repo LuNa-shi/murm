@@ -13,7 +13,7 @@ import { createFlatModelAccessPolicy } from './model-access-policy.js';
 export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '当前配置支持读取公开 Workspace 和发布 Material。请领取可通过这些能力完成的 Task，按照 Task 的真实完成条件提交结果。运行期间的私有文件只保留在 Bot 工作目录中。';
 
 /** Trusted host entry point. Domain stores remain caller-owned and readable. */
-export async function runFlatEnvironment({backend,model,image,prompt='Use the flat Services to discover, execute and truthfully finish Mission work.',
+export async function runFlatEnvironment({backend,model,image,prompt='',
   outputDir,taskService,contextService,missionWorkspace,workspaceManager,missionId,workspaceId,deadlineAt,
   capacity=2,autonomousTasks=false,completionPolicy='tasks',coordinationPermissions=[],missionCoordination=null,snapshotProject,workspaceCapture,mathlibSearch=null,activeDeadline,judgeService=null,workspaceProjectCheck=false,workspaceMergeChecker=null,controller:controllerOptions={},handoff:handoffOptions={},drive,
   closeTimeoutMs=30_000,redact=(value: any)=>value,signal}: any) {
@@ -52,7 +52,7 @@ export async function runFlatEnvironment({backend,model,image,prompt='Use the fl
       }
       const mathlib=mathlibSearch ? createFlatMathlibService({provider:mathlibSearch,runtimeId:()=>runtime?.id,taskService,missionId,deadline}) : null;
       if(mathlib) services.registerService(mathlib);
-      const researcherPrompt = workspaceSaveAvailable ? prompt : `${prompt}\n\n${FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT}`;
+      const researcherPrompt = workspaceSaveAvailable ? prompt : [prompt, FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT].filter(Boolean).join('\n\n');
       const researcher=flatResearcherProfile({prompt:researcherPrompt,model,image,coordinationPermissions:permissions,autonomousTasks});
       researcher.services=Object.fromEntries([
         ['task',[...discovery.manifest.capabilities,...publication.registrations.find((row: any)=>row.manifest.id==='task').manifest.capabilities].map((row: any)=>row.operation)],
