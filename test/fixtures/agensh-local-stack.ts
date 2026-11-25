@@ -20,7 +20,9 @@ export const boardSchema = Object.freeze({
 });
 
 /** No side effects until explicitly called inside the opt-in actual test. */
-export async function createLocalAgenshStack({ directory, advertiseHost = '172.17.0.1', setupMs = 180_000, giteaOnly = false, executeCommand = execute }) {
+export async function createLocalAgenshStack({ directory, advertiseHost = '172.17.0.1', setupMs = 180_000, giteaOnly = false, images = facilityImages, executeCommand = execute }) {
+  const imageNames = giteaOnly ? ['gitea'] : Object.keys(facilityImages);
+  if (!imageNames.every(name => /^sha256:[a-f0-9]{64}$/.test(images[name]))) throw sanitized('LOCAL_FACILITY_IMAGE_ID_REQUIRED');
   const owner = `t13-${randomBytes(8).toString('hex')}`;
   const network = `${owner}-network`; const names = []; const receipts = []; const commands = []; const readiness = {};
   const dbPassword = randomBytes(24).toString('hex'); const adminPassword = randomBytes(24).toString('hex');
@@ -61,11 +63,11 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
     const name = `${owner}-${kind}`; names.push(name); unknownContainers.add(name);
     await docker(['run', '--detach', '--pull=never', '--name', name, '--network', network, '--label', `swarmenv.t13.owner=${owner}`, '--cpus', String(cpu), '--memory', memory,
       '--pids-limit', '512', ...Object.entries(env).flatMap(([key, value]) => ['--env', `${key}=${value}`]), ...ports.flatMap(value => ['--publish', value]),
-      ...volumes.flatMap(value => ['--volume', value]), facilityImages[kind], ...args], signal, `${kind}.start`);
+      ...volumes.flatMap(value => ['--volume', value]), images[kind], ...args], signal, `${kind}.start`);
     unknownContainers.delete(name);
     const evidence = JSON.parse(await docker(['inspect', '--format', '{{json .Id}}', name], signal, `${kind}.inspect`));
     signal?.throwIfAborted();
-    receipts.push({ kind, name, containerId: evidence, image: facilityImages[kind], cpu, memory });
+    receipts.push({ kind, name, containerId: evidence, image: images[kind], cpu, memory });
     return name;
   }
   async function published(name, port, host = '127.0.0.1', signal) {
@@ -105,7 +107,7 @@ export async function createLocalAgenshStack({ directory, advertiseHost = '172.1
       if (started) throw sanitized('LOCAL_STACK_ALREADY_STARTED'); started = true;
       setup = createDeadline(setupMs, 'LOCAL_FACILITY_SETUP_EXPIRED');
       // All images must already be cached; no implicit download or install.
-      for (const image of giteaOnly ? [facilityImages.gitea] : Object.values(facilityImages)) await docker(['image', 'inspect', '--format', '{{.Id}}', image], undefined, 'image.cached');
+      for (const name of imageNames) await docker(['image', 'inspect', '--format', '{{.Id}}', images[name]], undefined, 'image.cached');
       await setupStep(() => mkdir(directory, { recursive: true, mode: 0o700 }));
       const data = {};
       for (const key of giteaOnly ? ['gitea'] : ['mysql', 'gitea', 'mm-data', 'mm-config', 'mm-logs', 'mm-plugins', 'mm-client-plugins']) {

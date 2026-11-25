@@ -49,9 +49,11 @@ Operational references: [built-in services](services/builtin/README.md), and [Ma
 
 ## Evidence and history
 
+The [ProgramBench Pastel benchmark](benchmarks/programbench-pastel/README.md) runs one real software reconstruction task through Subagents, Flat and Agensh with independently recorded collaboration and evaluator evidence.
+
 The implementation manual describes the current code. Implementation progress and outstanding checks belong in the relevant GitHub Issue/PR. The experiment index preserves observations tied to older revisions, including the whole-Workspace collaboration and trusted acceptance observed on the PR #128 implementation. [Implementation manual](docs/architecture/INDEX.md) · [Experiment index](docs/experiments/INDEX.md) · [EXP-20261116-04](docs/experiments/EXP-20261116-04-workspace-project-1h.md)
 
-The benchmark runner, dedicated mathematical launchers and embedded datasets are preserved in the fixed research revision. [Research tree](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9)
+The legacy mathematical benchmark runner, dedicated launchers and embedded datasets are preserved in the fixed research revision. [Research tree](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9)
 
 Obsolete documentation remains accessible from the [fixed Git history tree](https://github.com/LuNa-shi/SwarmEnv/tree/02adbb43d39e0b23befb7f2ffc4b19ffb386a36d/docs). This working tree does not recreate an `archive/` directory. Ignored raw experiment data may not exist in Git history.
 

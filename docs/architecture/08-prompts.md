@@ -127,3 +127,93 @@ The optional lead-helper `runStage` path uses the same four source round instruc
 The optional lead-helper setup path sends each original role a `prepare-stage` JSON input with `ready_note` equal to `Ready for staged workload: RUNTIME_ID:ROLE:BOT_ID`, using actual host-bound values, and the complete instruction: `Read the public Board, verify your own trusted role and Bot identity, then publish exactly ready_note as a public unscoped Board note. Do not claim work or create an artifact. This is setup only.` Each unique `prepare-stage-role` request uses the same explicit followUp helper and finite stage signal. The host accepts only actual new Board reads/notes from that Bot; no setup text is counted as a business delivery.
 
 The generated lead-helper reference reproduces the complete staged corrective input composition. Only an explicit STAGE_CANDIDATE_REJECTED checker response enables this path after a helper input has completed. The original helper receives the original task with the derived new delivery path substituted, plus trusted stage, attempt, subtask ID and path map. Its instruction preserves the rejected task/Git/source/stdout, supplies no reference answer, and uses existing create/claim/complete operations. The exclusive followUp request ID is `stage-S-helperR-correction-N`; it keeps the original absolute stage cutoff. Unknown, queued, failed, malformed and checker-unavailable paths do not create a correction. Actual rejected/accepted admissions are retained separately from these source templates.
+
+
+## ProgramBench Pastel
+
+The [development benchmark](../../benchmarks/programbench-pastel/README.md) supplies its own workload text to existing dispatch paths. [Case source](../../benchmarks/programbench-pastel/case.ts) defines the fixed instance `sharkdp__pastel.b60e899`. The task expands `${goal}` to the following text before adding the four task lines.
+
+```text
+Rebuild Pastel for ProgramBench (sharkdp__pastel.b60e899).
+Use the reference program at /opt/programbench/executable and its documentation in /opt/programbench.
+Observe its behavior by running it. Author original source without accessing project source, external resources or hidden tests. Do not use or redistribute the reference in the candidate.
+Create a source tree with a root compile.sh that builds ./executable in the offline ProgramBench environment. Preserve partial work if the full program is unfinished.
+```
+
+```text
+Select and implement an original approach. Create an early runnable source snapshot, then extend or correct it as time allows.
+Your teammates solve part of the same program. Record whose work was used, the source or version, and the behavior it supports.
+Keep the candidate source and offline build instructions in the shared deliverable channel described below. A runnable subset is acceptable.
+```
+
+### Parent and children
+
+The host places the following instruction in the parent Profile and appends it to the common task as the initial host input, separated by a blank line.
+
+```text
+Spawn two child Bots with complementary Pastel work using swarm bot spawn.
+Ask each child for a useful source file and a reference observation. Child results are delivered as JSON with childId, eventSeq, outcome and output.
+Use the actual child results to write a source tree, test it with compile.sh and publish checkpoints using swarm candidate publish --stdin.
+The payload is {"files":{"relative-path":"UTF-8 source text"},"used_children":[{"child_id":"actual UUID","event_seq":1,"file":"relative-path"}]}.
+For each included child, preserve at least one whole source file it supplied, or explain your changes in your output. Keep extending the candidate within the available window.
+```
+
+The child Profile combines the common task, a blank line and the following instruction. The parent authors its actual child assignments through `swarm bot spawn` or `swarm bot send`. The existing Subagents router delivers completed child outputs back to the parent. The child identity and event sequence in each delivery come from Core.
+
+```text
+Work on the assigned Pastel component. Follow the provided task and return plain JSON with this shape:
+{"files":{"relative-path":"UTF-8 source text"},"observation":"reference command and result"}. Include a source file the parent can use directly.
+```
+
+### Flat discovery and handoff
+
+The host places the common task, a blank line and the following instruction in the discovery Prompt. The controller admits it after the initial window callback. On take, the existing Task handoff provides the corresponding fixed contract.
+
+```text
+Use swarm task list --state ready to find ready work and swarm task take to claim it. Read the complete Task before writing.
+Publish source as Material attachments with relative names and base64 content. Use swarm material publish --help and --stdin.
+When integrating, read both earlier Materials and their attachments, use their components in the candidate, and record swarm material consume with action integration and the actual impact. Include the Material IDs in used_material_ids on your new Material.
+Publish the complete candidate tree as attachments, including compile.sh, before closing your Task. Close with swarm task finish and the actual Material IDs and outcome.
+```
+
+```text
+Implement Pastel color parsing
+Probe reference color input and publish a reusable named-color or hex parser with source attachments, interface and observations. Publish an early useful increment. If no language has been agreed, use Python 3 standard library.
+```
+
+```text
+Implement Pastel output formatting
+Probe reference format output and publish an independent formatting or conversion component with source attachments, interface and observations. Publish an early useful increment. If no language has been agreed, use Python 3 standard library.
+```
+
+```text
+Integrate and submit a Pastel candidate
+Read and integrate the two source Materials, implement a CLI with offline compile.sh, and publish an early runnable full source tree as Material attachments before extending behavior.
+```
+
+```text
+Material with source attachments
+Attach the produced source and record checks against the Pastel reference.
+```
+
+### Agensh peer inputs
+
+The host sets the Gitea issue title to `Rebuild Pastel` and its body to the common task. Each kickoff gives the selected peer that task, a blank line and the role text below. The two contributors receive their respective inputs at the start. The integrator receives its input after the driver merges both contributor PRs.
+
+**Parser**
+
+```text
+Implement a reusable color-input parsing component. Publish a small initial contribution early. Use Python 3 standard library if no language is agreed. Post a Board FACT with its file path, interface and a reference observation. Commit only your component, push it and open a PR from your assigned branch.
+```
+
+**Formatter**
+
+```text
+Implement an independent color-output formatting or conversion component. Publish a small initial contribution early. Use Python 3 standard library if no language is agreed. Post a Board FACT with its file path, interface and a reference observation. Commit a separate component file, push it and open a PR from your assigned branch.
+```
+
+**Integrator**
+
+```text
+Read both earlier peers’ Board FACTs and use their components from the current main. Implement the CLI and offline build (compile.sh). Prioritize a runnable subset and verify it with the reference. Commit and push the full candidate and open a PR. Return plain JSON {"adopted_files":["relative file path"],"checks":["reference command and observed result"]}.
+```
