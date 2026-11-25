@@ -63,9 +63,15 @@ result={'feedback':feedback,'role':'B-apply','revision':saved['revision'],'text'
   return `python3 - <<'FLAT_NATIVE_SCRIPT'\nimport os,json,subprocess,secrets\nROLE=${JSON.stringify(role)}\nbefore=os.getcwd()\nassert before=='/workspace/project'\ndef cli(*args):\n p=subprocess.run(['swarm']+list(args),capture_output=True,text=True,timeout=45)\n assert p.returncode==0, p.stderr\n return json.loads(p.stdout)\n${commands}\nprint(json.dumps(result))\nFLAT_NATIVE_SCRIPT`;
 }
 
-test('native Flat creates work and saves and applies exact guest bytes in the original Session then replaces its finished Bot', {
+const nativeOptions = {
   skip: process.env.SWARMENV_FLAT_NATIVE_WORKSPACE_TEST !== '1', timeout: 270_000,
-}, async t => {
+};
+test('native Flat saves and applies exact guest bytes in the original Session then replaces its finished Bot', nativeOptions,
+  t => checkNativeAdoption(t, 'followUp'));
+test('native Flat delivers a configured Material notice in a live tool loop and keeps the original Session', nativeOptions,
+  t => checkNativeAdoption(t, 'steer'));
+
+async function checkNativeAdoption(t, materialNotificationMode) {
   const image = process.env.SWARMENV_CORE_TEST_IMAGE;
   assert.match(image ?? '', /(?:^sha256:|@sha256:)[a-f0-9]{64}$/);
   const outputDir = join(process.cwd(), 'experiments', `flat-native-workspace-${Date.now()}`);
@@ -81,6 +87,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
   assert.equal(tasks.listTasks({ missionId, availableOnly: false }).length, 0);
   const evidence = {}, events = [], admissions = [];
   let arrivals = 0, starts = 0, notificationInputs = 0, adoptionNotification, failure, runtimeId, report;
+  const continueB = Promise.withResolvers();
   const awaiting = new Map();
   const evidenceFor = name => {
     if (evidence[name]) return Promise.resolve(evidence[name]);
@@ -107,6 +114,11 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
         assert.ok(body.input.some(row => row.type === 'function_call' && row.call_id === 'native_B'));
         const previous = body.input.find(row => row.type === 'function_call_output' && row.call_id === 'native_B');
         assert.equal(JSON.parse(previous.output.trim()).execution, evidence.B.execution);
+        if (materialNotificationMode === 'steer') {
+          const precedingTool = body.input.find(row => row.type === 'function_call_output' && row.call_id === 'native_B-loop');
+          assert.equal(precedingTool?.output.trim(), 'NATIVE_LOOP_CONTINUED');
+          assert.equal(body.input.some(row => row.role === 'assistant' && row.content?.some?.(part => part.text === 'B_OK')), false);
+        }
       }
       let item;
       const role = finishing ? 'finish' : apply ? 'B-apply' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_C') ? 'C' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_A') ? 'A' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_B') ? 'B' : null;
@@ -115,7 +127,13 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
         const result = JSON.parse(output.trim());
         assert.equal(result.role, role); assert.equal(result.same_process, true);
         evidence[role] = result; awaiting.get(role)?.resolve(result);
-        item = { type: 'message', id: `native_final_${role}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: `${role}_OK`, annotations: [] }] };
+        if (role === 'B' && materialNotificationMode === 'steer') {
+          await continueB.promise;
+          item = { type: 'function_call', id: 'native_call_B-loop', call_id: 'native_B-loop', name: 'bash',
+            arguments: JSON.stringify({ command: 'printf "%s\\n" NATIVE_LOOP_CONTINUED' }) };
+        } else {
+          item = { type: 'message', id: `native_final_${role}`, role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: `${role}_OK`, annotations: [] }] };
+        }
       } else {
         if (apply) notificationInputs++;
         const next = finishing ? 'finish' : apply ? 'B-apply' : ['A', 'B', 'C'][starts++];
@@ -130,7 +148,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
     }
   });
   server.listen(0, '127.0.0.1'); await once(server, 'listening');
-  t.after(async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); context.close(); tasks.close(); });
+  t.after(async () => { continueB.resolve(); server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); context.close(); tasks.close(); });
   const host = process.env.SWARMENV_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1';
   const budget = setTimeout(() => { for (const deferred of awaiting.values()) deferred.reject(new Error('Native diagnostic deadline')); }, 210_000);
   t.after(() => clearTimeout(budget));
@@ -144,7 +162,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
         isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } } }),
       model: 'default', image, outputDir, taskService: tasks, contextService: context, missionWorkspace: workspace, workspaceManager: manager,
       missionId, workspaceId: initial.workspace_id, capacity: 2, deadlineAt, autonomousTasks: true, workspaceCapture: 'core',
-      controller: { discoveryPrompt: 'FLAT_NATIVE_START', automaticContinuation: false, deliverNotifications: true, selectionMs: 180_000, hardBudgetMs: 210_000, stallMs: 180_000,
+      controller: { discoveryPrompt: 'FLAT_NATIVE_START', automaticContinuation: false, deliverNotifications: true, materialNotificationMode, selectionMs: 180_000, hardBudgetMs: 210_000, stallMs: 180_000,
         beforeInitialDispatch({ botIds }) { admissions.push([...botIds]); } },
       handoff: { executionTimeoutMs: 180_000 }, closeTimeoutMs: 40_000,
       async drive(controller, runtime) {
@@ -155,13 +173,21 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
         const containers = await ownedContainers(runtime.id);
         const identities = await Promise.all(containers.map(async container => ({ container, botKey: JSON.parse((await execute('docker', ['inspect', '--format', '{{json .Config.Labels.bot_key}}', container])).stdout) })));
         const bContainer = identities.find(row => row.botKey === openSandboxBotKey(bBot)).container;
-        while ((await runtime.get(bBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
+        if (materialNotificationMode === 'steer') {
+          assert.equal((await runtime.get(bBot)).status, 'running');
+          assert.equal(events.some(event => event.botId === bBot && event.type === 'settled'), false);
+        } else {
+          while ((await runtime.get(bBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
+        }
         const before = await sessionEvidence(bContainer, execute);
         adoptionNotification = tasks.enqueueNotification({ deliveryKey: 'native-adopt-A', missionId,
           recipientTaskId: b.task, recipientExecutionId: b.execution, type: 'material_available', materialId: a.material,
           sourceTaskId: a.task, sourceExecutionId: a.execution,
           payload: { material_id: a.material, revision: a.revision } });
         await controller.tick();
+        const admitted = controller.snapshot().inputs.find(row => row.requestId === `flat:notification:${b.execution}:${adoptionNotification.notification_id}`);
+        assert.equal(admitted?.receipt.disposition, materialNotificationMode === 'steer' ? 'queued' : 'started');
+        continueB.resolve();
         const integrated = await evidenceFor('B-apply');
         while ((await runtime.get(bBot)).status !== 'idle') { assert.ok(Date.now() < deadlineAt); await wait(25); }
         assert.deepEqual(await sessionEvidence(bContainer, execute), before);
@@ -173,7 +199,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
         await controller.tick(); await controller.tick();
         const notificationInputsRecorded = controller.snapshot().inputs.filter(row => row.source === 'notification' && row.requestId === `flat:notification:${b.execution}:${adoptionNotification.notification_id}`);
         assert.equal(notificationInputsRecorded.length, 1);
-        assert.equal(notificationInputsRecorded[0].mode, 'followUp');
+        assert.equal(notificationInputsRecorded[0].mode, materialNotificationMode);
         assert.equal(notificationInputsRecorded[0].botId, bBot);
         assert.equal(notificationInputsRecorded[0].status, 'accepted');
         evidence.notification = { notification: adoptionNotification, input: notificationInputsRecorded[0], receipt: integrated.feedback.receipt };
@@ -225,4 +251,4 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
   } finally {
     await writeFile(join(outputDir, 'acceptance.json'), JSON.stringify({ mode: 'scripted-local-native', image, runtimeId, arrivals, starts, failure, evidence, events, report }, null, 2), { mode: 0o600 });
   }
-});
+}

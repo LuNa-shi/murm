@@ -2,6 +2,8 @@
 
 This opt-in driver runs the pinned original Lean theorem with the normal Flat host and the local Pi/OpenSandbox backend. The trial opens with an empty Task pool and four researcher slots. Bots can save and apply proof files in the same Session. The formal run uses Kimi K3 and a one-hour research window. See the [Phase 0005 design](../../docs/phases/0005-core-environment/04-flat-math.md) for input visibility and acceptance.
 
+The driver submits Material notices through Pi's steering queue. A busy recipient can receive a notice in its next model request after its current tool batch. The notice keeps the active Task, Execution and Session. The report records admission separately from model visibility, handling and use in the proof.
+
 ## Prepare the fixed inputs
 
 Use the official [PutnamBench tree](https://github.com/trishullab/PutnamBench/tree/a635813f5edf297d928f9bd5ef8324a26bdde09c) and the standard locked final-tree deployment. The checker configuration must enable `projectChecks` and name a trusted `artifactLock`. See [the deployment manual](../../docs/architecture/07-run-configuration.md#generic-checker-deployment-after-benchmark-retirement) for the Lean, Mathlib, Comparator and exporter roots. The tracked Mathlib source in the lock supplies the search service.

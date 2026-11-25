@@ -32,9 +32,9 @@ const deny=(message: any)=>{throw new SwarmEnvError('NOT_ALLOWED',message);};
 export function createFlatController({runtime,taskService,missionId,capacity=2,profile='researcher',deadlineAt,activeDeadline=()=>deadlineAt,coordinationPermissions=[],
   selectionMs=60_000,hardBudgetMs=300_000,heartbeatMs=10_000,stallMs=120_000,continuationLimit=20,discoveryLimit=20,
   stopTimeoutMs=30_000,autonomousTasks=false,discoveryPrompt,
-  continuationPrompt,workspaceSaveAvailable=true,completionPolicy='tasks',deliverNotifications=true,
+  continuationPrompt,workspaceSaveAvailable=true,completionPolicy='tasks',deliverNotifications=true,materialNotificationMode='followUp',
   afterStopped=async()=>{}, beforeInitialDispatch, automaticContinuation=true, refillWhenNoReadyTask=true }: any) {
-  if(!['tasks','mission'].includes(completionPolicy) || typeof deliverNotifications!=='boolean' || typeof autonomousTasks!=='boolean' || !runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
+  if(!['tasks','mission'].includes(completionPolicy) || !['steer','followUp'].includes(materialNotificationMode) || typeof deliverNotifications!=='boolean' || typeof autonomousTasks!=='boolean' || !runtime?.id || !taskService || typeof missionId!=='string' || !missionId || !Number.isSafeInteger(capacity) || capacity<1 ||
     ![deadlineAt,selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every(Number.isFinite) || deadlineAt<=Date.now() || typeof activeDeadline!=='function' ||
     ![selectionMs,hardBudgetMs,heartbeatMs,stallMs,stopTimeoutMs].every((x: any)=>x>0) || heartbeatMs>10000 ||
     ![continuationLimit,discoveryLimit].every((x: any)=>Number.isSafeInteger(x)&&x>=1) || typeof afterStopped!=='function' || (beforeInitialDispatch!==undefined && typeof beforeInitialDispatch!=='function') || typeof automaticContinuation!=='boolean' || typeof refillWhenNoReadyTask!=='boolean') throw new TypeError('Flat controller requires finite ordered work budgets and trusted Runtime/domain stores');
@@ -182,9 +182,10 @@ export function createFlatController({runtime,taskService,missionId,capacity=2,p
         const delivery=row.notifications[notification.notification_id] ??= {
           requestId:`flat:notification:${execution.execution_id}:${notification.notification_id}`,
           text:buildBotNotification(notification,{workspaceSaveAvailable}), fence:execution.fencing_version,
+          mode:notification.notification_type==='material_available'?materialNotificationMode:'followUp',
         };
         if(!delivery.input || delivery.input.status==='not_submitted') {
-          delivery.input=await submit(row,delivery.text,{source:'notification',requestId:delivery.requestId,
+          delivery.input=await submit(row,delivery.text,{source:'notification',requestId:delivery.requestId,mode:delivery.mode,
             taskId:execution.task_id,executionId:execution.execution_id,fence:delivery.fence,notificationId:notification.notification_id});
         }
         const currentBinding=current(row);

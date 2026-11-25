@@ -713,6 +713,26 @@ test('ordinary material notification reaches the active owner once without inter
   assert.equal(f.tasks.getBot(f.bot.botId).execution_id, execution.execution_id);
 });
 
+test('configured material notifications steer while dependency notices and continuations remain followUp', async t => {
+  const f = await fixture(t, { materialNotificationMode: 'steer' }); const execution = f.take();
+  const material = f.tasks.enqueueNotification({ deliveryKey: 'steered-material', missionId: f.missionId,
+    recipientTaskId: f.task.task_id, type: 'material_available', materialId: f.material.material_id,
+    payload: { material_id: f.material.material_id } });
+  const dependency = f.tasks.enqueueNotification({ deliveryKey: 'queued-dependency', missionId: f.missionId,
+    recipientTaskId: f.task.task_id, type: 'task_reopened', payload: { task_id: f.task.task_id } });
+  await f.controller.tick(); await f.controller.tick();
+  f.settle(); await f.controller.flush();
+  const sent = f.controller.snapshot().inputs;
+  const notices = sent.filter(row => row.source === 'notification');
+  assert.equal(notices.length, 2);
+  assert.deepEqual(new Map(notices.map(row => [row.requestId, [row.mode, row.executionId, row.status]])), new Map([
+    [`flat:notification:${execution.execution_id}:${material.notification_id}`, ['steer', execution.execution_id, 'accepted']],
+    [`flat:notification:${execution.execution_id}:${dependency.notification_id}`, ['followUp', execution.execution_id, 'accepted']],
+  ]));
+  assert.equal(sent.at(-1).source, 'continuation');
+  assert.equal(sent.at(-1).mode, 'followUp');
+});
+
 test('ordinary notification unknown receipt keeps its input identity and never repeats delivery', async t => {
   const f = await fixture(t); const execution = f.take();
   const notification = f.tasks.enqueueNotification({ deliveryKey: 'unknown-material', missionId: f.missionId, recipientTaskId: f.task.task_id,

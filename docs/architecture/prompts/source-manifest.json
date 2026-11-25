@@ -43,7 +43,7 @@
     },
     {
       "path": "src/environments/flat/controller.ts",
-      "sha256": "537f77089095276f2e82a6407f0508e44bd2cdc0cc0300fbd53ca8b25ddf6e3d"
+      "sha256": "e0aab4a720b465adf8467a04af7896b2447230c0069e2e180102973217265fb5"
     },
     {
       "path": "src/environments/flat/environment.ts",
@@ -51,7 +51,7 @@
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "a92c4f9f14125da749be23f4c01bc41e7f1bab7c05ba607db05c731de9e7802a"
+      "sha256": "db00c38178aa178e9e247e5eb7ca8b9ac23d558df29e68b0d23a61fddffd643e"
     },
     {
       "path": "examples/subagents-environment/main.ts",
@@ -339,7 +339,7 @@
       "path": "benchmarks/putnambench-flat/run.ts",
       "anchor": "const prompt = `",
       "line": 21,
-      "sha256": "be00dfbc7ed6b169c8bfcb5451afccb9d4442a36e9250974d6dd4160c9260057"
+      "sha256": "4cb2d88fe307d5e6f03a8957098cb83e479bd9207855c9aa8cf2d0db1851c186"
     }
   ],
   "prompt_send_sites": [
@@ -445,7 +445,7 @@
     },
     {
       "path": "docs/architecture/prompts/04-runtime-messages.md",
-      "sha256": "0875b3b1ad59142caf6c00972491c7f0367bd0983ea7eb8fa713f7c2f2b1eacb"
+      "sha256": "bd5be448feb3efb939e55143a80fead8825705ffe66ea8b025831d9834d87f75"
     },
     {
       "path": "docs/architecture/prompts/06-tool-return-guidance.md",
@@ -473,7 +473,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "ad594452a32146febf2a618813a0dcfcee5929386b251291e01ea5b9f6f2192f"
+      "sha256": "6c838ddf7216159ec5efd141c45f422cb17da48ab0c3ec698d0b0d38129392a9"
     }
   ]
 }
