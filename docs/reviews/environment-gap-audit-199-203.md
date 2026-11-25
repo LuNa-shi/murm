@@ -19,6 +19,8 @@
 
 ## Subagents #199
 
+详细逐项对照见 [Codex V2 Subagents：功能清单与 SwarmEnv 对照](subagents-v2-feature-checklist.md)。该清单按原版功能核对当前代码、补改位置和验收方法；下面保留本总览对应的历史观察。
+
 参考是 [Codex MultiAgentV2 `a0d5b0a661db3b34cd87bdf1c93736b90fd3694b`](https://github.com/openai/codex/commit/a0d5b0a661db3b34cd87bdf1c93736b90fd3694b)。#199 采用 SwarmEnv 的四基础工具、Bash CLI 和外部 Service 来实现协作语义。
 
 当前普通入口的 `childCount` 默认 2、范围 2–7。Root prompt 要求精确人数、一个原 Child 续轮，以及逐字引用恰好 `childCount + 1` 份结果。Child 无权继续创建。Controller 只向固定 parent 路由直接孩子的结果，用 `send(mode: 'followUp')` 送达。可选 staged 接口还要求三个原始孩子和四个有序阶段。**固定人数、题型、阶段、谁来续轮和逐字引用解析器应迁到 fixture。** 普通 Env 接完整用户任务，配置安全上限与权限，接受零委派、一个或多个 Child、三层递归与自然收尾。[普通入口](https://github.com/LuNa-shi/SwarmEnv/blob/ec4d286/examples/subagents-environment/main.mjs) · [Prompt](https://github.com/LuNa-shi/SwarmEnv/blob/ec4d286/examples/subagents-environment/prompts.mjs) · [Controller](https://github.com/LuNa-shi/SwarmEnv/blob/ec4d286/examples/subagents-environment/controller.mjs) · [四阶段接口](https://github.com/LuNa-shi/SwarmEnv/blob/ec4d286/examples/subagents-environment/stages.mjs)
