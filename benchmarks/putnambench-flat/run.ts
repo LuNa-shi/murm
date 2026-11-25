@@ -78,7 +78,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
 
   const missionCoordination = createMissionCoordination({
     taskService, contextService, workspace: missionWorkspace, missionId, workspaceId, checker: verifier,
-    deadline, isStopping: () => Boolean(window?.signal.aborted || signal.aborted),
+    deadline, isStopping: () => Boolean(window?.signal.aborted || signal.aborted), maxFinalChecks: null,
   });
   try {
     taskService.setCheckResultReader((id: string) => judgeService.getCheckResult(id));
