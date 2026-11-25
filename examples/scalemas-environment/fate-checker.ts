@@ -30,21 +30,22 @@ export function sha256(value: string | Uint8Array) {
   return createHash('sha256').update(value).digest('hex');
 }
 
-type ProjectOptions = { projectRoot: string; leanRoot: string };
+type ProjectOptions = { projectRoot: string; leanRoot: string; signal?: AbortSignal };
 type LockedPackage = { name: string; rev: string };
 
-export async function loadFateProject({ projectRoot, leanRoot }: ProjectOptions) {
+export async function loadFateProject({ projectRoot, leanRoot, signal }: ProjectOptions) {
+  signal?.throwIfAborted();
   const root = await realpath(resolve(projectRoot));
   const toolchain = await realpath(resolve(leanRoot));
   const [data, lock, version] = await Promise.all([
-    readFile(join(root, 'FATE-M.json')), readFile(join(root, 'lake-manifest.json')),
-    readFile(join(root, 'lean-toolchain'), 'utf8'),
+    readFile(join(root, 'FATE-M.json'), { signal }), readFile(join(root, 'lake-manifest.json'), { signal }),
+    readFile(join(root, 'lean-toolchain'), { encoding: 'utf8', signal }),
   ]);
   if (sha256(data) !== fatePins.datasetSha256 || sha256(lock) !== fatePins.lockSha256 ||
       version.trim() !== `leanprover/lean4:v${fatePins.leanVersion}`) {
     throw new Error('FATE-M files differ from the frozen upstream fixture');
   }
-  const { stdout } = await execFile(join(toolchain, 'bin', 'lean'), ['--version'], { timeout: 10_000 });
+  const { stdout } = await execFile(join(toolchain, 'bin', 'lean'), ['--version'], { timeout: 10_000, signal });
   if (!stdout.includes(`version ${fatePins.leanVersion},`) || !stdout.includes(`commit ${fatePins.leanCommit},`)) {
     throw new Error('Lean binary does not match the pinned FATE-M version and commit');
   }
@@ -56,8 +57,8 @@ export async function loadFateProject({ projectRoot, leanRoot }: ProjectOptions)
   const libraryPaths = await Promise.all(packages.map(async ({ name, rev }) => {
     const path = join(root, '.lake', 'packages', name);
     const [head, status] = await Promise.all([
-      execFile('git', ['-C', path, 'rev-parse', 'HEAD'], { timeout: 10_000 }),
-      execFile('git', ['-C', path, 'status', '--porcelain', '--untracked-files=all'], { timeout: 10_000 }),
+      execFile('git', ['-C', path, 'rev-parse', 'HEAD'], { timeout: 10_000, signal }),
+      execFile('git', ['-C', path, 'status', '--porcelain', '--untracked-files=all'], { timeout: 10_000, signal }),
     ]);
     if (head.stdout.trim() !== rev || status.stdout.trim()) throw new Error(`FATE-M dependency ${name} is dirty or has the wrong revision`);
     const library = join(path, '.lake', 'build', 'lib', 'lean');
@@ -105,7 +106,8 @@ function proofFinding(proof: string) {
   return null;
 }
 
-export async function createFateChecker(project: FateProject) {
+export async function createFateChecker(project: FateProject, signal?: AbortSignal) {
+  signal?.throwIfAborted();
   const trusted = await mkdtemp(join(tmpdir(), 'fate-trusted-'));
   const guard: Mount = { path: trusted, at: '/trusted', library: true };
   try {
@@ -115,7 +117,7 @@ export async function createFateChecker(project: FateProject) {
     await writeFile(join(trusted, 'FateExpected.lean'), `import Mathlib\n${axiomPrefix}\n${original}\nend FateExpected\n`);
     const writable = { ...guard, writable: true };
     for (const module of ['FateProofGuard', 'FateExpected']) {
-      await isolatedLean(project, [writable], ['--root=/trusted', '-o', `/trusted/${module}.olean`, `/trusted/${module}.lean`], { timeoutMs: 120_000 });
+      await isolatedLean(project, [writable], ['--root=/trusted', '-o', `/trusted/${module}.olean`, `/trusted/${module}.lean`], { timeoutMs: 120_000, signal });
     }
   } catch (error) {
     await rm(trusted, { recursive: true, force: true });

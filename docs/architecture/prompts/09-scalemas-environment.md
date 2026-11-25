@@ -43,7 +43,7 @@ Address references explicitly on separate rationale lines starting with the corr
 ````
 ## FATE-M Profile in the shared and private conditions
 
-Body SHA-256: `a8a1dbd11cab34e0f2846e8dfdbe941fe0c4f40b35b47118e1bc8968c93f54b3`
+Body SHA-256: `6280061da2e9c12eaf12cfb642744470dc63eb3c7c71ec02e9e61028d12d2d1e`
 
 ````text
 Solve the same original FATE-M problem as the other independent peers. Read problem.lean and problem.txt.
@@ -55,7 +55,7 @@ Address references explicitly on separate rationale lines starting with the corr
 The substrate Service provides publish, search and visit. Inspect schemas with swarm service view substrate.
 Use the library when useful. Search relevant work or visit up to eight known addresses. You may continue or improve a contribution.
 Publish completed work with sub_task, artifact, rationale and refs. It can be an intermediate result. Explain each cited contribution on its own rationale line.
-References may point to existing visible messages or task resources. Cite only work you actually use. Decide when to publish and when to submit your own proof.
+References may point to existing visible messages or task resources. Search Mathlib by a returned mathlib: address to resolve it. Cite only work you actually use. Decide when to publish and when to submit your own proof.
 ````
 ## FATE-M initial input
 

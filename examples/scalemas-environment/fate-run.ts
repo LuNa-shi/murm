@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { createRuntime, type Backend, type ModelCaller, type Profile, type StopReceipt } from '@swarmenv/core';
@@ -24,13 +24,14 @@ export const fateSharingPrompt = [
   'The substrate Service provides publish, search and visit. Inspect schemas with swarm service view substrate.',
   'Use the library when useful. Search relevant work or visit up to eight known addresses. You may continue or improve a contribution.',
   'Publish completed work with sub_task, artifact, rationale and refs. It can be an intermediate result. Explain each cited contribution on its own rationale line.',
-  'References may point to existing visible messages or task resources. Cite only work you actually use. Decide when to publish and when to submit your own proof.',
+  'References may point to existing visible messages or task resources. Search Mathlib by a returned mathlib: address to resolve it. Cite only work you actually use. Decide when to publish and when to submit your own proof.',
 ].join('\n');
 
 export const fateInput = 'Solve the original problem in problem.lean and problem.txt. The question resource address appears in problem.txt. Submit a Lean proof term using the fate Service.';
 
 const modes: SharingMode[] = ['shared', 'private', 'none'];
 const maxSemanticOperations = 100;
+const submissionReceiptGraceMs = 1_000;
 const noTime = () => new Error('ScaleMAS FATE work is closed');
 const durations = { setup: 180_000, work: 1_800_000, close: 120_000, score: 900_000 } as const;
 
@@ -57,8 +58,9 @@ interface RunOptions {
 type Peer = {
   botId: string; finish: AbortController; active: boolean; semanticOperations: number;
   endReason?: 'submitted' | 'settled' | 'deadline' | 'cancelled' | 'failed';
-  inputFailure?: { code: string; inputId?: string }; startedAt?: string; endedAt?: string;
+  inputFailure?: { code: string; inputId?: string; receipt?: unknown }; startedAt?: string; endedAt?: string;
   inputId?: string; stop?: StopReceipt; stopFailure?: string;
+  finishRequested?: boolean; finishTimer?: ReturnType<typeof setTimeout>;
 };
 
 type FrozenCandidates = {
@@ -127,8 +129,9 @@ export async function rescoreFate(fate: Pick<FateOptions, 'projectRoot' | 'leanR
   return evaluateFrozen(project, JSON.parse(bytes));
 }
 
-async function measureEvidence(path: string, receipt: StopReceipt[] = []) {
+async function measureEvidence(path: string | undefined, receipt: StopReceipt[] = []) {
   try {
+    if (!path) throw new Error('Core report path unavailable');
     const report = JSON.parse(await readFile(path, 'utf8'));
     const usage = (report.modelLedgers as { alias: string; path: string }[]).map(ledger => {
       const db = new DatabaseSync(ledger.path, { readOnly: true });
@@ -161,7 +164,9 @@ async function measureEvidence(path: string, receipt: StopReceipt[] = []) {
         return { botId, state: 'recorded', counts };
       } catch { return { botId, state: 'unavailable', counts: null }; }
     }));
-    return { modelUsage: usage, modelTrace: report.modelTrace, serviceTrace: report.serviceTrace, nativeToolCalls: nativeTools };
+    const tracePath = join(dirname(path), 'service-calls.jsonl');
+    const serviceTrace = await stat(tracePath).then(info => ({ path: tracePath, bytes: info.size }), () => null);
+    return { modelUsage: usage, modelTrace: report.modelTrace, serviceTrace, nativeToolCalls: nativeTools };
   } catch { return { modelUsage: null, modelTrace: null, serviceTrace: null, nativeToolCalls: null }; }
 }
 
@@ -186,24 +191,37 @@ export async function runFateScaleMAS({
       typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir) throw new TypeError('Invalid ScaleMAS FATE configuration');
   externalSignal?.throwIfAborted();
   const preparationStarted = performance.now();
+  const setup = AbortSignal.timeout(setupTimeoutMs);
+  const setupSignal = externalSignal ? AbortSignal.any([setup, externalSignal]) : setup;
   const directory = join(outputDir, runId);
   await mkdir(outputDir, { mode: 0o700, recursive: true });
   await mkdir(directory, { mode: 0o700 }); // A group never attaches to an earlier run's evidence.
-  const project = await loadFateProject(fate);
-  const checker = await createFateChecker(project);
+  let project: FateProject;
+  let checker: Awaited<ReturnType<typeof createFateChecker>>;
+  try {
+    project = await loadFateProject({ ...fate, signal: setupSignal });
+    checker = await createFateChecker(project, setupSignal);
+  } catch (error) {
+    const code = externalSignal?.aborted ? 'FATE_SETUP_CANCELLED' : setup.aborted ? 'FATE_SETUP_TIMEOUT' : 'FATE_CHECKER_SETUP_FAILED';
+    const result = {
+      runId, mode, runtimeId: null, reportPath: null, bundlePath: null, startedAt: null, setupFailed: true,
+      setupElapsedMs: Math.round(performance.now() - preparationStarted), scoring: null, scoreFailure: null,
+      businessFailure: { code, message: error instanceof Error && 'code' in error ? String(error.code) : 'FATE setup did not complete' },
+      cleanup: null, cleanupFailure: null, reportSaveFailure: null,
+    };
+    await writePrivateJson(join(directory, 'fate-result.json'), result);
+    return result;
+  }
   const search = createSearch(project);
   const services = new ServiceRegistry();
   const peers = new Map<string, Peer>();
   const semanticRequests = new Map<string, Set<string>>();
   const work = new AbortController();
   const workSignal = externalSignal ? AbortSignal.any([work.signal, externalSignal]) : work.signal;
-  const setup = AbortSignal.timeout(setupTimeoutMs);
-  const setupSignal = externalSignal ? AbortSignal.any([setup, externalSignal]) : setup;
   let runtimeId: string | undefined;
   let startedAt: string | null = null;
   let setupElapsedMs: number | null = null;
   let deadlineMs = 0;
-  let setupFailed = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   const remainingMs = () => workSignal.aborted ? 0 : Math.max(0, deadlineMs - Date.now());
   const authorize = (caller: ServiceCaller | ModelCaller) => {
@@ -216,6 +234,7 @@ export async function runFateScaleMAS({
     const seen = semanticRequests.get(botId)!;
     const key = JSON.stringify([operation, requestId]);
     if (seen.has(key)) return;
+    if (peer.finishRequested) throw Object.assign(new Error('Peer has finished; only stable request replay is available'), { code: 'NOT_ALLOWED' });
     if (peer.semanticOperations >= maxSemanticOperations) throw Object.assign(new Error('Peer used its task and contribution operation allowance'), { code: 'OPERATION_LIMIT' });
     seen.add(key);
     peer.semanticOperations++;
@@ -226,12 +245,18 @@ export async function runFateScaleMAS({
     const problemAddress = `fate:${fatePins.problemId}:${project.problemSha256}`;
     task = createFateTaskService({
       path: join(directory, 'fate-candidates.sqlite'), services, authorize, countOperation, remainingMs, signal: workSignal,
-      problemAddress, search, check: checker.evaluate,
+      problemAddress, shareMathlibResources: mode === 'shared', search, check: checker.evaluate,
       validateReferences(botId, rationale, refs) {
         if (substrate) substrate.validateReferences(botId, rationale, refs);
         else if (refs.some(ref => !task!.resourceExists(botId, ref))) throw Object.assign(new Error('Reference is outside the task resources'), { code: 'NOT_FOUND' });
       },
-      onFinish(botId) { peers.get(botId)!.finish.abort(); },
+      onFinish(botId) {
+        const peer = peers.get(botId)!;
+        peer.finishRequested = true;
+        // Allow Bridge to deliver the committed receipt and Pi to settle.
+        // Fresh task/substrate requests are already fenced.
+        peer.finishTimer = setTimeout(() => peer.finish.abort(), Math.min(submissionReceiptGraceMs, remainingMs()));
+      },
     });
     if (mode !== 'none') substrate = createPaperSubstrate({
       databasePath: join(directory, 'substrate.sqlite'), runId, mode, services, authorize, countOperation, resourceExists: task.resourceExists,
@@ -243,7 +268,8 @@ export async function runFateScaleMAS({
     const report = await runWithReport({
       outputDir: directory, closeTimeoutMs,
       redact: (record: Record<string, unknown>) => ({
-        ...record, mode, runId, startedAt, setupElapsedMs, peers: [...peers.values()].map(({ finish: _finish, active: _active, ...peer }) => peer),
+        ...record, mode, runId, startedAt, setupElapsedMs,
+        peers: [...peers.values()].map(({ finish: _finish, active: _active, finishTimer: _timer, ...peer }) => peer),
         policy: { poolSize, workTimeoutMs, setupTimeoutMs, closeTimeoutMs, scoreTimeoutMs, maxSemanticOperations,
           clock: 'new in-scope substrate operation, decay before execution, same-ID retry does not advance',
           tokenCounter: 'js-tiktoken@1.0.21/o200k_base', task: fatePins, problemSha256: project.problemSha256 },
@@ -252,13 +278,13 @@ export async function runFateScaleMAS({
       async createRuntime() {
         await limited(search('Fintype.card', setupSignal), setupSignal);
         return createRuntime({
-        backend, outputDir: directory, services, maxBots: poolSize, profiles: { peer: profile },
-        modelAccessPolicy: {
-          authorize(caller) {
-            try { authorize(caller); return { phase: 'work', deadlineAt: deadlineMs }; } catch { return null; }
+          backend, outputDir: directory, services, maxBots: poolSize, profiles: { peer: profile },
+          modelAccessPolicy: {
+            authorize(caller) {
+              try { authorize(caller); return { phase: 'work', deadlineAt: deadlineMs }; } catch { return null; }
+            },
+            withCommit: commit => commit(),
           },
-          withCommit: commit => commit(),
-        },
         });
       },
       async run(core: Awaited<ReturnType<typeof createRuntime>>) {
@@ -275,7 +301,10 @@ export async function runFateScaleMAS({
             peers.set(bot.id, { botId: bot.id, finish: new AbortController(), active: true, semanticOperations: 0 });
           }
           setupSignal.throwIfAborted();
-        } catch (error) { setupFailed = true; throw error; }
+        } catch (error) {
+          setupElapsedMs = Math.round(performance.now() - preparationStarted);
+          throw error;
+        }
         setupElapsedMs = Math.round(performance.now() - preparationStarted);
         startedAt = new Date().toISOString();
         deadlineMs = Date.now() + workTimeoutMs;
@@ -288,16 +317,18 @@ export async function runFateScaleMAS({
               signal: AbortSignal.any([workSignal, peer.finish.signal]),
             });
             peer.inputId = receipt.inputId;
-            peer.endReason = peer.finish.signal.aborted ? 'submitted' : 'settled';
+            peer.endReason = peer.finishRequested ? 'submitted' : 'settled';
           } catch (error) {
             const detail = error as { code?: string; inputId?: string; receipt?: unknown };
-            peer.endReason = peer.finish.signal.aborted ? 'submitted' : externalSignal?.aborted ? 'cancelled' :
+            peer.endReason = peer.finishRequested ? 'submitted' : externalSignal?.aborted ? 'cancelled' :
               !remainingMs() || detail.code === 'input_timeout' ? 'deadline' : 'failed';
             if (peer.endReason !== 'submitted') peer.inputFailure = {
               code: detail.code ?? 'PEER_WORK_FAILED', ...(detail.inputId ? { inputId: detail.inputId } : {}),
+              ...(detail.receipt ? { receipt: detail.receipt } : {}),
             };
           } finally {
             peer.active = false;
+            clearTimeout(peer.finishTimer);
             peer.endedAt = new Date().toISOString();
             try { peer.stop = await core.stop(peer.botId, { timeoutMs: closeTimeoutMs }); }
             catch (error) { peer.stopFailure = (error as { code?: string }).code ?? 'PEER_STOP_FAILED'; }
@@ -316,7 +347,9 @@ export async function runFateScaleMAS({
     };
     const bundlePath = join(directory, 'fate-frozen-candidates.json');
     await writePrivateJson(bundlePath, bundle);
-    const evidence = await measureEvidence(join(dirname(report.reportPath), 'runtime.json'), report.cleanup?.bots);
+    const coreReport = typeof report.cleanup?.reportPath === 'string' ? report.cleanup.reportPath :
+      typeof report.reportPath === 'string' ? join(dirname(report.reportPath), 'runtime.json') : undefined;
+    const evidence = await measureEvidence(coreReport, report.cleanup?.bots);
     let scoring;
     let scoreFailure = null;
     try {
@@ -326,7 +359,7 @@ export async function runFateScaleMAS({
       }
     }
     catch (error) { scoreFailure = { code: 'FATE_SCORE_FAILED', message: (error as Error).message }; }
-    const final = { ...report, bundlePath, evidence, scoring: scoring ?? null, scoreFailure, setupFailed };
+    const final = { ...report, bundlePath, evidence, scoring: scoring ?? null, scoreFailure, setupFailed: startedAt === null };
     await writePrivateJson(join(directory, 'fate-result.json'), final);
     return final;
   } finally {

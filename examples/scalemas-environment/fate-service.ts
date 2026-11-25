@@ -43,6 +43,7 @@ interface TaskOptions {
   remainingMs(): number;
   signal: AbortSignal;
   problemAddress: string;
+  shareMathlibResources?: boolean;
   search(query: string, signal: AbortSignal): Promise<MathlibMatch[]>;
   check(proof: string, options: { signal: AbortSignal; timeoutMs: number }): Promise<FateVerdict>;
   validateReferences(botId: string, rationale: string, refs: string[]): void;
@@ -59,8 +60,9 @@ export function createFateTaskService(options: TaskOptions) {
   const operations: { botId: string; operation: string; requestId: string; startedAt: string; outcome: string; elapsedMs?: number }[] = [];
   const pending = new Set<Promise<JsonValue>>();
 
+  const resourceScope = (botId: string) => options.shareMathlibResources ? '' : botId;
   const resourceExists = (botId: string, address: string) =>
-    address === options.problemAddress || resourceScopes.get(botId)?.has(address) === true;
+    address === options.problemAddress || resourceScopes.get(resourceScope(botId))?.has(address) === true;
 
   async function run(request: ServiceRequest): Promise<JsonValue> {
     const { caller: { botId }, capability: { operation: name }, envelope: { operation_id: requestId }, input } = request;
@@ -70,14 +72,20 @@ export function createFateTaskService(options: TaskOptions) {
     if (name === 'search_mathlib') {
       const { query } = input as { query: string };
       if (!query.trim() || !query.isWellFormed()) throw failure('INVALID_CONTRACT', 'Provide a search query');
+      const scopeId = resourceScope(botId);
+      const scope = resourceScopes.get(scopeId) ?? new Map<string, Resource>();
+      if (query.startsWith('mathlib:')) {
+        const entry = scope.get(query.trim());
+        return { results: entry ? [entry] : [] };
+      }
       const raw = await options.search(query, signal);
       signal.throwIfAborted();
       request.assertAuthorized();
       options.authorize(request.caller);
       const entries = raw.slice(0, 10).map(row => ({ ...row, address: `mathlib:${sha256(stableStringify([fatePins.mathlibRevision, row.name, row.source]))}` }));
-      const scope = resourceScopes.get(botId) ?? new Map<string, Resource>();
-      for (const entry of entries) scope.set(entry.address, entry);
-      resourceScopes.set(botId, scope);
+      const current = resourceScopes.get(scopeId) ?? scope;
+      for (const entry of entries) current.set(entry.address, entry);
+      resourceScopes.set(scopeId, current);
       return { results: entries };
     }
     if (name === 'check_lean') {

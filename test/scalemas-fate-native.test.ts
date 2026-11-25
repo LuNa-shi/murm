@@ -31,7 +31,7 @@ rationale=address+' provides the Fintype.card_pi simplification'
 successor=cli('substrate','publish',{'sub_task':'Assemble the original proof','artifact':'Applied the simplification from '+original['artifact'],'rationale':rationale,'refs':[address]},'native-adopt')
 checked=cli('fate','check_lean',{'proof':'by simp [Fintype.card_pi]'},'native-check')
 assert checked['status']=='passed', checked
-submission=cli('fate','submit',{'proof':'by simp [Fintype.card_pi]','rationale':rationale,'refs':[address],'finish':False},'native-submit')
+submission=cli('fate','submit',{'proof':'by simp [Fintype.card_pi]','rationale':rationale,'refs':[address],'finish':True},'native-submit')
 print(json.dumps({'original':original,'successor':successor,'submission':submission}))
 FATE_HANDOFF`,
 };
@@ -131,6 +131,7 @@ test('installed FATE-M peer adopts exact anonymous bytes after the producer is p
   assert.equal(result.businessFailure, null);
   assert.equal(result.cleanup.cleanup, 'complete');
   assert.equal(result.scoring.teamSuccess, true);
+  assert.ok(result.peers.some(peer => peer.endReason === 'submitted'));
   assert.deepEqual(consumerAdoption.original, producerPublication);
   assert.equal(consumerAdoption.original.artifact, artifact);
   assert.ok(consumerAdoption.successor.refs.includes(producerPublication.address));
