@@ -30,7 +30,7 @@ This section is generated from executable exports and checked against the source
 
 | Source | SHA-256 |
 |---|---|
-| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `58dc15ec4ed3cca5ee3e1a2c131b17813f7703e598001748259b5c5064abf5ce` |
+| [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `d681cb166cebd207404fb602d225589969bf5f1457cceb306c8d34038b99d4f5` |
 | [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `ccb1dea4ee2e42ecd86169d9ccc2c8b8d151a7184e3b9795802499357302db46` |
 | [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `ef5119f0fa92a587850498a8ae2d1fc19c35d45f1cd3df9301916460433a34c2` |
 | [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `059326242222f5a036a03b33fb0e7b260fb0f527dfd771822755db2419ef5253` |
@@ -39,7 +39,7 @@ This section is generated from executable exports and checked against the source
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
 | [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
 | [src/core/index.ts](../../src/core/index.ts) | `75864afead0fa320e7d34a59dceedcc57f10f17a8d7bd8e386ce30dde9ca23ca` |
-| [src/core/types.ts](../../src/core/types.ts) | `c0da93d51e7061adcc2b645e32190d94082a61605f1f612c7086e3767efa5b3c` |
+| [src/core/types.ts](../../src/core/types.ts) | `01a3ed177ae7a40e8e0bf0aa1f391a2d51606fe1525be8f4da47239fc58ea25a` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `3d9b797156e9c13cfeea316025584f4aa379007b80831413df0cb9d588719583` |
 | [src/core/services.ts](../../src/core/services.ts) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
@@ -48,7 +48,7 @@ This section is generated from executable exports and checked against the source
 
 ### Exact built-in command operation surface
 
-Bots use native Bash to invoke typed swarm commands. Registry declarations below describe authorized domain operations; no additional Pi tool registration is installed. Optional Services extend the Registry.
+Agents use native Bash to invoke typed swarm commands. Registry declarations below describe authorized domain operations; no additional Pi tool registration is installed. Optional Services extend the Registry.
 
 | Capability identity | Service | Operation |
 |---|---|---|
@@ -113,19 +113,19 @@ Exact normalized built-in manifest metadata:
   "readiness": {
     "path": "/readyz"
   },
-  "manifest_hash": "7b0c87da8e05f7468364705ec0b8ec7277df9e49141f4d1fefca9711fe54a86c"
+  "manifest_hash": "804b836fdab0271635e356e1094d1d5e8ddc6d6240cee2b9f9c32abd9aa41cac"
 }
 ```
 
 #### catalog.catalog_list_services
 
-List every available SwarmEnv Service and its tool count.
+List every available murm Service and its tool count.
 
 ```json
 {
   "name": "catalog_list_services",
   "operation": "list_services",
-  "description": "List every available SwarmEnv Service and its tool count.",
+  "description": "List every available murm Service and its tool count.",
   "input_schema": {
     "type": "object",
     "properties": {},
@@ -151,9 +151,9 @@ List every available SwarmEnv Service and its tool count.
   "requires_binding": false,
   "scope": "public-read",
   "help": {
-    "when": "List every available SwarmEnv Service and its tool count.",
+    "when": "List every available murm Service and its tool count.",
     "ref": "service://catalog/list_services",
-    "text": "Purpose: Role-scoped Service and capability discovery.\nUse when: List every available SwarmEnv Service and its tool count.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
+    "text": "Purpose: Role-scoped Service and capability discovery.\nUse when: List every available murm Service and its tool count.\nInputs follow the registered schema. The response is the adapter's structured JSON result. Errors are authoritative and must be handled or retried only as documented by the returned error code."
   },
   "method": "POST",
   "path": "/v1/list_services",
@@ -3103,7 +3103,7 @@ export interface Backend {
     readonly [backendBrand]: true;
 }
 export interface Profile {
-    /** Optional Environment instructions added to the standard startup prompt. */
+    /** Optional Harness instructions added to the standard startup prompt. */
     prompt?: string;
     model: string;
     image: string;

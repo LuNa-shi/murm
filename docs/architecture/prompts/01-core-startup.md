@@ -7,10 +7,10 @@ The backend passes this file through Pi --system-prompt. The current working dir
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Profile with no allowed Service operations and no Added System Prompt
 
-Body SHA-256: `c6149a0026da62f63b98599adf8cac451478151af2a80e7ba3508013ec3cc55d`
+Body SHA-256: `7ad17da805a5f3ce03f93f47b63494596931baec81e0986f0a2ca429b2105a48`
 
 ````text
-You are a SwarmEnv agent running in an isolated sandbox.
+You are a murm agent running in an isolated sandbox.
 Use the swarm CLI through bash to access your task and collaboration services.
 
 <tools>
