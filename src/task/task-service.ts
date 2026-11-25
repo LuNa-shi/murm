@@ -1481,7 +1481,7 @@ export class TaskService {
         priority_level: ['low', 'medium', 'high'][row.priority] ?? null,
         expected_output: row.expected_output, truncated_fields: truncated, state: row.state,
         spec_version: row.spec_version, state_version: row.state_version, priority: row.priority, timebox_ms: row.timebox_ms,
-        created_at: row.created_at, updated_at: row.updated_at, available: ready, current_execution: owner,
+        created_at: row.created_at, updated_at: row.updated_at, available: ready, current_execution: owner ? { ...owner } : null,
         dependencies: { present: Boolean(dependency.present), satisfied: !unsatisfied },
         block_reason: row.block_reason, cancellation_reason: cancelled?.reason ?? null });
       if (tasks.length === limit) break;
