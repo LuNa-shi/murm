@@ -28,6 +28,8 @@ node benchmarks/putnambench-flat/main.ts run trusted-checker-config.json /path/t
 
 The default research window is 3,600 seconds. The optional argument after the image ID sets a registered shorter window in whole seconds. Each Bot gets up to 300 seconds to select work by default, matching the original Putnam runner. For a registered timing diagnostic, append the selection duration after the research duration, for example `3600 600` for ten minutes of selection within a one-hour run. This duration must fit inside the research window. The controller caps each Bot's selection at the shared deadline. The launch identity and final receipt record the selection duration.
 
+A registered selection reasoning diagnostic can add `low` after both durations. For example, `3600 600 low` sets the reasoning effort sent to K3 while a Bot selects work. Work and closeout requests retain the effort supplied by Pi. The launch identity and receipt record the setting. The private model trace records the actual request sent upstream.
+
 The runner claims the experiment directory once. It keeps the original fixture, databases, Core traces, version metadata and final receipts private under that directory. Use the Git tree ID from the receipt to replay the final candidate and the revision ancestry and Lean proof to verify actual adoption. The fixed final assessment, Mission submission, stop reason and resource result are independent fields.
 
 ## Local checks

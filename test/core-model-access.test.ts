@@ -14,7 +14,7 @@ function completion(model = 'k3') {
     response: { status: 'completed', model, usage: { input_tokens: 3, output_tokens: 2 } } })}\n\n`;
 }
 
-async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, maxOutputTokens = 64, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
+async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, maxOutputTokens = 64, selectionReasoningEffort, models, provider = 'kimi_proxy', model = 'k3' } = {}) {
   const outputDir = await mkdtemp(join(tmpdir(), 'core-model-'));
   const requests = [];
   const upstream = createServer(async (request, response) => {
@@ -38,7 +38,7 @@ async function fixture(t, { reply, modelAccessPolicy, requestTimeoutMs = 2000, m
     await rm(outputDir, { recursive: true, force: true });
   });
   const config = {
-    modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens },
+    modelGateway: { host: '127.0.0.1', advertiseHost: '127.0.0.1', requestTimeoutMs, maxOutputTokens, selectionReasoningEffort },
     models: models ?? { default: { provider, model,
       upstream: { url: upstreamUrl, headers: { authorization: 'Bearer upstream-private' } } } },
   };
@@ -61,6 +61,26 @@ test('Runtime model access propagates explicit natural output policy while retai
   assert.equal(response.status, 200); assert.equal(requests[0].body.max_output_tokens, 128000);
   assert.equal(requests[0].headers.authorization, 'Bearer upstream-private');
   assert.ok(access);
+});
+
+test('configured low reasoning reaches upstream only for newly admitted selection requests', async t => {
+  let phase = 'selection';
+  const f = await fixture(t, {
+    selectionReasoningEffort: 'low', maxOutputTokens: null,
+    modelAccessPolicy: { authorize: () => ({ phase, deadlineAt: Date.now() + 2000 }), withCommit: commit => commit() },
+  });
+  const body = { model: 'k3', input: 'Use the current phase to select or advance work.',
+    reasoning: { effort: 'medium', summary: 'auto' }, max_output_tokens: 128000 };
+  assert.equal((await f.call('select', body)).status, 200);
+  phase = 'work';
+  assert.equal((await f.call('select', body)).status, 200);
+  assert.equal((await f.call('work', body)).status, 200);
+  phase = 'closeout';
+  assert.equal((await f.call('closeout', body)).status, 200);
+  assert.deepEqual(f.requests.map(row => row.body.reasoning), [
+    { effort: 'low', summary: 'auto' }, body.reasoning, body.reasoning,
+  ]);
+  assert.ok(f.requests.every(row => row.body.model === 'k3' && row.body.max_output_tokens === 128000));
 });
 
 test('a generic Runtime Bot calls the shipped model with private upstream credentials and a work receipt', async t => {

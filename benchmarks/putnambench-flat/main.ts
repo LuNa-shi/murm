@@ -9,14 +9,17 @@ import { loadPutnamB1, putnamB1, putnamSelectionMs, putnamWindowMs } from './cas
 const execute = promisify(execFile);
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const git = (args: string[]) => execute('git', args, { cwd: root, timeout: 10_000 });
-const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, ...extra] = process.argv.slice(2);
+const [operation, checkerConfig, datasetRoot, experimentId, image, windowSeconds, selectionSeconds, selectionReasoningEffort, ...extra] = process.argv.slice(2);
 if (!['preflight', 'run'].includes(operation) || !checkerConfig || !datasetRoot || extra.length ||
     (operation === 'preflight' && experimentId !== undefined) ||
     (operation === 'run' && (!/^EXP-\d{8}-\d{2}$/.test(experimentId ?? '') || !/^sha256:[a-f0-9]{64}$/.test(image ?? '')))) {
-  throw new Error('Usage: main.ts preflight CHECKER_CONFIG PUTNAMBENCH_ROOT | main.ts run CHECKER_CONFIG PUTNAMBENCH_ROOT EXP_ID WORKER_IMAGE_ID [WINDOW_SECONDS [SELECTION_SECONDS]]');
+  throw new Error('Usage: main.ts preflight CHECKER_CONFIG PUTNAMBENCH_ROOT | main.ts run CHECKER_CONFIG PUTNAMBENCH_ROOT EXP_ID WORKER_IMAGE_ID [WINDOW_SECONDS [SELECTION_SECONDS [low]]]');
 }
 const durationMs = putnamWindowMs(windowSeconds);
 const selectionMs = putnamSelectionMs(durationMs, selectionSeconds);
+if (selectionReasoningEffort !== undefined && selectionReasoningEffort !== 'low') {
+  throw new Error('Putnam selection reasoning effort must be low when configured');
+}
 const problem = await loadPutnamB1(datasetRoot);
 let code: string | undefined;
 let directory: string | undefined;
@@ -47,6 +50,7 @@ if (operation === 'run') {
   await writeFile(join(parent, 'identity.json'), JSON.stringify({
     experimentId, code, image, dataset: problem.putnambench_commit, instance: problem.id,
     provider: problem.provider, model: problem.model, capacity: problem.capacity, durationMs, selectionMs,
+    selectionReasoningEffort: selectionReasoningEffort ?? null,
   }, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
 }
 
@@ -88,7 +92,7 @@ if (operation === 'preflight') {
   process.once('SIGINT', stop);
   process.once('SIGTERM', stop);
   try {
-    const receipt = await runPutnamFlat({ problem, checks, directory: directory!, image: image!, durationMs, selectionMs,
+    const receipt = await runPutnamFlat({ problem, checks, directory: directory!, image: image!, durationMs, selectionMs, selectionReasoningEffort,
       upstream: { url: upstream.href, headers: { authorization: 'Bearer ' + key } }, signal: abort.signal,
       backend: endpoint => createPiOpenSandboxBackend({
         sandbox: {
@@ -97,7 +101,7 @@ if (operation === 'preflight') {
           timeoutSeconds: 4_080, commandTimeoutMs: 20_000,
         },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-        modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: durationMs, maxOutputTokens: null },
+        modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: durationMs, maxOutputTokens: null, selectionReasoningEffort },
         models: { default: { provider: problem.provider, model: problem.model, upstream: endpoint } },
         isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 8192 } },
       }),

@@ -19,7 +19,7 @@
     },
     {
       "path": "src/core/pi-opensandbox-backend.ts",
-      "sha256": "74fb7492b7dd742555841c74ec45c615746f3d254d0c641a4fdddc8f0b95c7dc"
+      "sha256": "57c14b43eba80e8933975c52a40c7db8b5b668b2bd752d84e5792c9aad888bfb"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
@@ -47,7 +47,7 @@
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
-      "sha256": "0f6c07d59c41a7a08d111a825fae3ee960beff6b46bdba8a4605ffeaa31e1be7"
+      "sha256": "8fee9fe6e3a32b4860835e7b51ce505fab1a3bc96520ae2ccec1eca7082148db"
     },
     {
       "path": "examples/subagents-environment/main.ts",

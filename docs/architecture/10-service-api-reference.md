@@ -44,7 +44,7 @@ This section is generated from executable exports and checked against the source
 | [src/core/services.ts](../../src/core/services.ts) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `6df9b7fd2bb6e6b704e50f3560dfbb6c6adc8d79320b19e7e4ef8a7fe73344f3` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `1dbbc98f826068693373e1bcd9f1372a327dee4dfbd3a586ae72894f881585d2` |
 
 ### Exact built-in command operation surface
 
@@ -3532,6 +3532,8 @@ export interface PiOpenSandboxBackendConfig {
         requestTimeoutMs?: number;
         /** null preserves provider/Pi output parameters without a host token clamp. */
         maxOutputTokens?: number | null;
+        /** Sets upstream reasoning effort for requests admitted in the selection phase. */
+        selectionReasoningEffort?: 'low';
     };
     models: Readonly<Record<string, {
         provider: string;

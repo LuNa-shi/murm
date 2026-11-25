@@ -46,7 +46,7 @@ async function usage(directory: string, runtimeId: string) {
 }
 
 export async function runPutnamFlat({ problem, checks, directory, backend, image, upstream, signal,
-  durationMs = problem.durationMs, selectionMs = putnamSelectionMs(durationMs) }: {
+  durationMs = problem.durationMs, selectionMs = putnamSelectionMs(durationMs), selectionReasoningEffort }: {
   problem: Problem;
   checks: Checks;
   directory: string;
@@ -56,6 +56,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
   signal: AbortSignal;
   durationMs?: number;
   selectionMs?: number;
+  selectionReasoningEffort?: 'low';
 }) {
   const setupStarted = performance.now();
   await mkdir(directory, { mode: 0o700 });
@@ -134,6 +135,7 @@ export async function runPutnamFlat({ problem, checks, directory, backend, image
     const modelUsage = report.runtimeId ? await usage(directory, report.runtimeId).catch(() => null) : null;
     const receipt = {
       startedAt, setupElapsedMs, researchDeadline, selectionMs, problem: problem.id, sourceSha256: problem.source_hash,
+      selectionReasoningEffort: selectionReasoningEffort ?? null,
       image, provider: problem.provider, model: problem.model, checker: checks.evidence,
       window: window.receipt(), modelUsage, runtimeId: report.runtimeId, environmentReport: report.reportPath,
       completion: report.result?.completion ?? report.businessFailure?.details?.[0]?.completion ?? null,

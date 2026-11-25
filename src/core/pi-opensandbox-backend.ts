@@ -182,6 +182,10 @@ export function createPiOpenSandboxBackend(config: PiOpenSandboxBackendConfig): 
   if (outputPolicy !== undefined && outputPolicy !== null && (!Number.isSafeInteger(outputPolicy) || outputPolicy < 16)) {
     throw invalid('modelGateway.maxOutputTokens must be null or a safe integer of at least 16');
   }
+  const selectionReasoningEffort = config.modelGateway.selectionReasoningEffort;
+  if (selectionReasoningEffort !== undefined && selectionReasoningEffort !== 'low') {
+    throw invalid('modelGateway.selectionReasoningEffort must be low when configured');
+  }
   if (!Number.isSafeInteger(config.isolation.disk?.bytes) || !Number.isSafeInteger(config.isolation.disk?.inodes)) throw invalid('Explicit disk byte and inode limits are required');
   try { new DockerBotDisk(config.isolation.disk); } catch (caught) {
     const error = caught as Error & { code: string }; throw invalid(error.message); }
