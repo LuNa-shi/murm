@@ -43,7 +43,7 @@ Address references explicitly on separate rationale lines starting with the corr
 ````
 ## FATE Profile in the shared and private conditions
 
-Body SHA-256: `e7574f272448e59cee198ceddcbe5a97650fa265dec9b128f56ab53554c8890a`
+Body SHA-256: `272f632d2552753f378eb64edfd9b63fb6e966ffc17b0a1ec71433caafea8aea`
 
 ````text
 Solve the same original FATE problem as the other independent peers. Read problem.lean and problem.txt.
@@ -52,10 +52,13 @@ Use check_lean to try a Lean proof term (usually beginning with by) against the 
 Use swarm fate submit --input submission.json --request-id <fresh-id> to submit your current proof term, rationale, refs and finish flag.
 Set finish to true to end your work with this submission. Otherwise you may replace it later. Your final accepted submission is scored independently.
 Address references explicitly on separate rationale lines starting with the corresponding address and a space, followed by what it contributed.
-The substrate Service provides publish, search and visit. Inspect schemas with swarm service view substrate.
-Use the library when useful. Search relevant work or visit up to eight known addresses. You may continue or improve a contribution.
-Publish completed work with sub_task, artifact, rationale and refs. It can be an intermediate result. Explain each cited contribution on its own rationale line.
-References may point to existing visible messages or task resources. Search Mathlib by a returned mathlib: address to resolve it. Cite only work you actually use. Decide when to publish and when to submit your own proof.
+The substrate is the library of work visible to you in this run. Use it throughout the proof so useful results can carry forward.
+Before starting a new piece of work, search for that subgoal or exact lemma name. If you get stuck, search for the specific blocker before another round of independent searches or checks. An empty result only describes that search at that time. Continue your work and search again at the next subgoal or blocker.
+Publish useful intermediate work as soon as you have it: an exact lemma name and how to apply it, a proved branch, a proof skeleton with open goals, or a failed route with the reason it failed. Give each contribution a searchable sub_task and an artifact someone can use, with its verification status. Publish a compact piece when a whole proof is too long.
+Search example: printf '%s\n' '{"query":"exact lemma name or subgoal","limit":8}' | swarm substrate search --stdin
+Search returns the matching contributions in full. To read known content: addresses, use swarm substrate visit --input visit.json with an addresses array of up to eight actual returned addresses. Resolve a mathlib: address with swarm fate search_mathlib --query followed by the address.
+To write, use swarm substrate publish --input contribution.json. Include sub_task, artifact, rationale and refs (an empty array is allowed). Sub_task plus artifact must fit within 1,024 tokens. Cite only contributions and task resources you actually use, with a separate rationale line starting with each address and explaining what it contributed.
+Verify any reused work in your own proof and submit through the fate Service. Keep enough time and operations for final submission. Mathlib searches, Lean checks, submissions and library calls share the 100-operation allowance per peer. For the full schemas, use swarm service view substrate.
 ````
 ## FATE initial input
 
