@@ -1,6 +1,6 @@
 # EXP-20261125-17 — ScaleMAS GPT-6.1 Sol comparison
 
-Status **REGISTERED** under [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202). Comparison run [EXP-20261125-16](EXP-20261125-16-scalemas-intermediate-sharing.md).
+Status **STARTUP REJECTED · 0 MODEL REQUESTS** under [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7165746185). Comparison run [EXP-20261125-16](EXP-20261125-16-scalemas-intermediate-sharing.md).
 
 ## Setup
 
@@ -14,3 +14,15 @@ The owner requested a model switch while the K3 run was in progress. The K3 run 
 | Time and stop | Up to 1,800 seconds from all peers ready, with normal earlier settlement. Passive checkpoint at 900 seconds. Setup, cleanup and independent scoring are reported separately. |
 
 Verify all four actual initial model requests. Count successful and repeat shared searches, distinct accepted publications, deliveries to a different peer, and concrete downstream use in proof work. Trace a claimed handoff through the authenticated call, the recipient's actual response and model context, and the corresponding Lean attempt or final proof. Record scoring, provider usage and cleanup separately. Compare with K3 over its observed 17m37s window, then report any later GPT events separately. The model and its provider route change together. One run per model gives a behavioral comparison with limited causal inference.
+
+## Results
+
+The installed CLI exited 1 with `SCALEMAS_START_FAILED` before any Runtime allocation. No peer, Session, work window, candidate or model request was created.
+
+## Analysis
+
+The installed FATE example accepted only `kimi_proxy/k3` at this revision. An offline regression reproduced the rejection through the installed API as `FATE_MODEL_INVALID`. The gate rejected the selected pair before constructing the backend.
+
+## Next steps
+
+The corrected entry admits the explicitly approved GPT pair and keeps the shipped K3 default. The live attempt has a new registration. [EXP-20261125-18](EXP-20261125-18-scalemas-gpt-30min.md)

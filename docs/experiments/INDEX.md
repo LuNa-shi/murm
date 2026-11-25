@@ -8,8 +8,9 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261125-17` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **REGISTERED · ScaleMAS · FATE-H #2 · shared · GPT-6.1 Sol · 30 min** | `69ede684` | [ScaleMAS GPT-6.1 Sol comparison](EXP-20261125-17-scalemas-gpt-comparison.md) |
-| `EXP-20261125-16` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **REGISTERED · ScaleMAS · FATE-H #2 · shared · K3 · 30 min** | `69ede684` | [ScaleMAS intermediate sharing](EXP-20261125-16-scalemas-intermediate-sharing.md) |
+| `EXP-20261125-18` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **REGISTERED · ScaleMAS · FATE-H #2 · shared · GPT-6.1 Sol · 30 min** | `c468ce03` | [ScaleMAS GPT-6.1 Sol run](EXP-20261125-18-scalemas-gpt-30min.md) |
+| `EXP-20261125-17` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7165746185) | **STARTUP REJECTED · GPT-6.1 Sol · 0 model requests** | `69ede684` | [ScaleMAS GPT-6.1 Sol startup attempt](EXP-20261125-17-scalemas-gpt-comparison.md) |
+| `EXP-20261125-16` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7165261463) | **OPERATOR STOP · ScaleMAS · FATE-H #2 · shared · K3 · 17:37 work · no publications or submissions** | `69ede684` | [ScaleMAS intermediate sharing](EXP-20261125-16-scalemas-intermediate-sharing.md) |
 | `EXP-20261125-14` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7163618408) | **OPERATOR STOP · ScaleMAS · FATE-H #2 · shared · 35:08 work · no publications or submissions** | `c3425b4a` | [ScaleMAS automatic Service discovery](EXP-20261125-scalemas-service-discovery.md) |
 | `EXP-20261125-13` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7161467781) | **SETTLED · ScaleMAS · FATE-H #2 · shared · 2 proofs passed, 0 cross-peer reads** | `f03a19f3` | [ScaleMAS sharing instructions follow-up](EXP-20261125-scalemas-fate-sharing.md) |
 | `EXP-20261125-10` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202#issuecomment-7156832433) | **SETTLED · ScaleMAS · FATE-H #2 · shared · 1 proof passed, 45 min work** | `e00f8c4f` | [ScaleMAS FATE-H long-window run](EXP-20261125-scalemas-fate-hard.md) |
