@@ -96,7 +96,7 @@ test('native Flat creates work and saves and applies exact guest bytes in the or
       let item;
       const role = apply ? 'B-apply' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_A') ? 'A' : body.input.some(row => row.type === 'function_call' && row.call_id === 'native_B') ? 'B' : null;
       const output = role && body.input.findLast(row => row.type === 'function_call_output' && row.call_id === `native_${role}`)?.output;
-      if (output !== undefined) {
+      if (typeof output === 'string') {
         const result = JSON.parse(output.trim());
         assert.equal(result.role, role); assert.equal(result.same_process, true);
         evidence[role] = result; awaiting.get(role)?.resolve(result);
