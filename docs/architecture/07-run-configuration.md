@@ -2,33 +2,70 @@
 
 The host selects an Environment and supplies its model, image, Service and resource configuration. The programmable Core owns Bot identity, input delivery, private resources, artifact collection and close. Domain state transitions are described in [Execution](02-execution.md), [Mission and Task](03-mission-task.md) and [Services](04-services.md). The full prompt composition is in [Prompts](08-prompts.md).
 
+## TypeScript build and installation
+
+Install the locked development dependencies with `npm ci` and run `npm run build`.
+The build clears `dist/`, compiles source, scripts, examples and test-support with
+the repository's strict Node ESM TypeScript configuration, then stages non-code
+inputs beside the compiled modules. These
+inputs include the Lean drivers, namespace helper, model catalog and verification
+fixtures. The compiler reports errors before emitting output. Fix a failed build
+and rerun the same command to regenerate the output from source. `npm run typecheck`
+performs the same strict check without producing files. When the test tree is
+present, `tsconfig.tests.json` emits its TypeScript into `dist/test/` without
+semantic checking or declarations. The compiler leaves test module specifiers
+intact for Node to resolve. The suite exercises external boundaries with
+deliberately invalid inputs and partial mocks. The separate installed-consumer
+check typechecks valid and invalid uses of the generated public declarations.
+
+All three package exports resolve to JavaScript and declarations under
+`dist/src/core/`. The Service entry uses an explicit facade that preserves its eight existing value exports and keeps host credential registration internal. `npm pack` runs the build through `prepack`. Install the resulting
+archive with `npm install --omit=dev` to run the same JavaScript without a compiler
+or loader. The installed `swarm` binary, host scripts and in-place example modules
+come from `dist/`. Run `npm run docs:generate` to rebuild documentation references,
+`npm run docs:check` to verify them, and `npm test` for the test suite. Each command
+builds first. The documentation tools execute compiled modules and fingerprint
+their source inputs. Tests execute in the compiled tree.
+
+Each image compiles from the locked inputs in a TypeScript build stage. The
+final image installs production dependencies only and copies the compiled tree.
+Worker startup keeps the image's `/opt/swarmenv/agent-worker.mjs` entrypoint via
+a symlink to that tree. The image executable `swarm` and Git credential helper
+remain root-owned and read-only to the Bot. The built-in Service and Judge shell
+entrypoints run their existing prebuild and lock checks before executing compiled
+JavaScript. Image operators still control the service configuration, mounts,
+deployment locks and startup deadlines described below.
+
+For the pinned source and retained-format inventory, see
+[Issue #204 source inventory](../workflows/typescript-migration-inventory.md).
+
 ## Distribution file boundary
 
-`package.json` declares the distribution roots explicitly: `src`, `scripts`, `services`, `examples`, `docs`, `test` and `test-support`, plus the tracked root glossary, Agent instructions, dependency shrinkwrap, environment example and submodule declaration. npm also includes its mandatory package metadata and README. Runtime code, Worker/image preparation inputs, model catalog, prompts/skills, foreground/result scripts and editable example resources remain in the tarball. Test fixtures remain available for the installed-candidate verification paths; their inclusion does not imply native tests ran.
+`package.json` admits `dist`, `src`, `scripts`, `services`, `examples`, `docs`, `test` and `test-support`, the compiler configurations and Docker context exclusions, and the tracked root glossary, Agent instructions, dependency shrinkwrap, environment example and submodule declaration. npm also includes its mandatory package metadata and README. Runtime code, Worker/image preparation inputs, model catalog, prompts/skills, foreground/result scripts and editable example resources remain in the tarball. Test fixtures support deterministic and opt-in native verification of the installed candidate.
 
 The root `npm-shrinkwrap.json` carries exact dependency resolution into the archive. npm omits `package-lock.json` when packing. All three shipped image Dockerfiles copy the shrinkwrap beside `package.json`, so their dependency installation can consume the same lock from an extracted archive or a checkout. The Worker uses `npm install --omit=dev --ignore-scripts` and the built-in and Mathlib Search images use `npm ci --omit=dev --ignore-scripts`. Their OS packages and base images remain separate build inputs. A deterministic archive regression checks every repository COPY source and runs offline `npm ci` and `npm install` in the extracted context before checking Pi 1.3.0. Physical image build and startup are separate verification steps.
 
 The archive license and image-context audits use the same package selection as external installation. When `SWARMENV_TEST_PACKAGE_ARCHIVE` and `SWARMENV_TEST_PACKAGE_SHA256` are supplied, the fixture validates the pair, reads and hashes the selected bytes, and writes a private snapshot before any tar or npm consumption. These audits inspect that snapshot and report missing required files from it. Without an explicit selection they pack the current checkout. An incorrect or incomplete frozen selection fails before packing a substitute. Regression checks provide a validly hashed archive missing the required license and Dockerfile and require each corresponding audit to fail on the missing file.
 
-This allowlist excludes undeclared root configuration, run-output and artifact directories independently of `.gitignore`; private experiment/report/worktree trees remain excluded. Each shipped example also has a local `.npmignore` excluding its own default `notes-runs`, `subagents-runs` or `lead-helper-runs` subtree when run from that example directory. These local rules are needed because the root `files` directory allowlist takes precedence over root ignore rules for those descendants. Custom output directories inside an admitted distribution root are not automatically excluded; use a clean source tree and inspect the actual candidate file list before freezing it. It is a file-selection boundary, not a credential scanner: files deliberately placed inside an admitted distribution root still require the candidate review in #184/#187. The Notes and subagents examples intentionally require the documented extraction of their adjacent editable host helpers; an in-place invocation of only their packaged `main.mjs` is not the declared example workflow. The package remains private and no publishing or licensing decision follows from this inventory.
+This allowlist excludes undeclared root configuration, run-output and artifact directories independently of `.gitignore`; private experiment/report/worktree trees remain excluded. Each shipped example also has a local `.npmignore` excluding its own default `notes-runs`, `subagents-runs` or `lead-helper-runs` subtree when run from that example directory. These local rules are needed because the root `files` directory allowlist takes precedence over root ignore rules for those descendants. Custom output directories inside an admitted distribution root are not automatically excluded; use a clean source tree and inspect the actual candidate file list before freezing it. It is a file-selection boundary, not a credential scanner: files deliberately placed inside an admitted distribution root still require the candidate review in #184/#187. The compiled Notes and Subagents modules can run in place with their shared helpers. Their editable-install instructions copy the compiled entry point and its adjacent host helpers into the consumer directory. The package remains private and no publishing or licensing decision follows from this inventory.
 
 The archive includes the exact upstream Apache 2.0 license text beside the adapted [Lean replay driver](../../src/judge/lean-module-verify.NOTICE.md). Its provenance attachment records the pinned source revision, upstream and license SHA-256, original copyright and author lines, and local modifications. Driver comments remain part of the existing byte fingerprints: a changed attribution header changes the verifier artifact hash and requires a renewed deployment lock; no hash function or lock validation is bypassed. These material-specific attachments do not choose SwarmEnv's project license or establish release readiness; #185/#187 still own the outstanding acceptance and release review.
 
 ## Entry points
 
-The shipped `.env.example` lists host variables consumed by the Notes configuration, optional OpenSandbox manager credential defaults, Mathlib Search and standalone Service hosting. Core and these example commands do not automatically read `.env`; the operator exports the selected variables before loading a trusted configuration module. For the Notes example, `SWARMENV_NOTES_IMAGE` and `SWARMENV_NOTES_MODEL_URL` are mandatory and the latter is the complete Kimi K3 Responses URL including `/v1/responses`. The optional Notes token remains on the host; its lifecycle URL, endpoint host, advertise host and lifecycle token configure the corresponding explicit backend fields. Other Environments obtain model/image/backend choices from their own configuration module. The retired benchmark's provider selectors and host Pi-catalog fallback are no longer configuration entry points. [Notes configuration](../../examples/notes-environment/config.mjs) · [Environment variable example](../../.env.example)
+The shipped `.env.example` lists host variables consumed by the Notes configuration, optional OpenSandbox manager credential defaults, Mathlib Search and standalone Service hosting. Core and these example commands do not automatically read `.env`; the operator exports the selected variables before loading a trusted configuration module. For the Notes example, `SWARMENV_NOTES_IMAGE` and `SWARMENV_NOTES_MODEL_URL` are mandatory and the latter is the complete Kimi K3 Responses URL including `/v1/responses`. The optional Notes token remains on the host; its lifecycle URL, endpoint host, advertise host and lifecycle token configure the corresponding explicit backend fields. Other Environments obtain model/image/backend choices from their own configuration module. The retired benchmark's provider selectors and host Pi-catalog fallback are no longer configuration entry points. [Notes configuration](../../examples/notes-environment/config.ts) · [Environment variable example](../../.env.example)
 
 | Entry | Configuration and behavior |
 |---|---|
 | Public `createRuntime` | Frozen backend, Profiles, Services, maximum Bot capacity and output directory. The host calls spawn, start, steer, interrupt, list, get, stop and close. The compatible send entry remains available. [Core Runtime](15-core-runtime.md) |
 | `runFlatEnvironment` | Host-owned Task, Context and Workspace services, Mission/Workspace IDs, image/model, capacity and finite deadlines. The controller owns discovery, continuation and directed feedback. Production live capture must be configured before allocation. [Execution](02-execution.md) |
 | `runAgenshTeam` | Two to eight distinct peers, image/model, output directory, authenticated Git/message/Board facilities and finite router/close limits. [Agensh](18-agensh-environment.md) |
-| `scripts/run-environment.mjs --config <module>` | Trusted local module selecting flat or agensh. JSON-line status, input and stop reuse the same Environment. [Foreground control](17-environment-reporting.md#foreground-environment-control) |
+| `dist/scripts/run-environment.js --config <module>` | Trusted local module selecting flat or agensh. JSON-line status, input and stop reuse the same Environment. [Foreground control](17-environment-reporting.md#foreground-environment-control) |
 | Installed Notes example | Public package imports and editable local host modules. Fixed writer/reader handoff and same-reader follow-up, bounded close and saved-result inspection. [Notes example](../../examples/notes-environment/README.md) |
-| `scripts/read-environment-result.mjs` | Saved report inspection with explicit directory and expected Runtime ID. [Saved results](17-environment-reporting.md) |
-| `scripts/service-host.mjs` | Built-in Task, Context, Judge or Catalog HTTP provider with explicit role/binding authority. [Services](04-services.md) |
-| `scripts/mathlib-search-service.mjs` | Optional HTTP search over configured upstream or mounted source. [Services](04-services.md#6-optional-mathlib-search) |
-| `scripts/serve-observability.mjs` | Existing event-store discovery, authenticated HTTP/SSE queries without a browser UI. [Observability](06-observability-experiments.md) |
+| `dist/scripts/read-environment-result.js` | Saved report inspection with explicit directory and expected Runtime ID. [Saved results](17-environment-reporting.md) |
+| `dist/scripts/service-host.js` | Built-in Task, Context, Judge or Catalog HTTP provider with explicit role/binding authority. [Services](04-services.md) |
+| `dist/scripts/mathlib-search-service.js` | Optional HTTP search over configured upstream or mounted source. [Services](04-services.md#6-optional-mathlib-search) |
+| `dist/scripts/serve-observability.js` | Existing event-store discovery, authenticated HTTP/SSE queries without a browser UI. [Observability](06-observability-experiments.md) |
 
 Public package exports resolve Core, Services and Pi/OpenSandbox backend. Repository domain code and regression tests import internal components from their owning modules. The legacy domain source barrel, benchmark runner, scheduling helpers, fixed configurations, mathematical datasets, Pass@K and historical report importer have been retired. Their version-bound implementations are preserved in [research](https://github.com/LuNa-shi/SwarmEnv/tree/dc011003fa0354a881b7a3ba9ba901fe36cbcac9).
 
@@ -60,8 +97,8 @@ The bounded migration and removal mapping is:
 | UI components, `client/lib/utils.js`, HTML and CSS | Rendering-only code removed | Theme, layout, animations and graphical trace selection have no replacement UI; they never owned run state |
 | `public/` built assets, `vite.config.js`, `components.json`, `build:observability` and `dev:observability` | Current Core/Environment host and result scripts run directly with Node | Actual package installation and terminal stop/report tests require no old source, assets or frontend build |
 | React, Tailwind, Vite, shadcn and associated UI dependency declarations | Removed from package and lockfile | TypeScript remains a development dependency for the installed public declaration checks; Core and AJV runtime dependencies are retained |
-| Current-run status, directed input and stop | `runForegroundEnvironment` and `scripts/run-environment.mjs`, through existing mode controllers and Core | Foreground tests exercise target identity, same-request semantics and cancellation; no second lifecycle |
-| Durable events, report saving and saved-result inspection | Core records, Environment `runWithReport`, `readEnvironmentResult` and `scripts/read-environment-result.mjs` | Terminal tests compare actual saved reports, including unknown execution and required export pending; browser subscriptions are unnecessary |
+| Current-run status, directed input and stop | `runForegroundEnvironment` and `dist/scripts/run-environment.js`, through existing mode controllers and Core | Foreground tests exercise target identity, same-request semantics and cancellation; no second lifecycle |
+| Durable events, report saving and saved-result inspection | Core records, Environment `runWithReport`, `readEnvironmentResult` and `dist/scripts/read-environment-result.js` | Terminal tests compare actual saved reports, including unknown execution and required export pending; browser subscriptions are unnecessary |
 
 The [terminal receipt checks](17-environment-reporting.md#terminal-receipts-when-cleanup-is-incomplete) cover controlled execution and artifact failures after an actual production package installation. Observer query/stream tests cover its retained data surface separately. These checks do not assert that every old graphical workflow has a terminal equivalent or replace real-mode acceptance tracked by #181/#182. The last dashboard source remains available in [fixed Git history](https://github.com/LuNa-shi/SwarmEnv/tree/38b352ef799b7a693e1535b679e51dbff5ffd564/src/observability/client).
 
@@ -111,7 +148,7 @@ Timed runs also require `sandbox_disk` (or `options.sandbox.diskIsolation`) with
 
 For a Mission with no executable checker, trusted local composition may pass `manualReview: { checkerVersion, environmentRef, timeoutMs }` to `createMissionCoordination` or the submission store. Use an owner-private database connection, set the fixed acceptance check to `manual-operator` with the same version and environment, and set a finite positive wait. The Mission run deadline still caps the wait. This is a separate configuration choice.
 
-Run `node scripts/review-mission.mjs show DB MISSION SUBMISSION` as the database owner to retrieve the fixed manifest. After reviewing it, run `node scripts/review-mission.mjs decide DB MISSION SUBMISSION FINGERPRINT PASS|FAIL REQUEST_ID "REASON"`. Use a canonical directory readable only by its owner and an owner-private regular database file and sidecars. The command rejects symbolic links and opens the existing database only. It is absent from the Bot/Bridge catalog. Keep review output with owner-private audit evidence.
+Run `node dist/scripts/review-mission.js show DB MISSION SUBMISSION` as the database owner to retrieve the fixed manifest. After reviewing it, run `node dist/scripts/review-mission.js decide DB MISSION SUBMISSION FINGERPRINT PASS|FAIL REQUEST_ID "REASON"`. Use a canonical directory readable only by its owner and an owner-private regular database file and sidecars. The command rejects symbolic links and opens the existing database only. It is absent from the Bot/Bridge catalog. Keep review output with owner-private audit evidence.
 
 The review command displays identities and acceptance criteria. To inspect the fixed Workspace bytes, open the trusted Workspace repository for the manifest's `workspace_id`. Check that `git rev-parse "$COMMIT^{tree}"` equals the displayed `git_tree`, then read blobs with `git show "$COMMIT:$PATH_IN_WORKSPACE"`. Use the displayed commit throughout the review. A trusted in-process operator can also call `MissionWorkspace.exportRevision` with the displayed revision and verify its returned commit, tree and content hash before reading `files`. Resolve each displayed Material with the owner-side Context service's exact `getMaterial(materialId, { verifyIntegrity: true })` and check the Mission, version and content hash before reviewing its body. Use the decision manifest's captured relation version, dispute state and active successor IDs when evaluating the submission because live correction state can change after admission.
 
@@ -155,3 +192,5 @@ Bot capacity is an independent host setting.
 ## Private domain history
 
 Persistent Task, Context and Judge stores install transaction-aware row capture in their own databases. Public Workspace writes retain immutable revisions, request receipts and committed publication records. Current reads use these original stores and fixed result identities. Historical experiment assembly, timestamp-selected database or Workspace copies, archived service-schema conversion and fresh-run ownership handoff have been retired. See [private history](13-historical-resume.md) for capture, transaction boundaries, owner-local manual-review writes and Workspace recovery.
+
+Checker deployment locks fingerprint the executable driver modules and Lean files. Build first, then generate and verify a new lock for the compiled deployment. A lock from the earlier source layout can fail the existing byte comparison, which aborts checker startup until the build and lock agree.

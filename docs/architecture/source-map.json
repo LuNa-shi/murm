@@ -18,7 +18,10 @@
     "examples/subagents-environment/.npmignore",
     "examples/lead-helper-environment/.npmignore",
     "examples/scalemas-environment/.npmignore",
-    "examples/agensh-environment/.npmignore"
+    "examples/agensh-environment/.npmignore",
+    "tsconfig.json",
+    "tsconfig.tests.json",
+    ".dockerignore"
   ],
   "excluded": [
     {
@@ -40,6 +43,10 @@
     {
       "path": "third_party/agensh",
       "reason": "Pinned external Agensh source. The public-Core Environment documents the native board protocol and schema provenance at its local integration boundary."
+    },
+    {
+      "path": "dist/",
+      "reason": "Generated output from TypeScript and accompanying runtime assets. The inventory fingerprints the source inputs."
     }
   ],
   "files": [
@@ -91,7 +98,7 @@
       "role": "UID-restricted Landlock policy inherited by Pi and its descendants"
     },
     {
-      "path": "scripts/check-architecture.mjs",
+      "path": "scripts/check-architecture.ts",
       "category": "documentation tooling",
       "chapters": [
         "docs/architecture/INDEX.md",
@@ -100,7 +107,7 @@
       "role": "Offline documentation gate and local-link/anchor verification"
     },
     {
-      "path": "scripts/context-service-peer.mjs",
+      "path": "scripts/context-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -110,7 +117,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "scripts/generate-architecture-api.mjs",
+      "path": "scripts/generate-architecture-api.ts",
       "category": "documentation tooling",
       "chapters": [
         "docs/architecture/INDEX.md",
@@ -119,7 +126,7 @@
       "role": "Offline exact API/schema/SDK extraction and drift check"
     },
     {
-      "path": "scripts/generate-architecture-coverage.mjs",
+      "path": "scripts/generate-architecture-coverage.ts",
       "category": "documentation tooling",
       "chapters": [
         "docs/architecture/INDEX.md",
@@ -128,7 +135,7 @@
       "role": "Explicit source inventory, file fingerprints and coverage drift check"
     },
     {
-      "path": "scripts/generate-architecture-prompts.mjs",
+      "path": "scripts/generate-architecture-prompts.ts",
       "category": "documentation tooling",
       "chapters": [
         "docs/architecture/INDEX.md",
@@ -137,7 +144,7 @@
       "role": "Offline exact prompt extraction, synthetic composition and drift check"
     },
     {
-      "path": "scripts/judge-service-peer.mjs",
+      "path": "scripts/judge-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -147,7 +154,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "scripts/lock-final-tree-checker.mjs",
+      "path": "scripts/lock-final-tree-checker.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -156,7 +163,7 @@
       "role": "Trusted local checker lock generator with source provenance checks"
     },
     {
-      "path": "scripts/mathlib-search-service.mjs",
+      "path": "scripts/mathlib-search-service.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -174,15 +181,7 @@
       "role": "Pin and mount a bounded tmpfs in a verified Docker namespace"
     },
     {
-      "path": "scripts/mount-shared-workspace.py",
-      "category": "runtime and execution",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Trusted local Docker project mounts and shared tmpfs cleanup"
-    },
-    {
-      "path": "scripts/opensandbox-agent-worker.mjs",
+      "path": "scripts/opensandbox-agent-worker.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -193,7 +192,7 @@
       "role": "Sandbox-resident Pi worker and authenticated RPC, file collection and lifecycle HTTP surface"
     },
     {
-      "path": "scripts/project-install.mjs",
+      "path": "scripts/project-install.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md"
@@ -201,7 +200,7 @@
       "role": "Worker private write-ahead install receipts, exact rollback and held acknowledgement"
     },
     {
-      "path": "scripts/project-processes.mjs",
+      "path": "scripts/project-processes.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md"
@@ -209,7 +208,7 @@
       "role": "Immutable same-UID process inspection before changing paused project paths"
     },
     {
-      "path": "scripts/review-mission.mjs",
+      "path": "scripts/review-mission.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -219,7 +218,7 @@
       "role": "Owner-local CLI for an exact fixed manual Mission review receipt"
     },
     {
-      "path": "scripts/sandbox-project.mjs",
+      "path": "scripts/sandbox-project.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -229,7 +228,7 @@
       "role": "Trusted worker-owned project directory preparation, manifest validation, grant and revocation"
     },
     {
-      "path": "scripts/serve-observability.mjs",
+      "path": "scripts/serve-observability.ts",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -247,7 +246,7 @@
       "role": "Explicit Judge checker prebuild gate and persistent volume marker"
     },
     {
-      "path": "scripts/service-host.mjs",
+      "path": "scripts/service-host.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -256,7 +255,7 @@
       "role": "Built-in HTTP service process composition and environment settings"
     },
     {
-      "path": "scripts/swarm.mjs",
+      "path": "scripts/swarm.ts",
       "category": "service and Agent integration",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -381,7 +380,7 @@
       "role": "Native Pi compatible-provider catalog with runtime environment interpolation"
     },
     {
-      "path": "src/agent/bot-contract.js",
+      "path": "src/agent/bot-contract.ts",
       "category": "Agent and prompts",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -391,7 +390,7 @@
       "role": "Flat continuation and notification messages with Service directory projection"
     },
     {
-      "path": "src/agent/capability-profile.js",
+      "path": "src/agent/capability-profile.ts",
       "category": "Agent and prompts",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -401,7 +400,7 @@
       "role": "Role-specific capability profile, binding requirements and tool directory"
     },
     {
-      "path": "src/agent/responses-budget-gateway.js",
+      "path": "src/agent/responses-budget-gateway.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -412,7 +411,7 @@
       "role": "Runtime-owned time-bounded Responses forwarding, request receipts, and observed usage"
     },
     {
-      "path": "src/agent/services-bridge.js",
+      "path": "src/agent/services-bridge.ts",
       "category": "Agent and prompts",
       "chapters": [
         "docs/architecture/01-agent-core.md",
@@ -422,7 +421,7 @@
       "role": "Authenticated per-Core tool endpoint, binding and lifecycle orchestration"
     },
     {
-      "path": "src/cli/swarm-cli.js",
+      "path": "src/cli/swarm-cli.ts",
       "category": "service and Agent integration",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -433,7 +432,7 @@
       "role": "Non-interactive Bash CLI parser, local discovery help and HTTP JSON invocation"
     },
     {
-      "path": "src/context/context-service.js",
+      "path": "src/context/context-service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -444,7 +443,7 @@
       "role": "Material publication, lineage, read/search and consumption persistence"
     },
     {
-      "path": "src/errors.js",
+      "path": "src/errors.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -454,7 +453,7 @@
       "role": "Shared structured error vocabulary and normalization"
     },
     {
-      "path": "src/judge/check-result.js",
+      "path": "src/judge/check-result.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -464,7 +463,7 @@
       "role": "Check outcome/diagnostic classification and caller-safe result projections"
     },
     {
-      "path": "src/judge/checker-owner.js",
+      "path": "src/judge/checker-owner.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -473,7 +472,7 @@
       "role": "Durable checker resource ownership and confirmed systemd cleanup"
     },
     {
-      "path": "src/judge/checker-process-limits.js",
+      "path": "src/judge/checker-process-limits.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -482,7 +481,7 @@
       "role": "Verified systemd cgroup limits and process-tree cleanup ownership"
     },
     {
-      "path": "src/judge/final-tree-deployment.js",
+      "path": "src/judge/final-tree-deployment.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -499,7 +498,7 @@
       "role": "Trusted Comparator harness consuming inert proof exports"
     },
     {
-      "path": "src/judge/fixture.js",
+      "path": "src/judge/fixture.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -509,7 +508,7 @@
       "role": "Locked fixture metadata and Candidate identity validation"
     },
     {
-      "path": "src/judge/judge-service.js",
+      "path": "src/judge/judge-service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -520,7 +519,7 @@
       "role": "Idempotent checks, preflight health, retries and durable CheckResults"
     },
     {
-      "path": "src/judge/lean-adapter.js",
+      "path": "src/judge/lean-adapter.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -530,7 +529,7 @@
       "role": "Independent Lean preflight/compiler process and diagnostic extraction"
     },
     {
-      "path": "src/judge/lean-final-tree-verifier.js",
+      "path": "src/judge/lean-final-tree-verifier.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -549,7 +548,7 @@
       "role": "Pinned Lean frontend driver recording completed fixed-source elaboration before module serialization"
     },
     {
-      "path": "src/judge/lean-module-checker.js",
+      "path": "src/judge/lean-module-checker.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -558,7 +557,7 @@
       "role": "Isolated module dependency compilation and Mission-scoped immutable artifact cache"
     },
     {
-      "path": "src/judge/lean-source-policy.js",
+      "path": "src/judge/lean-source-policy.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -576,7 +575,7 @@
       "role": "Isolated module identity/completion verification and kernel replay of new safe declarations without candidate initializers"
     },
     {
-      "path": "src/observability/format.js",
+      "path": "src/observability/format.ts",
       "category": "observability and reporting",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -585,7 +584,7 @@
       "role": "Human-facing time, IDs, state and value formatting"
     },
     {
-      "path": "src/observability/observation-projection.js",
+      "path": "src/observability/observation-projection.ts",
       "category": "observability and reporting",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -594,7 +593,7 @@
       "role": "Shared observation projection for events, timelines and derived views"
     },
     {
-      "path": "src/observability/durable-event-log.js",
+      "path": "src/observability/durable-event-log.ts",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -603,7 +602,7 @@
       "role": "Append component NDJSON with raw/sanitized logging modes"
     },
     {
-      "path": "src/observability/observability-server.js",
+      "path": "src/observability/observability-server.ts",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -612,7 +611,7 @@
       "role": "HTTP routes, SSE, multi-store queries, reports and bounded operator reads"
     },
     {
-      "path": "src/observability/observation-store.js",
+      "path": "src/observability/observation-store.ts",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -621,7 +620,7 @@
       "role": "SQLite event/projection schema, visibility and multi-database collections"
     },
     {
-      "path": "src/observability/workspace-provider.js",
+      "path": "src/observability/workspace-provider.ts",
       "category": "observation and analysis",
       "chapters": [
         "docs/architecture/06-observability-experiments.md",
@@ -630,7 +629,7 @@
       "role": "Workspace inspection adapter for observation routes"
     },
     {
-      "path": "src/protocol/envelope.js",
+      "path": "src/protocol/envelope.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -640,7 +639,7 @@
       "role": "Identity/version envelope validation and stable serialization"
     },
     {
-      "path": "src/protocol/http-request.js",
+      "path": "src/protocol/http-request.ts",
       "category": "service and Agent integration",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -650,7 +649,7 @@
       "role": "Direct HTTP(S) transport with caller cancellation across headers and body for CLI, extension and service peers"
     },
     {
-      "path": "src/replay/service-history.js",
+      "path": "src/replay/service-history.ts",
       "category": "private history",
       "chapters": [
         "docs/architecture/13-historical-resume.md"
@@ -658,7 +657,7 @@
       "role": "Automatic transaction-aware private SQLite before/after row history and committed write boundaries"
     },
     {
-      "path": "src/runtime/docker-bot-disk.js",
+      "path": "src/runtime/docker-bot-disk.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -668,7 +667,7 @@
       "role": "Docker Bot identity validation and bounded filesystem preparation"
     },
     {
-      "path": "src/runtime/docker-bot-network.js",
+      "path": "src/runtime/docker-bot-network.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -678,7 +677,7 @@
       "role": "Pinned local Docker namespace egress enforcement with frozen per-Bot Profile origins"
     },
     {
-      "path": "src/runtime/execution-workspace.js",
+      "path": "src/runtime/execution-workspace.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -687,7 +686,7 @@
       "role": "Authenticated guest snapshot, durable E save lineage, save reconciliation and recovery-only pre-retirement install acknowledgement"
     },
     {
-      "path": "src/runtime/manual-mission-review.js",
+      "path": "src/runtime/manual-mission-review.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -697,7 +696,7 @@
       "role": "Explicit bounded manual Mission checker and immutable operator decision ledger"
     },
     {
-      "path": "src/environments/flat/mission-service.js",
+      "path": "src/environments/flat/mission-service.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -706,7 +705,7 @@
       "role": "Optional Core Bridge Mission reads and explicit-grant submission to caller-owned coordination"
     },
     {
-      "path": "src/environments/flat/mission-coordination.js",
+      "path": "src/environments/flat/mission-coordination.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -715,7 +714,7 @@
       "role": "Flat-owned Task/Context/Mission acceptance assembly and host-bound Bridge submission projection"
     },
     {
-      "path": "src/runtime/mission-submission.js",
+      "path": "src/runtime/mission-submission.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -726,7 +725,7 @@
       "role": "Durable Mission submission snapshot, single active freeze, and late-result fencing"
     },
     {
-      "path": "src/runtime/mission-workspace.js",
+      "path": "src/runtime/mission-workspace.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/00-overview.md",
@@ -738,7 +737,7 @@
       "role": "Runtime-owned Mission Workspace repository with immutable public revisions, fixed-file reads, materialization, and whole-revision merge"
     },
     {
-      "path": "src/runtime/opensandbox-manager.js",
+      "path": "src/runtime/opensandbox-manager.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -748,7 +747,7 @@
       "role": "OpenSandbox lifecycle and Execd provider boundary for one Execution"
     },
     {
-      "path": "src/runtime/opensandbox-metadata.js",
+      "path": "src/runtime/opensandbox-metadata.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -757,7 +756,7 @@
       "role": "Provider-compatible Mission, Bot and Execution identity labels"
     },
     {
-      "path": "src/runtime/runtime.js",
+      "path": "src/runtime/runtime.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -768,7 +767,7 @@
       "role": "Registered Bot binding, physical resource ownership, process failure cleanup and fencing"
     },
     {
-      "path": "src/runtime/workspace-contract.js",
+      "path": "src/runtime/workspace-contract.ts",
       "category": "Workspace and Sandbox",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -777,7 +776,7 @@
       "role": "Workspace path normalization, input/output contracts and required-input validation"
     },
     {
-      "path": "src/runtime/workspace-manager.js",
+      "path": "src/runtime/workspace-manager.ts",
       "category": "Workspace and Sandbox",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -786,7 +785,7 @@
       "role": "Execution-owned filesystem, manifests, revisions, local Git and snapshots"
     },
     {
-      "path": "src/runtime/workspace-publication.js",
+      "path": "src/runtime/workspace-publication.ts",
       "category": "runtime and execution",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md"
@@ -794,7 +793,7 @@
       "role": "Synchronous lifecycle SQLite lock around Git publication and unknown-result classification"
     },
     {
-      "path": "src/runtime/workspace-repository.js",
+      "path": "src/runtime/workspace-repository.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -804,7 +803,7 @@
       "role": "Workspace Git object creation, single-writer OS locking, immutable revision refs, durable request results and ref/index recovery barrier"
     },
     {
-      "path": "src/sdk/builtin-registry.js",
+      "path": "src/sdk/builtin-registry.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -814,7 +813,7 @@
       "role": "Built-in registered manifests and local/remote provider composition"
     },
     {
-      "path": "src/sdk/context-service-peer.js",
+      "path": "src/sdk/context-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -824,7 +823,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/coordinator-peer-client.js",
+      "path": "src/sdk/coordinator-peer-client.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -834,7 +833,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/coordinator-peer-host.js",
+      "path": "src/sdk/coordinator-peer-host.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -844,7 +843,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/independent-services.js",
+      "path": "src/sdk/independent-services.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -854,7 +853,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/judge-service-peer.js",
+      "path": "src/sdk/judge-service-peer.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -864,7 +863,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/peer-process-lifetime.js",
+      "path": "src/sdk/peer-process-lifetime.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -874,7 +873,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/remote-context-service.js",
+      "path": "src/sdk/remote-context-service.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -884,7 +883,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/remote-judge-service.js",
+      "path": "src/sdk/remote-judge-service.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -894,7 +893,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/service-adapter.js",
+      "path": "src/sdk/service-adapter.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -904,7 +903,7 @@
       "role": "In-process and HTTP adapters, readiness, timeout and transport errors"
     },
     {
-      "path": "src/sdk/service-authority-snapshot.js",
+      "path": "src/sdk/service-authority-snapshot.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -914,7 +913,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/service-bundle.js",
+      "path": "src/sdk/service-bundle.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -924,7 +923,7 @@
       "role": "Manifest and Service documentation loading with containment/hash checks"
     },
     {
-      "path": "src/sdk/service-catalog.js",
+      "path": "src/sdk/service-catalog.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -934,7 +933,7 @@
       "role": "Operation schemas/help, discoverability and retained compatibility catalog"
     },
     {
-      "path": "src/sdk/service-commit-gate.js",
+      "path": "src/sdk/service-commit-gate.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -944,7 +943,7 @@
       "role": "Independent service transport, authorization, lifecycle and deployment"
     },
     {
-      "path": "src/sdk/service-host.js",
+      "path": "src/sdk/service-host.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -954,7 +953,7 @@
       "role": "HTTP manifest/readiness/invocation server and token/role/binding checks"
     },
     {
-      "path": "src/sdk/service-manifest.js",
+      "path": "src/sdk/service-manifest.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -964,7 +963,7 @@
       "role": "Manifest/capability normalization, endpoint and schema metadata validation"
     },
     {
-      "path": "src/sdk/service-registry.js",
+      "path": "src/sdk/service-registry.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -974,7 +973,7 @@
       "role": "Provider registration, profile projection, readiness cache and invocation"
     },
     {
-      "path": "src/services/mathlib-search-service.js",
+      "path": "src/services/mathlib-search-service.ts",
       "category": "services and contracts",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -984,7 +983,7 @@
       "role": "Upstream or local lexical Mathlib provider, cache, limits and fallback"
     },
     {
-      "path": "src/storage/context-schema.js",
+      "path": "src/storage/context-schema.ts",
       "category": "durable storage",
       "chapters": [
         "docs/architecture/11-storage-reference.md",
@@ -994,7 +993,7 @@
       "role": "Material/consumption/operation SQL schema"
     },
     {
-      "path": "src/storage/judge-schema.js",
+      "path": "src/storage/judge-schema.ts",
       "category": "durable storage",
       "chapters": [
         "docs/architecture/11-storage-reference.md",
@@ -1004,7 +1003,7 @@
       "role": "Checker health/request/result/operation SQL schema"
     },
     {
-      "path": "src/storage/schema.js",
+      "path": "src/storage/schema.ts",
       "category": "durable storage",
       "chapters": [
         "docs/architecture/11-storage-reference.md",
@@ -1014,7 +1013,7 @@
       "role": "Mission/Task/Execution/dependency/notification/operation SQL schema"
     },
     {
-      "path": "src/storage/service-peer-schema.js",
+      "path": "src/storage/service-peer-schema.ts",
       "category": "service deployment",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1023,7 +1022,7 @@
       "role": "Independent service gate, receipt and phase storage definitions"
     },
     {
-      "path": "src/task/execution-budget.js",
+      "path": "src/task/execution-budget.ts",
       "category": "task and lifecycle authority",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1033,7 +1032,7 @@
       "role": "Shared durable soft-closeout boundary for Task, Workspace and actual Bot continuation dispatch"
     },
     {
-      "path": "src/task/task-service.js",
+      "path": "src/task/task-service.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -1044,7 +1043,7 @@
       "role": "Authoritative Task/Execution transactions, admission, projections and lifecycle"
     },
     {
-      "path": "src/task/task-types.js",
+      "path": "src/task/task-types.ts",
       "category": "Mission and Task",
       "chapters": [
         "docs/architecture/03-mission-task.md",
@@ -1062,7 +1061,7 @@
       "role": "Pinned external Agensh source location and board schema attribution"
     },
     {
-      "path": "src/core/bot-service.js",
+      "path": "src/core/bot-service.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1071,7 +1070,7 @@
       "role": "Built-in Bot Service v2 schema, trusted direct-child authorization and convenience-spawn receipt ledger"
     },
     {
-      "path": "src/core/index.js",
+      "path": "src/core/index.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1079,15 +1078,7 @@
       "role": "Runtime assembly, Bot admission, input and bounded lifecycle"
     },
     {
-      "path": "src/core/index.d.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Public Runtime, Bot and model policy declarations"
-    },
-    {
-      "path": "src/core/config.js",
+      "path": "src/core/config.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1095,7 +1086,7 @@
       "role": "Profile snapshot, spawn request and environment validation"
     },
     {
-      "path": "src/core/services.js",
+      "path": "src/core/services.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1104,31 +1095,7 @@
       "role": "Service v2 frozen registration, strict JSON Schema invocation and host-authenticated HTTP adapter"
     },
     {
-      "path": "src/core/service-trace.js",
-      "category": "observability and evidence",
-      "chapters": [
-        "docs/architecture/17-environment-reporting.md"
-      ],
-      "role": "Full Bridge operation trace and optional Service state snapshots"
-    },
-    {
-      "path": "src/core/public-services.js",
-      "category": "service deployment",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Curated runtime values at the public Services entry point"
-    },
-    {
-      "path": "src/core/services.d.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/15-core-runtime.md"
-      ],
-      "role": "Public Service registry, manifest and adapter declarations"
-    },
-    {
-      "path": "src/core/bridge.js",
+      "path": "src/core/bridge.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1137,7 +1104,7 @@
       "role": "Runtime-owned Bridge authentication, filtered discovery and trusted Service dispatch"
     },
     {
-      "path": "src/core/model-access.js",
+      "path": "src/core/model-access.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1145,15 +1112,7 @@
       "role": "Runtime-scoped model gateway lifecycle, credentials and policy"
     },
     {
-      "path": "src/core/model-trace.js",
-      "category": "observability and evidence",
-      "chapters": [
-        "docs/architecture/17-environment-reporting.md"
-      ],
-      "role": "Full private model request and response trace writer"
-    },
-    {
-      "path": "src/core/pi-opensandbox-backend.js",
+      "path": "src/core/pi-opensandbox-backend.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -1161,7 +1120,7 @@
       "role": "Core backend lifecycle, Worker transport and confirmed cleanup"
     },
     {
-      "path": "src/core/backends/pi-opensandbox.js",
+      "path": "src/core/backends/pi-opensandbox.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -1169,15 +1128,7 @@
       "role": "Public opaque Pi/OpenSandbox backend factory export"
     },
     {
-      "path": "src/core/backends/pi-opensandbox.d.ts",
-      "category": "programmable Core",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Public Pi/OpenSandbox deployment and model configuration declarations"
-    },
-    {
-      "path": "src/agent/model-catalog.js",
+      "path": "src/agent/model-catalog.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -1185,7 +1136,7 @@
       "role": "Shared pinned Pi Responses model and image catalog validation"
     },
     {
-      "path": "scripts/pi-rpc-submissions.mjs",
+      "path": "scripts/pi-rpc-submissions.ts",
       "category": "Pi and sandbox execution",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -1193,7 +1144,7 @@
       "role": "Worker lifetime Pi RPC submission identities, shared in-flight waits and receipt-only queries"
     },
     {
-      "path": "src/core/input-ledger.js",
+      "path": "src/core/input-ledger.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1201,7 +1152,7 @@
       "role": "Runtime/caller/operation/target/request input identity and parameter conflict ledger"
     },
     {
-      "path": "src/core/file-controls.js",
+      "path": "src/core/file-controls.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1209,7 +1160,7 @@
       "role": "Bot file-operation identity, preparation receipts, write authority and pending grant fences"
     },
     {
-      "path": "scripts/core-file-seed.mjs",
+      "path": "scripts/core-file-seed.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1218,7 +1169,7 @@
       "role": "Shared FileSeed validation, portable byte representation and canonical digest"
     },
     {
-      "path": "scripts/core-work-dir.mjs",
+      "path": "scripts/core-work-dir.ts",
       "category": "Pi and sandbox execution",
       "chapters": [
         "docs/architecture/16-pi-opensandbox-backend.md"
@@ -1226,15 +1177,7 @@
       "role": "Trusted Worker FileSeed installation, readback, versioned write grant and close coordination"
     },
     {
-      "path": "scripts/core-session-fork.mjs",
-      "category": "runtime and execution",
-      "chapters": [
-        "docs/architecture/16-pi-opensandbox-backend.md"
-      ],
-      "role": "Native Pi Session prefix, tool pairing and credential removal"
-    },
-    {
-      "path": "scripts/core-collection.mjs",
+      "path": "scripts/core-collection.ts",
       "category": "Pi and sandbox execution",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1243,7 +1186,7 @@
       "role": "Shared collection policy and bounded trusted Worker artifact traversal"
     },
     {
-      "path": "src/core/artifact-collection.js",
+      "path": "src/core/artifact-collection.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1252,7 +1195,7 @@
       "role": "Host artifact stream validation, private staging and manifest publication"
     },
     {
-      "path": "src/environments/shared/run-input.js",
+      "path": "src/environments/shared/run-input.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/15-core-runtime.md"
@@ -1260,7 +1203,7 @@
       "role": "Environment-owned exclusive idle Bot input wait and uncertain submission guard"
     },
     {
-      "path": "src/environments/flat/model-access-policy.js",
+      "path": "src/environments/flat/model-access-policy.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1269,7 +1212,7 @@
       "role": "Flat Task/Mission model authority and Core synchronous policy adapter"
     },
     {
-      "path": "src/environments/flat/bot-coordinator.js",
+      "path": "src/environments/flat/bot-coordinator.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1278,7 +1221,7 @@
       "role": "Trusted Core-returned flat Bot identity registration and readiness"
     },
     {
-      "path": "src/core/run-records.js",
+      "path": "src/core/run-records.ts",
       "category": "programmable Core",
       "chapters": [
         "docs/architecture/15-core-runtime.md",
@@ -1287,7 +1230,7 @@
       "role": "Private Runtime summary configuration, ordered evidence writing and credential redaction"
     },
     {
-      "path": "examples/notes-environment/main.mjs",
+      "path": "examples/notes-environment/main.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1295,7 +1238,7 @@
       "role": "Installed-package Notes Environment Service, role prompts, input order, archive verification and saved-report CLI"
     },
     {
-      "path": "examples/notes-environment/config.mjs",
+      "path": "examples/notes-environment/config.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1303,7 +1246,7 @@
       "role": "Sample host lifecycle, provider, model, output and resource configuration"
     },
     {
-      "path": "src/environments/shared/run-report.js",
+      "path": "src/environments/shared/run-report.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1311,7 +1254,7 @@
       "role": "Environment host reporting with independent business, cleanup and save failures"
     },
     {
-      "path": "src/environments/flat/coordination-permissions.js",
+      "path": "src/environments/flat/coordination-permissions.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1320,7 +1263,7 @@
       "role": "Flat host-only validation and immutable copy of existing Task dependency, Material revocation and Mission submission grants"
     },
     {
-      "path": "src/environments/flat/task-service.js",
+      "path": "src/environments/flat/task-service.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1329,7 +1272,7 @@
       "role": "Flat trusted Service-v2 discovery and idempotent Task handoff entry"
     },
     {
-      "path": "src/environments/flat/task-handoff.js",
+      "path": "src/environments/flat/task-handoff.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1338,7 +1281,7 @@
       "role": "Preparation heartbeat, Core file handoff and stop-confirmed domain compensation"
     },
     {
-      "path": "src/environments/flat/prepare-inputs.js",
+      "path": "src/environments/flat/prepare-inputs.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1347,7 +1290,7 @@
       "role": "Fixed Workspace and Material input provenance and canonical FileSeed preparation"
     },
     {
-      "path": "scripts/git-credential-agensh.mjs",
+      "path": "scripts/git-credential-agensh.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md"
@@ -1355,7 +1298,7 @@
       "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/board-process.js",
+      "path": "src/environments/agensh/board-process.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md"
@@ -1363,7 +1306,7 @@
       "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/http.js",
+      "path": "src/environments/agensh/http.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md"
@@ -1371,7 +1314,7 @@
       "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/index.js",
+      "path": "src/environments/agensh/index.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md",
@@ -1380,7 +1323,7 @@
       "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/provision.js",
+      "path": "src/environments/agensh/provision.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md"
@@ -1388,7 +1331,7 @@
       "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/resources.js",
+      "path": "src/environments/agensh/resources.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md"
@@ -1396,7 +1339,7 @@
       "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/agensh/services.js",
+      "path": "src/environments/agensh/services.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md"
@@ -1404,7 +1347,7 @@
       "role": "Single-peer Agensh ownership, trusted facility identity and Git integration"
     },
     {
-      "path": "src/environments/scalemas/index.js",
+      "path": "src/environments/scalemas/index.ts",
       "category": "Environment composition",
       "chapters": [
         "docs/architecture/19-scalemas-environment.md",
@@ -1413,7 +1356,7 @@
       "role": "Fixed three-peer Environment drivers, serial exclusive inputs, independent stop and persistent content reporting"
     },
     {
-      "path": "src/environments/scalemas/substrate.js",
+      "path": "src/environments/scalemas/substrate.ts",
       "category": "Environment composition",
       "chapters": [
         "docs/architecture/19-scalemas-environment.md",
@@ -1422,7 +1365,7 @@
       "role": "Run-scoped SQLite immutable content, trusted author identity, atomic references, replay and bounded search ranking"
     },
     {
-      "path": "src/environments/scalemas/collaboration-evidence.js",
+      "path": "src/environments/scalemas/collaboration-evidence.ts",
       "category": "Environment composition",
       "chapters": [
         "docs/architecture/19-scalemas-environment.md"
@@ -1430,7 +1373,7 @@
       "role": "Host-only verification of ordered immutable collaboration checkpoints and separate publisher stop evidence"
     },
     {
-      "path": "examples/subagents-environment/main.mjs",
+      "path": "examples/subagents-environment/main.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1439,7 +1382,7 @@
       "role": "Subagents host Profiles, bounded three-to-eight-Bot Runtime, verified text adoption and whole-tree reporting"
     },
     {
-      "path": "examples/subagents-environment/controller.mjs",
+      "path": "examples/subagents-environment/controller.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1448,7 +1391,7 @@
       "role": "Bounded multi-source input queue, round snapshots, failure coalescing and shutdown receipts"
     },
     {
-      "path": "examples/subagents-environment/stages.mjs",
+      "path": "examples/subagents-environment/stages.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1456,7 +1399,7 @@
       "role": "Optional four-group original-child identity and cumulative text adoption gate over actual controller admissions"
     },
     {
-      "path": "examples/subagents-environment/prompts.mjs",
+      "path": "examples/subagents-environment/prompts.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1465,7 +1408,7 @@
       "role": "Complete parent and child instructions and fixed initial text goal"
     },
     {
-      "path": "examples/subagents-environment/config.mjs",
+      "path": "examples/subagents-environment/config.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1473,7 +1416,7 @@
       "role": "Local subagents host model, resource and deadline configuration"
     },
     {
-      "path": "src/environments/agensh/router.js",
+      "path": "src/environments/agensh/router.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md",
@@ -1482,7 +1425,7 @@
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/environments/agensh/routed.js",
+      "path": "src/environments/agensh/routed.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md",
@@ -1491,7 +1434,7 @@
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/environments/agensh/event-source.js",
+      "path": "src/environments/agensh/event-source.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md"
@@ -1499,7 +1442,7 @@
       "role": "Single-peer serial routing, trusted external subscriptions and bounded batch lifecycle"
     },
     {
-      "path": "src/environments/lead-helper/board.js",
+      "path": "src/environments/lead-helper/board.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
@@ -1507,7 +1450,7 @@
       "role": "Transactional durable Board, trusted caller ownership and proof acceptance"
     },
     {
-      "path": "src/environments/lead-helper/git.js",
+      "path": "src/environments/lead-helper/git.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
@@ -1515,7 +1458,7 @@
       "role": "Run-scoped fixed-team Git provisioning, PR authorization, head and pinned byte verification"
     },
     {
-      "path": "src/environments/lead-helper/index.js",
+      "path": "src/environments/lead-helper/index.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
@@ -1523,7 +1466,7 @@
       "role": "Public Core fixed-team Environment, exclusive short or four-stage workflow and pending cleanup ownership"
     },
     {
-      "path": "src/environments/lead-helper/prompts.js",
+      "path": "src/environments/lead-helper/prompts.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md",
@@ -1532,7 +1475,7 @@
       "role": "Lead/helper role and finite continuation instructions"
     },
     {
-      "path": "src/environments/lead-helper/team.js",
+      "path": "src/environments/lead-helper/team.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
@@ -1540,7 +1483,7 @@
       "role": "Validates fixed lead-helper configuration and exact trusted team identity"
     },
     {
-      "path": "examples/lead-helper-environment/main.mjs",
+      "path": "examples/lead-helper-environment/main.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
@@ -1548,7 +1491,7 @@
       "role": "Editable lead-helper CLI with public backend assembly and report output"
     },
     {
-      "path": "examples/lead-helper-environment/config.mjs",
+      "path": "examples/lead-helper-environment/config.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/20-lead-helper-environment.md"
@@ -1556,7 +1499,7 @@
       "role": "Kimi K3 fixed-team sample configuration and finite resource bounds"
     },
     {
-      "path": "src/environments/agensh/team.js",
+      "path": "src/environments/agensh/team.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md",
@@ -1566,7 +1509,7 @@
       "role": "One Runtime with independently bound peers, exclusive routers and shared cleanup"
     },
     {
-      "path": "src/environments/agensh/delivery.js",
+      "path": "src/environments/agensh/delivery.ts",
       "category": "Environment integration",
       "chapters": [
         "docs/architecture/18-agensh-environment.md"
@@ -1574,7 +1517,7 @@
       "role": "Trusted scoped fixed-head merge receipts and immutable main-file verification"
     },
     {
-      "path": "src/environments/flat/public-workspace-reads.js",
+      "path": "src/environments/flat/public-workspace-reads.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md"
@@ -1582,7 +1525,7 @@
       "role": "Flat-owned public Workspace read argument mapping shared by v1 Registry and Core Flat adapters"
     },
     {
-      "path": "src/environments/flat/publication-services.js",
+      "path": "src/environments/flat/publication-services.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1593,7 +1536,7 @@
       "role": "Flat trusted publication, notification handling, optional fixed-revision Judge and checked merge with actual Core/Task authority"
     },
     {
-      "path": "src/environments/flat/workspace-check-source.js",
+      "path": "src/environments/flat/workspace-check-source.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/04-services.md",
@@ -1602,7 +1545,7 @@
       "role": "Shared fixed-public-revision Judge source preparation with caller-owned before/after authority guards"
     },
     {
-      "path": "src/environments/flat/controller.js",
+      "path": "src/environments/flat/controller.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1612,7 +1555,7 @@
       "role": "Flat serial discovery, continuation, directed feedback and stop-confirmed replacement policy"
     },
     {
-      "path": "src/environments/flat/environment.js",
+      "path": "src/environments/flat/environment.ts",
       "category": "Execution and control",
       "chapters": [
         "docs/architecture/02-execution.md",
@@ -1622,7 +1565,7 @@
       "role": "Flat host composition, optional trusted Workspace capture binding, and independent business/resource reporting"
     },
     {
-      "path": "scripts/read-environment-result.mjs",
+      "path": "scripts/read-environment-result.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1630,7 +1573,7 @@
       "role": "Host CLI for saved result inspection using the shared reader"
     },
     {
-      "path": "src/environments/shared/read-result.js",
+      "path": "src/environments/shared/read-result.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1638,7 +1581,7 @@
       "role": "Read saved Environment and Core receipts with expected identity and bounded normal-output projection"
     },
     {
-      "path": "scripts/run-environment.mjs",
+      "path": "scripts/run-environment.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1646,7 +1589,7 @@
       "role": "Foreground host CLI for explicit local Environment configuration and bounded control"
     },
     {
-      "path": "src/environments/shared/foreground-host.js",
+      "path": "src/environments/shared/foreground-host.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1654,7 +1597,7 @@
       "role": "Shared foreground Environment driver using existing mode controllers and lifecycle reports"
     },
     {
-      "path": "src/environments/shared/foreground-commands.js",
+      "path": "src/environments/shared/foreground-commands.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/17-environment-reporting.md"
@@ -1704,7 +1647,7 @@
       "role": "Pinned third-party license or provenance attachment distributed with identified Lean material"
     },
     {
-      "path": "examples/scalemas-environment/main.mjs",
+      "path": "examples/scalemas-environment/main.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/19-scalemas-environment.md"
@@ -1712,7 +1655,7 @@
       "role": "Editable installed scaleMAS host, public backend assembly and saved result CLI"
     },
     {
-      "path": "examples/scalemas-environment/config.mjs",
+      "path": "examples/scalemas-environment/config.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/19-scalemas-environment.md"
@@ -1728,7 +1671,7 @@
       "role": "Exclude default scaleMAS run evidence from packaged examples"
     },
     {
-      "path": "examples/agensh-environment/config.mjs",
+      "path": "examples/agensh-environment/config.ts",
       "category": "launch and composition",
       "chapters": [
         "docs/architecture/17-environment-reporting.md",
@@ -1745,7 +1688,7 @@
       "role": "Exclude default Agensh run evidence from packaged examples"
     },
     {
-      "path": "src/environments/flat/workspace-merge.js",
+      "path": "src/environments/flat/workspace-merge.ts",
       "category": "Mission acceptance and checker",
       "chapters": [
         "docs/architecture/05-workspace-continuity.md",
@@ -1756,13 +1699,141 @@
       "role": "Flat-owned trusted Workspace merge policy, final-tree checker ownership and bounded shutdown"
     },
     {
-      "path": "src/environments/shared/input-admission.js",
+      "path": "src/environments/shared/input-admission.ts",
       "category": "Environment execution",
       "chapters": [
         "docs/architecture/18-agensh-environment.md",
         "docs/architecture/19-scalemas-environment.md"
       ],
       "role": "Optional bounded FIFO actual-input admission shared across peer routers; cancellation and unknown-outcome queue fence"
+    },
+    {
+      "path": "tsconfig.json",
+      "role": "Strict TypeScript and Node ESM compiler configuration for the mirrored dist tree.",
+      "category": "Delivery and configuration",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ]
+    },
+    {
+      "path": "tsconfig.tests.json",
+      "role": "TypeScript test emission configuration for the executable test tree.",
+      "category": "Delivery and configuration",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ]
+    },
+    {
+      "path": ".dockerignore",
+      "role": "Build context exclusions for generated outputs, dependency trees and local data.",
+      "category": "Delivery and configuration",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ]
+    },
+    {
+      "path": "scripts/build.ts",
+      "role": "Clean TypeScript compilation and staging of runtime and verification assets in dist.",
+      "category": "Delivery and configuration",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md"
+      ]
+    },
+    {
+      "path": "src/core/types.ts",
+      "role": "Published Core Runtime, Bot, event and receipt contracts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ]
+    },
+    {
+      "path": "src/core/backend-config.ts",
+      "role": "Published Pi/OpenSandbox Backend configuration contract",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ]
+    },
+    {
+      "path": "src/core/service-types.ts",
+      "role": "Published Core Service manifest, adapter and operation contracts",
+      "category": "Core public runtime",
+      "chapters": [
+        "docs/architecture/04-services.md"
+      ]
+    },
+    {
+      "path": "examples/notes-environment/read-result.ts",
+      "category": "Example entry points",
+      "role": "In-place compiled example import of the shared read-result implementation",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ]
+    },
+    {
+      "path": "examples/notes-environment/run-input.ts",
+      "category": "Example entry points",
+      "role": "In-place compiled example import of the shared run-input implementation",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ]
+    },
+    {
+      "path": "examples/notes-environment/run-report.ts",
+      "category": "Example entry points",
+      "role": "In-place compiled example import of the shared run-report implementation",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ]
+    },
+    {
+      "path": "examples/subagents-environment/run-report.ts",
+      "category": "Example entry points",
+      "role": "In-place compiled example import of the shared run-report implementation",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ]
+    },
+    {
+      "path": "scripts/mount-shared-workspace.py",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Trusted local Docker project mounts and shared tmpfs cleanup"
+    },
+    {
+      "path": "src/core/service-trace.ts",
+      "category": "observability and evidence",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Full Bridge operation trace and optional Service state snapshots"
+    },
+    {
+      "path": "src/core/public-services.ts",
+      "category": "service deployment",
+      "chapters": [
+        "docs/architecture/15-core-runtime.md"
+      ],
+      "role": "Curated runtime values at the public Services entry point"
+    },
+    {
+      "path": "src/core/model-trace.ts",
+      "category": "observability and evidence",
+      "chapters": [
+        "docs/architecture/17-environment-reporting.md"
+      ],
+      "role": "Full private model request and response trace writer"
+    },
+    {
+      "path": "scripts/core-session-fork.ts",
+      "category": "runtime and execution",
+      "chapters": [
+        "docs/architecture/16-pi-opensandbox-backend.md"
+      ],
+      "role": "Native Pi Session prefix, tool pairing and credential removal"
     }
   ]
 }

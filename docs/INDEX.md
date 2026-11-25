@@ -16,7 +16,7 @@ This is the entry point to current maintained documentation. Historical design d
 | Where is Matt skills configuration? | [agents/issue-tracker.md](agents/issue-tracker.md), [agents/domain.md](agents/domain.md), [agents/triage-labels.md](agents/triage-labels.md) | Issue tracker, domain and triage setup |
 | How are Phase 0005 contracts and migration regressions verified? | [Core / Environment verification contract](workflows/core-environment-verification.md) | Pinned baseline observations, public seams and requirements-to-ticket cross-reference; execution evidence stays on Issue/PR |
 | How does the current system run in detail? | [architecture/INDEX.md](architecture/INDEX.md) | Complete implementation manual, full prompts, interfaces, state and source coverage |
-| What are the SwarmEnv-specific working rules? | [workflows/development.md](workflows/development.md), [workflows/experiment.md](workflows/experiment.md) | Repo conventions, verification and experiment boundaries |
+| What are the SwarmEnv-specific working rules? | [workflows/development.md](workflows/development.md), [workflows/experiment.md](workflows/experiment.md), [TypeScript migration inventory](workflows/typescript-migration-inventory.md) | Repo conventions, verification and experiment boundaries |
 | Where are formal experiments? | [experiments/INDEX.md](experiments/INDEX.md) | Run IDs, evidence and report template |
 | Why was a major design decision made? | [adr/INDEX.md](adr/INDEX.md) | Decision rationale |
 | How are tools operated? | [operations/observability.md](operations/observability.md) | Operational references |

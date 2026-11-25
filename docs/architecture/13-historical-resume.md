@@ -10,7 +10,7 @@ In-memory fixtures can opt in explicitly. Observation projections and live
 ownership/delivery tables are excluded. Adding one of those runtime-only tables
 leaves the existing public-table recording interval intact.
 Task initializes the manual-review table before enabling capture. The separate
-`review-mission.mjs decide` writer also installs transaction tracking; `show` stays
+`node dist/scripts/review-mission.js decide` writer also installs transaction tracking; `show` stays
 read-only. A new public table enters capture when its service installs history after schema setup. The table catalog records that interval independently.
 
 | Table | Meaning |
@@ -69,4 +69,4 @@ are outside these entry points.
 
 Real SQLite tests inspect typed before/after images, binary attachments, 64-bit integers, transaction markers, rollbacks, shadowed savepoints, prepared control statements, replacement and primary-key changes. A failed commit followed by repair keeps a single committed transaction boundary. Read-only transactions and empty SQL tails keep SQLite's ordinary behavior. Service constructors install capture automatically, runtime-only tables stay excluded, and schema changes clear only incompatible row history. Independent owner-local manual-review CLI tests verify a complete committed decision image, current Mission acceptance, read-only `show`, and capture installed by `decide`. Workspace publication tests cover save versus main, freeze/unfreeze receipts, ordered events, gaps and recovery after an event is written before its head.
 
-Sources: [database history](../../src/replay/service-history.js), [Workspace repository](../../src/runtime/workspace-repository.js), [database regressions](../../test/service-history.test.js), [manual-review regressions](../../test/replay-manual-review.test.js), [Workspace publication regressions](../../test/workspace-publication-history.test.js).
+Sources: [database history](../../src/replay/service-history.ts), [Workspace repository](../../src/runtime/workspace-repository.ts), [database regressions](../../test/service-history.test.ts), [manual-review regressions](../../test/replay-manual-review.test.ts), [Workspace publication regressions](../../test/workspace-publication-history.test.ts).

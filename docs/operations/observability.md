@@ -2,7 +2,7 @@
 
 > Type: Operations · Status: Current reference; verify flags against source · Updated 2026-11-11
 
-`scripts/serve-observability.mjs` starts the observation service. `src/observability/` implements event ingestion, storage and queries; current source and tests take precedence over historical deployment notes. The UI provides Experiment lists, Core timelines, Execution interactions, Task/Material views and Service diagnostics.
+After `npm run build`, run `node dist/scripts/serve-observability.js` to start the observation service. `src/observability/` implements event ingestion, storage and queries; current source and tests take precedence over historical deployment notes. The HTTP API provides Experiment lists, Core timelines, Execution interactions, Task/Material views and Service diagnostics.
 
 The server reads registered SQLite event stores and serves live Server-Sent Events. Its historical report-import flags have been retired. Before starting or redeploying the service, verify the current CLI, listener address, database path, and external access controls. Never expose raw Agent conversations, candidate/proof source, credentials or private file paths on a public dashboard.
 
