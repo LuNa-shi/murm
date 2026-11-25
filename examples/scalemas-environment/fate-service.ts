@@ -14,7 +14,7 @@ const errors = ['NOT_ALLOWED', 'NOT_FOUND', 'CONFLICT', 'INVALID_CONTRACT', 'CHE
   .map(code => ({ code, retryable: false }));
 const descriptions: Record<string, string> = {
   search_mathlib: 'Search the fixed Mathlib source for at most ten declarations and their stable resource addresses',
-  check_lean: 'Compile a trial proof term against the original FATE-M declaration and return diagnostics',
+  check_lean: 'Compile a trial proof term against the original FATE declaration and return diagnostics',
   submit: 'Replace your currently submitted proof. Set finish=true to end your work after this submission',
 };
 
@@ -127,7 +127,7 @@ export function createFateTaskService(options: TaskOptions) {
     };
     options.services.registerService({
       manifest: {
-        id: 'fate', title: 'FATE-M task tools', purpose: 'Search the frozen library, check and submit proofs for the original problem',
+        id: 'fate', title: 'FATE task tools', purpose: 'Search the frozen library, check and submit proofs for the original problem',
         provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' },
         capabilities: [
           operation('search_mathlib', object({ query: string(512) }), object({

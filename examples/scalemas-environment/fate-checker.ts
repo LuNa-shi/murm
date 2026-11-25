@@ -78,7 +78,7 @@ export async function loadFateProject({ projectRoot, leanRoot, benchmark = 'FATE
       execFile('git', ['-C', path, 'rev-parse', 'HEAD'], { timeout: 10_000, signal }),
       execFile('git', ['-C', path, 'status', '--porcelain', '--untracked-files=all'], { timeout: 10_000, signal }),
     ]);
-    if (head.stdout.trim() !== rev || status.stdout.trim()) throw new Error(`FATE-M dependency ${name} is dirty or has the wrong revision`);
+    if (head.stdout.trim() !== rev || status.stdout.trim()) throw new Error(`${benchmark} dependency ${name} is dirty or has the wrong revision`);
     const library = join(path, '.lake', 'build', 'lib', 'lean');
     if (name === 'mathlib') await stat(join(library, 'Mathlib.olean'));
     return (await stat(library).catch(error => {
