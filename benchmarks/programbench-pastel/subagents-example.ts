@@ -14,6 +14,7 @@ const initial = [
   'Support hex and rgb output for opaque #RRGGBB (case insensitive) and rgb(R, G, B) inputs with integer channels from 0 to 255.',
   'Match the Pastel reference stdout on this scope. Reject malformed colors with a nonzero exit.',
   'Reference executable: /opt/programbench/executable. Public docs are in /opt/programbench.',
+  'Use the available Subagents to work on meaningful independent parts in parallel. Inspect the collaboration Service early. Choose the assignments and team size yourself, work on a complementary part while the children work, and use their concrete findings, tests, or patches in the delivery.',
   'Deliver delivery/compile.sh, delivery/README.md, delivery/pastel.js and delivery/test.js.',
   'compile.sh must build an executable named pastel in that directory using available Node.js and shell tools, offline.',
   'Clean rebuilds and execution use a container with Node.js and no Pastel executable.',
@@ -21,6 +22,7 @@ const initial = [
 const supplement = [
   'New requirement: also support hsl output from the already supported inputs.',
   'Match the same Pastel reference formatting, including hue rounding, decimal digits and percentages.',
+  'If this affects work you delegated, tell the affected members so their contributions account for it.',
   'Keep the original behavior and update the tests and README.',
 ].join('\n');
 const probes = [

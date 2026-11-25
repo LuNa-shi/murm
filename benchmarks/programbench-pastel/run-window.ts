@@ -44,7 +44,7 @@ export async function createRunWindow({
   directory, upstreamUrl, upstreamHeaders = {}, durationMs = 1_800_000,
   maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, now = () => performance.now(),
 }: RunWindowOptions) {
-  if (![durationMs, maxConcurrent].every(positiveInteger) || durationMs > 1_800_000 || maxConcurrent > 3 ||
+  if (![durationMs, maxConcurrent].every(positiveInteger) || durationMs > 3_600_000 || maxConcurrent > 3 ||
       (maxRequests !== null && !positiveInteger(maxRequests)) ||
       (maxOutputTokens !== null && (!positiveInteger(maxOutputTokens) || maxOutputTokens < 16))) {
     throw new Error('Invalid Pastel run bounds');
