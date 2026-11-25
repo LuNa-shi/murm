@@ -1,6 +1,6 @@
 # Pastel acceptance through the ordinary Subagents example
 
-Status **REGISTERED**. This is one T1 acceptance attempt for [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199). The owner selected the Pastel instance and delegated the choice of model, time and budget in the implementation session.
+Status **SETTLED · T1 acceptance unmet**. This is one T1 acceptance attempt for [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199). The owner selected the Pastel instance and delegated the choice of model, time and budget in the implementation session. Registration commit `e0c37e8` preceded launch.
 
 ## Setup
 
@@ -20,12 +20,22 @@ Status **REGISTERED**. This is one T1 acceptance attempt for [Issue #199](https:
 
 ## Results
 
-Pending.
+The forwarding window opened at 07:07:22.716 UTC on 2026-11-25 and closed at 07:19:22.716 UTC on its 720-second deadline. The first model request started 4.144 seconds into the window. The relay forwarded 22 requests and received HTTP 200 on all 22. The Core Gateway recorded 21 completed responses with 374,368 input tokens and 28,380 output tokens in total. The final stream was interrupted and its usage is unknown.
+
+| Acceptance dimension | Observation |
+| --- | --- |
+| Task delivery | **Unmet at the deadline.** The HSL supplement entered Root’s second model request, at 07:07:33.282 UTC. Root wrote all four required files and had no final reply by the deadline. After collection, the independent checker rebuilt the exported source offline, ran the submitted tests, matched all seven reference cases and rejected invalid input. |
+| Collaboration | **Unmet.** One Bot received model requests. The Runtime had one Bot, and the collaboration Service trace was empty. This run recorded no delegation, overlap, or child contribution. |
+| Closeout | **Passed.** Runtime `a87d801d-e96c-45c4-bf4b-fb00a400e73c` closed and exported the project, one native Session and 22 request/response records. Runtime evidence and model trace record zero lost or pending rows. A separate OpenSandbox lookup returned HTTP 404 for the one allocated sandbox. |
+
+Raw records and exported files are kept in the ignored run directory. The four required file SHA-256 values are `b4524de121a7cab32940a52ccbc2b25afeabd468799625609f1c23e710529770` for `compile.sh`, `58861c47cb7975c4c5b6d0614b2376b39d1618fbc76aa75eea97243d31cdfbd9` for `README.md`, `c81bab906173cc6bbd7f37592418e558706d0b64cca123c14aed4d2e199c58a9` for `pastel.js`, and `4267bcdfa9c2a8b85c81e442ca635a339a0c308d58220b490e255d1cda97f9d0` for `test.js`.
 
 ## Analysis
 
-Pending.
+The model incorporated the mid-run instruction into the files that passed the independent check. The cutoff occurred during a model stream, with no Root completion event. The artifact verdict establishes a rebuildable solution for the bounded functionality and the timing verdict remains unmet. This one run supplies live input and file evidence and no evidence of autonomous collaboration.
+
+The frozen driver skipped its supplemental-input lookup and checker because it derived Root’s ID from the missing successful result. The verification above used the actual second request and ran the checker separately from the exported files.
 
 ## Next steps
 
-Execute the registered run.
+Retain this single attempt as evidence for #199. The driver now retains Root’s ID for supplemental-input and artifact checks after a deadline. The deadline still fails the task assessment. A controlled Pi/OpenSandbox diagnostic verifies this projection independently of the hosted attempt.

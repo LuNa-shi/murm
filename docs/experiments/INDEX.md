@@ -8,7 +8,7 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261125-04` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **REGISTERED · Subagents Pastel example acceptance** | `ac0019e` | [Pastel acceptance through the ordinary Subagents example](EXP-20261125-04-issue199-pastel.md) |
+| `EXP-20261125-04` | [Issue #199](https://github.com/LuNa-shi/SwarmEnv/issues/199) | **SETTLED · Deadline without final reply or delegation · exported files passed offline check** | `ac0019e` | [Pastel acceptance through the ordinary Subagents example](EXP-20261125-04-issue199-pastel.md) |
 | `EXP-20261125-01` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Subagents · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
 | `EXP-20261125-02` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Flat · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
 | `EXP-20261125-03` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Agensh · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |

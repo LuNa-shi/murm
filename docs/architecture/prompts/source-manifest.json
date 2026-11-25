@@ -47,7 +47,7 @@
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
-      "sha256": "1e65d45d8c6e4acfa944ca39d7d9316d8d26b2fa1bd3406843cd5ea54fd7a522"
+      "sha256": "0e472d50314cc3b361a19208fa49663e0634de12325adb157ddda7d9d5f5c70d"
     },
     {
       "path": "examples/subagents-environment/main.ts",

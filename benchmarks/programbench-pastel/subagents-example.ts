@@ -82,9 +82,11 @@ async function modelRequestExists(directory: string, rootId: string, requiredTex
 
 export async function runPastelExample(config: Parameters<typeof runSubagentsEnvironment>[0], signal?: AbortSignal) {
   let injected = false;
+  let rootId: string | undefined;
   const report = await runSubagentsEnvironment({ ...config, goal: initial,
     collect: { paths: ['delivery'], required: true, includeGit: false, maxBytes: 2 * 1024 * 1024 },
   }, signal, async (env, work) => {
+    rootId = env.rootId;
     const traces = join(config.outputDir, env.id, 'model-trace');
     for (;;) {
       work.throwIfAborted();
@@ -102,15 +104,15 @@ export async function runPastelExample(config: Parameters<typeof runSubagentsEnv
     if (reply.type !== 'settled' || reply.outcome !== 'completed') throw new Error('Root failed');
     return { rootId: env.rootId, eventSeq: reply.seq };
   });
-  const root = report.cleanup?.bots?.find(bot => bot.botId === report.result?.rootId);
+  const root = report.cleanup?.bots?.find(bot => bot.botId === rootId);
   const files = root?.artifacts.find(path => path.endsWith('/artifacts/files'));
   let independentCheck;
   if (files && !report.cleanupFailure) {
     try { independentCheck = await checkPastelExample(join(files, 'delivery')); }
     catch (error) { independentCheck = { error: error instanceof Error ? error.message : String(error) }; }
   }
-  const seenByRoot = report.result?.rootId
-    ? await modelRequestExists(join(config.outputDir, report.runtimeId, 'model-trace'), report.result.rootId, supplement)
+  const seenByRoot = rootId
+    ? await modelRequestExists(join(config.outputDir, report.runtimeId, 'model-trace'), rootId, supplement)
     : false;
   return { report, injected, seenByRoot, independentCheck, assessment: {
     task: !report.businessFailure && seenByRoot && independentCheck && !('error' in independentCheck) ? 'passed' : 'failed',
