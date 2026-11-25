@@ -21,6 +21,7 @@ interface InterruptRequest {
   interruptId: string;
   executionEpoch: number;
   confirmed?: boolean;
+  discardedInputHashes?: readonly string[];
   work?: Promise<void>;
 }
 
@@ -577,7 +578,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
       bridge.cancelBotCalls(botId);
     }
     const identity = { botId, requestId: redactor.text(requestId), interruptId: request.interruptId, executionEpoch: request.executionEpoch };
-    if (request.confirmed) return { interruptId: request.interruptId, status: 'interrupted' };
+    const receipt = (): InterruptReceipt => ({
+      interruptId: request.interruptId, status: request.confirmed ? 'interrupted' : 'unknown',
+      ...(request.discardedInputHashes ? { discardedInputHashes: [...request.discardedInputHashes] } : {}),
+    });
+    if (request.confirmed) return receipt();
     if (!request.work && !closing && isLive(bot)) {
       records.record('interrupt', { ...identity, state: 'dispatched' });
       request.work = Promise.resolve().then(async () => {
@@ -585,6 +590,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         const result = await backend.interrupt(botId, request);
         if (result.status === 'interrupted' && isLive(bot)) {
           request.confirmed = true;
+          request.discardedInputHashes = result.discardedInputHashes;
           bot.interruption = undefined;
           bot.nativeExecuting = false;
           bot.activityClaims.clear();
@@ -598,7 +604,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     if (request.work && await observe(request.work, timeoutMs) === timedOut) {
       records.record('interrupt', { ...identity, state: 'unknown', reason: 'host-wait-expired' });
     }
-    return { interruptId: request.interruptId, status: request.confirmed ? 'interrupted' : 'unknown' };
+    return receipt();
   }
 
   function onEvent(handler: (event: BotEvent) => void) {

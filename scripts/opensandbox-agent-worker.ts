@@ -48,7 +48,7 @@ const preflights = new Set<Promise<void>>();
 interface InterruptOperation {
   epoch: number;
   done?: Promise<void>;
-  response?: { id: string; command: string; success: boolean };
+  response?: { id: string; command: string; success: boolean; data?: { discardedInputHashes: string[] } };
 }
 const interruptions = new Map<string, InterruptOperation>();
 let interrupting = false;
@@ -262,8 +262,16 @@ async function interruptPi({ id, executionEpoch: nextEpoch }: { id: string; exec
       await rpcSubmissions.completion(commandId);
       const { response } = rpcSubmissions.query(commandId);
       if (response.command !== type || !response.success) throw new Error('Pi did not confirm execution control');
+      return response.data;
     };
-    const clearAndAbort = () => Promise.all([command('clear_queue'), command('abort')]);
+    const discardedInputHashes: string[] = [];
+    async function clearAndAbort() {
+      const [queue] = await Promise.all([command('clear_queue'), command('abort')]);
+      if (!queue || !Array.isArray(queue.steering) || !Array.isArray(queue.followUp)) return;
+      for (const text of [...queue.steering, ...queue.followUp]) {
+        if (typeof text === 'string') discardedInputHashes.push(createHash('sha256').update(text).digest('hex'));
+      }
+    }
     operation.done = (async () => {
       await clearAndAbort();
       // Prompt RPC preflight is asynchronous in Pi. If a previously written
@@ -274,7 +282,8 @@ async function interruptPi({ id, executionEpoch: nextEpoch }: { id: string; exec
         await clearAndAbort();
       }
       interrupting = false;
-      operation.response = { id, command: 'core_interrupt', success: true };
+      operation.response = { id, command: 'core_interrupt', success: true,
+        ...(discardedInputHashes.length ? { data: { discardedInputHashes } } : {}) };
     })().catch(() => {
       operation.response = { id, command: 'core_interrupt', success: false };
     });

@@ -1,8 +1,9 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { BotEvent, InputReceipt, Runtime, SpawnOptions } from '@swarmenv/core';
 import type { JsonValue, ServiceRequest } from '@swarmenv/core/services';
 
 type Settled = Extract<BotEvent, { type: 'settled' }>;
+type Exit = Extract<BotEvent, { type: 'exit' }>;
 type Reply = Settled | Extract<BotEvent, { type: 'exit' }>;
 type Message = {
   id: string;
@@ -20,12 +21,26 @@ type Member = {
   parent?: Member;
   id?: string;
   inbox: Message[];
+  submitted: Map<string, Message>;
+  executionRevision: number;
   wait?: Wait;
   lastOutcome?: 'completed' | 'failed' | 'interrupted';
   fatalReported?: boolean;
   tail?: Promise<unknown>;
 };
-type Operation = { id: string; fingerprint: string; result?: Promise<JsonValue>; batch?: Message[]; destination?: Member; message?: Message };
+type Operation = {
+  id: string;
+  fingerprint: string;
+  result?: Promise<JsonValue>;
+  batch?: Message[];
+  destination?: Member;
+  message?: Message;
+  inputDispatched?: boolean;
+  interruptStatus?: string;
+};
+function createMember(path: string, parent?: Member): Member {
+  return { path, parent, inbox: [], submitted: new Map(), executionRevision: 0 };
+}
 
 const namePattern = /^[a-z0-9_]{1,48}$/;
 const inputLimit = 65_536;
@@ -51,9 +66,9 @@ function serial<T>(member: Member, work: () => Promise<T>) {
 
 export function createSubagentsController(
   runtime: Runtime,
-  { maxAgents, maxDepth, childWorkspace }: { maxAgents: number; maxDepth: number; childWorkspace?: SpawnOptions['workspace'] },
+  { maxDepth, childWorkspace }: { maxDepth: number; childWorkspace?: SpawnOptions['workspace'] },
 ) {
-  const root: Member = { path: '/root', inbox: [] };
+  const root = createMember('/root');
   const byPath = new Map([[root.path, root]]);
   const byId = new Map<string, Member>();
   const operations = new Map<string, Operation>();
@@ -136,13 +151,16 @@ export function createSubagentsController(
   }
 
   async function offer(member: Member, message: Message) {
-    if (message.state === 'pending' && releaseWait(member)) return;
+    if (message.state === 'returned' || (message.state === 'pending' && releaseWait(member))) return;
+    if (member.submitted.size >= operationLimit) fail('NOT_ALLOWED', 'The recipient delivery history limit has been reached');
     const { state: _state, ...payload } = message;
-    const receipt = await runtime.send(member.id!, JSON.stringify(payload), {
+    const body = JSON.stringify(payload);
+    const receipt = await runtime.send(member.id!, body, {
       requestId: message.id, source: message.from, mode: 'steer', wakeIfIdle: false,
     });
     if (receipt.status === 'accepted') {
       message.state = 'queued';
+      if (receipt.disposition === 'queued') member.submitted.set(createHash('sha256').update(body).digest('hex'), message);
       removeMemberMessage(member, message);
       member.wait?.({ reason: 'input' });
     } else if (receipt.status === 'unknown') {
@@ -153,14 +171,14 @@ export function createSubagentsController(
     }
   }
 
-  function resultFor(member: Member, event: Settled | Extract<BotEvent, { type: 'error' }>) {
+  function resultFor(member: Member, event: Settled | Exit | Extract<BotEvent, { type: 'error' }>) {
     const recipient = member.parent;
     if (!recipient || !accepting) return;
     const message: Message = {
       id: randomUUID(), kind: 'result', from: member.path,
       text: event.type === 'settled'
         ? (event.outcome === 'completed' ? event.output ?? '' : event.error?.message ?? 'Child execution failed')
-        : event.error.message,
+        : event.type === 'exit' ? event.reason : event.error.message,
       outcome: event.type === 'settled' && event.outcome === 'completed' ? 'completed' : 'failed',
       eventSeq: event.seq, state: 'pending',
     };
@@ -168,18 +186,24 @@ export function createSubagentsController(
       open();
       reserveMessage(recipient, message);
       await offer(recipient, message);
-    })).catch(error => deliveryFailures.push({ id: message.id, reason: error.code ?? 'SERVICE_UNAVAILABLE' }));
+    })).catch(error => {
+      if (deliveryFailures.length < mailboxLimit) deliveryFailures.push({ id: message.id, reason: error.code ?? 'SERVICE_UNAVAILABLE' });
+    });
   }
 
   const unsubscribe = runtime.onEvent(event => {
     const member = byId.get(event.botId);
     if (!member) return;
+    if (event.type === 'settled' || event.type === 'exit') member.executionRevision++;
     if (event.type === 'settled') {
       member.lastOutcome = event.outcome === 'aborted' ? 'interrupted' : event.outcome;
       if (event.outcome !== 'aborted' && !(member.fatalReported && event.outcome === 'failed')) resultFor(member, event);
     } else if (event.type === 'error' && event.fatal && !member.fatalReported) {
       member.lastOutcome = 'failed';
       member.fatalReported = true;
+      resultFor(member, event);
+    } else if (event.type === 'exit' && !event.expected && !member.fatalReported && member.lastOutcome !== 'failed') {
+      member.lastOutcome = 'failed';
       resultFor(member, event);
     }
     if (member === root && (event.type === 'settled' || event.type === 'exit')) {
@@ -198,26 +222,30 @@ export function createSubagentsController(
     return serial(member, async (): Promise<InputReceipt> => {
       open();
       authorize?.();
-      if (!entry.batch) {
+      if (!entry.inputDispatched) {
         await reconcile(member);
+        const status = await runtime.get(member.id!);
         open();
         authorize?.();
         entry.batch = pending(member);
         for (const message of entry.batch) message.state = 'in-input';
+        if (status.status === 'idle') member.executionRevision++;
+        entry.inputDispatched = true;
       }
-      const body = entry.batch.length || from !== 'user'
-        ? JSON.stringify({ kind: from === 'user' ? 'user' : 'new-task', from, text, messages: entry.batch.map(({ state: _state, ...message }) => message) })
+      const messages = entry.batch!;
+      const body = messages.length || from !== 'user'
+        ? JSON.stringify({ kind: from === 'user' ? 'user' : 'new-task', from, text, messages: messages.map(({ state: _state, ...message }) => message) })
         : text;
       let receipt: InputReceipt;
       try {
         receipt = await runtime.send(member.id!, body, { requestId, source: from, wakeIfIdle: true });
       } catch (error) {
-        for (const message of entry.batch) message.state = 'pending';
+        for (const message of messages) message.state = 'pending';
         releaseWait(member);
         throw error;
       }
       if (receipt.status === 'accepted') {
-        for (const message of entry.batch) removeMemberMessage(member, message);
+        for (const message of messages) removeMemberMessage(member, message);
         member.wait?.({ reason: 'input' });
       }
       return receipt;
@@ -277,7 +305,8 @@ export function createSubagentsController(
         });
       }
       const key = JSON.stringify([caller.id, request.envelope.operation_id]);
-      return operate(key, [operation, call], async entry => {
+      const parameters = [operation, Object.entries(call).sort(([a], [b]) => a.localeCompare(b))];
+      return operate(key, parameters, async entry => {
         open();
         request.assertAuthorized();
         if (operation === 'wait_agent') {
@@ -292,8 +321,7 @@ export function createSubagentsController(
           if (path.split('/').length - 2 > maxDepth) fail('NOT_ALLOWED', 'The team depth limit has been reached');
           if (!entry.destination) {
             if (byPath.has(path)) fail('CONFLICT', 'A child already uses that path');
-            if (byPath.size >= maxAgents) fail('NOT_ALLOWED', 'The team is at capacity');
-            entry.destination = { path, parent: caller, inbox: [] };
+            entry.destination = createMember(path, caller);
             byPath.set(path, entry.destination);
           }
           const child = entry.destination;
@@ -319,15 +347,32 @@ export function createSubagentsController(
         }
         if (operation === 'interrupt_agent') {
           if (recipient === root || recipient === caller) fail('NOT_ALLOWED', 'Cannot interrupt the Root or yourself');
+          const revision = recipient.executionRevision;
           return serial(recipient, async () => {
             open();
             request.assertAuthorized();
-            const status = await runtime.get(recipient.id!);
-            if (status.status === 'idle') return { status: 'idle' };
-            request.assertAuthorized();
-            const receipt = await runtime.interrupt(recipient.id!, { requestId: entry.id });
-            if (receipt.status === 'interrupted') recipient.lastOutcome = 'interrupted';
-            return { ...receipt, previousStatus: status.status };
+            if (!entry.interruptStatus) {
+              const before = await runtime.get(recipient.id!);
+              open();
+              request.assertAuthorized();
+              if (recipient.executionRevision !== revision) return { status: 'stale' };
+              if (before.status === 'idle') return { status: 'idle' };
+              entry.interruptStatus = before.status;
+            }
+            const { discardedInputHashes, ...receipt } = await runtime.interrupt(recipient.id!, { requestId: entry.id });
+            if (receipt.status === 'interrupted') {
+              recipient.lastOutcome = 'interrupted';
+              for (const hash of discardedInputHashes ?? []) {
+                const message = recipient.submitted.get(hash);
+                if (message) {
+                  message.state = 'pending';
+                  try { reserveMessage(recipient, message); }
+                  catch { deliveryFailures.push({ id: message.id, reason: 'MAILBOX_FULL_AFTER_INTERRUPT' }); }
+                }
+              }
+              recipient.submitted.clear();
+            }
+            return { ...receipt, previousStatus: entry.interruptStatus };
           });
         }
         if (operation !== 'send_message') return fail('INVALID_CONTRACT', 'Unknown collaboration operation');
@@ -355,6 +400,7 @@ export function createSubagentsController(
         members: [...byPath.values()].map(member => ({
           path: member.path, botId: member.id ?? null, parent: member.parent?.path ?? null,
           lastOutcome: member.lastOutcome ?? null, waiting: Boolean(member.wait),
+          nativeQueuedAdmissions: member.submitted.size,
           pending: member.inbox.map(({ id, state }) => ({ id, state })),
         })),
         operations: operations.size, deliveryFailures: [...deliveryFailures],

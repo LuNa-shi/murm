@@ -55,13 +55,34 @@ export async function createSubagentsEnvironment(config: Config) {
       child: { ...common, model: childModel, prompt: childPrompt },
     },
   });
-  team = createSubagentsController(runtime, { maxAgents, maxDepth, childWorkspace: workspace?.child });
+  team = createSubagentsController(runtime, { maxDepth, childWorkspace: workspace?.child });
   const closing = new AbortController();
-  async function close(options = { timeoutMs: closeTimeoutMs }) {
+  const sharedWriters = workspace?.root && 'id' in workspace.root &&
+    workspace.child?.mode === 'read-write' && workspace.child.id === workspace.root.id;
+  let closingWork: ReturnType<typeof runtime.close> | undefined;
+  let sharedDeliveryUnverified = false;
+  function close(options = { timeoutMs: closeTimeoutMs }) {
+    closingWork ??= closeTeam(options.timeoutMs).finally(() => { closingWork = undefined; });
+    return closingWork;
+  }
+  async function closeTeam(timeoutMs: number) {
     closing.abort(new Error('The team is closing'));
     team.beginClose();
     try {
-      return await runtime.close(options);
+      const deadlineAt = Date.now() + timeoutMs;
+      if (sharedWriters && collect && !sharedDeliveryUnverified) {
+        const children = (await runtime.list()).filter(bot => bot.parentId && bot.status !== 'closed');
+        const stops = await Promise.allSettled(children.map(bot => runtime.stop(bot.id, {
+          timeoutMs: Math.max(1, Math.floor((deadlineAt - Date.now()) * 2 / 3)),
+        })));
+        sharedDeliveryUnverified = stops.some(stop => stop.status === 'rejected' || stop.value.execution !== 'stopped');
+      }
+      const receipt = await runtime.close({ timeoutMs: Math.max(1, deadlineAt - Date.now()) });
+      if (sharedDeliveryUnverified) {
+        const error = { code: 'SHARED_WRITERS_UNCONFIRMED', message: 'Some shared writers were still unconfirmed before collection', retryable: false };
+        return { ...receipt, cleanup: 'pending' as const, errors: [...receipt.errors, error] };
+      }
+      return receipt;
     } finally {
       team.dispose();
     }
@@ -107,8 +128,8 @@ export async function createSubagentsEnvironment(config: Config) {
 }
 
 function reportRedactor(backend: Config['backend']) {
-  const secrets = [backend.sandbox.apiKey, backend.sandbox.execdToken,
-    ...Object.values(backend.models).flatMap(model => Object.values(model.upstream.headers ?? {}))]
+  const secrets = [backend?.sandbox?.apiKey, backend?.sandbox?.execdToken,
+    ...Object.values(backend?.models ?? {}).flatMap(model => Object.values(model?.upstream?.headers ?? {}))]
     .filter((value): value is string => typeof value === 'string' && value.length > 0)
     .flatMap(value => [value, value.replace(/^(?:Bearer|Basic)\s+/i, '')])
     .filter(Boolean).sort((left, right) => right.length - left.length);
@@ -125,7 +146,7 @@ export async function runSubagentsEnvironment(config: Config, signal?: AbortSign
   let environment: Environment | undefined;
   const redact = reportRedactor(config.backend);
   return runWithReport({
-    outputDir: config.outputDir, closeTimeoutMs: config.closeTimeoutMs,
+    outputDir: config.outputDir, closeTimeoutMs: config.closeTimeoutMs ?? 30_000,
     redact: (report: object) => redact({ ...report, collaboration: environment?.collaborationState() ?? null }),
     createRuntime: async () => {
       work.throwIfAborted();
@@ -152,9 +173,13 @@ export async function runSubagentsEnvironment(config: Config, signal?: AbortSign
 async function readInteraction(env: Environment, signal: AbortSignal) {
   const input = createInterface({ input: process.stdin, terminal: false });
   const done = () => input.close();
+  let rootFailure: unknown;
   const showReply: Parameters<Environment['onReply']>[0] = reply => {
     if (reply.type === 'settled' && reply.output) process.stdout.write(`${reply.output}\n`);
-    if (reply.type === 'exit' || (reply.type === 'settled' && reply.outcome === 'failed')) done();
+    if (reply.type === 'exit' || (reply.type === 'settled' && reply.outcome === 'failed')) {
+      rootFailure = Object.assign(new Error('Root did not complete the task'), { code: 'ROOT_FAILED', event: reply });
+      done();
+    }
   };
   const stopReply = env.onReply(showReply);
   const last = env.lastReply();
@@ -176,6 +201,7 @@ async function readInteraction(env: Environment, signal: AbortSignal) {
     signal.removeEventListener('abort', done);
     stopReply();
   }
+  if (rootFailure) throw rootFailure;
   signal.throwIfAborted();
   return { rootId: env.rootId, interaction: 'closed' };
 }
@@ -186,7 +212,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     process.stdout.write('Usage: node main.js <config.js> ["task" | --interactive]\n');
   } else {
     const interrupt = new AbortController();
-    const stop = () => interrupt.abort(new Error('Stopped by host'));
+    const stop = () => interrupt.abort();
     process.once('SIGINT', stop);
     process.once('SIGTERM', stop);
     try {

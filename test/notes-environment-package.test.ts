@@ -14,7 +14,7 @@ test('installed Notes and subagents CLIs preserve cancellation received during c
   const installed = await installNotesExample(); t.after(() => installed.close());
   for (const mode of ['notes', 'subagents']) {
     if (mode === 'subagents') {
-      for (const name of ['main', 'controller', 'prompts']) {
+      for (const name of ['main', 'controller', 'collaboration-service', 'prompts']) {
         await copyFile(join(installed.directory, 'node_modules/@swarmenv/core/dist/examples/subagents-environment', `${name}.js`), join(installed.directory, `${name}.js`));
       }
     }
@@ -32,7 +32,11 @@ export default {backend:{},image:'unused',outputDir:${JSON.stringify(outputDir)}
     child.stdout.setEncoding('utf8'); child.stdout.on('data', text => { stdout += text; });
     child.stderr.setEncoding('utf8'); child.stderr.on('data', text => { stderr += text; });
     const exited = once(child, 'close');
-    assert.deepEqual(await once(child, 'message'), ['config-ready', undefined]);
+    const firstMessage = await Promise.race([
+      once(child, 'message'),
+      exited.then(([code, signal]) => { throw new Error(`${mode} exited before importing config (${code ?? signal}): ${stderr}`); }),
+    ]);
+    assert.deepEqual(firstMessage, ['config-ready', undefined]);
     assert.ok(child.kill(mode === 'notes' ? 'SIGINT' : 'SIGTERM'));
     const [code, signal] = await exited;
     assert.equal(signal, null, `${mode} must preserve its cancellation report`);
@@ -175,7 +179,9 @@ const runtime: Runtime = await createRuntime({ backend: createPiOpenSandboxBacke
 const bot = await runtime.spawn({ requestId: 'spawn', profile: 'reader' });
 await runtime.list({ parentId: null, status: ['idle', 'starting'] });
 await runtime.send(bot.id, 'Read a note', { mode: 'followUp', requestId: 'start' });
-await runtime.send(bot.id, 'Read this too', { requestId: 'steer', source: 'mail', steeringMode: 'all' });
+await runtime.send(bot.id, 'Read this too', { requestId: 'steer', source: 'mail', steeringMode: 'all', wakeIfIdle: false });
+// @ts-expect-error Runtime exposes its input policy through send.
+await runtime.steer(bot.id, 'obsolete', { requestId: 'old' });
 await runtime.interrupt(bot.id, { requestId: 'interrupt', timeoutMs: 1000 });
 const files = await runtime.files.snapshot(bot.id, { requestId: 'snapshot', paths: ['note.txt'] });
 await runtime.spawn({ requestId: 'fork', profile: 'reader', forkFrom: bot.id, workspace: { mode: 'frozen-copy', files: files.files } });

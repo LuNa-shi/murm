@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -128,6 +129,7 @@ test('real Pi batches steer before start and preserves Session and files across 
   assert.equal((await runtime.send(bot.id, 'CANCEL_QUEUED_PHASE', { mode: 'followUp', requestId: 'old-queued' })).disposition, 'queued');
   const interrupt = await runtime.interrupt(bot.id, { requestId: 'interrupt' });
   assert.equal(interrupt.status, 'interrupted');
+  assert.ok(interrupt.discardedInputHashes?.includes(createHash('sha256').update('CANCEL_QUEUED_PHASE').digest('hex')));
   await waitSettled(3, 'aborted');
   assert.equal(await sessionFiles(), firstSession);
   assert.equal((await runtime.send(bot.id, 'RESUME_AFTER_INTERRUPT', { requestId: 'resume', steeringMode: 'one-at-a-time' })).disposition, 'started');

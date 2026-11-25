@@ -15,15 +15,15 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "5bb35df9fd381758e5f565c5975d758f909f31d15911cbe44a8def5c48a9d093"
+      "sha256": "2696338f146798e6768abcbd570de05d49838d2c76cd485402608bf8326a6f02"
     },
     {
       "path": "src/core/pi-opensandbox-backend.ts",
-      "sha256": "8c74d70c1c2767eff972bbc39f5a2e5407f284e40a759caaab278cc858739e6e"
+      "sha256": "ee942c02aa931bf9bd38d93fa231fa43b47d357533e8f3aa14aae8ffb62f16ac"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "3f0ace1599ea99e0cba22ccd90196d5c830368a042b120fe6eabf52ed7f64665"
+      "sha256": "4ebb56f87e744766f55d2185972bbd59e99d636ab36dc828eec2cb1bc2a0c09c"
     },
     {
       "path": "examples/notes-environment/main.ts",
@@ -47,15 +47,15 @@
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
-      "sha256": "0d6661ab5bd8de270a95deb7df56f4aeafca3b1ab2b037ab572a1e89292dfb2f"
+      "sha256": "1e65d45d8c6e4acfa944ca39d7d9316d8d26b2fa1bd3406843cd5ea54fd7a522"
     },
     {
       "path": "examples/subagents-environment/main.ts",
-      "sha256": "4174102ff23004ac3f0567f210f37424a36ba408ba56fc9c4534a086670e69f3"
+      "sha256": "3ae92d7d6f146de08bcc918e06b2a99721b11805a3945a2b933b5c1a3ce84803"
     },
     {
       "path": "examples/subagents-environment/controller.ts",
-      "sha256": "8e3ed33adaa2cc06debe7edda36291a3539e4134d3d40834228d6250801818a3"
+      "sha256": "08d75dcbb1c91c88423237fc09dd177ff96f44e3ec8ba16d8f5cf9814db26db1"
     },
     {
       "path": "examples/subagents-environment/prompts.ts",
@@ -351,12 +351,12 @@
   "prompt_send_sites": [
     {
       "path": "examples/subagents-environment/controller.ts",
-      "line": 141,
-      "expression": "const receipt = await runtime.send(member.id!, JSON.stringify(payload), {"
+      "line": 158,
+      "expression": "const receipt = await runtime.send(member.id!, body, {"
     },
     {
       "path": "examples/subagents-environment/controller.ts",
-      "line": 213,
+      "line": 241,
       "expression": "receipt = await runtime.send(member.id!, body, { requestId, source: from, wakeIfIdle: true });"
     },
     {

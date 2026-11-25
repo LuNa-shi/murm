@@ -28,9 +28,12 @@ for(const name of ['bot-disk-probe','drop-peer-response','judge-peer-fixture','p
 // Notes and Subagents are editable adjacent-module examples; assemble their documented layout.
 await import('./main.mjs');
 await mkdir('subagents');
-for(const name of ['main','controller','prompts','stages']) await copyFile(join(root,'dist/examples/subagents-environment',name+'.js'),'subagents/'+name+'.js');
+for(const name of ['main','controller','collaboration-service','prompts','stages','communication-fixture-controller']) {
+ await copyFile(join(root,'dist/examples/subagents-environment',name+'.js'),'subagents/'+name+'.js');
+}
 await copyFile(join(root,'dist/src/environments/shared/run-report.js'),'subagents/run-report.js');
 await import('./subagents/main.js');
+await import('./subagents/stages.js');
 assert.ok(import.meta.resolve('@swarmenv/core').includes('/node_modules/@swarmenv/core/'));
 console.log(JSON.stringify({contained:true,ordinary:true,staged:true}));
 `);

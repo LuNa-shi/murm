@@ -153,6 +153,7 @@ export type InputReceipt =
 export interface InterruptReceipt {
   interruptId: string;
   status: 'interrupted' | 'unknown';
+  discardedInputHashes?: readonly string[];
 }
 
 export type BotInitialInputResult = InputReceipt | { status: 'rejected'; error: ErrorInfo } | null;

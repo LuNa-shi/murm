@@ -70,7 +70,7 @@ interface WorkerReply {
     success?: boolean;
     error?: string;
     code?: string;
-    data?: { disposition?: 'started' | 'queued' | 'handled' };
+    data?: { disposition?: 'started' | 'queued' | 'handled'; discardedInputHashes?: string[] };
   };
   status?: string;
 }
@@ -432,7 +432,7 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       }
       return submission.work;
     },
-    async interrupt(botId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Pick<InterruptReceipt, 'status'>> {
+    async interrupt(botId: string, { interruptId, executionEpoch }: { interruptId: string; executionEpoch: number }): Promise<Omit<InterruptReceipt, 'interruptId'>> {
       const bot = bots.get(botId);
       if (!bot || bot.stopping || bot.exited || bot.historyLost || closing) return { status: 'unknown' };
       const result = await bot.manager.agentRpc(botId, { type: 'core_interrupt', id: interruptId, executionEpoch },
@@ -440,7 +440,11 @@ export async function openPiOpenSandboxBackend(config: PiOpenSandboxBackendConfi
       consume(bot, result.records ?? []);
       const confirmed = !bot.historyLost && !bot.exited && !bot.stopping && result.response?.id === interruptId &&
         result.response.command === 'core_interrupt' && result.response.success === true;
-      return { status: confirmed ? 'interrupted' : 'unknown' };
+      if (!confirmed) return { status: 'unknown' };
+      const hashes = result.response?.data?.discardedInputHashes;
+      return { status: 'interrupted',
+        ...(Array.isArray(hashes) && hashes.length && hashes.every(hash => typeof hash === 'string' && /^[a-f0-9]{64}$/.test(hash))
+          ? { discardedInputHashes: hashes } : {}) };
     },
     async stopExecution(botId: string) {
       const bot = bots.get(botId);

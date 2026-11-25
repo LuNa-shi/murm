@@ -53,10 +53,11 @@ while [ "$#" -gt 0 ]; do
   shift 2
 done
 if ./pastel format hex 'not-a-color' >/dev/null 2>&1; then exit 10; fi`;
+  const user = `${process.getuid?.() ?? 0}:${process.getgid?.() ?? 0}`;
   const { stdout } = await docker(['run', '--rm', '--pull=never', '--network', 'none', '--read-only',
-    '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '64', '--memory', '512m',
+    '--user', user, '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--pids-limit', '64', '--memory', '512m',
     '--tmpfs', '/tmp:exec,size=32m', '--mount', `type=bind,source=${directory},target=/candidate,readonly`,
-    '--entrypoint', '/bin/sh', buildImage, '-c', script, 'check', ...probes.flat()]);
+    '--entrypoint', '/usr/bin/timeout', buildImage, '--kill-after=1s', '20s', '/bin/sh', '-c', script, 'check', ...probes.flat()]);
   if (stdout !== expected.join('')) throw new Error('Candidate output differs from the pinned Pastel reference');
   return { referenceCases: probes.length, invalidColorRejected: true };
 }
@@ -104,14 +105,18 @@ export async function runPastelExample(config: Parameters<typeof runSubagentsEnv
   const root = report.cleanup?.bots?.find(bot => bot.botId === report.result?.rootId);
   const files = root?.artifacts.find(path => path.endsWith('/artifacts/files'));
   let independentCheck;
-  if (files) {
+  if (files && !report.cleanupFailure) {
     try { independentCheck = await checkPastelExample(join(files, 'delivery')); }
     catch (error) { independentCheck = { error: error instanceof Error ? error.message : String(error) }; }
   }
   const seenByRoot = report.result?.rootId
     ? await modelRequestExists(join(config.outputDir, report.runtimeId, 'model-trace'), report.result.rootId, supplement)
     : false;
-  return { report, injected, seenByRoot, independentCheck, collaboration: 'Review model and Service traces for actual contribution adoption' };
+  return { report, injected, seenByRoot, independentCheck, assessment: {
+    task: !report.businessFailure && seenByRoot && independentCheck && !('error' in independentCheck) ? 'passed' : 'failed',
+    collaboration: { status: 'needs-trace-review', review: 'Check autonomous delegation, overlap and actual contribution adoption' },
+    cleanup: report.cleanup?.cleanup === 'complete' && !report.cleanupFailure && !report.reportSaveFailure ? 'passed' : 'failed',
+  } };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
@@ -127,8 +132,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
       const config = (await import(pathToFileURL(resolve(argument)).href)).default;
       const result = await runPastelExample(config, abort.signal);
       process.stdout.write(JSON.stringify(result) + '\n');
-      process.exitCode = result.report.businessFailure || result.report.cleanupFailure || result.report.reportSaveFailure ||
-        !result.seenByRoot || !result.independentCheck || 'error' in result.independentCheck ? 1 : 0;
+      process.exitCode = result.assessment.task === 'passed' && result.assessment.cleanup === 'passed' ? 2 : 1;
     } finally {
       process.off('SIGINT', stop);
       process.off('SIGTERM', stop);
