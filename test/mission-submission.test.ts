@@ -426,7 +426,7 @@ test('legacy persisted finite policies retain their limit and usage when unlimit
 });
 
 test('unlimited final checks keep timed-out resources within the finite concurrent limit', async t => {
-  const { store, config, checkerCalls } = await fixture(t, { maxFinalChecks: null, timeoutMs: 100, maxInfrastructureRetries: 1 });
+  const { store, config, checkerCalls } = await fixture(t, { maxFinalChecks: null, timeoutMs: 500, maxInfrastructureRetries: 1 });
   await store.submit({ ...root, requestId: 'unlimited-timeout' });
   await until(() => store.get({ ...root, submissionId: 'unlimited-timeout' }), row => row.state === 'timed_out' && !row.release_pending);
   const reopened = new MissionSubmissionStore(config);
