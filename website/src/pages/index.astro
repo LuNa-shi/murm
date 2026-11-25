@@ -1,0 +1,180 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import MurmLogo from '../components/MurmLogo.astro';
+import TraceViewer from '../components/TraceViewer.astro';
+import { withBase } from '../lib/url';
+---
+
+<BaseLayout
+  title="murm · Build your own agent systems."
+  description="A minimal, extensible multi-agent harness with composable coordination services."
+  activeSection="home"
+>
+  <main class="landing-shell">
+    <section class="hero">
+      <div class="hero-mark">
+        <MurmLogo variant="hero" />
+      </div>
+      <p class="hero-brand">murm</p>
+      <h1 class="hero-title">Build your own agent systems.</h1>
+      <p class="hero-subtitle">
+        A minimal, extensible multi-agent harness with composable coordination services.
+        把沙箱隔离、会话管理与运行留痕交给 Runtime，把分工协作完全留给你编写的 Program。
+      </p>
+
+      <div class="hero-cta">
+        <a class="btn btn-primary" href={withBase('/docs/quickstart/')}>快速开始</a>
+        <a class="btn btn-secondary" href={withBase('/docs/concepts/')}>阅读核心概念</a>
+        <a class="btn btn-secondary" href={withBase('/trace-viewer/')}>打开 Trace Viewer</a>
+      </div>
+
+      <div class="pillars">
+        <div class="pillar">
+          <div class="pillar-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <rect x="6" y="6" width="12" height="12" rx="2" />
+              <path d="M9 1v3M15 1v3M9 20v3M15 20v3M20 9h3M20 15h3M1 9h3M1 15h3" />
+            </svg>
+          </div>
+          <h3>Run agents</h3>
+          <p>Independent execution · 隔离沙箱与持久化会话</p>
+        </div>
+
+        <div class="pillar">
+          <div class="pillar-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <circle cx="12" cy="5" r="2.5" />
+              <circle cx="6" cy="18" r="2.5" />
+              <circle cx="18" cy="18" r="2.5" />
+              <path d="M12 7.5V12m0 0-4.5 4M12 12l4.5 4" />
+            </svg>
+          </div>
+          <h3>Compose services</h3>
+          <p>Flexible coordination · 可组合的共享状态与可信鉴权</p>
+        </div>
+
+        <div class="pillar">
+          <div class="pillar-icon">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <rect x="3" y="4" width="18" height="16" rx="2.5" />
+              <path d="m7 14 3-3 3 2.5 4-5" />
+            </svg>
+          </div>
+          <h3>Observe runs</h3>
+          <p>Transparent execution · 全量轨迹记录与可视化回放</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section">
+      <div class="section-header">
+        <div>
+          <p class="section-eyebrow">Six Orthogonal Concepts</p>
+          <h2 class="section-title">六个清晰正交的核心概念</h2>
+          <p class="section-desc">
+            编写侧用 Program 组合 Agent 与 Service；运行侧由 Runtime 分配 Sandbox，产出可回放的 Run。
+          </p>
+        </div>
+        <a class="btn btn-secondary" href={withBase('/docs/concepts/')}>逐个深入了解 →</a>
+      </div>
+
+      <div class="concept-strip">
+        <div class="concept-pill">
+          <code>Agent</code>
+          <p>独立的执行个体，拥有持久会话、工作目录与 4 个基础本地工具。</p>
+        </div>
+        <div class="concept-pill">
+          <code>Service</code>
+          <p>可组合的协作能力（任务池、消息、成果库、Board），由 Bridge 校验身份与参数。</p>
+        </div>
+        <div class="concept-pill">
+          <code>Program</code>
+          <p>你编写的多智能体运行逻辑：决定创建谁、怎么响应事件、何时交付结束。</p>
+        </div>
+        <div class="concept-pill">
+          <code>Runtime</code>
+          <p>管理多个 Agent 生命周期、输入投递、文件控制与资源回收的运行引擎。</p>
+        </div>
+        <div class="concept-pill">
+          <code>Sandbox</code>
+          <p>隔离每个 Agent 的文件系统、网络白名单与磁盘配额，保障安全执行与稳定导出。</p>
+        </div>
+        <div class="concept-pill">
+          <code>Run</code>
+          <p>一次具体的系统执行，自动落盘会话、模型轨迹、Service 调用与最终报告。</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="landing-section">
+      <div class="section-header">
+        <div>
+          <p class="section-eyebrow">Developer Tools · Live Preview</p>
+          <h2 class="section-title">看清每个 Agent 每一刻在做什么</h2>
+          <p class="section-desc">
+            下方交互式 Trace Viewer 内置了真实 44 分钟 ProgramBench fd 实测轨迹（3 个 Agent 并行协作，通过率 84.37%），也支持直接加载你本地的 <code>outputDir/&lt;runId&gt;/</code> 目录。
+          </p>
+        </div>
+        <a class="btn btn-secondary" href={withBase('/trace-viewer/')}>全屏打开 Viewer →</a>
+      </div>
+
+      <TraceViewer compact={true} defaultTraceId="subagents-fd" />
+    </section>
+
+    <section class="landing-section">
+      <div class="section-header">
+        <div>
+          <p class="section-eyebrow">One Runtime, Five Programs</p>
+          <h2 class="section-title">同一套底座，跑出五种截然不同的多智能体系统</h2>
+          <p class="section-desc">
+            修改分工与协作规则只需替换 Program 与 Service，底层 Runtime 与沙箱零改动。
+          </p>
+        </div>
+        <a class="btn btn-secondary" href={withBase('/docs/programs/')}>横向机制对比 →</a>
+      </div>
+
+      <div class="card-grid-5">
+        <a class="card" href={withBase('/docs/programs/subagents/')}>
+          <span class="card-kicker">Tree · Mailbox</span>
+          <h3>Subagents</h3>
+          <p>Root 递归委派具名子 Agent，支持上下文继承、不唤醒邮箱通知、等待与中断恢复。</p>
+          <div class="card-meta"><span>collaboration Service</span><span>→</span></div>
+        </a>
+        <a class="card" href={withBase('/docs/programs/flat/')}>
+          <span class="card-kicker">Pool · Versioned Main</span>
+          <h3>Flat</h3>
+          <p>只读发现并排他认领任务，宿主按需解锁写权限、以租约保护模型访问并检验合入主干。</p>
+          <div class="card-meta"><span>task / workspace</span><span>→</span></div>
+        </a>
+        <a class="card" href={withBase('/docs/programs/agensh/')}>
+          <span class="card-kicker">Peers · Git PR</span>
+          <h3>Agensh</h3>
+          <p>同级成员通过可重叠 CLAIM、频道消息和串行 Router 协商分工，经独立分支提 PR。</p>
+          <div class="card-meta"><span>board / chat / git</span><span>→</span></div>
+        </a>
+        <a class="card" href={withBase('/docs/programs/scalemas/')}>
+          <span class="card-kicker">Store · Citations</span>
+          <h3>ScaleMAS</h3>
+          <p>不设任务池，成员围绕不可变 SQLite 成果库自主发布、检索原文并显式引用。</p>
+          <div class="card-meta"><span>substrate Service</span><span>→</span></div>
+        </a>
+        <a class="card" href={withBase('/docs/programs/lead-helper/')}>
+          <span class="card-kicker">Direction · Feedback</span>
+          <h3>Lead-helper</h3>
+          <p>Lead 发布公共方向，Helpers 事务排他认领并在 Git 分支交付与反馈，形成迭代闭环。</p>
+          <div class="card-meta"><span>board / gitea</span><span>→</span></div>
+        </a>
+      </div>
+    </section>
+
+    <footer class="landing-footer">
+      <span>murm · 基于 SwarmEnv 源码基线 <code>ac72c76</code> 构建（当前包入口 <code>@swarmenv/core</code> 0.2.0）</span>
+      <div style="display:flex;gap:18px;">
+        <a href={withBase('/docs/quickstart/')}>Quickstart</a>
+        <a href={withBase('/docs/build-your-program/')}>Build a Program</a>
+        <a href={withBase('/docs/reference/deploy/')}>Deploy & Local Viewer</a>
+        <a href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
+      </div>
+    </footer>
+  </main>
+</BaseLayout>

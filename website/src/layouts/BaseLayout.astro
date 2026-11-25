@@ -1,0 +1,78 @@
+---
+import '../styles/global.css';
+import '../styles/trace-viewer.css';
+import TopNav from '../components/TopNav.astro';
+import SearchModal from '../components/SearchModal.astro';
+import { withBase } from '../lib/url';
+
+interface Props {
+  title: string;
+  description?: string;
+  activeSection?: 'home' | 'docs' | 'programs' | 'trace-viewer';
+  showMobileMenu?: boolean;
+}
+
+const {
+  title,
+  description = 'A minimal, extensible multi-agent harness with composable coordination services.',
+  activeSection = 'home',
+  showMobileMenu = false,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href={withBase('/favicon.svg')} />
+    <script is:inline>
+      (function () {
+        const stored = localStorage.getItem('murm:theme');
+        const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+        const theme = stored || (prefersDark ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+      })();
+    </script>
+  </head>
+  <body>
+    <TopNav activeSection={activeSection} showMobileMenu={showMobileMenu} />
+    <slot />
+    <SearchModal />
+
+    <script is:inline>
+      (function () {
+        const themeBtn = document.getElementById('theme-toggle-btn');
+        themeBtn?.addEventListener('click', () => {
+          const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+          document.documentElement.dataset.theme = next;
+          localStorage.setItem('murm:theme', next);
+        });
+
+        const menuBtn = document.getElementById('mobile-menu-toggle');
+        const sidebar = document.getElementById('docs-sidebar');
+        menuBtn?.addEventListener('click', () => sidebar?.classList.toggle('open'));
+
+        document.querySelectorAll('.prose pre').forEach((pre) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'copy-btn';
+          btn.textContent = 'Copy';
+          btn.addEventListener('click', async () => {
+            const code = pre.querySelector('code')?.textContent || pre.textContent || '';
+            try {
+              await navigator.clipboard.writeText(code);
+              btn.textContent = 'Copied';
+              setTimeout(() => (btn.textContent = 'Copy'), 1400);
+            } catch {
+              btn.textContent = 'Error';
+            }
+          });
+          pre.appendChild(btn);
+        });
+      })();
+    </script>
+  </body>
+</html>

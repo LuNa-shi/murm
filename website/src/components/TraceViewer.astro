@@ -1,0 +1,507 @@
+---
+import { BUILTIN_TRACES } from '../lib/trace-data';
+
+interface Props {
+  compact?: boolean;
+  defaultTraceId?: string;
+}
+
+const { compact = false, defaultTraceId = 'subagents-fd' } = Astro.props;
+const viewerId = compact ? 'tv-home' : 'tv-full';
+---
+
+<section class="tv-shell" data-trace-viewer={viewerId} data-compact={compact ? '1' : '0'}>
+  <div class="tv-header">
+    <div class="tv-header-left">
+      <select class="tv-run-select" data-tv-select aria-label="Select run trace">
+        {BUILTIN_TRACES.map((trace) => (
+          <option value={trace.id} selected={trace.id === defaultTraceId}>
+            {trace.title}
+          </option>
+        ))}
+      </select>
+
+      <div class="tv-tabs" role="tablist" aria-label="Timeline view mode">
+        <button type="button" class="tv-tab active" data-tv-mode="duration" role="tab" aria-selected="true">
+          Duration
+        </button>
+        <button type="button" class="tv-tab" data-tv-mode="turns" role="tab" aria-selected="false">
+          Turns
+        </button>
+        <button type="button" class="tv-tab" data-tv-mode="calls" role="tab" aria-selected="false">
+          Calls
+        </button>
+      </div>
+    </div>
+
+    <div class="tv-header-right">
+      <input
+        type="search"
+        class="tv-search"
+        data-tv-search
+        placeholder="Search turns, tools, services..."
+        aria-label="Search trace events"
+      />
+      <label class="tv-upload-btn" title="加载本地 outputDir/<runtimeId>/ 目录或 JSON 轨迹">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+          <polyline points="17 8 12 3 7 8" />
+          <line x1="12" y1="3" x2="12" y2="15" />
+        </svg>
+        <span>Load Run Dir</span>
+        <input type="file" webkitdirectory directory multiple hidden data-tv-upload />
+      </label>
+    </div>
+  </div>
+
+  <div class="tv-meta-bar">
+    <span class="tv-subtitle" data-tv-subtitle></span>
+    <span class="tv-status-pill" data-tv-status></span>
+  </div>
+
+  <div class="tv-metrics" data-tv-metrics></div>
+
+  <div class="tv-timeline">
+    <div class="tv-legend">
+      <div class="tv-legend-items">
+        <span><i class="tv-dot" style="background:#60a5fa"></i>Input</span>
+        <span><i class="tv-dot" style="background:#34d399"></i>Context</span>
+        <span><i class="tv-dot" style="background:#a78bfa"></i>Model</span>
+        <span><i class="tv-dot" style="background:#f59e0b"></i>Tools</span>
+        <span><i class="tv-dot" style="background:#2dd4bf"></i>Service</span>
+      </div>
+      <span style="font-family:var(--font-mono);" data-tv-timeline-hint>点击任意泳道块跳转到对应 Turn</span>
+    </div>
+    <div data-tv-swimlanes></div>
+  </div>
+
+  <div class="tv-filters" data-tv-filters></div>
+
+  <div class:list={['tv-stream', { 'full-height': !compact }]} data-tv-stream></div>
+</section>
+
+<script define:vars={{ BUILTIN_TRACES, viewerId, defaultTraceId }}>
+  (function initTraceViewer() {
+    const root = document.querySelector(`[data-trace-viewer="${viewerId}"]`);
+    if (!root) return;
+
+    const traces = structuredClone(BUILTIN_TRACES);
+    let currentId = defaultTraceId;
+    let viewMode = 'duration';
+    let selectedAgent = 'ALL';
+    let selectedKind = 'ALL';
+    let searchQuery = '';
+    let highlightedTurnId = null;
+
+    const selectEl = root.querySelector('[data-tv-select]');
+    const subtitleEl = root.querySelector('[data-tv-subtitle]');
+    const statusEl = root.querySelector('[data-tv-status]');
+    const metricsEl = root.querySelector('[data-tv-metrics]');
+    const swimlanesEl = root.querySelector('[data-tv-swimlanes]');
+    const filtersEl = root.querySelector('[data-tv-filters]');
+    const streamEl = root.querySelector('[data-tv-stream]');
+    const searchEl = root.querySelector('[data-tv-search]');
+    const uploadEl = root.querySelector('[data-tv-upload]');
+    const tabButtons = root.querySelectorAll('[data-tv-mode]');
+
+    function esc(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;');
+    }
+
+    function fmtSec(sec) {
+      const s = Math.max(0, Math.round(sec));
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+    }
+
+    function currentTrace() {
+      return traces.find((t) => t.id === currentId) || traces[0];
+    }
+
+    function renderSwimlanes(trace) {
+      const total = Math.max(trace.durationSec, 1);
+      const lanes = [
+        { key: 'input', label: 'Input', match: ['input', 'context'] },
+        { key: 'model', label: 'Model', match: ['model'] },
+        { key: 'tool', label: 'Tools', match: ['tool', 'service'] },
+      ];
+
+      swimlanesEl.innerHTML = trace.agents
+        .map((agent) => {
+          const agentSpans = trace.spans.filter((s) => s.agent === agent.id);
+          const isSelected = selectedAgent === agent.id;
+          const metricNote =
+            viewMode === 'turns'
+              ? `${agent.turns} turns`
+              : viewMode === 'calls'
+                ? `${agent.calls} calls`
+                : `${agent.role}`;
+
+          const tracksHtml = lanes
+            .map((lane) => {
+              const items = agentSpans.filter((s) => lane.match.includes(s.lane));
+              const bars = items
+                .map((span, idx) => {
+                  let leftPct;
+                  let widthPct;
+                  if (viewMode === 'duration') {
+                    leftPct = (span.startSec / total) * 100;
+                    widthPct = Math.max(((span.endSec - span.startSec) / total) * 100, 1.4);
+                  } else {
+                    const count = Math.max(items.length, 1);
+                    leftPct = (idx / count) * 96 + 1;
+                    widthPct = Math.max(90 / count - 1.5, 4);
+                  }
+                  const selClass = highlightedTurnId === span.turnId ? 'selected' : '';
+                  return `<button
+                    type="button"
+                    class="tv-span lane-${span.lane} ${selClass}"
+                    data-jump-turn="${esc(span.turnId)}"
+                    style="left:${leftPct.toFixed(2)}%;width:${Math.min(widthPct, 100 - leftPct).toFixed(2)}%;"
+                    title="${esc(span.agent)} · ${esc(span.label)} (${fmtSec(span.startSec)}–${fmtSec(span.endSec)})"
+                  ></button>`;
+                })
+                .join('');
+              return `
+                <div class="tv-track-row">
+                  <span class="tv-track-label">${lane.label}</span>
+                  <div class="tv-track-bar">${bars}</div>
+                </div>`;
+            })
+            .join('');
+
+          return `
+            <div class="tv-swimlane">
+              <div class="tv-agent-meta">
+                <button type="button" class="tv-agent-name" data-filter-agent="${esc(agent.id)}" style="${isSelected ? 'color:#a5b4fc;' : ''}">
+                  <span class="tv-dot" style="background:${agent.color};margin:0;"></span>
+                  <span>${esc(agent.id)}</span>
+                </button>
+                <span class="tv-agent-sub">${esc(metricNote)}</span>
+              </div>
+              <div class="tv-tracks">${tracksHtml}</div>
+            </div>`;
+        })
+        .join('');
+    }
+
+    function renderFilters(trace) {
+      const agentBtns = [
+        `<button type="button" class="tv-filter-pill ${selectedAgent === 'ALL' ? 'active' : ''}" data-filter-agent="ALL">All Agents</button>`,
+        ...trace.agents.map(
+          (a) =>
+            `<button type="button" class="tv-filter-pill ${selectedAgent === a.id ? 'active' : ''}" data-filter-agent="${esc(a.id)}">${esc(a.id)}</button>`
+        ),
+      ];
+      const kinds = ['ALL', 'USER', 'CONTEXT', 'ASSISTANT', 'TOOL', 'SERVICE', 'SYSTEM'];
+      const kindBtns = kinds.map(
+        (k) =>
+          `<button type="button" class="tv-filter-pill ${selectedKind === k ? 'active' : ''}" data-filter-kind="${k}">${k === 'ALL' ? 'All Events' : k}</button>`
+      );
+      filtersEl.innerHTML = `${agentBtns.join('')}<span style="width:1px;height:16px;background:#263042;margin:0 4px;"></span>${kindBtns.join('')}`;
+    }
+
+    function renderStream(trace) {
+      const q = searchQuery.trim().toLowerCase();
+      const filteredTurns = trace.turns
+        .filter((turn) => selectedAgent === 'ALL' || turn.agent === selectedAgent)
+        .map((turn) => {
+          const events = turn.events.filter((ev) => {
+            if (selectedKind !== 'ALL' && ev.kind !== selectedKind) return false;
+            if (!q) return true;
+            const hay = `${turn.agent} ${ev.kind} ${ev.summary} ${JSON.stringify(ev.payload || '')}`.toLowerCase();
+            return hay.includes(q);
+          });
+          return { ...turn, events };
+        })
+        .filter((turn) => turn.events.length > 0);
+
+      if (!filteredTurns.length) {
+        streamEl.innerHTML = `<div class="tv-empty">当前筛选条件下没有匹配的事件记录。</div>`;
+        return;
+      }
+
+      streamEl.innerHTML = filteredTurns
+        .map((turn) => {
+          const agentMeta = trace.agents.find((a) => a.id === turn.agent);
+          const color = agentMeta ? agentMeta.color : '#818cf8';
+          const isHl = highlightedTurnId === turn.id;
+          const eventsHtml = turn.events
+            .map((ev) => {
+              const handoff = ev.handoffTo
+                ? `<span class="tv-handoff-tag">→ ${esc(ev.handoffTo)}</span>`
+                : ev.handoffFrom
+                  ? `<span class="tv-handoff-tag">← ${esc(ev.handoffFrom)}</span>`
+                  : '';
+              const metaRight = [ev.tokens, ev.durationMs ? `${ev.durationMs}ms` : null, ev.timestamp]
+                .filter(Boolean)
+                .join(' · ');
+              const payloadHtml = ev.payload
+                ? `<pre class="tv-payload">${esc(typeof ev.payload === 'string' ? ev.payload : JSON.stringify(ev.payload, null, 2))}</pre>`
+                : '';
+              return `
+                <div class="tv-event" data-tv-event>
+                  <button type="button" class="tv-event-row" ${ev.payload ? 'data-toggle-payload' : ''}>
+                    <span class="tv-badge badge-${ev.kind}">${ev.kind}</span>
+                    <span class="tv-summary">${esc(ev.summary)}${handoff}</span>
+                    <span class="tv-time">${esc(metaRight)}</span>
+                  </button>
+                  ${payloadHtml}
+                </div>`;
+            })
+            .join('');
+
+          return `
+            <div class="tv-turn ${isHl ? 'highlight' : ''}" id="${viewerId}-${esc(turn.id)}">
+              <div class="tv-turn-head">
+                <span class="tv-turn-agent">
+                  <span class="tv-dot" style="background:${color};margin:0;"></span>
+                  <span>Turn ${turn.turnNumber} · ${esc(turn.agent)}</span>
+                </span>
+                <span>${fmtSec(turn.startSec)} – ${fmtSec(turn.endSec)} · ${esc(turn.outcome)}</span>
+              </div>
+              <div>${eventsHtml}</div>
+            </div>`;
+        })
+        .join('');
+    }
+
+    function renderAll() {
+      const trace = currentTrace();
+      subtitleEl.textContent = trace.subtitle;
+      statusEl.textContent = trace.status;
+      metricsEl.innerHTML = trace.metrics
+        .map(
+          (m) =>
+            `<div class="tv-metric"><span class="tv-metric-label">${esc(m.label)}</span><span class="tv-metric-val">${esc(m.value)}</span></div>`
+        )
+        .join('');
+      renderSwimlanes(trace);
+      renderFilters(trace);
+      renderStream(trace);
+    }
+
+    // Parse real SwarmEnv / murm run directory files in-browser
+    function parseSwarmRunBundle(bundle) {
+      const evidence = bundle.evidence || [];
+      const serviceCalls = bundle.serviceCalls || [];
+      const runtime = bundle.runtime || {};
+      const runId = runtime.runtimeId || bundle.environmentReport?.runtimeId || 'local-run';
+
+      const timestamps = [
+        ...evidence.map((e) => Date.parse(e.at)).filter(Number.isFinite),
+        ...serviceCalls.map((s) => Date.parse(s.startedAt)).filter(Number.isFinite),
+      ];
+      const t0 = timestamps.length ? Math.min(...timestamps) : Date.now();
+      const tMax = timestamps.length ? Math.max(...timestamps) : t0 + 10_000;
+      const durationSec = Math.max(Math.ceil((tMax - t0) / 1000), 1);
+
+      const palette = ['#818CF8', '#34D399', '#F59E0B', '#2DD4BF', '#F472B6', '#60A5FA'];
+      const botIds = [...new Set([
+        ...evidence.map((e) => e.botId).filter(Boolean),
+        ...serviceCalls.map((s) => s.caller?.botId).filter(Boolean),
+        ...Object.keys(bundle.sessions || {}),
+      ])];
+      if (!botIds.length) botIds.push('runtime');
+
+      const agents = botIds.map((id, i) => ({
+        id,
+        role: runtime.bots?.find((b) => b.botId === id)?.profile || 'agent',
+        color: palette[i % palette.length],
+        turns: 0,
+        calls: 0,
+      }));
+
+      const spans = [];
+      const eventsByBot = new Map(botIds.map((id) => [id, []]));
+
+      for (const row of evidence) {
+        const botId = row.botId || botIds[0];
+        const sec = Number.isFinite(Date.parse(row.at)) ? (Date.parse(row.at) - t0) / 1000 : 0;
+        const list = eventsByBot.get(botId) || [];
+        if (row.type === 'input') {
+          spans.push({ id: `ev-${row.seq}`, agent: botId, lane: 'input', startSec: sec, endSec: sec + Math.max(durationSec * 0.02, 1), turnId: `turn-${botId}-1`, label: `input (${row.state})` });
+          list.push({ id: `ev-${row.seq}`, kind: 'USER', summary: `Input ${row.requestId || row.inputId || ''} · state=${row.state} (${row.mode || 'steer'})`, timestamp: fmtSec(sec), payload: row });
+        } else if (row.type === 'event' && row.event) {
+          const ev = row.event;
+          const lane = ev.type === 'output' || ev.type === 'settled' ? 'model' : 'context';
+          spans.push({ id: `ev-${row.seq}`, agent: botId, lane, startSec: sec, endSec: sec + Math.max(durationSec * 0.04, 1), turnId: `turn-${botId}-1`, label: ev.type });
+          list.push({
+            id: `ev-${row.seq}`,
+            kind: ev.type === 'output' ? 'ASSISTANT' : 'SYSTEM',
+            summary: ev.type === 'output' ? (ev.text || '').slice(0, 180) : `event.${ev.type}${ev.outcome ? ` (${ev.outcome})` : ''}`,
+            timestamp: fmtSec(sec),
+            payload: ev,
+          });
+        }
+        eventsByBot.set(botId, list);
+      }
+
+      for (const call of serviceCalls) {
+        if (call.phase !== 'settled') continue;
+        const botId = call.caller?.botId || botIds[0];
+        const startSec = Number.isFinite(Date.parse(call.startedAt)) ? (Date.parse(call.startedAt) - t0) / 1000 : 0;
+        const endSec = Number.isFinite(Date.parse(call.endedAt)) ? (Date.parse(call.endedAt) - t0) / 1000 : startSec + 1;
+        spans.push({ id: `svc-${call.seq}`, agent: botId, lane: 'service', startSec, endSec: Math.max(endSec, startSec + 0.5), turnId: `turn-${botId}-1`, label: `${call.service}.${call.operation}` });
+        const list = eventsByBot.get(botId) || [];
+        list.push({
+          id: `svc-${call.seq}`,
+          kind: 'SERVICE',
+          summary: `${call.service}.${call.operation} ${JSON.stringify(call.input || {}).slice(0, 140)}`,
+          timestamp: fmtSec(startSec),
+          durationMs: Math.max(1, Math.round((endSec - startSec) * 1000)),
+          payload: call,
+        });
+        eventsByBot.set(botId, list);
+      }
+
+      const turns = [];
+      for (const agent of agents) {
+        const evs = eventsByBot.get(agent.id) || [];
+        agent.turns = evs.length ? 1 : 0;
+        agent.calls = evs.length;
+        if (evs.length) {
+          turns.push({
+            id: `turn-${agent.id}-1`,
+            turnNumber: 1,
+            agent: agent.id,
+            role: agent.role,
+            startSec: 0,
+            endSec: durationSec,
+            outcome: 'completed',
+            events: evs,
+          });
+        }
+      }
+
+      return {
+        id: `local-${runId}`,
+        title: `Local Run · ${String(runId).slice(0, 12)}`,
+        program: 'local',
+        subtitle: `Loaded directly from local SwarmEnv / murm output directory (${evidence.length} evidence events, ${serviceCalls.length} service trace entries)`,
+        durationSec,
+        status: `CLEANUP: ${runtime.cleanup || bundle.environmentReport?.cleanup?.cleanup || 'RECORDED'}`,
+        metrics: [
+          { label: 'Run ID', value: String(runId).slice(0, 16) },
+          { label: 'Duration', value: fmtSec(durationSec) },
+          { label: 'Agents', value: String(agents.length) },
+          { label: 'Evidence', value: String(evidence.length) },
+          { label: 'Service Calls', value: String(serviceCalls.filter((s) => s.phase === 'settled').length) },
+        ],
+        agents,
+        spans,
+        turns,
+      };
+    }
+
+    function addAndSelectTrace(trace) {
+      const idx = traces.findIndex((t) => t.id === trace.id);
+      if (idx >= 0) traces[idx] = trace;
+      else traces.unshift(trace);
+      const existingOpt = selectEl.querySelector(`option[value="${CSS.escape(trace.id)}"]`);
+      if (!existingOpt) {
+        const opt = document.createElement('option');
+        opt.value = trace.id;
+        opt.textContent = trace.title;
+        selectEl.prepend(opt);
+      }
+      currentId = trace.id;
+      selectEl.value = trace.id;
+      selectedAgent = 'ALL';
+      selectedKind = 'ALL';
+      highlightedTurnId = null;
+      renderAll();
+    }
+
+    selectEl?.addEventListener('change', (e) => {
+      currentId = e.target.value;
+      selectedAgent = 'ALL';
+      selectedKind = 'ALL';
+      highlightedTurnId = null;
+      renderAll();
+    });
+
+    tabButtons.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        viewMode = btn.getAttribute('data-tv-mode') || 'duration';
+        tabButtons.forEach((b) => {
+          const active = b === btn;
+          b.classList.toggle('active', active);
+          b.setAttribute('aria-selected', active ? 'true' : 'false');
+        });
+        renderSwimlanes(currentTrace());
+      });
+    });
+
+    searchEl?.addEventListener('input', (e) => {
+      searchQuery = e.target.value || '';
+      renderStream(currentTrace());
+    });
+
+    root.addEventListener('click', (e) => {
+      const jump = e.target.closest('[data-jump-turn]');
+      if (jump) {
+        highlightedTurnId = jump.getAttribute('data-jump-turn');
+        selectedAgent = 'ALL';
+        renderAll();
+        const target = document.getElementById(`${viewerId}-${highlightedTurnId}`);
+        target?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        return;
+      }
+      const agentBtn = e.target.closest('[data-filter-agent]');
+      if (agentBtn) {
+        const val = agentBtn.getAttribute('data-filter-agent');
+        selectedAgent = selectedAgent === val && val !== 'ALL' ? 'ALL' : val;
+        renderAll();
+        return;
+      }
+      const kindBtn = e.target.closest('[data-filter-kind]');
+      if (kindBtn) {
+        selectedKind = kindBtn.getAttribute('data-filter-kind') || 'ALL';
+        renderAll();
+        return;
+      }
+      const toggle = e.target.closest('[data-toggle-payload]');
+      if (toggle) {
+        toggle.closest('[data-tv-event]')?.classList.toggle('expanded');
+      }
+    });
+
+    uploadEl?.addEventListener('change', async (e) => {
+      const files = [...(e.target.files || [])];
+      if (!files.length) return;
+      const bundle = { evidence: [], serviceCalls: [], sessions: {} };
+      for (const file of files) {
+        const rel = (file.webkitRelativePath || file.name).replaceAll('\\', '/');
+        const text = await file.text();
+        if (rel.endsWith('runtime.json')) {
+          try { bundle.runtime = JSON.parse(text); } catch {}
+        } else if (rel.endsWith('environment-report.json')) {
+          try { bundle.environmentReport = JSON.parse(text); } catch {}
+        } else if (rel.endsWith('evidence.jsonl')) {
+          bundle.evidence = text.split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+        } else if (rel.endsWith('service-calls.jsonl')) {
+          bundle.serviceCalls = text.split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+        }
+      }
+      addAndSelectTrace(parseSwarmRunBundle(bundle));
+    });
+
+    // Auto-load local run when started via `npm run view -- /path/to/run`
+    if (new URLSearchParams(location.search).get('local') === '1') {
+      fetch('/api/local-run.json')
+        .then((r) => (r.ok ? r.json() : null))
+        .then((bundle) => {
+          if (bundle) addAndSelectTrace(parseSwarmRunBundle(bundle));
+        })
+        .catch(() => {});
+    }
+
+    renderAll();
+  })();
+</script>
