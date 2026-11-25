@@ -31,7 +31,6 @@
   --nav-height: 56px;
 
   --font-display: 'Space Grotesk Variable', 'Space Grotesk', system-ui, -apple-system, sans-serif;
-  --font-serif: 'Newsreader', Georgia, 'Iowan Old Style', serif;
   --font-sans: 'Inter Variable', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-pixel: 'Departure Mono', 'JetBrains Mono Variable', ui-monospace, monospace;
@@ -548,12 +547,12 @@ html.reveal-ready [data-reveal-line].is-visible {
 .chapter::before { left: -4px; }
 .chapter::after { right: -4px; }
 
-/* ===== Beat 1: Airy Borderless 3-Slogan Row ===== */
+/* ===== Hero 3-Slogan Row (Unified Duotone Icons + Space Grotesk) ===== */
 .slogan-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 24px 36px;
-  padding-top: 38px;
+  padding-top: 34px;
   margin-top: 4px;
   border-top: 1px solid var(--border);
   text-align: center;
@@ -565,19 +564,30 @@ html.reveal-ready [data-reveal-line].is-visible {
   align-items: center;
 }
 
-.px-icon {
+.arch-icon {
   display: block;
-  color: color-mix(in srgb, var(--accent) 64%, var(--ink-secondary));
-  margin-bottom: 12px;
+  margin-bottom: 10px;
+  transition: transform 0.2s ease;
+}
+
+.slogan-item:hover .arch-icon {
+  transform: translateY(-2px);
+}
+
+.slogan-kicker {
+  font-family: var(--font-pixel);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-muted);
+  margin-bottom: 5px;
 }
 
 .slogan-item h3 {
-  margin: 0 0 5px;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 22px;
-  letter-spacing: -0.01em;
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17.5px;
+  letter-spacing: -0.02em;
   line-height: 1.25;
   color: var(--ink);
 }
@@ -585,83 +595,59 @@ html.reveal-ready [data-reveal-line].is-visible {
 .slogan-item p {
   margin: 0;
   font-size: 13.8px;
-  line-height: 1.55;
+  line-height: 1.5;
   color: var(--ink-secondary);
 }
 
-/* ===== Beat 2 & Beat 5: Airy Editorial Paper Chapters ===== */
-.editorial-section {
+/* ===== Unified Landing Chapters (01, 02, 03, 04) ===== */
+.landing-section {
   min-height: 62vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
 }
 
-.editorial-head-center {
-  text-align: center;
-  max-width: 600px;
-  margin: 0 auto 58px;
-}
-
-.editorial-heading {
-  margin: 0 0 12px;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  font-size: clamp(28px, 3.6vw, 38px);
-  letter-spacing: -0.015em;
-  line-height: 1.18;
-  color: var(--ink);
-}
-
-.editorial-lead {
-  margin: 0;
-  font-size: 14.8px;
-  line-height: 1.66;
-  color: var(--ink-secondary);
-}
-
-/* Punchy 2x2 Open Editorial Grid (zero filler, zero boxes) */
+/* 01 · WHY MURM: Left-Aligned 2x2 Architectural Open Grid */
 .pillars-four {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 54px 68px;
-  max-width: 820px;
-  margin: 0 auto;
-  text-align: center;
+  gap: 40px 56px;
 }
 
 .truth-item {
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-start;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+.arch-icon-md {
+  display: block;
+  margin-bottom: 14px;
+  transition: transform 0.2s ease;
+}
+
+.truth-item:hover .arch-icon-md {
+  transform: translateY(-2px);
 }
 
 .truth-item h3 {
-  margin: 0 0 9px;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 23px;
-  letter-spacing: -0.01em;
+  margin: 0 0 7px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 19px;
+  letter-spacing: -0.025em;
   line-height: 1.25;
   color: var(--ink);
 }
 
 .truth-item p {
   margin: 0;
-  max-width: 320px;
+  max-width: 420px;
   font-size: 14.2px;
-  line-height: 1.64;
+  line-height: 1.62;
   color: var(--ink-secondary);
-}
-
-/* ===== Beat 3 & Beat 4: Structured Landing Chapters ===== */
-.landing-section {
-  min-height: 66vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
 }
 
 .section-header {
@@ -669,7 +655,7 @@ html.reveal-ready [data-reveal-line].is-visible {
   align-items: flex-end;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 30px;
+  margin-bottom: 32px;
   flex-wrap: wrap;
 }
 
@@ -684,10 +670,10 @@ html.reveal-ready [data-reveal-line].is-visible {
 .section-title {
   margin: 0;
   font-family: var(--font-display);
-  font-size: 27px;
+  font-size: clamp(25px, 2.8vw, 30px);
   font-weight: 700;
   letter-spacing: -0.03em;
-  line-height: 1.24;
+  line-height: 1.22;
 }
 
 .section-desc {
@@ -713,16 +699,16 @@ html.reveal-ready [data-reveal-line].is-visible {
   border-bottom-color: var(--accent);
 }
 
-/* ===== Beat 3: Quiet Single-Layer 2-Plane Core Model (Low Density, Hairline) ===== */
+/* ===== 02 · CORE MODEL: Single-Layer Drafting Panel (Unified Ink Grammar) ===== */
 .cm-shell {
   display: flex;
   flex-direction: column;
   gap: 0;
   padding: 24px 26px 20px;
-  border: 1px solid var(--border);
+  border: 1.5px solid var(--ink);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--bg-elevated) 86%, transparent);
-  backdrop-filter: blur(4px);
+  background: var(--bg-elevated);
+  box-shadow: 4px 4px 0 var(--ink);
 }
 
 .cm-plane {
@@ -775,28 +761,29 @@ html.reveal-ready [data-reveal-line].is-visible {
   align-items: flex-start;
   gap: 5px;
   padding: 13px 15px;
-  border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--bg-elevated);
+  border: 1.5px solid var(--border);
+  border-radius: 6px;
+  background: var(--sch-surface);
   text-align: left;
   cursor: pointer;
   font-family: inherit;
-  transition: border-color 0.16s ease, background 0.16s ease, opacity 0.18s ease, transform 0.16s ease;
+  transition: border-color 0.14s ease, box-shadow 0.14s ease, opacity 0.18s ease, transform 0.14s ease;
 }
 
 .cm-cell-primary {
-  border-top: 2px solid var(--accent);
+  background: color-mix(in srgb, var(--marker-yellow) 28%, var(--bg-elevated));
+  border-color: var(--ink);
 }
 
 .cm-cell:hover,
 .cm-cell.is-active {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent-soft) 36%, var(--bg-elevated));
-  transform: translateY(-1px);
+  border-color: var(--ink);
+  box-shadow: 2.5px 2.5px 0 var(--ink);
+  transform: translate(-1px, -1px);
 }
 
 .cm-cell.is-muted {
-  opacity: 0.44;
+  opacity: 0.42;
 }
 
 .cm-cell-head {
@@ -814,9 +801,9 @@ html.reveal-ready [data-reveal-line].is-visible {
 }
 
 .cm-pill {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  padding: 1px 6px;
+  font-family: var(--font-pixel);
+  font-size: 9.5px;
+  padding: 2px 6px;
   border-radius: 3px;
 }
 
@@ -1399,7 +1386,7 @@ html.reveal-ready [data-reveal-line].is-visible {
   color: var(--ink-secondary);
 }
 
-/* ===== Beat 5: Airy Cross-Domain Strip (Zero Boxes, Hairline Accent) ===== */
+/* ===== 04 · ONE UNIFORM PLATFORM: 3 Large Color-Harmonized Domain Emblems ===== */
 .domain-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1407,8 +1394,24 @@ html.reveal-ready [data-reveal-line].is-visible {
 }
 
 .domain-item {
-  padding-top: 20px;
-  border-top: 1px solid var(--border-strong);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  padding-top: 22px;
+  border-top: 1px solid var(--border);
+}
+
+.domain-emblem {
+  margin-bottom: 18px;
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.domain-item:hover .domain-emblem {
+  transform: translateY(-3px);
+}
+
+.domain-emblem svg {
+  display: block;
 }
 
 .domain-kicker {
@@ -1416,25 +1419,32 @@ html.reveal-ready [data-reveal-line].is-visible {
   font-family: var(--font-pixel);
   font-size: 10.5px;
   letter-spacing: 0.06em;
-  color: var(--accent);
-  margin-bottom: 8px;
+  color: var(--sch-indigo);
+  margin-bottom: 6px;
+}
+
+.domain-kicker-teal {
+  color: var(--sch-teal);
+}
+
+.domain-kicker-amber {
+  color: var(--sch-amber);
 }
 
 .domain-item h3 {
-  margin: 0 0 10px;
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 22px;
-  letter-spacing: -0.01em;
+  margin: 0 0 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -0.025em;
   line-height: 1.25;
   color: var(--ink);
 }
 
 .domain-item p {
   margin: 0;
-  font-size: 13.8px;
-  line-height: 1.68;
+  font-size: 14px;
+  line-height: 1.64;
   color: var(--ink-secondary);
 }
 
