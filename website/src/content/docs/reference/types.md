@@ -1,15 +1,15 @@
 ---
-title: TypeScript 类型与映射
-description: 与 SwarmEnv 主干提交 ac72c76 完全同步的公共 TypeScript 类型定义，以及 murm 新概念与当前包导出的映射关系。
-section: 参考与部署
+title: Types & Mapping
+description: Public TypeScript definitions for @swarmenv/core 0.2.0 (ac72c76) and their mapping to murm concepts.
+section: REFERENCE
 order: 13
 ---
 
-本页汇总 `@swarmenv/core` `0.2.0`（固定源码提交 [`ac72c76`](https://github.com/LuNa-shi/SwarmEnv/commit/ac72c76)）的全部公共 TypeScript 类型声明。
+Complete public TypeScript definitions matching `@swarmenv/core` `0.2.0` at commit [`ac72c76`](https://github.com/LuNa-shi/SwarmEnv/commit/ac72c76).
 
-## `murm` 概念与当前代码符号对照
+## Concept-to-code mapping
 
-| `murm` 文档概念 | 当前包 / 符号 | 源码文件 |
+| `murm` concept | Package symbol / directory | Source file |
 | --- | --- | --- |
 | `Runtime` | `createRuntime`, `Runtime` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/types.ts) |
 | `Agent` | `BotInfo`, `BotStatus`, `BotEvent`, `Profile` | [src/core/types.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/types.ts) |
@@ -18,7 +18,7 @@ order: 13
 | `Program` | `src/environments/*`, `examples/*-environment/` | [src/environments/](https://github.com/LuNa-shi/SwarmEnv/tree/ac72c76/src/environments) |
 | `Run` | `runtime.id` + `outputDir/<runtimeId>/` + `CloseReceipt` | [src/core/run-records.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/src/core/run-records.ts) |
 
-## Runtime 与核心控制类型
+## Runtime control surface
 
 ```ts
 export interface Runtime {
@@ -45,7 +45,7 @@ export interface Runtime {
 }
 ```
 
-## Profile、Spawn 与状态类型
+## Profile, Spawn & Status
 
 ```ts
 export interface Profile {
@@ -97,7 +97,7 @@ export interface BotInfo {
 }
 ```
 
-## 输入、事件与中断回执
+## Input, Events & Interrupt Receipts
 
 ```ts
 export type InputMode = 'steer' | 'followUp';
@@ -135,7 +135,7 @@ export type BotEvent = { botId: string; seq: number } & (
 );
 ```
 
-## Service 协议与模型准入类型
+## Service Protocol & Model Access Policy
 
 ```ts
 export type JsonValue =

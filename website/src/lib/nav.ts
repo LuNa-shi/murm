@@ -10,42 +10,42 @@ export interface NavGroup {
 
 export const DOC_NAV: NavGroup[] = [
   {
-    label: '快速开始',
+    label: 'GETTING STARTED',
     items: [
-      { title: '安装与快速上手', slug: 'quickstart' },
-      { title: '核心概念', slug: 'concepts' },
+      { title: 'Quick Start', slug: 'quickstart' },
+      { title: 'Core Concepts', slug: 'concepts' },
     ],
   },
   {
-    label: '理解系统',
+    label: 'ARCHITECTURE',
     items: [
-      { title: '系统架构', slug: 'architecture' },
-      { title: '一次运行的完整脉络', slug: 'run-lifecycle' },
+      { title: 'System Architecture', slug: 'architecture' },
+      { title: 'Anatomy of a Run', slug: 'run-lifecycle' },
     ],
   },
   {
-    label: '内置协作 Program',
+    label: 'BUILT-IN PROGRAMS',
     items: [
-      { title: '五种协作机制总览', slug: 'programs' },
-      { title: 'Subagents · 层级委派', slug: 'programs/subagents' },
-      { title: 'Flat · 公共任务池', slug: 'programs/flat' },
-      { title: 'Agensh · 同级协商', slug: 'programs/agensh' },
-      { title: 'ScaleMAS · 成果库研究', slug: 'programs/scalemas' },
-      { title: 'Lead-helper · 方向反馈', slug: 'programs/lead-helper' },
+      { title: 'Five Topologies Overview', slug: 'programs' },
+      { title: 'Subagents', slug: 'programs/subagents' },
+      { title: 'Flat', slug: 'programs/flat' },
+      { title: 'Agensh', slug: 'programs/agensh' },
+      { title: 'ScaleMAS', slug: 'programs/scalemas' },
+      { title: 'Lead-helper', slug: 'programs/lead-helper' },
     ],
   },
   {
-    label: '开发者指南',
+    label: 'DEVELOPERS',
     items: [
-      { title: '编写你自己的 Program', slug: 'build-your-program' },
+      { title: 'Build Your Own Program', slug: 'build-your-program' },
     ],
   },
   {
-    label: '参考与部署',
+    label: 'REFERENCE',
     items: [
-      { title: 'API 与配置参考', slug: 'reference/api' },
-      { title: 'TypeScript 类型与映射', slug: 'reference/types' },
-      { title: '发布站点与本地可视化', slug: 'reference/deploy' },
+      { title: 'API & Configuration', slug: 'reference/api' },
+      { title: 'Types & Mapping', slug: 'reference/types' },
+      { title: 'Deployment', slug: 'reference/deploy' },
     ],
   },
 ];

@@ -1,8 +1,8 @@
 ---
 /**
- * Interactive lab-notebook × pixel-terminal swimlane schematic.
- * Features Departure Mono pixel labels, Caveat marker annotations,
- * highlighter swipes, animated handoff packets, and step-through playback.
+ * Interactive lab-notebook × pixel-terminal swimlane schematic (English).
+ * All hand-drawn annotations are positioned with clear geometric margins
+ * so text never collides with connector arrows or loop strokes.
  */
 ---
 
@@ -18,17 +18,17 @@
     <div class="schematic-head">
       <div class="schematic-title-wrap">
         <span class="pixel-badge">SUBAGENTS · SWIMLANE</span>
-        <span class="schematic-sub">多智能体隔离并行、即时纠偏与成果交接</span>
+        <span class="schematic-sub">Parallel sandboxes, mid-flight steer, and verified handoff</span>
       </div>
       <div class="schematic-head-right">
-        <button type="button" class="play-btn" data-sch-play aria-label="分步演示协作过程">
+        <button type="button" class="play-btn" data-sch-play aria-label="Play collaboration walkthrough">
           <span data-play-icon>▶</span>
-          <span data-play-label>演示协作流</span>
+          <span data-play-label>Play walkthrough</span>
         </button>
       </div>
     </div>
 
-    <div class="schematic-phase-bar" role="tablist" aria-label="聚焦协作阶段">
+    <div class="schematic-phase-bar" role="tablist" aria-label="Focus collaboration phase">
       <button type="button" class="phase-btn active" data-phase="all" role="tab" aria-selected="true">ALL</button>
       <button type="button" class="phase-btn" data-phase="1" role="tab" aria-selected="false">01 SPAWN</button>
       <button type="button" class="phase-btn" data-phase="2" role="tab" aria-selected="false">02 PARALLEL</button>
@@ -36,7 +36,7 @@
       <button type="button" class="phase-btn" data-phase="4" role="tab" aria-selected="false">04 HANDOFF</button>
       <button type="button" class="phase-btn" data-phase="5" role="tab" aria-selected="false">05 CLOSE</button>
 
-      <div class="schematic-legend" aria-label="图例">
+      <div class="schematic-legend" aria-label="Legend">
         <span><i class="lg-swatch lg-service"></i>Service</span>
         <span><i class="lg-swatch lg-tool"></i>Tool</span>
         <span><i class="lg-swatch lg-input"></i>Steer</span>
@@ -51,7 +51,7 @@
         width="1060"
         height="392"
         role="img"
-        aria-label="多智能体泳道协作示意图：展示 /root 与两个子 Agent /root/probe_patterns、/root/probe_filters 如何通过 spawn_agent、send_message 和 settled 完成并行开发与交接"
+        aria-label="Multi-agent swimlane diagram showing /root delegating work to /root/patterns and /root/filters, steering mid-flight with wakeIfIdle: false, receiving test handoffs, and closing safely."
       >
         <defs>
           <pattern id="draft-grid" width="24" height="24" patternUnits="userSpaceOnUse">
@@ -92,9 +92,9 @@
 
         <!-- Parallel overlap highlighter zone (Phase 2) -->
         <g class="sch-node" data-sch-phase="2">
-          <rect x="374" y="160" width="162" height="196" rx="10" class="sch-parallel-band" />
-          <path d="M 386 346 L 522 343" stroke="var(--marker-yellow)" stroke-width="11" stroke-linecap="round" opacity="0.88" />
-          <text x="454" y="349" text-anchor="middle" class="sch-hand-sm">concurrent sandboxes!</text>
+          <rect x="374" y="162" width="162" height="196" rx="10" class="sch-parallel-band" />
+          <path d="M 386 346 L 524 343" stroke="var(--marker-yellow)" stroke-width="11" stroke-linecap="round" opacity="0.9" />
+          <text x="455" y="349" text-anchor="middle" class="sch-hand-sm">concurrent sandboxes!</text>
         </g>
 
         <!-- Swimlane row separators -->
@@ -104,17 +104,17 @@
         <!-- Lane 1 meta: /root -->
         <rect x="16" y="76" width="8" height="8" rx="1" fill="var(--sch-indigo)" />
         <text x="32" y="84" class="sch-agent-pixel">/root</text>
-        <text x="32" y="103" class="sch-agent-role">主控 · 拆解与整合</text>
+        <text x="32" y="103" class="sch-agent-role">Lead · plan &amp; integrate</text>
 
-        <!-- Lane 2 meta: /root/probe_patterns -->
+        <!-- Lane 2 meta: /root/patterns -->
         <rect x="16" y="191" width="8" height="8" rx="1" fill="var(--sch-teal)" />
         <text x="32" y="199" class="sch-agent-pixel">/root/patterns</text>
-        <text x="32" y="218" class="sch-agent-role">子 Agent · 模式探测</text>
+        <text x="32" y="218" class="sch-agent-role">Child · regex &amp; symlinks</text>
 
-        <!-- Lane 3 meta: /root/probe_filters -->
+        <!-- Lane 3 meta: /root/filters -->
         <rect x="16" y="299" width="8" height="8" rx="1" fill="var(--sch-amber)" />
         <text x="32" y="307" class="sch-agent-pixel">/root/filters</text>
-        <text x="32" y="326" class="sch-agent-role">子 Agent · 过滤测试</text>
+        <text x="32" y="326" class="sch-agent-role">Child · CLI filter suite</text>
 
         <!-- Dashed lifelines -->
         <line x1="210" y1="98" x2="1036" y2="98" class="sch-lifeline" />
@@ -122,11 +122,11 @@
         <line x1="382" y1="312" x2="824" y2="312" class="sch-lifeline" />
 
         <!-- ===== Animated Curved Inter-Agent Handoff Connectors ===== -->
-        <!-- Phase 1: spawn_agent forks -->
+        <!-- Phase 1: spawn_agent forks (label sits cleanly left of arrows, zero overlap) -->
         <g class="sch-node" data-sch-phase="1">
           <path
             class="sch-flow-line"
-            d="M 334 118 C 350 152, 354 208, 378 208"
+            d="M 336 118 C 350 152, 356 208, 378 208"
             fill="none"
             stroke="var(--sch-indigo)"
             stroke-width="2"
@@ -134,40 +134,39 @@
           />
           <path
             class="sch-flow-line"
-            d="M 324 118 C 338 190, 344 312, 378 312"
+            d="M 326 118 C 338 190, 346 312, 378 312"
             fill="none"
             stroke="var(--sch-indigo)"
             stroke-width="2"
             marker-end="url(#arrow-cobalt)"
           />
-          <text x="278" y="147" class="sch-hand-blue">spawn ×2</text>
+          <text x="262" y="158" text-anchor="middle" class="sch-hand-blue">spawn ×2</text>
         </g>
 
-        <!-- Phase 3: steer mid-flight with RoboPrompt hand-drawn circle note -->
+        <!-- Phase 3: steer mid-flight with generously padded cobalt oval (128px wide, clear of arrows) -->
         <g class="sch-node" data-sch-phase="3">
           <path
             class="sch-flow-line"
-            d="M 624 118 C 624 150, 608 162, 608 184"
+            d="M 606 118 C 606 150, 594 162, 594 184"
             fill="none"
             stroke="var(--sch-indigo)"
             stroke-width="2.1"
             marker-end="url(#arrow-cobalt)"
           />
-          <!-- Hand-drawn cobalt oval callout -->
           <path
-            d="M 646 138 C 650 124, 718 122, 720 138 C 722 153, 648 156, 646 138 Z"
+            d="M 622 145 C 624 126, 750 125, 752 145 C 754 164, 620 165, 622 145 Z"
             fill="var(--sch-surface)"
             stroke="var(--sch-indigo)"
             stroke-width="1.6"
           />
-          <text x="683" y="142" text-anchor="middle" class="sch-hand-blue-sm">wakeIfIdle: false</text>
+          <text x="687" y="149.5" text-anchor="middle" class="sch-hand-blue-sm">wakeIfIdle: false</text>
         </g>
 
         <!-- Phase 4: settled + send_message handoff back to /root -->
         <g class="sch-node" data-sch-phase="4">
           <path
             class="sch-flow-line"
-            d="M 756 186 C 766 156, 768 136, 778 120"
+            d="M 762 186 C 770 156, 774 138, 782 120"
             fill="none"
             stroke="var(--sch-teal)"
             stroke-width="2"
@@ -175,13 +174,13 @@
           />
           <path
             class="sch-flow-line"
-            d="M 812 290 C 836 226, 832 158, 840 120"
+            d="M 816 290 C 838 226, 834 158, 842 120"
             fill="none"
             stroke="var(--sch-amber)"
             stroke-width="2"
             marker-end="url(#arrow-amber)"
           />
-          <text x="844" y="236" class="sch-hand-blue">66 tests →</text>
+          <text x="892" y="236" text-anchor="middle" class="sch-hand-blue">66 tests →</text>
         </g>
 
         <!-- ===== Tactile Offset-Shadow Block Cards ===== -->
@@ -191,7 +190,7 @@
           <rect x="209" y="74" width="142" height="44" rx="5" class="sch-card" />
           <rect x="209" y="74" width="142" height="5" rx="2" fill="var(--sch-indigo)" />
           <text x="220" y="94" class="sch-card-pixel">SPAWN_AGENT</text>
-          <text x="220" y="110" class="sch-card-title">拆解并派发两条分支</text>
+          <text x="220" y="110" class="sch-card-title">Split &amp; delegate ×2</text>
         </g>
 
         <g class="sch-node" data-sch-phase="2">
@@ -199,7 +198,7 @@
           <rect x="382" y="74" width="148" height="44" rx="5" class="sch-card" />
           <rect x="382" y="74" width="148" height="5" rx="2" fill="var(--sch-amber)" />
           <text x="393" y="94" class="sch-card-pixel">WRITE · BASH</text>
-          <text x="393" y="110" class="sch-card-title">实现核心 CLI 模块</text>
+          <text x="393" y="110" class="sch-card-title">Implement core CLI</text>
         </g>
 
         <g class="sch-node" data-sch-phase="3">
@@ -207,7 +206,7 @@
           <rect x="559" y="74" width="150" height="44" rx="5" class="sch-card" />
           <rect x="559" y="74" width="150" height="5" rx="2" fill="var(--sch-blue)" />
           <text x="570" y="94" class="sch-card-pixel">USER → STEER</text>
-          <text x="570" y="110" class="sch-card-title">追加符号链接要求</text>
+          <text x="570" y="110" class="sch-card-title">Forward symlink spec</text>
         </g>
 
         <g class="sch-node" data-sch-phase="4">
@@ -215,14 +214,14 @@
           <rect x="739" y="74" width="148" height="44" rx="5" class="sch-card" />
           <rect x="739" y="74" width="148" height="5" rx="2" fill="var(--sch-purple)" />
           <text x="750" y="94" class="sch-card-pixel">VERIFY · FIX</text>
-          <text x="750" y="110" class="sch-card-title">跑回归并修复边界</text>
+          <text x="750" y="110" class="sch-card-title">Run tests &amp; fix edges</text>
         </g>
 
         <g class="sch-node" data-sch-phase="5">
           <rect x="920" y="77" width="124" height="44" rx="5" class="sch-shadow" />
           <rect x="917" y="74" width="124" height="44" rx="5" class="sch-card sch-card-yellow" />
           <text x="928" y="94" class="sch-card-pixel">RUNTIME.CLOSE</text>
-          <text x="928" y="110" class="sch-card-title">归档会话与清理</text>
+          <text x="928" y="110" class="sch-card-title">Archive &amp; cleanup</text>
         </g>
 
         <!-- Lane 2 (/root/patterns) -->
@@ -231,7 +230,7 @@
           <rect x="382" y="186" width="148" height="44" rx="5" class="sch-card" />
           <rect x="382" y="186" width="148" height="5" rx="2" fill="var(--sch-teal)" />
           <text x="393" y="206" class="sch-card-pixel">TOOL · PROBE</text>
-          <text x="393" y="222" class="sch-card-title">探测 regex / glob 差异</text>
+          <text x="393" y="222" class="sch-card-title">Probe regex / glob</text>
         </g>
 
         <g class="sch-node" data-sch-phase="3">
@@ -239,7 +238,7 @@
           <rect x="559" y="186" width="136" height="44" rx="5" class="sch-card" />
           <rect x="559" y="186" width="136" height="5" rx="2" fill="var(--sch-blue)" />
           <text x="570" y="206" class="sch-card-pixel">STEER INJECT</text>
-          <text x="570" y="222" class="sch-card-title">补写符号链接用例</text>
+          <text x="570" y="222" class="sch-card-title">Add symlink suite</text>
         </g>
 
         <g class="sch-node" data-sch-phase="4">
@@ -256,7 +255,7 @@
           <rect x="382" y="289" width="148" height="44" rx="5" class="sch-card" />
           <rect x="382" y="289" width="148" height="5" rx="2" fill="var(--sch-amber)" />
           <text x="393" y="309" class="sch-card-pixel">MODEL · AUDIT</text>
-          <text x="393" y="325" class="sch-card-title">排查过滤参数边界</text>
+          <text x="393" y="325" class="sch-card-title">Audit CLI filter flags</text>
         </g>
 
         <g class="sch-node" data-sch-phase="3">
@@ -264,7 +263,7 @@
           <rect x="559" y="289" width="150" height="44" rx="5" class="sch-card" />
           <rect x="559" y="289" width="150" height="5" rx="2" fill="var(--sch-amber)" />
           <text x="570" y="309" class="sch-card-pixel">WRITE SUITE</text>
-          <text x="570" y="325" class="sch-card-title">编写过滤回归测试</text>
+          <text x="570" y="325" class="sch-card-title">Write 66 filter tests</text>
         </g>
 
         <g class="sch-node" data-sch-phase="4">
@@ -280,7 +279,7 @@
     <figcaption class="schematic-caption">
       <span class="caption-step" data-phase-tag>OVERVIEW</span>
       <span data-phase-note>
-        点击顶部阶段或「演示协作流」可逐步观察委派、并行、不唤醒纠偏与归档全过程；真实运行日志均自动落盘到 <code>outputDir/&lt;runId&gt;/</code>。
+        Step through each phase or press Play to inspect delegation, parallel execution, non-waking steer, and archive-before-delete closeout. Every run persists structured artifacts to <code>outputDir/&lt;runId&gt;/</code>.
       </span>
     </figcaption>
   </figure>
@@ -294,27 +293,27 @@
     const meta = {
       all: {
         tag: 'OVERVIEW',
-        note: '点击顶部阶段或「演示协作流」可逐步观察委派、并行、不唤醒纠偏与归档全过程；真实运行日志均自动落盘到 outputDir/<runId>/。',
+        note: 'Step through each phase or press Play to inspect delegation, parallel execution, non-waking steer, and archive-before-delete closeout. Every run persists structured artifacts to outputDir/<runId>/.',
       },
       '1': {
         tag: '01 · SPAWN',
-        note: '/root 通过 collaboration.spawn_agent 派发子任务，Runtime 分配两个隔离沙箱并按需挂载共享工作区或派生父对话前缀。',
+        note: '/root calls collaboration.spawn_agent to spin up named children. The Runtime allocates isolated sandboxes and optionally shares a workspace or forks parent context.',
       },
       '2': {
         tag: '02 · PARALLEL',
-        note: '三只 Agent 在独立 Pi 会话与容器内并发推进代码、探针与测试编写，各自隔离文件配额与网络边界，上游 API Key 始终留在宿主。',
+        note: 'All three agents run concurrently inside separate Pi sessions and containers with enforced disk and network limits — upstream API keys never leave the host.',
       },
       '3': {
         tag: '03 · STEER',
-        note: '用户中途追加符号链接要求时，宿主调用 send({ mode: "steer", wakeIfIdle: false })：忙碌成员立刻插入下一轮，空闲成员安全留在邮箱不浪费调用。',
+        note: 'When a mid-flight requirement arrives, the host calls send({ mode: "steer", wakeIfIdle: false }): busy agents receive it before their next turn, while idle ones stay undisturbed in the mailbox.',
       },
       '4': {
         tag: '04 · HANDOFF',
-        note: '子成员完成后触发 settled 或 send_message，把测试套件通过共享工作区交给 /root 运行回归并修复边缘缺陷。',
+        note: 'Children report back via settled events and send_message; /root runs the handed-off test suite in the shared workspace and fixes failing edge cases.',
       },
       '5': {
         tag: '05 · CLOSE',
-        note: 'runtime.close() 严格按“停 Pi → 归档原生 Session → 导出 collect 交付文件 → 删除沙箱”收尾，任何必选产物导出失败都会保留容器。',
+        note: 'runtime.close() strictly stops Pi, archives raw sessions, exports required collect files, and only then deletes containers and writes runtime.json.',
       },
     };
 
@@ -352,7 +351,7 @@
         timer = null;
       }
       if (playIcon) playIcon.textContent = '▶';
-      if (playLabel) playLabel.textContent = '演示协作流';
+      if (playLabel) playLabel.textContent = 'Play walkthrough';
       playBtn?.classList.remove('playing');
     }
 
@@ -360,7 +359,7 @@
       seqIdx = 0;
       selectPhase(seq[seqIdx]);
       if (playIcon) playIcon.textContent = '❚❚';
-      if (playLabel) playLabel.textContent = '暂停演示';
+      if (playLabel) playLabel.textContent = 'Pause';
       playBtn?.classList.add('playing');
       timer = setInterval(() => {
         seqIdx = (seqIdx + 1) % seq.length;

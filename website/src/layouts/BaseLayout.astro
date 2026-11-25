@@ -4,7 +4,6 @@ import '@fontsource-variable/inter';
 import '@fontsource-variable/jetbrains-mono';
 import '@fontsource/caveat/700.css';
 import '../styles/global.css';
-import '../styles/trace-viewer.css';
 import TopNav from '../components/TopNav.astro';
 import SearchModal from '../components/SearchModal.astro';
 import { withBase } from '../lib/url';
@@ -12,7 +11,7 @@ import { withBase } from '../lib/url';
 interface Props {
   title: string;
   description?: string;
-  activeSection?: 'home' | 'docs' | 'trace-viewer';
+  showTopNav?: boolean;
   showMobileMenu?: boolean;
   paperGrid?: boolean;
 }
@@ -20,14 +19,14 @@ interface Props {
 const {
   title,
   description = 'A minimal, extensible multi-agent harness with composable coordination services.',
-  activeSection = 'home',
+  showTopNav = true,
   showMobileMenu = false,
   paperGrid = false,
 } = Astro.props;
 ---
 
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -44,17 +43,18 @@ const {
     </script>
   </head>
   <body class:list={[{ 'paper-grid-bg': paperGrid }]}>
-    <TopNav activeSection={activeSection} showMobileMenu={showMobileMenu} />
+    {showTopNav && <TopNav showMobileMenu={showMobileMenu} />}
     <slot />
     <SearchModal />
 
     <script is:inline>
       (function () {
-        const themeBtn = document.getElementById('theme-toggle-btn');
-        themeBtn?.addEventListener('click', () => {
-          const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
-          document.documentElement.dataset.theme = next;
-          localStorage.setItem('murm:theme', next);
+        document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = next;
+            localStorage.setItem('murm:theme', next);
+          });
         });
 
         const menuBtn = document.getElementById('mobile-menu-toggle');

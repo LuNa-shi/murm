@@ -6,8 +6,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
-    "preview": "astro preview",
-    "view": "node scripts/view-run.mjs"
+    "preview": "astro preview"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",

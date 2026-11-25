@@ -20,11 +20,10 @@ interface Props {
 
 const { title, description, section, currentSlug, headings } = Astro.props;
 const { prev, next } = getPrevNext(currentSlug);
-const activeSection = 'docs' as const;
 const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
 ---
 
-<BaseLayout title={`${title} · murm`} description={description} activeSection={activeSection} showMobileMenu={true}>
+<BaseLayout title={`${title} · murm`} description={description} showTopNav={true} showMobileMenu={true}>
   <div class="docs-shell">
     <Sidebar currentSlug={currentSlug} />
 
@@ -41,13 +40,13 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
         <nav class="docs-pager" aria-label="Pagination">
           {prev && (
             <a class="pager-link prev" href={withBase(`/docs/${prev.slug}/`)}>
-              <span class="pager-dir">← 上一篇</span>
+              <span class="pager-dir">← PREVIOUS</span>
               <span class="pager-title">{prev.title}</span>
             </a>
           )}
           {next && (
             <a class="pager-link next" href={withBase(`/docs/${next.slug}/`)}>
-              <span class="pager-dir">下一篇 →</span>
+              <span class="pager-dir">NEXT →</span>
               <span class="pager-title">{next.title}</span>
             </a>
           )}
@@ -58,7 +57,7 @@ const toc = headings.filter((h) => h.depth === 2 || h.depth === 3);
     <aside class="docs-toc" aria-label="On this page">
       {toc.length > 0 && (
         <>
-          <div class="toc-title">本页目录</div>
+          <div class="toc-title">ON THIS PAGE</div>
           <ul class="toc-list">
             {toc.map((h) => (
               <li>

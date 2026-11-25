@@ -6,54 +6,63 @@ import { withBase } from '../lib/url';
 ---
 
 <BaseLayout
-  title="murm · Build your own agent systems."
+  title="murm · Build your own agent systems"
   description="A minimal, extensible multi-agent harness with composable coordination services."
-  activeSection="home"
+  showTopNav={false}
   paperGrid={true}
 >
   <main class="landing-shell">
+    <div class="landing-corner" aria-label="Quick links">
+      <a class="corner-link" href={withBase('/docs/quickstart/')}>Docs</a>
+      <span class="corner-sep" aria-hidden="true">/</span>
+      <a class="corner-link" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
+      <button type="button" class="corner-icon-btn" data-theme-toggle aria-label="Toggle color theme" title="Toggle light / dark theme">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+        </svg>
+      </button>
+    </div>
+
     <section class="hero">
       <div class="hero-mark">
         <MurmLogo variant="hero" />
       </div>
       <p class="hero-brand">murm</p>
       <h1 class="hero-title">
-        Build your own
-        <span class="circled-word">
-          agent systems<svg viewBox="0 0 380 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 356 22 C 296 0, 80 -3, 22 30 C -22 58, 16 96, 118 104 C 228 113, 360 98, 372 58 C 382 28, 318 6, 238 11" /></svg>
-        </span><span class="title-dot">.</span>
+        Build your own<span class="circled-word">agent systems<svg viewBox="0 0 360 112" preserveAspectRatio="none" aria-hidden="true"><path d="M 342 26 C 288 4, 72 4, 18 34 C 1 54, 16 96, 128 104 C 248 111, 348 92, 354 56 C 358 32, 314 14, 250 13" /></svg></span>
       </h1>
       <p class="hero-subtitle">
         A minimal, extensible multi-agent harness with <span class="marker-highlight">composable coordination services</span>.
-        <span class="hero-subtitle-cn">把沙箱隔离、会话管理与运行留痕交给 Runtime，把分工协作完全留给你编写的 Program。</span>
+        Leave sandbox isolation, session lifecycle, and run recording to the Runtime — keep coordination logic in your Program.
       </p>
 
       <div class="hero-cta-wrap">
         <div class="hero-cta">
-          <a class="btn btn-tactile" href={withBase('/docs/quickstart/')}>快速开始 →</a>
-          <a class="btn btn-outline" href={withBase('/docs/concepts/')}>阅读文档</a>
-          <a class="btn btn-outline" href={withBase('/trace-viewer/')}>Trace Viewer</a>
+          <a class="btn btn-tactile" href={withBase('/docs/quickstart/')}>Get Started →</a>
+          <a class="btn btn-outline" href={withBase('/docs/concepts/')}>Read the Docs</a>
+          <a class="btn btn-outline" href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
         </div>
-        <span class="hero-hand-note" aria-hidden="true">same runtime, any topology!</span>
+        <span class="hero-hand-note" aria-hidden="true">same runtime, any coordination topology!</span>
       </div>
 
       <div class="pillars">
         <div class="pillar">
           <span class="pillar-index">01 / SANDBOX</span>
           <h3>Run agents</h3>
-          <p>隔离沙箱与跨轮次持久化会话</p>
+          <p>Isolated containers with persistent multi-turn sessions</p>
         </div>
 
         <div class="pillar">
           <span class="pillar-index">02 / BRIDGE</span>
           <h3>Compose services</h3>
-          <p>可组合的共享协作能力与可信鉴权</p>
+          <p>Schema-validated shared state with unforgeable caller identity</p>
         </div>
 
         <div class="pillar">
           <span class="pillar-index">03 / TRACE</span>
           <h3>Observe runs</h3>
-          <p>结构化运行落盘与独立轨迹检查</p>
+          <p>Structured sessions, model traces, and service call records</p>
         </div>
       </div>
     </section>
@@ -62,56 +71,56 @@ import { withBase } from '../lib/url';
       <div class="section-header">
         <div>
           <p class="section-eyebrow">01 · CORE MODEL</p>
-          <h2 class="section-title">六个清晰正交的核心概念</h2>
+          <h2 class="section-title">Six orthogonal concepts</h2>
           <p class="section-desc">
-            编写侧用 <span class="marker-highlight">Program</span> 组合 Agent 与 Service；运行侧由 Runtime 分配 Sandbox，每次执行产出可检查的 Run。
+            Author a <span class="marker-highlight">Program</span> by combining Agents and Services; the Runtime provisions isolated Sandboxes and persists every Run.
           </p>
         </div>
-        <a class="section-link" href={withBase('/docs/concepts/')}>逐个了解概念 →</a>
+        <a class="section-link" href={withBase('/docs/concepts/')}>Explore concepts →</a>
       </div>
 
       <div class="concept-grid">
         <div class="concept-card">
           <div class="concept-top">
             <code>Agent</code>
-            <span class="concept-tag tag-author">编写侧</span>
+            <span class="concept-tag tag-author">Authoring</span>
           </div>
-          <p>独立的执行个体，拥有持久对话历史、独立工作目录与 4 个本地工具。</p>
+          <p>An independent execution unit with a persistent session, private workspace, and 4 local tools.</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Service</code>
-            <span class="concept-tag tag-author">编写侧</span>
+            <span class="concept-tag tag-author">Authoring</span>
           </div>
-          <p>可组合的共享能力（任务池、消息、成果库、Board），经 Bridge 鉴权调用。</p>
+          <p>Composable shared capability (task pool, mailbox, board, substrate) invoked through the Bridge.</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Program</code>
-            <span class="concept-tag tag-author">编写侧</span>
+            <span class="concept-tag tag-author">Authoring</span>
           </div>
-          <p>你编写的多智能体控制逻辑：决定创建谁、如何响应事件以及何时交付收尾。</p>
+          <p>Your host-side TypeScript logic deciding who spawns, how events route, and when work finishes.</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Runtime</code>
-            <span class="concept-tag tag-runtime">运行侧</span>
+            <span class="concept-tag tag-runtime">Execution</span>
           </div>
-          <p>统一管理多 Agent 生命周期、输入投递、受控文件交接与资源回收的引擎。</p>
+          <p>The control plane managing agent lifecycles, input delivery, controlled file handoffs, and cleanup.</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Sandbox</code>
-            <span class="concept-tag tag-runtime">运行侧</span>
+            <span class="concept-tag tag-runtime">Execution</span>
           </div>
-          <p>隔离每个 Agent 的文件系统、网络白名单与磁盘配额，保障并发安全与稳定导出。</p>
+          <p>Isolated container boundary enforcing filesystem quotas, network allowlists, and clean exports.</p>
         </div>
         <div class="concept-card">
           <div class="concept-top">
             <code>Run</code>
-            <span class="concept-tag tag-runtime">运行侧</span>
+            <span class="concept-tag tag-runtime">Execution</span>
           </div>
-          <p>一次具体的系统执行，自动落盘会话归档、模型轨迹、Service 调用与报告。</p>
+          <p>One concrete execution archived to disk with sessions, model traces, service calls, and reports.</p>
         </div>
       </div>
     </section>
@@ -120,12 +129,12 @@ import { withBase } from '../lib/url';
       <div class="section-header">
         <div>
           <p class="section-eyebrow">02 · EXECUTION FLOW</p>
-          <h2 class="section-title">多智能体如何在隔离沙箱中并行协作</h2>
+          <h2 class="section-title">How isolated agents coordinate in parallel</h2>
           <p class="section-desc">
-            以 Subagents 为例：主控与子 Agent 运行在各自泳道，通过 Service Bridge 完成委派、不唤醒纠偏与测试交接。
+            A Subagents run across three sandboxes: delegating work, steering active agents without waking idle ones, and handing off verified tests.
           </p>
         </div>
-        <a class="section-link" href={withBase('/trace-viewer/')}>了解 Trace Viewer →</a>
+        <a class="section-link" href={withBase('/docs/run-lifecycle/')}>Read run lifecycle →</a>
       </div>
 
       <SwimlaneSchematic />
@@ -135,12 +144,12 @@ import { withBase } from '../lib/url';
       <div class="section-header">
         <div>
           <p class="section-eyebrow">03 · ONE RUNTIME, FIVE PROGRAMS</p>
-          <h2 class="section-title">同一套底座，跑出五种多智能体协作机制</h2>
+          <h2 class="section-title">Five multi-agent topologies on one core</h2>
           <p class="section-desc">
-            切换协作形态只需替换 Program 与注册的 Service，底层 Runtime 与沙箱 <span class="marker-highlight">零改动复用</span>。
+            Swap coordination styles by replacing your Program and Services — the underlying Runtime and sandbox stay <span class="marker-highlight">untouched</span>.
           </p>
         </div>
-        <a class="section-link" href={withBase('/docs/programs/')}>横向机制对比 →</a>
+        <a class="section-link" href={withBase('/docs/programs/')}>Compare all five →</a>
       </div>
 
       <div class="programs-bento">
@@ -155,7 +164,7 @@ import { withBase } from '../lib/url';
             </svg>
           </div>
           <h3>Subagents</h3>
-          <p>Root 递归委派具名子 Agent，支持上下文派生、不唤醒邮箱通知、等待与中断恢复。</p>
+          <p>Recursive named delegation from Root with optional context forking, non-waking mailbox delivery, and safe interrupts.</p>
           <div class="card-meta"><span>collaboration</span><span>→</span></div>
         </a>
 
@@ -171,7 +180,7 @@ import { withBase } from '../lib/url';
             </svg>
           </div>
           <h3>Flat</h3>
-          <p>只读发现并排他认领任务，宿主按需解锁写权限、以租约保护模型访问并检验合入主干。</p>
+          <p>Read-only discovery, exclusive task claims, host-granted write access, lease-gated model calls, and versioned main merges.</p>
           <div class="card-meta"><span>task · workspace</span><span>→</span></div>
         </a>
 
@@ -186,7 +195,7 @@ import { withBase } from '../lib/url';
             </svg>
           </div>
           <h3>Agensh</h3>
-          <p>同级成员通过可重叠 CLAIM、频道消息和串行 Router 协商分工，经独立分支提 PR。</p>
+          <p>Equal peers negotiating via overlapping claims, team chat channels, per-peer serial routers, and verified Git PRs.</p>
           <div class="card-meta"><span>board · chat · git</span><span>→</span></div>
         </a>
 
@@ -201,7 +210,7 @@ import { withBase } from '../lib/url';
             </svg>
           </div>
           <h3>ScaleMAS</h3>
-          <p>不设任务池也不做消息路由，成员围绕不可变 SQLite 成果库自主发布、检索原文并显式引用演化。</p>
+          <p>Zero task queues and zero message routing — equal peers publish, search, read, and cite immutable artifacts in SQLite.</p>
           <div class="card-meta"><span>substrate Service</span><span>→</span></div>
         </a>
 
@@ -216,7 +225,7 @@ import { withBase } from '../lib/url';
             </svg>
           </div>
           <h3>Lead-helper</h3>
-          <p>Lead 发布公共方向，Helpers 事务排他认领并在 Git 分支交付与反馈，形成严格的因果迭代闭环。</p>
+          <p>A lead sets direction while helpers claim subtasks transactionally, ship verified Git commits, and feed findings back into the next round.</p>
           <div class="card-meta"><span>board · gitea</span><span>→</span></div>
         </a>
       </div>
@@ -225,9 +234,9 @@ import { withBase } from '../lib/url';
     <footer class="landing-footer">
       <span class="footer-brand">MURM · <code>@swarmenv/core</code> 0.2.0 (<code>ac72c76</code>)</span>
       <div class="footer-links">
-        <a href={withBase('/docs/quickstart/')}>快速开始</a>
-        <a href={withBase('/docs/build-your-program/')}>编写 Program</a>
-        <a href={withBase('/docs/reference/api/')}>API 参考</a>
+        <a href={withBase('/docs/quickstart/')}>Quick Start</a>
+        <a href={withBase('/docs/build-your-program/')}>Build a Program</a>
+        <a href={withBase('/docs/reference/api/')}>API Reference</a>
         <a href="https://github.com/LuNa-shi/SwarmEnv" target="_blank" rel="noreferrer">GitHub</a>
       </div>
     </footer>

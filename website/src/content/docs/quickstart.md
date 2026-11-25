@@ -1,20 +1,20 @@
 ---
-title: 安装与快速上手
-description: 在几分钟内准备好运行环境，启动第一个多智能体协作会话，并检查整次运行留下的结构化轨迹。
-section: 快速开始
+title: Quick Start
+description: Prepare the local sandbox environment, launch your first multi-agent collaboration session, and inspect the recorded run directory.
+section: GETTING STARTED
 order: 1
 ---
 
-## 先花 30 秒看懂你需要准备什么
+## What you need before starting
 
-在 `murm` 中，每个 **Agent** 默认运行在一个隔离的 Docker 容器（**Sandbox**）里，保证并发改代码、跑测试时互不干扰、不污染宿主机。为了在容器里运行模型会话并提供协作命令，启动前需要准备好两样基础部件：
+In `murm`, every **Agent** runs inside an isolated Docker container (**Sandbox**) so concurrent edits and shell commands never interfere with each other or the host machine. Before running an example, prepare two things:
 
-1. **Sandbox 运行环境**：本地运行的 OpenSandbox（Docker provider）以及一份**标准 Sandbox 镜像**（把 `Pi 1.3.0`、`swarm` CLI 和轻量监管进程打进容器的基础镜像；构建一次后，所有 Program 复用同一镜像）。
-2. **模型端点**：任意兼容 `/v1/responses` 的模型服务（内置示例配置使用 `kimi_proxy/k3`）。API Key 仅留在宿主进程中，不会进入容器。
+1. **Sandbox runtime**: A local OpenSandbox instance (Docker provider) and a single **standard sandbox image** bundling `Pi 1.3.0`, the `swarm` CLI, and the lightweight Worker supervisor. Build it once; every Program reuses the same image.
+2. **Model endpoint**: Any `/v1/responses`-compatible model endpoint (built-in example configs use `kimi_proxy/k3`). API keys stay strictly on the host and never enter a container.
 
-## 1. 获取源码并构建
+## 1. Clone and build
 
-确认本地已安装 **Node.js `>= 22.19.0`** 与 Docker，拉取仓库并编译：
+Make sure **Node.js `>= 22.19.0`** and Docker are installed, then build the repository:
 
 ```bash
 git clone https://github.com/LuNa-shi/SwarmEnv.git
@@ -23,57 +23,49 @@ npm ci
 npm run build
 ```
 
-构建一次标准 Sandbox 镜像（后续所有示例与自定义 Program 共用这一镜像）：
+Build the standard sandbox image once:
 
 ```bash
 docker build -f services/opensandbox-agent/Dockerfile -t murm-worker:local .
 ```
 
-启动本地 OpenSandbox 后（默认地址 `http://127.0.0.1:8080/v1`），即可直接运行内置协作 Program。
+Start your local OpenSandbox daemon (default endpoint `http://127.0.0.1:8080/v1`).
 
-## 2. 运行你的第一个多智能体协作：交互式 Subagents
+## 2. Run your first multi-agent session: interactive Subagents
 
-推荐直接从 **[Subagents](../programs/subagents/)** 开始体验：它能让你像使用命令行工具一样给 Root 下达真实任务，Root 会自主拆分工作、创建具名子 Agent 并行推进，并在过程中与你交互。
-
-配置镜像与模型端点后启动交互会话：
+Start with **[Subagents](../programs/subagents/)**. You give a high-level goal to `/root`, and `/root` breaks the task down, spawns named child agents in parallel, exchanges messages, and integrates the results.
 
 ```bash
 export SWARMENV_SUBAGENTS_IMAGE='murm-worker:local'
 export SWARMENV_SUBAGENTS_MODEL_URL='https://your-model-endpoint/v1/responses'
 export SWARMENV_SUBAGENTS_MODEL_TOKEN='your-bearer-token'
 
-# 方式一：单次任务运行
+# One-shot task
 node dist/examples/subagents-environment/main.js \
   dist/examples/subagents-environment/config.js \
-  '分析当前项目目录，拆分成两个独立子任务并行调研后给出改进方案。'
+  'Inspect this workspace, split into two independent research subtasks, and synthesize a concrete plan.'
 
-# 方式二：交互模式（支持随时追加要求、/status 查看全队状态、/exit 关闭团队）
+# Interactive session (add follow-ups anytime, /status to inspect team, /exit to close)
 node dist/examples/subagents-environment/main.js \
   dist/examples/subagents-environment/config.js --interactive
 ```
 
-如果容器访问宿主网桥的地址不是默认的 `172.17.0.1`，额外设置 `SWARMENV_SUBAGENTS_ADVERTISE_HOST` 为容器可达的宿主 IPv4 地址即可。
+If containers reach your host bridge at an IPv4 address other than `172.17.0.1`, set `SWARMENV_SUBAGENTS_ADVERTISE_HOST` to that address.
 
-## 3. 在 Trace Viewer 中可视化检查这次 Run
+## 3. Inspect the recorded Run directory
 
-运行结束后，Runtime 会把整次执行的所有现场自动脱敏并写入 `./subagents-runs/<runId>/`。你不需要手工翻阅原始 JSON 日志——直接用可视化工具打开该目录：
+When a run completes, the Runtime persists a redacted, structured archive under `./subagents-runs/<runId>/`:
 
-```bash
-cd website
-npm install && npm run build
-npm run view -- ../subagents-runs/<runId>
-```
+- `runtime.json` — effective configuration, stop receipts, and cleanup verification;
+- `evidence.jsonl` — ordered lifecycle, input delivery, and event timeline;
+- `service-calls.jsonl` — every validated Service call with caller identity, inputs, outputs, and latency;
+- `model-trace/<attemptId>/` — raw model requests, streaming responses, and outcomes;
+- `bots/<agentId>/session/` — full native Pi session JSONL archives;
+- `bots/<agentId>/artifacts/files/` — exported files declared by `collect`.
 
-浏览器打开终端输出的地址后，你可以看到：
-- **多 Agent 泳道时间轴**：按时间或轮次查看 Root 与每个 Child 的 `Input`、`Model`、`Tools`、`Service` 并行重叠情况；
-- **逐轮事件与交接流**：展开任意一次工具调用、`collaboration.spawn_agent` 或 `send_message` 的完整入参与返回值；
-- **清理与归档状态**：一眼确认所有会话归档、导出文件与沙箱清理是否全部完成。
+## 4. Minimal custom-Service example: Notes
 
-你也可以直接在在线版 [Trace Viewer](../../trace-viewer/) 页面点击 **选择本地 Run 目录** 打开本机记录（数据完全在浏览器本地解析，不会上传）。
-
-## 4. 最小开发示例：用 Notes 看清自定义 Service
-
-如果你准备开发自己的协作机制，想先看一个只有 2 个 Agent、1 个自定义 Service、零外部设施的极简示例，可以运行 **Notes**：
+If you want the smallest possible reference before authoring your own Program (2 agents, 1 in-process Service, zero external servers), run **Notes**:
 
 ```bash
 export SWARMENV_NOTES_IMAGE='murm-worker:local'
@@ -84,11 +76,11 @@ node dist/examples/notes-environment/main.js \
   dist/examples/notes-environment/config.js > notes-result.json
 ```
 
-它依次驱动 `writer` 发布一条记录、`reader` 读取核对并在同一会话中完成两轮文件写入，最后自动导出并校验文件。完整代码在 [examples/notes-environment/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/notes-environment/main.ts)。
+`writer` publishes a finding through the `notes` Service, `reader` fetches and verifies it across two turns in the same persistent session, and the host exports and checks the resulting file. See [examples/notes-environment/main.ts](https://github.com/LuNa-shi/SwarmEnv/blob/ac72c76/examples/notes-environment/main.ts).
 
-## 5. 作为独立包接入你自己的项目
+## 5. Use `@swarmenv/core` in your own project
 
-如果想在仓库之外的新项目中导入 `@swarmenv/core`，可以通过本地打包安装：
+To import the runtime package outside this repository:
 
 ```bash
 repo=/absolute/path/to/SwarmEnv
@@ -98,13 +90,13 @@ npm init -y && npm pkg set type=module
 npm install --omit=dev --ignore-scripts ./swarmenv-core-0.2.0.tgz
 ```
 
-安装完成后即可从三个公开入口导入：`@swarmenv/core`、`@swarmenv/core/services` 与 `@swarmenv/core/backends/pi-opensandbox`。
+Three public entrypoints are available: `@swarmenv/core`, `@swarmenv/core/services`, and `@swarmenv/core/backends/pi-opensandbox`.
 
-## 下一步去哪
+## Where to go next
 
-| 你的目标 | 推荐阅读 |
+| Goal | Read next |
 | --- | --- |
-| 逐个理清 Agent、Service、Runtime、Program 等核心概念 | [核心概念](../concepts/) |
-| 看懂宿主、沙箱容器、Bridge 与模型网关如何协同 | [系统架构](../architecture/) |
-| 对比五种内置多智能体协作机制如何实现 | [五种协作机制总览](../programs/) |
-| 从零编写你自己的 Service 和 Program | [编写你自己的 Program](../build-your-program/) |
+| Build a crisp mental model of the six core abstractions | [Core Concepts](../concepts/) |
+| Trace how the host, containers, Bridge, and Model Gateway connect | [System Architecture](../architecture/) |
+| Compare five built-in multi-agent topologies | [Five Topologies Overview](../programs/) |
+| Build your own Service and Program from scratch | [Build Your Own Program](../build-your-program/) |

@@ -3,20 +3,12 @@ import { getCollection } from 'astro:content';
 import { withBase } from '../lib/url';
 
 const entries = await getCollection('docs');
-const index = [
-  ...entries.map((entry) => ({
-    title: entry.data.title,
-    description: entry.data.description,
-    section: entry.data.section,
-    href: withBase(`/docs/${entry.id.replace(/\/index$/, '')}/`),
-  })),
-  {
-    title: 'Trace Viewer',
-    description: '在浏览器本地加载 outputDir/<runId>/ 目录，按泳道检查事件与 Service 调用。',
-    section: '工具',
-    href: withBase('/trace-viewer/'),
-  },
-];
+const index = entries.map((entry) => ({
+  title: entry.data.title,
+  description: entry.data.description,
+  section: entry.data.section,
+  href: withBase(`/docs/${entry.id.replace(/\/index$/, '')}/`),
+}));
 ---
 
 <div class="search-backdrop" id="search-modal" role="dialog" aria-modal="true" aria-label="Search documentation">
@@ -26,8 +18,8 @@ const index = [
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />
       </svg>
-      <input class="search-input" id="search-input" type="search" placeholder="搜索概念、协作机制、API 或工具..." autocomplete="off" />
-      <kbd style="font-family:var(--font-mono);font-size:11px;color:var(--ink-muted);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">ESC</kbd>
+      <input class="search-input" id="search-input" type="search" placeholder="Search concepts, programs, APIs..." autocomplete="off" />
+      <kbd style="font-family:var(--font-pixel);font-size:10px;color:var(--ink-muted);border:1px solid var(--border);border-radius:4px;padding:1px 6px;">ESC</kbd>
     </div>
     <div class="search-results" id="search-results"></div>
   </div>
@@ -48,7 +40,7 @@ const index = [
       : index.slice(0, 8);
 
     if (!matches.length) {
-      resultsEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink-muted);font-size:13.5px;">未找到与 “${q}” 匹配的页面</div>`;
+      resultsEl.innerHTML = `<div style="padding:20px;text-align:center;color:var(--ink-muted);font-size:13.5px;">No matching pages for "${q}"</div>`;
       return;
     }
 
@@ -56,7 +48,7 @@ const index = [
       .map(
         (item) => `
         <a class="search-item" href="${item.href}">
-          <div class="search-item-title">${item.title} <span style="font-weight:400;font-size:12px;color:var(--ink-muted);margin-left:6px;">${item.section}</span></div>
+          <div class="search-item-title">${item.title} <span style="font-weight:400;font-size:11.5px;color:var(--ink-muted);margin-left:6px;">${item.section}</span></div>
           <div class="search-item-desc">${item.description}</div>
         </a>`
       )
