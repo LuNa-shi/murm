@@ -34,16 +34,16 @@ This section is generated from executable exports and checked against the source
 |---|---|
 | [src/sdk/service-catalog.ts](../../src/sdk/service-catalog.ts) | `d681cb166cebd207404fb602d225589969bf5f1457cceb306c8d34038b99d4f5` |
 | [src/sdk/builtin-registry.ts](../../src/sdk/builtin-registry.ts) | `ccb1dea4ee2e42ecd86169d9ccc2c8b8d151a7184e3b9795802499357302db46` |
-| [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `ef5119f0fa92a587850498a8ae2d1fc19c35d45f1cd3df9301916460433a34c2` |
-| [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `059326242222f5a036a03b33fb0e7b260fb0f527dfd771822755db2419ef5253` |
+| [src/sdk/service-manifest.ts](../../src/sdk/service-manifest.ts) | `3759b5509820d4ee1793c802e1e5c99aee0f7095fc6d43244d1ca0a773776dd0` |
+| [src/sdk/service-registry.ts](../../src/sdk/service-registry.ts) | `ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770` |
 | [src/agent/capability-profile.ts](../../src/agent/capability-profile.ts) | `53a57335eb59af29119a889b12044d94d838c5df9d138cc86e2d0da5bd01f0c5` |
-| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `e7e4958aa7a1d4d8fb317d26c2fe89291181f2e2a2d4e7aa330fafda6250653e` |
+| [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `a2e6633eb595a54262c3c28818daeb617013b7b4fbe3dd7a45ec5bb5bb37caaa` |
 | [services/mathlib-search/service.json](../../services/mathlib-search/service.json) | `616a349bea3dc7282f26a90a3c8882d06afe846c58fdbf00a851404546c15b70` |
-| [src/errors.ts](../../src/errors.ts) | `1cbb20e36df78d7991ece2d8c712bfb510b35e1ab2a085c9f301e8f8b954a2f0` |
+| [src/errors.ts](../../src/errors.ts) | `66df1c83c0886c39bae1c8f63086efbefccdf305e359976e2d7a54c69b669922` |
 | [src/core/index.ts](../../src/core/index.ts) | `75864afead0fa320e7d34a59dceedcc57f10f17a8d7bd8e386ce30dde9ca23ca` |
 | [src/core/types.ts](../../src/core/types.ts) | `01a3ed177ae7a40e8e0bf0aa1f391a2d51606fe1525be8f4da47239fc58ea25a` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `3d9b797156e9c13cfeea316025584f4aa379007b80831413df0cb9d588719583` |
-| [src/core/services.ts](../../src/core/services.ts) | `c983553de00b55f8bc3d1d350c71a6e4995f905174432f823d0d48406185b675` |
+| [src/core/services.ts](../../src/core/services.ts) | `9d4971a9154aedf46cced59e1c8736067acc456373edb86471ece9686840c734` |
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `d841faa0929ccf821f57036e2eb1483ba2d06290b5ac0a3adf4683099282c87a` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f8167e4c39facba00538c3ebc97cd7c54ad3164bb138303917896aac72c1539b` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `1dbbc98f826068693373e1bcd9f1372a327dee4dfbd3a586ae72894f881585d2` |

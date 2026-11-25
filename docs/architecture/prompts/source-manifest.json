@@ -11,7 +11,7 @@
     },
     {
       "path": "src/agent/services-bridge.ts",
-      "sha256": "e7e4958aa7a1d4d8fb317d26c2fe89291181f2e2a2d4e7aa330fafda6250653e"
+      "sha256": "a2e6633eb595a54262c3c28818daeb617013b7b4fbe3dd7a45ec5bb5bb37caaa"
     },
     {
       "path": "src/cli/swarm-cli.ts",
@@ -27,7 +27,7 @@
     },
     {
       "path": "src/core/bridge.ts",
-      "sha256": "540bc41855dc9ffa4f1589c26334fc38e40821ecb8b682f6cf00e01c3c7a5b91"
+      "sha256": "e019fc977b53e204a8bca4eb5a784e58925f57d2474a4de366ccf349eb8cdf1f"
     },
     {
       "path": "src/core/startup-prompt.ts",
@@ -59,11 +59,11 @@
     },
     {
       "path": "src/harnesses/taskpool/controller.ts",
-      "sha256": "27c7ed9639eaa41580f64f438dcf68c6b1bbd58768c8731fc1e49c2c35ccfde5"
+      "sha256": "4a45c30da30cfe5376d3b4a54df90936ea3a656b3449836aa4cc369f8f5c9dca"
     },
     {
       "path": "src/harnesses/taskpool/harness.ts",
-      "sha256": "30eb9170c69999d282a5345b0acaff589c41178db9fd4f67164b49f3df8d8cff"
+      "sha256": "5698c3cde49338ea376f192320134879f6efa208b975d6002a19a0be899fe484"
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
@@ -135,15 +135,15 @@
     },
     {
       "path": "src/runtime/runtime.ts",
-      "sha256": "653d47ca3fec1a6b6a900d2c9352c9942f023937818da5cf82f3ed5aac29fe50"
+      "sha256": "d84463fab1b67528acefb39af5a3ae8a323eaf422c4bce1294495a1d9d3a6ca0"
     },
     {
       "path": "src/runtime/workspace-contract.ts",
-      "sha256": "62281cf9f9842eef0da944b7b2a31ed2b39f58ce5a5c71361cd3f2d65c5b30f5"
+      "sha256": "bef4da6975cc1b782f4e390a6561b5af7c7923bd90bc572a0ce45c8d44a86a37"
     },
     {
       "path": "src/runtime/mission-workspace.ts",
-      "sha256": "e7784ac7001599551bdea9cebf089ddd59cf8ee3dae3de3175c8ebb95016a8fd"
+      "sha256": "96d2dcbef5719f863a6974a8d9a21696f55ff391d2f2de392d8c9ab7328457b4"
     },
     {
       "path": "src/sdk/service-catalog.ts",
@@ -155,23 +155,23 @@
     },
     {
       "path": "src/sdk/service-bundle.ts",
-      "sha256": "d866c1655c5d17acaf84b86422be3057ad2b04935d9c43c52d7b10b149a88481"
+      "sha256": "82f7c7c24afa622a3c7e759d6d18423314c7116a8392e3f6d88e4684cebb3abf"
     },
     {
       "path": "src/sdk/service-registry.ts",
-      "sha256": "059326242222f5a036a03b33fb0e7b260fb0f527dfd771822755db2419ef5253"
+      "sha256": "ee72fba940f1e45926b4f8c04a13c355868e6d15b84df6cade45f2371b4db770"
     },
     {
       "path": "src/sdk/service-manifest.ts",
-      "sha256": "ef5119f0fa92a587850498a8ae2d1fc19c35d45f1cd3df9301916460433a34c2"
+      "sha256": "3759b5509820d4ee1793c802e1e5c99aee0f7095fc6d43244d1ca0a773776dd0"
     },
     {
       "path": "src/protocol/envelope.ts",
-      "sha256": "878a771020466e90edadaa60a8d3ef4fba7a79534969c7ea510fa02795773ea8"
+      "sha256": "957ebf736dc4fbd702aa188a6cbd786635873566fcf5be605d9df6dd18dd4ef7"
     },
     {
       "path": "src/task/task-service.ts",
-      "sha256": "0b2df9c04e4f3ed93290d1ad6baca8e26ac70d52f8c8c9ede0e5667d3df266a5"
+      "sha256": "7f7416080dba07dba310dcaa4863e0758ad6bbf45a166b9bf9d3e52501a1e47f"
     },
     {
       "path": "src/task/task-types.ts",

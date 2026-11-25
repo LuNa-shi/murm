@@ -159,7 +159,7 @@ CREATE TABLE IF NOT EXISTS runtime_model_policies (
 
 ### Mission submission coordinator
 
-Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `2bcd64f9bf4b6e53634e0a42432bb4261bd2362500b6d4f3b55fd0bdd25d5cfe`.
+Source: [src/runtime/mission-submission.ts](../../src/runtime/mission-submission.ts); source SHA-256: `6e50760e9fc8aaf9983a0a3c4aebd3ff26a2dd1602f69807aede5b369151fc77`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_final_check_policies (
@@ -194,7 +194,7 @@ CREATE TABLE IF NOT EXISTS mission_final_check_policies (
 
 ### Owner-local manual Mission review
 
-Source: [src/runtime/manual-mission-review.ts](../../src/runtime/manual-mission-review.ts); source SHA-256: `7a21ed804008b3496822dda2ee4195eba876c8ae7f558beb4acffe2df9a340eb`.
+Source: [src/runtime/manual-mission-review.ts](../../src/runtime/manual-mission-review.ts); source SHA-256: `006ac7eea3be8aaff08245790b29c37572b7ef7b39be4f2af04a866eef152b4d`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS mission_manual_reviews (
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS mission_manual_reviews (
 
 ### Execution Workspace coordinator
 
-Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `1be13b51b76bbf4eace61b6df4c8895df3bf42662e78d2a67c06815c80a99dca`.
+Source: [src/runtime/execution-workspace.ts](../../src/runtime/execution-workspace.ts); source SHA-256: `926198b786cf35a7effb7aa19c3f1a282d9346cccc7fd0b568f0efd1154459d9`.
 
 ```sql
 CREATE TABLE IF NOT EXISTS execution_workspace_state (
@@ -765,7 +765,7 @@ CREATE INDEX IF NOT EXISTS observation_events_experiment_core_sequence
 
 ### Constructor-added schema objects
 
-Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `0b2df9c04e4f3ed93290d1ad6baca8e26ac70d52f8c8c9ede0e5667d3df266a5`.
+Fresh Task Service initialization adds the following objects beyond the exported create-schema strings. Source: [src/task/task-service.ts](../../src/task/task-service.ts); SHA-256: `7f7416080dba07dba310dcaa4863e0758ad6bbf45a166b9bf9d3e52501a1e47f`.
 
 #### mission_final_check_active
 
