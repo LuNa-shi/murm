@@ -8,7 +8,8 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
-| `EXP-20261125-04` | [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200) | **REGISTERED · Flat · PutnamBench 2025 B1** | `e1494d60f71235d20eb82f08079edc67702ec6d1` | [EXP-20261125-04 Flat PutnamBench 2025 B1](EXP-20261125-04-flat-putnambench-b1.md) |
+| `EXP-20261125-04` | [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200) | **STARTUP FAILED · Flat · 0 model requests** | `e1494d60f71235d20eb82f08079edc67702ec6d1` | [EXP-20261125-04 Flat PutnamBench 2025 B1](EXP-20261125-04-flat-putnambench-b1.md) |
+| `EXP-20261125-05` | [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200) | **REGISTERED · Flat · PutnamBench 2025 B1** | `e1494d60f71235d20eb82f08079edc67702ec6d1` | [EXP-20261125-05 Flat PutnamBench 2025 B1](EXP-20261125-05-flat-putnambench-b1.md) |
 | `EXP-20261125-01` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Subagents · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
 | `EXP-20261125-02` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Flat · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
 | `EXP-20261125-03` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Agensh · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |

@@ -1,6 +1,6 @@
 # EXP-20261125-04 · Flat PutnamBench 2025 B1
 
-Status · REGISTERED
+Status · STARTUP FAILED
 
 The [Phase 0005 Flat math design on main](../phases/0005-core-environment/04-flat-math.md) was merged in [`68eb83e`](https://github.com/LuNa-shi/SwarmEnv/commit/68eb83e0550109924c56035b4e90077deb399228). This registration precedes the first hosted request. [Issue #200](https://github.com/LuNa-shi/SwarmEnv/issues/200)
 
@@ -38,12 +38,12 @@ node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_
 
 ## Results
 
-Pending the registered run.
+The command exited before Runtime allocation and before any upstream model dispatch. The checker rejected a file mode mismatch in the compiled module checker. The launcher recorded the experiment identity before the rejection. No research time elapsed and no Bot containers were allocated.
 
 ## Analysis
 
-Pending the fixed candidate, source and runtime records.
+The launch used a restrictive process umask while the build emits executable checker dependencies under the standard build mode. The artifact lock detected the permission difference and prevented execution. Under the standard build mode, the checker artifacts match the existing lock.
 
 ## Next steps
 
-Run the registered evaluation, replay the fixed final candidate, and inspect the model ledger and proof lineage.
+Repeat with the pinned build mode and original inputs in [EXP-20261125-05](EXP-20261125-05-flat-putnambench-b1.md).
