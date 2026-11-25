@@ -76,13 +76,14 @@ export async function createAgenshTeam(options: any) {
       let core: any;
       try { core = runtime ? await bounded(() => runtime.close({ timeoutMs: Math.max(1, end - Date.now()) }), Math.max(1, end - Date.now()), 'CORE_CLOSE_PENDING') : { cleanup: 'complete', bots: [], pending: [] }; }
       catch { core = { cleanup: 'pending', bots: [...peers.values()].map((bot: any) => ({ botId: bot.id, execution: 'unknown', cleanup: 'pending' })), pending: [{ kind: 'runtime-close', id: runtime?.id }] }; }
-      for (const router of routers.values()) await router.finishClose(core);
+      const routersDrained = await bounded(() => Promise.all([...routers.values()].map(router => router.finishClose(core))),
+        Math.max(1, end - Date.now()), 'ROUTER_CLOSE_PENDING').then(() => true, () => false);
       if (deliveryWork) {
         await bounded(() => deliveryWork, Math.max(1, end - Date.now()), 'DELIVERY_EXPORT_PENDING')
           .catch(() => { deliveryReceipt ??= { state: 'pending', code: 'DELIVERY_EXPORT_PENDING' }; });
       }
       const sourcesPending = pendingSources.size > 0 || [...sourceResults, ...sourceCreation].some((row: any) => row.status === 'rejected');
-      if (core.cleanup !== 'complete' || core.bots?.some((bot: any) => bot.execution !== 'stopped' || bot.cleanup !== 'complete') || sourcesPending || deliveryReceipt?.state === 'pending') return { ...core, cleanup: 'pending', ...(deliveryReceipt ? { delivery: deliveryReceipt } : {}), sourceCleanup: sourcesPending ? 'pending' : 'complete', environment: { cleanup: 'pending', resources: resources.snapshot() } };
+      if (core.cleanup !== 'complete' || core.bots?.some((bot: any) => bot.execution !== 'stopped' || bot.cleanup !== 'complete') || sourcesPending || !routersDrained || deliveryReceipt?.state === 'pending') return { ...core, cleanup: 'pending', ...(deliveryReceipt ? { delivery: deliveryReceipt } : {}), sourceCleanup: sourcesPending ? 'pending' : 'complete', ...(!routersDrained ? { routerCleanup: 'pending' } : {}), environment: { cleanup: 'pending', resources: resources.snapshot() } };
       const environment = await bounded(() => resources.close(), Math.max(1, end - Date.now()), 'FACILITY_CLOSE_PENDING').catch(() => ({ cleanup: 'pending', resources: resources.snapshot() }));
       const receipt: any = { ...core, cleanup: environment.cleanup, environment, ...(deliveryReceipt ? { delivery: deliveryReceipt } : {}) };
       if (receipt.cleanup === 'complete') { completed = receipt; for (const unsubscribe of unsubscriptions) unsubscribe(); }
@@ -103,7 +104,27 @@ export async function createAgenshTeam(options: any) {
       delivery = createAgenshDelivery({ facilities, adminToken: options.gitea?.adminToken });
       signal.addEventListener('abort', () => delivery?.stop(), { once: true });
     }
-    services = createAgenshServices(facilities, delivery);
+    function projectFailure(botId: string, key: string, error: any) {
+      if (closing || signal.aborted) return;
+      unavailablePeers.set(botId, { type: 'routing', code: error?.code ?? error });
+      routers.get(key)?.stop();
+    }
+    services = createAgenshServices(facilities, delivery, options.project ? entry => {
+      if (closing || signal.aborted) return;
+      const label = `G${entry.gistId}`;
+      const content = Buffer.from([`${entry.type} ${label}`, entry.content, entry.detail].filter(Boolean).join('\n'));
+      const text = content.length <= 16 * 1024 ? content.toString('utf8')
+        : new TextDecoder().decode(content.subarray(0, 16 * 1024 - 3), { stream: true }) + '…';
+      for (const peer of facilities.peers) {
+        if (peer.board.workerId === entry.workerId || stoppedPeers.has(peer.key)) continue;
+        const router = routers.get(peer.key);
+        if (!router) continue;
+        try {
+          router.ingest({ source: 'board', kind: 'board-entry', eventId: label, targetWorker: peer.board.workerId, text,
+            origin: { senderId: entry.workerId, object: facilities.boardId } });
+        } catch (error: any) { projectFailure(peers.get(peer.key).id, peer.key, error); }
+      }
+    } : undefined);
     const profiles = Object.fromEntries(facilities.peers.map((peer: any) => [`peer-${peer.key}`, createPeerProfile({ image, model, facilities: { ...facilities, peer } })]));
     runtime = await createRuntime({ backend, services: services.services, profiles, maxBots: peerKeys.length, outputDir }); check();
     unsubscriptions.push(runtime.onEvent((event: any) => {
@@ -120,14 +141,11 @@ export async function createAgenshTeam(options: any) {
     for (const peer of facilities.peers) {
       const bot = peers.get(peer.key); const mapping: any = { botId: bot.id, workerId: peer.board.workerId };
       const board = httpClient(facilities.endpoints.board);
-      const projectFailure = (error: any) => {
-        if (closing || signal.aborted) return;
-        unavailablePeers.set(bot.id, { type: 'routing', code: error?.code ?? error });
-        routers.get(peer.key)?.stop();
-      };
+      const failRouting = options.project ? (error: any) => projectFailure(bot.id, peer.key, error) : fence;
       const router = createAgenshRouter({ ...(options.project ? {
         workTimeoutMs: durationMs + 120_000, turnTimeoutMs: durationMs, maxBatches: 256, idleNudgeMs: 120_000, maxNudges: 8,
-      } : {}), ...options.router, mapping, onFence: options.project ? projectFailure : fence,
+      } : {}), ...options.router, mapping, onFence: failRouting,
+        steerInput: options.project ? (text: string, requestId: string) => runtime.steer(bot.id, text, { requestId, source: 'agensh-peer-notice', steeringMode: 'all' }) : undefined,
         runInput: (text: any, wait: any) => {
           const send = () => runInput(runtime, bot.id, text, { ...wait, operation: options.project ? 'start' : 'send', signal: AbortSignal.any([signal, wait.signal]) });
           return inputAdmission ? inputAdmission.run(send) : send();
@@ -137,7 +155,7 @@ export async function createAgenshTeam(options: any) {
       const subscribe = options.router?.subscribe ?? createAgenshEventSubscription;
       const creation = Promise.resolve().then(() => subscribe({ ...(options.project ? { pollIntervalMs: 2500, dmChannelIds: Object.values(facilities.directChannels?.[peer.key] ?? {}) } : {}),
         ...options.router?.events, facilities: { ...facilities, peer }, mapping, ingest: router.ingest, signal,
-        onFailure: options.project ? projectFailure : fence })).then(async (source: any) => {
+        onFailure: failRouting })).then(async (source: any) => {
         if (typeof source?.stop !== 'function') throw fail('TEAM_SOURCE_NOT_READY');
         subscriptions.set(peer.key, source);
         if (closing) await source.stop();

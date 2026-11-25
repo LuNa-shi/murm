@@ -131,8 +131,11 @@ export function createAgenshDelivery({ facilities, adminToken, maxReadinessReads
         for (let index = 0; index < maxReadinessReads; index++) {
           row.readinessReads++;
           const pr = await request('GET', `${scope}/pulls/${number}`, undefined, { signal });
-          if (pr?.head?.sha !== headSha || pr.head.ref !== peer.branch || pr.base?.ref !== 'main' ||
-              (facilities.project && pr.head.repo?.full_name !== `${facilities.repository.owner}/${facilities.repository.name}`) ||
+          const allowedHead = facilities.project
+            ? typeof pr?.head?.ref === 'string' && pr.head.ref.length > 0 && pr.head.ref !== 'main' &&
+              pr.head.repo?.full_name === `${facilities.repository.owner}/${facilities.repository.name}`
+            : pr?.head?.ref === peer.branch;
+          if (!allowedHead || pr?.head?.sha !== headSha || pr.base?.ref !== 'main' ||
               String(pr.user?.id) !== peer.gitea.accountId || pr.merged) throw fail('DELIVERY_INVALID');
           if (pr.mergeable === true) break;
           if (index === maxReadinessReads - 1) throw fail('DELIVERY_NOT_READY');

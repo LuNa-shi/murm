@@ -2,7 +2,7 @@
 
 Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pack` builds the distributable JavaScript and declarations before archiving.
 
-The foreground CLI gives every peer the same project issue. The peers start automatically after the Environment prepares their separate Pi Sessions, Git branches, accounts, event subscriptions and shared Board. Peers choose work, send private messages, share findings and request verified PR merges into a protected `main`.
+The foreground CLI gives every peer the same project issue. The peers start automatically after the Environment prepares their separate Pi Sessions, accounts, event subscriptions and shared Board. Peers choose work and their own Git branches, send private messages, share findings and request verified PR merges into a protected `main`. While a peer is working, its router can deliver a DM or a new Board entry through Core steer at Pi's next execution boundary.
 
 ## Prerequisites
 

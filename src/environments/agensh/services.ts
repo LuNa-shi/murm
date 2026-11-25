@@ -9,8 +9,16 @@ const gitSha = { type: 'string', pattern: '^[a-f0-9]{40}$' };
 const fixed = (value: any) => ({ type: 'string', enum: [value] });
 const failure = (code: any) => Object.assign(new Error('Agensh upstream operation failed'), { code });
 
+interface BoardEntry {
+  workerId: string;
+  gistId: number;
+  type: string;
+  content: string;
+  detail?: string;
+}
+
 /** One run, trusted peer identities. Credentials and the trusted upstream identities stay here. */
-export function createAgenshServices(configuration: any, delivery?: { merge(input: any): Promise<unknown> }) {
+export function createAgenshServices(configuration: any, delivery?: { merge(input: any): Promise<unknown> }, onBoardEntry?: (entry: BoardEntry) => void) {
   const { runId, repository, channelId, boardId } = structuredClone(configuration);
   const peers = structuredClone(configuration.peers ?? [{ ...configuration.peer, key: 'peer' }]);
   if (!Array.isArray(peers) || peers.length < 1 || peers.length > 8 || new Set(peers.map((peer: any) => peer.key)).size !== peers.length) throw new TypeError('Agensh requires a bounded distinct peer list');
@@ -44,7 +52,7 @@ export function createAgenshServices(configuration: any, delivery?: { merge(inpu
         } },
       pull_request_write: { schema: object({ ...repo, method: fixed('create'), title: text, head: text, base: fixed('main'), body: { type: 'string', maxLength: 16383 } }, ['owner', 'repo', 'method', 'title', 'head', 'base']),
         route: ({ title, head, base, body }: any, peer: any) => {
-          if (peer.branch && head !== peer.branch) throw failure('NOT_ALLOWED');
+          if (configuration.project ? head === 'main' || head.includes(':') : peer.branch && head !== peer.branch) throw failure('NOT_ALLOWED');
           return ['POST', `${scope}/pulls`, { title, head, base, ...(body === undefined ? {} : { body }) }];
         } },
     },
@@ -140,6 +148,10 @@ export function createAgenshServices(configuration: any, delivery?: { merge(inpu
           const result = await httpClient(endpoint, credential)(method, path, body, { signal });
           if (!result || typeof result !== 'object' || Array.isArray(result) !== (outputs[capability.operation].type === 'array')) throw failure('SERVICE_UNAVAILABLE');
           if (capability.operation === 'send_dm' && (result.user_id !== peer.message.accountId || result.channel_id !== body.channel_id)) throw failure('SERVICE_UNAVAILABLE');
+          if (onBoardEntry && capability.operation === 'board_write' && result.status === 'admitted' &&
+              Number.isSafeInteger(result.gist_id) && result.gist_id > 0) {
+            onBoardEntry({ workerId: peer.board.workerId, gistId: result.gist_id, type: input.type, content: input.content, detail: input.detail });
+          }
           return result;
         } catch (error: any) {
           throw failure(error?.status === 401 || error?.status === 403 ? 'NOT_ALLOWED' : 'SERVICE_UNAVAILABLE');
