@@ -8,6 +8,9 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261125-07` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **REGISTERED · ScaleMAS · FATE-M #1 · shared** | `c1a3480` | [ScaleMAS FATE-M one-problem acceptance](EXP-20261125-scalemas-fate.md) |
+| `EXP-20261125-08` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **REGISTERED · ScaleMAS · FATE-M #1 · private** | `c1a3480` | [ScaleMAS FATE-M one-problem acceptance](EXP-20261125-scalemas-fate.md) |
+| `EXP-20261125-09` | [Issue #202](https://github.com/LuNa-shi/SwarmEnv/issues/202) | **REGISTERED · ScaleMAS · FATE-M #1 · none** | `c1a3480` | [ScaleMAS FATE-M one-problem acceptance](EXP-20261125-scalemas-fate.md) |
 | `EXP-20261125-01` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Subagents · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
 | `EXP-20261125-02` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Flat · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
 | `EXP-20261125-03` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **SETTLED · ProgramBench Pastel · Agensh · no timed candidate** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
