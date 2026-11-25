@@ -1,6 +1,6 @@
 # EXP-20261125-17 · Flat PutnamBench 2025 B1
 
-Status · REGISTERED
+Status · SETTLED · Original theorem accepted · Cross-Bot proof adoption verified
 
 Model · `gpt_proxy/gpt-6.1-sol`
 
@@ -38,7 +38,7 @@ The loopback startup check found and reproduced a K3-only guard in the shared re
 | `docs/architecture/10-service-api-reference.md` | `1e2d90bd52307329c2f4de1bfbbbf683dce0d2832b177bf59ee5ebc4bef9e622` |
 | `benchmarks/shared/run-window.ts` | `47014686a3299c460c2455fede548c3ae2fac5aff3bf727b2f914eeabb80357e` |
 
-The Putnam Profile leaves Added System Prompt empty. Core renders the startup directory from the same authorized registered manifests used by the CLI. The experiment will check the actual provider input for each Bot, including replacements.
+The Putnam Profile leaves Added System Prompt empty. Core renders the startup directory from the same authorized registered manifests used by the CLI. The audit checks the actual provider input for each Bot, including replacements.
 
 An OS package update changed `python3-oauthlib` inside the host-library mount. Initial offline preflight rejected the old lock. The trusted lock command verified the same source pins, dependencies and deployment configuration and changed only the `host-library-0` entry. Its new SHA-256 is `fcfab40eac05b93a87c92e40707c3e97b2e2c631ba7d2f175b75ce3bb0f91d0e`. The Lean, Mathlib, Comparator, exporter, verifier and explicit tool artifacts retain their hashes.
 
@@ -50,3 +50,35 @@ node benchmarks/putnambench-flat/main.ts run PRIVATE_CHECKER_CONFIG PUTNAMBENCH_
 ```
 
 Observe initial and replacement prompt parity, proposal scope, successful Task claims, real snapshots, Lean diagnostics and reusable public revisions. For a directed Material, follow publication, response link, delivery and receipt in the recipient's model input. Compare the subsequent use in source, saved parents, checked merge, final tree and proof dependencies. Stop on Mission acceptance, the common deadline, or a confirmed runtime, provider, fixture, or checker defect that prevents the registered workflow. If all four initial selection windows expire with no Task proposal or claim, stop to diagnose the missing workflow. If a directed notice has an admission receipt, audit the next eligible provider input after the native tool batch completes and stop if the delivery path is confirmed broken. Preserve and independently assess the available main on exit.
+
+## Results
+
+- Parallel reviews checked Task and Mission semantics, the CLI and authorization contract, and Material and Workspace handoffs. The exact GPT image passed the same four-slot controlled startup check as K3. That check compared all 31 authorized operations against the actual shell CLI. The hosted trace captured the first request of all 12 Bots, including replacements. Every one had the same system prompt digest as K3 (`6a7cfc922dcbcdfea79ab58972ecb79c56b9ee1ae75e73ef2fae75f1b137cdce`), the four native tools and the exact original Lean source, Mission and Flat workflow in the user message. The registered GPT launcher passed all eight case and run-window tests, plus benchmark type checking and the Architecture checks.
+- The first Task was proposed 10.3 seconds into the research window. Four initial Bots had claimed work within 34 seconds. The eventual integrator, `e7e9a92d`, proposed its own Task during selection and two more during its Execution. `0b264105` claimed the combinatorial Task that the integrator had proposed. Other initial Bots worked on the circle-to-plane bridge and the geometry of the finite grid. The run formed 11 Tasks and nine Executions. Eight Bots finished a Task and exited, making room for replacements. Three Tasks remained open when the Mission stopped.
+- The first source save landed after 58.9 seconds. The run made 19 post-seed saves and one checked merge. Six Workspace applies succeeded. Twenty Materials were published. All 24 Material notices admitted to a running Execution appeared in a subsequent provider input for that recipient and were handled. Five other notifications had no assigned recipient Execution. An initial apply and consume used invalid parameter names. The integrator corrected the parameters and completed both operations. Another Bot also retried an invalid apply successfully.
+- In the same Pi Session and Execution `58053075`, the integrator applied public revisions `0.11`, `0.10`, `0.12` and `0.13`, recorded Material use, and saved the combined proof at `0.17`. The revision parents record the incoming snapshots. Comparing the fixed Git tree confirms these three peer modules in final main have exact source bytes from their respective authors.
+
+  | Module on final main | Peer Bot and source revision | Git blob |
+  |---|---|---|
+  | `BoolGrid.lean` | `0b264105`, `0.10` | `b455ecb130d57f96cdfc6b21af462d1a871bdb94` |
+  | `Putnam2025B1Grid.lean` | `65ae3c30`, `0.12` | `45c03f5fb73b36856b879ab016b0605a3f285ecb` |
+  | `CircleBridge.lean` | `1f865677`, `0.13` | `7680c659725f5589c6ba6089a6cb8a5d2be63a36` |
+
+- The checked merge advanced main to `0.20` after 6m24s. Its commit `e1d79d08f6ddb3a9966ca07f55e3002ba2bd4692` has tree `eacc95ef8c253eb8fe31f1eee38bfc945fc0c8fd`, identical to the combined save `0.17`. The Mission accepted original theorem `putnam_2025_b1` at `15:05:05.727 UTC`, 8m34.206s after start, using the locked checker result `treecheck:f6acc98a-6de6-4090-ad4d-e35a9384f11e`. The controller stopped the research window after 8m36.170s.
+- An independent source and Session audit confirmed the authors, exact module bytes and continuity of the integrator's Session. A second locked replay accepted the same tree as `treecheck:80a40af0-765e-45f7-8ae6-7c51d68b0642`. The accepted Lean export has SHA-256 `b5de23b48f2cd287c3a3930f95ef00eed1b3aab2cedb2febecf5cfd1febbf73e`. Traversing constants in the target's proof term yielded a path to a theorem in each peer module.
+
+  - `putnam_2025_b1 → Putnam2025B1.color_eq_of_grid → Putnam2025B1.bool_grid_colors`
+  - `putnam_2025_b1 → Putnam2025B1.exists_circle_grid`
+  - `putnam_2025_b1 → Putnam2025B1.tripleRule_of_circumcenter → Putnam2025B1.color_center_of_three`
+
+- The provider ledger recorded 205 metered completions, with 4,933,770 input and 32,245 output tokens. Actual provider requests used `low` effort for all 62 selection calls and `medium` for all 143 work calls. Peak concurrency was four. All 12 Bots were released and no Sandbox, checker or merge work remained. At Mission shutdown, the controller recorded the integrator's still-active Execution as `FAILED / flat-ended`. The independently accepted Mission result is `PASS`.
+
+## Analysis
+
+The GPT Bots turned the shared problem into work on distinct pieces of one proof, selected a Task proposed by a peer, and produced separate Lean modules. A single long-lived Execution integrated those modules while the peer Executions finished and their slots refilled. The first Material appeared before the first source save, and the notice audit shows that publication led to model-visible inputs throughout active work.
+
+K3 had the same startup text, tools and Service instructions. It made its first source save after 23m43s, eventually transferred a peer revision, and reached the time limit without a checked merge. GPT saved before the first minute and delivered an accepted original proof in just over eight minutes. The observed difference includes work selection, tool cadence and delivery in two individual runs. Both providers used the same fixture, concurrency and time limit. The launcher selected a different provider and the host had the package update recorded above. This comparison does not estimate a population effect of the model.
+
+## Next steps
+
+Preserve both outcomes and their fixed inputs in Issue #200. The GPT result shows one accepted collaborative proof through the ordinary Flat entrypoint. Establishing how often either provider produces this outcome would require repeated runs.
