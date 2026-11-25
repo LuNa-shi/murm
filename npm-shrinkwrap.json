@@ -12,7 +12,7 @@
         "ajv": "8.20.0"
       },
       "bin": {
-        "swarm": "dist/scripts/swarm.mjs"
+        "swarm": "dist/scripts/swarm.js"
       },
       "devDependencies": {
         "@types/node": "26.6.5",
