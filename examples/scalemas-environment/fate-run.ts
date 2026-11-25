@@ -12,6 +12,12 @@ import { createFateChecker, loadFateProject, sha256, type FateBenchmark, type Fa
 import { maxFateOperationsPerPeer, createFateTaskService, type FateCandidate, type MathlibMatch } from './fate-service.js';
 
 export const fateSharingPrompt = [
+  'When you start a new subgoal or hit a specific blocker, try searching substrate for the goal, blocker, or exact lemma name, even if an earlier search was empty.',
+  'If you find something that could save another peer work, publish a short note when you have it. A candidate lemma and how to apply it, a solved subgoal, or a failed route and why it failed can each be useful before you have a full proof.',
+  'Say what you have verified and what is still tentative.',
+].join('\n');
+
+export const fatePrivatePrompt = [
   'When you start a new subgoal or get stuck, search substrate for work on that specific subgoal.',
   'Publish reusable intermediate results as they become available and say what you have verified.',
 ].join('\n');
@@ -262,7 +268,8 @@ export async function runFateScaleMAS({
       databasePath: join(directory, 'substrate.sqlite'), runId, mode, services, authorize, countOperation, resourceExists: task.resourceExists,
     });
     const profile: Profile = {
-      image, model, writable: true, ...(substrate ? { prompt: fateSharingPrompt } : {}),
+      image, model, writable: true,
+      ...(substrate ? { prompt: mode === 'shared' ? fateSharingPrompt : fatePrivatePrompt } : {}),
       services: { fate: ['search_mathlib', 'check_lean', 'submit'], ...(substrate ? { substrate: ['publish', 'search', 'visit'] } : {}) },
     };
     const report = await runWithReport({

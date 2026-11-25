@@ -166,6 +166,7 @@ output('01-core-startup.md', header('Core startup system prompt',
   + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([])));
 const fateManifest = fateServiceManifest();
 const fateSharing = evaluate(between(fatePath, 'export const fateSharingPrompt = ', ';\n'));
+const fatePrivate = evaluate(between(fatePath, 'export const fatePrivatePrompt = ', ';\n'));
 output('09-scalemas-environment.md', header('ScaleMAS peer prompts',
   'In the generic configuration all three default peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
   + block('Peer Profile prompt', between(scaleMASPath, "export const peerPrompt = '", "';\n"))
@@ -174,7 +175,7 @@ output('09-scalemas-environment.md', header('ScaleMAS peer prompts',
     'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.')
   + block('FATE startup in the no-library condition', renderStartupPrompt([fateManifest]))
   + block('FATE startup in the shared condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('shared')], fateSharing))
-  + block('FATE startup in the private condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('private')], fateSharing))
+  + block('FATE startup in the private condition', renderStartupPrompt([fateManifest, paperSubstrateManifest('private')], fatePrivate))
   + block('FATE initial input', evaluate(between(fatePath, 'export const fateInput = ', ';\n')),
     'Every peer receives this same followUp through runInput after the fixed pool is ready. The host stages the frozen formal and informal problem as files. The informal file appends the problem resource address derived from the original declaration SHA-256. There is no periodic continuation or final scorer prompt.'));
 output('08-agensh-environment.md', header('Agensh peer and serial router prompts',

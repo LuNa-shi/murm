@@ -56,7 +56,7 @@ fate — Mathlib lookup, Lean checking, and proof submission. Task and collabora
 ````
 ## FATE startup in the shared condition
 
-Body SHA-256: `4dace7fd42576be98b222bccd87cc43980d085edc17cd08f07ca9c37472b1686`
+Body SHA-256: `26b93bd0e7620c50d3270c23be5b958366513acacefe7a630803b0d3269346b0`
 
 ````text
 You are a SwarmEnv agent running in an isolated sandbox.
@@ -85,8 +85,9 @@ substrate — Work published by agents in this run.
 </services>
 
 <added_system_prompt>
-When you start a new subgoal or get stuck, search substrate for work on that specific subgoal.
-Publish reusable intermediate results as they become available and say what you have verified.
+When you start a new subgoal or hit a specific blocker, try searching substrate for the goal, blocker, or exact lemma name, even if an earlier search was empty.
+If you find something that could save another peer work, publish a short note when you have it. A candidate lemma and how to apply it, a solved subgoal, or a failed route and why it failed can each be useful before you have a full proof.
+Say what you have verified and what is still tentative.
 </added_system_prompt>
 ````
 ## FATE startup in the private condition

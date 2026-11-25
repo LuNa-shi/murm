@@ -75,6 +75,12 @@ test('installed FATE-M peer adopts exact anonymous bytes after the producer is p
       const toolReturn = parsed.input.findLast(row => row.type === 'function_call_output');
       let item;
       if (!toolReturn) {
+        const developer = parsed.input.find(row => row.role === 'developer')?.content;
+        const guidance = /<added_system_prompt>\n([\s\S]+?)\n<\/added_system_prompt>/.exec(developer ?? '')?.[1] ?? '';
+        assert.match(guidance, /even if an earlier search was empty/);
+        assert.match(guidance, /a candidate lemma and how to apply it/i);
+        assert.match(guidance, /a failed route and why it failed/);
+        assert.match(guidance, /what you have verified and what is still tentative/);
         const phase = ++initial === 1 ? 'producer' : 'consumer';
         if (phase === 'consumer') {
           const found = await poll(async () => {

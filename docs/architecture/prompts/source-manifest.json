@@ -51,7 +51,7 @@
     },
     {
       "path": "examples/scalemas-environment/fate-run.ts",
-      "sha256": "4f358dce505ec613d6e446841a7fbcbace69a2c2ba40506678efa7b7af9413bb"
+      "sha256": "d8ebab76cb54f4ea5134203ca856460934e585ffd79f6a5a9a1aa301c83d3078"
     },
     {
       "path": "examples/scalemas-environment/fate-service.ts",
@@ -217,6 +217,12 @@
       "path": "examples/scalemas-environment/fate-run.ts",
       "anchor": "export const fateSharingPrompt = ",
       "line": 14,
+      "sha256": "7ff4c5380303146e92f355f40eba5ae009425023e3ecf1555270b22fce8a40fb"
+    },
+    {
+      "path": "examples/scalemas-environment/fate-run.ts",
+      "anchor": "export const fatePrivatePrompt = ",
+      "line": 20,
       "sha256": "05c26ed53c67fbb7695f75540d677abf442593c7cc128144dedd0a612098d4f2"
     },
     {
@@ -240,7 +246,7 @@
     {
       "path": "examples/scalemas-environment/fate-run.ts",
       "anchor": "export const fateInput = ",
-      "line": 19,
+      "line": 25,
       "sha256": "6430a48b9dce088568b31fe6d537888fd59bcfa9bedf8308434285d4759ccf24"
     },
     {
@@ -469,7 +475,7 @@
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
-      "sha256": "f09e46530b8b68b7ac5e27cd575a33c8598926bd656c790d948c49c4132135c9"
+      "sha256": "2cf6599c7debdba6e46691d81a63b174749ad05db7d637ddb525e6debfb1cb88"
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",
