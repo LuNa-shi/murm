@@ -8,6 +8,9 @@ Implementation unit tests, bounded debugging probes and failure reproductions ar
 
 | ID | Parent Issue / context | Type and status | Code | Report |
 |---|---|---|---|---|
+| `EXP-20261125-01` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **REGISTERED · ProgramBench Pastel · Subagents · 30 min / 3 Bot slots** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
+| `EXP-20261125-02` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **REGISTERED · ProgramBench Pastel · Flat · 30 min / 3 Bot slots** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
+| `EXP-20261125-03` | [Issue #209](https://github.com/LuNa-shi/SwarmEnv/issues/209) | **REGISTERED · ProgramBench Pastel · Agensh · 30 min / 3 Bot slots** | `ec4d286` | [Pastel three-MAS validation](EXP-20261125-programbench-pastel.md) |
 | `EXP-20261121-04` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Final PASS · 21m41.168s from first wake, local Lean readable at startup | `490a215` | [Paper repeat with corrected permissions](EXP-20261121-04-agensh-seymour-paper-fixed-uid.md) |
 | `EXP-20261121-03` | [Issue #157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | Startup failure before first wake · zero model requests | `490a215` | [Paper repeat with corrected permissions](EXP-20261121-03-agensh-seymour-paper-fixed-uid.md) |
 | `EXP-20261121-02` | [Issue #159](https://github.com/LuNa-shi/SwarmEnv/issues/159) / [#157](https://github.com/LuNa-shi/SwarmEnv/issues/157) | PASS · Seymour paper, four Cores, matched initial assignment · 25m01.926s to trusted acceptance | `365d3d9` | [Matched brief repeat](EXP-20261121-02-seymour-matched-brief.md) |
