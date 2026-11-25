@@ -78,6 +78,8 @@ For a single condition, set `SWARMENV_FATE_MODE` to `shared`, `private` or `none
 
 ## FATE-H with K3
 
+The shipped FATE configuration selects `kimi_proxy/k3`. An explicit host configuration can also set the selected `backend.models` entry to `provider: 'gpt_proxy', model: 'gpt-6.1-sol'` and supply that provider's Responses URL and host credential.
+
 Set `SWARMENV_FATE_BENCHMARK=FATE-H` and `SWARMENV_FATE_PROJECT` to the prepared workspace for FATE-H #2. Freeze [FATE-H at `17967b3`](https://github.com/frenzymath/FATE-H/tree/17967b3118082adfba7c5a5fc03b5f4a53717b59) and run `lake exe cache get` in that workspace. It uses the same Lean 4.28.0 and dependency source revisions as FATE-M. Pass `FATE-H` after the project and toolchain paths in `--fate-prepare`. A frozen bundle selects its own benchmark during rescoring, and the supplied project must match it.
 
 ```sh

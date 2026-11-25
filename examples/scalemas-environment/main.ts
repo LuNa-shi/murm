@@ -5,8 +5,10 @@ export async function runScaleMASExample(config: any, signal: any) {
   const { createPiOpenSandboxBackend } = await import('@swarmenv/core/backends/pi-opensandbox');
   if (config.fate !== undefined) {
     const selected = config.backend.models[config.model ?? 'default'];
-    if (selected?.provider !== 'kimi_proxy' || selected.model !== 'k3') {
-      throw Object.assign(new Error('The FATE example selects kimi_proxy/k3'), { code: 'FATE_MODEL_INVALID' });
+    const supportedModel = (selected?.provider === 'kimi_proxy' && selected.model === 'k3') ||
+      (selected?.provider === 'gpt_proxy' && selected.model === 'gpt-6.1-sol');
+    if (!supportedModel) {
+      throw Object.assign(new Error('The FATE example supports kimi_proxy/k3 and gpt_proxy/gpt-6.1-sol'), { code: 'FATE_MODEL_INVALID' });
     }
     const { runFateScaleMAS } = await import('./fate-run.js');
     return runFateScaleMAS({ ...config, backend: createPiOpenSandboxBackend({
