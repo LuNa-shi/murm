@@ -29,7 +29,7 @@ const sourcePaths = [
   'src/agent/services-bridge.ts',
   'src/cli/swarm-cli.ts', 'src/cli/service-command.ts',
   'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/pi-opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts',
-  'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts',
+  'examples/notes-environment/main.ts', 'src/environments/shared/run-input.ts', 'src/environments/scalemas/index.ts', 'src/environments/scalemas/substrate.ts',
   'src/environments/flat/controller.ts', 'src/environments/flat/environment.ts',
   'benchmarks/putnambench-flat/run.ts',
   'benchmarks/programbench-pastel/subagents-example.ts',
@@ -147,9 +147,7 @@ const notesPath = 'examples/notes-environment/main.ts';
 const notesKey = between(notesPath, "const key = '", "';\n");
 const notesInput = evaluate(between(notesPath, 'const inputText = Object.freeze(', ');\n'), { key: notesKey });
 output('07-notes-environment.md', header('Installed Notes Environment prompts',
-  'The host stages each role prompt at startup and supplies three fixed inputs through its exclusive input helper. The seeded fact enters the model transcript when a Bot reads its file or receives it in a Service result.')
-  + block('Writer Profile prompt', between(notesPath, "writer: { ...common, prompt: '", "', services"))
-  + block('Reader Profile prompt', between(notesPath, "reader: { ...common, prompt: '", "', services"))
+  'The Writer and Reader use the default Core system prompt with their own Notes grants and an empty Added System Prompt. The host supplies three fixed user inputs through its exclusive input helper. The seeded fact enters the model transcript when a Bot reads its file or receives it in a Service result.')
   + block('Writer publication', notesInput.put)
   + block('Reader retrieval', notesInput.get)
   + block('Reader follow-up', notesInput.follow));
@@ -171,12 +169,16 @@ for (const path of ['examples/subagents-environment/controller.ts', 'test-suppor
   }
 }
 const scaleMASPath = 'src/environments/scalemas/index.ts';
+const substratePath = 'src/environments/scalemas/substrate.ts';
 output('01-core-startup.md', header('Core startup system prompt',
   'The backend passes this file through Pi --system-prompt. The current working directory is appended by Pi. Services are rendered from the registered manifest purpose and operation descriptions after Bridge permission filtering. An optional nonblank Profile.prompt is included verbatim inside added_system_prompt.')
   + block('Profile with no allowed Service operations and no Added System Prompt', renderStartupPrompt([])));
 output('09-scalemas-environment.md', header('Fixed scaleMAS peer prompts',
   'All three peers receive the same Profile prompt. Each serial cycle sends the full host question after a peer/cycle header, followed by the fixed cycle text. These texts do not encode a Task/Mission protocol or verify correctness.')
   + block('Peer Profile prompt', between(scaleMASPath, "export const peerPrompt = '", "';\n"))
+  + block('Substrate purpose', between(substratePath, "purpose: '", "'"))
+  + ['publish', 'visit', 'search'].map(operation =>
+    block('Substrate ' + operation, between(substratePath, "capability('" + operation + "', '", "'"))).join('')
   + block('Cycle instruction', between(scaleMASPath, "export const cyclePrompt = '", "';\n"))
   + block('Exact input composition', between(scaleMASPath, '                  const text = ', '\n                  const sendInput'),
     'index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Bot inside the original turn deadline.'));
@@ -184,8 +186,8 @@ output('08-agensh-environment.md', header('Agensh peer, batch and notice prompts
   'The Profile prompt is installed before peer startup. The routed entrypoint composes one instruction line plus JSON batch data and shared-board context, then calls the sole exclusive input helper. The project path uses Core start for ordinary batches and Core steer for eligible peer notices during an active batch. The compatibility paths use explicit followUp.')
   + block('Compatibility peer Profile prompt', between('src/environments/agensh/index.ts', 'export const peerPrompt = `', '`;'))
   + block('Project peer Profile prompt', between('src/environments/agensh/index.ts', 'export const projectPeerPrompt = `', '`;'))
-  + block('Project kickoff text', between('src/environments/agensh/team.ts', 'const goal = `', '`;'),
-    'issueNumber comes from the newly provisioned Gitea project issue. The title comes from trusted project configuration. All peers receive the same text.')
+  + block('Project kickoff text', between('src/environments/agensh/team.ts', 'router.kickoff(', ');'),
+    'All peers receive the same trusted project body as the kickoff user input. The provisioned Gitea issue stores the same body and its title.')
   + block('Exact serial input composition', between('src/environments/agensh/router.ts', 'const input = `', '`;'),
     'The Router owns the batch identity and source metadata. Context is the current Board read for the mapped viewer. Kickoff, external input and nudges travel through this same composition.')
   + block('Compatibility batch instruction', between('src/environments/agensh/router.ts', "export const routerInstruction = '", "';"))
@@ -238,9 +240,8 @@ const flatCliHelp = await Promise.all(['create', 'link'].map(async command => {
 }));
 output('08-flat-environment.md', header('Flat discovery and continuation prompts',
   'After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The trusted Core capture or explicit snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.')
-  + block('Default researcher Profile prompt', between(flatEnvironmentPath, "prompt='", "',\n"))
   + block('Profile suffix when live Workspace save is unavailable', between(flatEnvironmentPath, "export const FLAT_WITHOUT_WORKSPACE_SAVE_PROMPT = '", "';"),
-    'The host appends this suffix after two newlines to the default or host-supplied Profile prompt when it has neither a Core nor an injected live capture binding.')
+    'The default Added System Prompt is empty. Without a Core or injected live capture binding, the host includes this explanation after any supplied Profile text.')
   + block('Default discovery input', between(flatControllerPath, "export const FLAT_DISCOVERY_MESSAGE='", "';"))
   + block('Autonomous discovery input', autonomousDiscovery,
     'When autonomous Tasks are enabled and there is no host override, the controller reads the public Mission and registered Bot after the final discovery send guard. The effective run deadline comes from the controller host admission clock. The initial batch is sent after any configured host admission callback.')

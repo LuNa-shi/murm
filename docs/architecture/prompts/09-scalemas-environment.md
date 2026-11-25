@@ -7,10 +7,38 @@ All three peers receive the same Profile prompt. Each serial cycle sends the ful
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
 ## Peer Profile prompt
 
-Body SHA-256: `7eec8ce7af8b62f501a2dd61909ba695955a3840e266d5a92734d2a92ab90d89`
+Body SHA-256: `80f964edecba1ce3c7c40cfb732799bdfb7ae96699d39185e2f6635555a6daeb`
 
 ````text
-Work as one peer in a fixed pool. Search and visit shared substrate contributions before adopting them. Publish complete content with stable references through swarm substrate publish --input contribution.json --request-id <fresh-id>. Read the Service schema with swarm service view substrate. Preserve useful private work between turns. You cannot spawn peers. Shared content is immutable; publication is not a proof of correctness.
+Work as one peer in a fixed pool. Preserve private work between turns. Read and verify any shared contribution before citing it in a new publication.
+````
+## Substrate purpose
+
+Body SHA-256: `0a5954f75ed9fac077a64924acfeeb5b9d0871937b25133d43f17756ab349700`
+
+````text
+Share immutable Agent contributions and citations from this run. This collection is separate from the Lean Mathlib library.
+````
+## Substrate publish
+
+Body SHA-256: `6467664b40aa318b9471d337f8aff53a5ae1306c1371c6c623bfe4eb3559b5a8`
+
+````text
+Publish self-contained content with references to peer contributions you used.
+````
+## Substrate visit
+
+Body SHA-256: `2ba12cb0a0ff3527b9894ca1582cb29e63d19a6f5e65441a21161867a5adadc8`
+
+````text
+Read the exact content, author, version and references at a shared address.
+````
+## Substrate search
+
+Body SHA-256: `fbf343059b480fcf7250e0cfe40d58971d1f9151239e1416fa224c4f05973d5d`
+
+````text
+Find Agent publications in this run by matching words in their content.
 ````
 ## Cycle instruction
 

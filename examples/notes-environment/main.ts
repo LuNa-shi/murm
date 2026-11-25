@@ -93,8 +93,8 @@ export async function runNotesEnvironment({ backend, model = 'default', image, o
       const common: any = { model, image, writable: true };
       return createRuntime({ backend: createPiOpenSandboxBackend(backend), services: notes.services, maxBots: 2, outputDir,
         profiles: {
-          writer: { ...common, prompt: 'Share the fixed source fact verbatim through Notes.', services: { notes: ['put'] } },
-          reader: { ...common, prompt: 'Verify the shared fact and save evidence in your private work directory.', services: { notes: ['get'] },
+          writer: { ...common, services: { notes: ['put'] } },
+          reader: { ...common, services: { notes: ['get'] },
             collect: { paths: ['review.md', 'followup.md'], includeGit: false, maxBytes: 64 * 1024, required: true } },
         },
       });

@@ -13,7 +13,7 @@ const references: any = { type: 'array', items: address, uniqueItems: true, maxI
 const rank = object({ textOccurrences: { type: 'integer', minimum: 1 }, incomingReferences: { type: 'integer', minimum: 0 } });
 const searchResult = object({ results: { type: 'array', maxItems: 8, items: object({ address, summary: string(240), rank }) }, limit: { type: 'integer', minimum: 1, maximum: 8 } });
 const record = object({ address, author: string(128), version: { const: 1 }, content: string(8192), references });
-const capability = (operation: any, input_schema: any, output_schema: any) => ({ name: operation, operation, description: `${operation} immutable run content`,
+const capability = (operation: 'publish' | 'search' | 'visit', description: string, input_schema: any, output_schema: any) => ({ name: operation, operation, description,
   side_effect: operation === 'publish' ? 'write' : 'read', idempotent: true, help: { when: 'Share, discover and adopt peer contributions' },
   input_schema, output_schema, errors: ['CONFLICT', 'NOT_FOUND', 'NOT_ALLOWED', 'INVALID_CONTRACT'].map((code: any) => ({ code, retryable: false })) });
 
@@ -88,11 +88,11 @@ export function createSubstrateService({ databasePath, runId, poolSize = 3 }: an
       throw cause;
     }
   } });
-  const manifest: any = { id: 'substrate', title: 'Persistent peer content', purpose: 'Publish immutable contributions and citations within one run',
+  const manifest: any = { id: 'substrate', title: 'Persistent peer content', purpose: 'Share immutable Agent contributions and citations from this run. This collection is separate from the Lean Mathlib library.',
     provider_version: '1', contract_version: '2', endpoint: { transport: 'in-process' }, capabilities: [
-      capability('publish', { ...object({ content: string(8192), references }), required: ['content'] }, record),
-      capability('visit', object({ address }), record),
-      capability('search', object({ query: string(512), limit: { type: 'integer', minimum: 1, maximum: 8 } }), searchResult),
+      capability('publish', 'Publish self-contained content with references to peer contributions you used.', { ...object({ content: string(8192), references }), required: ['content'] }, record),
+      capability('visit', 'Read the exact content, author, version and references at a shared address.', object({ address }), record),
+      capability('search', 'Find Agent publications in this run by matching words in their content.', object({ query: string(512), limit: { type: 'integer', minimum: 1, maximum: 8 } }), searchResult),
     ] };
   const services: any = new ServiceRegistry(); services.registerService({ manifest, adapter });
   return Object.freeze({ services, manifest, adapter,

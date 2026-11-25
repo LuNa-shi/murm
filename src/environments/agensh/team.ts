@@ -25,7 +25,8 @@ export async function createAgenshTeam(options: any) {
   const { runId, image, outputDir, backend, model = 'default', exportLimit = 8 * 1024 ** 2, peerKeys = ['a', 'b'] } = options;
   const durationMs = options.project?.durationMs ?? 3_600_000;
   if (options.project !== undefined && (!finite(durationMs) || durationMs > 86_400_000 ||
-      typeof options.project?.title !== 'string' || typeof options.project?.body !== 'string')) throw new TypeError('Agensh project requires a goal and bounded duration');
+      typeof options.project?.title !== 'string' || typeof options.project?.body !== 'string' ||
+      !options.project.body.trim() || Buffer.byteLength(options.project.body) > 16_000)) throw new TypeError('Agensh project requires a goal and bounded duration');
   const readinessTimeoutMs = options.router?.readinessTimeoutMs ?? 10_000;
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir ||
       (options.maxConcurrentInputs !== undefined && (!Number.isSafeInteger(options.maxConcurrentInputs) || options.maxConcurrentInputs < 1 || options.maxConcurrentInputs > peerKeys.length)) ||
@@ -169,10 +170,9 @@ export async function createAgenshTeam(options: any) {
     }
     for (const router of routers.values()) router.markReady();
     if (options.project) {
-      const goal = `Work with the other peers on run issue #${facilities.issueNumber}: ${options.project.title}. Read the issue and start your own work cycle.`;
       startedAt = new Date().toISOString();
       deadlineTimer = setTimeout(() => stop(fail('AGENSH_PROJECT_DEADLINE')), durationMs);
-      for (const router of routers.values()) router.kickoff(goal);
+      for (const router of routers.values()) router.kickoff(options.project.body);
     }
     return Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getBot: runtime.get,
       currentPeers: () => ({ closing, peers: peerStates() }),

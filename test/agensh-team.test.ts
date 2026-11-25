@@ -180,6 +180,9 @@ test('project close bounds a held steer and keeps facilities for a later close r
   });
   for (let step = 0; step < 100 && transport.submissions.size < 2; step++) await new Promise(resolve => setImmediate(resolve));
   assert.equal(transport.submissions.size, 2);
+  for (const { input } of transport.submissions.values()) {
+    assert.equal(JSON.parse(input.slice(input.indexOf('\n') + 1)).text, 'run the project');
+  }
   await new Promise(resolve => setImmediate(resolve));
   const sending = Promise.withResolvers();
   transport.next = () => { sending.resolve(); return held.promise; };

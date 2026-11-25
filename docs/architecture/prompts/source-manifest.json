@@ -43,7 +43,7 @@
     },
     {
       "path": "examples/notes-environment/main.ts",
-      "sha256": "f4efd69ad502f826e7b90de4954b791783a5e85d69a2b3172015fe288ceb11e4"
+      "sha256": "21db09fa2a52e25b81fae13461939ed08aaa09b3ee572a8aaceb5d9f043cc3f4"
     },
     {
       "path": "src/environments/shared/run-input.ts",
@@ -51,7 +51,11 @@
     },
     {
       "path": "src/environments/scalemas/index.ts",
-      "sha256": "026924cb38465352f32f9ff0f7e3ea9d96f27bcd49d41398ea0b97a461e9da5d"
+      "sha256": "8b42231510f94c8108709ad6cc2ddbc5d0682120ba4f1d7918896718ab1caaab"
+    },
+    {
+      "path": "src/environments/scalemas/substrate.ts",
+      "sha256": "67465d3b8f76aacb0c959f451f14982ef75f90f2372f6844b0b93e9f805afb9d"
     },
     {
       "path": "src/environments/flat/controller.ts",
@@ -59,7 +63,7 @@
     },
     {
       "path": "src/environments/flat/environment.ts",
-      "sha256": "a90e3a2cf4d0b013fbeb637afb4ce14d9d8a5e4876ee4e2f9c74d2f82de87ca0"
+      "sha256": "650af62438f9b4e6cb060fb7154522ebd36446901ff44c1099b7e12185f6a996"
     },
     {
       "path": "benchmarks/putnambench-flat/run.ts",
@@ -79,7 +83,7 @@
     },
     {
       "path": "examples/subagents-environment/prompts.ts",
-      "sha256": "4c8682b6d092f0e9d5b23cf4c85ee2728f3be64727bb29925f3bce9ed6b180e1"
+      "sha256": "76fdca19d7bf342d53a0bd57f98c939e39913d3df3316c9aab6c6bcf5f7d4bb4"
     },
     {
       "path": "examples/subagents-environment/collaboration-service.ts",
@@ -99,7 +103,7 @@
     },
     {
       "path": "src/environments/agensh/index.ts",
-      "sha256": "3a2e0c21e5cb883d2414d33a07397991737f6c8352e54a3b6a339c4c8565fc98"
+      "sha256": "3570b54545923529e7b8002202d77842bd9869514846d716aecf8f9e9e278f1c"
     },
     {
       "path": "src/environments/agensh/router.ts",
@@ -111,7 +115,7 @@
     },
     {
       "path": "src/environments/agensh/team.ts",
-      "sha256": "edf4b8308b6d8a6b29e26265eebc22e63e00ee23974bad305d69fb541319b568"
+      "sha256": "7db4360397ba3e9e632717fd6d88025438003ccf10e8dda2d4e43cdd632c053d"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.ts",
@@ -123,7 +127,7 @@
     },
     {
       "path": "src/environments/lead-helper/prompts.ts",
-      "sha256": "4222770edeeb1941ef6a8a38bd36ebda9fd07ce795e1dc8d3e9a485607757132"
+      "sha256": "09e951aea170efce4d575db35925e1cf7afc41f56e4678a46da6f6f79554cc20"
     },
     {
       "path": "src/environments/lead-helper/index.ts",
@@ -200,18 +204,6 @@
       "sha256": "6773660d227007f580e938b67335d3b93619e2253c501904ab14235c89534687"
     },
     {
-      "path": "examples/notes-environment/main.ts",
-      "anchor": "writer: { ...common, prompt: '",
-      "line": 96,
-      "sha256": "940b9719824154d76eae72fa2febfaf972fe288cee3b71d3b6bbf8ae87bb2bcb"
-    },
-    {
-      "path": "examples/notes-environment/main.ts",
-      "anchor": "reader: { ...common, prompt: '",
-      "line": 97,
-      "sha256": "c0f2900930e9feb73c9524e5ffb86c4b5dd6fe750b3cccf4948fabdbd413095a"
-    },
-    {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
       "anchor": "const initial = ",
       "line": 12,
@@ -245,7 +237,31 @@
       "path": "src/environments/scalemas/index.ts",
       "anchor": "export const peerPrompt = '",
       "line": 8,
-      "sha256": "7eec8ce7af8b62f501a2dd61909ba695955a3840e266d5a92734d2a92ab90d89"
+      "sha256": "80f964edecba1ce3c7c40cfb732799bdfb7ae96699d39185e2f6635555a6daeb"
+    },
+    {
+      "path": "src/environments/scalemas/substrate.ts",
+      "anchor": "purpose: '",
+      "line": 91,
+      "sha256": "0a5954f75ed9fac077a64924acfeeb5b9d0871937b25133d43f17756ab349700"
+    },
+    {
+      "path": "src/environments/scalemas/substrate.ts",
+      "anchor": "capability('publish', '",
+      "line": 93,
+      "sha256": "6467664b40aa318b9471d337f8aff53a5ae1306c1371c6c623bfe4eb3559b5a8"
+    },
+    {
+      "path": "src/environments/scalemas/substrate.ts",
+      "anchor": "capability('visit', '",
+      "line": 94,
+      "sha256": "2ba12cb0a0ff3527b9894ca1582cb29e63d19a6f5e65441a21161867a5adadc8"
+    },
+    {
+      "path": "src/environments/scalemas/substrate.ts",
+      "anchor": "capability('search', '",
+      "line": 95,
+      "sha256": "fbf343059b480fcf7250e0cfe40d58971d1f9151239e1416fa224c4f05973d5d"
     },
     {
       "path": "src/environments/scalemas/index.ts",
@@ -263,19 +279,19 @@
       "path": "src/environments/agensh/index.ts",
       "anchor": "export const peerPrompt = `",
       "line": 8,
-      "sha256": "06c1eff12e00ec7944444e731069139aa9dc237f1bc6a5132f8d7d9f390699de"
+      "sha256": "61ab614acee642624a754020fcc0892fb27e153b3ba6246c4c7f74f64db7ea7b"
     },
     {
       "path": "src/environments/agensh/index.ts",
       "anchor": "export const projectPeerPrompt = `",
       "line": 10,
-      "sha256": "c13facd52fe6aaa126b0503b6ef57049a0455ef81b4a3bb06c224cf92c9147eb"
+      "sha256": "9f7bb83c8e59fc4859bb8a422ca2443597d425c4c2723567b951b796b187e139"
     },
     {
       "path": "src/environments/agensh/team.ts",
-      "anchor": "const goal = `",
-      "line": 172,
-      "sha256": "7ff970f174447d263dc093697d6d4dc71537693a895871fdd8ac7e7148242d90"
+      "anchor": "router.kickoff(",
+      "line": 175,
+      "sha256": "44a86c7b2af129d1bc52061deff91cd39283d1e6b62f805dcb688a5e4997e936"
     },
     {
       "path": "src/environments/agensh/router.ts",
@@ -347,13 +363,13 @@
       "path": "src/environments/lead-helper/prompts.ts",
       "anchor": "export const leadPrompt = `",
       "line": 1,
-      "sha256": "79e4899e9a404b291f5f179c838060cfbed8cc1026e034476f23ab6925d03b1a"
+      "sha256": "66c233e655bf948d04a594d7f4d63567941f8f466ea2fae9e431618ac77c9ed9"
     },
     {
       "path": "src/environments/lead-helper/prompts.ts",
       "anchor": "export const helperPrompt = `",
       "line": 2,
-      "sha256": "ccaadaa3e9dd80e07431a915eaa02d5f5fb3925750d40a2683b09abedf713f81"
+      "sha256": "9fcf8519feb1b37203393930b243e0ffd776a12749aa1de1a0a582ce5b60fb83"
     },
     {
       "path": "src/environments/lead-helper/prompts.ts",
@@ -402,12 +418,6 @@
       "anchor": "const collaboration = `",
       "line": 23,
       "sha256": "697bc515efa28cd4d3ddd4d2cfa7d51e151af042fc3f5ca4c37b0a002585f4e6"
-    },
-    {
-      "path": "src/environments/flat/environment.ts",
-      "anchor": "prompt='",
-      "line": 16,
-      "sha256": "8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88"
     },
     {
       "path": "src/environments/flat/environment.ts",
@@ -543,11 +553,11 @@
     },
     {
       "path": "docs/architecture/prompts/07-notes-environment.md",
-      "sha256": "5482121ed898c236b9f96913329ac3ce7b1bfa3f20134982ec5d3887a7a970bb"
+      "sha256": "c48c980a5936f19b406f941790eb6368b9eac4606a1ef9cb4f631d2e0d714cee"
     },
     {
       "path": "docs/architecture/prompts/08-subagents-environment.md",
-      "sha256": "05ff0bff9d7af4722422121f92f65f84399a995abb1e976eb92a703544824474"
+      "sha256": "dde7896b2380ee4d4b8556d010acbcc6514230f8bb51ccb37109babfecfda853"
     },
     {
       "path": "docs/architecture/prompts/01-core-startup.md",
@@ -555,19 +565,19 @@
     },
     {
       "path": "docs/architecture/prompts/09-scalemas-environment.md",
-      "sha256": "f597ea752377ae8159bac007ab20fd590726947f12e3ff6cd991134be7ac4f44"
+      "sha256": "8564a96233f423d0953059055a6eb5ca920f87e7346ed85398e7323aeae6d79d"
     },
     {
       "path": "docs/architecture/prompts/08-agensh-environment.md",
-      "sha256": "6dd7d203c72c85386e3d44657f0983e19cee23ef11f1c323e513baeea6709d81"
+      "sha256": "dd874cba392661bb569a4aa86da7a7bb277c75be2b85ce80fe4af4653b5acfa6"
     },
     {
       "path": "docs/architecture/prompts/08-lead-helper-environment.md",
-      "sha256": "c4d2afe44fc3cbfed571c2bd36d1cf200153a348981364cb7ac8ba0a18851509"
+      "sha256": "042cb2345cc4ccbb35714e2f07deeacedd5f47b8fd451ac8c59c7b582d6b534d"
     },
     {
       "path": "docs/architecture/prompts/08-flat-environment.md",
-      "sha256": "bb49b6ea22bb853a4cd54073210f6dd19f25867eb1fded7c2ac876f946e76517"
+      "sha256": "772a4d44b7d4930d480687e1d4b687c28b8fd76ab3508fc363dc8083608b5ff8"
     }
   ]
 }

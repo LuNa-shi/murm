@@ -5,16 +5,9 @@
 After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The trusted Core capture or explicit snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.
 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
-## Default researcher Profile prompt
-
-Body SHA-256: `8a2d142511e95862a721bac7ddf4a985b01f8b52f40ea36147aa524fd6414f88`
-
-````text
-Use the flat Services to discover, execute and truthfully finish Mission work.
-````
 ## Profile suffix when live Workspace save is unavailable
 
-The host appends this suffix after two newlines to the default or host-supplied Profile prompt when it has neither a Core nor an injected live capture binding.
+The default Added System Prompt is empty. Without a Core or injected live capture binding, the host includes this explanation after any supplied Profile text.
 
 Body SHA-256: `7ddd3c046642e46ad91153885ed29729e1d733c4c0f6420da7200f750ff28a4d`
 
