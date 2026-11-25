@@ -147,7 +147,7 @@ test('a one-hour acceptance window can forward past 48 requests without an outpu
   let tick = 1000;
   const path = await directory(t);
   const durationMs = 3_600_000;
-  await assert.rejects(createRunWindow({ directory: path, upstreamUrl, durationMs: durationMs + 1 }), /Invalid Pastel run bounds/);
+  await assert.rejects(createRunWindow({ directory: path, upstreamUrl, durationMs: durationMs + 1 }), /Invalid benchmark run bounds/);
   const window = await createRunWindow({ directory: path, upstreamUrl, durationMs,
     maxRequests: null, maxOutputTokens: null, now: () => tick });
   t.after(() => window.close());

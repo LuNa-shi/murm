@@ -45,7 +45,7 @@ export async function createRunWindow({
   directory, upstreamUrl, model = 'k3', upstreamHeaders = {}, durationMs = 1_800_000,
   maxRequests = 240, maxConcurrent = 3, maxOutputTokens = 4096, now = () => performance.now(),
 }: RunWindowOptions) {
-  if (![durationMs, maxConcurrent].every(positiveInteger) || durationMs > 2_147_483_647 ||
+  if (![durationMs, maxConcurrent].every(positiveInteger) || durationMs > 3_600_000 ||
       (maxRequests !== null && !positiveInteger(maxRequests)) ||
       (maxOutputTokens !== null && (!positiveInteger(maxOutputTokens) || maxOutputTokens < 16))) {
     throw new Error('Invalid benchmark run bounds');
