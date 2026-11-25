@@ -71,7 +71,7 @@
     },
     {
       "path": "src/environments/agensh/team.ts",
-      "sha256": "55af87f72abd62617bdf2d985d1246f2bcf675d355ff6e442a8cfc3960a4679b"
+      "sha256": "95e9863a638a9e8773da4386c0d17a913995aab9a2d00565e51201296a10113d"
     },
     {
       "path": "test/fixtures/agensh-team-kimi.ts",
@@ -222,7 +222,7 @@
     {
       "path": "src/environments/agensh/team.ts",
       "anchor": "const goal = `",
-      "line": 153,
+      "line": 154,
       "sha256": "7ff970f174447d263dc093697d6d4dc71537693a895871fdd8ac7e7148242d90"
     },
     {

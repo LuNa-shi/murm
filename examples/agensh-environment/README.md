@@ -56,7 +56,22 @@ The project file supplies the issue title and body. Optional `seed` maps up to 6
 }
 ```
 
-For the planned four-peer Pandoc exercise, use the official ProgramBench task `jgm__pandoc.5caad90` and set the goal to reconstruct the reference behavior. Stage the pinned reference binary and public materials in a compatible Worker image. The task goal should identify the paths inside the image and ask for a root `compile.sh` that builds `./executable`. Keep evaluator material on the host. Run with `SWARMENV_AGENSH_PEERS=4` and a project duration of 3,600,000 milliseconds. The task and evaluator configuration are specified in [upstream Agensh's reproduction guide](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/REPRODUCE.md#configure-the-experiment).
+For the four-peer Pandoc exercise, use the official ProgramBench task `jgm__pandoc.5caad90`. Use `SWARMENV_AGENSH_PEERS=4` and a project duration of 3,600,000 milliseconds. Give the peers the goal of reconstructing the behavior of `/opt/programbench/executable` and producing a root `compile.sh` that builds their own `./executable`. Point them to `/opt/programbench/MANUAL.txt`. Keep the official evaluator and its data on the host. See [upstream Agensh's reproduction guide](https://github.com/microsoft/Agensh/blob/2dae4e14a653da48549fd9aa093f834841475d6c/REPRODUCE.md#configure-the-experiment).
+
+Build the matching Worker from the source revision to be evaluated. The following image copies the reference program and the public instructions from the official v6 cleanroom.
+
+```sh
+docker build -f services/opensandbox-agent/Dockerfile \
+  --label "org.opencontainers.image.revision=$(git rev-parse HEAD)" \
+  -t swarmenv-agensh-worker:local .
+docker build -t swarmenv-agensh-pandoc:local - <<'DOCKERFILE'
+FROM programbench/jgm_1776_pandoc.5caad90@sha256:02add2de637e9b5f42ecb3600944a15f7a6311107a872f2a95b31eb97c279681 AS cleanroom
+FROM swarmenv-agensh-worker:local
+COPY --from=cleanroom --chown=0:0 --chmod=0111 /workspace/executable /opt/programbench/executable
+COPY --from=cleanroom --chown=0:0 --chmod=0444 /workspace/README.md /workspace/MANUAL.txt /workspace/COPYING.md /workspace/COPYRIGHT /opt/programbench/
+DOCKERFILE
+export SWARMENV_AGENSH_IMAGE=$(docker image inspect swarmenv-agensh-pandoc:local --format '{{.Id}}')
+```
 
 ## Start, observe and stop
 

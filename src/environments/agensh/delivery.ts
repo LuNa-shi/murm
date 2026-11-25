@@ -16,7 +16,10 @@ export function createAgenshDelivery({ facilities, adminToken, maxReadinessReads
       !Number.isSafeInteger(readinessIntervalMs) || readinessIntervalMs < 1 || readinessIntervalMs > 1000) throw new TypeError('Delivery requires bounded read-only readiness checks');
   const request = httpClient(facilities.endpoints.gitea, `token ${adminToken}`);
   const scope = `/api/v1/repos/${e(facilities.repository.owner)}/${e(facilities.repository.name)}`;
-  const records = new Map<string, any>();
+  const attempts = new Set<any>();
+  const requests = new Map<string, any>();
+  let finalPin: { commit: string; stable: boolean } | undefined;
+  let finalization: Promise<{ commit: string; stable: boolean; archive: string; sha256: string; bytes: number }> | undefined;
   let accepting = true;
   async function readMain(signal?: AbortSignal) {
     const branch = await request('GET', `${scope}/branches/main`, undefined, { signal });
@@ -25,23 +28,30 @@ export function createAgenshDelivery({ facilities, adminToken, maxReadinessReads
   }
   async function readback(row: any, signal?: AbortSignal) {
     row.phase = 'readback';
-    let merged: any;
-    try { merged = await request('GET', `${scope}/pulls/${row.number}`, undefined, { signal }); }
-    catch (error: any) {
+    try {
+      const pr = await request('GET', `${scope}/pulls/${row.number}`, undefined, { signal });
+      const mergeShaValid = typeof pr?.merge_commit_sha === 'string' && /^[a-f0-9]{40}$/.test(pr.merge_commit_sha);
+      const merged = pr?.merged === true;
+      const headMatches = pr?.head?.sha === row.headSha;
+      row.observation = { merged, headMatches, mergeShaValid };
+      if (facilities.project && merged && mergeShaValid) {
+        const commit = await request('GET', `${scope}/git/commits/${pr.merge_commit_sha}`, undefined, { signal });
+        row.observation.mergeIncludesHead = commit?.sha === pr.merge_commit_sha && commit.parents?.[1]?.sha === row.headSha;
+      }
+      if (merged && mergeShaValid) row.mergeSha = pr.merge_commit_sha;
+    } catch (error: any) {
       row.state = 'unknown';
       row.failure ??= { phase: row.phase, code: error.code, ...(error.status === undefined ? {} : { status: error.status }) };
       throw fail('DELIVERY_MERGE_UNKNOWN');
     }
-    row.observation = { merged: merged?.merged === true, headMatches: merged?.head?.sha === row.headSha,
-      mergeShaValid: typeof merged?.merge_commit_sha === 'string' && /^[a-f0-9]{40}$/.test(merged.merge_commit_sha) };
-    if (!Object.values(row.observation).every(Boolean)) {
+    const verifiedHead = facilities.project ? row.observation.mergeIncludesHead === true : row.observation.headMatches;
+    if (!row.observation.merged || !row.observation.mergeShaValid || !verifiedHead) {
       row.state = 'unknown';
       row.failure ??= { phase: row.phase, code: 'DELIVERY_INVALID_OBSERVATION' };
       throw fail('DELIVERY_MERGE_UNKNOWN');
     }
     row.state = 'merged';
     row.phase = 'verified';
-    row.mergeSha = merged.merge_commit_sha;
     row.verifiedAt = new Date().toISOString();
     return { peerKey: row.peerKey, number: row.number, headSha: row.headSha, mergeSha: row.mergeSha };
   }
@@ -78,31 +88,52 @@ export function createAgenshDelivery({ facilities, adminToken, maxReadinessReads
     }
   }
   return Object.freeze({
-    snapshot: () => [...records.values()].map(({ work, finished, reconciling, ...row }) => structuredClone(row)),
+    snapshot: () => [...attempts].map(({ work, finished, reconciling, ...row }) => structuredClone(row)),
     stop() { accepting = false; },
-    async finalize(directory: string, signal: AbortSignal) {
+    finalize(directory: string, signal: AbortSignal) {
       accepting = false;
-      await Promise.allSettled([...records.values()].map(row => row.work));
-      await Promise.allSettled([...records.values()].filter(row => row.state === 'unknown').map(row => reconcile(row, signal)));
-      const commit = await readMain(signal);
-      const archive = await saveArchive(directory, commit, signal);
-      return { commit, stable: ![...records.values()].some(row => row.state === 'unknown'), ...archive };
+      if (!finalization) finalization = (async () => {
+        await Promise.allSettled([...attempts].map(row => row.work));
+        await Promise.allSettled([...attempts].filter(row => row.state === 'unknown').map(row => reconcile(row, signal)));
+        const stable = ![...attempts].some(row => row.state === 'unknown');
+        if (!finalPin?.stable) finalPin = { commit: await readMain(signal), stable };
+        try {
+          return { ...finalPin, ...await saveArchive(directory, finalPin.commit, signal) };
+        } catch (error: any) {
+          throw Object.assign(error, { pin: finalPin });
+        }
+      })().finally(() => { finalization = undefined; });
+      return finalization;
     },
-    async merge({ peerKey, number, headSha, signal }: any) {
+    async merge({ peerKey, number, headSha, requestId, signal }: any) {
       const peer = facilities.peers.find((peer: any) => peer.key === peerKey);
-      if (!peer || !Number.isSafeInteger(number) || number < 1 || !/^[a-f0-9]{40}$/.test(headSha)) throw fail('DELIVERY_INVALID');
+      if (!peer || !Number.isSafeInteger(number) || number < 1 || typeof headSha !== 'string' || !/^[a-f0-9]{40}$/.test(headSha)) throw fail('DELIVERY_INVALID');
       if (!accepting) throw fail('DELIVERY_STOPPING');
-      const key = `${peerKey}:${number}:${headSha}`;
-      const previous = records.get(key);
-      if (previous) return previous.state === 'unknown' && previous.finished ? reconcile(previous, signal) : previous.work;
-      if (records.size >= 512 || [...records.values()].some(row => row.number === number && row.state !== 'rejected')) throw fail('DELIVERY_CONFLICT');
-      const row: any = { peerKey, number, headSha, state: 'checking', phase: 'preflight', readinessReads: 0, requestedAt: new Date().toISOString() };
-      records.set(key, row);
+      const key = JSON.stringify([peerKey, requestId ?? [number, headSha]]);
+      const previous = requests.get(key);
+      if (previous) {
+        if (previous.number !== number || previous.headSha !== headSha) throw fail('DELIVERY_CONFLICT');
+        return previous.state === 'unknown' && previous.finished ? reconcile(previous, signal) : previous.work;
+      }
+      if (requests.size >= 4096) throw fail('DELIVERY_CONFLICT');
+      const active = [...attempts].find(row => row.number === number && row.state !== 'rejected');
+      if (active) {
+        if (active.peerKey !== peerKey || active.headSha !== headSha) throw fail('DELIVERY_CONFLICT');
+        requests.set(key, active);
+        return active.state === 'unknown' && active.finished ? reconcile(active, signal) : active.work;
+      }
+      if (attempts.size >= 512) throw fail('DELIVERY_CONFLICT');
+      const row: any = { peerKey, number, headSha, ...(requestId ? { requestId } : {}), state: 'checking', phase: 'preflight',
+        readinessReads: 0, requestedAt: new Date().toISOString() };
+      attempts.add(row);
+      requests.set(key, row);
       row.work = (async () => {
         for (let index = 0; index < maxReadinessReads; index++) {
           row.readinessReads++;
           const pr = await request('GET', `${scope}/pulls/${number}`, undefined, { signal });
-          if (pr?.head?.sha !== headSha || pr.head.ref !== peer.branch || pr.base?.ref !== 'main' || String(pr.user?.id) !== peer.gitea.accountId || pr.merged) throw fail('DELIVERY_INVALID');
+          if (pr?.head?.sha !== headSha || pr.head.ref !== peer.branch || pr.base?.ref !== 'main' ||
+              (facilities.project && pr.head.repo?.full_name !== `${facilities.repository.owner}/${facilities.repository.name}`) ||
+              String(pr.user?.id) !== peer.gitea.accountId || pr.merged) throw fail('DELIVERY_INVALID');
           if (pr.mergeable === true) break;
           if (index === maxReadinessReads - 1) throw fail('DELIVERY_NOT_READY');
           await delay(readinessIntervalMs, undefined, { signal });

@@ -181,3 +181,74 @@ test('a peer can correct a PR head and then merge another PR on its work branch'
   await delivery.merge({ peerKey: 'a', number: 2, headSha: head });
   assert.deepEqual([...merged], [1, 2]);
 });
+
+test('fresh Service requests can retry readiness and reconcile the original parent after a lost merge receipt', async t => {
+  const originalHead = 'a'.repeat(40);
+  const newerHead = 'b'.repeat(40);
+  const mergeSha = 'c'.repeat(40);
+  let ready = false, writes = 0;
+  const server = createServer((request, response) => {
+    request.resume();
+    response.setHeader('content-type', 'application/json');
+    if (request.method === 'POST') {
+      writes++;
+      return response.destroy();
+    }
+    if (request.url.endsWith('/git/commits/' + mergeSha)) {
+      return response.end(JSON.stringify({ sha: mergeSha, parents: [{ sha: 'd'.repeat(40) }, { sha: originalHead }] }));
+    }
+    response.end(JSON.stringify({ user: { id: 1 }, head: { ref: 'branch-a', sha: writes ? newerHead : originalHead, repo: { full_name: 'owner/repo' } },
+      base: { ref: 'main' }, mergeable: ready, merged: writes > 0, merge_commit_sha: writes ? mergeSha : null }));
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const delivery = createAgenshDelivery({ facilities: { project: true, endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
+    repository: { owner: 'owner', name: 'repo' }, peers: [{ key: 'a', branch: 'branch-a', gitea: { accountId: '1' } }] },
+    adminToken: 'host', maxReadinessReads: 1 });
+  const input = { peerKey: 'a', number: 1, headSha: originalHead };
+  await assert.rejects(delivery.merge({ ...input, requestId: 'first' }), { code: 'DELIVERY_NOT_READY' });
+  ready = true;
+  await assert.rejects(delivery.merge({ ...input, requestId: 'first' }), { code: 'DELIVERY_NOT_READY' });
+  const result = await delivery.merge({ ...input, requestId: 'second' });
+  assert.equal(result.mergeSha, mergeSha);
+  assert.deepEqual(await delivery.merge({ ...input, requestId: 'repeat' }), result);
+  await assert.rejects(delivery.merge({ ...input, headSha: newerHead, requestId: 'repeat' }), { code: 'DELIVERY_CONFLICT' });
+  assert.equal(writes, 1);
+  assert.equal(delivery.snapshot().at(-1).observation.headMatches, false);
+  assert.equal(delivery.snapshot().at(-1).observation.mergeIncludesHead, true);
+});
+
+test('a failed archive download keeps the already fixed main revision for close retry', async t => {
+  const { mkdtemp, readFile, rm } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const { join } = await import('node:path');
+  const { gzipSync } = await import('node:zlib');
+  const directory = await mkdtemp(join(tmpdir(), 'agensh-delivery-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  let branchReads = 0;
+  const archivePaths = [];
+  const archive = gzipSync('fixture archive bytes');
+  const server = createServer((request, response) => {
+    if (request.url.endsWith('/branches/main')) {
+      branchReads++;
+      response.setHeader('content-type', 'application/json');
+      return response.end(JSON.stringify({ name: 'main', commit: { id: (branchReads === 1 ? 'a' : 'b').repeat(40) } }));
+    }
+    archivePaths.push(request.url);
+    if (archivePaths.length === 1) return response.writeHead(503).end();
+    response.end(archive);
+  });
+  server.listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));
+  const delivery = createAgenshDelivery({ facilities: { endpoints: { gitea: `http://127.0.0.1:${server.address().port}` },
+    repository: { owner: 'owner', name: 'repo' }, peers: [] }, adminToken: 'host' });
+  await assert.rejects(delivery.finalize(directory, AbortSignal.timeout(5000)), { code: 'DELIVERY_EXPORT_FAILED',
+    pin: { commit: 'a'.repeat(40), stable: true } });
+  const result = await delivery.finalize(directory, AbortSignal.timeout(5000));
+  assert.equal(result.commit, 'a'.repeat(40));
+  assert.equal(branchReads, 1);
+  assert.equal(archivePaths[0], archivePaths[1]);
+  assert.deepEqual(await readFile(result.archive), archive);
+});

@@ -123,14 +123,14 @@ export function createAgenshServices(configuration: any, delivery?: { merge(inpu
           output_schema: outputs[operation], errors: ['NOT_ALLOWED', 'INVALID_CONTRACT', 'SERVICE_UNAVAILABLE',
             ...(operation === 'pull_request_merge' ? ['DELIVERY_INVALID', 'DELIVERY_CONFLICT', 'DELIVERY_NOT_READY', 'DELIVERY_MERGE_UNKNOWN', 'DELIVERY_STOPPING'] : [])]
             .map(code => ({ code, retryable: false })) })) },
-      adapter: { async invoke({ capability, input, caller, signal }: any) {
+      adapter: { async invoke({ capability, input, caller, envelope, signal }: any) {
         const bot = bots.get(caller.botId);
         const peer = bot?.peer;
         const binding = id === 'gitea' ? peer?.gitea.binding : id === 'message' ? peer?.message.binding : peer?.board.binding;
         if (!bot || caller.runtimeId !== bot.runtimeId || caller.botId !== bot.botId || caller.profile !== bot.profile || caller.binding !== binding) throw failure('NOT_ALLOWED');
         if (capability.operation === 'pull_request_merge') {
           if (!delivery) throw failure('NOT_ALLOWED');
-          return delivery.merge({ peerKey: peer.key, number: input.index, headSha: input.head_sha, signal });
+          return delivery.merge({ peerKey: peer.key, number: input.index, headSha: input.head_sha, requestId: envelope.operation_id, signal });
         }
         if (capability.operation === 'peer_list') return peers.map(item => ({ key: item.key, username: item.gitea.username }));
         const [method, path, body] = rules[capability.operation].route(input, peer);

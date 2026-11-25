@@ -71,7 +71,7 @@ export async function createAgenshTeam(options: any) {
       const deliveryWork = delivery && startedAt && (!deliveryReceipt || deliveryReceipt.state === 'pending')
         ? delivery.finalize(resolve(outputDir, runtime.id), AbortSignal.timeout(Math.max(1, end - Date.now())))
           .then(value => { deliveryReceipt = { ...value, state: value.stable ? 'complete' : 'pending', ...(!value.stable ? { code: 'DELIVERY_MERGE_UNKNOWN' } : {}) }; },
-            error => { deliveryReceipt = { state: 'pending', code: error.code ?? 'DELIVERY_EXPORT_FAILED' }; })
+            error => { deliveryReceipt = { ...error.pin, state: 'pending', code: error.code ?? 'DELIVERY_EXPORT_FAILED' }; })
         : undefined;
       let core: any;
       try { core = runtime ? await bounded(() => runtime.close({ timeoutMs: Math.max(1, end - Date.now()) }), Math.max(1, end - Date.now()), 'CORE_CLOSE_PENDING') : { cleanup: 'complete', bots: [], pending: [] }; }
@@ -121,6 +121,7 @@ export async function createAgenshTeam(options: any) {
       const bot = peers.get(peer.key); const mapping: any = { botId: bot.id, workerId: peer.board.workerId };
       const board = httpClient(facilities.endpoints.board);
       const projectFailure = (error: any) => {
+        if (closing || signal.aborted) return;
         unavailablePeers.set(bot.id, { type: 'routing', code: error?.code ?? error });
         routers.get(peer.key)?.stop();
       };
