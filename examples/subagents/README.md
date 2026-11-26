@@ -4,17 +4,17 @@ Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pa
 
 Give Root a task. Root looks for independent work it can delegate early, chooses the assignments, and works on a complementary part while the team is active. A Child can delegate again. Team members can send notices, assign more work, wait and interrupt. A Child's result goes to its direct parent.
 
-From the checkout, generate and install the editable project with one command.
+From the checkout, prepare the host and initialize the editable project.
 
 ```sh
-./scripts/setup --template subagents --dir ../my-murm
+./scripts/setup
+node dist/scripts/murm.js init --template subagents --dir ../my-murm
 cd ../my-murm
-npm run doctor
 ```
 
-An installed `murm` command also accepts `murm setup --template subagents --dir ./my-murm`. Setup resolves the Worker image, local OpenSandbox addresses and Sandbox-reachable IPv4, verifies the infrastructure with a local Responses endpoint, and installs a candidate tarball in the generated directory. The project runs there with its own dependencies. See [host requirements and diagnostics](../../docs/architecture/07-run-configuration.md#local-setup-and-doctor).
+With an installed binary, use `murm setup` for host preparation and `murm init --template subagents --dir ./my-murm` for project creation. Setup verifies the Worker and OpenSandbox infrastructure with a local Responses endpoint. Init installs a candidate tarball in the project directory so the project runs with its own dependencies. Use `murm doctor` for host checks or `npm run doctor -- --smoke` from the project to check its configuration and run a temporary Sandbox probe. [Host requirements and diagnostics](../../docs/architecture/07-run-configuration.md#local-setup-and-doctor)
 
-Set `MURM_SUBAGENTS_MODEL_URL` in the generated `.env` to a streaming Responses endpoint accepting `k3`, including its `/v1/responses` path. Fill in `MURM_SUBAGENTS_MODEL_TOKEN` if the endpoint requires a bearer token. Set `MURM_SUBAGENTS_LIFECYCLE_TOKEN` if an existing provider requires it. The editable `config.js` reads the same environment for the project and doctor. Use `npm start` for an interactive session, or run the entry directly.
+Set `MURM_SUBAGENTS_MODEL_URL` in the generated `.env` to a streaming Responses endpoint accepting `k3`, including its `/v1/responses` path. Fill in `MURM_SUBAGENTS_MODEL_TOKEN` if the endpoint requires a bearer token. Set `MURM_SUBAGENTS_LIFECYCLE_TOKEN` if an existing provider requires it. The editable `config.js` reads the same environment for the project and doctor. From the project directory, run `murm` or use `npm start` to resolve the project-local binary. You can also run the entry directly.
 
 ```sh
 node main.js config.js 'Review the task files and write a short explanation.'

@@ -7,12 +7,12 @@ murm is a TypeScript toolkit for building multi-agent Harnesses. A Harness compo
 On a Linux host with Node.js 22.19 or newer and same-host Docker, run this from the checkout.
 
 ```sh
-./scripts/setup --template subagents --dir ../my-murm
+./scripts/setup
+node dist/scripts/murm.js init --template subagents --dir ../my-murm
 cd ../my-murm
-npm run doctor
 ```
 
-Setup prepares OpenSandbox and the Worker, checks a real Sandbox with a local Responses endpoint, and installs an editable Subagents project. Set `MURM_SUBAGENTS_MODEL_URL` and any required token in the generated `.env`, then run `npm start`. Subsequent setup runs reuse compatible infrastructure and preserve edited project files. [Quick Start](https://luna-shi.github.io/murm/quickstart/) · [Host requirements and diagnosis](docs/architecture/07-run-configuration.md#local-setup-and-doctor)
+Setup prepares OpenSandbox and the Worker once per host and checks a real Sandbox with a local Responses endpoint. Init installs an editable Subagents project in the directory specified by `--dir` and preserves project edits on repeat. Set `MURM_SUBAGENTS_MODEL_URL` and any required token in its `.env`, then run `murm` from the project directory, or `npm start` to use the project-local binary. [Quick Start](https://luna-shi.github.io/murm/quickstart/) · [Host requirements and diagnosis](docs/architecture/07-run-configuration.md#local-setup-and-doctor)
 
 The two-Agent Notes handoff shows how to implement a custom Service and verify exported files across turns. [Notes example](examples/notes/README.md)
 

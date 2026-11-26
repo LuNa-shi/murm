@@ -79,6 +79,15 @@ export async function resolveLocalEnvironment(partial: Partial<LocalEnvironmentC
   };
 }
 
+export function resolveSubagentsEnvironment(config: Partial<LocalEnvironmentConfig> = {}) {
+  return resolveLocalEnvironment({
+    lifecycleBaseUrl: config.lifecycleBaseUrl ?? process.env.MURM_SUBAGENTS_LIFECYCLE_URL,
+    endpointHost: config.endpointHost ?? process.env.MURM_SUBAGENTS_ENDPOINT_HOST,
+    advertiseHost: config.advertiseHost ?? process.env.MURM_SUBAGENTS_ADVERTISE_HOST,
+    apiKey: config.apiKey ?? process.env.MURM_SUBAGENTS_LIFECYCLE_TOKEN,
+  });
+}
+
 export async function checkLocalHost(config: LocalEnvironmentConfig): Promise<DiagnosticCheck[]> {
   const [major, minor] = process.versions.node.split('.').map(Number);
   const checks = [

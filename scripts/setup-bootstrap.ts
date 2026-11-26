@@ -57,7 +57,7 @@ function child(file: string, args: string[], env = process.env, forwardStdout = 
   }).finally(() => signal.removeEventListener('abort', cancel));
 }
 
-async function lockedSetup(args: string[], startedAt: number, callerDirectory: string) {
+async function lockedSetup(startedAt: number) {
   const bootstrap: { startedAt: number; timings: { id: string; elapsedMs: number; cached: boolean }[] } = { startedAt, timings: [] };
   const manifest = await readFile(join(root, 'package.json'));
   const shrinkwrap = await readFile(join(root, 'npm-shrinkwrap.json'));
@@ -89,11 +89,7 @@ async function lockedSetup(args: string[], startedAt: number, callerDirectory: s
   }
   bootstrap.timings.push({ id: 'build', elapsedMs: Math.round(performance.now() - start), cached: buildCached });
 
-  // The caller's relative --dir is resolved before entering the checkout.
-  const command = parseMurmCommand(args);
-  if (!('command' in command) || command.command !== 'setup') throw new Error(setupUsage);
-  const { resolve } = await import('node:path');
-  return child(process.execPath, [cli, 'setup', '--template', 'subagents', '--dir', resolve(callerDirectory, command.directory)],
+  return child(process.execPath, [cli, 'setup'],
     { ...process.env, MURM_SETUP_BOOTSTRAP: JSON.stringify(bootstrap) }, true);
 }
 
@@ -101,17 +97,15 @@ const args = process.argv.slice(2);
 const lockInvocation = args[0] === '--under-checkout-lock';
 try {
   if (lockInvocation) {
-    process.exitCode = await lockedSetup(args.slice(3), Number(args[1]), args[2]);
+    process.exitCode = await lockedSetup(Number(args[1]));
   } else {
     const startedAt = Date.now();
-    const command = parseMurmCommand(args.length ? ['setup', ...args] : ['setup', '--help']);
+    const command = parseMurmCommand(['setup', ...args]);
     if ('help' in command) {
       console.log(command.help);
     } else {
-      const { resolveLocalEnvironment, checkLocalHost } = await import(sourceModule('local-environment.ts')) as typeof import('./local-environment.js');
-      const config = await resolveLocalEnvironment({
-        advertiseHost: process.env.MURM_SUBAGENTS_ADVERTISE_HOST,
-      });
+      const { resolveSubagentsEnvironment, checkLocalHost } = await import(sourceModule('local-environment.ts')) as typeof import('./local-environment.js');
+      const config = await resolveSubagentsEnvironment();
       signal.throwIfAborted();
       const checks = await checkLocalHost(config);
       signal.throwIfAborted();
@@ -121,7 +115,7 @@ try {
       } else {
         process.exitCode = await child('flock', ['--no-fork', '--exclusive', '--timeout', '180', '--conflict-exit-code', '73',
           root, process.execPath, '--disable-warning=ExperimentalWarning', script, '--under-checkout-lock',
-          String(startedAt), process.cwd(), 'setup', ...args], process.env, true);
+          String(startedAt)], process.env, true);
         if (process.exitCode === 73) {
           failure('checkout-lock', 'Another setup still holds the checkout lock.', 'Wait for the other invocation and rerun setup.');
           process.exitCode = 1;

@@ -58,14 +58,14 @@ async function inspectWorker(reference: string, signal: AbortSignal): Promise<Wo
 
 export async function prepareWorkerImage({ packageRoot, requestedImage, install, signal }: {
   packageRoot: string; requestedImage?: string; install: boolean; signal: AbortSignal;
-}): Promise<WorkerInspection & { source: 'cache' | 'build' | 'pull' }> {
+}): Promise<WorkerInspection & { reference: string; source: 'cache' | 'build' | 'pull' }> {
   const manifest: { version: string } = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
   const reference = requestedImage ?? `murm-worker:${manifest.version}-${protocol}-pi-${pi}`;
   const cached = await inspectWorker(reference, signal);
-  if (!install || cached.image || !cached.absent) return { ...cached, source: 'cache' };
+  if (!install || cached.image || !cached.absent) return { ...cached, reference, source: 'cache' };
 
   const source = requestedImage ? 'pull' : 'build';
-  if (requestedImage && imageIdPattern.test(requestedImage)) return { ...cached, source: 'cache' };
+  if (requestedImage && imageIdPattern.test(requestedImage)) return { ...cached, reference, source: 'cache' };
   const args = requestedImage ? ['pull', '--', reference] : [
     'build', '--file', join(packageRoot, 'services/opensandbox-agent/Dockerfile'), '--tag', reference, packageRoot,
   ];
@@ -73,10 +73,10 @@ export async function prepareWorkerImage({ packageRoot, requestedImage, install,
     await exec('docker', args, { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
   } catch {
     signal.throwIfAborted();
-    return { ...cached, source, checks: [{ id: `worker-${source}`, ok: false,
+    return { ...cached, reference, source, checks: [{ id: `worker-${source}`, ok: false,
       detail: `Docker could not ${source} the Worker image.`, remedy: source === 'build'
         ? 'Run docker build -f services/opensandbox-agent/Dockerfile . in the package or checkout to inspect the build failure.'
         : 'Check the requested image reference and registry access, or import the compatible Worker image locally.' }] };
   }
-  return { ...(await inspectWorker(reference, signal)), source };
+  return { ...(await inspectWorker(reference, signal)), reference, source };
 }

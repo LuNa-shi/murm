@@ -2558,7 +2558,7 @@
       "chapters": [
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Host CLI command dispatch, signal handling and exit status"
+      "role": "Host CLI dispatch, current-project interactive entry, signal handling and exit status"
     },
     {
       "path": "scripts/murm-arguments.ts",
@@ -2566,7 +2566,7 @@
       "chapters": [
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "Shared host and checkout command syntax"
+      "role": "Shared host command syntax and setup wrapper arguments"
     },
     {
       "path": "scripts/local-environment.ts",
@@ -2575,7 +2575,7 @@
         "docs/architecture/07-run-configuration.md",
         "docs/architecture/16-pi-opensandbox-backend.md"
       ],
-      "role": "Same-host diagnostic checks and ownership of the pinned OpenSandbox deployment"
+      "role": "Shared host configuration, same-host diagnostic checks and ownership of the pinned OpenSandbox deployment"
     },
     {
       "path": "scripts/local-setup.ts",
@@ -2620,7 +2620,7 @@
       "chapters": [
         "docs/architecture/07-run-configuration.md"
       ],
-      "role": "External Subagents project generation, archive installation and preservation of existing files"
+      "role": "Independent Subagents project initialization, archive installation and preservation of existing files"
     },
     {
       "path": "services/local-setup/config.js",

@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { prepareSubagentsProject } from '../scripts/local-setup-template.js';
@@ -14,11 +15,19 @@ test('generated Subagents installs a real archive outside the checkout and retai
   t.after(() => rm(directory, { recursive: true, force: true }));
   const options = { directory, image: 'sha256:fixture-worker', lifecycleBaseUrl: 'http://127.0.0.1:8080/v1',
     endpointHost: '127.0.0.1', advertiseHost: '172.17.0.1' };
-  const first = await prepareSubagentsProject(options);
-  assert.equal(first.installed, true);
   const env = { ...process.env };
   delete env.NODE_PATH;
   for (const key of Object.keys(env)) if (key.startsWith('MURM_SUBAGENTS_')) delete env[key];
+  const cli = fileURLToPath(new URL('../scripts/murm.js', import.meta.url));
+  const initialized = await execute(process.execPath, [cli, 'init', '--template', 'subagents', '--dir', directory], {
+    cwd: tmpdir(),
+    env: { ...env, DOCKER_HOST: `unix://${join(directory, 'missing.sock')}`, MURM_SUBAGENTS_IMAGE: options.image,
+      MURM_SUBAGENTS_LIFECYCLE_URL: options.lifecycleBaseUrl, MURM_SUBAGENTS_ADVERTISE_HOST: options.advertiseHost },
+  });
+  const { project: first } = JSON.parse(initialized.stdout);
+  assert.equal(first.installed, true);
+  assert.match(await readFile(join(directory, '.env'), 'utf8'), /MURM_SUBAGENTS_IMAGE="sha256:fixture-worker"/);
+  assert.equal(JSON.parse(await readFile(join(directory, 'package.json'), 'utf8')).scripts.start, 'murm');
   const help = await execute(process.execPath, ['main.js', '--help'], { cwd: directory, env });
   assert.match(help.stdout, /Usage: node main.js/);
   const config = (await readFile(join(directory, 'config.js'), 'utf8')).replace('maxAgents: Number(process.env.MURM_SUBAGENTS_MAX_AGENTS ?? 4)', 'maxAgents: 2');
@@ -37,7 +46,7 @@ test('generated Subagents installs a real archive outside the checkout and retai
   await assert.rejects(access(join(directory, '.murm-setup.lock')), { code: 'ENOENT' });
 });
 
-test('an already aborted setup creates no project resources', async t => {
+test('an already aborted init creates no project resources', async t => {
   const parent = await mkdtemp(join(tmpdir(), 'murm-project-abort-'));
   t.after(() => rm(parent, { recursive: true, force: true }));
   const directory = join(parent, 'project');

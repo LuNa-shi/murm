@@ -1,12 +1,10 @@
-import { stat } from 'node:fs/promises';
-import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  checkLocalHost, checkLocalProvider, ensureLocalProvider, resolveLocalEnvironment,
+  checkLocalHost, checkLocalProvider, ensureLocalProvider, resolveSubagentsEnvironment,
   type DiagnosticCheck,
 } from './local-environment.js';
 import { runLocalSmoke } from './local-setup-smoke.js';
-import { loadLocalProjectConfig, prepareSubagentsProject } from './local-setup-template.js';
+import { loadLocalProjectConfig } from './local-setup-template.js';
 import { prepareWorkerImage } from './local-setup-worker.js';
 import { createPiOpenSandboxBackend } from '../src/core/backends/pi-opensandbox.js';
 import type { LocalCommand } from './murm-arguments.js';
@@ -18,13 +16,12 @@ type Smoke = Awaited<ReturnType<typeof runLocalSmoke>>;
 type Timing = { id: string; elapsedMs: number; cached?: boolean };
 type Model = { configuration: 'complete' | 'missing' | 'invalid'; verification: 'not-verified' };
 
-function modelState(config?: ProjectConfig): Model {
-  const aliases = config ? new Set([config.rootModel ?? config.model ?? 'default', config.childModel ?? config.model ?? 'default']) : undefined;
-  const routes = aliases ? [...aliases].map(alias => config!.backend.models?.[alias]) : undefined;
-  const upstreams = routes ? routes.map(route => route?.upstream?.url) : [process.env.MURM_SUBAGENTS_MODEL_URL];
-  let configuration: Model['configuration'] = 'complete';
-  if (routes?.some(route => !route)) configuration = 'invalid';
-  for (const upstream of upstreams) {
+function modelState(config: ProjectConfig): Model {
+  const aliases = new Set([config.rootModel ?? config.model ?? 'default', config.childModel ?? config.model ?? 'default']);
+  const routes = [...aliases].map(alias => config.backend.models?.[alias]);
+  let configuration: Model['configuration'] = routes.some(route => !route) ? 'invalid' : 'complete';
+  for (const route of routes) {
+    const upstream = route?.upstream?.url;
     if (!upstream) {
       if (configuration !== 'invalid') configuration = 'missing';
       continue;
@@ -56,15 +53,6 @@ function checkProjectBackend(config: ProjectConfig): DiagnosticCheck {
   }
 }
 
-async function configExists(path: string) {
-  try {
-    return (await stat(path)).isFile();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
-}
-
 function bootstrapTimings() {
   const value = process.env.MURM_SETUP_BOOTSTRAP;
   delete process.env.MURM_SETUP_BOOTSTRAP;
@@ -85,7 +73,7 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     command: LocalCommand['command'];
     ok: boolean;
     infrastructure: 'failed' | 'preflight-passed' | 'ready';
-    model: Model;
+    model?: Model;
     checks: DiagnosticCheck[];
     timings: Timing[];
     elapsedMs: number;
@@ -94,10 +82,8 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
     provider?: { id: string; created: boolean; images: Provider['images'] };
     providerCleanup?: Awaited<ReturnType<Provider['cleanup']>>;
     smoke?: Smoke;
-    project?: Awaited<ReturnType<typeof prepareSubagentsProject>>;
   } = {
     command: command.command, ok: false, infrastructure: 'failed',
-    model: { configuration: 'missing', verification: 'not-verified' },
     checks, timings, elapsedMs: 0, interrupted: false,
   };
   async function timed<T>(id: string, action: () => Promise<T>) {
@@ -113,20 +99,20 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
   let provider: Provider | undefined;
   let stage = 'config';
   try {
-    const configPath = command.command === 'doctor' ? resolve(command.configPath) : join(resolve(command.directory), 'config.js');
-    const config = command.command === 'doctor' || await configExists(configPath) ? await loadLocalProjectConfig(configPath) : undefined;
-    report.model = modelState(config);
-    if (config) checks.push(checkProjectBackend(config));
-    if (report.model.configuration === 'invalid') checks.push({
+    const config = command.command === 'doctor' && command.configPath
+      ? await loadLocalProjectConfig(command.configPath) : undefined;
+    if (config) {
+      report.model = modelState(config);
+      checks.push(checkProjectBackend(config));
+    }
+    if (report.model?.configuration === 'invalid') checks.push({
       id: 'config.models', ok: false, detail: 'An active model alias or Responses endpoint is invalid.',
       remedy: 'Configure every Root and Child model alias with an HTTP(S) endpoint ending in /v1/responses, without embedded credentials.',
     });
     if (checks.some(check => !check.ok)) return report;
-    const environment = await resolveLocalEnvironment({
-      lifecycleBaseUrl: config?.backend.sandbox.lifecycleBaseUrl ?? process.env.MURM_SUBAGENTS_LIFECYCLE_URL,
-      endpointHost: config?.backend.sandbox.endpointHost ?? process.env.MURM_SUBAGENTS_ENDPOINT_HOST,
-      advertiseHost: config?.backend.modelGateway.advertiseHost ?? process.env.MURM_SUBAGENTS_ADVERTISE_HOST,
-      apiKey: config?.backend.sandbox.apiKey ?? process.env.MURM_SUBAGENTS_LIFECYCLE_TOKEN,
+    const environment = await resolveSubagentsEnvironment({
+      ...config?.backend.sandbox,
+      advertiseHost: config?.backend.modelGateway.advertiseHost,
     });
     stage = 'host';
     checks.push(...await timed('host', () => checkLocalHost(environment)));
@@ -158,15 +144,6 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       }
       report.infrastructure = 'ready';
     }
-    if (command.command === 'setup') {
-      stage = 'project';
-      report.project = await timed('project', () => prepareSubagentsProject({
-        directory: resolve(command.directory), image: worker.image!.id,
-        lifecycleBaseUrl: environment.lifecycleBaseUrl, endpointHost: environment.endpointHost,
-        advertiseHost: environment.advertiseHost, signal,
-      }));
-      report.model = modelState(await loadLocalProjectConfig(report.project.configPath));
-    }
     signal.throwIfAborted();
     report.ok = true;
   } catch (error) {
@@ -177,7 +154,6 @@ export async function runLocalCommand(command: LocalCommand, signal: AbortSignal
       worker: ['Could not prepare the compatible Worker image.', 'Check local Docker and the configured Worker image.'],
       provider: ['Could not prepare or verify a compatible OpenSandbox provider.', 'Run murm doctor and check the configured local OpenSandbox service.'],
       smoke: ['Could not complete the infrastructure probe.', 'Check the local OpenSandbox service, Worker image and host network.'],
-      project: ['Could not initialize the Subagents project.', 'Check target directory permissions and npm cache or registry access, then rerun setup.'],
     };
     const [detail, remedy] = failure[stage];
     if (!signal.aborted) checks.push({ id: stage, ok: false, detail, remedy });

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -14,8 +14,33 @@ test('the host bin and checkout entry advertise the same setup command', async (
   assert.equal(manifest.bin.murm, 'dist/scripts/murm.js');
   assert.equal(manifest.bin.swarm, 'dist/scripts/swarm.js');
   const result = execFileSync(process.execPath, [cli, 'setup', '--help'], { encoding: 'utf8' });
-  assert.match(result, /murm setup --template subagents --dir/);
+  assert.equal(result.trim(), 'Usage: murm setup');
   assert.equal(execFileSync(setup, ['--help'], { encoding: 'utf8' }), result);
+});
+
+test('setup rejects project options at both entry points', () => {
+  const args = ['--template', 'subagents', '--dir', '/does-not-exist'];
+  for (const [exe, run] of [[process.execPath, [cli, 'setup', ...args]], [setup, args]]) {
+    const result = spawnSync(exe, run, { encoding: 'utf8' });
+    assert.equal(result.status, 2);
+    assert.match(result.stderr, /Usage: murm setup/);
+  }
+});
+
+test('bare murm executes the current project entry in interactive mode', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-interactive-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, 'package.json'), '{"type":"module"}');
+  await writeFile(join(directory, 'config.js'), 'export default {};');
+  await writeFile(join(directory, 'main.js'), 'console.log(JSON.stringify(process.argv.slice(2)));');
+  const absent = spawnSync(process.execPath, [cli], { cwd: directory, encoding: 'utf8' });
+  assert.equal(absent.status, 1);
+  assert.match(absent.stderr, /murm init/);
+  await mkdir(join(directory, '.murm'));
+  await writeFile(join(directory, '.murm/installed.json'), '{}');
+  const active = spawnSync(process.execPath, [cli], { cwd: directory, encoding: 'utf8' });
+  assert.equal(active.status, 0, active.stderr);
+  assert.deepEqual(JSON.parse(active.stdout), [join(directory, 'config.js'), '--interactive']);
 });
 
 test('murm rejects an invalid argument before loading developer configuration', () => {

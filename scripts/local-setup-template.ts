@@ -7,6 +7,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { promisify } from 'node:util';
 import type { createSubagentsHarness } from '../examples/subagents/main.js';
+import { resolveSubagentsEnvironment } from './local-environment.js';
+import { prepareWorkerImage } from './local-setup-worker.js';
 
 const execute = promisify(execFile);
 const packageRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -48,7 +50,7 @@ function environment(options: SubagentsProjectOptions) {
     MURM_SUBAGENTS_MODEL_TOKEN: '',
     MURM_SUBAGENTS_LIFECYCLE_TOKEN: '',
   };
-  return '# Set your Responses endpoint and credentials, then run npm start.\n' +
+  return '# Set your Responses endpoint and credentials, then run murm in this directory.\n' +
     Object.entries(fields).map(([key, value]) => `${key}=${JSON.stringify(value)}`).join('\n') + '\n';
 }
 
@@ -62,7 +64,7 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
   const lock = join(directory, '.murm-setup.lock');
   try { await mkdir(lock); }
   catch (error: any) {
-    if (error.code === 'EEXIST') throw Object.assign(new Error('Another setup owns this directory. Wait for it to finish, or remove .murm-setup.lock after confirming its process has stopped.'), { code: 'SETUP_BUSY', directory });
+    if (error.code === 'EEXIST') throw Object.assign(new Error('Another murm init owns this directory. Wait for it to finish, or remove .murm-setup.lock after confirming its process has stopped.'), { code: 'SETUP_BUSY', directory });
     throw error;
   }
   let temporary: string | undefined;
@@ -117,7 +119,7 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
       }
     }
     await create('package.json', JSON.stringify({ name: 'my-murm', version: '1.0.0', private: true, type: 'module',
-      scripts: { start: 'node main.js config.js --interactive', doctor: 'murm doctor --config config.js' },
+      scripts: { start: 'murm', doctor: 'murm doctor --config config.js' },
       dependencies: { '@murm/core': `file:.murm/${archiveName}` },
     }, null, 2) + '\n');
     const projectPackage = JSON.parse(await readFile(join(directory, 'package.json'), 'utf8'));
@@ -154,5 +156,28 @@ export async function prepareSubagentsProject(options: SubagentsProjectOptions) 
   } finally {
     if (temporary) await rm(temporary, { recursive: true, force: true });
     await rm(lock, { recursive: true, force: true });
+  }
+}
+
+export async function initializeSubagentsProject(directory: string, signal: AbortSignal) {
+  const start = performance.now();
+  try {
+    const config = await resolveSubagentsEnvironment();
+    const worker = await prepareWorkerImage({
+      packageRoot, requestedImage: process.env.MURM_SUBAGENTS_IMAGE, install: false, signal,
+    });
+    const project = await prepareSubagentsProject({
+      directory, image: worker.image?.id ?? worker.reference,
+      lifecycleBaseUrl: config.lifecycleBaseUrl, endpointHost: config.endpointHost,
+      advertiseHost: config.advertiseHost, signal,
+    });
+    return { command: 'init', ok: true, project, elapsedMs: Math.round(performance.now() - start) };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    const detail = signal.aborted ? 'Project initialization was interrupted.'
+      : code === 'SETUP_BUSY' ? 'Another murm init owns this directory.'
+      : code === 'PROJECT_PACKAGE_INCOMPATIBLE' ? 'The target package.json must declare type "module".'
+      : 'Could not initialize the Subagents project. Check the target directory and npm access, then rerun murm init.';
+    return { command: 'init', ok: false, detail, interrupted: signal.aborted, elapsedMs: Math.round(performance.now() - start) };
   }
 }
