@@ -1,73 +1,68 @@
 # murm implementation manual
 
-This manual describes the implementation in this tree. Generated fingerprints identify the mapped source files. The associated GitHub Issues and PRs record the revisions used for acceptance, integration and release.
+This directory describes how the current tree runs. It is the authoritative implementation narrative for the Core SDK, backend, Harnesses, domain Services and retained compatibility paths. The [user documentation](../INDEX.md) introduces those capabilities through runnable workflows; this manual explains their ownership, call order, stored state, failure paths and observable results.
 
-This directory is written for the owner who wants to understand the implementation **without reading source code**. The narrative explains execution order and behavior; the reference pages contain full repository-controlled prompts, tool contracts and storage definitions. Source and test links are evidence for maintainers, not required reading to fill in missing explanations.
+Start with [00 System overview](00-overview.md). For an SDK application, continue with 15, 16 and 17. TaskPool adds the Mission/Task/Material/Workspace model described in 01–05; that model is not a prerequisite for another Harness.
 
-The programmable [Core Runtime](15-core-runtime.md) and [OpenSandbox backend](16-pi-opensandbox-backend.md) implement the Phase 0005 resource and input boundaries. Harness modules own collaboration and domain policies. The [foreground host](17-harness-reporting.md#foreground-harness-control) reuses TaskPool and PeerMesh assembly for input, status and stop. The standalone Notes example uses installed public exports. Their actual verification and remaining acceptance conditions belong to the linked implementation Issues.
-
-The TaskPool domain services retain the Mission/Task/Execution/Material/Workspace contract described by chapters 01–05. Whole-project diagnostics, checked merges and trusted Mission acceptance have separate authorities. The legacy domain Runtime remains directly callable. Current services retain private row journals, while timestamp-selected historical copies, experiment reconstruction and archived service-schema conversion have been retired. The benchmark runner, fixed mathematical datasets and historical report importer have been removed and are preserved in the fixed research revision. Historical experiment evidence retains its recorded implementation baseline.
-
-## Reading map
-
-Read 00 first, then 07 for current entry points. Read 15–21 for the programmable Core and Harness flows, and 01–06 for shared and legacy domain mechanisms. Use 08–12 as full references and a review checklist.
+## SDK and shared runtime
 
 | Chapter | Questions it answers |
-|---|---|
-| [00 System and a complete run](00-overview.md) | Who owns which facts? What happens from launch through collaboration, checking, handoff and shutdown? |
-| [01 Agent Core](01-agent-core.md) | How is Pi launched? What does a fresh Agent receive? How are tools installed, authorized and routed? |
-| [02 Execution and control loops](02-execution.md) | How do the TaskPool controller, Core-backed ownership and retained domain Runtime handle Execution states, timers and recovery? |
-| [03 Mission and Task](03-mission-task.md) | What fields are persisted? How are independent Mission Tasks proposed, taken, completed, blocked and closed, and which historical paths remain executable? |
-| [04 Services](04-services.md) | What happens inside a named call? How do Context, Judge, Registry, remote services and Mathlib search work? |
-| [05 Workspace and continuity](05-workspace-continuity.md) | How do files, revisions, Git, snapshots, Sandbox, compaction, recovery and handoff preserve work? |
-| [06 Trace Viewer and evidence](06-observability-experiments.md) | How do saved and active Runs become a browser timeline, and what do its records establish? |
-| [07 Launch, configuration and finalization](07-run-configuration.md) | Current host entries, configuration, startup/stop, optional service deployment and checker resources |
-| [08 Prompt reference and delivery](08-prompts.md) | Full prompt bodies and tool guidance, repository send sites, dynamic values, complete synthetic examples and actual-delivery evidence |
-| [09 Known implementation boundaries](09-known-boundaries.md) | Current discrepancies and limits that would otherwise make the manual misleading |
-| [10 Service and tool reference](10-service-api-reference.md) | Complete advertised capabilities, schemas, audience, binding, help and compatibility catalog entries |
-| [11 Storage reference](11-storage-reference.md) | Complete database definitions, keys, indexes, ownership and persistence boundaries |
-| [12 Source coverage](12-code-coverage.md) | Runtime/configuration/build source files, their role, chapter ownership and fingerprints; explicit generated/test/data classifications |
-| [13 Private history](13-historical-resume.md) | How are service database history and current Workspace publication records retained and verified? |
-| [15 Programmable Core Runtime](15-core-runtime.md) | How does a host assemble and run a Task-free Agent, subscribe to input results and close the run? |
-| [16 OpenSandbox backend and drivers](16-pi-opensandbox-backend.md) | How does Core connect an Agent to Pi or Codex in a guest, retain its Session and separately confirm stop, archive and destruction? |
-| [17 Runtime evidence and Harness reports](17-harness-reporting.md) | How do the foreground host, Notes and Subagents run? How do reports record input, events, Service operations and cleanup failures? |
-| [18 PeerMesh Harness](18-peermesh-harness.md) | How do peers start a project, share work and merge through separate accounts, and retain their results at shutdown? |
-| [19 Fixed Substrate peer pool](19-substrate-harness.md) | How does a fixed pool publish immutable content, adopt ranked references and continue its Sessions without Tasks? |
-| [20 Fixed Lead-Worker Harness](20-lead-worker-harness.md) | How do Board transactions, restricted Git identities, direction adoption and cleanup work? |
-| [21 Native acceptance evidence boundary](21-hour-matrix.md) | Where are the five original long-run proofs retained, and which ordinary workflows remain after removing experiment-only runners? |
-| [22 Public documentation website](22-website.md) | How are website pages, local search, static assets and GitHub Pages deployments built and verified? |
+| --- | --- |
+| [00 System overview](00-overview.md) | What does the Harness own, what does Core own, and how does one Run progress from assembly to finalization? |
+| [15 Core Runtime](15-core-runtime.md) | What are the public entries, Profiles, Agent controls, input receipts, file operations and observation contracts? |
+| [16 OpenSandbox backend](16-pi-opensandbox-backend.md) | How do Pi and Codex run in a Sandbox? How are model access, guest transport, stop, archives and deletion handled? |
+| [04 Services](04-services.md) | How do manifests, adapters, Bridge authorization, local and external Services work? How do the domain Services apply their own state rules? |
+| [17 Runtime evidence and Harness reports](17-harness-reporting.md) | How do SDK finalization, Messages, Notes, Subagents and foreground hosts record inputs, outputs, errors and cleanup? |
+| [07 Launch and configuration](07-run-configuration.md) | How are the package, Worker, host, model endpoints, CLI, local setup and optional Services configured? |
+| [06 Trace Viewer and evidence](06-observability-experiments.md) | How are saved and active Runs inspected, and what do those records establish? |
+| [09 Known boundaries](09-known-boundaries.md) | Which current limitations would otherwise make the SDK or architecture misleading? |
 
-## What complete means here
+## Collaboration mechanisms and domain behavior
 
-For every running subsystem the manual must describe its entry point, callers, inputs/defaults, guards, mutation order, durable and in-memory state, outputs, error/retry/timeout paths, cleanup and observation. Successful paths alone are insufficient. Compatibility behavior still executable in the reviewed tree must be labeled and covered until removed.
+| Chapter | Questions it answers |
+| --- | --- |
+| [01 Agent startup and domain integration](01-agent-core.md) | How are Agent tools, instructions and authenticated domain calls assembled, including retained Pi/domain paths? |
+| [02 TaskPool execution and control](02-execution.md) | How do TaskPool ownership, Core-backed file handoff, timers, continuation and the retained domain Runtime behave? |
+| [03 Mission and Task](03-mission-task.md) | How are independent Tasks proposed, taken, finished and closed? What are the persisted domain fields and guards? |
+| [05 Workspace and continuity](05-workspace-continuity.md) | How do private files, public revisions, Git, publication, compaction and handoff preserve work? |
+| [13 Private history](13-historical-resume.md) | Which service row journals and Workspace publication records remain, and what recovery paths are no longer provided? |
+| [18 PeerMesh](18-peermesh-harness.md) | How do peer accounts, messages, Board work, Git integration and shutdown compose? |
+| [19 Substrate](19-substrate-harness.md) | How do fixed peers publish, search and reuse contributions? How do generic and FATE configurations differ? |
+| [20 Lead-Worker](20-lead-worker-harness.md) | How does the fixed lead/helper team use Board transactions, direction, feedback and Git deliveries? |
+| [21 Historical acceptance boundary](21-hour-matrix.md) | Where is version-bound long-run evidence retained, and which current paths replace retired acceptance runners? |
 
-The prompt reference includes full repository-controlled text, ordering and conditional assembly, exact tool guidance and safe complete examples with synthetic dynamic data. It cannot contain every future Mission, tool result, external service bundle or provider-generated string in advance. Those variable fields are identified with their origin. Pi/provider internal context is outside this repository; actual messages for a particular private run must be reconstructed from that run's retained evidence. A composed snapshot, prompt version or hash is not by itself a complete transcript.
+Subagents is explained in chapter 17 and its [user guide](../en/harnesses/subagents.md). The [five-Harness comparison](../en/harnesses/index.md) is the short route for choosing a mechanism.
 
-Source coverage is an inventory, not a formal proof that every branch is correct. Generated references reproduce code-controlled facts; a human-readable explanation and review are still required. The [known boundaries](09-known-boundaries.md) are part of understanding this implementation.
+## Complete references and documentation system
 
-### Earlier Judge queue evidence
+| Chapter | Contents |
+| --- | --- |
+| [08 Prompts](08-prompts.md) | Full repository-controlled prompt bodies, composition conditions, dynamic field origins and actual send paths. |
+| [10 Service/API reference](10-service-api-reference.md) | Advertised Service schemas, capabilities, help and public TypeScript declarations. |
+| [11 Storage reference](11-storage-reference.md) | Database definitions, keys, indexes, ownership and persistence boundaries. |
+| [12 Source coverage](12-code-coverage.md) | Source-to-chapter ownership and reviewed fingerprints from [source-map.json](source-map.json). |
+| [22 Documentation website](22-website.md) | Shared Markdown sources, rendering, search, bilingual links, build checks and deployment. |
 
-The Judge queue adjustment in PR #132 introduced unlimited ordinary checks, concurrency four and a bounded FIFO queue. EXP-20261116-08 observed 33 ordinary admissions, trusted acceptance and verified cleanup on that revision. Concurrency peaked at three and no request queued. The saturation and ordering evidence comes from controlled tests. EXP-20261116-07 exercised revision `e18c7ae` with an ordinary-check limit of 20 and concurrency two. [Queue adjustment](https://github.com/LuNa-shi/SwarmEnv/commit/1c2d5d5825d3511aa47d0964c11f44d107d28da5) · [EXP-20261116-08](../experiments/EXP-20261116-08-judge-queue-1h.md) · [EXP-20261116-07](../experiments/EXP-20261116-07-centralized-judge-1h.md)
+## What this manual establishes
 
-## Documentation responsibilities
+For a runtime flow, explain its entry point, callers, inputs and defaults, guards, mutation order, persistent and in-memory state, outputs, retries, timeouts, cleanup and evidence. Source links support the explanation; a reader should not need to reconstruct the flow from source alone. Label compatibility paths while they remain executable.
 
-| Artifact | Owns | Update point |
-|---|---|---|
-| Phase 0005 design on `main` | This stage's target behavior, decisions, scope and acceptance | Reviewed design PR; update derived tickets to cite the exact revision |
-| Approved GitHub Issue / accepted Agent Brief | Intended change, scope, resources and acceptance outside Phase 0005; task graph and evidence for every phase | Human decisions and meaningful implementation progress |
-| Other numbered phase designs | Versioned target design attached to the authority Issue, including proposed prompts and migration | Design PR review; exact approved revision linked from the Issue |
-| Architecture | Current reviewed implementation and explicit discrepancies | In the same PR as behavior changes; complete reconciliation at stage closeout |
-| Experiments | Inputs and observations of a particular version/run | Registration and evidence-backed reporting |
-| ADR | Durable decision rationale and tradeoffs | Only when a significant decision warrants a lasting record |
+The prompt reference includes repository-controlled text and the conditions under which it is composed and sent. Future task input, external Service content and executor/provider internals are not fixed repository templates. A composed snapshot or prompt hash does not establish the complete conversation of a particular Run.
 
-Implementation progress and handoffs stay in the originating Issue/PR. Apply approved changes through the authority for the affected phase. Architecture describes the resulting implementation, with verification tied to the revision and environment that produced the observed result.
+Generated references and fingerprints are coverage aids. They reproduce code-controlled facts and identify source bytes; they do not prove semantic completeness, successful model execution or scientific progress. Acceptance evidence stays in the relevant Issue/PR, and historical results stay in their versioned [experiment reports](../experiments/INDEX.md).
 
-## Required update and verification procedure
+## Current architecture and future changes
 
-1. Identify every affected runtime/configuration/CLI/UI/service file in [source-map.json](source-map.json), and inspect the corresponding complete flow rather than only the edited function.
-2. Update the explanatory chapters, including changed defaults, fields, state transitions, errors, prompt-delivery paths and limitations. Keep present behavior and approved future work explicit.
-3. Run `npm run docs:generate`. Review the full prompt, API, storage and source-fingerprint diffs. Regeneration cannot write the required explanation for you.
-4. Run `npm run docs:check` and `git diff --check`, plus the behavior checks appropriate to the code change. `docs:check` runs offline: it checks generated drift, unmapped/missing source files, chapter ownership and local documentation links. It does not call a model, launch a real experiment or prove semantic correctness.
-5. In the PR, provide a short code-area → architecture-chapter mapping, validation results and remaining limitations. At Issue/stage closeout, reconcile this directory with the final merged revision and acceptance evidence linked from the Issue/PR. Do not close out with a known stale implementation manual.
+Current behavior is maintained here and in the user guides. Human-approved Issues and explicit user instructions define intended changes and their acceptance. A linked design describes a future target until implementation and validation establish it. The [dynamic Lead-Worker extension](../designs/dynamic-lead-worker.md) is still such a target: it does not add registration or access mutation methods to the current Runtime.
 
-The runtime baseline and raw experiment version are separate. Updating this manual never changes historical results in [Experiments](../experiments/INDEX.md), and documentation review alone does not establish successful scientific collaboration.
+Superseded phase plans and migration requirements are retained in Git history, rather than beside this manual as competing current contracts. Documentation cleanup does not change an ongoing Issue's approved acceptance or resource budget.
+
+## Updating and checking the manual
+
+1. Inspect each affected flow and its ownership in [source-map.json](source-map.json).
+2. Update the explanatory chapter, user-facing English and Chinese guides, and affected example READMEs. Include changed defaults, state transitions, errors, prompts and limitations.
+3. Run `npm run docs:generate` and review the prompt, API, storage and fingerprint changes.
+4. Run `npm run docs:check` and `git diff --check`, plus the behavior checks relevant to the change. Build the website when changing guides, routes or rendering.
+5. Link the changed code areas, documentation, validation results and remaining gaps in the PR. Reconcile the final merged implementation and acceptance evidence at Issue closeout.
+
+`docs:check` is offline. It detects generated drift, missing or unmapped sources, chapter ownership and local documentation links. The website build checks rendered routes, assets, anchors and locale parity. Neither check calls a model or establishes a research result.

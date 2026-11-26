@@ -11,12 +11,12 @@ const docSchema = z.object({
 });
 
 const docs = defineCollection({
-  loader: glob({ pattern: '**/*.md', base: './src/content/docs' }),
+  loader: glob({ pattern: '**/*.md', base: '../docs/en' }),
   schema: docSchema,
 });
 
 const docsZh = defineCollection({
-  loader: glob({ pattern: '**/*.md', base: './src/content/docs-zh' }),
+  loader: glob({ pattern: '**/*.md', base: '../docs/zh' }),
   schema: docSchema,
 });
 

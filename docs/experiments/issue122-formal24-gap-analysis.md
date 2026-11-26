@@ -1,8 +1,8 @@
 # Issue #122 实验缺口分析：四路 Bot 为什么串行执行了一项 Task
 
-本文复盘 `issue122-formal24`，以 [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) 采纳的 [Phase 02 设计](../phases/0002-task-material-workspace/README.md) 为对照。实现审查对象为 [PR #124](https://github.com/LuNa-shi/SwarmEnv/pull/124)。缺口和验证项引用现有合同，实施范围和验收状态以 Issue/PR 为准。
+本文复盘 `issue122-formal24`，以 [Issue #122](https://github.com/LuNa-shi/SwarmEnv/issues/122) 采纳的 [Phase 02 设计](https://github.com/LuNa-shi/murm/blob/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs/phases/0002-task-material-workspace/README.md) 为对照。实现审查对象为 [PR #124](https://github.com/LuNa-shi/SwarmEnv/pull/124)。缺口和验证项引用现有合同，实施范围和验收状态以 Issue/PR 为准。
 
-后续完整核对见 [设计与实现一致性审计](../phases/0002-task-material-workspace/09-implementation-audit.md)：覆盖全部设计章节、实际入口与兼容路径，并将 V01–V32 逐项映射到缺口和验证要求。本页保留实验观察，两者共同解释当前模型偏差。
+后续完整核对见 [设计与实现一致性审计](https://github.com/LuNa-shi/murm/blob/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs/phases/0002-task-material-workspace/09-implementation-audit.md)：覆盖全部设计章节、实际入口与兼容路径，并将 V01–V32 逐项映射到缺口和验证要求。本页保留实验观察，两者共同解释当前模型偏差。
 
 ## Setup
 
@@ -114,7 +114,7 @@
 
 ### 预期的自主分工与本轮实际执行
 
-[Task 设计 §4](../phases/0002-task-material-workspace/03-task.md) 和 [四 Bot 验收 C0–C2](../phases/0002-task-material-workspace/07-validation-and-research.md) 要求四个 Bot 从同一 Mission 看见空任务池，在有界检索后自主提出**有不同交付边界的责任**，或领取可推进的已有 Task。各自提出并领取自己的责任是一条应该能自然发生的路径。设计同时允许接续已有 Task、竞争失败后改选、无工作时退出，创建者身份不独占 Task，也没有每个 Bot 必须造一项 Task 的配额。局部可验证负结果可以是事前合同允许的合格交付。
+[Task 设计 §4](https://github.com/LuNa-shi/murm/blob/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs/phases/0002-task-material-workspace/03-task.md) 和 [四 Bot 验收 C0–C2](https://github.com/LuNa-shi/murm/blob/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs/phases/0002-task-material-workspace/07-validation-and-research.md) 要求四个 Bot 从同一 Mission 看见空任务池，在有界检索后自主提出**有不同交付边界的责任**，或领取可推进的已有 Task。各自提出并领取自己的责任是一条应该能自然发生的路径。设计同时允许接续已有 Task、竞争失败后改选、无工作时退出，创建者身份不独占 Task，也没有每个 Bot 必须造一项 Task 的配额。局部可验证负结果可以是事前合同允许的合格交付。
 
 实际行为由三个相互加强的决定产生：
 
@@ -131,7 +131,7 @@
 | CLI / API 入口 | 旧 runner 模型选择、共享 Mission Task、旧 fixture 路径和部分树操作已从正常入口删除或不再注册。此运行没有共享同 Task 的 E，也没有跨 E 私有 resume。 | 仅凭入口名变化不能判断下面的逻辑已经退役。通用 Runtime 仍有 reusable Session、同 E recovery、低层 Workspace 等兼容代码，Scheduler 仍可独立调用。需要逐入口确认历史读取、仍供现有调用者使用的兼容，以及正常生产运行，分别记录保留理由或移除路径。 [Architecture 已知边界](../architecture/09-known-boundaries.md) |
 | 运行器策略 | 零 Task 事件代替了初始化器预造 root。 | Core 1 专用 bootstrap 的实际指令预制整题；第一份动态 Task 仍成为 `rootTaskId`，`root-only` 仍是 treatment，分析和报告保留 root/child。仓储的 `creation_kind=ROOT` 可仅是存储类别，但 runner 对第一条 Task 的特判实际进入产品行为和证据投影。 |
 | Bot 身份与生命周期 | 同一 Session 能从阅读转为 E，实际 39 个绑定各有对应 Session。所有已观察 Session 均关闭。 | 实际 actor 为 `agent:core-N`，跨 Session 重复。持久权威 store 缺少独立 Bot 生命周期对象与跨阶段费用。没有 `bot exit` 入参/操作。固定 Core actor 及 prepare/active/closing/release 顺序需要独立故障验证。架构兼容 Session 不能作为新 Bot 的身份模型。 |
-| Prompt / skills / 工具 | 实际是 Pi 命名业务工具；初始 discovery 消息和后续 bound 操作可从 RPC 核实。 | OpenSandbox 启动为 `--no-builtin-tools --no-skills --no-prompt-templates --no-context-files`，本轮没有仓库追加系统 prompt 的 launch 参数，也没有加载 Phase 02 四份 research skill 的证据。代码里同时有新版 SOP、复用 Core 身份的旧指令、短名单领取序列和 bootstrap 合同。批准的“四基础工具 + Bash CLI + 可追溯按需 skills”尚未成为这条运行路径。模板生成/组合的 hash 不能证明实际发送。 [Prompt 设计](../phases/0002-task-material-workspace/06-prompts-and-skills.md) · [Adapter](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/src/agent/opensandbox-agent-adapter.js#L211) |
+| Prompt / skills / 工具 | 实际是 Pi 命名业务工具；初始 discovery 消息和后续 bound 操作可从 RPC 核实。 | OpenSandbox 启动为 `--no-builtin-tools --no-skills --no-prompt-templates --no-context-files`，本轮没有仓库追加系统 prompt 的 launch 参数，也没有加载 Phase 02 四份 research skill 的证据。代码里同时有新版 SOP、复用 Core 身份的旧指令、短名单领取序列和 bootstrap 合同。批准的“四基础工具 + Bash CLI + 可追溯按需 skills”尚未成为这条运行路径。模板生成/组合的 hash 不能证明实际发送。 [Prompt 设计](https://github.com/LuNa-shi/murm/blob/fb457bbfc8fc038ac8f2cfbbcfd1ab4a4e655b02/docs/phases/0002-task-material-workspace/06-prompts-and-skills.md) · [Adapter](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/src/agent/opensandbox-agent-adapter.js#L211) |
 | Task / 状态 | 普通 Task 本轮额度为 1，`task_finish` 的四种 outcome 有源码入口，blocked 等未被本轮自然触发。 | schema 和内部读路径保有 root/parent、等待/重做/配额/历史结构及不同终结状态词汇。需要验证已批准的依赖修复、无 owner cancel、状态重算、关停前不放回队列。部分历史结构表在本轮为 0 行，不能将仍存在的表认定为发生过。 [Task Service](https://github.com/LuNa-shi/SwarmEnv/blob/7c5836fefa7124a8386150ea408068c9a6010b6b/src/task/task-service.ts#L1772) · [Schema](https://github.com/LuNa-shi/SwarmEnv/blob/7c5836fefa7124a8386150ea408068c9a6010b6b/src/storage/schema.ts#L228) |
 | Material | 成功记录正文与来源及同 Task 跨 E 消费。`swarm material` 已有映射。 | `swarm context` 别名与实际发送的 `swarmenv_context_*` 仍是可见接口，保留 link/role 和消费要求，且发布提示仍要求另行 attach。底层有纠错操作，不等于规范 CLI/API 及完整替代合同已验收。需区分明确的历史读兼容与今天向 Bot 提供的入口。 [CLI](https://github.com/LuNa-shi/SwarmEnv/blob/7c5836fefa7124a8386150ea408068c9a6010b6b/src/cli/swarm-cli.ts) · [Context](https://github.com/LuNa-shi/SwarmEnv/blob/7c5836fefa7124a8386150ea408068c9a6010b6b/src/context/context-service.ts#L465) |
 | Workspace | 有真正的 Mission Workspace `0.1` 和另一个 E 本地 Workspace。没有独立 Candidate 对象被本轮 Bot 创建，检查对象来自路径。 | 当前工具允许 Bot 写 E 本地文件，产生本地版本。批准设计要求普通文件经一致 save 公开，公开 revision 可读/apply，整版 merge 后更新 main。从普通工具返回的本地 revision 到公共仓库没有经过这条闭环。遗留 checker、fixture、report 的 candidate 字样需按真实对象、历史字段、普通文件称呼区分。 |

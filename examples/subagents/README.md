@@ -1,6 +1,8 @@
 # Subagents Harness
 
-Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pack` builds the distributable JavaScript and declarations before archiving.
+This example builds a recursive team using the public Runtime, Services and OpenSandbox SDK entries. Its `createSubagentsHarness` factory and `collaboration` controller are local example modules, not exports from `@murm/core`. See the [mechanism guide](../../docs/en/harnesses/subagents.md) and [SDK guide](../../docs/en/sdk.md).
+
+TypeScript sources compile with `npm run build` into `dist/`. The package is currently marked private and distributed as a checkout-built tarball; `npm pack` builds the JavaScript and declarations before archiving.
 
 Give Root a task. Root looks for independent work it can delegate early, chooses the assignments, and works on a complementary part while the team is active. A Child can delegate again. Team members can send notices, assign more work, wait and interrupt. A Child's result goes to its direct parent.
 
@@ -42,11 +44,11 @@ Pass `--interactive` in place of the task to keep the example open.
 
 In interactive mode, enter a task or a follow-up as a line, use `/status` to inspect the team, and use `/exit` to close the whole run. A Root reply leaves the team available for further input. End of input and host cancellation also close the team. A host can instead supply `config.goal` or use the exported input, reply, status and close methods.
 
-The example config defaults to four live Agents including Root and three child edges. Set `MURM_SUBAGENTS_MAX_AGENTS` and `MURM_SUBAGENTS_MAX_DEPTH` to adjust the limits. Models can be configured as `rootModel` and `childModel` on the host. The default work limit is 120 seconds and cleanup has its own 30-second limit. Set `files` to seed Root, and use a required `collect` specification for files that must be exported. Work directories are private by default. Set `workspace.root` and `workspace.child` to supported Core workspace mounts to enable sharing. Private children can send patches as text to Root.
+The example config defaults to four live Agents including Root, with a maximum depth of three child edges from Root. Set `MURM_SUBAGENTS_MAX_AGENTS` and `MURM_SUBAGENTS_MAX_DEPTH` to adjust the limits. Models can be configured as `rootModel` and `childModel` on the host. The default work limit is 120 seconds and cleanup has its own 30-second limit. Set `files` to seed Root, and use a required `collect` specification for files that must be exported. Work directories are private by default. Set `workspace.root` and `workspace.child` to supported Core workspace mounts to enable sharing. Private children can send patches as text to Root.
 
 ## Use the packaged example with Codex
 
-The example defaults to Pi. To use Codex from a project with `@murm/core` installed, set `MURM_SUBAGENTS_EXECUTOR=codex`, `MURM_SUBAGENTS_MODEL_ID`, and `MURM_SUBAGENTS_MODEL_URL` in the host shell. Set `MURM_SUBAGENTS_IMAGE` to the immutable ID of a Worker built with Codex. The optional `MURM_SUBAGENTS_MODEL_PROVIDER` label defaults to `openai` for Codex. Supply any required model or lifecycle token through the host environment.
+Install a checkout-built tarball using the [SDK installation recipe](../../docs/en/sdk.md#install-the-current-package). The example defaults to Pi. To use Codex from that consumer project, set `MURM_SUBAGENTS_EXECUTOR=codex`, `MURM_SUBAGENTS_MODEL_ID`, and `MURM_SUBAGENTS_MODEL_URL` in the host shell. Set `MURM_SUBAGENTS_IMAGE` to the immutable ID of a Worker built with Codex. The optional `MURM_SUBAGENTS_MODEL_PROVIDER` label defaults to `openai` for Codex. Supply any required model or lifecycle token through the host environment.
 
 ```sh
 example=node_modules/@murm/core/dist/examples/subagents
@@ -62,7 +64,13 @@ swarm collaboration spawn_agent --task-name reviewer --message 'Check the implem
 swarm collaboration wait_agent --request-id reviewer-result
 ```
 
+Pi supports copying parent context with `fork_turns: all`; Codex currently advertises only fresh conversations with `fork_turns: none`. Files remain private unless the host explicitly supplies supported shared-workspace mounts.
+
 A plain notice or child result can reach active work or be taken through a wait. Idle members keep the notice for later. Explicit follow-up can start work on the same Agent. Closing exports the configured files and time-stamped Sessions, model requests and Service calls to the private run directory. `harness-report.json` records task and cleanup outcomes.
+
+## Embed the example
+
+Import `createSubagentsHarness` from the local example module after building. The returned handle provides `input`, `status`, `onReply`, `lastReply`, `waitForReply` and `close`. Check the input receipt, then check the reply outcome. For repeated inputs, pass the preceding reply sequence as `waitForReply({ after, signal })`. Supply a bounded host signal and call `close` in a `finally` block; inspect its execution and cleanup receipts. The [mechanism guide](../../docs/en/harnesses/subagents.md) shows a complete host call.
 
 ## Verification
 

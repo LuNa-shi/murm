@@ -20,22 +20,18 @@ export const DOC_NAV: NavGroup[] = [
     ],
   },
   {
-    label: 'ARCHITECTURE',
-    items: [
-      { title: 'System Architecture', slug: 'architecture' },
-      { title: 'Anatomy of a Run', slug: 'run-lifecycle' },
-    ],
-  },
-  {
     label: 'BUILD ON MURM',
     items: [
+      { title: 'Use the SDK', slug: 'sdk' },
       { title: 'Build Your Own Harness', slug: 'build-your-harness' },
+      { title: 'System Architecture', slug: 'architecture' },
+      { title: 'Run Lifecycle', slug: 'run-lifecycle' },
     ],
   },
   {
-    label: 'BUILT-IN HARNESSES',
+    label: 'HARNESSES',
     items: [
-      { title: 'Five Topologies Overview', slug: 'harnesses' },
+      { title: 'Choose a Harness', slug: 'harnesses' },
       { title: 'Subagents', slug: 'harnesses/subagents' },
       { title: 'TaskPool', slug: 'harnesses/taskpool' },
       { title: 'PeerMesh', slug: 'harnesses/peermesh' },
@@ -48,7 +44,7 @@ export const DOC_NAV: NavGroup[] = [
     items: [
       { title: 'API & Configuration', slug: 'reference/api' },
       { title: 'Types & Source Map', slug: 'reference/types' },
-      { title: 'Deployment', slug: 'reference/deploy' },
+      { title: 'Documentation Site', slug: 'reference/deploy' },
     ],
   },
 ];
@@ -59,26 +55,22 @@ export const DOC_NAV_ZH: NavGroup[] = [
     items: [
       { title: '文档总览', slug: 'overview' },
       { title: '快速上手', slug: 'quickstart' },
-      { title: '核心心智模型', slug: 'concepts' },
-    ],
-  },
-  {
-    label: '系统架构',
-    items: [
-      { title: '系统架构与边界', slug: 'architecture' },
-      { title: '一次运行的完整脉络', slug: 'run-lifecycle' },
+      { title: 'murm 如何工作', slug: 'concepts' },
     ],
   },
   {
     label: '基于 MURM 构建',
     items: [
+      { title: '使用 SDK', slug: 'sdk' },
       { title: '构建你自己的 Harness', slug: 'build-your-harness' },
+      { title: '系统架构', slug: 'architecture' },
+      { title: 'Run 生命周期', slug: 'run-lifecycle' },
     ],
   },
   {
-    label: '内置 HARNESS',
+    label: '协作机制',
     items: [
-      { title: '五种协作拓扑总览', slug: 'harnesses' },
+      { title: '选择 Harness', slug: 'harnesses' },
       { title: 'Subagents', slug: 'harnesses/subagents' },
       { title: 'TaskPool', slug: 'harnesses/taskpool' },
       { title: 'PeerMesh', slug: 'harnesses/peermesh' },

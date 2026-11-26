@@ -1,14 +1,27 @@
 # Fixed Lead-Worker Harness
 
-This Phase 0005 example creates one lead and two helpers through public Core. It adds no Core role type or dynamic Agent API. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
+This example creates one lead and two helpers through the public Core SDK. The team size and role Profiles are fixed before startup. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
 
-The editable TypeScript source is compiled by `npm run build`. Run the emitted example from an installed package directory or a built checkout:
+The host imports Runtime and Services from the public SDK and constructs `createOpenSandboxBackend` from `@murm/core/backends/opensandbox`. The Lead-Worker controller is a repository module, not an extra package export. See the [SDK guide](../../docs/en/sdk.md) and [mechanism guide](../../docs/en/harnesses/lead-worker.md). Runtime changes to Profiles and Services belong to the separate [dynamic-team design](../../docs/designs/dynamic-lead-worker.md); the current example uses the fixed workflow described here.
+
+## Install and configure
+
+After `npm ci`, build the editable TypeScript with `npm run build`. From the checkout root:
 
 ```bash
 node dist/examples/lead-worker/main.js dist/examples/lead-worker/config.js
 ```
 
+The package is currently private and consumed as a checkout-built tarball. After following the [SDK installation recipe](../../docs/en/sdk.md), run it in a consumer directory with:
+
+```bash
+example=node_modules/@murm/core/dist/examples/lead-worker
+node "$example/main.js" "$example/config.js"
+```
+
 The config module lists required environment variables. Supply a fresh unique run name, an immutable Worker image including the existing native Git credential helper, a local OpenSandbox endpoint, an existing Gitea admin account and a model endpoint. The sample selects Kimi K3. The Gitea origin must be an IPv4 literal reachable from the containers; loopback is not admitted as an Agent network origin. Administrator credentials remain host-side. The provisioner creates one retained private repository and three restricted accounts with scoped tokens and disables/revokes only its confirmed owned identities after complete Core cleanup. It never deletes the shared project or existing work.
+
+## Direction, work and feedback
 
 The default example has three Agents and six exclusive `followUp` inputs: lead initialization; both helper initial turns; one lead turn mediating public feedback plus the user supplement; then both original helper followup turns. The lead has Board announcement/assignment/planning operations. Helpers have read/create/claim/update-own/note/landed/complete operations. All roles may create a PR for their own branch. Profiles expose no built-in Agent operations. Commands use JSON request envelopes and stable request IDs, for example `swarm board claim --input claim.json --request-id helper1-claim`.
 
@@ -16,11 +29,17 @@ The host checks a public direction, both assignments and ready subtasks before a
 
 SQLite `BEGIN IMMEDIATE` transactions serialize claims across connections. A task receives one permanent owner and monotonic revision. Every update supplies the expected revision. Owner fields cannot be submitted by JSON, and Profile checks precede trusted caller/runtime/binding checks. Operation IDs persist exact canonical request/response receipts; conflicting reuse is refused. No claim expires, is released on failure, or moves to a replacement helper. Board records remain readable after the connection closes.
 
+## Runtime bounds and cleanup
+
 The sample config uses one CPU, 1 GiB memory, 64 MiB project storage, 4,096 inodes and 2,048 output tokens per Agent. Set `helperCount` in the config to an integer from 2 to 7 to preconfigure more helpers, and adapt `goal` for that team. Each Agent keeps its own account, Profile and work directory. The workflow has two lead inputs and two inputs per helper, 120 seconds of work, a finite per-turn wait (default 30 seconds, maximum 300), 32 subtasks, 64 notes, 500 business history events (512 including failure evidence) and 512 Service receipts with sixteen MiB total stored responses. It verifies files up to 1 MiB and requires private Git collection up to 64 MiB per Agent. The default host close wait is 30 seconds (maximum 60). These limits describe this fixed example; it has no one-hour or larger-team endurance policy and no global request-count limit beyond configured per-request and work bounds.
 
 Any failed, aborted, unknown or timed-out input fences new Board work and aborts subsequent controller inputs. The original request/input identities and owners remain in the public record. A stop-unknown or required-export-pending receipt keeps the Board and account dependencies alive for reconciliation; complete cleanup closes the SQLite connection and revokes owned Git credentials. Shared Board data, commits and PRs persist. `harness-report.json` separates business failure, cleanup pending and report-save failure, with delivered/uncompleted work and uncertain input records. Core close receipts separately identify execution unknown for each Agent. No automatic claim recovery, replacement or write resubmission occurs.
 
+## Verification
+
 Deterministic verification uses real Core, CLI subprocesses and Bridge authorization, temporary native Git commits/pushes, and a bounded local Git API fixture. The deterministic team-size cases use 3, 4 and 8 Agents. Only native Pi transport and private export are simulated. The opt-in `test/lead-worker-real.test.ts` is prepared for a clean installed package, three native Agents and a single local Gitea facility. Its fixed workload has six inputs, twelve expected Responses (hard all-arrival cap sixteen), a 120-second child limit and one 80-second cleanup budget. A separate exclusive-claim probe remains intentionally unfinished under the winning owner and is reported explicitly. No native acceptance run or upstream-scale/performance result is implied; this fixture requires two independent exact-pin approvals before launch.
+
+## Drive several stages from a host
 
 For a host-managed four-group workload, `createLeadWorkerHarness({ helperCount: 3, ... })` also exposes `runStage`. Call it serially four times: the first input has `{ goal, paths }`, and the later inputs have `{ supplement, paths }`. `paths` maps `helper1`, `helper2` and `helper3` to three new distinct artifact paths for that group. Pass a host `signal` on every call to enforce the outer schedule. The controller retains the original team, requires actual preceding feedback adoption and verifies twelve fixed Git files by the final group. Its receipts preserve accepted Core inputs and settled event identities. The read-only `get(agentId)` supports host monitoring during waits. The caller owns its schedule, resource limits and final cleanup verification. The supplied CLI continues to run the original short two-group workflow.
 

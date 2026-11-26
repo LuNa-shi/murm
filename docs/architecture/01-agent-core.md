@@ -2,7 +2,7 @@
 
 Task supply belongs to the trusted host/domain layer. Agents discover existing Tasks, take one responsibility, publish its evidence and finish. The retained v1 Bridge and built-in registry no longer admit `task_create`, and `swarm task propose` is not a CLI command. UNBOUND revision/cancellation remains validated against Mission, contract/state versions, ownership and cleanup; explicit coordination grants remain separate. The retained domain registration contract is described in [03 Mission and Task](03-mission-task.md#ordinary-task).
 
-The legacy domain Runtime uses reusable capacity lanes and binds a registered Agent conversation to its Execution. The programmable Phase 0005 Core gives each run its own Runtime identity and uses Slots to count Agent capacity. The model chooses research actions; the Bridge, Task Service and Runtime validate and apply those actions. The model cannot create a valid Execution merely by saying that it has taken work. [Core Runtime](15-core-runtime.md) · [Source coverage](12-code-coverage.md)
+The legacy domain Runtime uses reusable capacity lanes and binds a registered Agent conversation to its Execution. The programmable Core gives each run its own Runtime identity and uses Slots to count Agent capacity. The model chooses research actions; the Bridge, Task Service and Runtime validate and apply those actions. The model cannot create a valid Execution merely by saying that it has taken work. [Core Runtime](15-core-runtime.md) · [Source coverage](12-code-coverage.md)
 
 The complete prompt bodies, composition branches and delivery evidence are in [08 Prompts](08-prompts.md). State transitions are in [02 Execution](02-execution.md); exact tool schemas and deployment-dependent exposure are in [10 API reference](10-service-api-reference.md).
 
@@ -53,7 +53,7 @@ The legacy domain Runtime exposes `startAgent` to its host. It first persists ST
 
 A successful `task_take` reserves one Execution. The Runtime prepares the pinned Workspace in that Agent's existing Sandbox, verifies that its original Session still owns the attempt, activates the Execution and grants writable access. The tool result returns to that same Session. Finish, handoff or budget stop retains the original Task/Execution identity until process and resource cleanup are confirmed.
 
-The former benchmark wrapper, four-lane scheduler and repeated discovery/continuation sender have been removed. Phase 0005 TaskPool assembly uses its own controller and the public Core. The [Execution chapter](02-execution.md), [Workspace chapter](05-workspace-continuity.md) and [foreground host](17-harness-reporting.md#foreground-harness-control) describe the applicable lifecycle and routing.
+The former benchmark wrapper, four-lane scheduler and repeated discovery/continuation sender have been removed. TaskPool assembly uses its own controller and the public Core. The [Execution chapter](02-execution.md), [Workspace chapter](05-workspace-continuity.md) and [foreground host](17-harness-reporting.md#foreground-harness-control) describe the applicable lifecycle and routing.
 
 ## 4. Native tools and the Service directory
 

@@ -1,6 +1,6 @@
 # PutnamBench 2025 B1 on TaskPool
 
-This opt-in driver runs the pinned original Lean theorem with the normal TaskPool host and the local Pi/OpenSandbox backend. The trial opens with an empty Task pool and four researcher slots. Agents can save and apply proof files in the same Session. The defaults are Kimi K3 and a one-hour research window. See the [Phase 0005 design](../../docs/phases/0005-core-harness/04-taskpool-math.md) for input visibility and acceptance.
+This opt-in driver runs the pinned original Lean theorem with the normal TaskPool host and the local Pi/OpenSandbox backend. The trial opens with an empty Task pool and four researcher slots. Agents can save and apply proof files in the same Session. The defaults are Kimi K3 and a one-hour research window. The [TaskPool implementation](../../docs/architecture/02-execution.md) and [Issue #200](https://github.com/LuNa-shi/murm/issues/200) describe the input boundary and its acceptance evidence.
 
 The driver submits Material notices through Pi's steering queue. A busy recipient can receive a notice in its next model request after its current tool batch. The notice keeps the active Task, Execution and Session. The report records admission separately from model visibility, handling and use in the proof.
 
