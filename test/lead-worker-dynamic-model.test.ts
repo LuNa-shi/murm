@@ -81,7 +81,8 @@ async function inspectRun({ outputDir, report, candidate, model, gitea, runId, s
       agent: request.agentId, context: request.before.prompt_cache_key, at: Date.parse(request.startedAt), usage: result.usage,
     });
   }
-  assert.ok(attempts.length > 0 && attempts.length <= model.requestsPerRun);
+  assert.ok(attempts.length > 0);
+  if (model.requestsPerRun !== undefined) assert.ok(attempts.length <= model.requestsPerRun);
   for (const id of [lead, ...original, checker]) assert.ok(attempts.some(row => row.agent === id), 'Every member must receive a real model completion');
   const continuity = attempts.filter(row => row.agent === worker);
   const keys = new Set(continuity.map(row => row.context));
@@ -104,7 +105,10 @@ test('two clean installed-package Lead-Worker Runs against the approved real pro
   assert.ok(['https:', 'http:'].includes(url.protocol));
   assert.equal(url.pathname, '/v1/responses');
   assert.ok(!url.username && !url.password && !url.search && !url.hash);
-  for (const [value, min, max] of [[model.requestsPerRun, 1, 1000], [model.maxOutputTokens, 16, 32768], [model.workMs, 1000, 900000]]) {
+  if (model.requestsPerRun !== undefined) {
+    assert.ok(Number.isSafeInteger(model.requestsPerRun) && model.requestsPerRun >= 1 && model.requestsPerRun <= 1000);
+  }
+  for (const [value, min, max] of [[model.maxOutputTokens, 16, 32768], [model.workMs, 1000, 900000]]) {
     assert.ok(Number.isSafeInteger(value) && value >= min && value <= max);
   }
   const image = process.env.MURM_CORE_TEST_IMAGE, serviceImage = process.env.MURM_LEAD_WORKER_SERVICE_IMAGE;
@@ -131,7 +135,7 @@ test('two clean installed-package Lead-Worker Runs against the approved real pro
     const pin = { runId, variant, package: installed.metadata, workerImage: image, serviceImage,
       oracleSha256: hash(oracle), specificationSha256: hash(specification), rolePromptsSha256: hash(rolePrompts),
       provider: model.provider, model: model.model, authorization: model.authorization, providerAllowance: model.providerAllowance,
-      maxRequests: model.requestsPerRun, attemptLimit: 2, maxOutputTokens: model.maxOutputTokens, workMs: model.workMs,
+      maxRequests: model.requestsPerRun ?? null, attemptLimit: 2, maxOutputTokens: model.maxOutputTokens, workMs: model.workMs,
       agentLimit: 4, serviceLimit: 1, perAgentCpu: 1, perAgentMemoryMiB: 1024, diskBytes: 64 * 1024 ** 2, cleanupMs: 80_000 };
     const receipt: Record<string, any> = { pin, passed: false };
     await writeFile(join(directory, 'pin.json'), JSON.stringify(pin), { mode: 0o600 });
