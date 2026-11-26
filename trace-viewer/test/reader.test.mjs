@@ -189,6 +189,35 @@ test("100,000 event Run is paginated to 1,000 and refresh only reads appended JS
   );
 });
 
+test("the timeline caps completed intervals, open intervals and input points together", async (t) => {
+  const root = await fixture(t, {
+    runtimeId: "bounded-timeline",
+    agents: [{ agentId: "a" }, { agentId: "b" }],
+  });
+  const at = (index) => new Date(Date.UTC(2026, 0, 1, 0, 0, index)).toISOString();
+  const rows = Array.from({ length: 1050 }, (_, index) => ({
+    type: "input",
+    agentId: "a",
+    state: "accepted",
+    at: at(index),
+    seq: index + 1,
+  }));
+  rows.push(
+    { type: "native", agentId: "a", eventType: "agent_start", workerAt: at(1050), seq: 1051 },
+    { type: "native", agentId: "a", eventType: "agent_settled", outcome: "completed", workerAt: at(1051), seq: 1052 },
+    { type: "native", agentId: "b", eventType: "agent_start", workerAt: at(1052), seq: 1053 },
+  );
+  await jsonLines(root, "evidence.jsonl", rows);
+  const reader = await createTraceReader({ root });
+  const [run] = await reader.listRuns();
+  const summary = await reader.summary(run.id);
+  assert.equal(summary.spansTruncated, true);
+  assert.equal(summary.points.length, 998);
+  assert.deepEqual(summary.spans.map(({ status }) => status), ["completed", "open"]);
+  const page = await reader.events(run.id, { limit: 1 });
+  assert.equal(page.events[0].time, at(0));
+});
+
 test("native boundaries, unknown service calls and exact Subagents identities have evidence", async (t) => {
   const root = await mkdtemp(join(tmpdir(), "murm-reader-"));
   t.after(() => rm(root, { recursive: true, force: true }));

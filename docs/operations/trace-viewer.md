@@ -2,7 +2,7 @@
 
 ## Replay the included demo
 
-From a checkout on Linux, WSL, or macOS with Node.js 22.19 or later, start the Viewer directly. The [included Run](../../test/fixtures/trace-viewer/runs/release-notes/) is ready to view offline and requires no installation, Sandbox, or model credentials.
+From a checkout on Linux or WSL with Node.js 22.19 or later, start the Viewer directly. The [included Run](../../test/fixtures/trace-viewer/runs/release-notes/) is ready to view offline and requires no installation, Sandbox, or model credentials.
 
 ```bash
 node trace-viewer/murm.mjs trace --root test/fixtures/trace-viewer/runs --port 8787 --open
@@ -12,7 +12,7 @@ Open [the demo Run](http://127.0.0.1:8787/#run=release-notes). The synthetic Sub
 
 ## Install the standalone package
 
-Build the standalone candidate package from the repository root on Linux, WSL, or macOS with Node.js 22.19 or later. Install the resulting tarball in a separate directory.
+Build the standalone candidate package from the repository root on Linux or WSL with Node.js 22.19 or later. Install the resulting tarball in a separate directory.
 
 ```bash
 mkdir -p /tmp/murm-viewer-package

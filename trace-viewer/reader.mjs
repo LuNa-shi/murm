@@ -7,6 +7,7 @@ import { resolve, relative, join, basename, isAbsolute, sep } from "node:path";
 const version = 1;
 const maxLineBytes = 8 * 1024 * 1024;
 const maxBodyBytes = 1024 * 1024;
+const timelineLimit = 1000;
 const missing = (error) => error.code === "ENOENT" || error.code === "ENOTDIR";
 const identity = (record) =>
   record.agentId ??
@@ -39,19 +40,10 @@ async function safeOpen(root, name) {
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   );
   try {
+    const openedPath = await realpath(`/proc/self/fd/${handle.fd}`);
+    if (!inside(root, openedPath))
+      throw failure("Opened file escapes the Run directory", 403);
     const stat = await handle.stat();
-    if (process.platform === "linux") {
-      const openedPath = await realpath(`/proc/self/fd/${handle.fd}`);
-      if (!inside(root, openedPath))
-        throw failure("Opened file escapes the Run directory", 403);
-    } else {
-      const post = await lstat(target);
-      if (post.isSymbolicLink() || post.ino !== stat.ino || post.dev !== stat.dev)
-        throw failure("Opened file changed or escaped the Run directory", 403);
-      const resolved = await realpath(target);
-      if (!inside(root, resolved))
-        throw failure("Opened file escapes the Run directory", 403);
-    }
     if (!stat.isFile()) throw failure("Expected a regular file");
     if (stat.nlink > 1)
       throw failure("Hard links are outside the read boundary", 403);
@@ -1027,11 +1019,25 @@ class RunIndex {
         kind: "pending",
         message: `${report.evidence.pending} lifecycle records await persistence`,
       });
-    const maxTimelineSpans = 5000;
-    const points = [
-      ...this.inputPoints,
-      ...(!this.hasNative ? this.sessionToolPoints : []),
-    ].slice(-maxTimelineSpans);
+    const openSpans = [...this.nativeStarts.values()].map((event) => ({
+      id: event.id,
+      agentId: event.agentId,
+      kind: event.kind,
+      label: event.label,
+      startedAt: event.time,
+      status: "open",
+      evidenceIds: [event.id],
+    }));
+    const timelineSources = [this.spans, openSpans, this.inputPoints];
+    if (!this.hasNative) timelineSources.push(this.sessionToolPoints);
+    const timelineCandidates = timelineSources.flatMap((source) => source.slice(-timelineLimit));
+    const spansTruncated = timelineSources.reduce((count, source) => count + source.length, 0) > timelineLimit;
+    const timeline = spansTruncated
+      ? timelineCandidates.sort((left, right) =>
+        (Date.parse(left.time ?? left.startedAt) || 0) -
+        (Date.parse(right.time ?? right.startedAt) || 0),
+      ).slice(-timelineLimit)
+      : timelineCandidates;
     const harnessName = this.harness?.collaboration
       ? "Subagents"
       : this.harness?.peers
@@ -1050,20 +1056,9 @@ class RunIndex {
       gaps,
       files: [...this.files.values()],
       hasNative: this.hasNative,
-      spansTruncated: this.spans.length > maxTimelineSpans,
-      spans: [
-        ...this.spans.slice(-maxTimelineSpans),
-        ...[...this.nativeStarts.values()].map((event) => ({
-          id: event.id,
-          agentId: event.agentId,
-          kind: event.kind,
-          label: event.label,
-          startedAt: event.time,
-          status: "open",
-          evidenceIds: [event.id],
-        })),
-      ],
-      points,
+      spansTruncated,
+      spans: timeline.filter((item) => !Object.hasOwn(item, "time")),
+      points: timeline.filter((item) => Object.hasOwn(item, "time")),
       outcome: this.harness
         ? {
             status: this.harness.businessFailure

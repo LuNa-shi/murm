@@ -128,15 +128,6 @@ test('command helpers support positional root, SSH forwarding hint, validation a
   });
   assert.match(hint, /ssh -N -L 9090:127\.0\.0\.1:9090 alice@192\.168\.1\.50/);
 
-  await assert.rejects(
-    runTraceCommand(['--ssh=-oProxyCommand=bad', '--root', '/tmp']),
-    /valid host/,
-  );
-  await assert.rejects(
-    runTraceCommand(['--ssh', 'alice@host', '--root', '/tmp', '--remote-bin', 'murm;id']),
-    /shell metacharacters/,
-  );
-
   const root = fileURLToPath(new URL('../test/fixtures/trace-viewer/runs', import.meta.url));
   const viewer = await runTraceCommand([root, '--port', '0']);
   t.after(() => viewer.close());

@@ -20,8 +20,7 @@
   "license": "MIT",
   "private": true,
   "os": [
-    "linux",
-    "darwin"
+    "linux"
   ],
   "exports": {
     "./command": "./command.mjs"

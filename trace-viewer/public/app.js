@@ -1408,7 +1408,7 @@ function renderSwimlane() {
       : `${totalOverlaps} OVERLAPS`;
 
   $("#timeline-note").textContent = run.spansTruncated
-    ? "Showing the latest 5,000 recorded spans. Use the Events tab for earlier paginated records."
+    ? "Showing up to 1,000 timeline entries. Use the Events tab for earlier records."
     : !run.hasNative
       ? "Historical schema: Tools track plots archived Session toolResult timestamps alongside recorded Model and Service intervals."
       : "Execution, Model, Tool, Service and Input tracks use recorded Run boundaries directly.";
