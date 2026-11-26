@@ -9,7 +9,7 @@ import { execute } from './fixtures/notes-installed-package.js';
 
 for (const [file, missing] of [
   ['package-third-party-notices.test.js', 'src/judge/lean-module-verify.LICENSE.txt'],
-  ['shipped-image-build-inputs.test.js', 'services/opensandbox-agent/Dockerfile'],
+  ['shipped-image-build-inputs.test.js', 'deploy/worker/Dockerfile'],
 ]) {
   test(`archive audit ${file} consumes the selected frozen bytes instead of repacking the checkout`, { timeout: 30_000 }, async t => {
     const directory = await mkdtemp(join(tmpdir(), 'archive-audit-selection-'));

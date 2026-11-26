@@ -67,7 +67,7 @@ export async function prepareWorkerImage({ packageRoot, requestedImage, install,
   const source = requestedImage ? 'pull' : 'build';
   if (requestedImage && imageIdPattern.test(requestedImage)) return { ...cached, reference, source: 'cache' };
   const args = requestedImage ? ['pull', '--', reference] : [
-    'build', '--file', join(packageRoot, 'services/opensandbox-agent/Dockerfile'), '--tag', reference, packageRoot,
+    'build', '--file', join(packageRoot, 'deploy/worker/Dockerfile'), '--tag', reference, packageRoot,
   ];
   try {
     await exec('docker', args, { signal, timeout: 15 * 60_000, maxBuffer: 12 * 1024 * 1024 });
@@ -75,7 +75,7 @@ export async function prepareWorkerImage({ packageRoot, requestedImage, install,
     signal.throwIfAborted();
     return { ...cached, reference, source, checks: [{ id: `worker-${source}`, ok: false,
       detail: `Docker could not ${source} the Worker image.`, remedy: source === 'build'
-        ? 'Run docker build -f services/opensandbox-agent/Dockerfile . in the package or checkout to inspect the build failure.'
+        ? 'Run docker build -f deploy/worker/Dockerfile . in the package or checkout to inspect the build failure.'
         : 'Check the requested image reference and registry access, or import the compatible Worker image locally.' }] };
   }
   return { ...(await inspectWorker(reference, signal)), reference, source };

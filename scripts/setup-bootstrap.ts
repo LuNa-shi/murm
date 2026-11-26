@@ -33,7 +33,7 @@ async function buildFingerprint(lock: string) {
   }
   await add('tsconfig.json');
   await add('tsconfig.tests.json');
-  for (const path of ['src', 'scripts', 'services', 'examples', 'test', 'test-support']) await walk(path);
+  for (const path of ['src', 'scripts', 'deploy', 'examples', 'test', 'test-support']) await walk(path);
   return hash.digest('hex');
 }
 

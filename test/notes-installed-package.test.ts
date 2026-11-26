@@ -194,7 +194,7 @@ test('candidate package admits only declared distribution roots and retains exec
     'dist/src/core/index.js', 'dist/src/core/index.d.ts', 'dist/src/core/services.js', 'dist/src/core/services.d.ts',
     'dist/src/core/backends/pi-opensandbox.js', 'dist/src/core/backends/pi-opensandbox.d.ts',
     'dist/scripts/swarm.js', 'dist/scripts/opensandbox-agent-worker.js',
-    'services/opensandbox-agent/pi-models.json', 'dist/src/harnesses/shared/run-report.js',
+    'deploy/worker/pi-models.json', 'dist/src/harnesses/shared/run-report.js',
     'dist/examples/substrate/main.js', 'dist/examples/substrate/config.js',
     'dist/examples/notes/main.js', 'dist/test-support/subagents/communication-fixture-controller.js',
     'dist/examples/peermesh/config.js', 'examples/peermesh/README.md',

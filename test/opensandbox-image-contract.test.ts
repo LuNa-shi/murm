@@ -6,8 +6,8 @@ import { readFile } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
 test('OpenSandbox image carries the direct Pi model catalog', async () => {
-  const dockerfile = await readFile(new URL('../services/opensandbox-agent/Dockerfile', import.meta.url), 'utf8');
-  assert.match(dockerfile, /COPY --chown=0:0 services\/opensandbox-agent\/pi-models\.json \/opt\/murm\/pi-agent\/models\.json/);
+  const dockerfile = await readFile(new URL('../deploy/worker/Dockerfile', import.meta.url), 'utf8');
+  assert.match(dockerfile, /COPY --chown=0:0 deploy\/worker\/pi-models\.json \/opt\/murm\/pi-agent\/models\.json/);
   assert.match(dockerfile, /PI_CODING_AGENT_DIR=/);
   assert.match(dockerfile, /chmod 0555 \/opt\/murm\/dist\/scripts\/swarm\.js/);
   assert.match(dockerfile, /mkdir -p \/workspace/);
@@ -93,7 +93,7 @@ test('image probe cleanup reports a retained owned container after a failed remo
 });
 
 test('built OpenSandbox image starts direct Pi with the Core prompt and empty resource contract', { skip: !agentImage, timeout: 45_000 }, async () => {
-  const catalog = await readFile(new URL('../services/opensandbox-agent/pi-models.json', import.meta.url));
+  const catalog = await readFile(new URL('../deploy/worker/pi-models.json', import.meta.url));
   const modelCatalogResource = { path: '/opt/murm/pi-agent/models.json', sha256: createHash('sha256').update(catalog).digest('hex') };
   const probe = `
     import assert from 'node:assert/strict';

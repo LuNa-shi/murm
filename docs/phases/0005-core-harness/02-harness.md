@@ -45,7 +45,7 @@ Harness 是开发者使用 murm Core 编写的协作程序。它决定哪些 Age
 | run-input.ts | Harness 作者 | 独占输入场景的有期限等待；不是 Core API |
 | Core | Core 维护者 | Agent 运行、身份、隔离、输入、事件、Service 接入与收尾 |
 
-这些文件名是组织示例，不是必须遵守的目录框架。首版使用普通 import 和函数入口，不增加插件发现系统。**Q1 已确认：首版只对接 Pi 1.3.0 + OpenSandbox，不开发通用多 backend 插件接口。Q2 已确认：Profile / Service 在创建 Runtime 前注册并冻结，运行中可以按已注册 Profile spawn，但不动态修改注册表。** 通常一次 Harness 运行创建一个 Runtime，Runtime 管理多只 Agent；不同环境共享同一个 Core 包。
+这些文件名是组织示例，不是必须遵守的目录框架。首版使用普通 import 和函数入口，不增加插件发现系统。**Q1 已确认：首版只对接 Pi 1.3.0 + OpenSandbox，不开发通用多 backend 插件接口。Q2 首版：Profile / Service 在创建 Runtime 前注册并冻结，运行中可以按已注册 Profile spawn。受控登记和授权见 [Q2 后续扩展](06-lead-worker-dynamic.md)。** 通常一次 Harness 运行创建一个 Runtime，Runtime 管理多只 Agent；不同环境共享同一个 Core 包。
 
 ### 2.2 装配和启动顺序
 
@@ -76,6 +76,10 @@ Service 作者提供 manifest 和 adapter；Harness 将它们注册进 ServiceRe
 Bridge 注入真实 caller，Registry 执行参数 schema 校验后再调用 adapter。Service 负责记录归属、事务、业务幂等和外部账户。HTTP adapter 保留相同身份边界；Agent 输入中的 caller/author/binding 字段没有覆盖可信身份的权限。
 
 新通用 manifest 采用 Core 文档定义的 v2 合同。旧 v1 的 Task audience/context 通过 TaskPool 兼容适配保留；不将旧领域检查静默删除。`registerService`、`createInProcessAdapter` 和 `invoke` 的装配形态沿用现有实现。[Registry](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-registry.js) · [adapter](https://github.com/LuNa-shi/SwarmEnv/blob/fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e/src/sdk/service-adapter.js)
+
+[#236](https://github.com/LuNa-shi/murm/issues/236) 验证同一个 Harness 使用相同消息操作，分别接入进程内实现和已经运行的外部消息 Service。adapter 在应用侧映射服务的原生接口，Bridge 继续校验真实 caller、Profile 权限和 schema。外部写请求超时或响应丢失时保留原 operation ID 和未知结果。两种运行分别通过真实 Agent CLI 交接并验证最终文件，关闭后验证外部服务及数据继续可用。Harness 自建资源先核对归属，再按必需导出与实际依赖完成有界收尾。按 Run 启动 HTTP 服务、通用 v2 服务端和三种设施同场留待具体使用场景。
+
+另一接入示例使用真实 GitHub CLI `gh`。Agent 请求获准的只读操作，应用侧 adapter 按固定子命令和仓库范围执行 `gh`，校验参数并返回结构化结果。凭据留在应用侧，Agent 环境和可见记录只保留调用所需的业务字段。需要让 Agent 直接执行 `gh` 的 Harness 可以显式配置镜像、网络和单独的 Agent 凭据。#237 验证相同 Service 合同的仓库外消费。
 
 ### 3.2 接线示例：共享一条带固定源码位置的审查记录
 
@@ -588,6 +592,8 @@ PeerMesh 已选为一周版的第二个验收案例，与 TaskPool 共用同一�
 ## 9. Lead-Worker
 
 Lead-Worker 通过公共 Board 与 Git 组织一名 lead 和多名 helpers。lead 读取进展、调整方向；helpers 认领、实现、提交并汇报，工作成果在公共数据中连接。
+
+本节描述首版固定团队。#235 在同一 Harness 上增加[可选动态模式](06-lead-worker-dynamic.md)，由实际 Board 任务、反馈和成员就绪触发工作，并以完整真实模型任务验收。
 
 ### 9.1 配置与权限
 
