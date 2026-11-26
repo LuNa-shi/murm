@@ -52,6 +52,7 @@ export interface DynamicLeadWorkerOptions {
   goal: string;
   verifyFinal(input: {
     repositoryUrl: string; token: string; commit: string; sha256: string; signal: AbortSignal;
+    resources: ReturnType<typeof createOwnedResources>;
   }): Promise<{ ok: boolean; [key: string]: unknown }>;
 }
 
@@ -153,7 +154,8 @@ export function createDynamicLeadWorker({
         });
         current.agentId = agent.id;
         admit();
-        board.prepareMember({ agentId: agent.id, profile: profileId, requestId: request });
+        const { accountId, username, branch } = actor;
+        board.prepareMember({ agentId: agent.id, profile: profileId, requestId: request, git: { accountId, username, branch } });
         git.addMember({ agentId: agent.id, profile: profileId, actor });
         board.readyMember(agent.id);
         team[profileId] = agent.id;

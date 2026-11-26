@@ -4,7 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DynamicLeadWorkerOptions } from '../../src/harnesses/lead-worker/dynamic.js';
+import type { DynamicDeploymentRequest, DynamicLeadWorkerOptions } from '../../src/harnesses/lead-worker/dynamic.js';
 import { httpClient } from '../../src/harnesses/peermesh/http.js';
 import { assertContainerImage, deployDynamicContainer, docker, isolatedContainer } from './dynamic-container.js';
 
@@ -52,7 +52,7 @@ export async function fetchOrdersCandidate({ repositoryUrl, token, commit, sha25
   return files;
 }
 
-export async function testOrdersCandidate(files: Candidate, image: string, signal?: AbortSignal) {
+export async function testOrdersCandidate(files: Candidate, image: string, signal?: AbortSignal, resources?: DynamicDeploymentRequest['resources']) {
   assertContainerImage(image);
   const { verifyOrders } = await import(fileURLToPath(new URL('oracle.mjs', fixtures))) as {
     verifyOrders(execute: (input: { stdin?: string; file?: string; args?: string[] }) =>
@@ -82,6 +82,7 @@ export async function testOrdersCandidate(files: Candidate, image: string, signa
       const fileArgs = file === undefined ? args.map(value => `/tmp/${value}`) : ['/case.jsonl'];
       if (file !== undefined) await writeFile(testInput, file, { flag: 'wx', mode: 0o444 });
       const container = isolatedContainer(image, work, file === undefined ? undefined : testInput);
+      resources?.own({ kind: 'orders-verification-container', id: container.name, close: container.close });
       try {
         await container.create(['orders.mjs', ...fileArgs], signal);
         return await docker(['container', 'start', '-a', '-i', container.name], {
@@ -128,7 +129,7 @@ export async function dynamicOrders({ variant, serviceImage, candidatePath }: {
       const bundle = { commit: input.commit, sha256: input.sha256, treeSha256: ordersTreeDigest(files), image: serviceImage, files };
       if (candidatePath) await writeFile(candidatePath, JSON.stringify(bundle), { flag: 'wx', mode: 0o600 });
       const { files: _privateFiles, ...pin } = bundle;
-      return { ...(await testOrdersCandidate(files, serviceImage, input.signal)), ...pin };
+      return { ...(await testOrdersCandidate(files, serviceImage, input.signal, input.resources)), ...pin };
     },
   };
 }

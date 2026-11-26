@@ -27,7 +27,7 @@
     },
     {
       "path": "src/core/bridge.ts",
-      "sha256": "e5259e9cccba39188f4bb0e155ddf54fb84568d93d2d18948b25c4b309b84d32"
+      "sha256": "003d80596d23c02543bd09db964a2bccc2e8739f9a269d62c047cf0d8a817538"
     },
     {
       "path": "src/core/startup-prompt.ts",
@@ -35,7 +35,7 @@
     },
     {
       "path": "src/core/opensandbox-backend.ts",
-      "sha256": "936eb2eff7b94a9e5c970aa79cd19b01c7988bb91a10e085f01809f433b5b6f4"
+      "sha256": "b9e6919bfaa00599e9d80497e74ec77f8dcdf2b760aacb2973fca0c656d243fd"
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
@@ -155,11 +155,11 @@
     },
     {
       "path": "src/harnesses/lead-worker/prompts.ts",
-      "sha256": "077d909a15763253ee69b99503959986c9646f5620b67ebd2c7477e63d32802e"
+      "sha256": "2a59899782aa28f536bd909c28130d3d36d195b7cfb71bf467bd042f2a1e1096"
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "68d3b573975c9df05c221f69dd4e676255c1db59e3c90aba450d9a8efccfdac0"
+      "sha256": "819c8bfeaef78ba08a05db6b9277ec5568a246fabe4f04ac9daf65b0719874b5"
     },
     {
       "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
@@ -167,11 +167,11 @@
     },
     {
       "path": "src/harnesses/lead-worker/dynamic.ts",
-      "sha256": "526d959e427ded70618e83dff496a440c7939e9585821063c689433d623ce03d"
+      "sha256": "8b8397549ce3fe2587b3909118f0f6d8c2879a0ff6db6cad9042ecebd0995a29"
     },
     {
       "path": "examples/lead-worker/dynamic-orders.ts",
-      "sha256": "d22e39fcd2e865ea7c5de6954abe9e8fdc415917b255a3cbe3fde5ce7ffc336c"
+      "sha256": "9508fe0902aa2a04945252bd806c546042f03610d7b50222869ae0e77788b403"
     },
     {
       "path": "src/runtime/runtime.ts",
@@ -481,7 +481,7 @@
       "path": "src/harnesses/lead-worker/prompts.ts",
       "anchor": "export const dynamicLeadPrompt = `",
       "line": 8,
-      "sha256": "49bb5969b1fbd4278b1139a3e426a54041ab8cc8401a65a92eaef5426b9d3a98"
+      "sha256": "76d6eb748af7f7aafb84619a939e66923e6d157aba93005649720097248fb8c7"
     },
     {
       "path": "src/harnesses/lead-worker/prompts.ts",
@@ -504,7 +504,7 @@
     {
       "path": "src/harnesses/lead-worker/dynamic.ts",
       "anchor": "                model, image, writable: true, prompt:",
-      "line": 239,
+      "line": 241,
       "sha256": "a6ba57740baffd026ee1589c2222ebfda6d3dc4e4bfc12a6a4040db5bdfc14e7"
     },
     {
@@ -687,7 +687,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-lead-worker-harness.md",
-      "sha256": "3c352eb4f4197ce7ac9496267541bb822d045b0d12e98d40ccd5d0bb8d732128"
+      "sha256": "dd17b07c11b8bdc56aab7c04f9e8b4015a7c914a16d20b81532bc8db8c0aac05"
     },
     {
       "path": "docs/architecture/prompts/08-taskpool-harness.md",

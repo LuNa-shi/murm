@@ -146,7 +146,16 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
         reply(response, 200, { ok: true, result: { services: visibleServices(current.services) } }); return;
       }
       if (body.operation === 'get_service_metadata' && body.service_id === undefined) {
-        const manifest = visibleServices(current.services).find(item => item.id === (body!.payload as { service?: string } | null | undefined)?.service);
+        const service = (body.payload as { service?: string } | null | undefined)?.service;
+        const manifest = visibleServices(current.services).find(item => item.id === service);
+        // Record discovery on its own stage. A denied manifest lookup has no
+        // adapter invocation and must never be treated as a dispatch denial.
+        if (!manifest && typeof service === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(service)) {
+          trace = { runtimeId, attemptId, accessVersion: current.accessVersion,
+            caller: { runtimeId, agentId, profile: current.profile }, service,
+            operation: body.operation, operation_id: body.operation_id, input: {}, startedAt: new Date().toISOString() };
+          traceService?.({ ...trace, phase: 'started' });
+        }
         if (!manifest) throw new MurmError('NOT_ALLOWED', 'Service is unavailable to this Profile');
         reply(response, 200, { ok: true, result: manifest }); return;
       }

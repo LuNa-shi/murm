@@ -102,6 +102,7 @@ elif role=='lead':
   state=board('read')
   if all(row['state']=='complete' for row in state['subtasks']):
    for row in completed(['adopt']): accept(row)
+   git('push','origin',branch)
    proof=pinned('orders.mjs')
    board('submit',{'delivery':proof,'feedback_ids':[feedback['seq']]})
    result['final']=proof

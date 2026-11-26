@@ -144,7 +144,7 @@ export async function createLeadWorkerHarness(options: any) {
         try {
           const submitted = await runDynamicSchedule({ board, team, goal: dynamic.goal, signal: workSignal, dispatch });
           const verdict = await dynamic.verifyFinal({ repositoryUrl: facilities.repositoryUrl, token: facilities.actors.lead.token,
-            commit: submitted.delivery.commit, sha256: submitted.delivery.sha256, signal: workSignal });
+            commit: submitted.delivery.commit, sha256: submitted.delivery.sha256, signal: workSignal, resources });
           if (!verdict.ok) throw Object.assign(fail('ORDERS_ORACLE_FAILED'), { details: [verdict] });
           return { submitted, verdict, harness: snapshot() };
         } catch (error: any) {

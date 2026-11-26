@@ -47,7 +47,7 @@ This section is generated from executable exports and checked against the source
 | [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
 | [src/core/backends/opensandbox.ts](../../src/core/backends/opensandbox.ts) | `5a0508b36fa7b6e556c9fcce87cda56cbfcf876563874a2a30818069e2ee24ca` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f6b1d4d2bb9b30253195adfecda5abb24f17e0971c710c0007d6baac23d84734` |
-| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `f193e6ccb9966ef40e3d8fdafaecab967ae8bbea96bf53e4a41f7d0cd7ffe797` |
+| [src/core/backend-config.ts](../../src/core/backend-config.ts) | `efcde1bb0beeb61badc16468b15ff239b790b1580f72462fea56b17ee5409be5` |
 
 ### Exact built-in command operation surface
 
@@ -3854,6 +3854,8 @@ export interface OpenSandboxBackendConfig {
         host: string;
         advertiseHost: string;
         requestTimeoutMs?: number;
+        /** Cap new upstream attempts per Runtime and model alias, including unknown outcomes. */
+        maxRequests?: number;
         /** null preserves executor output parameters without a host token clamp. */
         maxOutputTokens?: number | null;
         /** Sets upstream reasoning effort for requests admitted in the selection phase. */

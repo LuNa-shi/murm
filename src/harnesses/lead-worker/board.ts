@@ -155,10 +155,13 @@ export function createBoard({ path: databasePath, runId, helperCount, verifyDeli
         }
       });
     },
-    prepareMember({ agentId, profile, requestId }: { agentId: string; profile: string; requestId: string }) {
+    prepareMember({ agentId, profile, requestId, git }: {
+      agentId: string; profile: string; requestId: string;
+      git?: { accountId: string; username: string; branch: string };
+    }) {
       transaction((state: any) => {
         if (!dynamic || !state.team || state.fenced || state.members[agentId] || Object.keys(state.members).length >= roles.length + 1) throw error('NOT_ALLOWED');
-        state.members[agentId] = { agentId, profile, requestId, role: 'helper', ready: false };
+        state.members[agentId] = { agentId, profile, requestId, role: 'helper', ready: false, ...(git ? { git: structuredClone(git) } : {}) };
         event(state, 'member_preparing', agentId, { profile, requestId });
       });
     },

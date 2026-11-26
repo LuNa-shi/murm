@@ -50,7 +50,7 @@ test('dynamic Lead-Worker runs via the installed package with native Pi, Gitea a
         sandbox: { lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
           endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1', resourceLimits: { cpu: '1', memory: '1Gi' }, commandTimeoutMs: 20_000 },
         bridge: { host: '0.0.0.0', publicUrl: `http://${host}:{port}` },
-        modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: 512 },
+        modelGateway: { host: '0.0.0.0', advertiseHost: host, requestTimeoutMs: 25_000, maxOutputTokens: 512, maxRequests: 64 },
         models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
         isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
       },
@@ -108,6 +108,9 @@ test('dynamic Lead-Worker runs via the installed package with native Pi, Gitea a
     const probes = attempts.filter(row => row.caller.agentId === state.team.helper1 && row.operation_id.startsWith('direct-'));
     assert.deepEqual(probes.map(row => [row.operation_id, row.accessVersion, row.error?.code ?? 'ok']),
       [['direct-before', 0, 'NOT_ALLOWED'], ['direct-granted', 1, 'ok'], ['direct-revoked', 2, 'NOT_ALLOWED']]);
+    assert.deepEqual(calls.filter(row => row.phase === 'settled' && row.caller.agentId === state.team.helper1 &&
+      row.service === definition.id && row.operation === 'get_service_metadata').map(row => [row.accessVersion, row.error?.code]),
+    [[0, 'NOT_ALLOWED'], [2, 'NOT_ALLOWED']]);
     assert.equal(attempts.filter(row => row.caller.agentId === state.team.checker && !row.error).length, 2);
     const offline = await execute(process.execPath, [join(packageDir, 'verify-orders.js'), report.reportPath, candidatePath], {
       cwd: installed.directory, env: installed.env, timeout: 60_000,

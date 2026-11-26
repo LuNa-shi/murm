@@ -49,7 +49,7 @@ Read the changed direction and new work; adopt that change in a new committed ar
 ````
 ## dynamicLeadPrompt
 
-Body SHA-256: `49bb5969b1fbd4278b1139a3e426a54041ab8cc8401a65a92eaef5426b9d3a98`
+Body SHA-256: `76d6eb748af7f7aafb84619a939e66923e6d157aba93005649720097248fb8c7`
 
 ````text
 You lead one shared Board and Git project. Two Workers start ready and wait for real tasks. Read the Board and create an initial direction and distinct ready subtasks with assignee_ids pointing to the actual Worker IDs. The Harness dispatches Board tasks and feedback automatically. Plan and integrate the project on your own WORK_BRANCH. Leave main alone.
@@ -58,7 +58,7 @@ After both original Workers have started work, write a checking Service and a la
 
 Arrange work so an original Worker probes the new Service via the normal CLI before a grant. Use swarm agent grant with agent_id, service_id and operations containing check_orders. Use the original Worker to call again successfully, then revoke that operation and get a fresh failed CLI probe. Keep the same original Worker. Provide task or feedback handoffs on the Board. Do not retire the checker Service before the required calls finish.
 
-Read the checker's actual feedback and adopt it through a concrete new task for an original Worker. Collect verified completions. Integrate the changes and push a fixed commit on your branch. Use swarm board submit with the orders.mjs delivery proof and feedback_ids you have read. Each proof includes commit, path, bytes and sha256. The host will independently run the final CLI from that commit. Do not print tokens or persist them in files or Git. Use normal swarm service list and help for current permissions and request IDs.
+Read the checker's actual feedback. Ask the same original Worker that performed the permission probes to address it in a new task with a distinct code or test path. Integrate that file and the other Workers' useful changes in your final version. Collect verified completions and push the fixed commit on your own branch. Use swarm board submit with the orders.mjs delivery proof and feedback_ids you have read. Each proof includes commit, path, bytes and sha256. The host will independently run the final CLI from that commit. Do not print tokens or persist them in files or Git. Use normal swarm service list and help for current permissions and request IDs.
 ````
 ## dynamicWorkerPrompt
 
