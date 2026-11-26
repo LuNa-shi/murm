@@ -1465,6 +1465,24 @@
       "role": "Shared Messages manifest and in-process or already-running HTTP Service adapter selection"
     },
     {
+      "path": "examples/bridge-services/handoff-config.ts",
+      "category": "Execution and control",
+      "chapters": ["docs/architecture/17-harness-reporting.md"],
+      "role": "Standalone handoff backend, executor, model and existing Service configuration"
+    },
+    {
+      "path": "examples/bridge-services/handoff.ts",
+      "category": "Execution and control",
+      "chapters": ["docs/architecture/08-prompts.md", "docs/architecture/17-harness-reporting.md"],
+      "role": "Public SDK handoff, live Service and execution observation, and verified artifact reporting"
+    },
+    {
+      "path": "examples/bridge-services/tsconfig.handoff.json",
+      "category": "Execution and control",
+      "chapters": ["docs/architecture/17-harness-reporting.md"],
+      "role": "Strict build configuration for the installed handoff sample"
+    },
+    {
       "path": "examples/bridge-services/gh-issues.ts",
       "category": "Execution and control",
       "chapters": ["docs/architecture/15-core-runtime.md"],

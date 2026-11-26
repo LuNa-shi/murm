@@ -54,6 +54,10 @@
       "sha256": "01483bed8622e6b646a4641370661e89c01afbdb58cf49aa5362945b7f40f06e"
     },
     {
+      "path": "examples/bridge-services/handoff.ts",
+      "sha256": "ace339ed741e9a3bc2015e5e0ce8e6379aa233a11bfe3082e3cdae6985c463b8"
+    },
+    {
       "path": "examples/notes/main.ts",
       "sha256": "6a4b03ed1dd659b35d21083dfc04799ed08df81cd599a5b8fff7fa71b5ae722f"
     },
@@ -226,6 +230,30 @@
       "anchor": "const inputText = Object.freeze(",
       "line": 73,
       "sha256": "6773660d227007f580e938b67335d3b93619e2253c501904ab14235c89534687"
+    },
+    {
+      "path": "examples/bridge-services/handoff.ts",
+      "anchor": "const writerPrompt = ",
+      "line": 14,
+      "sha256": "80582434592fe2938ac659fbd9e4ed077920d775c6dd2be743e0d5e87c88d1a4"
+    },
+    {
+      "path": "examples/bridge-services/handoff.ts",
+      "anchor": "const readerPrompt = ",
+      "line": 15,
+      "sha256": "51a136d54713243403eec6e7c7471ec9e9629e5f1e466b6cb12910560662e1e8"
+    },
+    {
+      "path": "examples/bridge-services/handoff.ts",
+      "anchor": "`Publish",
+      "line": 93,
+      "sha256": "8a7fe8d7d3f66f1d87f7433cb71cf6ebf4abc286d73f539b107ae2c908d2ed9c"
+    },
+    {
+      "path": "examples/bridge-services/handoff.ts",
+      "anchor": "`Receive",
+      "line": 98,
+      "sha256": "cde44c4b0ea9925676271d20960d61c567ddc218c147cdded5ecd9ab24c18291"
     },
     {
       "path": "benchmarks/programbench-pastel/subagents-example.ts",
@@ -600,6 +628,10 @@
     {
       "path": "docs/architecture/prompts/07-notes-harness.md",
       "sha256": "f6b6e047322ecdd0941bd41d70840773203020e270332d605442187a4f5a3ecd"
+    },
+    {
+      "path": "docs/architecture/prompts/14-sdk-handoff.md",
+      "sha256": "56a100e0ab86c97d1b45b8055f757b9a7e9278c651b16045205ad93909edd628"
     },
     {
       "path": "docs/architecture/prompts/08-subagents-harness.md",
