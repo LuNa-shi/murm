@@ -6,7 +6,6 @@ murm is a toolkit for building multi-agent Harnesses.
 
 **Agent**:
 An independent actor in one Run, with a persistent Session and working directory.
-_Avoid_: Agent.
 
 **Service**:
 A shared capability with a manifest of operations and an implementation the Runtime can invoke for authorized Agents.
