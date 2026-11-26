@@ -2,9 +2,19 @@
 
 murm is a TypeScript toolkit for building multi-agent Harnesses. A Harness composes Agent Profiles, shared Services and its coordination policy. The Runtime runs each Agent in an isolated Sandbox and records the execution as a Run. The Core library exposes the Runtime, Service framework and OpenSandbox backend with configurable Pi and Codex executors. [Website](https://luna-shi.github.io/murm/) · [Core concepts](GLOSSARY.md)
 
-## Run the Notes example
+## Quick Start
 
-Start with two Agents that pass a supplied fact through a custom Notes Service. The host verifies the writer's publication, the reader's lookup and both files written by the same reader across two turns. The instructions build and install the Core tarball in a standalone directory, then show how to read the saved result. The example requires Node.js 22.19 or newer, local Docker OpenSandbox, a compatible Pi 1.3.0 Worker image and a Kimi K3 Responses endpoint. [Notes installation and run instructions](examples/notes/README.md)
+On a Linux host with Node.js 22.19 or newer and same-host Docker, run this from the checkout.
+
+```sh
+./scripts/setup
+node dist/scripts/murm.js init --template subagents --dir ../my-murm
+cd ../my-murm
+```
+
+Setup prepares OpenSandbox and the Worker once per host and checks a real Sandbox with a local Responses endpoint. Init installs an editable Subagents project in the directory specified by `--dir` and preserves project edits on repeat. Set `MURM_SUBAGENTS_MODEL_URL` and any required token in its `.env`, then run `murm` from the project directory, or `npm start` to use the project-local binary. [Quick Start](https://luna-shi.github.io/murm/quickstart/) · [Host requirements and diagnosis](docs/architecture/07-run-configuration.md#local-setup-and-doctor)
+
+The two-Agent Notes handoff shows how to implement a custom Service and verify exported files across turns. [Notes example](examples/notes/README.md)
 
 The installable candidate provides `@murm/core`, `@murm/core/services` and `@murm/core/backends/pi-opensandbox`. Use the foreground CLI to start, inspect, direct input to or stop a configured TaskPool or PeerMesh Harness. The saved-result command reads the persisted Runtime and Harness reports by their Runtime ID. TaskPool supports reading public Workspace results and publishing Materials. Saving live Agent files to a Workspace revision requires a trusted capture binding supplied by the host. [Foreground and saved-result commands](docs/architecture/17-harness-reporting.md#foreground-harness-control)
 

@@ -24,7 +24,8 @@ ARG PI_VERSION=1.3.0
 ARG CODEX_VERSION=0.172.0
 LABEL org.murm.opensandbox.pi-version="${PI_VERSION}" \
       org.murm.opensandbox.codex-version="${CODEX_VERSION}" \
-      org.murm.opensandbox.provider="kimi_proxy"
+      org.murm.opensandbox.provider="kimi_proxy" \
+      org.murm.opensandbox.worker-protocol="murm-core-v1"
 
 RUN apt-get update \
   && apt-get install --no-install-recommends --yes bash ca-certificates curl git jq python3 python-is-python3 ripgrep util-linux \
