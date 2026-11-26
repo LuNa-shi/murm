@@ -23,6 +23,7 @@ test('installed normal Subagents adopts a Service handoff through two overlappin
   const handoff = 'SERVICE_HANDOFF_225';
   let arrivals = 0;
   let childStarted = false;
+  let childInitialRequests = 0;
   let childAdopted = false;
   let overlapped = false;
   let failure;
@@ -62,9 +63,14 @@ test('installed normal Subagents adopts a Service handoff through two overlappin
       if (users.includes('CHILD_TASK_225')) {
         if (!output('child-work')) {
           stage = 'child-active';
-          assert.equal(childStarted, false);
-          childStarted = true;
-          await childMayProceed;
+          childInitialRequests++;
+          assert.ok(childInitialRequests <= 2);
+          if (childStarted) {
+            assert.ok(users.includes(handoff), 'Active steer must reach the next native model request');
+          } else {
+            childStarted = true;
+            await childMayProceed;
+          }
           item = tool('child-work', "printf '%s' CHILD_FILE_225 > child.txt; sleep 0.2");
         } else {
           stage = 'child-handoff';
@@ -152,7 +158,7 @@ export default config;\n`, { mode: 0o600 });
     const ids = (await readdir(outputDir).catch(() => [])).filter(id => /^[a-f0-9-]{36}$/.test(id));
     proof.resources = {};
     for (const id of ids) proof.resources[id] = { empty: (await ownedContainers(id)).length === 0 };
-    proof.upstream = { arrivals, failure, overlapped, childAdopted };
+    proof.upstream = { arrivals, failure, overlapped, childAdopted, childInitialRequests };
     proof.sessions = sessions;
     proof.failure ||= Boolean(failure) || !overlapped || !childAdopted || ids.length !== 1 ||
       Object.values(proof.resources).some(row => !row.empty);
