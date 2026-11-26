@@ -262,18 +262,18 @@ export async function openOpenSandboxBackend(config: ResolvedOpenSandboxBackendC
         return;
       }
       agent.cursor = sequence;
-      if (['agent_start', 'agent_settled', 'tool_execution_start', 'tool_execution_update', 'tool_execution_end'].includes(record.type)) {
-        const { worker_sequence, worker_at, ...event } = record;
-        trace(agent, { type: 'native', schemaVersion: 1, workerSequence: worker_sequence,
-          ...(worker_at ? { workerAt: worker_at } : {}), eventType: record.type, event,
-          ...(record.type === 'agent_settled' ? { outcome: record.aborted ? 'aborted' : agent.outcome ?? 'completed' } : {}) });
-      }
       if (record.type === 'agent_start') {
         agent.nativeExecuting = true;
         agent.onExecutionStart?.();
         agent.output = '';
         agent.error = null;
         agent.outcome = 'completed';
+      }
+      if (['agent_start', 'agent_settled', 'tool_execution_start', 'tool_execution_update', 'tool_execution_end'].includes(record.type)) {
+        const { worker_sequence, worker_at, ...event } = record;
+        trace(agent, { type: 'native', schemaVersion: 1, workerSequence: worker_sequence,
+          ...(worker_at ? { workerAt: worker_at } : {}), eventType: record.type, event,
+          ...(record.type === 'agent_settled' ? { outcome: record.aborted ? 'aborted' : agent.outcome ?? 'completed' } : {}) });
       }
       if (record.type === 'message_end' && record.message?.role === 'assistant') {
         const message = record.message;

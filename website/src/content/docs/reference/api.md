@@ -24,6 +24,12 @@ Import `finalizeRun` from `@murm/core` after classifying the application outcome
 
 If an owned facility's close callback is still in flight at the deadline, `lateFacilityCleanup.current()` can read its eventual receipt. `lateFacilityReportPath` identifies where that separate receipt will be saved when the invocation settles. One call finalizes a Runtime object. A second call fails with `CONFLICT`. For pending work, query the same Runtime using `close` and reconcile the original facility handles.
 
+## Live observation
+
+`runtime.observe()` returns a current `snapshot` and an async iterable `events` at the same cursor. Resume with `runtime.observe({ after: lastCursor })` and apply its updates to your previous state. On `gap`, call `observe()` for a fresh snapshot. The Runtime retains 256 updates, supports 64 active subscriptions and permits one pending read per subscription. Use `cancel()`, an AbortSignal or a `for await` exit to release the subscription.
+
+Input receipt events, actual execution boundaries, Service attempts and cleanup all have separate fields. Runtime cursor sequence orders the live stream, Agent sequence orders the Agent's legacy events, and a present `recordSeq` refers to the durable Run evidence row. Execution events report `association: 'unknown'` while native records lack an input ID. Use the same request identity for reconciliation. The snapshot and persistence updates report storage progress and evidence loss.
+
 ## `createRuntime(options)`
 
 ```ts

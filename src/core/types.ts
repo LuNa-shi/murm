@@ -271,6 +271,71 @@ export interface RunFinalization<Result extends JsonValue = JsonValue> {
   };
 }
 
+export interface RuntimeObservationCursor {
+  readonly runtimeId: string;
+  readonly sequence: number;
+}
+
+export interface RuntimeEvidenceProgress {
+  readonly recorded: number;
+  readonly lost: number;
+  readonly pending: number;
+}
+
+export interface AgentObservation {
+  readonly id: string;
+  readonly profile: string;
+  readonly parentId?: string;
+  readonly status: AgentStatus;
+  readonly agentSeq: number;
+  readonly execution: 'active' | 'inactive' | 'unknown';
+  readonly cleanup?: {
+    readonly status: StopReceipt['cleanup'];
+    readonly execution: StopReceipt['execution'];
+    readonly action?: PendingCleanup['action'];
+    readonly resourceKey?: string;
+    readonly sandboxId?: string;
+  };
+}
+
+export interface RuntimeObservationSnapshot {
+  readonly schemaVersion: 1;
+  readonly cursor: RuntimeObservationCursor;
+  readonly runtimeState: 'open' | 'closing' | 'closed';
+  readonly cleanup?: CloseReceipt['cleanup'];
+  readonly agents: readonly AgentObservation[];
+  readonly evidence: RuntimeEvidenceProgress;
+}
+
+export type RuntimeObservationChange =
+  | { type: 'runtime'; runtimeState: RuntimeObservationSnapshot['runtimeState']; cleanup?: CloseReceipt['cleanup'] }
+  | { type: 'agent'; agent: AgentObservation; cause: 'spawn' | 'stop' | 'interrupt' | AgentEvent['type'] }
+  | { type: 'input'; agent: AgentObservation; inputId: string; requestId: string;
+      state: ConditionalInputReceipt['status'] | 'registered' | 'dispatched' | 'receipt-query' | 'rejected';
+      disposition?: Extract<InputReceipt, { status: 'accepted' }>['disposition']; reason?: string }
+  | { type: 'execution'; agent: AgentObservation; phase: 'started' | 'settled'; association: 'unknown';
+      workerSequence?: number; outcome?: Extract<AgentEvent, { type: 'settled' }>['outcome'] }
+  | { type: 'service'; agentId: string; serviceId: string; operation: string; operationId: string;
+      attemptId: string; state: string; outcome: string; errorCode?: string }
+  | { type: 'trace-gap'; agent: AgentObservation; expectedWorkerSequence?: number; observedWorkerSequence?: number }
+  | { type: 'persistence'; evidence: RuntimeEvidenceProgress };
+
+export type RuntimeObservationUpdate =
+  | (RuntimeObservationChange & { readonly schemaVersion: 1; readonly cursor: RuntimeObservationCursor; readonly recordSeq?: number })
+  | { readonly type: 'gap'; readonly schemaVersion: 1; readonly cursor: RuntimeObservationCursor;
+      readonly reason: 'cursor-expired' | 'slow-consumer'; readonly after: RuntimeObservationCursor };
+
+export interface RuntimeObservationOptions {
+  after?: RuntimeObservationCursor;
+  signal?: AbortSignal;
+}
+
+export interface RuntimeObservation {
+  readonly snapshot: RuntimeObservationSnapshot | null;
+  readonly events: AsyncIterableIterator<RuntimeObservationUpdate>;
+  cancel(): void;
+}
+
 export interface Runtime {
   readonly id: string;
   spawn(options: SpawnOptions): Promise<AgentInfo>;
@@ -282,6 +347,7 @@ export interface Runtime {
   send(agentId: string, input: string, options: SendOptions & { wakeIfIdle?: true }): Promise<InputReceipt>;
   send(agentId: string, input: string, options: SendOptions): Promise<ConditionalInputReceipt>;
   onEvent(handler: (event: AgentEvent) => void): () => void;
+  observe(options?: RuntimeObservationOptions): RuntimeObservation;
   stop(agentId: string, options?: { timeoutMs?: number }): Promise<StopReceipt>;
   close(options?: { timeoutMs?: number }): Promise<CloseReceipt>;
   readonly files: {

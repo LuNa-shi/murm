@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { registerHooks } from 'node:module';
 import { setTimeout as delay } from 'node:timers/promises';
 import { test } from 'node:test';
 import { provider } from './fixtures/core-pi-transport.js';
+import { createNotesService, notesManifest } from './fixtures/core-notes-service.js';
 
 // Controlled OpenSandbox and Docker boundary, with the actual Core adapter.
 const hooks = registerHooks({ resolve(specifier, context, next) {
@@ -434,4 +435,189 @@ test('Gateway records both request bodies and complete success, rejection and in
   assert.equal(traces.get('reject').result.upstreamStatus, 429);
   assert.match(traces.get('interrupt').response, /response.created/);
   assert.equal(traces.get('interrupt').result.reason, 'transport_interrupted');
+});
+
+test('public observation cuts a consistent snapshot and replays fast execution after its cursor', { timeout: 5000 }, async t => {
+  const { runtime, agent, outputDir } = await setup(t);
+  const subscription = runtime.observe();
+  t.after(() => subscription.events.return());
+  assert.equal(subscription.snapshot.runtimeState, 'open');
+  assert.equal(subscription.snapshot.agents.find(item => item.id === agent.id)?.status, 'idle');
+  provider.wrapperReplay = true;
+  provider.wait = async message => {
+    provider.publish({ type: 'agent_start' });
+    provider.publish({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'body stored in Trace' }], stopReason: 'stop' } });
+    provider.publish({ type: 'agent_settled' });
+    provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'started' } } });
+  };
+
+  const receipt = await runtime.send(agent.id, 'private input text', { requestId: 'observe-fast' });
+  const resumed = runtime.observe({ after: subscription.snapshot.cursor });
+  t.after(() => resumed.events.return());
+  assert.equal(resumed.snapshot, null);
+  const updates = [];
+  for await (const update of resumed.events) {
+    assert.notEqual(update.type, 'gap');
+    updates.push(update);
+    if (update.type === 'input' && update.state === 'accepted') break;
+  }
+  const live = [];
+  for (const _ of updates) live.push((await subscription.events.next()).value);
+  assert.deepEqual(live, updates);
+  const started = updates.find(item => item.type === 'execution' && item.phase === 'started');
+  const settled = updates.find(item => item.type === 'execution' && item.phase === 'settled');
+  assert.ok(started);
+  assert.ok(settled);
+  assert.equal(started.agent.execution, 'active');
+  assert.equal(settled.agent.execution, 'inactive');
+  assert.equal(started.association, 'unknown');
+  assert.equal(settled.association, 'unknown');
+  const accepted = updates.at(-1);
+  assert.equal(accepted.requestId, 'observe-fast');
+  assert.equal(accepted.inputId, receipt.inputId);
+  assert.ok(accepted.cursor.sequence > started.cursor.sequence);
+  assert.doesNotMatch(JSON.stringify(updates), /body stored in Trace|private input text/);
+  await runtime.close();
+  const records = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  assert.equal(records.find(row => row.seq === started.recordSeq)?.eventType, 'agent_start');
+  assert.equal(records.find(row => row.seq === settled.recordSeq)?.eventType, 'agent_settled');
+});
+
+test('a slow cursor gets a gap while a fast subscriber and cancellation remain independent', { timeout: 5000 }, async t => {
+  const { runtime, agent } = await setup(t);
+  const slow = runtime.observe();
+  const fast = runtime.observe();
+  const abort = new AbortController();
+  const cancelled = runtime.observe({ signal: abort.signal });
+  t.after(() => { slow.cancel(); fast.cancel(); cancelled.cancel(); });
+  const cancelledWait = cancelled.events.next();
+  abort.abort();
+  assert.deepEqual(await cancelledWait, { done: true, value: undefined });
+  provider.wait = async message => {
+    provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'handled' } } });
+  };
+  const other = runtime.observe();
+  const left = (async () => {
+    for await (const _ of other.events) throw new Error('consumer isolated');
+  })();
+  const failed = assert.rejects(left, /consumer isolated/);
+
+  for (let index = 0; index < 90; index++) {
+    const requestId = `observe-burst-${index}`;
+    await runtime.send(agent.id, 'fixed', { requestId });
+    const received = [];
+    for (let step = 0; step < 3; step++) received.push((await fast.events.next()).value);
+    assert.deepEqual(received.map(update => update.state), ['registered', 'dispatched', 'accepted']);
+    assert.ok(received.every(update => update.requestId === requestId));
+  }
+  await failed;
+  const gap = (await slow.events.next()).value;
+  assert.equal(gap.type, 'gap');
+  assert.equal(gap.reason, 'slow-consumer');
+  assert.deepEqual(gap.after, slow.snapshot.cursor);
+  assert.equal((await slow.events.next()).done, true);
+
+  const expired = runtime.observe({ after: slow.snapshot.cursor });
+  t.after(() => expired.cancel());
+  assert.equal((await expired.events.next()).value.reason, 'cursor-expired');
+  assert.throws(() => runtime.observe({ after: { runtimeId: 'another-runtime', sequence: 0 } }), { code: 'INVALID_CONTRACT' });
+  const fresh = runtime.observe();
+  fresh.cancel();
+  assert.equal(fresh.snapshot.agents.find(item => item.id === agent.id)?.status, 'idle');
+});
+
+test('public observation reports durable evidence loss alongside real-time observations', { timeout: 5000 }, async t => {
+  const { runtime, agent, outputDir } = await setup(t);
+  const subscription = runtime.observe();
+  t.after(() => subscription.cancel());
+  const evidence = join(outputDir, runtime.id, 'evidence.jsonl');
+  while (true) {
+    const check = runtime.observe();
+    check.cancel();
+    if (!check.snapshot.evidence.pending) break;
+    await delay(1);
+  }
+  await rm(evidence);
+  await mkdir(evidence);
+  await runtime.send(agent.id, 'fixed', { requestId: 'observe-evidence-loss' });
+  let lost;
+  for await (const update of subscription.events) {
+    if (update.type === 'persistence') { lost = update; break; }
+  }
+  assert.ok(lost.evidence.lost > 0);
+  const snapshot = runtime.observe();
+  snapshot.cancel();
+  assert.ok(snapshot.snapshot.evidence.lost >= lost.evidence.lost);
+  const receipt = await runtime.close();
+  assert.equal(receipt.cleanup, 'pending');
+  assert.ok(receipt.pending.some(item => item.error?.code === 'EVIDENCE_INCOMPLETE'));
+});
+
+test('public observation continues across pending and retried Runtime close', { timeout: 5000 }, async t => {
+  const { runtime, agent, outputDir } = await setup(t);
+  const subscription = runtime.observe();
+  t.after(() => subscription.cancel());
+  const summary = join(outputDir, runtime.id, 'runtime.json');
+  await rm(summary);
+  await mkdir(summary);
+  const pending = await runtime.close();
+  assert.equal(pending.cleanup, 'pending');
+  const during = runtime.observe();
+  during.cancel();
+  assert.equal(during.snapshot.runtimeState, 'closing');
+  assert.equal(during.snapshot.cleanup, 'pending');
+  assert.equal(during.snapshot.agents.find(item => item.id === agent.id)?.cleanup?.status, 'complete');
+  await rm(summary, { recursive: true });
+  const closed = await runtime.close();
+  assert.equal(closed.cleanup, 'complete');
+  const states = [];
+  for await (const update of subscription.events) {
+    if (update.type === 'runtime') {
+      states.push(update.runtimeState);
+      if (update.runtimeState === 'closed') break;
+    }
+  }
+  assert.deepEqual(states, ['closing', 'closing', 'closing', 'closed']);
+  assert.equal(JSON.parse(await readFile(summary, 'utf8')).status, 'closed');
+});
+
+test('public Service observation matches the durable Bridge attempt identity', { timeout: 5000 }, async t => {
+  const services = new ServiceRegistry();
+  services.registerService({ manifest: notesManifest(), adapter: createNotesService().adapter });
+  const { runtime, agent, outputDir } = await setup(t, { services, permissions: { notes: ['put'] } });
+  const subscription = runtime.observe();
+  t.after(() => subscription.cancel());
+  const response = await bridgeCall(agent.id, 'put', { service_id: 'notes', payload: { key: 'trace', text: 'private note body' } });
+  assert.equal(response.ok, true);
+  const updates = [];
+  for await (const update of subscription.events) {
+    if (update.type === 'service') {
+      updates.push(update);
+      if (update.state === 'settled') break;
+    }
+  }
+  assert.deepEqual(updates.map(update => update.state), ['validation', 'validation', 'invocation', 'settled']);
+  assert.equal(new Set(updates.map(update => update.attemptId)).size, 1);
+  assert.ok(updates.every(update => update.operationId === 'fixed-operation' && update.agentId === agent.id));
+  assert.doesNotMatch(JSON.stringify(updates), /private note body/);
+  await runtime.close();
+  const records = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  for (const update of updates) assert.equal(records.find(row => row.seq === update.recordSeq)?.attemptId, update.attemptId);
+});
+
+test('a spawn crossing the snapshot cursor is visible before the new Agent starts work', { timeout: 5000 }, async t => {
+  const { runtime, agent } = await setup(t, { maxAgents: 2 });
+  const observation = runtime.observe();
+  t.after(() => observation.cancel());
+  assert.deepEqual(observation.snapshot.agents.map(item => item.id), [agent.id]);
+  const child = await runtime.spawn({ requestId: 'observe-child', profile: 'worker', parentId: agent.id });
+  const statuses = [];
+  for await (const item of observation.events) {
+    if (item.type !== 'agent' || item.agent.id !== child.id) continue;
+    assert.equal(item.agent.parentId, agent.id);
+    statuses.push(item.agent.status);
+    if (item.agent.status === 'idle') break;
+  }
+  assert.equal(statuses[0], 'starting');
+  assert.equal(statuses.at(-1), 'idle');
 });

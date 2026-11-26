@@ -1,4 +1,4 @@
-import type { Profile, ModelAccessPolicy, ErrorInfo } from './types.js';
+import type { Profile, ModelAccessPolicy, ErrorInfo, RuntimeEvidenceProgress } from './types.js';
 import type { ResolvedOpenSandboxBackendConfig } from './opensandbox-backend.js';
 import type { ServiceRegistration } from './services.js';
 
@@ -162,7 +162,17 @@ export function runtimeConfiguration({ config, profiles, registrations, maxAgent
   };
 }
 
-export function createRunRecords(outputDir: string, runtimeId: string) {
+export type RunEvidenceRecord = Readonly<Record<string, unknown>> & {
+  type: string;
+  seq: number;
+  runtimeId: string;
+  at: string;
+};
+
+export function createRunRecords(outputDir: string, runtimeId: string, observers?: {
+  record(row: RunEvidenceRecord): void;
+  loss(evidence: RuntimeEvidenceProgress): void;
+}) {
   const path = join(outputDir, 'evidence.jsonl');
   let queued: string[] = [];
   let queuedBytes = 0;
@@ -171,6 +181,13 @@ export function createRunRecords(outputDir: string, runtimeId: string) {
   let written = 0;
   let lost = 0;
   let initialized = false;
+
+  function progress() { return { recorded: written, lost, pending: sequence - written - lost }; }
+
+  function lose(count: number) {
+    lost += count;
+    observers?.loss(progress());
+  }
 
   async function drain() {
     try {
@@ -182,7 +199,7 @@ export function createRunRecords(outputDir: string, runtimeId: string) {
           await appendFile(path, batch.join(''), { mode: 0o600, flag: 'a' });
           written += batch.length;
         } catch {
-          lost += batch.length;
+          lose(batch.length);
         }
       }
     } finally {
@@ -196,13 +213,14 @@ export function createRunRecords(outputDir: string, runtimeId: string) {
       initialized = true;
     },
     record(type: string, data: Readonly<Record<string, unknown>>) {
-      const seq = ++sequence;
+      const row = { ...data, type, seq: ++sequence, runtimeId, at: new Date().toISOString() };
+      observers?.record(row);
       let line;
-      try { line = JSON.stringify({ ...data, type, seq, runtimeId, at: new Date().toISOString() }) + '\n'; }
-      catch { lost++; return; }
+      try { line = JSON.stringify(row) + '\n'; }
+      catch { lose(1); return; }
       const bytes = Buffer.byteLength(line);
       if (queued.length >= queueLimit || queuedBytes + bytes > queueBytesLimit) {
-        lost++;
+        lose(1);
         return;
       }
       queued.push(line);
@@ -212,6 +230,6 @@ export function createRunRecords(outputDir: string, runtimeId: string) {
     async flush() {
       while (writer) await writer;
     },
-    snapshot() { return { ...(initialized ? { path } : {}), recorded: written, lost, pending: sequence - written - lost }; },
+    snapshot() { return { ...(initialized ? { path } : {}), ...progress() }; },
   };
 }
