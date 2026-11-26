@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
 import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
@@ -77,6 +78,12 @@ test('the project CLI launches external ESM with the requested prompt and actual
     },
   });
   assert.match(record.result.initial.digest, /^complete:sha256:[a-f0-9]{64}$/);
+  const manifest = JSON.parse(await readFile(record.result.initial.manifestPath, 'utf8'));
+  const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+  assert.deepEqual(manifest, [
+    { path: '.settings', mode: 0o644, bytes: 7, sha256: hash('hidden\n') },
+    { path: 'run', mode: 0o755, bytes: 2, sha256: hash(Buffer.from([0, 255])) },
+  ]);
   assert.ok(record.result.reportPath.startsWith(output + '/'));
   assert.equal(await readFile(record.result.prompt.path, 'utf8'), '  检查项目  ');
 });

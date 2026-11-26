@@ -102,7 +102,7 @@ type RunResult = Omit<ProjectHarnessResult, 'reason'> & {
   runId: string;
   harness: { id: string; apiVersion: 1 };
   cwd: string;
-  initial: Omit<InitialProject, 'files'> | null;
+  initial: (Omit<InitialProject, 'files'> & { manifestPath: string | null }) | null;
   prompt: { path: string | null; sha256: string };
   reason: string;
   stopReason: StopReason | null;
@@ -238,7 +238,16 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
       signal.throwIfAborted();
       const captured = await captureProject(cwd, outputDir, signal);
       const { files, ...source } = captured;
-      initial = source;
+      initial = { ...source, manifestPath: null };
+      signal.throwIfAborted();
+      const manifest = Object.keys(files).sort().map(path => {
+        const { data, encoding, mode } = files[path];
+        const bytes = Buffer.from(data, encoding);
+        return { path, mode, bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
+      });
+      const manifestPath = join(outputDir, 'initial-files.json');
+      await writeFile(manifestPath, JSON.stringify(manifest) + '\n', { flag: 'wx', mode: 0o600 });
+      initial.manifestPath = manifestPath;
       signal.throwIfAborted();
       enteredHarness = true;
       return validateResult(await definition.run({
