@@ -13,12 +13,14 @@ order: 5
 3. **宿主控制循环**：决定何时 `spawn`、`send`、`interrupt` 以及何时停止；
 4. **高可靠收尾**：归档交付物，同时让业务错误、清理错误与报告保存错误互不掩盖。
 
+[Messages 交接示例](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services#run-the-typescript-handoff) 可以直接运行，也可复制到新的 TypeScript 项目。独立安装 npm 包，并准备同机 Docker、OpenSandbox、Worker 镜像和模型端点。示例通过公开入口装配，也能接入已运行的 HTTP Messages Service。
+
 ## 1. 动手前先确定三个设计决策
 
 | 设计问题 | 常见方案 |
 | --- | --- |
 | **共享状态存放在哪里？** | 宿主内存 `Map`（Notes、Subagents）、本地 SQLite（Substrate、Lead-Worker）或外部 HTTP / Git / 聊天服务（PeerMesh、TaskPool） |
-| **什么驱动下一轮执行？** | 固定串行轮次（`runInput`）、事件 + 非唤醒邮箱转向（`wakeIfIdle: false`），或周期性租约协调循环 |
+| **什么驱动下一轮执行？** | 固定串行轮次（`send` 与 `observe`）、事件 + 非唤醒邮箱转向（`wakeIfIdle: false`），或周期性租约协调循环 |
 | **什么证明本次运行成功？** | 某条 Service 状态达标、经宿主核验的 Git 提交 / PR、验证器通过，或宿主校验过的归档文件 |
 
 ## 2. 定义并注册共享 Service
@@ -195,22 +197,9 @@ const runtime = await createRuntime({
 
 根据你的协作拓扑选择对应的控制循环模式：
 
-### 模式 A：串行轮次辅助函数（`runInput()`）
+### 模式 A：用公开输入和观察组织串行轮次
 
-适合固定流水线、分阶段 Lead-Worker 或对等体固定轮次探索——每个 Agent 同一时间只有一个独占输入源。复用 [`runInput`](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/shared/run-input.ts)：
-
-```ts
-import { runInput } from './run-input.js';
-
-const writer = await runtime.spawn({ requestId: 'spawn-writer', profile: 'writer', files: seedFiles });
-const { settled } = await runInput(
-  runtime,
-  writer.id,
-  'Read review-input.json and publish it with `swarm notes put`.',
-  { requestId: 'writer-turn-1', timeoutMs: 60_000 },
-);
-console.log('Writer settled:', settled.outcome);
-```
+当应用独占某个 Agent 的输入时，先建立 `runtime.observe({ signal })`，再调用 `runtime.send`。保留原始请求 ID 并核对接纳回执。[Messages 交接示例](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services#run-the-typescript-handoff) 同时消费观察更新，等待预期 Service 操作和该 Agent 执行收束，再在收尾中检查导出产物的字节。业务验收依据是实际操作身份和文件检查。游标缺口及输入结果未知的处理见 [Runtime 控制](../reference/api/#实时观察)。
 
 ### 模式 B：事件监听 + 非唤醒邮箱
 
@@ -250,46 +239,17 @@ runtime.onEvent((event) => {
 
 完整生产实现可参考 [TaskPool](../harnesses/taskpool/)。
 
-## 5. 用 `runWithReport()` 包裹高可靠收尾
+## 5. 通过 `finalizeRun()` 收尾
 
-不要让清理异常覆盖掉原始业务失败（反之亦然）。使用 [`runWithReport`](https://github.com/LuNa-shi/murm/blob/main/src/harnesses/shared/run-report.ts) 可以把 `result`、`businessFailure`、`cleanup`、`cleanupFailure` 和 `reportSaveFailure` 作为彼此独立的字段原子写入 `outputDir/<runtimeId>/harness-report.json`：
-
-```ts
-import { runWithReport } from './run-report.js';
-
-const report = await runWithReport({
-  outputDir: './runs',
-  closeTimeoutMs: 30_000,
-  redact: (value) => scrubConfiguredSecrets(value),
-  createRuntime: () =>
-    createRuntime({
-      backend: createOpenSandboxBackend(config.backend),
-      services,
-      profiles,
-      maxAgents: 2,
-      outputDir: './runs',
-    }),
-  async run(runtime) {
-    // 启动 Agent、执行控制循环并校验业务交付物
-    const stopped = await runtime.stop(reader.id, { timeoutMs: 30_000 });
-    return { readerId: reader.id, artifacts: stopped.artifacts };
-  },
-  async afterClose(closeReceipt) {
-    // 仅在 Core 清理彻底完成后关闭外部数据库或吊销外部令牌
-    if (closeReceipt.cleanup === 'complete') {
-      await closeExternalResources();
-    }
-  },
-});
-```
+从 `@murm/core` 调用 `finalizeRun`，传入带类型的业务结果，并单独设置清理期限。通过 `verifyArtifacts` 检查所需的导出产物，仅为应用拥有的资源传入 `ownedFacilities`。报告在 `outputDir/<runtimeId>/run-finalization.json` 分别记录业务、验证、Core 关闭、设施清理和保存状态。保留待清理资源的身份，便于后续核对。
 
 ## 6. 校验你的第一次 Run
 
-首次运行结束后，检查 `outputDir/<runtimeId>/` 验证四条不变量：
+首次运行结束后，在 `outputDir/<runtimeId>/` 中核对应用需要的证据。
 
 1. **`runtime.json`**：`status === 'closed'` 且 `cleanup === 'complete'`，无挂起清理项；
 2. **`evidence.jsonl`**：Agent 创建顺序、输入回执与 `settled` 事件符合预期，零 `subscriber-error`；
 3. **`service-calls.jsonl`**：下游 Agent 确实用合法参数调用了你的 Services 并读取到了上游数据；
-4. **`<agentId>/artifacts/files/` 与 `<agentId>/session/`**：声明的交付物通过验收检查，且原生 Pi 会话记录完整。
+4. **`<agentId>/artifacts/files/` 与 `<agentId>/session/`**：声明的交付物通过验收检查，并可查看当前执行器的原生会话记录。
 
 接下来可以在 [五种协作拓扑总览](../harnesses/) 中查看内置 Harness 如何运用这些模式。
