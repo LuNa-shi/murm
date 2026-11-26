@@ -2,17 +2,17 @@
 
 ## Replay the included demo
 
-From a checkout on Linux or WSL with Node.js 22.19 or later, start the Viewer directly. The [included Run](../../test/fixtures/trace-viewer/runs/release-notes/) is ready to view offline and requires no installation, Sandbox, or model credentials.
+From a checkout on Linux, WSL, or macOS with Node.js 22.19 or later, start the Viewer directly. The [included Run](../../test/fixtures/trace-viewer/runs/release-notes/) is ready to view offline and requires no installation, Sandbox, or model credentials.
 
 ```bash
-node trace-viewer/murm.mjs trace --root test/fixtures/trace-viewer/runs --port 8787
+node trace-viewer/murm.mjs trace --root test/fixtures/trace-viewer/runs --port 8787 --open
 ```
 
-Open [the demo Run](http://127.0.0.1:8787/#run=release-notes). The synthetic Subagents Run covers about 19 seconds. The Root and Child work in parallel to verify a CSV export change and write a release note. Under **Collaboration**, select **Evidence 2** on the `result` card and follow the first **Actual model context** link to Root request 5. In **Files & results**, open `release-note.md`. The directory includes the Core lifecycle ledger, Bridge Service calls, all six model exchanges, both Session archives, and the exported note.
+Open [the demo Run](http://127.0.0.1:8787/#run=release-notes). The synthetic Subagents Run covers about 19 seconds. The Root and Child work in parallel to verify a CSV export change and write a release note. On **Timeline**, scroll over the swimlane to zoom around the cursor, drag or swipe horizontally to pan, or drag the overview minimap window (`W`/`S`/`A`/`D`/`0` shortcuts also navigate the timeline). Under **Collaboration**, select **Inspect handoff** or **Core input admission** on the `result` card and follow the first **Actual model context** link to Root request 5. In **Files & results**, open `release-note.md`. The directory includes the Core lifecycle ledger, Bridge Service calls, all six model exchanges, both Session archives, and the exported note.
 
 ## Install the standalone package
 
-Build the standalone candidate package from the repository root on Linux with Node.js 22.19 or later. Install the resulting tarball in a separate directory.
+Build the standalone candidate package from the repository root on Linux, WSL, or macOS with Node.js 22.19 or later. Install the resulting tarball in a separate directory.
 
 ```bash
 mkdir -p /tmp/murm-viewer-package
@@ -21,20 +21,26 @@ npm pack ./trace-viewer --pack-destination /tmp/murm-viewer-package
 mkdir -p ~/murm-viewer
 cd ~/murm-viewer
 npm install /tmp/murm-viewer-package/murm-trace-viewer-0.2.0.tgz
-./node_modules/.bin/murm trace --root /path/to/private/runs --port 8787
+./node_modules/.bin/murm trace /path/to/private/runs --port 8787 --open
 ```
 
-Open `http://127.0.0.1:8787`. A configured root may be a Core Run directory containing `runtime.json` or a parent output directory. The Viewer opens on an empty parent directory and discovers new Runs there. It needs the saved Run files and Node.js. Core, the executing Harness, Sandbox services and model credentials are independent.
+Open `http://127.0.0.1:8787`. A configured root (passed via `--root <dir>` or as a positional argument) may be a Core Run directory containing `runtime.json` or a parent output directory. The Viewer opens on an empty parent directory and discovers new Runs there. It needs the saved Run files and Node.js. Core, the executing Harness, Sandbox services and model credentials are independent.
 
 ## Server launch and local browser
 
-Run the same `murm trace` command on the machine holding the evidence. From your local terminal forward its loopback listener over SSH.
+For a Run stored on a remote Linux server, launch the remote Viewer and local SSH tunnel in a single command from your laptop (use `--remote-bin "node /path/to/murm/trace-viewer/murm.mjs"` if `murm` is not on the remote `PATH`):
+
+```bash
+murm trace --ssh user@server --root /path/to/remote/runs --port 8787 --open
+```
+
+Alternatively, run `murm trace` directly on the server — when `$SSH_CONNECTION` or `$SSH_CLIENT` is present, it automatically prints the ready-to-paste `ssh -N -L` command:
 
 ```bash
 ssh -N -L 8787:127.0.0.1:8787 user@server
 ```
 
-Open the local forwarded port in the browser. Anyone with access to the loopback listener can view the selected private traces. Use a dedicated Run root and keep the listener behind the SSH connection. Stop the Viewer with Ctrl+C. The Harness continues on its own lifecycle.
+Open the local forwarded port in the browser (VS Code / Cursor Remote-SSH also auto-forward the loopback port). Anyone with access to the loopback listener can view the selected private traces. Use a dedicated Run root and keep the listener behind the SSH connection. Stop the Viewer with Ctrl+C. The Harness continues on its own lifecycle.
 
 ## Examples
 

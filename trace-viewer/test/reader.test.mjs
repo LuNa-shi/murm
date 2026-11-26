@@ -703,3 +703,123 @@ test("malformed artifact manifest paths cannot register unrelated files", async 
     /recorded evidence/,
   );
 });
+
+test("historical summary exposes points for inputs and archived Session tool results plus Substrate peer labels", async (t) => {
+  const root = await fixture(t, {
+    runtimeId: "sub-1",
+    agents: [{ agentId: "f3eec208-aaaa-bbbb-cccc-000000000001" }],
+    modelTrace: { recorded: 1 },
+    evidence: { recorded: 1 },
+  });
+  await writeFile(
+    join(root, "harness-report.json"),
+    JSON.stringify({
+      runtimeId: "sub-1",
+      peers: [{ agentId: "f3eec208-aaaa-bbbb-cccc-000000000001", index: 0 }],
+    }),
+  );
+  await jsonLines(root, "evidence.jsonl", [
+    {
+      type: "input",
+      agentId: "f3eec208-aaaa-bbbb-cccc-000000000001",
+      state: "accepted",
+      source: "host",
+      at: "2026-01-01T00:00:01Z",
+      seq: 1,
+    },
+  ]);
+  await mkdir(join(root, "f3eec208-aaaa-bbbb-cccc-000000000001/session/files"), {
+    recursive: true,
+  });
+  await writeFile(
+    join(root, "f3eec208-aaaa-bbbb-cccc-000000000001/session/manifest.json"),
+    JSON.stringify({ files: [{ path: "session.jsonl" }] }),
+  );
+  await jsonLines(
+    root,
+    "f3eec208-aaaa-bbbb-cccc-000000000001/session/files/session.jsonl",
+    [
+      {
+        type: "message",
+        timestamp: "2026-01-01T00:00:02Z",
+        message: { role: "toolResult", toolName: "bash", isError: false },
+      },
+      {
+        type: "message",
+        timestamp: "2026-01-01T00:00:03Z",
+        message: { role: "toolResult", toolName: "edit", isError: true },
+      },
+    ],
+  );
+  await mkdir(join(root, "model-trace/m1"), { recursive: true });
+  await writeFile(
+    join(root, "model-trace/m1/request.json"),
+    JSON.stringify({
+      agentId: "f3eec208-aaaa-bbbb-cccc-000000000001",
+      requestId: "m1",
+      startedAt: "2026-01-01T00:00:01.500Z",
+      after: { model: "gpt-test", input: [] },
+    }),
+  );
+  await writeFile(
+    join(root, "model-trace/m1/result.json"),
+    JSON.stringify({
+      endedAt: "2026-01-01T00:00:02.500Z",
+      state: "completed",
+      usage: { input_tokens: 120, output_tokens: 45 },
+    }),
+  );
+
+  const reader = await createTraceReader({ root });
+  const [run] = await reader.listRuns();
+  assert.equal(run.modelCount, 1);
+  assert.equal(run.evidenceCount, 1);
+
+  const summary = await reader.summary(run.id);
+  assert.equal(summary.harness, "Substrate");
+  assert.equal(summary.hasNative, false);
+  assert.equal(summary.agents[0].label, "peer-0 (f3eec2)");
+
+  const inputPoints = summary.points.filter((p) => p.kind === "input");
+  const toolPoints = summary.points.filter((p) => p.kind === "tool");
+  assert.equal(inputPoints.length, 1);
+  assert.equal(inputPoints[0].label, "host");
+  assert.equal(toolPoints.length, 2);
+  assert.deepEqual(
+    toolPoints.map((p) => [p.label, p.status, p.sourceKind]),
+    [
+      ["bash", "returned", "session"],
+      ["edit", "failed", "session"],
+    ],
+  );
+
+  const modelSpan = summary.spans.find((s) => s.kind === "model");
+  assert.equal(modelSpan.model, "gpt-test");
+  assert.deepEqual(modelSpan.usage, { inputTokens: 120, outputTokens: 45 });
+
+  // Historical session tool point must resolve back to the archived session record.
+  const toolDetail = await reader.detail(run.id, toolPoints[0].id);
+  assert.equal(toolDetail.record.message.toolName, "bash");
+});
+
+test("Subagents relations expose descriptive evidenceLabels", async () => {
+  const root = fileURLToPath(
+    new URL("../../test/fixtures/trace-viewer/runs/", import.meta.url),
+  );
+  const reader = await createTraceReader({ root });
+  const summary = await reader.summary("release-notes");
+  assert.equal(summary.harness, "Subagents");
+  assert.equal(summary.hasNative, true);
+  const spawn = summary.relations.find((r) => r.kind === "spawn");
+  const result = summary.relations.find((r) => r.kind === "result");
+  assert.deepEqual(spawn.evidenceLabels, [
+    "Service start",
+    "Service settled",
+    "Child initial input",
+  ]);
+  assert.deepEqual(result.evidenceLabels, [
+    "Child settled",
+    "Core input admission",
+    "Destination Session envelope",
+  ]);
+});

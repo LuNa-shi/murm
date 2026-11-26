@@ -39,10 +39,19 @@ async function safeOpen(root, name) {
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
   );
   try {
-    const openedPath = await realpath(`/proc/self/fd/${handle.fd}`);
-    if (!inside(root, openedPath))
-      throw failure("Opened file escapes the Run directory", 403);
     const stat = await handle.stat();
+    if (process.platform === "linux") {
+      const openedPath = await realpath(`/proc/self/fd/${handle.fd}`);
+      if (!inside(root, openedPath))
+        throw failure("Opened file escapes the Run directory", 403);
+    } else {
+      const post = await lstat(target);
+      if (post.isSymbolicLink() || post.ino !== stat.ino || post.dev !== stat.dev)
+        throw failure("Opened file changed or escaped the Run directory", 403);
+      const resolved = await realpath(target);
+      if (!inside(root, resolved))
+        throw failure("Opened file escapes the Run directory", 403);
+    }
     if (!stat.isFile()) throw failure("Expected a regular file");
     if (stat.nlink > 1)
       throw failure("Hard links are outside the read boundary", 403);
@@ -225,6 +234,8 @@ class RunIndex {
     this.gaps = [];
     this.gapKeys = new Set();
     this.spans = [];
+    this.inputPoints = [];
+    this.sessionToolPoints = [];
     this.relations = [];
     this.serviceStarts = new Map();
     this.coreAgents = new Set();
@@ -321,6 +332,22 @@ class RunIndex {
             ? "failed"
             : "returned"
           : "recorded-call";
+      if (
+        record.message.role === "toolResult" &&
+        agentId &&
+        Number.isFinite(Date.parse(event.time))
+      ) {
+        this.sessionToolPoints.push({
+          id: event.id,
+          agentId,
+          kind: "tool",
+          label: record.message.toolName ?? "tool",
+          time: event.time,
+          status: record.message.isError ? "failed" : "returned",
+          evidenceIds: [event.id],
+          sourceKind: "session",
+        });
+      }
     }
     this.byId.set(event.id, event);
     this.sources.get(source.path).events.push(event);
@@ -338,11 +365,25 @@ class RunIndex {
     }
     if (record.type === "input" && agent) {
       agent.inputs = record.state;
-      if (record.state === "accepted" && typeof record.requestId === "string") {
-        this.inputs.set(`${agentId}:${record.requestId}`, {
-          event,
-          source: record.source,
-        });
+      if (record.state === "accepted") {
+        if (typeof record.requestId === "string") {
+          this.inputs.set(`${agentId}:${record.requestId}`, {
+            event,
+            source: record.source,
+          });
+        }
+        if (Number.isFinite(Date.parse(event.time))) {
+          this.inputPoints.push({
+            id: event.id,
+            agentId,
+            kind: "input",
+            label: record.source ?? "input",
+            time: event.time,
+            status: record.disposition ?? "accepted",
+            detail: record.mode ? `mode: ${record.mode}` : undefined,
+            evidenceIds: [event.id],
+          });
+        }
       }
     }
     if (
@@ -382,7 +423,15 @@ class RunIndex {
       ? `${event.agentId}:tool:${record.event?.toolCallId}`
       : `${event.agentId}:execution`;
     if (type === "agent_start" || type === "tool_execution_start") {
-      this.nativeStarts.set(key, event);
+      const preview =
+        type === "tool_execution_start" && record.event?.args
+          ? String(
+              record.event.args.path ??
+                record.event.args.command ??
+                JSON.stringify(record.event.args),
+            ).slice(0, 140)
+          : undefined;
+      this.nativeStarts.set(key, preview ? { ...event, detail: preview } : event);
       if (type === "agent_start") agent.execution = "running";
     }
     if (type === "agent_settled" || type === "tool_execution_end") {
@@ -401,6 +450,7 @@ class RunIndex {
               : record.event?.isError
                 ? "failed"
                 : "settled",
+          ...(start.detail ? { detail: start.detail } : {}),
           evidenceIds: [start.id, event.id],
         });
         this.nativeStarts.delete(key);
@@ -432,6 +482,9 @@ class RunIndex {
     if (record.phase !== "settled") return;
     const start = this.serviceStarts.get(key);
     if (start) {
+      const errDetail = record.error
+        ? String(record.error.code ?? record.error.message ?? "error").slice(0, 120)
+        : undefined;
       this.spans.push({
         id: start.event.id,
         agentId: event.agentId,
@@ -440,6 +493,7 @@ class RunIndex {
         startedAt: record.startedAt,
         endedAt: record.endedAt,
         status: record.error ? "failed" : "settled",
+        ...(errDetail ? { detail: errDetail } : {}),
         evidenceIds: [start.event.id, event.id],
       });
       this.serviceStarts.delete(key);
@@ -479,17 +533,19 @@ class RunIndex {
         child.parentId = event.agentId;
         if (typeof output.task_name === "string")
           child.label = output.task_name;
+        const spawnEv = [
+          startId ? { id: startId, label: "Service start" } : null,
+          { id: event.id, label: "Service settled" },
+          { id: (inputMatches ?? admitted).event.id, label: "Child initial input" },
+        ].filter(Boolean);
         relations.push({
           id: event.id,
           kind: "spawn",
           fromAgentId: event.agentId,
           toAgentId: childId,
           time: record.endedAt,
-          evidenceIds: [
-            startId,
-            event.id,
-            (inputMatches ?? admitted).event.id,
-          ].filter(Boolean),
+          evidenceIds: spawnEv.map((item) => item.id),
+          evidenceLabels: spawnEv.map((item) => item.label),
           inputId: output.inputId,
         });
       }
@@ -513,6 +569,11 @@ class RunIndex {
             : `${sender.label}/${input.target}`);
         if (input?.target !== target.id && canonicalTarget !== target.label)
           continue;
+        const msgEv = [
+          startId ? { id: startId, label: "Service start" } : null,
+          { id: event.id, label: "Service settled" },
+          { id: admission.event.id, label: "Recipient input admission" },
+        ].filter(Boolean);
         relations.push({
           id: event.id,
           kind: "message",
@@ -520,7 +581,8 @@ class RunIndex {
           toAgentId: target.id,
           from: sender.label,
           time: record.endedAt,
-          evidenceIds: [startId, event.id, admission.event.id].filter(Boolean),
+          evidenceIds: msgEv.map((item) => item.id),
+          evidenceLabels: msgEv.map((item) => item.label),
           messageId: output.messageId,
         });
       }
@@ -566,6 +628,11 @@ class RunIndex {
         messageId: envelope.id,
         time: admission.event.time,
         evidenceIds: [origin.event.id, admission.event.id, event.id],
+        evidenceLabels: [
+          "Child settled",
+          "Core input admission",
+          "Destination Session envelope",
+        ],
       });
     }
     this.relations = relations;
@@ -739,7 +806,11 @@ class RunIndex {
           status: "running",
           startedAt: record.startedAt,
         });
-        model = { event, directory: entry.name };
+        model = {
+          event,
+          directory: entry.name,
+          modelName: header.modelAlias ?? header.after?.model,
+        };
         this.modelDirectories.set(entry.name, model);
         this.files.set(name, {
           path: name,
@@ -798,6 +869,12 @@ class RunIndex {
               status: model.event.status,
             },
           );
+          const inTok = result.usage?.inputTokens ?? result.usage?.input_tokens;
+          const outTok = result.usage?.outputTokens ?? result.usage?.output_tokens;
+          const usage =
+            Number.isFinite(inTok) || Number.isFinite(outTok)
+              ? { inputTokens: inTok ?? 0, outputTokens: outTok ?? 0 }
+              : undefined;
           this.spans.push({
             id: model.event.id,
             agentId: model.event.agentId,
@@ -806,6 +883,8 @@ class RunIndex {
             startedAt: model.event.startedAt,
             endedAt: result.endedAt,
             status: model.event.status,
+            ...(model.modelName ? { model: model.modelName } : {}),
+            ...(usage ? { usage } : {}),
             evidenceIds: [model.event.id],
           });
         }
@@ -862,6 +941,13 @@ class RunIndex {
     for (const member of this.harness?.collaboration?.members ?? []) {
       const agent = this.agent(member.agentId ?? member.botId);
       if (agent) agent.label = member.path ?? agent.label;
+    }
+    for (const [index, peer] of (this.harness?.peers ?? []).entries()) {
+      const agent = this.agent(peer.agentId ?? peer.botId);
+      if (agent && agent.label === agent.id) {
+        agent.label = `peer-${index} (${agent.id.slice(0, 6)})`;
+        if (!agent.profile) agent.profile = "peer";
+      }
     }
     this.rebuildRelations();
     for (const agent of this.agents.values()) {
@@ -941,10 +1027,21 @@ class RunIndex {
         kind: "pending",
         message: `${report.evidence.pending} lifecycle records await persistence`,
       });
+    const maxTimelineSpans = 5000;
+    const points = [
+      ...this.inputPoints,
+      ...(!this.hasNative ? this.sessionToolPoints : []),
+    ].slice(-maxTimelineSpans);
+    const harnessName = this.harness?.collaboration
+      ? "Subagents"
+      : this.harness?.peers
+        ? "Substrate"
+        : undefined;
     return {
       id: this.id,
       runtimeId: report.runtimeId,
       label: report.name ?? report.runtimeId ?? this.id,
+      ...(harnessName ? { harness: harnessName } : {}),
       status: report.status ?? "unknown",
       startedAt: this.startedAt,
       endedAt: report.status === "closed" ? this.endedAt : undefined,
@@ -952,9 +1049,10 @@ class RunIndex {
       relations: this.relations,
       gaps,
       files: [...this.files.values()],
-      spansTruncated: this.spans.length > 1000,
+      hasNative: this.hasNative,
+      spansTruncated: this.spans.length > maxTimelineSpans,
       spans: [
-        ...this.spans.slice(-1000),
+        ...this.spans.slice(-maxTimelineSpans),
         ...[...this.nativeStarts.values()].map((event) => ({
           id: event.id,
           agentId: event.agentId,
@@ -965,6 +1063,7 @@ class RunIndex {
           evidenceIds: [event.id],
         })),
       ],
+      points,
       outcome: this.harness
         ? {
             status: this.harness.businessFailure
@@ -1063,6 +1162,8 @@ export async function createTraceReader({ root }) {
               status: report.status ?? "unknown",
               cleanup: report.cleanup ?? "unknown",
               agentCount: (report.agents ?? report.bots ?? []).length,
+              modelCount: report.modelTrace?.recorded,
+              evidenceCount: report.evidence?.recorded,
             });
         } catch (error) {
           result.push({ id, status: "unreadable", error: error.message });
