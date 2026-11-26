@@ -4,7 +4,7 @@
 
 Runtime baseline: `86dfce6a1497fd1355d9d426a09c7c274ed6e389`; review date: 2026-11-25. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **326 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **327 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -41,6 +41,12 @@ In-scope roots: `src/`, `scripts/`, `services/`, `integrations/`, `test-support/
 | [examples/subagents/.npmignore](../../examples/subagents/.npmignore) | Exclude the example default private run-output directory from npm distribution | [07-run-configuration](07-run-configuration.md) | `06988b9d7e8c5a42362079ad81aadf17b80c52ad95573a54da2b7911dfe81717` |
 | [src/judge/lean-module-verify.LICENSE.txt](../../src/judge/lean-module-verify.LICENSE.txt) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `8b28515ffffc5c0fe2807d8ae3735b00b324d9b7ce807dd63ff6ac8922fbce7e` |
 | [src/judge/lean-module-verify.NOTICE.md](../../src/judge/lean-module-verify.NOTICE.md) | Pinned third-party license or provenance attachment distributed with identified Lean material | [07-run-configuration](07-run-configuration.md), [04-services](04-services.md) | `2bdbf775ed31967cd3bc01b4186d5312a18975f237d931712a8d6e575f12391f` |
+
+### Controlled fixtures (1)
+
+| Source | Responsibility | Architecture chapters | SHA-256 |
+|---|---|---|---|
+| [examples/lead-worker/fixtures/oracle.mjs](../../examples/lead-worker/fixtures/oracle.mjs) | Frozen host-side JSONL task cases and candidate transcript checks for #235 | [20-lead-worker-harness](20-lead-worker-harness.md) | `dc9016f63dde7013d2bf650b9f7432e3c431cb9fdd16320d1593dda8b0ed73b5` |
 
 ### Core API (1)
 

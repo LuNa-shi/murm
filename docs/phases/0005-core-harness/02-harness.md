@@ -45,7 +45,7 @@ Harness 是开发者使用 murm Core 编写的协作程序。它决定哪些 Age
 | run-input.ts | Harness 作者 | 独占输入场景的有期限等待；不是 Core API |
 | Core | Core 维护者 | Agent 运行、身份、隔离、输入、事件、Service 接入与收尾 |
 
-这些文件名是组织示例，不是必须遵守的目录框架。首版使用普通 import 和函数入口，不增加插件发现系统。**Q1 已确认：首版只对接 Pi 1.3.0 + OpenSandbox，不开发通用多 backend 插件接口。Q2 已确认：Profile / Service 在创建 Runtime 前注册并冻结，运行中可以按已注册 Profile spawn，但不动态修改注册表。** 通常一次 Harness 运行创建一个 Runtime，Runtime 管理多只 Agent；不同环境共享同一个 Core 包。
+这些文件名是组织示例，不是必须遵守的目录框架。首版使用普通 import 和函数入口，不增加插件发现系统。**Q1 已确认：首版只对接 Pi 1.3.0 + OpenSandbox，不开发通用多 backend 插件接口。Q2 首版：Profile / Service 在创建 Runtime 前注册并冻结，运行中可以按已注册 Profile spawn。受控登记和授权见 [Q2 后续扩展](06-lead-worker-dynamic.md)。** 通常一次 Harness 运行创建一个 Runtime，Runtime 管理多只 Agent；不同环境共享同一个 Core 包。
 
 ### 2.2 装配和启动顺序
 
@@ -588,6 +588,8 @@ PeerMesh 已选为一周版的第二个验收案例，与 TaskPool 共用同一�
 ## 9. Lead-Worker
 
 Lead-Worker 通过公共 Board 与 Git 组织一名 lead 和多名 helpers。lead 读取进展、调整方向；helpers 认领、实现、提交并汇报，工作成果在公共数据中连接。
+
+本节描述首版固定团队。#235 在同一 Harness 上增加[可选动态模式](06-lead-worker-dynamic.md)，由实际 Board 任务、反馈和成员就绪触发工作，并以完整真实模型任务验收。
 
 ### 9.1 配置与权限
 
