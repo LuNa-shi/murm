@@ -1,0 +1,305 @@
+import assert from 'node:assert/strict';
+import { once } from 'node:events';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { streamResponse } from './fixtures/core-controlled-upstream.js';
+import { createSubstrateUpstream } from './fixtures/substrate-upstream.js';
+import { ownedContainers } from './fixtures/core-runtime-containers.js';
+import { createNativeEvidenceDirectory, execute, installNativeNotesExample } from './fixtures/notes-installed-package.js';
+
+const quote = (text: string) => "'" + text.replaceAll("'", "'\\''") + "'";
+
+test('installed Notes and Messages use the supplied prompt and project in both Worker Sandboxes', {
+  skip: process.env.MURM_PROJECT_NATIVE_TEST !== '1' && 'Requires the local OpenSandbox Worker',
+  timeout: 240_000,
+}, async t => {
+  const image = process.env.MURM_CORE_TEST_IMAGE;
+  assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
+  const installation = await installNativeNotesExample();
+  t.after(installation.close);
+  const project = join(installation.directory, 'plain-project');
+  await mkdir(project);
+  const evidenceDir = await createNativeEvidenceDirectory('project-handoffs');
+  const prompt = 'Use the current project to identify the value in slot.txt and record the evidence.';
+  const evidence = [];
+  for (const id of ['notes', 'messages'] as const) {
+    await t.test(id, async t => {
+      const value = id === 'notes' ? 'notes-observation-from-new-file' : 'messages-observation-from-changed-file';
+      await writeFile(join(project, 'slot.txt'), value + '\n');
+      let arrivals = 0;
+      let failure;
+      const roles: string[] = [];
+      const server = createServer(async (req, res) => {
+        try {
+          assert.equal(req.url, '/v1/responses');
+          assert.ok(++arrivals <= 6);
+          const body = await new Response(req).json();
+          const last = body.input.filter(row => row.role === 'user').at(-1);
+          const input = typeof last.content === 'string' ? last.content : last.content.map(part => part.text).join('');
+          assert.ok(input.includes(prompt));
+          const reader = input.includes('murm-notes-') || input.includes('messages get');
+          const role = reader ? 'reader' : 'writer';
+          const callId = 'project_' + role;
+          const key = id === 'notes' ? 'project-observation' : /handoff-[\da-f-]+/.exec(input)?.[0];
+          assert.ok(key);
+          const marker = 'PROJECT_SERVICE_OK';
+          const shellCheck = "set -euo pipefail; test \"$(pwd)\" = /workspace/project; test -s slot.txt;";
+          const getId = id === 'notes' ? 'project-notes-get' : key + '-get';
+          const putId = id === 'notes' ? 'project-notes-put' : key + '-put';
+          let command: string;
+          if (reader) {
+            const artifact = /murm-(?:notes|message)-[a-f0-9-]+\.(?:md|txt)/.exec(input)?.[0];
+            assert.ok(artifact);
+            command = `swarm ${id} get --key ${key} --request-id ${getId} | jq -er .text > ${artifact}; cmp ${artifact} slot.txt;`;
+          } else {
+            command = `jq -n --arg key ${quote(key)} --arg text "$(cat slot.txt)" '{key:$key,text:$text}' | swarm ${id} put --stdin --request-id ${putId} >/dev/null;`;
+          }
+          const reply = body.input.find(row => row.type === 'function_call_output' && row.call_id === callId);
+          let item;
+          if (reply) {
+            assert.match(String(reply.output), new RegExp(marker));
+            roles.push(role);
+            item = { type: 'message', id: callId, role: 'assistant', status: 'completed',
+              content: [{ type: 'output_text', text: marker, annotations: [] }] };
+          } else {
+            item = { type: 'function_call', id: callId, call_id: callId, name: 'bash',
+              arguments: JSON.stringify({ command: `${shellCheck} ${command} printf '%s\\n' ${marker}`, timeout: 20 }) };
+          }
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          res.end(streamResponse('k3', arrivals, item));
+        } catch (error) {
+          failure = error;
+          res.writeHead(400);
+          res.end('Controlled project handoff did not match the expected protocol');
+        }
+      }).listen(0, '127.0.0.1');
+      await once(server, 'listening');
+      t.after(() => { server.closeAllConnections(); server.close(); });
+      const config = {
+        sandbox: {
+          lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+          endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
+          isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+        },
+        connection: { advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
+          modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 2048 } },
+        models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: {
+          url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {},
+        } } },
+        image, workTimeoutMs: 90_000, turnTimeoutMs: 35_000, closeTimeoutMs: 30_000, cleanupTimeoutMs: 30_000,
+      };
+      const configPath = join(evidenceDir, id + '.mjs');
+      await writeFile(configPath, `const config = ${JSON.stringify(config)};
+config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
+export default config;
+`, { mode: 0o600 });
+      const { stdout } = await execute(process.execPath, ['node_modules/.bin/murm', '--harness', id, '--cwd', project,
+        '--prompt', prompt, '--config', configPath, '--output-dir', join(evidenceDir, id)], {
+        cwd: installation.directory, env: installation.env, timeout: 115_000,
+      }).catch(error => {
+        assert.ifError(failure);
+        throw error;
+      });
+      assert.ifError(failure);
+      const { result } = JSON.parse(stdout);
+      assert.equal(result.outcome, 'completed');
+      assert.equal(result.cleanup.status, 'complete');
+      assert.equal(result.acceptance.status, 'not-run');
+      assert.equal(await readFile(result.prompt.path, 'utf8'), prompt);
+      assert.ok(result.cleanup.receipt.agents.every(agent => agent.execution === 'stopped' && agent.cleanup === 'complete'));
+      assert.deepEqual(roles, ['writer', 'reader']);
+      const paths = result.artifacts.map(artifact => artifact.path);
+      const files = paths.find(path => path.endsWith('/artifacts/files'));
+      assert.ok(files);
+      const name = id === 'notes' ? `murm-notes-${result.runId}.md` : `murm-message-${result.runId}.txt`;
+      assert.equal(await readFile(join(files, name), 'utf8'), value + '\n');
+      assert.equal(await readFile(join(project, 'slot.txt'), 'utf8'), value + '\n');
+      assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
+      evidence.push({ id, runId: result.runId, runtimeId: result.result.runtimeId, digest: result.initial.digest,
+        artifactVerified: true, resourcesClean: true });
+    });
+  }
+  await writeFile(join(evidenceDir, 'verification.json'), JSON.stringify({
+    package: installation.metadata, image, controlledProvider: true, evidence,
+  }, null, 2), { mode: 0o600 });
+});
+
+test('installed TaskPool starts read-only discovery and publishes a taken Task to seeded main', {
+  skip: process.env.MURM_PROJECT_NATIVE_TEST !== '1' && 'Requires the local OpenSandbox Worker',
+  timeout: 200_000,
+}, async t => {
+  const image = process.env.MURM_CORE_TEST_IMAGE;
+  assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
+  const installation = await installNativeNotesExample();
+  t.after(installation.close);
+  const project = join(installation.directory, 'plain-project');
+  await mkdir(project);
+  const slot = 'TASKPOOL_PROJECT_ENTRY_A39';
+  await writeFile(join(project, '.slot'), slot + '\n');
+  await writeFile(join(project, 'payload'), Buffer.from([0, 255, 89]), { mode: 0o755 });
+  const evidence = await createNativeEvidenceDirectory('project-taskpool');
+  const prompt = 'Use the project slot to prepare an evidence file and publish it in the Mission Workspace.';
+  const script = `python3 - <<'MURM_PROJECT_TEST'
+import os,json,subprocess,stat
+def cli(*args):
+ p = subprocess.run(['swarm',*args],capture_output=True,text=True,timeout=30)
+ assert p.returncode==0, p.stderr
+ return json.loads(p.stdout)
+def verify_tree():
+ assert os.getcwd()=='/workspace/project'
+ assert open('payload','rb').read()==bytes([0,255,89])
+ assert os.stat('payload').st_mode & stat.S_IXUSR
+ assert open('.slot').read().strip()
+verify_tree()
+try:
+ open('before-take.txt','w').close()
+except OSError:
+ pass
+else:
+ raise AssertionError('The discovery project allows writes')
+task=cli('task','create','--gap','Collect project evidence','--priority','medium',
+ '--summary','Export the project slot','--expected-output','A saved and merged result',
+ '--acceptance-conditions','["Export evidence"]','--request-id','project-propose')['task']['task_id']
+take=cli('task','take',task,'--request-id','project-take')
+assert take['execution']['state']=='RUNNING'
+verify_tree()
+with open('delivery.txt','w') as out:
+ out.write(open('.slot').read())
+saved=cli('workspace','save','--request-id','project-save')
+merged=cli('workspace','merge','--from',saved['revision'],'--request-id','project-merge')
+assert merged['main_revision']!=saved['revision']
+cli('task','finish','--outcome','done','--request-id','project-finish')
+print('PROJECT_TASKPOOL_OK')
+MURM_PROJECT_TEST`;
+  let calls = 0;
+  let failure: unknown;
+  const server = createServer(async (req, res) => {
+    try {
+      assert.ok(++calls <= 5);
+      const { input } = await new Response(req).json();
+      const users = input.filter(row => row.role === 'user').flatMap(row => row.content)
+        .map(part => typeof part === 'string' ? part : part.text).join('\n');
+      assert.ok(users.includes(prompt));
+      const output = input.find(row => row.type === 'function_call_output' && row.call_id === 'project_taskpool');
+      if (output) assert.match(String(output.output), /PROJECT_TASKPOOL_OK/);
+      const item = output ? { type: 'message', id: 'taskpool_done', role: 'assistant', status: 'completed',
+        content: [{ type: 'output_text', text: 'Completed Task', annotations: [] }] }
+        : { type: 'function_call', id: 'taskpool_work', call_id: 'project_taskpool', name: 'bash',
+          arguments: JSON.stringify({ command: script, timeout: 90 }) };
+      res.writeHead(200, { 'content-type': 'text/event-stream' });
+      res.end(streamResponse('k3', calls, item));
+    } catch (error) {
+      failure = error;
+      res.writeHead(400);
+      res.end('Unexpected TaskPool model request');
+    }
+  }).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => { server.closeAllConnections(); server.close(); });
+  const configuration = {
+    image, capacity: 1, workTimeoutMs: 100_000, closeTimeoutMs: 35_000,
+    sandbox: {
+      lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
+      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+    },
+    connection: { advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
+      modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 2048 } },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: {
+      url: `http://127.0.0.1:${server.address().port}/v1/responses`, headers: {},
+    } } },
+  };
+  const configPath = join(evidence, 'config.mjs');
+  await writeFile(configPath, `const config = ${JSON.stringify(configuration)};
+config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
+export default config;
+`, { mode: 0o600 });
+  const args = ['node_modules/.bin/murm', '--harness', 'taskpool', '--cwd', project, '--prompt', prompt,
+    '--config', configPath, '--output-dir', join(evidence, 'output')];
+  const stdout = await execute(process.execPath, args, {
+    cwd: installation.directory, env: installation.env, timeout: 150_000, maxBuffer: 4 * 1024 ** 2,
+  }).then(value => value.stdout, error => {
+    assert.ifError(failure);
+    assert.fail(`TaskPool command failed: ${JSON.stringify(JSON.parse(error.stdout).result.result)}`);
+  });
+  assert.ifError(failure);
+  assert.ok(calls >= 1);
+  const { result } = JSON.parse(stdout);
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.cleanup.status, 'complete');
+  assert.equal(result.acceptance.status, 'not-run');
+  const workspace = result.artifacts.find(artifact => artifact.kind === 'mission-workspace');
+  assert.notEqual(workspace.revision, '0.1');
+  const { stdout: observed } = await execute('git', ['-C', workspace.path, 'show', `${workspace.commit}:delivery.txt`]);
+  assert.equal(observed, slot + '\n');
+  const { stdout: mode } = await execute('git', ['-C', workspace.path, 'ls-tree', workspace.commit, 'payload']);
+  assert.match(mode, /^100755 blob/);
+  await assert.rejects(readFile(join(project, 'delivery.txt')), { code: 'ENOENT' });
+  assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
+  await writeFile(join(evidence, 'verification.json'), JSON.stringify({
+    package: installation.metadata, image, controlledProvider: true, runtimeId: result.result.runtimeId, projectDigest: result.initial.digest,
+    main: workspace.revision, commit: workspace.commit, cleanup: 'complete',
+  }, null, 2), { mode: 0o600 });
+});
+
+test('installed Substrate peers publish and cite bytes from the supplied project', {
+  skip: process.env.MURM_PROJECT_NATIVE_TEST !== '1' && 'Requires the local OpenSandbox Worker',
+  timeout: 190_000,
+}, async t => {
+  const image = process.env.MURM_CORE_TEST_IMAGE;
+  assert.match(image ?? '', /^sha256:[a-f0-9]{64}$/);
+  const installation = await installNativeNotesExample();
+  t.after(installation.close);
+  const project = join(installation.directory, 'plain-project');
+  await mkdir(project);
+  const evidence = await createNativeEvidenceDirectory('project-substrate');
+  const projectSource = { file: 'question.txt', content: 'ARITHMETIC_SEED: 16+3=19.\n',
+    prompt: 'Use the new question file to verify a result and cite the producer publication.' };
+  await writeFile(join(project, projectSource.file), projectSource.content);
+  const upstream = await createSubstrateUpstream({ deadlineAt: Date.now() + 110_000, projectSource });
+  t.after(upstream.close);
+  const configuration = {
+    image, poolSize: 3, maxRounds: 2, workTimeoutMs: 95_000, turnTimeoutMs: 35_000, closeTimeoutMs: 30_000,
+    sandbox: {
+      lifecycleBaseUrl: process.env.MURM_CORE_TEST_LIFECYCLE_URL ?? 'http://127.0.0.1:8080/v1',
+      endpointHost: process.env.MURM_CORE_TEST_ENDPOINT_HOST ?? '127.0.0.1',
+      isolation: { network: 'local-docker', disk: { bytes: 64 * 1024 ** 2, inodes: 4096 } },
+    },
+    connection: { advertiseHost: process.env.MURM_CORE_TEST_ADVERTISE_HOST ?? '172.17.0.1',
+      modelGateway: { requestTimeoutMs: 20_000, maxOutputTokens: 128 } },
+    models: { default: { provider: 'kimi_proxy', model: 'k3', upstream: { url: upstream.url, headers: {} } } },
+  };
+  const configPath = join(evidence, 'config.mjs');
+  await writeFile(configPath, `const config = ${JSON.stringify(configuration)};
+config.sandbox.apiKey = process.env.MURM_CORE_TEST_API_KEY;
+export default config;
+`, { mode: 0o600 });
+  const { stdout } = await execute(process.execPath, ['node_modules/.bin/murm', '--harness', 'substrate', '--cwd', project,
+    '--prompt', projectSource.prompt, '--config', configPath, '--output-dir', join(evidence, 'output')], {
+    cwd: installation.directory, env: installation.env, timeout: 145_000, maxBuffer: 4 * 1024 ** 2,
+  }).catch(error => {
+    assert.ifError(upstream.receipt().failure);
+    throw error;
+  });
+  const { result } = JSON.parse(stdout);
+  assert.equal(result.outcome, 'completed');
+  assert.equal(result.cleanup.status, 'complete');
+  assert.equal(result.acceptance.status, 'not-run');
+  const { evidence: calls, failure } = upstream.receipt();
+  assert.ifError(failure);
+  const producer = calls.find(row => row.peer === 0 && row.cycle === 0).published;
+  assert.equal(producer.content, projectSource.content);
+  assert.ok(calls.find(row => row.peer === 1 && row.cycle === 1).published.references.includes(producer.address));
+  assert.equal(result.cleanup.receipt.agents.length, 3);
+  for (const agent of result.cleanup.receipt.agents) {
+    const files = agent.artifacts.find(path => path.endsWith('/artifacts/files'));
+    assert.equal(await readFile(join(files, projectSource.file), 'utf8'), projectSource.content);
+  }
+  assert.deepEqual(await ownedContainers(result.result.runtimeId), []);
+  await writeFile(join(evidence, 'verification.json'), JSON.stringify({
+    package: installation.metadata, image, controlledProvider: true, projectDigest: result.initial.digest,
+    runtimeId: result.result.runtimeId, adoption: true, cleanup: 'complete',
+  }, null, 2), { mode: 0o600 });
+});

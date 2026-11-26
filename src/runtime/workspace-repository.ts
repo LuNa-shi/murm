@@ -154,7 +154,7 @@ export class WorkspaceRepository {
     return imported;
   }
 
-  async importTree(root: any, files: any, parentCommits: any, message: any) {
+  async importTree(root: any, files: any, parentCommits: any, message: any, modes?: Readonly<Record<string, 0o644 | 0o755>>) {
     const stageRoot = join(root, '.swarm-staging');
     await mkdir(stageRoot, { recursive: true });
     const stage = await mkdtemp(join(stageRoot, 'tree-'));
@@ -167,7 +167,7 @@ export class WorkspaceRepository {
         await mkdir(dirname(target), { recursive: true });
         await writeFile(target, content as string | Uint8Array);
         const blob = String(await git(root, ['hash-object', '--no-filters', '-w', '--', target])).trim();
-        entries.push(`100644 ${blob}\t${path}\0`);
+        entries.push(`${modes?.[path] === 0o755 ? '100755' : '100644'} ${blob}\t${path}\0`);
       }
       const env = gitEnvironment({ GIT_INDEX_FILE: join(stage, 'index') });
       await git(root, ['read-tree', '--empty'], { env });
@@ -185,16 +185,27 @@ export class WorkspaceRepository {
     return String(await git(root, [...GIT_IDENTITY, 'commit-tree', tree, ...parents.flatMap((parent: any) => ['-p', parent]), '-m', message])).trim();
   }
 
-  async readTree(root: any, tree: any) {
+  async #listTree(root: string, tree: string) {
     const listing = String(await git(root, ['ls-tree', '-rz', '--full-tree', tree]));
-    const files = Object.create(null);
-    for (const entry of listing.split('\0').filter(Boolean)) {
+    return listing.split('\0').filter(Boolean).map(entry => {
       const tab = entry.indexOf('\t');
       const [mode, type, object] = entry.slice(0, tab).split(' ');
       if (type !== 'blob' || !['100644', '100755'].includes(mode)) throw new MurmError(ERROR_CODES.NOT_ALLOWED, 'Workspace tree contains a non-regular file');
+      return { path: entry.slice(tab + 1), object, mode: mode === '100755' ? 0o755 as const : 0o644 as const };
+    });
+  }
+
+  async readModes(root: string, tree: string) {
+    return Object.fromEntries((await this.#listTree(root, tree)).map(({ path, mode }) => [path, mode]));
+  }
+
+  async readTree(root: any, tree: any, modes?: Record<string, 0o644 | 0o755>) {
+    const files = Object.create(null);
+    for (const { path, mode, object } of await this.#listTree(root, tree)) {
       const content = await git(root, ['cat-file', 'blob', object], { encoding: 'buffer' });
       const text = content.toString('utf8');
-      files[entry.slice(tab + 1)] = !content.includes(0) && Buffer.from(text).equals(content) ? text : content;
+      if (modes) modes[path] = mode;
+      files[path] = !content.includes(0) && Buffer.from(text).equals(content) ? text : content;
     }
     return files;
   }

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { seedTeamRepository } from '../shared/project-git.js';
 import { httpClient } from './http.js';
 
 export const initialFile = 'INITIAL\n';
@@ -7,7 +8,7 @@ const e = encodeURIComponent;
 const requireString = (value: any) => { if (typeof value !== 'string' || !value) throw new TypeError('Incomplete PeerMesh facility configuration'); return value; };
 
 /** Prepare only new run resources. Shared Git/channel/board data is retained. */
-export async function preparePeerMeshFacilities({ runId, gitea, mattermost, startBoard, resources, signal, peerKeys, project }: any) {
+export async function preparePeerMeshFacilities({ runId, gitea, mattermost, startBoard, resources, signal, peerKeys, project, projectFiles }: any) {
   if (typeof runId !== 'string' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId) || typeof startBoard !== 'function') throw new TypeError('Invalid PeerMesh run or board launcher');
   if (signal !== undefined && !(signal instanceof AbortSignal)) throw new TypeError('PeerMesh startup signal must be an AbortSignal');
   const check = () => { if (signal?.aborted) throw Object.assign(new Error('PeerMesh startup aborted'), { code: 'HARNESS_START_ABORTED' }); };
@@ -34,6 +35,8 @@ export async function preparePeerMeshFacilities({ runId, gitea, mattermost, star
           typeof data !== 'string' || Buffer.byteLength(data) > 64 * 1024))))) throw new TypeError('Invalid PeerMesh project goal or seed');
   const repository: any = { owner, name: `run-${runId}` };
   const repo = `/api/v1/repos/${e(owner)}/${e(repository.name)}`;
+  const repositoryUrl = `${gitea.origin.replace(/\/$/, '')}/${e(owner)}/${e(repository.name)}.git`;
+  let initialCommit: string | undefined;
   const boardId = `board-${runId}`;
   await Promise.all([git('GET', '/api/v1/version'), mm('GET', '/api/v4/system/ping'), mm('GET', `/api/v4/teams/${e(teamId)}`)]);
   const admin = await git('GET', '/api/v1/user');
@@ -72,10 +75,11 @@ export async function preparePeerMeshFacilities({ runId, gitea, mattermost, star
     gitUser = { ...gitUser, email };
     if (!issue) {
       resources.own({ kind: 'repository-create-intent', id: `${owner}/${repository.name}`, retained: true });
-      await git('POST', `/api/v1/admin/users/${e(owner)}/repos`, { name: repository.name, private: true, auto_init: true, default_branch: 'main' });
+      await git('POST', `/api/v1/admin/users/${e(owner)}/repos`, { name: repository.name, private: true, auto_init: projectFiles === undefined, default_branch: 'main' });
       resources.own({ kind: 'repository', id: `${owner}/${repository.name}`, retained: true });
       if (project) {
-        for (const [path, data] of Object.entries(project.seed ?? {})) {
+        if (projectFiles !== undefined) initialCommit = await seedTeamRepository({ files: projectFiles, url: repositoryUrl, owner, token: gitea.adminToken, signal });
+        else for (const [path, data] of Object.entries(project.seed ?? {})) {
           await git('POST', `${repo}/contents/${path.split('/').map(e).join('/')}`, {
             branch: 'main', message: 'Seed project input', content: Buffer.from(data as string).toString('base64'),
           });
@@ -159,7 +163,7 @@ export async function preparePeerMeshFacilities({ runId, gitea, mattermost, star
   const boardHttp = startup(httpClient(board.origin));
   for (const peer of peers) await boardHttp('GET', `/board/${e(boardId)}/read?viewer=${e(peer.board.workerId)}`);
   resources.own({ kind: 'board-data', id: boardId, retained: true });
-  return { runId, repository, repositoryUrl: `${gitea.origin.replace(/\/$/, '')}/${e(owner)}/${e(repository.name)}.git`, channelId: channel.id, boardId,
+  return { runId, repository, repositoryUrl, initialCommit, channelId: channel.id, boardId,
     endpoints: { gitea: gitea.origin, message: mattermost.origin, board: board.origin }, issueNumber: issue.number,
     peer: peers[0], ...(peerKeys ? { peers } : {}), ...(project ? { project: true, directChannels } : {}) };
 }

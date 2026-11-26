@@ -5,6 +5,15 @@ section: HARNESSES
 order: 9
 ---
 
+## Run an ordinary project
+
+```sh
+cd my-project
+murm --harness peermesh --prompt "Fix the parser using the project tests"
+```
+
+PeerMesh creates a shared project repository and issue from the directory and prompt. Peers work in separate Sandboxes. Configure Gitea, Mattermost and the Board before launching. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
+
 **PeerMesh** (`src/harnesses/peermesh/`) models a flat team of 2–8 peer engineers with no central dispatcher and no exclusive task locks. Each peer has its own Gitea account, Mattermost account, persistent Pi session, and Git checkout. Peers choose work on personal branches, post soft intentions (`CLAIM`) and updates on a shared Board, talk in team chat and DMs, and merge PRs into protected `main` through host verification.
 
 The shipped host uses the generic OpenSandbox backend with Pi and composes its Services around Core. The team and router factories in `src/harnesses/peermesh/` are repository modules, not exported SDK factories. Use the [SDK guide](../sdk.md) to build a new Harness and the example below to run this particular policy.

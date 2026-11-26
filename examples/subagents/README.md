@@ -1,5 +1,17 @@
 # Subagents Harness
 
+## Run from your project
+
+```sh
+cd my-project
+murm --harness subagents --prompt "Inspect this project and explain how to verify it"
+```
+
+Subagents sends the prompt to Root and supplies the captured project to Root and each Child. The application uses separate Sandbox directories. Optional RPC input goes to Root.
+
+After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
+
+
 This example builds a recursive team using the public Runtime, Services and OpenSandbox SDK entries. Its `createSubagentsHarness` factory and `collaboration` controller are local example modules, not exports from `@murm/core`. See the [mechanism guide](../../docs/en/harnesses/subagents.md) and [SDK guide](../../docs/en/sdk.md).
 
 TypeScript sources compile with `npm run build` into `dist/`. The package is currently marked private and distributed as a checkout-built tarball; `npm pack` builds the JavaScript and declarations before archiving.

@@ -115,6 +115,8 @@ export function deployDynamicContainer(image: string, { verify }: {
 } = {}) {
   assertContainerImage(image);
   return async ({ id, manifest, source, signal, resources }: DynamicDeploymentRequest) => {
+    const operationPath = manifest.capabilities[0]?.path;
+    if (operationPath !== '/v2/check_orders' && operationPath !== '/v2/check_project') throw new TypeError('Unsupported checker endpoint');
     const directory = await mkdtemp(join(tmpdir(), 'murm-service-'));
     const sandbox = isolatedContainer(image, directory);
     resources.own({ kind: 'checking-container', id: sandbox.name, close: async () => {
@@ -130,7 +132,7 @@ export function deployDynamicContainer(image: string, { verify }: {
       await requireDocker(['container', 'start', sandbox.name], { signal });
       const fetchImpl: typeof fetch = async (input, init) => {
         const url = new URL(String(input));
-        if (url.origin !== localEndpoint || !['/health', '/v2/check_orders'].includes(url.pathname) ||
+        if (url.origin !== localEndpoint || !['/health', operationPath].includes(url.pathname) ||
             url.search || url.hash || url.username || url.password) throw new Error('Unapproved checking endpoint');
         const raw = await requireDocker(['container', 'exec', '-i', sandbox.name, 'node', '--input-type=module', '-e', relay], {
           signal: init?.signal ?? undefined,
@@ -151,7 +153,7 @@ export function deployDynamicContainer(image: string, { verify }: {
       let probe = 0;
       if (verify) verification = await verify(async jsonl => {
         const operationId = `host-verification-${++probe}`;
-        const response = await fetchImpl(localEndpoint + '/v2/check_orders', {
+        const response = await fetchImpl(localEndpoint + operationPath, {
           method: 'POST', signal,
           headers: { 'content-type': 'application/json', 'idempotency-key': operationId },
           body: JSON.stringify({ input: { jsonl }, envelope: { operation_id: operationId }, caller: { role: 'host' } }),

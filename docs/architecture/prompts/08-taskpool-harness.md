@@ -5,6 +5,15 @@
 After trusted domain registration, the controller sends discovery through public Runtime.send with explicit followUp. The current Execution determines whether the controller sends the ordinary continuation or the soft-closeout body. The trusted Core capture or explicit snapshot binding selects the guidance for the available Workspace operations. Host-supplied directed feedback retains its original text, request ID and chosen mode through the same serialized controller.
 
 These are repository-owned texts and deterministic examples, not transcripts of an actual experiment. Synthetic examples use explicit fixture inputs; other blocks preserve literal repository text, including its own placeholders and fallback markers. Complete bodies are shown without truncation. The body hash excludes Markdown framing.
+## Project discovery workflow
+
+The project entry also gives discovery the exact user prompt as the Mission goal. The controller sends the discovery input after installing the read-only initial tree.
+
+Body SHA-256: `73ab49e2d714b512d60b202d907d936aeef6878330a345eaf517063aaf7849ae`
+
+````text
+Keep Tasks small and coordinate via the public Task list. Save project changes as a Workspace revision and merge the result before marking implementation work done.
+````
 ## Profile suffix when live Workspace save is unavailable
 
 The default Added System Prompt is empty. Without a Core or injected live capture binding, the host includes this explanation after any supplied Profile text.

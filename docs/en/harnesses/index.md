@@ -5,6 +5,17 @@ section: HARNESSES
 order: 6
 ---
 
+## Run an ordinary project
+
+Install the CLI on your PATH with `npm install --global /path/to/murm-core-0.2.0.tgz`, then launch from your project directory. The invocation directory is the default. Use `--cwd` to select a different project. A config module or environment variables can supply the Sandbox, model, Services, team size and deadlines.
+
+```sh
+cd my-project
+murm --harness subagents --prompt "Fix the parser and add tests"
+```
+
+Built-in names are `subagents`, `taskpool`, `peermesh`, `substrate`, `lead-worker`, `notes` and `messages`. Configure the resources required by the selected example.
+
 A Harness supplies the collaboration policy around a murm Runtime: which Agents to start, which Services they can call, how shared work is represented, and when the run is complete. The repository implements five different policies. They reuse Core lifecycle, isolation, input delivery and observation while keeping their coordination rules in host code and Services.
 
 Start with the [SDK guide](../sdk.md) to embed murm in your own application. The Harnesses below are editable repository implementations and examples; their factory functions are not additional `@murm/core` package exports. TaskPool also composes the repository's existing Mission, Task, Material and Workspace stores. The other four have dedicated example launchers.

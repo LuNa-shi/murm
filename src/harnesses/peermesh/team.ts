@@ -53,7 +53,7 @@ export async function createPeerMeshTeam(options: any) {
     ...(unavailablePeers.has(agent.id) ? { unavailable: unavailablePeers.get(agent.id) } : {}),
     router: routers.get(key)?.snapshot(), subscription: subscriptions.get(key)?.snapshot?.() }));
   const snapshot = () => redact({ runId, runtimeId: runtime?.id, closing, identities: services?.identities(), ...(delivery ? { project: { repository: facilities.repository, issue: facilities.issueNumber,
-    startedAt, durationMs, delivery: deliveryReceipt, merges: delivery.snapshot() } } : {}), resources: resources.snapshot(), peers: peerStates() });
+    startedAt, durationMs, initialCommit: facilities.initialCommit, initialDigest: options.initialDigest, delivery: deliveryReceipt, merges: delivery.snapshot() } } : {}), resources: resources.snapshot(), peers: peerStates() });
   function stop(reason?: unknown) { clearTimeout(deadlineTimer); delivery?.stop(); inputAdmission?.close(); closing = true; for (const router of routers.values()) router.stop(); lifetime.abort(reason); }
   function fence(reason: any) {
     if (closing || signal.aborted) return;
@@ -101,7 +101,7 @@ export async function createPeerMeshTeam(options: any) {
     const repository: any = new URL(facilities.repositoryUrl);
     if (repository.origin !== new URL(facilities.endpoints.gitea).origin || repository.username || repository.password || repository.search || repository.hash) throw fail('TEAM_IDENTITY_INVALID');
     if (options.project) {
-      if (facilities.project !== true) throw fail('TEAM_PROJECT_NOT_READY');
+      if (facilities.project !== true || (options.projectFiles !== undefined && !/^[a-f0-9]{40}$/.test(facilities.initialCommit ?? ''))) throw fail('TEAM_PROJECT_NOT_READY');
       delivery = createPeerMeshDelivery({ facilities, adminToken: options.gitea?.adminToken });
       signal.addEventListener('abort', () => delivery?.stop(), { once: true });
     }
@@ -128,6 +128,7 @@ export async function createPeerMeshTeam(options: any) {
     } : undefined);
     const profiles = Object.fromEntries(facilities.peers.map((peer: any) => [`peer-${peer.key}`, createPeerProfile({ image, model, facilities: { ...facilities, peer } })]));
     runtime = await createRuntime({ sandbox, executor, models, connection, services: services.services, profiles, maxAgents: peerKeys.length, outputDir }); check();
+    options.onRuntime?.(runtime, snapshot);
     unsubscriptions.push(runtime.onEvent((event: any) => {
       const planned = closing || [...stoppedPeers].some((key: any) => peers.get(key)?.id === event.agentId);
       if (!planned && (event.type === 'exit' || (event.type === 'error' && event.fatal))) {
@@ -136,7 +137,7 @@ export async function createPeerMeshTeam(options: any) {
     }));
     for (const peer of facilities.peers) {
       const profile = `peer-${peer.key}`;
-      const agent = await runtime.spawn({ requestId: `spawn-${peer.key}`, profile, bindings: services.bindingsFor(peer.key), secretEnv: { GITEA_TOKEN: peer.gitea.token }, collect: { paths: ['.'], includeGit: true, ...(options.project ? { allowMissingGit: true } : {}), maxBytes: exportLimit, required: true } });
+      const agent = await runtime.spawn({ requestId: `spawn-${peer.key}`, profile, ...(options.projectFiles === undefined ? {} : { files: options.projectFiles }), bindings: services.bindingsFor(peer.key), secretEnv: { GITEA_TOKEN: peer.gitea.token }, collect: { paths: ['.'], includeGit: true, ...(options.project ? { allowMissingGit: true } : {}), maxBytes: exportLimit, required: true } });
       peers.set(peer.key, agent); check(); services.bindAgent({ runtimeId: runtime.id, agentId: agent.id, peerKey: peer.key, profile });
     }
     for (const peer of facilities.peers) {
@@ -172,6 +173,8 @@ export async function createPeerMeshTeam(options: any) {
     if (options.project) {
       startedAt = new Date().toISOString();
       deadlineTimer = setTimeout(() => stop(fail('PEERMESH_PROJECT_DEADLINE')), durationMs);
+      check();
+      options.beforeInitialDispatch?.();
       for (const router of routers.values()) router.kickoff(options.project.body);
     }
     return Object.freeze({ id: runtime.id, snapshot, redact, close, signal, getAgent: runtime.get,

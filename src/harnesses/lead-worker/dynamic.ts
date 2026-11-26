@@ -1,12 +1,12 @@
 import { createHash } from 'node:crypto';
 import type { AgentAccessPolicy, FileTree, Profile, Runtime } from '@murm/core';
 import { ServiceRegistry, type JsonValue, type ServiceManifest, type ServiceRegistration } from '@murm/core';
+import { seededCheckoutInstruction } from '../shared/project-git.js';
 import { dynamicBoardPermissions, type createBoard } from './board.js';
 import type { createLeadWorkerGit, prepareLeadWorkerGit } from './git.js';
 import type { createOwnedResources } from '../peermesh/resources.js';
-import { dynamicWorkerPrompt } from './prompts.js';
+import { dynamicWorkerPrompt, projectDynamicWorkerPrompt } from './prompts.js';
 
-const operations = ['check_orders'] as const;
 const maxSourceBytes = 128 * 1024;
 const fail = (code: string, message = code) => Object.assign(new Error(message), { code });
 const object = (properties: Record<string, unknown>, required = Object.keys(properties)) =>
@@ -14,13 +14,14 @@ const object = (properties: Record<string, unknown>, required = Object.keys(prop
 const id = { type: 'string', pattern: '^[a-z][a-z0-9_-]{0,31}$' };
 const requestId = { type: 'string', pattern: '^[A-Za-z0-9_.:-]{1,128}$' };
 const text = { type: 'string', minLength: 1, maxLength: 2048 };
-const rules = {
-  profile_register: object({ id, prompt: text, check_service_id: id }),
+const rules = (project: boolean) => ({
+
+  profile_register: object({ id, prompt: text, check_service_id: id }, project ? ['id', 'prompt'] : undefined),
   profile_get: object({ id }),
   profile_list: object({}),
   service_deploy: object({
     source_path: { type: 'string', pattern: '^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*\\.mjs$', maxLength: 128 },
-    manifest: object({ id, title: text, purpose: text, operation: { const: 'check_orders' } }),
+    manifest: object({ id, title: text, purpose: text, operation: { const: project ? 'check_project' : 'check_orders' } }),
   }),
   service_register: object({ reference: id }),
   service_get: object({ id }),
@@ -28,10 +29,10 @@ const rules = {
   service_retire: object({ id }),
   spawn_member: object({ profile: id }),
   member_get: object({ request_id: requestId }),
-};
-type Operation = keyof typeof rules;
+});
+type Operation = keyof ReturnType<typeof rules>;
 const teamOperations: readonly Operation[] = ['spawn_member', 'member_get'];
-const manageOperations = (Object.keys(rules) as Operation[]).filter(operation => !teamOperations.includes(operation));
+const manageOperations = (Object.keys(rules(false)) as Operation[]).filter(operation => !teamOperations.includes(operation));
 const accessErrors = ['INVALID_CONTRACT', 'CONFLICT', 'NOT_ALLOWED', 'NOT_FOUND', 'OPERATION_UNKNOWN', 'DEPLOYMENT_FAILED']
   .map(code => ({ code, retryable: code === 'OPERATION_UNKNOWN' }));
 const json = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value));
@@ -48,9 +49,10 @@ export interface DynamicDeploymentRequest {
 export interface DynamicLeadWorkerOptions {
   deploy(request: DynamicDeploymentRequest): Promise<{ registration: ServiceRegistration; deploymentRef: string; verification?: unknown }>;
   externalServices?: Readonly<Record<string, { registration: ServiceRegistration; deploymentRef: string; implementationId: string }>>;
-  initialFiles: Readonly<Record<string, string>>;
+  initialFiles?: Readonly<Record<string, string>>;
+  projectFiles?: FileTree;
   goal: string;
-  verifyFinal(input: {
+  verifyFinal?(input: {
     repositoryUrl: string; token: string; commit: string; sha256: string; signal: AbortSignal;
     resources: ReturnType<typeof createOwnedResources>;
   }): Promise<{ ok: boolean; [key: string]: unknown }>;
@@ -71,16 +73,18 @@ export function dynamicServices(role: 'lead' | 'helper') {
   };
 }
 
-function checkManifest(input: { id: string; title: string; purpose: string }): ServiceManifest {
+function checkManifest(input: { id: string; title: string; purpose: string }, project: boolean): ServiceManifest {
+  const operation = project ? 'check_project' : 'check_orders';
   return {
     id: input.id, title: input.title, purpose: input.purpose, provider_version: '1', contract_version: '2',
     endpoint: { transport: 'http-json', url: 'http://127.0.0.1:8080' },
     capabilities: [{
-      name: 'check_orders', operation: 'check_orders',
-      description: 'Check a JSONL orders candidate using the shared task specification.',
-      side_effect: 'read', idempotent: true, help: { when: 'Check valid and invalid JSONL data from a named Git candidate.' },
-      input_schema: object({ jsonl: { type: 'string', maxLength: 131072 } }),
-      output_schema: { type: 'object' }, path: '/v2/check_orders', timeout_ms: 10000, errors: [],
+      name: operation, operation,
+      description: project ? 'Check text input against a project requirement.' : 'Check a JSONL orders candidate using the shared task specification.',
+      side_effect: 'read', idempotent: true, help: { when: project
+        ? 'Submit text from a project artifact to the team checker.' : 'Check valid and invalid JSONL data from a named Git candidate.' },
+      input_schema: object({ [project ? 'text' : 'jsonl']: { type: 'string', maxLength: 131072 } }),
+      output_schema: { type: 'object' }, path: `/v2/${operation}`, timeout_ms: 10000, errors: [],
     }],
   };
 }
@@ -103,6 +107,9 @@ export function createDynamicLeadWorker({
   includeGit: boolean;
   exportLimit: number;
 }) {
+  const project = options.projectFiles !== undefined;
+  const operation = project ? 'check_project' : 'check_orders';
+  const schemas = rules(project);
   let member: MemberRequest | undefined;
   let memberKey: string | undefined;
   let deployment: DeploymentRequest | undefined;
@@ -145,7 +152,7 @@ export function createDynamicLeadWorker({
         addSecret(actor.token);
         admit();
         const agent = await known().spawn({
-          profile: profileId, parentId: caller, requestId: `member-${createHash('sha256').update(key).digest('hex')}`,
+          profile: profileId, parentId: caller, ...(project ? { files: options.projectFiles } : {}), requestId: `member-${createHash('sha256').update(key).digest('hex')}`,
           bindings: { board: `${runId}:board`, gitea: actor.binding },
           secretEnv: { GITEA_TOKEN: actor.token, WORK_BRANCH: actor.branch, GITEA_USERNAME: actor.username,
             GIT_AUTHOR_NAME: actor.username, GIT_AUTHOR_EMAIL: `${actor.username}@murm.invalid`,
@@ -174,7 +181,7 @@ export function createDynamicLeadWorker({
 
   async function deploy(input: { source_path: string; manifest: { id: string; title: string; purpose: string } }, caller: string, request: string) {
     const key = keyFor(caller, request);
-    const manifest = checkManifest(input.manifest);
+    const manifest = checkManifest(input.manifest, project);
     const fingerprint = JSON.stringify([input.source_path, manifest]);
     if (deployment) {
       if (deploymentKey !== key || deployment.fingerprint !== fingerprint) throw fail('CONFLICT', 'The dynamic Service is already claimed');
@@ -222,7 +229,7 @@ export function createDynamicLeadWorker({
           capabilities: list.map(operation => ({
             name: operation, operation, description: operation.replaceAll('_', ' '),
             help: { when: 'Use the current Run and the Lead delegation scope.' },
-            input_schema: rules[operation], output_schema: { anyOf: [{ type: 'object' }, { type: 'array' }, { type: 'null' }] },
+            input_schema: schemas[operation], output_schema: { anyOf: [{ type: 'object' }, { type: 'array' }, { type: 'null' }] },
             side_effect: /_(get|list)$/.test(operation) ? 'read' : 'write', idempotent: true, errors: accessErrors, timeout_ms: 60_000,
           })),
         },
@@ -236,13 +243,13 @@ export function createDynamicLeadWorker({
             case 'profile_register': {
               admit();
               const serviceId = value.check_service_id;
-              if (!owned(serviceId, caller.agentId)) throw fail('NOT_ALLOWED');
+              if (serviceId !== undefined && !owned(serviceId, caller.agentId)) throw fail('NOT_ALLOWED');
               const profile: Profile = {
-                model, image, writable: true, prompt: `${dynamicWorkerPrompt}\n\n${value.prompt}`,
+                model, image, writable: true, prompt: `${project ? [projectDynamicWorkerPrompt, seededCheckoutInstruction].join('\n\n') : dynamicWorkerPrompt}\n\n${value.prompt}`,
                 network: { allow: [new URL(facilities.repositoryUrl).origin] },
-                env: { RUN_REPOSITORY: facilities.repositoryUrl, RUN_OWNER: facilities.repository.owner,
+                env: { ...(facilities.initialCommit ? { RUN_INITIAL_COMMIT: facilities.initialCommit } : {}), RUN_REPOSITORY: facilities.repositoryUrl, RUN_OWNER: facilities.repository.owner,
                   RUN_REPO: facilities.repository.name, GIT_TERMINAL_PROMPT: '0' },
-                services: { ...dynamicServices('helper'), [serviceId]: operations },
+                services: { ...dynamicServices('helper'), ...(serviceId === undefined ? {} : { [serviceId]: [operation] }) },
               };
               return json(await known().profiles.register({ actorId: caller.agentId, requestId: request, id: value.id, profile }));
             }
@@ -271,7 +278,7 @@ export function createDynamicLeadWorker({
   const agentAccessPolicy: AgentAccessPolicy = request => {
     if (request.callerId !== team.lead || request.agentId === team.lead || !board.snapshot().members[request.agentId]?.ready) return false;
     return request.operation === 'access_get' || owned(request.serviceId, request.callerId) &&
-      request.operations.every(operation => operation === 'check_orders');
+      request.operations.every(requested => requested === operation);
   };
 
   return {

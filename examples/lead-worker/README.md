@@ -1,5 +1,17 @@
 # Lead-Worker Harness
 
+## Run from your project
+
+```sh
+cd my-project
+murm --harness lead-worker --prompt "Inspect this project and explain how to verify it"
+```
+
+Lead–Worker sends the prompt to the Lead and initializes team Git and member Sandbox files. Choose the dynamic team with `MURM_LEAD_WORKER_TEAM=dynamic`. The dynamic checker uses an immutable Docker image ID from `MURM_LEAD_WORKER_CHECKING_IMAGE` or the Worker image setting.
+
+After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
+
+
 This example creates one lead and two helpers through the public Core SDK. The default workflow uses preconfigured Profiles and a fixed team. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
 
 The host imports the Runtime, Sandbox and Service author APIs from `@murm/core`. The Lead-Worker controller runs from the bundled example. See the [SDK guide](../../docs/en/sdk.md), [mechanism guide](../../docs/en/harnesses/lead-worker.md) and [dynamic-team design](../../docs/designs/dynamic-lead-worker.md).

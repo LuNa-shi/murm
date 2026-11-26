@@ -68,7 +68,7 @@ const definitions: any = {
 
 /** Host composition only. Task policy and durable publication remain outside Core. */
 export function createTaskPoolPublicationServices({ runtime, taskService, contextService, missionId, missionWorkspace, workspaceId,
-  profile='researcher', deadline, coordinationPermissions=[], onFinish=()=>{}, snapshotProject, workspaceCapture, judgeService = null, workspaceProjectCheck = false, workspaceMergeChecker = null }: any) {
+  profile='researcher', deadline, coordinationPermissions=[], onFinish=()=>{}, snapshotProject, workspaceCapture, judgeService = null, workspaceProjectCheck = false, workspaceMergeEnabled = false, workspaceMergeChecker = null }: any) {
   if (!runtime || !taskService || !contextService || !missionWorkspace || typeof missionId!=='string' || !missionId ||
       typeof workspaceId!=='string' || !workspaceId || typeof deadline!=='function' || typeof onFinish!=='function') fail('INVALID_CONTRACT','TaskPool publication requires trusted Runtime, stores and finite Mission budget');
   if (typeof workspaceProjectCheck!=='boolean') fail('INVALID_CONTRACT','TaskPool Judge project mode must be boolean');
@@ -180,7 +180,7 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     }
     return execution;
   }
-  const merge: any = workspaceMergeChecker ? createWorkspaceMergeService({ taskService, workspace: missionWorkspace, workspaceId,
+  const merge: any = (workspaceMergeEnabled || workspaceMergeChecker) ? createWorkspaceMergeService({ taskService, workspace: missionWorkspace, workspaceId,
     assertExecutionWorkspace: assertWorkspace, checker: workspaceMergeChecker }) : null;
   const mergeStatus=()=>({cleanup:mergeCalls.size || merge?.status().cleanup==='pending'?'pending':'complete',
     pending_checks:merge?.status().pending_checks??0,
@@ -197,7 +197,7 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
     }
     if(!current.execution) fail('NOT_ALLOWED','Private Workspace operation requires an active Execution');
     if(operation==='workspace_merge') {
-      if(!merge) fail('SERVICE_NOT_READY','TaskPool checked merge is not configured');
+      if(!merge) fail('SERVICE_NOT_READY','TaskPool Workspace merge is not configured');
       return merge.merge(input,{actorRef:current.agent.agent_id,taskId:current.execution.task_id,executionId:current.execution.execution_id,
         fencingVersion:current.execution.fencing_version,requestId:id,signal,assertAuthorized});
     }

@@ -5,6 +5,15 @@ section: HARNESSES
 order: 11
 ---
 
+## Run an ordinary project
+
+```sh
+cd my-project
+murm --harness lead-worker --prompt "Fix the parser using the project tests"
+```
+
+Lead–Worker sends the prompt to the Lead and initializes team Git and member Sandbox files. Choose the dynamic team with `MURM_LEAD_WORKER_TEAM=dynamic`. The dynamic checker uses an immutable Docker image ID from `MURM_LEAD_WORKER_CHECKING_IMAGE` or the Worker image setting. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
+
 **Lead-Worker** (`src/harnesses/lead-worker/`) fits teams that want one explicit owner of direction while enforcing that worker feedback discovered during execution actually reaches the next round of planning. One `lead` and 2–7 workers (`helper1..helperN`) run in persistent sessions with separate Gitea accounts, personal Git branches, and a local SQLite **`board` Service**.
 
 The host composes Runtime, Services and the OpenSandbox backend using the [SDK](../sdk.md). `createLeadWorkerHarness` and `runLeadWorker` are repository modules under `src/harnesses/lead-worker/`, not public package exports. The default mode configures the team before startup. The packaged [dynamic orders example](../../../examples/lead-worker/README.md) lets the Lead deploy a checking Service, register a Profile, admit a new member and change an original Worker’s grants while work is underway.

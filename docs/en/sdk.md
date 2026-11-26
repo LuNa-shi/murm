@@ -9,6 +9,8 @@ Use the SDK when you want your program to decide how Agents collaborate: who rec
 
 This guide starts with the repository's [Messages handoff](https://github.com/LuNa-shi/murm/tree/main/examples/bridge-services). It runs two Agents in separate sandboxes, transfers a value through a Service, checks the exported result and saves a final report. Its TypeScript sources are included in the package and compiled by the repository build.
 
+To run Messages or another built-in against a real project and prompt, use the [project entry](harnesses/index.md). The example below demonstrates direct SDK embedding with a controlled handoff.
+
 ## Install the current package
 
 The current package is `@murm/core` version `0.2.0`. Its manifest has `private: true`; the supported installation recipe here uses a tarball built from a checkout you can access.

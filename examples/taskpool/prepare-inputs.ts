@@ -12,7 +12,7 @@ export async function prepareTaskPoolInputs({ execution, taskService, missionWor
   if (!task || execution.workspace_ref) deny('TaskPool preparation requires an unprepared Task Execution');
   const selectedWorkspace = task.workspace?.workspace_id ?? workspaceId;
   if (!selectedWorkspace || selectedWorkspace !== workspaceId) deny('Task Workspace must match the configured Mission Workspace');
-  const snapshot = await missionWorkspace.exportRevision({ workspaceId: selectedWorkspace, revision: task.workspace?.revision ?? 'main' });
+  const snapshot = await missionWorkspace.exportRevision({ workspaceId: selectedWorkspace, revision: task.workspace?.revision ?? 'main', withModes: true });
   check();
   if (snapshot.mission_id !== task.mission_id || snapshot.workspace_id !== selectedWorkspace) deny('Task Workspace inputs belong to another Mission');
   const files = Object.create(null);
@@ -21,7 +21,7 @@ export async function prepareTaskPoolInputs({ execution, taskService, missionWor
     const bytes = Buffer.isBuffer(content) ? Buffer.from(content) : Buffer.from(content, 'utf8');
     const expected = snapshot.manifest[path];
     if (expected?.bytes !== bytes.length || expected.content_hash !== createHash('sha256').update(bytes).digest('hex')) deny('Public Workspace bytes differ from the pinned manifest');
-    files[path] = { encoding: 'base64', data: bytes.toString('base64'), mode: 0o644 };
+    files[path] = { encoding: 'base64', data: bytes.toString('base64'), mode: snapshot.file_modes?.[path] ?? 0o644 };
   }
   if (Object.keys(snapshot.files).length !== Object.keys(snapshot.manifest).length) deny('Public Workspace manifest is incomplete');
   const seed = snapshotFileSeed(files);

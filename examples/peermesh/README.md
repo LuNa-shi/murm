@@ -1,5 +1,17 @@
 # Run PeerMesh from an installed package
 
+## Run from your project
+
+```sh
+cd my-project
+murm --harness peermesh --prompt "Inspect this project and explain how to verify it"
+```
+
+PeerMesh creates a shared project repository and issue from the directory and prompt. Peers work in separate Sandboxes. Configure Gitea, Mattermost and the Board before launching.
+
+After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
+
+
 This example composes Core with a peer router, Board, chat and Git Services. The team and router factories are repository modules; they are not extra `@murm/core` package exports. See the [mechanism guide](../../docs/en/harnesses/peermesh.md) and [SDK guide](../../docs/en/sdk.md) to adapt the policy.
 
 TypeScript sources compile with `npm run build` into `dist/`. The package is currently private and consumed as a checkout-built tarball; `npm pack` builds the JavaScript and declarations before archiving.

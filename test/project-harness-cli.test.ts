@@ -278,3 +278,59 @@ test('EOF and SIGTERM preserve the admitted Run stop reason and saved result', {
     assert.deepEqual(await client.exit, [action === 'EOF' ? 1 : 143, null]);
   }
 });
+
+test('team Git receives exact FileTree bytes and modes, and participant checkout preserves them', async t => {
+  const { seedTeamRepository, seededCheckoutInstruction } = await import('../src/harnesses/shared/project-git.js');
+  const directory = await mkdtemp(join(tmpdir(), 'murm-team-git-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const remote = join(directory, 'remote.git');
+  const participant = join(directory, 'participant');
+  await execute('git', ['init', '--bare', '--initial-branch=main', remote]);
+  await mkdir(participant);
+  await writeFile(join(participant, 'program'), Buffer.from([0, 180, 255]), { mode: 0o755 });
+  await writeFile(join(participant, '.gitattributes'), 'program text eol=crlf\n');
+  const files = {
+    program: { encoding: 'base64', data: 'ALT/', mode: 0o755 },
+    '.gitattributes': { encoding: 'utf8', data: 'program text eol=crlf\n' },
+  } as const;
+  const commit = await seedTeamRepository({ files, url: remote, owner: 'owner', token: 'unused' });
+  assert.equal((await execute('git', ['--git-dir', remote, 'rev-parse', 'main'])).stdout.trim(), commit);
+  const { stdout } = await execute('git', ['--git-dir', remote, 'ls-tree', 'main', 'program']);
+  assert.match(stdout, /^100755 blob/);
+  assert.deepEqual((await execute('git', ['--git-dir', remote, 'show', 'main:program'], { encoding: 'buffer' })).stdout,
+    Buffer.from([0, 180, 255]));
+  const checkout = /running (git init.+?)\. If/.exec(seededCheckoutInstruction)?.[1];
+  assert.ok(checkout);
+  await execute('sh', ['-ec', checkout], {
+    cwd: participant, env: { ...process.env, RUN_REPOSITORY: remote, RUN_INITIAL_COMMIT: commit, WORK_BRANCH: 'member' },
+  });
+  assert.deepEqual(await readFile(join(participant, 'program')), Buffer.from([0, 180, 255]));
+  assert.equal((await execute('git', ['rev-parse', 'HEAD'], { cwd: participant })).stdout.trim(), commit);
+  assert.equal((await execute('git', ['branch', '--show-current'], { cwd: participant })).stdout.trim(), 'member');
+});
+
+test('broken RPC output cancels admitted work and saves the available cleanup evidence', { timeout: 10_000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-pipe-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, 'harness.mjs'), `
+    export default { id: 'pipe-probe', apiVersion: 1, async run({ signal, markRunning, emit }) {
+      const timer = setInterval(() => emit({ kind: 'probe-heartbeat' }), 20);
+      markRunning();
+      await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+      clearInterval(timer);
+      return { outcome: 'cancelled', reason: 'observed-cancel', artifacts: [],
+        cleanup: { status: 'complete', receipt: { closed: true } } };
+    } };
+  `);
+  const output = join(directory, 'results');
+  const client = rpcClient(t, directory, ['--harness', './harness.mjs', '--mode', 'rpc', '--output-dir', output]);
+  await client.take(value => value.type === 'ready');
+  client.send({ id: 'run', operation: 'run', input: { prompt: 'Keep running until the pipe fails' } });
+  const { runId } = await client.take(value => value.id === 'run');
+  await client.take(value => value.event?.phase === 'running');
+  client.child.stdout.destroy();
+  assert.deepEqual(await client.exit, [1, null]);
+  const report = JSON.parse(await readFile(join(output, runId, 'project-run.json'), 'utf8'));
+  assert.equal(report.stopReason, 'output-failed');
+  assert.deepEqual(report.cleanup, { status: 'complete', receipt: { closed: true } });
+});

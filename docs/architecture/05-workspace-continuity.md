@@ -1,5 +1,7 @@
 # 05. Workspace, Sandbox and continuity
 
+The installed project command runs with a captured directory and the initial prompt. Follow its startup, domain setup, and receipts in [Project Harness entry](23-project-harness.md).
+
 This chapter describes the current filesystem and process behavior, including
 the direct Workspace-to-Judge input boundary added for Issue #117.
 [Execution](02-execution.md)

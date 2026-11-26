@@ -1,5 +1,7 @@
 # Lead-Worker Harness
 
+The installed project command runs with a captured directory and the initial prompt. Follow its startup, domain setup, and receipts in [Project Harness entry](23-project-harness.md).
+
 The entry point is [`runLeadWorker`](../../src/harnesses/lead-worker/index.ts), with the editable CLI in [`examples/lead-worker/main.ts`](../../examples/lead-worker/main.ts). This is a local Harness and Service implementation with one host-created lead and a preconfigured set of helpers, a durable public Board and a retained Git project. It imports public Core and ServiceRegistry. The default workflow uses fixed roles and no Agent control operations. Opt-in dynamic mode adds one member and one Run-owned checking Service using the same Core and Git project.
 
 ## Configuration, identities and startup

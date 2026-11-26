@@ -5,6 +5,15 @@ section: 协作机制
 order: 11
 ---
 
+## 在普通项目中运行
+
+```sh
+cd my-project
+murm --harness lead-worker --prompt "根据解析测试修复当前项目"
+```
+
+Lead–Worker 将 prompt 发给 Lead，初始化团队 Git 与成员 Sandbox。用 `MURM_LEAD_WORKER_TEAM=dynamic` 选择动态团队。动态检查器使用 `MURM_LEAD_WORKER_CHECKING_IMAGE` 或 Worker 镜像设置中的不可变 Docker 镜像 ID。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
+
 **Lead-Worker**（`src/harnesses/lead-worker/`）适合需要明确由一人掌舵方向、同时强制将一线执行反馈纳入下一轮规划的团队。1 名 `lead` 与 2–7 名 Worker（代码中角色名为 `helper1..helperN`）在各自持久化会话中运行，拥有独立 Gitea 账号、个人 Git 分支以及一个本地 SQLite **`board` Service**。
 
 宿主通过 [SDK](../sdk.md) 组合 Runtime、Service 与 OpenSandbox 后端。`createLeadWorkerHarness` 和 `runLeadWorker` 是 `src/harnesses/lead-worker/` 下的仓库模块，没有从公共包入口导出。默认模式在启动前确定团队。随包提供的[动态订单示例](../../../examples/lead-worker/README.md)允许 Lead 在工作进行中部署检查 Service、登记 Profile、接纳新成员并更新原 Worker 的授权。

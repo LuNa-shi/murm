@@ -1,5 +1,17 @@
 # Notes Harness
 
+## Run from your project
+
+```sh
+cd my-project
+murm --harness notes --prompt "Inspect this project and explain how to verify it"
+```
+
+The writer and reader use the same captured project to publish and use a task observation. The reader exports an artifact that includes the retrieved note.
+
+After installing the built tarball, configure the model route, compatible Worker image and other runtime resources described below. A JavaScript config can also be supplied with `--config`. The common command saves its outputs outside the input directory by default.
+
+
 The host imports only from `@murm/core` for Runtime, Sandbox and Service author APIs. See the [SDK guide](../../docs/en/sdk.md) for configuration and resource ownership.
 
 The package is currently distributed from a checkout as a tarball (`private: true`). Install the checkout dependencies with `npm ci` first. TypeScript sources compile with `npm run build` into `dist/`; `npm pack` builds JavaScript and declarations before archiving.

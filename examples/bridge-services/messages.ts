@@ -5,7 +5,7 @@ const text = { type: 'string', minLength: 1, maxLength: 2048 };
 const message = { type: 'object', properties: { key, text, author: { type: 'string' } },
   required: ['key', 'text', 'author'], additionalProperties: false };
 
-type Call = { operation: string; operationId: string; agentId: string };
+type Call = { operation: string; operationId: string; agentId: string; text: string; author: string; key: string };
 
 export function createMessageService(remote?: { url: string; token: string }, observed?: (call: Call) => void): ServiceRegistration {
   const manifest: ServiceRegistration['manifest'] = {
@@ -46,7 +46,7 @@ export function createMessageService(remote?: { url: string; token: string }, ob
             result.text.length > 0 && result.text.length <= 2048 && typeof result.author === 'string' &&
             Object.keys(result).length === 3 &&
             (operation === 'get' || (result.text === input.text && result.author === caller.agentId))) {
-          observed({ operation, operationId: envelope.operation_id, agentId: caller.agentId });
+          observed({ operation, operationId: envelope.operation_id, agentId: caller.agentId, text: result.text, author: result.author, key: result.key });
         }
       } catch { /* The HTTP adapter reports malformed or interrupted transport. */ }
       finally { void reader.cancel().catch(() => {}); }
@@ -57,9 +57,11 @@ export function createMessageService(remote?: { url: string; token: string }, ob
   const adapter = createInProcessAdapter({ invoke({ capability, input, caller, envelope, assertAuthorized }) {
     const { key, text } = input as { key: string; text: string };
     const previous = records.get(key);
-    const report = () => observed?.({ operation: capability.operation, operationId: envelope.operation_id, agentId: caller.agentId });
+    const report = (record: { key: string; text: string; author: string }) => observed?.({
+      operation: capability.operation, operationId: envelope.operation_id, agentId: caller.agentId, ...record,
+    });
     if (capability.operation === 'get') {
-      if (previous) report();
+      if (previous) report(previous);
       return previous ?? null;
     }
     if (previous && (previous.author !== caller.agentId || previous.text !== text)) {
@@ -68,7 +70,7 @@ export function createMessageService(remote?: { url: string; token: string }, ob
     assertAuthorized();
     const record = previous ?? { key, text, author: caller.agentId };
     if (!previous) records.set(key, record);
-    report();
+    report(record);
     return record;
   } });
   return { manifest, adapter };

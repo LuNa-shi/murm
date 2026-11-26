@@ -1875,7 +1875,8 @@
       "path": "scripts/murm-project.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-harness-reporting.md"
+        "docs/architecture/17-harness-reporting.md",
+        "docs/architecture/23-project-harness.md"
       ],
       "role": "Installed project command, stream ownership, signal handling and protocol flush"
     },
@@ -1883,7 +1884,8 @@
       "path": "src/harnesses/shared/project-input.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-harness-reporting.md"
+        "docs/architecture/17-harness-reporting.md",
+        "docs/architecture/23-project-harness.md"
       ],
       "role": "Bounded capture of the selected host project and canonical initial file digest"
     },
@@ -1891,7 +1893,8 @@
       "path": "src/harnesses/shared/project-harness.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-harness-reporting.md"
+        "docs/architecture/17-harness-reporting.md",
+        "docs/architecture/23-project-harness.md"
       ],
       "role": "ESM Harness module loading, application Run admission, lifecycle and result persistence"
     },
@@ -1899,7 +1902,8 @@
       "path": "src/harnesses/shared/project-rpc.ts",
       "category": "launch and composition",
       "chapters": [
-        "docs/architecture/17-harness-reporting.md"
+        "docs/architecture/17-harness-reporting.md",
+        "docs/architecture/23-project-harness.md"
       ],
       "role": "Project Run JSONL protocol, request replay, bounded input queue and priority stop"
     },
@@ -2815,6 +2819,110 @@
         "docs/architecture/20-lead-worker-harness.md"
       ],
       "role": "Minimal incomplete orders CLI seeded into the dynamic acceptance project"
+    },
+    {
+      "path": "src/harnesses/shared/project-git.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Exact Git seed, authenticated push and populated checkout instructions"
+    },
+    {
+      "path": "src/harnesses/shared/project-runtime.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Ordered Runtime event observation, configuration loading and result projection"
+    },
+    {
+      "path": "examples/bridge-services/project.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Messages project dispatch, source installation and handoff result"
+    },
+    {
+      "path": "examples/lead-worker/project-config.ts",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Lead–Worker project resource, provider and Gitea defaults"
+    },
+    {
+      "path": "examples/lead-worker/project.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Static and dynamic Lead–Worker project dispatch and final delivery receipt"
+    },
+    {
+      "path": "examples/notes/project.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Notes project roles, note retrieval and exact export check"
+    },
+    {
+      "path": "examples/peermesh/project-config.ts",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "PeerMesh project provider, Gitea, Mattermost and Board defaults"
+    },
+    {
+      "path": "examples/peermesh/project.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "PeerMesh project issue, installed files, work limit and main export"
+    },
+    {
+      "path": "examples/subagents/project.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Subagents project dispatch, frozen child input and Root RPC input"
+    },
+    {
+      "path": "examples/substrate/project-config.ts",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Substrate project connection, resource and peer defaults"
+    },
+    {
+      "path": "examples/substrate/project.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "Substrate project question, peer FileTree and Run observation"
+    },
+    {
+      "path": "examples/taskpool/config.ts",
+      "category": "Configuration and build",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "TaskPool project resources, provider, work windows and capacity"
+    },
+    {
+      "path": "examples/taskpool/project.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/23-project-harness.md"
+      ],
+      "role": "TaskPool Mission and Workspace instantiation, fixed discovery files and reports"
     }
   ]
 }

@@ -1,4 +1,5 @@
 import { randomBytes, createHash } from 'node:crypto';
+import { seedTeamRepository } from '../shared/project-git.js';
 import { httpClient } from '../peermesh/http.js';
 import { leadWorkerRoles, matchesRoles, matchesTeam } from './team.js';
 
@@ -8,7 +9,7 @@ const requireString = (value: any) => { if (typeof value !== 'string' || !value)
 
 /** Agensh's bounded HTTP, restricted accounts/token scopes and cleanup ownership;
  * one retained project with separate account identities for the fixed team. */
-export async function prepareLeadWorkerGit({ runId, gitea, resources, signal, helperCount, initialFiles }: any) {
+export async function prepareLeadWorkerGit({ runId, gitea, resources, signal, helperCount, initialFiles, projectFiles }: any) {
   const roles = leadWorkerRoles(helperCount);
   if (!/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '')) throw new TypeError('Invalid lead-worker run');
   const raw = httpClient(gitea.origin, `token ${requireString(gitea.adminToken)}`);
@@ -16,10 +17,13 @@ export async function prepareLeadWorkerGit({ runId, gitea, resources, signal, he
   const owner = requireString(gitea.owner); const repository: any = { owner, name: `lead-worker-${runId}` };
   if ((await request('GET', '/api/v1/user'))?.login !== owner) throw new TypeError('Git owner must be the provisioner');
   const repo = `/api/v1/repos/${e(owner)}/${e(repository.name)}`;
+  const repositoryUrl = `${gitea.origin.replace(/\/$/, '')}/${e(owner)}/${e(repository.name)}.git`;
   resources.own({ kind: 'repository-create-intent', id: `${owner}/${repository.name}`, retained: true });
-  await request('POST', `/api/v1/admin/users/${e(owner)}/repos`, { name: repository.name, private: true, auto_init: true, default_branch: 'main' });
+  await request('POST', `/api/v1/admin/users/${e(owner)}/repos`, { name: repository.name, private: true, auto_init: projectFiles === undefined, default_branch: 'main' });
   resources.own({ kind: 'repository', id: `${owner}/${repository.name}`, retained: true });
-  for (const [path, content] of Object.entries((initialFiles ?? {}) as Record<string, string>)) {
+  const initialCommit = projectFiles === undefined ? undefined :
+    await seedTeamRepository({ files: projectFiles, url: repositoryUrl, owner, token: gitea.adminToken, signal });
+  if (projectFiles === undefined) for (const [path, content] of Object.entries((initialFiles ?? {}) as Record<string, string>)) {
     await request('POST', `${repo}/contents/${path.split('/').map(e).join('/')}`, {
       branch: 'main', message: 'Seed the orders project', content: Buffer.from(content, 'utf8').toString('base64'),
     });
@@ -61,7 +65,7 @@ export async function prepareLeadWorkerGit({ runId, gitea, resources, signal, he
     await raw('POST', `${repo}/branches`, { new_branch_name: actor.branch, old_branch_name: 'main' }, { signal: memberSignal });
     return actor;
   }
-  return { runId, origin: gitea.origin, repository, repositoryUrl: `${gitea.origin.replace(/\/$/, '')}/${e(owner)}/${e(repository.name)}.git`, actors, prepareMember };
+  return { runId, origin: gitea.origin, repository, repositoryUrl, initialCommit, actors, prepareMember };
 }
 
 /** Tokens remain in the host adapter; native Git receives only its own token. */

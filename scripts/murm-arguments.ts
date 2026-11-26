@@ -6,6 +6,9 @@ export const doctorUsage = 'Usage: murm doctor [--config <config.js>] [--smoke]'
 const projectUsage = [
   'Usage: murm --harness <module> --prompt <text> [--cwd <directory>] [--config <module>] [--output-dir <directory>]',
   '       murm --harness <module> --mode rpc [--config <module>] [--output-dir <directory>]',
+  'Built-in Harnesses: subagents, taskpool, peermesh, substrate, lead-worker, notes, messages',
+  'Use a built-in name, an explicit .mjs or ESM .js file, or a package installed from the invocation directory.',
+  'The project directory defaults to the invocation directory. In RPC mode send cwd and prompt in the run request.',
 ].join('\n');
 export const murmUsage = [
   'Usage: murm                         Start an interactive session in the current project',

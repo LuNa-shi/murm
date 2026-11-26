@@ -1,5 +1,7 @@
 # 02. Execution, Core scheduling and failure recovery
 
+The installed project command runs with a captured directory and the initial prompt. Follow its startup, domain setup, and receipts in [Project Harness entry](23-project-harness.md).
+
 > This chapter covers the Task-bound Runtime and provider primitives. [Core Runtime](15-core-runtime.md) describes the separate public Agent lifetime and [foreground Harness control](17-harness-reporting.md#foreground-harness-control) covers the new TaskPool host responsibilities.
 
 An Execution is a durable authorization for an Agent to work on a Task. Runtime binds that authorization to a Core, a Workspace and a model Session. Runtime always removes the Session from Runtime's reusable set and stops it with the Sandbox when the Execution releases. A later Execution then requires a fresh Agent/Session. Neither a model reply nor the end of a turn automatically completes an Execution or Task.

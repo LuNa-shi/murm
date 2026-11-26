@@ -5,6 +5,15 @@ section: 协作机制
 order: 10
 ---
 
+## 在普通项目中运行
+
+```sh
+cd my-project
+murm --harness substrate --prompt "根据解析测试修复当前项目"
+```
+
+每个 peer 都取得捕获的文件，并在每个周期将 prompt 作为问题。FATE 通过显式的准备、运行、矩阵和评分命令执行。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
+
 **Substrate**（`src/harnesses/substrate/`）展示了一个多智能体 Harness 可以精简到什么程度：没有任务表、没有管理员、也没有私信。3–8 位对等成员围绕同一份 **SQLite 不可变共享库（substrate）** 并行探索——检索并阅读彼此先前的发现，再发布自包含的后续成果并显式声明引用。
 
 示例宿主通过 [SDK](../sdk.md) 创建 Runtime，并使用通用 OpenSandbox 后端。`runSubstrate` 运行器和 SQLite Service 都是可修改的仓库模块，没有作为包入口导出。下面的通用示例与 FATE 运行器采用相同的成果共享思路，但 Service schema 和检索策略不同。
@@ -114,7 +123,7 @@ export MURM_FATE_PROJECT=/path/to/fate-x
 export MURM_FATE_LEAN=/path/to/lean-4.28.0
 
 node dist/examples/substrate/main.js --fate-prepare "$MURM_FATE_PROJECT" "$MURM_FATE_LEAN" FATE-X
-node dist/examples/substrate/main.js dist/examples/substrate/fate-config.js
+node dist/examples/substrate/main.js --fate-run dist/examples/substrate/fate-config.js
 ```
 
 ## 源码索引

@@ -26,3 +26,21 @@ Body SHA-256: `b29e6aa2f2df2da4e438f3c961c65e8cd0bc00d939b6a062c5167d57474dad15`
 ````text
 Use Bash to read the existing review.md from the previous turn and copy it unchanged to followup.md.
 ````
+## Project Writer Profile prompt
+
+The writer receives the original user prompt directly through followUp after the project FileTree is installed.
+
+Body SHA-256: `7c837d4ea04e4ebeb80b4d8a77c479247fb9552ffeee1eaa46da945b60a84182`
+
+````text
+Read your local project and publish one concrete, task-relevant observation in Notes. Include a relative source path and explain what you found. Publish it with swarm notes put under key project-observation, then finish.
+````
+## Project Reader Profile prompt
+
+The reader receives JSON with task equal to the original user prompt and artifact equal to the Run-specific result filename.
+
+Body SHA-256: `fc61ef0ba300ba64b83180539f16e5a535fe0d926bdd55bae62b522a78a238c0`
+
+````text
+Retrieve project-observation with swarm notes get. Compare the observation with the project files, use it to address the task, and write your evidence and results to the specified result file. Include the exact note text so the handoff can be checked.
+````

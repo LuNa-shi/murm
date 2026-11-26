@@ -1,5 +1,7 @@
 # Runtime evidence and Harness reports
 
+The installed project command runs with a captured directory and the initial prompt. Follow its startup, domain setup, and receipts in [Project Harness entry](23-project-harness.md).
+
 This chapter describes the private Core evidence files, the Service observation hook and the shared host report helper. [Core Runtime](15-core-runtime.md) and [Pi/OpenSandbox](16-pi-opensandbox-backend.md) describe execution and resource ownership.
 
 ## Runtime summary and ordered observations

@@ -22,7 +22,7 @@ function safePath(path: string) {
   return filePath.test(path) && !path.split('/').some(part => ['.', '..', '.git'].includes(part.toLowerCase()));
 }
 
-export async function fetchOrdersCandidate({ repositoryUrl, token, commit, sha256, signal }: Omit<Parameters<DynamicLeadWorkerOptions['verifyFinal']>[0], 'resources'>) {
+export async function fetchOrdersCandidate({ repositoryUrl, token, commit, sha256, signal }: Omit<Parameters<NonNullable<DynamicLeadWorkerOptions['verifyFinal']>>[0], 'resources'>) {
   const url = new URL(repositoryUrl);
   const parts = url.pathname.match(/^\/([^/]+)\/([^/]+)\.git$/);
   if (!parts || !commitId.test(commit) || !/^[a-f0-9]{64}$/.test(sha256) || url.username || url.password || url.search || url.hash)

@@ -125,7 +125,7 @@ export class MissionWorkspace {
     return join(this.rootDir, id);
   }
 
-  async create({ missionId, workspaceId = `workspace-${randomUUID()}`, initialFiles = {}, metadata = {} }: any) {
+  async create({ missionId, workspaceId = `workspace-${randomUUID()}`, initialFiles = {}, initialFileModes, metadata = {} }: any) {
     required(missionId, 'mission_id');
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(this.rootDir, async () => {
@@ -145,8 +145,9 @@ export class MissionWorkspace {
           return this.#public(existing);
         }
         const files = this.#normalizeTree(initialFiles);
+        const modes = this.#normalizeModes(files, initialFileModes);
         await this.repository.initialize(root);
-        const imported = await this.repository.importTree(root, files, [], 'Workspace revision 0.1');
+        const imported = await this.repository.importTree(root, files, [], 'Workspace revision 0.1', modes);
         const revision = this.#revision('0.1', [], files, 'initial', imported);
         const record = { format_version: 2, workspace_id: workspaceId, mission_id: missionId, main_revision: '0.1', main_commit: imported.commit,
           next_revision: '0.2', revisions: ['0.1'], frozen_submission_id: null, metadata, created_at: this.clock(), updated_at: this.clock() };
@@ -403,7 +404,9 @@ export class MissionWorkspace {
     const { workspaceId, baseRevision, parentRevisions = null, source = 'execution', requestId, conflicts = [] } = normalized;
     const tree = this.#normalizeTree(normalized.files);
     normalized.files = tree;
-    const request: any = this.#request(requestId, { operation: 'save', workspaceId, baseRevision, parentRevisions, files: fileEntries(tree), source, ...(conflicts.length ? { conflicts } : {}) });
+    normalized.fileModes = this.#normalizeModes(tree, options.fileModes);
+    const request = this.#saveRequest({ workspaceId, baseRevision, parentRevisions, tree, source, conflicts, requestId,
+      modes: normalized.fileModes });
     return this.#runRequest(this.workspacePath(workspaceId), request, () => this.#save(normalized));
   }
 
@@ -412,7 +415,8 @@ export class MissionWorkspace {
   async replaySave(options: any) {
     const { workspaceId, baseRevision, parentRevisions = null, source = 'execution', requestId, conflicts = [] } = options;
     const tree = this.#normalizeTree(options.files);
-    const request: any = this.#request(required(requestId, 'request_id'), { operation: 'save', workspaceId, baseRevision, parentRevisions, files: fileEntries(tree), source, ...(conflicts.length ? { conflicts } : {}) });
+    const request = this.#saveRequest({ workspaceId, baseRevision, parentRevisions, tree, source, conflicts, requestId,
+      modes: this.#normalizeModes(tree, options.fileModes) });
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, () => this.#replay(root, request));
   }
@@ -463,11 +467,18 @@ export class MissionWorkspace {
     return promise;
   }
 
-  async #save({ workspaceId, baseRevision, parentRevisions = null, files, source = 'execution', conflicts = [], requestId = randomUUID(), guard = null, withPublication = (publish: any) => publish() }: any) {
+  #saveRequest({ workspaceId, baseRevision, parentRevisions, tree, source, conflicts, requestId, modes }: any) {
+    return this.#request(requestId, { operation: 'save', workspaceId, baseRevision, parentRevisions,
+      files: fileEntries(tree), source, ...(conflicts.length ? { conflicts } : {}),
+      ...(modes === undefined ? {} : { file_modes: modes }) });
+  }
+
+  async #save({ workspaceId, baseRevision, parentRevisions = null, files, fileModes, source = 'execution', conflicts = [], requestId = randomUUID(), guard = null, withPublication = (publish: any) => publish() }: any) {
     const root = this.workspacePath(workspaceId);
     const tree = this.#normalizeTree(files);
     if (!Array.isArray(conflicts)) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace conflicts must be an array');
-    const request: any = this.#request(requestId, { operation: 'save', workspaceId, baseRevision, parentRevisions, files: fileEntries(tree), source, ...(conflicts.length ? { conflicts } : {}) });
+    const request = this.#saveRequest({ workspaceId, baseRevision, parentRevisions, tree, source, conflicts, requestId,
+      modes: fileModes });
     return this.repository.locked(root, async () => {
       const replay = this.#replay(root, request);
       if (replay) return replay;
@@ -476,12 +487,16 @@ export class MissionWorkspace {
       const parents = parentRevisions ?? [base];
       if (!Array.isArray(parents) || parents.length === 0 || !parents.includes(base) || new Set(parents).size !== parents.length) throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'save parents must include its actual base exactly once');
       const parentMetadata = await Promise.all(parents.map((parent: any) => this.#revisionMetadata(root, parent)));
-      const before = await this.#snapshot(root, base);
+      const baseMetadata = parentMetadata[parents.indexOf(base)];
+      const before = baseMetadata.files;
+      const baseModes = await this.repository.readModes(root, baseMetadata.git_tree);
+      const modes = fileModes ?? Object.fromEntries(Object.keys(tree).map(path => [path, baseModes[path] ?? 0o644]));
       const revision = record.next_revision;
-      const imported = await this.repository.importTree(root, tree, parentMetadata.map((parent: any) => parent.git_commit), `Workspace revision ${revision}`);
+      const imported = await this.repository.importTree(root, tree, parentMetadata.map((parent: any) => parent.git_commit), `Workspace revision ${revision}`, modes);
+      const modeChanges = Object.keys(tree).filter(path => Object.hasOwn(before, path) && baseModes[path] !== (modes[path] ?? 0o644));
       const metadata: any = this.#revision(revision, parents, tree, source, imported, requestId, conflicts);
       const result = { workspace_id: workspaceId, revision, base_revision: base, parents, git_commit: imported.commit,
-        files: metadata.files, changed_files: this.#changed(before, metadata.files), content_hash: metadata.content_hash, git_tree: imported.tree, source, conflicts };
+        files: metadata.files, changed_files: [...new Set([...this.#changed(before, metadata.files), ...modeChanges])].sort(), content_hash: metadata.content_hash, git_tree: imported.tree, source, conflicts };
       record.revisions.push(revision); record.next_revision = nextRevision(revision); record.updated_at = this.clock();
       const published = withPublication(() => {
         this.#guard(guard);
@@ -559,19 +574,21 @@ export class MissionWorkspace {
 
   // Trusted Runtime export: resolve main once and read all bytes under the
   // recovery barrier. This is not a model-supplied tree or a host-path API.
-  async exportRevision({ workspaceId, revision = 'main', signal = null }: any) {
+  async exportRevision({ workspaceId, revision = 'main', signal = null, withModes = false }: any) {
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
       const record = await this.#read(root);
       const selected = resolvedRevision(revision, record);
       const metadata: any = await this.#revisionMetadata(root, selected);
+      const modes = withModes ? Object.create(null) : undefined;
+      const files = await this.repository.readTree(root, metadata.git_tree, modes);
       return { workspace_id: workspaceId, mission_id: record.mission_id, revision: selected,
         git_commit: metadata.git_commit, git_tree: metadata.git_tree, content_hash: metadata.content_hash,
-        manifest: metadata.files, conflicts: metadata.conflicts ?? [], files: await this.#tree(root, selected) };
+        manifest: metadata.files, conflicts: metadata.conflicts ?? [], files, ...(withModes ? { file_modes: modes } : {}) };
     }, { signal });
   }
 
-  async planApply({ workspaceId, baseRevision, fromRevision, requestId }: any) {
+  async planApply({ workspaceId, baseRevision, fromRevision, requestId, withModes = false }: any) {
     required(requestId, 'request_id');
     const root = this.workspacePath(workspaceId);
     return this.repository.locked(root, async () => {
@@ -581,7 +598,9 @@ export class MissionWorkspace {
       const alreadyIncluded = await this.repository.isAncestor(root, source.git_commit, base.git_commit);
       const merged = alreadyIncluded ? { tree: base.git_tree, conflicted: false, stages: [], messages: [] }
         : await this.repository.applyTree(root, base.git_commit, source.git_commit);
-      const files = this.#normalizeTree(await this.repository.readTree(root, merged.tree));
+      const fileModes = withModes ? Object.create(null) : undefined;
+      const baseModes = withModes ? await this.repository.readModes(root, base.git_tree) : undefined;
+      const files = this.#normalizeTree(await this.repository.readTree(root, merged.tree, fileModes));
       const conflicts = [...(base.conflicts ?? []), ...(alreadyIncluded ? [] : source.conflicts ?? [])];
       if (merged.conflicted) {
         const id = textHash(stableStringify({ workspaceId, requestId, base: base.revision, source: source.revision })).slice(0, 24);
@@ -626,7 +645,10 @@ export class MissionWorkspace {
       return { workspace_id: workspaceId, base_revision: base.revision, source_revision: source.revision, already_included: alreadyIncluded,
         parents: alreadyIncluded ? [base.revision] : [...new Set([base.revision, source.revision])],
         expected_content_hash: base.content_hash, content_hash: textHash(stableStringify(manifest)), manifest, files: complete,
-        changed_paths: this.#changed(base.files, manifest), conflicts: [...new Map(conflicts.map(conflict => [conflict.conflict_id, conflict])).values()] };
+        ...(withModes ? { file_modes: fileModes, base_file_modes: baseModes } : {}),
+        changed_paths: [...new Set([...this.#changed(base.files, manifest),
+          ...Object.keys(fileModes ?? {}).filter(path => Object.hasOwn(base.files, path) && fileModes[path] !== baseModes?.[path])])].sort(),
+        conflicts: [...new Map(conflicts.map(conflict => [conflict.conflict_id, conflict])).values()] };
     });
   }
 
@@ -709,6 +731,20 @@ export class MissionWorkspace {
       tree[normalized] = Buffer.isBuffer(content) ? Buffer.from(content) : content;
     }
     return tree;
+  }
+  #normalizeModes(files: Record<string, unknown>, input: unknown) {
+    if (input === undefined) return undefined;
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace file modes must be a map');
+    }
+    const modes: Record<string, 0o644 | 0o755> = Object.create(null);
+    for (const [path, mode] of Object.entries(input)) {
+      if (!Object.hasOwn(files, path) || (mode !== 0o644 && mode !== 0o755)) {
+        throw new MurmError(ERROR_CODES.INVALID_CONTRACT, 'Workspace file mode does not name a supported project file');
+      }
+      modes[path] = mode;
+    }
+    return modes;
   }
   #revision(revision: any, parents: any, tree: any, source: any, imported: any, requestId: any = null, conflicts: any = []) {
     const files = fileEntries(tree);

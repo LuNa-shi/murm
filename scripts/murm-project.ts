@@ -3,6 +3,16 @@ import { resolveHarnessInput } from '../src/harnesses/shared/project-input.js';
 import { runProjectRpc } from '../src/harnesses/shared/project-rpc.js';
 import type { ProjectCommand } from './murm-arguments.js';
 
+const builtins = {
+  'lead-worker': new URL('../examples/lead-worker/project.js', import.meta.url).href,
+  peermesh: new URL('../examples/peermesh/project.js', import.meta.url).href,
+  notes: new URL('../examples/notes/project.js', import.meta.url).href,
+  messages: new URL('../examples/bridge-services/project.js', import.meta.url).href,
+  taskpool: new URL('../examples/taskpool/project.js', import.meta.url).href,
+  substrate: new URL('../examples/substrate/project.js', import.meta.url).href,
+  subagents: new URL('../examples/subagents/project.js', import.meta.url).href,
+};
+
 export async function runProjectCommand(command: ProjectCommand, launchDirectory: string) {
   const stdout = process.stdout.write;
   const transport = stdout.bind(process.stdout);
@@ -62,7 +72,7 @@ export async function runProjectCommand(command: ProjectCommand, launchDirectory
     startup.signal.addEventListener('abort', abortStartup, { once: true });
     let definition;
     try {
-      definition = await Promise.race([loadProjectHarness(launchDirectory, command.harness), stopped.promise]);
+      definition = await Promise.race([loadProjectHarness(launchDirectory, command.harness, builtins), stopped.promise]);
       startup.signal.throwIfAborted();
     } finally {
       startup.signal.removeEventListener('abort', abortStartup);

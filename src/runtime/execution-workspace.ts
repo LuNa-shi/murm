@@ -202,6 +202,9 @@ export class ExecutionWorkspace {
           state_version: current.version, manifest: snapshot.manifest, files: Object.fromEntries(Object.entries(snapshot.files).map(([path, bytes]: any) => [path, bytes.toString('base64')])),
           source: { mission_id: this.tasks.getTask(execution.task_id).mission_id, task_id: execution.task_id, execution_id: execution.execution_id, agent_id: execution.owner_ref, fencing_version: execution.fencing_version },
           conflicts: current.conflicts };
+        if (operation === 'save' && snapshot.core) {
+          captured.file_modes = Object.fromEntries(Object.keys(snapshot.files).map(path => [path, snapshot.core!.files[path]?.mode ?? 0o644]));
+        }
         if (operation === 'save' && input.material_ids?.length) {
           const context = this.context ?? this.tasks.contextService;
           if (!context?.readWorkspaceMaterialUses) throw new MurmError(ERROR_CODES.SERVICE_NOT_READY, 'Workspace Material use authority is unavailable');
@@ -211,19 +214,22 @@ export class ExecutionWorkspace {
         if (operation === 'apply') {
           assertNewExecutionWork(active);
           if (this.#view(current, snapshot).dirty) throw new MurmError(ERROR_CODES.WORKSPACE_BUSY, 'Save unsaved project changes before apply', { apply_blocker: 'dirty' });
-          const plan = await this.workspace.planApply({ workspaceId: current.workspace_id, baseRevision: captured.base_revision, fromRevision: input.from, requestId });
+          const plan = await this.workspace.planApply({ workspaceId: current.workspace_id, baseRevision: captured.base_revision, fromRevision: input.from, requestId, withModes: Boolean(snapshot.core) });
           if (plan.expected_content_hash !== snapshot.content_hash) throw invalid('Apply base differs from the current saved project');
           captured = { kind: 'apply', state_version: current.version, source: captured.source, ...plan,
             snapshot_request_id: `taskpool:snapshot:${hash(stableStringify([execution.execution_id, identity.requestId]))}`,
             files: Object.fromEntries(Object.entries(plan.files).map(([path, bytes]: any) => [path, Buffer.from(bytes).toString('base64')])) };
           if (snapshot.core) {
+            if (Object.keys(snapshot.files).some(path => (snapshot.core!.files[path]?.mode ?? 0o644) !== plan.base_file_modes[path])) {
+              throw new MurmError(ERROR_CODES.WORKSPACE_BUSY, 'Save unsaved project mode changes before apply', { apply_blocker: 'dirty' });
+            }
             const privateFiles = Object.entries(snapshot.core.files).filter(([path]) => !isPublishedProjectPath(path));
             captured.core = {
               expectedDigest: snapshot.core.digest,
               files: Object.fromEntries([
                 ...privateFiles,
                 ...Object.entries(captured.files).map(([path, data]) => [
-                  path, { encoding: 'base64', data, mode: snapshot.core!.files[path]?.mode ?? 0o644 },
+                  path, { encoding: 'base64', data, mode: plan.file_modes[path] ?? 0o644 },
                 ]),
               ]),
             };
@@ -453,7 +459,7 @@ export class ExecutionWorkspace {
     if (captured.source.execution_id !== execution.execution_id || captured.source.agent_id !== execution.owner_ref || captured.source.fencing_version !== identity.fencingVersion) throw invalid('Captured request identity does not match its E');
     const files = Object.fromEntries(Object.entries(captured.files).map(([path, encoded]: any) => [path, Buffer.from(encoded, 'base64')]));
     const options = { workspaceId: captured.workspace_id, baseRevision: captured.base_revision, parentRevisions: captured.parents,
-      files, source: captured.source, conflicts: captured.conflicts, requestId: `execution:${row.execution_id}:save:${row.request_id}`, guard: () => this.guard(identity),
+      files, fileModes: captured.file_modes, source: captured.source, conflicts: captured.conflicts, requestId: `execution:${row.execution_id}:save:${row.request_id}`, guard: () => this.guard(identity),
       withPublication: (publish: any) => publishWorkspace(this.db, publish) };
     let result;
     try {

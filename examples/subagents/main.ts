@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline';
 import { pathToFileURL } from 'node:url';
 import { createRuntime, createSandbox, getExecutorCapabilities, ServiceRegistry, type CollectionSpec,
-  type CreateRuntimeOptions, type FileTree, type SandboxConfig, type SpawnOptions } from '@murm/core';
+  type CreateRuntimeOptions, type FileTree, type Runtime, type SandboxConfig, type SpawnOptions } from '@murm/core';
 import { collaborationOperations, createCollaborationService } from './collaboration-service.js';
 import { createSubagentsController } from './controller.js';
 import { childPrompt, rootPrompt } from './prompts.js';
@@ -34,7 +34,14 @@ function deadline(value: number, name: string) {
   return value;
 }
 
-export async function createSubagentsHarness(config: Config) {
+type ProjectControls = {
+  signal?: AbortSignal;
+  childFiles?: FileTree;
+  onRuntime?: (runtime: Runtime) => void;
+};
+
+export async function createSubagentsHarness(config: Config, controls: ProjectControls = {}) {
+  controls.signal?.throwIfAborted();
   const { maxAgents = 4, maxDepth = 3, model = 'default', rootModel = model, childModel = model,
     closeTimeoutMs = 30_000, outputDir, image, files, collect, workspace } = config;
   if (!Number.isSafeInteger(maxAgents) || maxAgents < 1 || maxAgents > 64 ||
@@ -56,7 +63,9 @@ export async function createSubagentsHarness(config: Config) {
       child: { ...common, model: childModel, prompt: childPrompt },
     },
   });
-  team = createSubagentsController(runtime, { maxDepth, childWorkspace: workspace?.child });
+  team = createSubagentsController(runtime, {
+    maxDepth, childWorkspace: workspace?.child, childFiles: controls.childFiles, startupSignal: controls.signal,
+  });
   const closing = new AbortController();
   const sharedWriters = workspace?.root && 'id' in workspace.root &&
     workspace.child?.mode === 'read-write' && workspace.child.id === workspace.root.id;
@@ -90,11 +99,19 @@ export async function createSubagentsHarness(config: Config) {
   }
   let root;
   try {
+    controls.onRuntime?.(runtime);
+    controls.signal?.throwIfAborted();
     root = await runtime.spawn({ profile: 'root', requestId: 'root', files, collect, workspace: workspace?.root });
+    controls.signal?.throwIfAborted();
     team.attachRoot(root.id);
   } catch (error) {
-    await close().catch(() => undefined);
-    throw error;
+    const receipt = await close().catch(() => undefined);
+    if (!controls.signal) throw error;
+    const cause = error as { code?: string; cleanup?: string; message?: string };
+    throw Object.assign(new Error(cause?.message ?? 'Subagents startup failed', { cause: error }), {
+      code: cause?.code ?? 'SUBAGENTS_START_FAILED',
+      cleanup: receipt?.cleanup ?? 'pending', runtimeId: runtime.id, receipt,
+    });
   }
 
   return {
@@ -141,7 +158,8 @@ function reportRedactor(config: Config) {
 type Harness = Awaited<ReturnType<typeof createSubagentsHarness>>;
 
 export async function runSubagentsHarness(config: Config, signal?: AbortSignal,
-  interact?: (harness: Harness, signal: AbortSignal) => Promise<unknown>) {
+  interact?: (harness: Harness, signal: AbortSignal) => Promise<unknown>,
+  controls?: Omit<ProjectControls, 'signal'> & { onReady?: (harness: Harness) => void }) {
   const timeout = AbortSignal.timeout(deadline(config.workTimeoutMs ?? 120_000, 'workTimeoutMs'));
   const work = signal ? AbortSignal.any([signal, timeout]) : timeout;
   let harness: Harness | undefined;
@@ -152,11 +170,15 @@ export async function runSubagentsHarness(config: Config, signal?: AbortSignal,
     createRuntime: async () => {
       work.throwIfAborted();
       if (!interact && !config.goal?.trim()) throw new TypeError('Supply a task in config.goal or use interactive input');
-      harness = await createSubagentsHarness(config);
+      harness = await createSubagentsHarness(config, controls && { ...controls, signal: work });
       return harness;
     },
     afterClose: () => harness?.afterClose(),
     async run(env: Harness) {
+      if (controls) {
+        work.throwIfAborted();
+        controls.onReady?.(env);
+      }
       const initial = config.goal?.trim() ? await env.input(config.goal, 'initial-task') : undefined;
       if (initial && (typeof initial !== 'object' || !('status' in initial) || initial.status !== 'accepted')) {
         throw Object.assign(new Error('Root input was not confirmed'), { code: 'INPUT_UNKNOWN', receipt: initial });

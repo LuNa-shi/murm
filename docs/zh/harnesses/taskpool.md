@@ -5,6 +5,15 @@ section: 协作机制
 order: 8
 ---
 
+## 在普通项目中运行
+
+```sh
+cd my-project
+murm --harness taskpool --prompt "根据解析测试修复当前项目"
+```
+
+TaskPool 在运行目录创建 Mission 和 Workspace。prompt 成为 Mission 目标。Discovery 使用只读项目，领取 Task 后按所选 Workspace 版本获得可写目录。 调用 TS SDK 的旧示例和基准测试专用参数见下文。
+
 TaskPool 让一组研究者在个别 Agent 完工、超时或轮换后继续推进项目。每个 Agent 自主发现并选择 Task，发布可复用的 Material，将成果保存到公共 Workspace。宿主负责维持并发数量，并通过租约落实任务归属。
 
 实现位于 `examples/taskpool/`，组合了 [Core SDK](../sdk.md) 与仓库现有的 Mission、Task、Material、Workspace 存储。`runTaskPoolHarness` 是仓库中的宿主函数，没有从 `@murm/core` 导出。调用它需要提供这些存储和已准备好的 Mission/Workspace，不能只传一个普通配置文件就建立完整任务池。

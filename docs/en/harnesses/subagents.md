@@ -5,6 +5,15 @@ section: HARNESSES
 order: 7
 ---
 
+## Run an ordinary project
+
+```sh
+cd my-project
+murm --harness subagents --prompt "Fix the parser using the project tests"
+```
+
+Subagents sends the prompt to Root and supplies the captured project to Root and each Child. The application uses separate Sandbox directories. Optional RPC input goes to Root. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
+
 **Subagents** models a lead agent (`/root`) that breaks down a task, spawns named child agents recursively (up to `maxDepth`), exchanges messages in real time, and integrates results. Source: [examples/subagents](https://github.com/LuNa-shi/murm/tree/main/examples/subagents).
 
 The host imports the public SDK from `@murm/core`. `createSubagentsHarness` belongs to the example source. See the [SDK guide](../sdk.md) for installation.

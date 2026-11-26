@@ -5,6 +5,15 @@ section: HARNESSES
 order: 8
 ---
 
+## Run an ordinary project
+
+```sh
+cd my-project
+murm --harness taskpool --prompt "Fix the parser using the project tests"
+```
+
+TaskPool creates the Mission and its Workspace in the Run directory. The prompt is the Mission goal. Discovery starts from the read-only project and execution uses the Workspace revision selected when it takes a Task. The sections below also cover direct SDK embedding and explicit benchmark fixtures.
+
 TaskPool lets a group of researchers keep working while individual Agents finish, time out or rotate. Each Agent discovers Tasks, chooses one, publishes reusable Materials and saves its work into the public Workspace. The host keeps the pool populated and enforces ownership through leases.
 
 The implementation lives in `examples/taskpool/`. It composes the [Core SDK](../sdk.md) with the repository's existing Mission, Task, Material and Workspace stores. `runTaskPoolHarness` is a repository host function, not an exported member of `@murm/core`. It requires those stores and a prepared Mission/Workspace; it is not a standalone configuration-only example.

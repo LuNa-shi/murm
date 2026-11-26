@@ -1,5 +1,7 @@
 # PeerMesh Harness
 
+The installed project command runs with a captured directory and the initial prompt. Follow its startup, domain setup, and receipts in [Project Harness entry](23-project-harness.md).
+
 PeerMesh is the murm Harness. It adapts the pinned upstream Agensh Board through the `peermesh-context` Service. Host configuration uses `MURM_PEERMESH_*` settings and diagnostic codes use the `PEERMESH_*` prefix.
 
 This chapter describes the ordinary #201 project team and the public-Core compatibility cases for #177–#179. The original native Agensh math experiment is preserved at the fixed [research revision](https://github.com/LuNa-shi/SwarmEnv/blob/dc011003fa0354a881b7a3ba9ba901fe36cbcac9/docs/architecture/14-agensh-lean.md). The implementation has deterministic checks; its opt-in physical acceptance is a separate gate and is not established by this chapter. The native comparison uses the pinned upstream revision `2dae4e14a653da48549fd9aa093f834841475d6c`; current operation is described below, with acceptance evidence tracked in the linked Issues.
