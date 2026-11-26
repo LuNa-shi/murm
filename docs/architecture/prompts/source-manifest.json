@@ -39,11 +39,11 @@
     },
     {
       "path": "scripts/opensandbox-agent-worker.ts",
-      "sha256": "a43706312568f20ad444a7e1694c9e10db2e708308ed5e7aa606f11893cc2ea5"
+      "sha256": "44e862e1732aea83c9319fe2cfe1a1ef83ed1bb57892b410b5719c31b3a8a3da"
     },
     {
       "path": "scripts/codex-app-server-driver.ts",
-      "sha256": "e6274a207b90d5f24bac5ee4e4481e8e28886282ec9799b403ccc37f43bab776"
+      "sha256": "98558cb0602dc484429981ea0daa21c98c6e2dad298dc736af7340a0c3e0b272"
     },
     {
       "path": "examples/notes/main.ts",
