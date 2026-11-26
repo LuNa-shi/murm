@@ -104,7 +104,11 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     registrations.set('agent', createAgentService({ runtimeId, getAgent: id => getAgent(id),
       spawn: (input, caller) => spawn(input, caller), get, send, stop }));
     profiles = snapshotProfiles(options.profiles, config.models, registrations);
-    for (const profile of profiles.values()) executorDriver(config).assertEnvironment(profile.env);
+    for (const profile of profiles.values()) {
+      const driver = executorDriver(config);
+      driver.assertEnvironment(profile.env);
+      if (profile.allowContextFork && !driver.capabilities.contextFork) throw new TypeError('Backend does not support Profile Context Fork authority');
+    }
     modelAccessPolicy = options.modelAccessPolicy;
     outputDir = join(resolve(options.outputDir), runtimeId);
   } catch (error: any) {

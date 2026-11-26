@@ -43,3 +43,12 @@ test('Codex rejects executor configuration through ordinary Profile environment 
     }), { code: 'INVALID_CONTRACT', cleanup: 'complete' });
   }
 });
+
+
+test('Codex rejects a Profile granting unsupported Context Fork before assembly', async () => {
+  await assert.rejects(createRuntime({
+    backend: createCodexOpenSandboxBackend(configuration),
+    profiles: { worker: { model: 'default', image: 'codex-test', writable: true, services: {}, allowContextFork: true } },
+    services: new ServiceRegistry(), maxAgents: 1, outputDir: '/unallocated-codex-runtime',
+  }), { code: 'INVALID_CONTRACT', cleanup: 'complete' });
+});
