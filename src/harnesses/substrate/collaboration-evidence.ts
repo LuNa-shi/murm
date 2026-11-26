@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
-const invalid = () => Object.assign(new Error('Ordered host checkpoints do not establish the scaleMAS collaboration handoff'), { code: 'COLLABORATION_EVIDENCE_INVALID' });
+const invalid = () => Object.assign(new Error('Ordered host checkpoints do not establish the Substrate collaboration handoff'), { code: 'COLLABORATION_EVIDENCE_INVALID' });
 const requireEvidence = (condition: any) => { if (!condition) throw invalid(); };
 const digest = (content: any) => createHash('sha256').update(content).digest('hex');
 

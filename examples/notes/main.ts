@@ -11,7 +11,7 @@ const key = 'core-service-boundary';
 export const fixedFact = Object.freeze({
   baseline: 'fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e',
   source: 'src/agent/services-bridge.js',
-  finding: 'Bridge identity and flat Task/Execution authorization have separate responsibilities.',
+  finding: 'Bridge identity and TaskPool Task/Execution authorization have separate responsibilities.',
 });
 
 const textField: any = { type: 'string', minLength: 1, maxLength: 2048 };

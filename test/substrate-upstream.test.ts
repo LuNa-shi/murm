@@ -26,7 +26,7 @@ for (const poolSize of [3, 6]) test(`all ${poolSize * 4} fixed exchanges admit e
   const phases = [];
   const upstream = await createSubstrateUpstream({ deadlineAt: Date.now() + 5000, poolSize, observe: async value => phases.push([value.phase, value.peer]) }); t.after(() => upstream.close());
   const send = (peer, cycle, row) => fetch(upstream.url, { method: 'POST', body: JSON.stringify({ model: 'k3', max_output_tokens: 128, input: [
-    { role: 'user', content: `scaleMAS peer=${peer} cycle=${cycle}\nfixed` },
+    { role: 'user', content: `Substrate peer=${peer} cycle=${cycle}\nfixed` },
     ...(row ? [{ type: 'function_call_output', call_id: `scale_${peer}_${cycle}`, output: JSON.stringify(row) }] : []),
   ] }) });
   let original;
@@ -50,7 +50,7 @@ for (const poolSize of [3, 6]) test(`the ${poolSize}-peer native fixture rejects
   const upstream = await createSubstrateUpstream({ deadlineAt: Date.now() + 5000, poolSize });
   t.after(() => upstream.close());
   const response = await fetch(upstream.url, { method: 'POST', body: JSON.stringify({ model: 'k3', max_output_tokens: 128,
-    input: [{ role: 'user', content: `scaleMAS peer=${poolSize} cycle=0\nfixed` }] }) });
+    input: [{ role: 'user', content: `Substrate peer=${poolSize} cycle=0\nfixed` }] }) });
   const stream = await response.text();
   assert.match(stream, /response.failed/);
   assert.ok(!stream.includes('function_call'));

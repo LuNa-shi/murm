@@ -104,7 +104,7 @@ test('foreground status follows Core activity and exposes only the latest error 
   assert.equal(report.cleanup.cleanup, 'complete');
 });
 
-test('flat host rejects an invalid snapshot binding before allocating any Agent', async t => {
+test('TaskPool host rejects an invalid snapshot binding before allocating any Agent', async t => {
   const config = await configuration(t);
   config.options.snapshotProject = true;
   let entered = false;

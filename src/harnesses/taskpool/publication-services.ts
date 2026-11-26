@@ -191,7 +191,7 @@ export function createTaskPoolPublicationServices({ runtime, taskService, contex
   });
   function assertWorkspace(identity: any,{receiptOnly=false}: any={}) {
     const execution=taskService.getExecution(identity.executionId), agent=taskService.getAgent(identity.actorRef);
-    if(!execution || !agent || execution.owner_ref!==identity.actorRef || execution.task_id!==identity.taskId || agent.mission_id!==missionId || execution.workspace_input?.workspace_id!==workspaceId) fail('NOT_ALLOWED','Workspace provenance is outside the current flat binding');
+    if(!execution || !agent || execution.owner_ref!==identity.actorRef || execution.task_id!==identity.taskId || agent.mission_id!==missionId || execution.workspace_input?.workspace_id!==workspaceId) fail('NOT_ALLOWED','Workspace provenance is outside the current TaskPool binding');
     if(!receiptOnly) {
       identity.assertAuthorized?.();
       if(identity.signal?.aborted) fail('NOT_ALLOWED','Workspace Service call was cancelled');

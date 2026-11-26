@@ -68,7 +68,7 @@ export function createTaskPoolTaskService({ runtime, taskService, missionId, mis
   }
   const adapter: any = { async invoke({ capability, input, caller, envelope, signal, assertAuthorized }: any) {
     const operation = capability?.operation;
-    if (!enabledOperations.includes(operation) || !input || typeof input !== 'object' || Array.isArray(input)) invalid('Unsupported flat Task operation or payload');
+    if (!enabledOperations.includes(operation) || !input || typeof input !== 'object' || Array.isArray(input)) invalid('Unsupported TaskPool Task operation or payload');
     const creating = operation === 'task_create';
     const coordination = enabledCoordination.includes(operation);
     const replacement = operation === 'task_dependency_replace';

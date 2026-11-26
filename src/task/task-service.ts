@@ -730,7 +730,7 @@ export class TaskService {
     });
   }
 
-  /** Trusted flat host confirms Core spawn readiness. Provider resources remain Core-owned. */
+  /** Trusted TaskPool host confirms Core spawn readiness. Provider resources remain Core-owned. */
   markCoreAgentReady(agentId: any) {
     return this.#transaction(() => {
       const current = this.getAgent(agentId);

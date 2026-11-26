@@ -327,7 +327,7 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
     tick:()=>enqueue(reconcile),
     notify(){if(!closing) void enqueue(reconcile).catch(()=>{});},
     feedback({taskId,input,requestId,mode='steer'}: any) {
-      if(typeof taskId!=='string'||typeof input!=='string'||!input || typeof requestId!=='string'||!requestId||!['steer','followUp'].includes(mode)) throw new TypeError('Directed flat feedback requires Task, text, stable request and mode');
+      if(typeof taskId!=='string'||typeof input!=='string'||!input || typeof requestId!=='string'||!requestId||!['steer','followUp'].includes(mode)) throw new TypeError('Directed TaskPool feedback requires Task, text, stable request and mode');
       const fingerprint=stableStringify({taskId,input,mode});
       const previous=feedbackRequests.get(requestId);
       if(previous) {if(previous.fingerprint!==fingerprint) throw new MurmError('CONFLICT','Feedback request changed');return previous.work;}

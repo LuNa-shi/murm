@@ -99,7 +99,7 @@ test('flat close retains physical cleanup and reconciles remaining Agents after 
 });
 
 
-test('flat host composes public Bash publication and controller finish with durable public results after close',async t=>{
+test('TaskPool host composes public Bash publication and controller finish with durable public results after close',async t=>{
   const root=await mkdtemp(join(tmpdir(),'taskpool-closed-loop-'));
   const stores=await createTaskPoolStores(root);
   t.after(async()=>{stores.close();await rm(root,{recursive:true,force:true});});

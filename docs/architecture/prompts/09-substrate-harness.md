@@ -51,10 +51,10 @@ Search relevant shared content, visit the originals, perform useful work, and pu
 
 index is the fixed zero-based peer index; round is its zero-based serial cycle; cycleQuestion is the validated trusted per-cycle question when supplied, otherwise the host question; cyclePrompt is the complete literal above. The host runInput helper sends this string as followUp. attempt is zero initially; a trusted checker correction appends finite feedback and uses a fresh correction request ID on the same Agent inside the original turn deadline.
 
-Body SHA-256: `de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926`
+Body SHA-256: `b3e9b0b92a6fbc3eec0a9e5903b3944b28a194009884d169e9fcc163a769f877`
 
 ````text
-`scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}` +
+`Substrate peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}` +
                     (attempt ? `\nCORRECTION_ATTEMPT_${attempt}: ${correction}` : '');
 ````
 ## FATE startup in the no-library condition

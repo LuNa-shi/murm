@@ -88,9 +88,9 @@ export default config;\n`, { mode: 0o600 });
   assert.ok(report.reads.some(read => read.agentId === report.result.readerId && read.found));
   const fact = JSON.parse(report.serviceState[0].text);
   assert.deepEqual(fact, { baseline: 'fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e', source: 'src/agent/services-bridge.js',
-    finding: 'Bridge identity and flat Task/Execution authorization have separate responsibilities.' });
+    finding: 'Bridge identity and TaskPool Task/Execution authorization have separate responsibilities.' });
   const files = report.result.artifacts.find(path => path.endsWith('/artifacts/files'));
-  const expected = '# Source review\n\nBaseline: fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e\nSource: src/agent/services-bridge.js\nFinding: Bridge identity and flat Task/Execution authorization have separate responsibilities.\n';
+  const expected = '# Source review\n\nBaseline: fcbe0107d8b4b204db0bcfa2a1ad1b2339c6293e\nSource: src/agent/services-bridge.js\nFinding: Bridge identity and TaskPool Task/Execution authorization have separate responsibilities.\n';
   for (const file of ['review.md', 'followup.md']) assert.equal(await readFile(join(files, file), 'utf8'), expected);
   const [writer, reader, followup] = upstream.receipt().evidence;
   assert.equal(writer.author, report.result.writerId);

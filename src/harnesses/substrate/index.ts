@@ -31,7 +31,7 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
       ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal)) ||
       (maxConcurrentInputs !== undefined && (!Number.isSafeInteger(maxConcurrentInputs) || maxConcurrentInputs < 1 || maxConcurrentInputs > poolSize)) ||
-      [beforeCycle, onReady, onCycle, onPeerStop, questionForCycle].some((hook: any) => hook !== undefined && typeof hook !== 'function')) throw new TypeError('scaleMAS requires a question, image, output directory, two to 32 rounds, finite waits and an optional trusted host lifecycle functions');
+      [beforeCycle, onReady, onCycle, onPeerStop, questionForCycle].some((hook: any) => hook !== undefined && typeof hook !== 'function')) throw new TypeError('Substrate requires a question, image, output directory, two to 32 rounds, finite waits and an optional trusted host lifecycle functions');
   const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId, poolSize });
   const peers: any[] = [], events: any[] = [];
   const controller: any = new AbortController();
@@ -96,7 +96,7 @@ export async function runSubstrate({ backend, runId, image, outputDir, question,
                   if (turnDeadline !== undefined && turnDeadline - performance.now() < 1) throw fail('SUBSTRATE_CORRECTION_WINDOW_CLOSED');
                   const currentRequestId = attempt ? `${requestId}:correction:${attempt}` : requestId;
                   const beforeSnapshot = substrate.snapshot();
-                  const text = `scaleMAS peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}` +
+                  const text = `Substrate peer=${peer.index} cycle=${round}\n${cycleQuestion}\n${cyclePrompt}` +
                     (attempt ? `\nCORRECTION_ATTEMPT_${attempt}: ${correction}` : '');
                   const sendInput = () => {
                     turnDeadline ??= performance.now() + Math.min(turnTimeoutMs, remaining());

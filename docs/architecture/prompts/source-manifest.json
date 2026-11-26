@@ -43,7 +43,7 @@
     },
     {
       "path": "examples/notes/main.ts",
-      "sha256": "ff007c4cc09a7c55abae8511b779a67bd4861dd994480997f746de0d05037477"
+      "sha256": "a472cca057e6a079d48cdb1db10ea4bfdbca9df8bfbfd40540349c82379597c8"
     },
     {
       "path": "src/harnesses/shared/run-input.ts",
@@ -51,15 +51,15 @@
     },
     {
       "path": "src/harnesses/substrate/index.ts",
-      "sha256": "493c43a53c6de264dadb07b8cbb927d68ed217e394b4797a6542c5faa555a825"
+      "sha256": "0f9ad76d6238a55fce98a54596dfd1741f538be5c8c57ca48d68d90987d0b493"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
-      "sha256": "9f437294b5c4e5cd354a89c19fe6d103b885c6fb47f3e25f0684575422a832e0"
+      "sha256": "35a73f5a9b7fd705be00060ac6994ddc63104081e14d6ee5cf383d37c849c6b4"
     },
     {
       "path": "src/harnesses/taskpool/controller.ts",
-      "sha256": "d668b18d1c5c31727fc7a85ec921f6654b4a33b183c4e52476f9e198334a5458"
+      "sha256": "060b7601b4600e2f70512a6ebc5369a63bc90001a96471d176e051106b578a26"
     },
     {
       "path": "src/harnesses/taskpool/harness.ts",
@@ -183,7 +183,7 @@
     },
     {
       "path": "src/task/task-service.ts",
-      "sha256": "73fbacae22379db50b90744840c6e942a12b8b80dcb280ea979ab8294beefc41"
+      "sha256": "73d37d53b15d4a745ccfa0354b0f93d365de0c33af8de0139b7683291233614d"
     },
     {
       "path": "src/task/task-types.ts",
@@ -297,7 +297,7 @@
       "path": "src/harnesses/substrate/index.ts",
       "anchor": "                  const text = ",
       "line": 99,
-      "sha256": "de42b6aff46ba3ae542d606c5787836d6ee3f25900a68b336ce82004ae828926"
+      "sha256": "b3e9b0b92a6fbc3eec0a9e5903b3944b28a194009884d169e9fcc163a769f877"
     },
     {
       "path": "examples/substrate/fate-run.ts",
@@ -595,7 +595,7 @@
     },
     {
       "path": "docs/architecture/prompts/09-substrate-harness.md",
-      "sha256": "136290b9e1cc3f20b1615bef8efc440a320fb95d50479197e3b1da4584a87830"
+      "sha256": "dab1c4e58d20ccd5d77451907161c12141553d2b23b4dc0331a97d4a7b9629c1"
     },
     {
       "path": "docs/architecture/prompts/08-peermesh-harness.md",

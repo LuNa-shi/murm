@@ -85,7 +85,7 @@ export async function createSubstrateUpstream({ deadlineAt, poolSize = 3, observ
       stage = 'fixed-input';
       const user = body.input.filter(row => row.role === 'user').at(-1);
       const text = typeof user?.content === 'string' ? user.content : user?.content?.map(row => row.text ?? '').join('');
-      const match = /^scaleMAS peer=([0-9]+) cycle=([01])\n/.exec(text); assert.ok(match);
+      const match = /^Substrate peer=([0-9]+) cycle=([01])\n/.exec(text); assert.ok(match);
       const peer = Number(match[1]), cycle = Number(match[2]), key = `${peer}:${cycle}`;
       assert.ok(Number.isSafeInteger(peer) && peer < poolSize);
       const turn = (stages.get(key) ?? 0) + 1; assert.ok(turn <= 2); stages.set(key, turn);

@@ -20,7 +20,7 @@ async function fixture(t, onPrompt, hooks = {}) {
     async onRpc(message) {
       if (message.type !== 'prompt') return { response: { id: message.id, success: true, command: message.type }, records: [] };
       prompts.push(message);
-      const match = /^scaleMAS peer=(\d) cycle=(\d)/.exec(message.message); assert.ok(match);
+      const match = /^Substrate peer=(\d) cycle=(\d)/.exec(message.message); assert.ok(match);
       const peer = Number(match[1]), cycle = Number(match[2]);
       const outcome = await onPrompt?.({ message, peer, cycle, starts });
       const sequence = sequences.get(peer) ?? 0; sequences.set(peer, sequence + 3);
@@ -39,7 +39,7 @@ async function fixture(t, onPrompt, hooks = {}) {
   return { directory, starts, prompts, provider, backend };
 }
 
-test('scaleMAS fixed three-peer pool uses serial fresh inputs on each same Core Agent and saves exact artifacts with independent cleanup', async t => {
+test('Substrate fixed three-peer pool uses serial fresh inputs on each same Core Agent and saves exact artifacts with independent cleanup', async t => {
   const f = await fixture(t);
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
   const report = await runSubstrate({ backend: f.backend, runId: 'fixed', image: 'fixture', outputDir: f.directory, question: 'Fixed source question', maxRounds: 2, workTimeoutMs: 5000, turnTimeoutMs: 1000, closeTimeoutMs: 1000 });
@@ -56,7 +56,7 @@ test('scaleMAS fixed three-peer pool uses serial fresh inputs on each same Core 
   assert.deepEqual(JSON.parse(await readFile(report.reportPath, 'utf8')).substrate, report.substrate);
 });
 
-test('a six-peer scaleMAS pool is fully ready before work and each peer completes two rounds', async t => {
+test('a six-peer Substrate pool is fully ready before work and each peer completes two rounds', async t => {
   const readyCounts = [];
   const f = await fixture(t, ({ starts }) => { readyCounts.push(starts.length); });
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
@@ -79,7 +79,7 @@ test('a six-peer scaleMAS pool is fully ready before work and each peer complete
   assert.deepEqual(new Set(report.cleanup.agents.map(agent => agent.agentId)), peers);
 });
 
-test('scaleMAS rejects unsupported pool sizes before allocating Agents', async t => {
+test('Substrate rejects unsupported pool sizes before allocating Agents', async t => {
   const f = await fixture(t);
   const { runSubstrate } = await import('../src/harnesses/substrate/index.js');
   for (const poolSize of [2, 9, 4.5, '6', null]) {
@@ -107,7 +107,7 @@ test('host cycle scheduling delays one peer while other peers complete their ser
   let report;
   try {
     await Promise.race([Promise.all([held.promise, othersDone.promise]), work.then(() => assert.fail('Run ended before host scheduling held the next cycle'))]);
-    assert.equal(f.prompts.filter(row => /^scaleMAS peer=0 cycle=1\n/.test(row.message)).length, 0);
+    assert.equal(f.prompts.filter(row => /^Substrate peer=0 cycle=1\n/.test(row.message)).length, 0);
     assert.equal(f.prompts.length, 5);
   } finally { release.resolve(); report = await work; }
   assert.equal(report.businessFailure, null); assert.equal(report.cleanupFailure, null);
