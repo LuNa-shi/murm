@@ -171,6 +171,7 @@ async function measure(count: number) {
     });
     runtime = await createRuntime({ backend, outputDir, services: new ServiceRegistry(), maxAgents: count,
       profiles: { probe: { prompt: 'Complete the controlled local file task.', image, writable: true, model: 'default', services: {} } } });
+    result.runtimeId = runtime.id;
     const agents = [];
     const startup = performance.now();
     result.readyMs = [];
@@ -262,6 +263,10 @@ async function measure(count: number) {
         }))).filter(Boolean).length;
         if (result.cleanup !== 'complete' || result.remainingContainers || result.remainingCgroups) result.status = 'failed';
       }
+    } catch (error) {
+      result.status = 'failed';
+      result.cleanup = 'pending';
+      result.cleanupFailure = error?.code ?? error?.name ?? 'CLEANUP_UNCONFIRMED';
     } finally {
       globalThis.fetch = originalFetch;
       await new Promise<void>(resolve => { probeServer.close(() => resolve()); probeServer.closeAllConnections(); });
