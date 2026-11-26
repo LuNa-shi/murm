@@ -47,7 +47,7 @@ interface BridgeFailure extends Error {
 }
 
 import { createServer } from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { invokeService } from './services.js';
 import { ERROR_CODES, MurmError } from '../errors.js';
 
@@ -84,6 +84,8 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
   const active = new Map<AbortController, string | undefined>();
   const visibleServices = (grants: BridgeAgent['services']) => permittedServiceManifests(registrations, grants);
   const server = createServer(async (request, response) => {
+    const attemptId = randomUUID();
+    const recordAttempt = (record: ServiceInvocationRecord) => recordService?.({ ...record, attemptId });
     let body: BridgeBody | undefined;
     let controller: AbortController | undefined;
     let instrumented = false;
@@ -129,7 +131,7 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
         if (!manifest) throw new MurmError('NOT_ALLOWED', 'Service is unavailable to this Profile');
         reply(response, 200, { ok: true, result: manifest }); return;
       }
-      trace = { runtimeId, caller: { runtimeId, agentId, profile: current.profile,
+      trace = { runtimeId, attemptId, caller: { runtimeId, agentId, profile: current.profile,
         ...(Object.hasOwn(current.bindings ?? {}, body.service_id) ? { binding: current.bindings![body.service_id] } : {}) },
         service: body.service_id, operation: body.operation, operation_id: body.operation_id,
         input: Object.hasOwn(body, 'payload') ? body.payload : {}, startedAt: new Date().toISOString() };
@@ -142,7 +144,7 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
       response.once('close', () => {
         if (!response.writableFinished) {
           controller?.abort();
-          recordService?.({ runtimeId, agentId: agentId!, profile: current.profile, serviceId: body!.service_id,
+          recordAttempt({ runtimeId, agentId: agentId!, profile: current.profile, serviceId: body!.service_id,
           operation: body!.operation, operationId: body!.operation_id, state: 'response', outcome: 'unknown' });
         }
       });
@@ -150,7 +152,7 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
       active.set(controller, agentId);
       instrumented = true;
       const result = await invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
-        envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService,
+        envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService: recordAttempt,
         assertAuthorized: () => {
           const latest=live();
           if(latest.profile!==caller.profile || !allows(latest.services, body!.service_id, body!.operation)) throw new MurmError('NOT_ALLOWED','Service caller authority was revoked');
@@ -166,7 +168,7 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
       const authenticated = agentId && getAgent(agentId);
       if (!instrumented && authenticated && typeof body?.operation_id === 'string' && body.operation_id.length <= 256 &&
           typeof body.service_id === 'string' && body.service_id.length <= 128 && typeof body.operation === 'string' && body.operation.length <= 128) {
-        recordService?.({ runtimeId, agentId: agentId!, profile: authenticated.profile, serviceId: body!.service_id,
+        recordAttempt({ runtimeId, agentId: agentId!, profile: authenticated.profile, serviceId: body!.service_id,
           operation: body!.operation, operationId: body!.operation_id, state: 'validation', outcome: 'not_executed',
           error: { code: ['NOT_ALLOWED', 'NOT_FOUND', 'INVALID_CONTRACT'].includes(code) ? code : 'SERVICE_UNAVAILABLE', retryable: false } });
       }

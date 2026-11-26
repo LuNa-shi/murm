@@ -81,6 +81,33 @@ test('prompt acknowledgement replays unread Worker prefix before its own respons
   assert.equal((await runtime.get(agent.id)).status, 'idle');
 });
 
+test('Run evidence preserves actual native execution and tool boundaries with Worker identity', async t => {
+  const { runtime, agent, outputDir } = await setup(t, { upstreamHeaders: { authorization: 'Bearer native-private-marker' } });
+  provider.wrapperReplay = true;
+  provider.wait = async message => {
+    provider.publish({ type: 'agent_start', worker_at: '2026-11-25T10:00:00.000Z' });
+    provider.publish({ type: 'tool_execution_start', worker_at: '2026-11-25T10:00:01.000Z', toolCallId: 'tool-1', toolName: 'bash', args: { command: 'echo native-private-marker', apiKey: 'field-private-marker' } });
+    provider.publish({ type: 'tool_execution_end', worker_at: '2026-11-25T10:00:02.000Z', toolCallId: 'tool-1', toolName: 'bash', result: { content: [{ type: 'text', text: 'hello' }] }, isError: false });
+    provider.publish({ type: 'agent_settled', worker_at: '2026-11-25T10:00:03.000Z' });
+    provider.responses.set(message.id, { response: { id: message.id, command: 'prompt', success: true, data: { disposition: 'started' } } });
+  };
+  await runtime.send(agent.id, 'fixed', { requestId: 'native-boundaries' });
+  await runtime.close();
+  const records = (await readFile(join(outputDir, runtime.id, 'evidence.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  const native = records.filter(row => row.type === 'native');
+  assert.deepEqual(native.map(row => row.eventType), ['agent_start', 'tool_execution_start', 'tool_execution_end', 'agent_settled']);
+  assert.deepEqual(native.map(row => row.workerSequence), [1, 2, 3, 4]);
+  assert.equal(native[0].schemaVersion, 1);
+  assert.equal(native[0].agentId, agent.id);
+  assert.equal(native[0].workerAt, '2026-11-25T10:00:00.000Z');
+  assert.equal(native[1].event.toolCallId, 'tool-1');
+  assert.equal(native[1].event.args.command, 'echo [redacted]');
+  assert.equal(native[1].event.args.apiKey, '[redacted]');
+  assert.equal(native[2].event.result.content[0].text, 'hello');
+  assert.equal(native[3].outcome, 'completed');
+  assert.equal(typeof native[0].runtimeId, 'string');
+});
+
 test('a response for another input cannot establish acceptance or rejection', async t => {
   const { runtime, agent } = await setup(t);
   provider.wait = async message => provider.responses.set(message.id, { response: {
@@ -150,6 +177,13 @@ test('lost Worker history emits a fatal gap and never fabricates a later settled
   assert.match(gap.error.message, /gap/);
   assert.equal(events.some(event => event.type === 'settled'), false);
   await assert.rejects(runtime.send(agent.id, 'unsafe fresh input', { requestId: 'after-gap' }), { code: 'NOT_ALLOWED' });
+  const closed = await runtime.close();
+  const rows = (await readFile(closed.evidence.path, 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+  const traceGap = rows.find(row => row.type === 'trace-gap');
+  assert.equal(traceGap.agentId, agent.id);
+  assert.equal(traceGap.expectedWorkerSequence, 1);
+  assert.equal(traceGap.observedWorkerSequence, 9);
+  assert.equal(rows.some(row => row.type === 'native' && row.eventType === 'agent_settled'), false);
 });
 
 test('a fatal history gap fences authority before subscribers while preserving receipts and owned cleanup', async t => {
