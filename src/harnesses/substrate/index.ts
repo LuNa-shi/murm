@@ -31,7 +31,7 @@ export async function runSubstrate({ sandbox, executor, models, connection, runI
       typeof image !== 'string' || !image || !Number.isSafeInteger(maxRounds) || maxRounds < 2 || maxRounds > 32 ||
       ![workTimeoutMs, turnTimeoutMs, closeTimeoutMs].every(finite) || (signal !== undefined && !(signal instanceof AbortSignal)) ||
       (maxConcurrentInputs !== undefined && (!Number.isSafeInteger(maxConcurrentInputs) || maxConcurrentInputs < 1 || maxConcurrentInputs > poolSize)) ||
-      [onRuntime, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle].some((hook: any) => hook !== undefined && typeof hook !== 'function')) throw Object.assign(new TypeError('Substrate requires a question, image, output directory, two to 32 rounds, and finite waits'), { code: 'INVALID_RUN_CONFIGURATION' });
+      [onRuntime, beforeCycle, onReady, onCycle, onPeerStop, questionForCycle].some((hook: any) => hook !== undefined && typeof hook !== 'function')) throw Object.assign(new TypeError('Substrate requires a question, image, output directory, two to 32 rounds, finite waits and an optional trusted host lifecycle functions'), { code: 'INVALID_RUN_CONFIGURATION' });
   const substrate = createSubstrateService({ databasePath: join(outputDir, 'substrate.sqlite'), runId, poolSize });
   const peers: any[] = [], events: any[] = [];
   const controller: any = new AbortController();

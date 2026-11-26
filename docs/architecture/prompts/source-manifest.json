@@ -79,7 +79,7 @@
     },
     {
       "path": "src/harnesses/substrate/index.ts",
-      "sha256": "2e99dcb6df660011e6e1d13d12e927fc2d6e83ad945604b12d686c7fcfad9c23"
+      "sha256": "fca69a8a92690ec2b13a8b302e09295d82ede413a5951c09fb552721792800b2"
     },
     {
       "path": "src/harnesses/substrate/substrate.ts",
@@ -171,7 +171,7 @@
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "7176668e5c5be92e4b52b3dc210be2b08011071ecf416804332e66f17d735d79"
+      "sha256": "f46fe8bb603fa8ceec1dffba24671dffc138d955fb7d3d83ff60b16d9ecf7145"
     },
     {
       "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",

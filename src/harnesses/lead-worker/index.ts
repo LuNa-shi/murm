@@ -15,17 +15,17 @@ import { projectLeadPrompt, projectIntegrationInstruction, projectStaticWorkerPr
 
 const fail = (code: any) => Object.assign(new Error(code), { code });
 const invalidConfiguration = (message: string) => Object.assign(new TypeError(message), { code: 'INVALID_RUN_CONFIGURATION' });
-const bounded = (value: any, fallback: any, maximum: any) => { const result = value ?? fallback; if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw invalidConfiguration('Invalid Lead–Worker wait bound'); return result; };
+const bounded = (value: any, fallback: any, maximum: any) => { const result = value ?? fallback; if (!Number.isSafeInteger(result) || result < 1 || result > maximum) throw invalidConfiguration('Invalid lead-worker wait bound'); return result; };
 export async function createLeadWorkerHarness(options: any) {
   const { runId, image, model = 'default', outputDir, sandbox, executor, models, connection, exportLimit = 64 * 1024 ** 2, helperCount = 2, includeGit = true } = options;
   const project = options.projectFiles !== undefined;
   let initialCommit: string | undefined;
   const dynamic: DynamicLeadWorkerOptions | undefined = options.dynamic;
   if (dynamic && (helperCount !== 2 || typeof dynamic.deploy !== 'function' || (!project && typeof dynamic.verifyFinal !== 'function') ||
-    typeof dynamic.goal !== 'string' || !dynamic.goal.trim())) throw invalidConfiguration('Invalid dynamic Lead–Worker options');
+    typeof dynamic.goal !== 'string' || !dynamic.goal.trim())) throw invalidConfiguration('Invalid dynamic Lead-Worker options');
   const roles = leadWorkerRoles(helperCount);
   const helperRoles = roles.slice(1);
-  if (typeof includeGit !== 'boolean' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw invalidConfiguration('Invalid Lead–Worker run configuration');
+  if (typeof includeGit !== 'boolean' || !/^[a-z0-9][a-z0-9-]{0,31}$/.test(runId ?? '') || typeof image !== 'string' || !image || typeof outputDir !== 'string' || !outputDir || !Number.isSafeInteger(exportLimit) || exportLimit < 1 || exportLimit > 64 * 1024 ** 2) throw invalidConfiguration('Invalid lead-worker run configuration');
   const turnTimeoutMs = bounded(options.turnTimeoutMs, 30_000, 300_000);
   const useRunDeadline = Boolean(dynamic && options.turnTimeoutMs === null);
   const workTimeoutMs = bounded(options.workTimeoutMs, 120_000, dynamic ? 1_800_000 : 900_000);

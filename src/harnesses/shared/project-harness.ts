@@ -278,6 +278,7 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
     } finally {
       clearTimeout(stopTimer);
       publishing = false;
+      phase = 'finished';
     }
     const result: RunResult = {
       ...business, runId: id, harness, cwd, initial, prompt: {
@@ -291,7 +292,6 @@ export function createProjectHost(definition: ProjectHarness, options: StartupOp
     } else {
       saved = { ...result, reportSaveFailure: { code: 'OUTPUT_UNAVAILABLE', message: 'Run output directory was not prepared' } };
     }
-    phase = 'finished';
     const code = reason === 'SIGINT' ? 130 : reason === 'SIGTERM' ? 143 :
       reason ? 1 : isLaunchError(failure?.code ?? saved.reason) ? 2 :
       saved.outcome !== 'completed' || saved.cleanup.status !== 'complete' ||
