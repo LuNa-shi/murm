@@ -1,7 +1,7 @@
 import { registerHooks } from 'node:module';
 import { transport } from './core-agent-service-backend.js';
 registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./peermesh-team-backend.js', import.meta.url).href, shortCircuit: true };
+  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) return { url: new URL('./peermesh-team-backend.js', import.meta.url).href, shortCircuit: true };
   return next(specifier, context);
 } });
 transport.reset(); transport.collectable = true;

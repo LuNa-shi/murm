@@ -9,7 +9,7 @@ import { controls, transport } from './taskpool-controller-backend.js';
 // Only provider execution is controlled. Core, authenticated Bridge, Agent CLI,
 // TaskPool preparation, directed input and domain/physical close run normally.
 registerHooks({ resolve(specifier, context, next) {
-  if (specifier === './pi-opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) {
+  if (specifier === './opensandbox-backend.js' && context.parentURL?.endsWith('/src/core/index.js')) {
     return { url: new URL('./taskpool-controller-backend.js', import.meta.url).href, shortCircuit: true };
   }
   return next(specifier, context);

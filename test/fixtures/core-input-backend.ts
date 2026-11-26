@@ -10,8 +10,8 @@ export const transport = {
   reset() { this.submissions.clear(); this.listeners.clear(); this.interruptCalls = []; this.onInterrupt = undefined; this.next = undefined; },
   confirm(id, disposition) { this.submissions.get(id).receipt = { status: 'accepted', disposition }; },
 };
-export const claimPiOpenSandboxBackend = () => configuration;
-export async function openPiOpenSandboxBackend() {
+export const claimOpenSandboxBackend = () => configuration;
+export async function openOpenSandboxBackend() {
   return {
     async spawn({ agentId, onEvent }) {
       transport.listeners.set(agentId, onEvent);
