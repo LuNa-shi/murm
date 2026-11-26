@@ -131,6 +131,14 @@ The independent Trace Viewer package opens an output root containing saved or ac
 
 `npm test` runs the Core suite with the offline `docs:check` pretest. `npm --prefix trace-viewer test` verifies the standalone package. `docs:generate` refreshes prompt/API/storage references and source fingerprints.
 
+## CI build and verification
+
+The [CI workflow](../../.github/workflows/ci.yml) runs three parallel jobs on Ubuntu 24.04 with Node.js 24 for PRs targeting `main` and pushes to `main`. Each PR run checks out GitHub's test merge commit. An update cancels the older run for the same PR. The token has read access to repository contents, and checkout leaves no Git credentials in the working tree.
+
+Core CI checks a PR's test merge commit against its first parent for whitespace errors. It installs locked dependencies into a fresh runner-local npm cache and runs the type check. It then packs Core through the normal build and installs the tarball outside the checkout with production dependencies and lifecycle scripts disabled for that installation. This seeds npm registry metadata and tarballs in the same cache that the offline package tests use. The step removes its temporary tarball and install directory. `npm test` rebuilds, checks the generated architecture references and runs the default suite, including the offline package regressions. Opt-in native and model tests stay disabled. Trace Viewer CI runs the standalone package suite. [Website CI](22-website.md#build-and-render) checks the static site.
+
+A failing command fails its job and reports the result on the commit or PR. Core has a 30-minute limit. Trace Viewer and Website each have a 10-minute limit. Job output and the three named checks are available in GitHub Actions. Run the same commands locally to reproduce a failure. [Local CI commands](../workflows/development.md#required-github-checks)
+
 ## Final-tree acceptance configuration
 
 A host constructing a locked final-tree verifier supplies a trusted `final_tree_checker` configuration. It contains the fixed checker identity, toolchain/library/exporter paths and `artifactLock`; the loader verifies full mounted artifacts, pinned sources, isolated Lean version and actual cgroup limits before returning a usable verifier. The lock-generating tool takes the trusted build configuration and source checkout paths, verifies the fixed source revisions, and stores only the local deployment lock at the requested local path. A changed verifier, harness, dependency or executable requires regenerating and validating the lock. The final environment identity includes its digest. The diagnostic source checker keeps its separate fixture configuration. A host can instead supply another explicitly configured checker through the existing service seam.

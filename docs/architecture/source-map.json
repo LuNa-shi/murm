@@ -27,6 +27,7 @@
     ".dockerignore",
     "examples/substrate/FateProofGuard.lean",
     "examples/substrate/VerifyFateProof.lean",
+    ".github/workflows/ci.yml",
     ".github/workflows/deploy-website.yml"
   ],
   "excluded": [
@@ -2637,6 +2638,15 @@
         "docs/architecture/22-website.md"
       ],
       "role": "Astro TypeScript source configuration"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "category": "build and verification",
+      "chapters": [
+        "docs/architecture/07-run-configuration.md",
+        "docs/architecture/22-website.md"
+      ],
+      "role": "Run Core, Trace Viewer and website checks on pull requests and main"
     },
     {
       "path": ".github/workflows/deploy-website.yml",

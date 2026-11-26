@@ -29,6 +29,44 @@ the compiled entry points under `dist/scripts/`. See
 - Run relevant tests, full suite when available, and `git diff --check`. Run `/code-review` with separate **Spec** and **Standards** findings. Use `/pr` for a concise Summary, before/after Evidence and Merge Danger.
 - If a skill is unavailable, report that limitation and follow the applicable documented engineering requirements without claiming the skill ran.
 
+## Required GitHub checks
+
+[CI](../../.github/workflows/ci.yml) runs on PRs targeting `main` and pushes to
+`main`. It uses Linux and Node.js 24. A newer push to a PR cancels the previous
+run for that PR. The `main` ruleset is configured in GitHub after the checks
+pass on Actions. It requires a PR and the `Core CI`, `Trace Viewer CI` and
+`Website CI` checks. The owner approves merges.
+
+**Core CI** checks the PR's whitespace, installs locked dependencies, runs
+`npm run typecheck` and runs `npm test`, including the architecture check. To
+reproduce the cold-cache sequence from the repository root, use a fresh cache
+and install the packed Core in a temporary consumer before running tests.
+
+```sh
+(
+  set -e
+  package_dir=$(mktemp -d)
+  trap 'rm -rf -- "$package_dir"' EXIT
+  export npm_config_cache="$package_dir/npm-cache"
+  npm ci --no-audit --no-fund
+  npm run typecheck
+  npm pack --loglevel=error --pack-destination "$package_dir"
+  npm install --prefix "$package_dir/consumer" --prefer-offline --omit=dev --ignore-scripts --no-audit --no-fund "$package_dir"/*.tgz
+  npm test
+)
+```
+
+`npm ci` can fetch the locked tarballs without caching the registry metadata that
+an offline installation of the packed Core needs. The temporary consumer seeds
+that metadata in the same cache used by the tests. The package tests still
+install offline.
+
+**Trace Viewer CI** runs `npm --prefix trace-viewer test`. For **Website CI**,
+run `npm ci` inside `website/`, then
+`BASE_PATH=/murm SITE_URL=https://luna-shi.github.io npm run build`. The job
+checks for both `dist/index.html` and `dist/zh/index.html`. The Pages workflow
+deploys the merged site separately.
+
 ## Design-stage documentation
 
 For Phase 0005, apply the design-first authority and sequence above. For other stages, create a design Issue plus a documentation PR when the owner requests a new stage. The Issue states the problem, scope, user outcomes, decisions and acceptance. Its phase attachment explains the full target model, workflows, permissions, prompts/skills, failure behavior, verification plan and migration in reviewable chapters. Do not label a design as ready for runtime implementation merely because its documentation has been published.
