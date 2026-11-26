@@ -1786,6 +1786,14 @@
       "role": "Kimi K3 fixed-team sample configuration and finite resource bounds"
     },
     {
+      "path": "examples/lead-worker/fixtures/oracle.mjs",
+      "category": "Controlled fixtures",
+      "chapters": [
+        "docs/architecture/20-lead-worker-harness.md"
+      ],
+      "role": "Frozen host-side JSONL task cases and candidate transcript checks for #235"
+    },
+    {
       "path": "src/harnesses/peermesh/team.ts",
       "category": "Harness integration",
       "chapters": [
