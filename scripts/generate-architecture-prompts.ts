@@ -35,6 +35,7 @@ const sourcePaths = [
   'src/cli/swarm-cli.ts', 'src/cli/service-command.ts',
   'src/core/index.ts', 'src/core/bridge.ts', 'src/core/startup-prompt.ts', 'src/core/opensandbox-backend.ts', 'scripts/opensandbox-agent-worker.ts', 'scripts/codex-app-server-driver.ts',
   'scripts/local-setup-smoke.ts', 'scripts/local-setup-upstream.ts',
+  'examples/bridge-services/handoff.ts',
   'examples/notes/main.ts', 'src/harnesses/shared/run-input.ts', 'src/harnesses/substrate/index.ts', 'src/harnesses/substrate/substrate.ts',
   'src/harnesses/taskpool/controller.ts', 'src/harnesses/taskpool/harness.ts',
   'examples/substrate/fate-run.ts', 'examples/substrate/fate-service.ts', 'src/harnesses/substrate/paper-substrate.ts',
@@ -166,6 +167,14 @@ output('07-notes-harness.md', header('Installed Notes Harness prompts',
   + block('Writer publication', notesInput.put)
   + block('Reader retrieval', notesInput.get)
   + block('Reader follow-up', notesInput.follow));
+const handoffPath = 'examples/bridge-services/handoff.ts';
+const handoffVariables = { key: 'handoff-example', receivedFile: 'received.txt' };
+output('14-sdk-handoff.md', header('Installed public SDK handoff prompts',
+  'The host selects one role-specific Profile prompt for each Agent, then sends one follow-up through the public send method. The key is derived from a host-generated UUID and occurs in both prompts and Service request IDs. Only the writer is seeded with the undisclosed handoff value.')
+  + block('Writer Profile prompt', evaluate(between(handoffPath, 'const writerPrompt = ', ';\n')))
+  + block('Reader Profile prompt', evaluate(between(handoffPath, 'const readerPrompt = ', ';\n')))
+  + block('Writer follow-up', evaluate('`Publish' + between(handoffPath, '`Publish', '`);') + '`', handoffVariables))
+  + block('Reader follow-up', evaluate('`Receive' + between(handoffPath, '`Receive', '`);') + '`', handoffVariables)));
 const subagentsPath = 'test-support/subagents/communication-fixture-prompts.ts';
 output('08-subagents-harness.md', header('Subagents Harness prompts',
   'The ordinary Harness stages the Root and Child Profile prompts verbatim and sends user or model-authored task text through the collaboration controller. The separate communication fixture stages its own Profile prompts. It sends the default goal or configured goal and supplements through explicit followUp. Child round results are JSON snapshots composed in communication-fixture-controller.ts with childId, eventSeq, outcome, optional output/error and a terminal failure source. These variable fields originate in the accepted Core event, never latestOutput. Parent-created child and followup inputs are model-authored through Bash Agent Service requests.')

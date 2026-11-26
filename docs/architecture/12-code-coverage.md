@@ -4,7 +4,7 @@
 
 Runtime baseline: `86dfce6a1497fd1355d9d426a09c7c274ed6e389`; review date: 2026-11-25. Runtime, configuration and documentation-tooling files are fingerprinted from the current tree. The baseline identifies the runtime tree used for this integration review; documentation-tooling fingerprints also include changes in the reviewed documentation branch. This is not a claim that every runtime branch was executed or semantically verified.
 
-The declared inventory contains **332 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
+The declared inventory contains **335 files**. Every in-scope file must have a role and an existing architecture chapter. New source files are rejected until deliberately mapped; removed files require mapping updates. Generated served assets and controlled fixtures are labeled separately below.
 
 This is file-level coverage, not a claim of 100% branch verification. A matching hash says the referenced bytes are unchanged. It does not prove that prose is correct, tests passed, a provider launched, or collaboration succeeded. Maintain the narrative and review the whole affected flow before accepting regenerated fingerprints.
 
@@ -106,13 +106,16 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [examples/notes/run-report.ts](../../examples/notes/run-report.ts) | In-place compiled example import of the shared run-report implementation | [17-harness-reporting](17-harness-reporting.md) | `4e3329ae59dffa0b24102df143b6a95a0858d38036f05f24fc84bb9ed68d5427` |
 | [examples/subagents/run-report.ts](../../examples/subagents/run-report.ts) | In-place compiled example import of the shared run-report implementation | [17-harness-reporting](17-harness-reporting.md) | `4e3329ae59dffa0b24102df143b6a95a0858d38036f05f24fc84bb9ed68d5427` |
 
-### Execution and control (30)
+### Execution and control (33)
 
 | Source | Responsibility | Architecture chapters | SHA-256 |
 |---|---|---|---|
 | [benchmarks/programbench-pastel/subagents-example.ts](../../benchmarks/programbench-pastel/subagents-example.ts) | Pastel slice through the ordinary Subagents entry, in-flight user input and independent offline checker | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `a307149976a1bab31067975e0c5d79f101cff04177d7a1aed8d89b8889e2e3c0` |
 | [examples/bridge-services/gh-issues.ts](../../examples/bridge-services/gh-issues.ts) | Read-only GitHub CLI Service backed by an application-owned subprocess and credential | [15-core-runtime](15-core-runtime.md) | `9011585505e6a66e709f6923285faabb2c9157d20957ca70eae7b2f0c7d7866c` |
+| [examples/bridge-services/handoff-config.ts](../../examples/bridge-services/handoff-config.ts) | Standalone handoff backend, executor, model and existing Service configuration | [17-harness-reporting](17-harness-reporting.md) | `814edb3ece0536bfbd6beb159462272cda8d08509cfa88251e616b54bade3d82` |
+| [examples/bridge-services/handoff.ts](../../examples/bridge-services/handoff.ts) | Public SDK handoff, live Service and execution observation, and verified artifact reporting | [08-prompts](08-prompts.md), [17-harness-reporting](17-harness-reporting.md) | `ace339ed741e9a3bc2015e5e0ce8e6379aa233a11bfe3082e3cdae6985c463b8` |
 | [examples/bridge-services/messages.ts](../../examples/bridge-services/messages.ts) | Shared Messages manifest and in-process or already-running HTTP Service adapter selection | [15-core-runtime](15-core-runtime.md) | `9044bf09056803b4c433b130a99da98a9e303a4de205063c8a685630170cb512` |
+| [examples/bridge-services/tsconfig.handoff.json](../../examples/bridge-services/tsconfig.handoff.json) | Strict build configuration for the installed handoff sample | [17-harness-reporting](17-harness-reporting.md) | `348de48e14bd430ddd8073fa0501682063afd7a7c1ac270720f3732af883377d` |
 | [examples/notes/config.ts](../../examples/notes/config.ts) | Sample host lifecycle, provider, model, output and resource configuration | [17-harness-reporting](17-harness-reporting.md) | `375650c5b1d57dc5ded8f4c94932cbc9dfe9fa7338b4a413b5c162737fc4e176` |
 | [examples/notes/main.ts](../../examples/notes/main.ts) | Installed-package Notes Harness Service, role prompts, input order, archive verification and saved-report CLI | [17-harness-reporting](17-harness-reporting.md) | `6a4b03ed1dd659b35d21083dfc04799ed08df81cd599a5b8fff7fa71b5ae722f` |
 | [examples/subagents/collaboration-service.ts](../../examples/subagents/collaboration-service.ts) | Six authorized Bash operations and Service state export | [17-harness-reporting](17-harness-reporting.md), [08-prompts](08-prompts.md) | `d8fba63bf48fa426f24f83c76b6a92ed8a07f593ce6c15e0b17ffd9669c2f281` |
@@ -287,7 +290,7 @@ In-scope roots: `src/`, `scripts/`, `deploy/`, `integrations/`, `test-support/su
 | [scripts/check-architecture.ts](../../scripts/check-architecture.ts) | Offline documentation gate and local-link/anchor verification | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `adb68769259bffc68f2de8d3e5bc2807ab2035aa9511ccd69971fced93275672` |
 | [scripts/generate-architecture-api.ts](../../scripts/generate-architecture-api.ts) | Offline exact API/schema/SDK extraction and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `1d3d5182b81f2d132a539730fa19ad995073f176af221a069e56496c0d5cb324` |
 | [scripts/generate-architecture-coverage.ts](../../scripts/generate-architecture-coverage.ts) | Explicit source inventory, file fingerprints and coverage drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `228407cc3420e01ca2f7e4a6d82043fa8e318167e268868f56ca5737606015c4` |
-| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `e297ad74af57b5723c9a6f75d82c7ab50509eb84748a4ff8c6be5414cac272d9` |
+| [scripts/generate-architecture-prompts.ts](../../scripts/generate-architecture-prompts.ts) | Offline exact prompt extraction, synthetic composition and drift check | [INDEX](INDEX.md), [12-code-coverage](12-code-coverage.md) | `14b49b537f4be91a5c97060321be49ceb66f57968b2c200a2fa7ae7bd309d108` |
 
 ### durable storage (3)
 
