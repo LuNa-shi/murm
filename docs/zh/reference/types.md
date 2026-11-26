@@ -198,9 +198,9 @@ export interface StopOptions { timeoutMs?: number }
 export interface CloseOptions { timeoutMs?: number }
 
 export interface PendingCleanup {
-  kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report';
+  kind: 'agent' | 'bridge' | 'model' | 'backend' | 'report' | 'service';
   id: string;
-  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save';
+  action: 'await-startup' | 'stop-execution' | 'archive-session' | 'collect-artifacts' | 'delete-sandbox' | 'close' | 'save' | 'retire-service';
   error?: ErrorInfo;
   resourceKey?: string;
   providerId?: string;
