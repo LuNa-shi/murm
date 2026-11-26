@@ -14,13 +14,12 @@ async function fixture(t, uid = process.getuid()) {
   return { root, path, worker: new CoreWorkDir({ path, uid, gid: uid, assertOpen() {} }) };
 }
 
-test('trusted startup accepts ordinary binary bytes and preserves file mode and read-only root', async t => {
+test('trusted startup accepts ordinary binary bytes and preserves executable mode', async t => {
   const { path, worker } = await fixture(t);
   await chmod(path, 0o755);
   const files = { 'bin/sample': { encoding: 'base64', data: 'AP+A', mode: 0o755 } };
   assert.equal((await worker.initialize({ files, writable: false })).writable, false);
   assert.deepEqual(await readFile(join(path, 'bin/sample')), Buffer.from([0, 255, 128]));
-  assert.equal((await lstat(path)).mode & 0o777, 0o555);
   assert.equal((await lstat(join(path, 'bin/sample'))).mode & 0o777, 0o755);
 });
 

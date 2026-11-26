@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { transport } from './fixtures/core-agent-service-backend.js';
-import { decodeFileSeed } from '../scripts/core-file-seed.js';
+import { decodeFileSeed, partialDigest } from '../scripts/core-file-seed.js';
 
 const execute = promisify(execFile);
 const hook = registerHooks({ resolve(specifier, context, next) {
@@ -51,7 +51,7 @@ test('Board work wakes original Agents and a ready checker on normal CLI binding
   transport.onSnapshot = (agentId, { requestId, paths }) => {
     assert.equal(agentId, team.lead);
     assert.deepEqual(paths, ['checker.mjs']);
-    return { requestId, version: 1, digest: decodeFileSeed(source).digest, files: source };
+    return { requestId, version: 1, scope: 'partial', digest: partialDigest(decodeFileSeed(source).digest), files: source };
   };
   let deployments = 0, calls = 0, verify = 0, removed = 0;
   let harness;

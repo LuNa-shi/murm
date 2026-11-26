@@ -99,6 +99,48 @@ test('flat close retains physical cleanup and reconciles remaining Agents after 
 });
 
 
+test('TaskPool starts stopping every Agent before the first Worker stop completes', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'taskpool-parallel-stop-'));
+  const stores = await createTaskPoolStores(root);
+  const releaseFirst = Promise.withResolvers();
+  t.after(async () => { controls.onStop = null; stores.close(); await rm(root, { recursive: true, force: true }); });
+  transport.reset();
+  controls.credentials.clear();
+  controls.stopError = null;
+  controls.destroyError = null;
+  const accept = inputId => { transport.confirm(inputId, 'started'); transport.next = accept; };
+  transport.next = accept;
+  let observed;
+  const report = await runTaskPoolHarness({ ...stores, taskService: stores.tasks, contextService: stores.context,
+    missionWorkspace: stores.workspace, workspaceManager: stores.manager, outputDir: root,
+    deadlineAt: Date.now() + 10_000, sandbox: {}, model: 'default', image: 'fixture', capacity: 2,
+    async drive(controller, runtime) {
+      const [first, second] = controller.snapshot().agents.map(agent => agent.agentId);
+      const entered = new Set();
+      const both = Promise.withResolvers();
+      controls.onStop = async agentId => {
+        entered.add(agentId);
+        if (entered.size === 2) both.resolve([...entered]);
+        if (agentId === first) await releaseFirst.promise;
+      };
+      controller.halt('controlled-mission-stop');
+      try {
+        const attempts = await Promise.race([
+          both.promise,
+          wait(1000, null, { ref: false }),
+        ]);
+        assert.deepEqual(new Set(attempts), new Set([first, second]));
+        assert.equal((await runtime.get(first)).status, 'closing');
+        assert.equal(stores.tasks.getAgent(first).state, 'CLOSING');
+        observed = attempts;
+      } finally { releaseFirst.resolve(); }
+    },
+  });
+  assert.ok(observed);
+  assert.equal(report.cleanup.cleanup, 'complete');
+  assert.equal(report.cleanupFailure, null);
+});
+
 test('TaskPool host composes public Bash publication and controller finish with durable public results after close',async t=>{
   const root=await mkdtemp(join(tmpdir(),'taskpool-closed-loop-'));
   const stores=await createTaskPoolStores(root);

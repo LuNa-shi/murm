@@ -75,7 +75,7 @@
     },
     {
       "path": "src/harnesses/taskpool/controller.ts",
-      "sha256": "c41c7c5655a12d760f1846d37516d32f48731d4caee830b9bb4d3959981e463a"
+      "sha256": "315bbf948832df10845d55cc05adbdf33da4c93658f08d94ed0c71851db9c4d2"
     },
     {
       "path": "src/harnesses/taskpool/harness.ts",

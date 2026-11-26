@@ -3,7 +3,7 @@ export { createSandbox } from './core-input-backend.js';
 import { completeDigest, decodeFileSeed } from '../../scripts/core-file-seed.js';
 import { openOpenSandboxBackend as openBase } from './core-input-backend.js';
 export { claimOpenSandboxBackend, transport } from './core-input-backend.js';
-export const controls={stopError:null,destroyError:null,credentials:new Map(),preparedFiles:new Map(),onPrepare:null};
+export const controls={onStop:null,stopError:null,destroyError:null,credentials:new Map(),preparedFiles:new Map(),onPrepare:null};
 export async function openOpenSandboxBackend(config,ports) {
   const backend=await openBase();
   return {...backend,
@@ -19,7 +19,7 @@ export async function openOpenSandboxBackend(config,ports) {
       await controls.onPrepare?.(agentId,decoded.entries);
       return { requestId:input.requestId,status:'completed',digest:completeDigest(decoded.digest),writable:input.writable===true };
     },
-    async stopExecution(...args) {if(controls.stopError) throw controls.stopError;return backend.stopExecution(...args);},
+    async stopExecution(...args) {await controls.onStop?.(args[0]);if(controls.stopError) throw controls.stopError;return backend.stopExecution(...args);},
     async destroy(...args) {if(controls.destroyError) throw controls.destroyError;return backend.destroy(...args);},
   };
 }

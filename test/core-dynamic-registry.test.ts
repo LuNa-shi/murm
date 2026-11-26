@@ -4,7 +4,6 @@ import { registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createHttpJsonAdapter, ServiceRegistry } from '@murm/core';
 import { transport } from './fixtures/core-agent-service-backend.js';
 
 const hooks = registerHooks({ resolve(specifier, context, next) {
@@ -13,7 +12,7 @@ const hooks = registerHooks({ resolve(specifier, context, next) {
   }
   return next(specifier, context);
 } });
-const { createRuntime } = await import('@murm/core');
+const { createRuntime, createHttpJsonAdapter, ServiceRegistry } = await import('@murm/core');
 hooks.deregister();
 
 const initial = { prompt: 'Initial Worker', model: 'default', image: 'test', writable: true, services: {} };

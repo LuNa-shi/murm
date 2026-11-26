@@ -103,8 +103,8 @@ export function createTaskPoolController({runtime,taskService,missionId,capacity
       void stop(row, 'task-finish');
       return;
     }
-    if (!owner || !['UNBOUND', 'ACTIVE'].includes(owner.state) ||
-        (owner.state === 'ACTIVE' && (!execution || execution.owner_ref !== row.agentId ||
+    if (!owner || !['UNBOUND', 'PREPARING', 'ACTIVE'].includes(owner.state) ||
+        (owner.state !== 'UNBOUND' && (!execution || execution.owner_ref !== row.agentId ||
           !['CREATED', 'RUNNING'].includes(execution.state)))) {
       void stop(row, 'domain-binding-ended');
       return;

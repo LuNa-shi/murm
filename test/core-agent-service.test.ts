@@ -61,7 +61,9 @@ test('operation permissions, allowed Profiles and direct relationships reject be
 test('concurrent spawn preserves initial input identity, relationships and unknown reconciliation', async t => {
   const { runtime, parent, call } = await setup(t);
   const events = [];
-  runtime.onEvent(event => events.push({ event, agent: runtime.get(event.agentId) }));
+  runtime.onEvent(event => {
+    if ('agentId' in event) events.push({ event, agent: runtime.get(event.agentId) });
+  });
   transport.next = async inputId => {
     const submission = transport.submissions.get(inputId);
     assert.equal((await runtime.get(submission.agentId)).parentId, parent.id);
