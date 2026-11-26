@@ -22,7 +22,7 @@ Build the Worker from the clean, pinned implementation, then record its immutabl
 
 ```sh
 docker build --label org.opencontainers.image.revision="$(git rev-parse HEAD)" \
-  -f services/opensandbox-agent/Dockerfile -t murm-putnam-flat .
+  -f deploy/worker/Dockerfile -t murm-putnam-flat .
 docker image inspect murm-putnam-flat --format '{{.Id}}'
 node benchmarks/putnambench-taskpool/main.ts run trusted-checker-config.json /path/to/PutnamBench \
   EXP-YYYYMMDD-NN sha256:<worker-image-id>

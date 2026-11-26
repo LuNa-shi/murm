@@ -7,7 +7,7 @@ import { ServiceRegistry, type ServiceCaller } from '@murm/core/services';
 import { runInput } from '../../src/harnesses/shared/run-input.js';
 import { runWithReport } from '../../src/harnesses/shared/run-report.js';
 import { createPaperSubstrate, type SharingMode } from '../../src/harnesses/substrate/paper-substrate.js';
-import { MathlibSearchService } from '../../src/services/mathlib-search-service.js';
+import { MathlibSearchService } from '../../src/services/mathlib-search/service.js';
 import { createFateChecker, loadFateProject, sha256, type FateBenchmark, type FateProject } from './fate-checker.js';
 import { maxFateOperationsPerPeer, createFateTaskService, type FateCandidate, type MathlibMatch } from './fate-service.js';
 

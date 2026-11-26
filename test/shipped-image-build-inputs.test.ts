@@ -17,14 +17,22 @@ test('shipped image contexts contain every COPY input and install their locked d
   const files = listing.stdout.trim().split('\n').filter(path => !path.endsWith('/')).map(path => path.replace(/^package\//, ''));
   await execute('tar', ['-xzf', archive, '-C', directory]);
   const root = join(directory, 'package');
-  for (const name of ['opensandbox-agent', 'builtin', 'mathlib-search']) {
-    const dockerfile = await readFile(join(root, 'services', name, 'Dockerfile'), 'utf8');
+  for (const name of ['worker', 'builtin-services', 'mathlib-search']) {
+    const dockerfile = await readFile(join(root, 'deploy', name, 'Dockerfile'), 'utf8');
     for (const line of dockerfile.split('\n').filter(line => line.startsWith('COPY ') && !line.includes('--from='))) {
       const inputs = line.split(/\s+/).slice(1, -1).filter(part => !part.startsWith('--'));
       for (const input of inputs) {
         assert.ok(files.some(path => path === input || path.startsWith(`${input}/`)), `${name} image COPY input is absent from the archive: ${input}`);
       }
     }
+  }
+  for (const resource of [
+    'deploy/opensandbox/config.toml', 'deploy/builtin-services/compose.yaml', 'dist/deploy/worker/pi-models.json',
+    'scripts/local-setup/templates/config.js', 'scripts/local-setup/templates/environment.js',
+    'src/services/mathlib-search/service.json', 'src/services/mathlib-search/SKILL.md',
+    'src/services/mathlib-search/references/loogle.md', 'dist/src/services/mathlib-search/service.js',
+  ]) {
+    assert.ok(files.includes(resource), `runtime or deployment resource is absent from the archive: ${resource}`);
   }
   await execute('npm', ['ci', '--offline', '--omit=dev', '--ignore-scripts', '--no-audit', '--no-fund'], {
     cwd: root, timeout: 30_000, maxBuffer: 4 * 1024 ** 2,

@@ -2,7 +2,7 @@ name: murm-services
 
 x-builtin-build: &builtin-build
   context: ../..
-  dockerfile: services/builtin/Dockerfile
+  dockerfile: deploy/builtin-services/Dockerfile
 
 x-builtin-environment: &builtin-environment
   MURM_SERVICE_ISOLATED: "true"

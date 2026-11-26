@@ -1,8 +1,8 @@
 import { access, readdir, readFile, stat } from 'node:fs/promises';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { ERROR_CODES, MurmError } from '../errors.js';
-import { createServiceManifest } from '../sdk/service-manifest.js';
+import { ERROR_CODES, MurmError } from '../../errors.js';
+import { createServiceManifest } from '../../sdk/service-manifest.js';
 
 export const MATHLIB_SEARCH_SERVICE_ID = 'mathlib-search';
 export const MATHLIB_SEARCH_CAPABILITY = 'mathlib_search';

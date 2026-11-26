@@ -15,7 +15,7 @@ COPY src ./src
 COPY scripts ./scripts
 COPY examples ./examples
 COPY test-support/subagents/communication-fixture-prompts.ts ./test-support/subagents/
-COPY services ./services
+COPY deploy ./deploy
 RUN npm run build
 
 FROM node:22.19.0-bookworm-slim
@@ -47,7 +47,7 @@ COPY --from=typescript-build --chown=0:0 \
   /build/dist/scripts/codex-app-server-driver.js \
   /build/dist/scripts/project-install.js /build/dist/scripts/project-processes.js \
   /build/dist/scripts/swarm.js /build/dist/scripts/git-credential-peermesh.js /opt/murm/dist/scripts/
-COPY --chown=0:0 services/opensandbox-agent/pi-models.json /opt/murm/pi-agent/models.json
+COPY --chown=0:0 deploy/worker/pi-models.json /opt/murm/pi-agent/models.json
 # Git archives may mark source directories group-writable. Protect all
 # compiled files and the parent directories checked by the worker.
 RUN chmod 0755 /opt/murm \

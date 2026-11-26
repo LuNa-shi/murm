@@ -19,7 +19,7 @@ The example prints the report path and closes its Sandboxes after the task. Edit
 
 The two-Agent Notes handoff shows how to implement a custom Service and verify exported files across turns. [Notes example](examples/notes/README.md)
 
-The installable candidate provides `@murm/core`, `@murm/core/services` and `@murm/core/backends/pi-opensandbox`. Use the foreground CLI to start, inspect, direct input to or stop a configured TaskPool or PeerMesh Harness. The saved-result command reads the persisted Runtime and Harness reports by their Runtime ID. TaskPool supports reading public Workspace results and publishing Materials. Saving live Agent files to a Workspace revision requires a trusted capture binding supplied by the host. [Foreground and saved-result commands](docs/architecture/17-harness-reporting.md#foreground-harness-control)
+The installable candidate provides Runtime types and lifecycle through `@murm/core`, Service registration and adapters through `@murm/core/services`, and the configurable Pi or Codex backend through `@murm/core/backends/opensandbox`. Use the foreground CLI to start, inspect, direct input to or stop a configured TaskPool or PeerMesh Harness. The saved-result command reads the persisted Runtime and Harness reports by their Runtime ID. TaskPool supports reading public Workspace results and publishing Materials. Saving live Agent files to a Workspace revision requires a trusted capture binding supplied by the host. [Foreground and saved-result commands](docs/architecture/17-harness-reporting.md#foreground-harness-control)
 
 ## Harnesses
 
@@ -56,15 +56,20 @@ For the Core / Harness stage, the [Phase 0005 design on main](docs/phases/0005-c
 
 ## Implementation map
 
-- `src/core/` — programmable Runtime, Agent lifecycle, Service Bridge and configured OpenSandbox backend
-- `src/harnesses/` — TaskPool, PeerMesh, Substrate and Lead-Worker collaboration policies
-- `src/agent/` — capability profiles, Worker launch contracts, model catalog, Responses gateway and Services Bridge
-- `src/task/`, `src/context/`, `src/judge/` — authoritative domain state
-- `src/runtime/` — Execution processes, resources and Workspaces
-- `trace-viewer/` — standalone web UI for saved and live Core Runs. See [install and launch](docs/operations/trace-viewer.md).
-- `scripts/`, `config/`, `services/`, `test/` — operation, configuration, integrations and tests
-
-Operational references: [built-in services](services/builtin/README.md), and [Mathlib Search](services/mathlib-search/README.md).
+| Directory | What to look for |
+| --- | --- |
+| [`examples/`](examples/subagents/README.md) | Runnable Harness examples with editable tasks and configuration. Start with Subagents or the Notes Service. |
+| [`src/core/`](docs/architecture/15-core-runtime.md) | Programmable Runtime, Agent lifecycle, Service Bridge and OpenSandbox backend assembly. |
+| [`src/harnesses/`](docs/architecture/02-execution.md) | TaskPool, PeerMesh, Substrate and Lead-Worker coordination policies and shared host helpers. |
+| [`src/runtime/`](docs/architecture/16-pi-opensandbox-backend.md), `src/agent/` | Sandbox management, Execution and Workspace support, model catalog validation and Responses gateway. |
+| [`src/services/`](src/services/mathlib-search/README.md), `src/sdk/` | Optional Service integrations and internal Service hosting and registration. Task, Context and Judge own their domain state in `src/task/`, `src/context/` and `src/judge/`. |
+| [`deploy/`](docs/architecture/07-run-configuration.md#local-setup-and-doctor) | Worker image, local OpenSandbox config and Service deployment recipes. See [built-in services](deploy/builtin-services/README.md) and [Mathlib Search](src/services/mathlib-search/README.md). |
+| [`scripts/`](docs/architecture/07-run-configuration.md) | Build, setup, command entry points and Worker process code. Project templates live alongside setup under `scripts/local-setup/templates/`. |
+| `benchmarks/` | Opt-in benchmark runners with fixed inputs and evaluators. See [Pastel](benchmarks/programbench-pastel/README.md) and [PutnamBench](benchmarks/putnambench-taskpool/README.md). |
+| `test/`, `test-support/` | Regression tests and reusable test fixtures. |
+| [`docs/`](docs/INDEX.md), `website/` | Implementation manual, designs and experiment records, plus the separately built documentation site. |
+| [`trace-viewer/`](docs/operations/trace-viewer.md) | Standalone web UI for saved and live Core Runs. |
+| `.github/`, `third_party/` | Repository automation and pinned external code. |
 
 ## Evidence and history
 
