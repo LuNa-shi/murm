@@ -108,3 +108,61 @@ test('a lost Codex acknowledgement preserves the original input uncertainty', as
   assert.equal(f.records.some(record => record.type === 'response' && record.id === 'unknown'), false);
   assert.equal(f.writes.filter(message => message.method === 'turn/start').length, 1);
 });
+
+test('a completed Codex turn settles before a queued successor starts after a late steer acknowledgement', async t => {
+  const f = fixture();
+  t.after(() => f.driver.close());
+  await f.reply('initialize', {});
+  await f.reply('thread/start', { thread: { id: 'thread-one' } });
+  await f.driver.ready;
+  f.driver.write({ type: 'prompt', id: 'first', message: 'First' });
+  await f.reply('turn/start', { turn: { id: 'turn-one' } });
+  f.driver.write({ type: 'steer', id: 'late-steer', message: 'In flight' });
+  await new Promise(resolve => setImmediate(resolve));
+  f.driver.write({ type: 'prompt', id: 'successor', message: 'Next' });
+  f.driver.observe({ method: 'turn/completed', params: { threadId: 'thread-one', turn: { id: 'turn-one', status: 'completed' } } });
+  await f.reply('turn/steer', { turnId: 'turn-one' });
+  // The old turn must have settled before the queued new start is acknowledged.
+  assert.equal(f.records.filter(record => record.type === 'agent_settled').length, 1);
+  await f.reply('turn/start', { turn: { id: 'turn-two' } });
+  const transitions = f.records.filter(record => ['agent_start', 'agent_settled'].includes(record.type)).map(record => record.type);
+  assert.deepEqual(transitions, ['agent_start', 'agent_settled', 'agent_start']);
+  f.driver.close();
+});
+
+test('an accepted Codex start without an identity preserves input uncertainty', async t => {
+  const f = fixture();
+  t.after(() => f.driver.close());
+  await f.reply('initialize', {});
+  await f.reply('thread/start', { thread: { id: 'thread-one' } });
+  await f.driver.ready;
+  f.driver.write({ type: 'prompt', id: 'malformed-start', message: 'Potentially accepted' });
+  await f.reply('turn/start', { turn: {} });
+  assert.equal(f.records.some(record => record.type === 'response' && record.id === 'malformed-start'), false);
+  assert.ok(f.records.some(record => record.type === 'worker_error'));
+});
+
+test('Codex readiness waits for the native thread and excludes verbose native payloads from Worker history', async t => {
+  const f = fixture();
+  t.after(() => f.driver.close());
+  f.driver.write({ type: 'get_state', id: 'ready' });
+  await f.reply('initialize', {});
+  assert.equal(f.records.some(record => record.id === 'ready'), false);
+  await f.reply('thread/start', { thread: { id: 'thread-one' } });
+  assert.ok(f.records.some(record => record.id === 'ready' && record.success && record.data.sessionId === 'thread-one'));
+  f.driver.observe({ method: 'item/agentMessage/delta', params: { threadId: 'thread-one', delta: 'verbose private output' } });
+  assert.equal(JSON.stringify(f.records).includes('verbose private output'), false);
+});
+
+test('a failed native thread startup cannot report a ready Codex Agent', async t => {
+  const f = fixture();
+  t.after(() => f.driver.close());
+  f.driver.write({ type: 'get_state', id: 'ready' });
+  await f.reply('initialize', {});
+  const starting = f.writes.findLast(message => message.method === 'thread/start');
+  f.driver.observe({ id: starting.id, error: { code: -32602, message: 'invalid configuration' } });
+  await assert.rejects(f.driver.ready, /invalid configuration/);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(f.records.some(record => record.id === 'ready' && record.success), false);
+  assert.equal(f.writes.some(message => message.method === 'turn/start'), false);
+});

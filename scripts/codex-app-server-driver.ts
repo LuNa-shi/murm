@@ -30,7 +30,8 @@ export function createCodexAppServerDriver(options: DriverOptions) {
   let interrupting = false;
   let closed = false;
   let output = '';
-  let commands: Promise<unknown> = Promise.resolve();
+  const commands: (() => Promise<void>)[] = [];
+  let processingCommands = false;
 
   const uncertain = (error: Error) => Object.assign(error, { code: 'OPERATION_UNKNOWN' });
 
@@ -54,8 +55,9 @@ export function createCodexAppServerDriver(options: DriverOptions) {
     options.write({ method: 'initialized', params: {} });
     const result = await request('thread/start', { model: options.model, modelProvider: 'murm', cwd: options.cwd,
       approvalPolicy: 'never', sandbox: 'danger-full-access', baseInstructions: options.systemPrompt,
-      config: { web_search: 'disabled', 'features.multi_agent': false, 'features.apps': false,
-        'features.response_websockets': false, 'features.response_websockets_v2': false } });
+      config: { web_search: 'disabled', 'agents.enabled': false, 'features.multi_agent': false,
+        'features.multi_agent_v2': false, 'features.apps': false, 'features.plugins': false,
+        'features.remote_plugin': false, 'features.goals': false } });
     if (typeof result?.thread?.id !== 'string' || !result.thread.id) throw new Error('Codex did not return a thread identity');
     threadId = result.thread.id;
     return { threadId };
@@ -79,7 +81,7 @@ export function createCodexAppServerDriver(options: DriverOptions) {
   async function startTurn(message: Input) {
     const result = await request('turn/start', { threadId, input: [{ type: 'text', text: message.message, text_elements: [] }],
       clientUserMessageId: message.id });
-    if (typeof result?.turn?.id !== 'string' || !result.turn.id) throw new Error('Codex did not return a turn identity');
+    if (typeof result?.turn?.id !== 'string' || !result.turn.id) throw uncertain(new Error('Codex did not return a turn identity'));
     if (!completedTurns.has(result.turn.id)) { activeTurn = result.turn.id; startExecution(); }
   }
 
@@ -93,10 +95,19 @@ export function createCodexAppServerDriver(options: DriverOptions) {
     options.publish({ type: 'agent_settled', aborted });
   }
 
-  function enqueue(operation: () => Promise<void>) {
-    commands = commands.then(operation).catch(error => {
-      options.publish({ type: 'worker_error', message: error.message });
-    });
+  function enqueue(operation: () => Promise<void>, terminal = false) {
+    if (terminal) commands.unshift(operation);
+    else commands.push(operation);
+    if (processingCommands) return;
+    processingCommands = true;
+    void (async () => {
+      try {
+        while (commands.length) {
+          try { await commands.shift()!(); }
+          catch (error) { options.publish({ type: 'worker_error', message: (error as Error).message }); }
+        }
+      } finally { processingCommands = false; }
+    })();
   }
 
   function observe(record: any) {
@@ -116,29 +127,38 @@ export function createCodexAppServerDriver(options: DriverOptions) {
       return;
     }
     const params = record.params ?? {};
-    options.publish({ type: 'native_event', backend: 'codex', method: record.method, params });
     if (params.threadId && params.threadId !== threadId) return;
+    if (['turn/started', 'turn/completed'].includes(record.method) && typeof params.turn?.id === 'string') {
+      options.publish({ type: 'native_event', backend: 'codex', method: record.method,
+        threadId: params.threadId, turnId: params.turn.id, status: params.turn.status });
+    }
     if (record.method === 'turn/started' && typeof params.turn?.id === 'string') {
+      if (completedTurns.has(params.turn.id)) return;
       activeTurn = params.turn.id;
       startExecution();
     }
-    if (record.method === 'item/completed' && params.item?.type === 'agentMessage') {
+    if (record.method === 'item/completed' && params.turnId === activeTurn && params.item?.type === 'agentMessage') {
       if (typeof params.item.text === 'string') output += params.item.text;
     }
     if (record.method === 'turn/completed' && typeof params.turn?.id === 'string') {
       const id = params.turn.id;
       if (completedTurns.has(id) || activeTurn !== id) return;
+      if (!['completed', 'interrupted', 'failed'].includes(params.turn.status)) {
+        options.publish({ type: 'worker_error', message: 'Codex reported an invalid terminal turn status' });
+        return;
+      }
       completedTurns.add(id);
       if (activeTurn === id) activeTurn = undefined;
       completionWaiters.get(id)?.resolve();
       completionWaiters.delete(id);
-      // Schedule queue advancement behind the matching input acknowledgement.
-      // The interrupt fence can clear the queue before another turn is started.
+      // Finish the old turn after its in-flight acknowledgement and before
+      // dispatching a queued successor. Terminal events also release abort's
+      // waiter synchronously so execution control cannot deadlock the queue.
       enqueue(async () => {
         const next = interrupting ? undefined : followUps.shift();
         if (next) await startTurn(next);
         else settle(params.turn);
-      });
+      }, true);
     }
   }
 
@@ -152,8 +172,7 @@ export function createCodexAppServerDriver(options: DriverOptions) {
       timer = setTimeout(() => reject(new Error('Codex interruption did not reach a terminal turn')), 30_000);
     });
     try {
-      await request('turn/interrupt', { threadId, turnId });
-      await completed;
+      await Promise.all([request('turn/interrupt', { threadId, turnId }), completed]);
     } finally {
       clearTimeout(timer);
       completionWaiters.delete(turnId);
