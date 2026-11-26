@@ -27,7 +27,9 @@ Memory and CPU in the first table sum the Sandbox cgroups. Idle memory is the la
 
 ### Linux setup smoke
 
-A source-only checkout of `ffe2d9c8`, an empty npm cache, a new local provider instance, and a Worker built with Docker's build cache disabled reproduced the existing #224 setup path. The Worker build took 128.69 s. `murm setup` took 16.65 s including 5.88 s of smoke, and `murm doctor --smoke` took 5.80 s including 5.07 s of smoke. An external project created by `murm init` also passed `doctor --smoke`. Each smoke used real OpenSandbox and Pi, authenticated the Bridge Service hop, wrote and read exact file bytes, exported after stop, and confirmed Sandbox deletion. The test provider was then removed. This run used an existing Docker daemon with cached base, provider and Execd images.
+The supported checkout entry point `./scripts/setup` passed from a source-only archive of `ffe2d9c8` with empty npm and Docker image caches. Docker and containerd used private data roots in an isolated mount and network namespace on the same supported Linux kernel. The freshly started daemon listed zero images and containers. Setup completed in 173.01 s, including 4.22 s for npm dependencies, 1.55 s for the checkout build, 139.28 s for the Worker image, 21.46 s to pull and start OpenSandbox and Execd, and 5.50 s for smoke. A following `murm doctor --smoke` completed in 5.54 s including 4.84 s of smoke. Both ran real OpenSandbox and Pi, authenticated the Bridge Service hop, wrote and read exact file bytes, exported after stop, and confirmed Sandbox deletion with zero pending resources. The test provider was then removed and the private daemon stopped. This exercise began with Docker, Node and the required Linux host privileges already installed.
+
+A separate fresh-checkout run with the base, provider and Execd images cached also passed setup and doctor. An external project created by `murm init` passed `doctor --smoke` in the same local environment.
 
 ## Analysis
 
