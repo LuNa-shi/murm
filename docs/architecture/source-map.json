@@ -1779,6 +1779,46 @@
       "role": "Validates fixed Lead-Worker configuration and exact trusted team identity"
     },
     {
+      "path": "src/harnesses/lead-worker/dynamic.ts",
+      "category": "Harness integration",
+      "chapters": [
+        "docs/architecture/20-lead-worker-harness.md"
+      ],
+      "role": "Lead delegation, source and deployment receipts, and four-Agent membership admission"
+    },
+    {
+      "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
+      "category": "Harness integration",
+      "chapters": [
+        "docs/architecture/20-lead-worker-harness.md"
+      ],
+      "role": "Board-triggered exclusive input scheduling with ready-member gating"
+    },
+    {
+      "path": "examples/lead-worker/dynamic-container.ts",
+      "category": "Harness integration",
+      "chapters": [
+        "docs/architecture/20-lead-worker-harness.md"
+      ],
+      "role": "Bounded local Docker deployment, loopback Service adapter and owned resource cleanup"
+    },
+    {
+      "path": "examples/lead-worker/dynamic-orders.ts",
+      "category": "Harness integration",
+      "chapters": [
+        "docs/architecture/20-lead-worker-harness.md"
+      ],
+      "role": "Frozen orders task, pinned Git tree extraction and host-side candidate execution"
+    },
+    {
+      "path": "examples/lead-worker/verify-orders.ts",
+      "category": "Harness integration",
+      "chapters": [
+        "docs/architecture/20-lead-worker-harness.md"
+      ],
+      "role": "Offline orders oracle and retained Run receipt validation"
+    },
+    {
       "path": "examples/lead-worker/main.ts",
       "category": "Harness integration",
       "chapters": [

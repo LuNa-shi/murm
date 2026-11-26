@@ -168,6 +168,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     redact: redactor.value,
     addSecrets: redactor.add,
     drainService: id => bridge.drainService(id),
+    hasUncertainWrites: id => bridge.hasUncertainWrites(id),
     async exportService(registration) {
       const [result] = await exportServiceStates(new Map([[registration.manifest.id, registration]]), outputDir, redactor.value);
       return result as { path?: string; error?: ErrorInfo } | undefined;
@@ -535,7 +536,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
     const requestId = input?.requestId;
     let parameters;
     try {
-      parameters = snapshotSpawn(input, profiles, registrations);
+      parameters = snapshotSpawn(input, profiles, management.knowsService);
       config.driver.assertEnvironment?.(parameters.secretEnv);
     }
     catch (error) { throw problem('INVALID_CONTRACT', (error as Error).message, 'spawn', undefined, requestId); }
@@ -560,7 +561,7 @@ export async function createRuntime(options: CreateRuntimeOptions): Promise<Runt
         throw problem('CONFLICT', 'Runtime has no free Agent Slot', 'spawn', undefined, requestId);
       }
       const profile = profiles.get(parameters.profile)!;
-      if (Object.keys(profile.services).some(id => !registrations.has(id))) {
+      if ([...Object.keys(profile.services), ...Object.keys(parameters.bindings ?? {})].some(id => !registrations.has(id))) {
         throw problem('NOT_ALLOWED', 'Profile requires an unavailable Service', 'spawn', undefined, requestId);
       }
       const info: AgentInfo = { id: randomUUID(), profile: parameters.profile, status: 'starting', cursor: 0,

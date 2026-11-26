@@ -45,6 +45,8 @@ export interface ServiceRequest {
 
 export interface ServiceAdapter {
   invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
-  /** Optional bounded host-only snapshot called during Runtime close. */
+  /** Host confirmation that an uncertain HTTP write cannot continue to change remote state. */
+  confirmQuiescent?(options: { signal: AbortSignal }): boolean | Promise<boolean>;
+  /** Optional bounded host-only snapshot called during retirement or Runtime close. */
   exportState?(options: { signal: AbortSignal }): JsonValue | Promise<JsonValue>;
 }

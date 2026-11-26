@@ -41,7 +41,7 @@ const generationKey = (service: string, operation: string) => JSON.stringify([se
 const protectedServices = new Set(['agent', 'manage', 'team']);
 
 export function createRuntimeManagement({
-  profiles, registrations, validateProfile, isClosing, redact, addSecrets, changed, drainService, exportService, isAgentLive, cancelAccess,
+  profiles, registrations, validateProfile, isClosing, redact, addSecrets, changed, drainService, hasUncertainWrites, exportService, isAgentLive, cancelAccess,
 }: {
   profiles: Map<string, Profile>;
   registrations: Map<string, ServiceRegistration>;
@@ -52,11 +52,14 @@ export function createRuntimeManagement({
   redact(value: unknown): unknown;
   addSecrets(values: readonly string[]): void;
   drainService(id: string): Promise<void>;
+  hasUncertainWrites(id: string): boolean;
   exportService(registration: ServiceRegistration): Promise<ExportResult | undefined>;
   changed(change: RuntimeManagementChange): void;
 }) {
   let sequence = 0;
-  const definitions = new Map([...profiles].map(([id, profile]) => [id, { id, digest: digest(profile), sequence }]));
+  const definitions = new Map<string, Omit<ProfileDefinition, 'profile'>>(
+    [...profiles].map(([id, profile]) => [id, { id, digest: digest(profile), sequence }]),
+  );
   const requests = new Map<string, { digest: string; definition: ProfileDefinition }>();
 
   const serviceRequests = new Map<string, { digest: string; adapter: ServiceRegistration['adapter']; result: RuntimeServiceDefinition }>();
@@ -76,11 +79,12 @@ export function createRuntimeManagement({
     return [...definitions.keys()].map(id => profileGet(id)!);
   }
 
-  async function registerProfile(input: ProfileRegistration, caller = 'host') {
+  async function registerProfile(input: ProfileRegistration) {
     if (!validId(input?.id) || !validId(input?.requestId)) {
       throw problem('INVALID_CONTRACT', 'Profile registration requires a valid ID and requestId');
     }
-    const { id, profile, requestId } = input;
+    const { id, profile, requestId, actorId } = input;
+    const caller = actorId === undefined ? 'host' : `agent:${actorId}`;
     const key = JSON.stringify([caller, id, requestId]);
     let definitionDigest;
     try { definitionDigest = digest(profile); }
@@ -91,12 +95,13 @@ export function createRuntimeManagement({
       return structuredClone(previous.definition);
     }
     if (isClosing()) throw problem('NOT_ALLOWED', 'Runtime is closing');
+    if (actorId !== undefined && !isAgentLive(actorId)) throw problem('NOT_ALLOWED', 'Registration caller is unavailable');
     if (definitions.has(id)) throw problem('CONFLICT', 'Profile ID is already registered');
     let snapshot;
     try { snapshot = validateProfile(id, profile); }
     catch (error) { throw problem('INVALID_CONTRACT', redact((error as Error).message) as string); }
     profiles.set(id, snapshot);
-    definitions.set(id, { id, digest: digest(snapshot), sequence: ++sequence });
+    definitions.set(id, { id, digest: digest(snapshot), sequence: ++sequence, ...(actorId ? { actorId } : {}) });
     const definition = profileGet(id)!;
     requests.set(key, { digest: definitionDigest, definition });
     changed({ operation: 'profile.register', sequence, caller, requestId, definition });
@@ -112,14 +117,15 @@ export function createRuntimeManagement({
     return [...services.keys()].map(id => serviceGet(id)!);
   }
 
-  async function registerService(input: RuntimeServiceRegistration, caller = 'host') {
+  async function registerService(input: RuntimeServiceRegistration) {
     const id = input?.registration?.manifest?.id;
     if (!validId(id) || !validId(input.requestId) || !validId(input.deploymentRef) || !validId(input.implementationId)
       || !['run', 'external'].includes(input.ownership)) {
       throw problem('INVALID_CONTRACT', 'Service registration requires IDs, implementation and ownership');
     }
     if (protectedServices.has(id)) throw problem('NOT_ALLOWED', 'Management Service ID is reserved');
-    const { requestId, registration, deploymentRef, implementationId, ownership } = input;
+    const { requestId, registration, deploymentRef, implementationId, ownership, actorId } = input;
+    const caller = actorId === undefined ? 'host' : `agent:${actorId}`;
     const key = JSON.stringify([caller, id, requestId]);
     let fingerprint;
     try { fingerprint = digest({ manifest: registration.manifest, deploymentRef, implementationId, ownership }); }
@@ -130,10 +136,11 @@ export function createRuntimeManagement({
       return redact(previous.result) as RuntimeServiceDefinition;
     }
     if (isClosing()) throw problem('NOT_ALLOWED', 'Runtime is closing');
+    if (actorId !== undefined && !isAgentLive(actorId)) throw problem('NOT_ALLOWED', 'Registration caller is unavailable');
     if (services.has(id)) throw problem('CONFLICT', 'Service ID is already registered');
     const snapshot = snapshotServiceRegistration(registration);
     const definition: RuntimeServiceDefinition = {
-      id, manifest: snapshot.manifest, deploymentRef, implementationId, ownership, state: 'ready', sequence: ++sequence,
+      id, manifest: snapshot.manifest, deploymentRef, implementationId, ownership, state: 'ready', sequence: ++sequence, ...(actorId ? { actorId } : {}),
     };
     registrations.set(id, snapshot);
     services.set(id, { registration: snapshot, definition, dynamic: true });
@@ -149,16 +156,18 @@ export function createRuntimeManagement({
     changed({ operation: 'service.retire', sequence, ...service.retirement!, definition: service.definition });
   }
 
-  async function retireService(input: ServiceRetirement, caller = 'host') {
+  async function retireService(input: ServiceRetirement) {
     const timeoutMs = input?.timeoutMs ?? 60_000;
     if (!validId(input?.serviceId) || !validId(input.requestId)
       || !Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 2147483647) {
       throw problem('INVALID_CONTRACT', 'Service retirement requires IDs and a bounded timeout');
     }
-    const { serviceId, requestId } = input;
+    const { serviceId, requestId, actorId } = input;
+    const caller = actorId === undefined ? 'host' : `agent:${actorId}`;
     if (protectedServices.has(serviceId)) throw problem('NOT_ALLOWED', 'Management Service cannot be retired');
     const service = services.get(serviceId);
     if (!service) throw problem('NOT_FOUND', 'Service is not registered');
+    if (actorId !== undefined && !isAgentLive(actorId)) throw problem('NOT_ALLOWED', 'Retirement caller is unavailable');
     if (service.definition.state === 'ready') {
       registrations.delete(serviceId);
       service.retirement = { requestId, caller };
@@ -167,6 +176,12 @@ export function createRuntimeManagement({
     if (service.definition.state === 'retiring') {
       service.work ??= (async () => {
         await drainService(serviceId);
+        if (hasUncertainWrites(serviceId) && !await confirmRemoteDrain(service.registration)) {
+          updateRetirement(service, 'retiring', {
+            code: 'OPERATION_UNKNOWN', message: 'Remote Service write convergence is unconfirmed', retryable: true,
+          });
+          return;
+        }
         const result = await exportService(service.registration);
         if (result?.error) updateRetirement(service, 'retiring', result.error);
         else {
@@ -180,6 +195,23 @@ export function createRuntimeManagement({
       } finally { clearTimeout(timer); }
     }
     return serviceGet(serviceId)!;
+  }
+
+  async function confirmRemoteDrain(registration: ServiceRegistration) {
+    const confirm = registration.adapter.confirmQuiescent;
+    if (!confirm) return false;
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(() => confirm({ signal: controller.signal })),
+        new Promise<false>(resolve => { timer = setTimeout(() => {
+          controller.abort();
+          resolve(false);
+        }, 30_000); }),
+      ]) === true;
+    } catch { return false; }
+    finally { clearTimeout(timer); }
   }
 
   function ownedRetirements() {
@@ -280,7 +312,7 @@ export function createRuntimeManagement({
     access: Object.freeze({ get: accessGet,
       grant: (input: AgentAccessGrant) => mutateAccess('grant', input), revoke: (input: AgentAccessMutation) => mutateAccess('revoke', input) }),
     mutateAccess, initAccess, bridgeAccess,
-    retireAll, pendingServices,
+    retireAll, pendingServices, knowsService: (id: string) => services.has(id),
     retiredExports: () => ownedRetirements().flatMap(({ definition, exported }) => exported ? [{ serviceId: definition.id, ...exported }] : []),
     profileDigest: (id: string) => definitions.get(id)?.digest,
     snapshot: () => ({ sequence, profiles: profileList(), services: serviceList(), access: [...access.keys()].map(id => accessGet(id)!) }),

@@ -85,6 +85,7 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
   let closePromise: Promise<void> | undefined;
   const active = new Map<AbortController, { agentId: string; serviceId: string; operation: string }>();
   const serviceWork = new Map<string, Set<Promise<void>>>();
+  const uncertainWrites = new Set<string>();
 
   function trackCompletion(id: string, completion: Promise<void>) {
     let pending = serviceWork.get(id);
@@ -99,9 +100,11 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
   const server = createServer(async (request, response) => {
     const attemptId = randomUUID();
     let accessVersion: number | undefined;
-    const recordAttempt = (record: ServiceInvocationRecord) => recordService?.({
-      ...record, attemptId, ...(accessVersion === undefined ? {} : { accessVersion }),
-    });
+    let remoteWrite = false;
+    const recordAttempt = (record: ServiceInvocationRecord) => {
+      if (remoteWrite && record.state === 'settled' && record.outcome === 'unknown') uncertainWrites.add(record.serviceId);
+      recordService?.({ ...record, attemptId, ...(accessVersion === undefined ? {} : { accessVersion }) });
+    };
     let body: BridgeBody | undefined;
     let controller: AbortController | undefined;
     let instrumented = false;
@@ -156,6 +159,8 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
       traceService?.({ ...trace, phase: 'started' });
       const registration = registrations.get(body.service_id);
       if (!registration || !allows(current.services, body.service_id, body.operation)) throw new MurmError('NOT_ALLOWED', 'Profile does not authorize this Service operation');
+      remoteWrite = registration.manifest.endpoint.transport === 'http-json' &&
+        registration.manifest.capabilities.some(item => item.operation === body!.operation && item.side_effect === 'write');
       const binding = Object.hasOwn(current.bindings ?? {}, body.service_id) && typeof current.bindings![body.service_id] === 'string'
         ? current.bindings![body.service_id] : undefined;
       const caller = { runtimeId, agentId: agentId!, profile: current.profile, ...(binding === undefined ? {} : { binding }) };
@@ -169,7 +174,7 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
       controller = new AbortController();
       active.set(controller, { agentId: caller.agentId, serviceId: body.service_id, operation: body.operation });
       instrumented = true;
-      const result = await invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
+      const invocation = invokeService(registration, { operation: body.operation, input: Object.hasOwn(body, 'payload') ? body.payload : {},
         envelope: { operation_id: body.operation_id }, caller, signal: controller.signal, recordService: recordAttempt,
         trackCompletion: completion => trackCompletion(registration.manifest.id, completion),
         assertAuthorized: () => {
@@ -179,6 +184,8 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
             throw new MurmError('NOT_ALLOWED', 'Service caller authority was revoked');
           }
         } }, serviceTimeoutMs);
+      trackCompletion(registration.manifest.id, invocation.then(() => {}, () => {}));
+      const result = await invocation;
       traceOutput = result;
       reply(response, 200, { ok: true, result });
     } catch (caught) {
@@ -249,6 +256,7 @@ export async function createCoreBridge({ runtimeId, configuration, getAgent, reg
       }
     },
     async drainService(id: string) { await Promise.all(serviceWork.get(id) ?? []); },
+    hasUncertainWrites: (id: string) => uncertainWrites.has(id),
     visibleServices,
     credentialsForAgent(agentId: string) {
       const agent = getAgent(agentId);

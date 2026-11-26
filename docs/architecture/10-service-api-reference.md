@@ -40,11 +40,11 @@ This section is generated from executable exports and checked against the source
 | [src/agent/services-bridge.ts](../../src/agent/services-bridge.ts) | `28570d9b5cfadc3ceaa8136860bb8df2238ce951a144b996e5b2d9d5f2924111` |
 | [src/services/mathlib-search/service.json](../../src/services/mathlib-search/service.json) | `c205c3f97119aa171299ce664b40c8c68f0d5a6e88b4938b07e49dd7dd18066f` |
 | [src/errors.ts](../../src/errors.ts) | `5f77e3b55c00e01bd8f36e3dc18e8b7616aa68b3c6314d8ccbfbde9057f067fa` |
-| [src/core/index.ts](../../src/core/index.ts) | `041da6b00cede1c0003513bf14c2bf4e495bb2407a1e18b8441d429dd977653b` |
-| [src/core/types.ts](../../src/core/types.ts) | `afcc2b7ed6e953900934929ddb580b2ad35b8c0cdedaaceb46995788a75578e0` |
+| [src/core/index.ts](../../src/core/index.ts) | `6ef0a8789c86b3a3a023b73fb3baa59a28b2d378abe0ea6a7d83f15032f776e3` |
+| [src/core/types.ts](../../src/core/types.ts) | `9caca7aaf9d2bea40356574ea03f0d405f5c46a1405f52288c456338dddf8881` |
 | [src/core/public-services.ts](../../src/core/public-services.ts) | `f8cea3ce6983ecd15f81ffe7a5c483f476b728a1421b40961e49073d815d7664` |
-| [src/core/services.ts](../../src/core/services.ts) | `150ef68d1c88e89a1680ec604387177bfdca47f9af9b2426733af3ca00f29720` |
-| [src/core/service-types.ts](../../src/core/service-types.ts) | `794c34fb1e31d1f0e21daca04746d8eba56a82e7003a66cdb8c7bd4b8f9b08dd` |
+| [src/core/services.ts](../../src/core/services.ts) | `39502f6ef28ab44b8dc9db76bd5ad44e10c70cf0911731894efcfa4d12dbd5f2` |
+| [src/core/service-types.ts](../../src/core/service-types.ts) | `e602451c72d58182266255ac9b0e856541f23b7221a931b7beaaffe486909e37` |
 | [src/core/backends/opensandbox.ts](../../src/core/backends/opensandbox.ts) | `5a0508b36fa7b6e556c9fcce87cda56cbfcf876563874a2a30818069e2ee24ca` |
 | [src/core/backends/pi-opensandbox.ts](../../src/core/backends/pi-opensandbox.ts) | `f6b1d4d2bb9b30253195adfecda5abb24f17e0971c710c0007d6baac23d84734` |
 | [src/core/backend-config.ts](../../src/core/backend-config.ts) | `f193e6ccb9966ef40e3d8fdafaecab967ae8bbea96bf53e4a41f7d0cd7ffe797` |
@@ -3419,17 +3419,20 @@ export interface AgentObservation {
     };
 }
 export interface ProfileRegistration {
+    readonly actorId?: string;
     readonly id: string;
     readonly requestId: string;
     readonly profile: Profile;
 }
 export interface ProfileDefinition {
+    readonly actorId?: string;
     readonly id: string;
     readonly digest: string;
     readonly sequence: number;
     readonly profile: Profile;
 }
 export interface RuntimeServiceRegistration {
+    readonly actorId?: string;
     readonly requestId: string;
     readonly registration: ServiceRegistration;
     readonly deploymentRef: string;
@@ -3437,11 +3440,13 @@ export interface RuntimeServiceRegistration {
     readonly ownership: 'run' | 'external';
 }
 export interface ServiceRetirement {
+    readonly actorId?: string;
     readonly serviceId: string;
     readonly requestId: string;
     readonly timeoutMs?: number;
 }
 export interface RuntimeServiceDefinition {
+    readonly actorId?: string;
     readonly id: string;
     readonly manifest: ServiceManifest;
     readonly sequence: number;
@@ -3783,7 +3788,11 @@ export interface ServiceRequest {
 }
 export interface ServiceAdapter {
     invoke(request: ServiceRequest): JsonValue | Promise<JsonValue>;
-    /** Optional bounded host-only snapshot called during Runtime close. */
+    /** Host confirmation that an uncertain HTTP write cannot continue to change remote state. */
+    confirmQuiescent?(options: {
+        signal: AbortSignal;
+    }): boolean | Promise<boolean>;
+    /** Optional bounded host-only snapshot called during retirement or Runtime close. */
     exportState?(options: {
         signal: AbortSignal;
     }): JsonValue | Promise<JsonValue>;

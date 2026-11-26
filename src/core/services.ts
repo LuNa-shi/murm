@@ -172,14 +172,17 @@ export function createInProcessAdapter(implementation: ServiceAdapter): ServiceA
   if (!implementation || typeof implementation.invoke !== 'function') invalid('In-process Service requires invoke(request)');
   if (implementation.exportState !== undefined && typeof implementation.exportState !== 'function') invalid('Service exportState must be a function');
   return Object.freeze({ invoke: implementation.invoke.bind(implementation),
-    ...(implementation.exportState ? { exportState: implementation.exportState.bind(implementation) } : {}) });
+    ...(implementation.exportState ? { exportState: implementation.exportState.bind(implementation) } : {}),
+    ...(implementation.confirmQuiescent ? { confirmQuiescent: implementation.confirmQuiescent.bind(implementation) } : {}) });
 }
 
 function captureRegistration({ manifest, adapter }: ServiceRegistration): Readonly<ServiceRegistration> {
   if (typeof adapter.invoke !== 'function') invalid('Service adapter requires invoke(request)');
   if (adapter.exportState !== undefined && typeof adapter.exportState !== 'function') invalid('Service exportState must be a function');
+  if (adapter.confirmQuiescent !== undefined && typeof adapter.confirmQuiescent !== 'function') invalid('Service confirmQuiescent must be a function');
   const captured = Object.freeze({ invoke: adapter.invoke.bind(adapter),
-    ...(adapter.exportState ? { exportState: adapter.exportState.bind(adapter) } : {}) });
+    ...(adapter.exportState ? { exportState: adapter.exportState.bind(adapter) } : {}),
+    ...(adapter.confirmQuiescent ? { confirmQuiescent: adapter.confirmQuiescent.bind(adapter) } : {}) });
   const metadata = getAdapterMetadata(adapter);
   if (metadata) adapterMetadata.set(captured, metadata);
   const privateValues = adapterPrivateValues.get(adapter);

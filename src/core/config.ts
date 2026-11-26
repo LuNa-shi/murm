@@ -81,7 +81,7 @@ export function snapshotProfiles(profiles: Readonly<Record<string, Profile>>, mo
   return snapshots;
 }
 
-export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string, Profile>, registrations: ReadonlyMap<string, ServiceRegistration>): SpawnOptions {
+export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string, Profile>, knowsService: (id: string) => boolean): SpawnOptions {
   if (!record(input) || !validId(input.requestId) || !profiles.has(input.profile) ||
       Object.keys(input).some(key => !['requestId', 'profile', 'parentId', 'writable', 'files', 'bindings', 'secretEnv', 'collect', 'forkFrom', 'workspace'].includes(key)) ||
       (input.writable !== undefined && typeof input.writable !== 'boolean') ||
@@ -91,7 +91,7 @@ export function snapshotSpawn(input: SpawnOptions, profiles: ReadonlyMap<string,
   }
   validateEnvironment(input.secretEnv, 'secretEnv');
   if (input.bindings !== undefined && (!record(input.bindings) || Object.entries(input.bindings).some(([service, binding]) =>
-    !registrations.has(service) || typeof binding !== 'string' || !binding))) {
+    !knowsService(service) || typeof binding !== 'string' || !binding))) {
     throw new TypeError('Invalid Service bindings');
   }
   if (input.workspace !== undefined) {

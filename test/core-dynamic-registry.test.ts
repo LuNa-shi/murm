@@ -4,7 +4,7 @@ import { registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { ServiceRegistry } from '@murm/core/services';
+import { createHttpJsonAdapter, ServiceRegistry } from '@murm/core/services';
 import { transport } from './fixtures/core-agent-service-backend.js';
 
 const hooks = registerHooks({ resolve(specifier, context, next) {
@@ -25,7 +25,7 @@ async function setup(t) {
     backend: {}, services: new ServiceRegistry(), profiles: { worker: initial }, maxAgents: 3, outputDir,
   });
   t.after(async () => {
-    await runtime.close();
+    await runtime.close({ timeoutMs: 1_000 });
     await rm(outputDir, { recursive: true, force: true });
   });
   return runtime;
@@ -119,7 +119,8 @@ test('service retirement hides the service immediately and reconciles original d
 
   const profile = { ...initial, services: { 'check-orders': ['check'] } };
   await runtime.profiles.register({ id: 'checker', requestId: 'checker-profile', profile });
-  const checker = await runtime.spawn({ profile: 'checker', requestId: 'checker' });
+  const spawn = { profile: 'checker', requestId: 'checker', bindings: { 'check-orders': 'initial-binding' } };
+  const checker = await runtime.spawn(spawn);
   const work = call(checker.id, 'check', {}, 'check-orders');
   await started.promise;
   const request = { serviceId: 'check-orders', requestId: 'retire', timeoutMs: 5 };
@@ -129,7 +130,7 @@ test('service retirement hides the service immediately and reconciles original d
   assert.equal((await call(checker.id, 'list_services')).result.services.length, 0);
   assert.equal((await call(checker.id, 'check', {}, 'check-orders')).error.code, 'NOT_ALLOWED');
   await assert.rejects(runtime.spawn({ profile: 'checker', requestId: 'late-checker' }), { code: 'NOT_ALLOWED' });
-  assert.equal((await runtime.spawn({ profile: 'checker', requestId: 'checker' })).id, checker.id);
+  assert.equal((await runtime.spawn(spawn)).id, checker.id);
 
   release.resolve();
   assert.deepEqual(await work, { ok: true, result: true });
@@ -193,4 +194,45 @@ test('instance revocation fences the old invocation through regrant and preserve
   assert.equal(transport.spawns.get(worker.id), startup);
   assert.deepEqual(await runtime.get(worker.id), worker);
   assert.deepEqual(await runtime.access.get(worker.id), granted);
+});
+
+
+test('an unknown HTTP write keeps retirement and close pending until trusted convergence', async t => {
+  const runtime = await setup(t);
+  let remotePending = false;
+  let exported = 0;
+  const http = createHttpJsonAdapter({ fetchImpl: async (_url, { signal }) => {
+    remotePending = true;
+    return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+  } });
+  const manifest = {
+    ...checkManifest,
+    endpoint: { transport: 'http-json', url: 'http://127.0.0.1:2' },
+    capabilities: [{ ...checkManifest.capabilities[0], side_effect: 'write', timeout_ms: 25 }],
+  };
+  await runtime.services.register({
+    requestId: 'http', deploymentRef: 'http', implementationId: 'http-v1', ownership: 'run',
+    registration: { manifest, adapter: {
+      invoke: http.invoke,
+      confirmQuiescent() { return !remotePending; },
+      exportState() { exported++; return {}; },
+    } },
+  });
+  await runtime.profiles.register({ requestId: 'checker-profile', id: 'checker',
+    profile: { ...initial, services: { 'check-orders': ['check'] } } });
+  const checker = await runtime.spawn({ profile: 'checker', requestId: 'checker' });
+  const invocation = await call(checker.id, 'check', {}, 'check-orders');
+  assert.equal(invocation.error.details.request_outcome, 'unknown');
+  assert.equal(remotePending, true);
+  const retirement = await runtime.services.retire({ serviceId: 'check-orders', requestId: 'http-retire' });
+  assert.equal(retirement.state, 'retiring');
+  assert.equal(retirement.error.code, 'OPERATION_UNKNOWN');
+  assert.equal(exported, 0);
+  const pending = await runtime.close();
+  assert.equal(pending.cleanup, 'pending');
+  assert.ok(pending.pending.some(resource => resource.kind === 'service' && resource.id === 'check-orders'));
+
+  remotePending = false;
+  assert.equal((await runtime.close()).cleanup, 'complete');
+  assert.equal(exported, 1);
 });

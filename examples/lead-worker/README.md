@@ -1,6 +1,6 @@
-# Fixed Lead-Worker Harness
+# Lead-Worker Harness
 
-This Phase 0005 example creates one lead and two helpers through public Core. It adds no Core role type or dynamic Agent API. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
+This Phase 0005 example creates one lead and two helpers through public Core. The default workflow uses preconfigured Profiles and a fixed team. Each Agent has its own Profile, sandbox, workDir, persistent Session, Git account and branch. The Board is a local SQLite Service with exclusive owner claims, not PeerMesh's soft overlapping CLAIM notes. The trusted host owns the controller, identity bindings and cleanup.
 
 The editable TypeScript source is compiled by `npm run build`. Run the emitted example from an installed package directory or a built checkout:
 
@@ -25,3 +25,32 @@ Deterministic verification uses real Core, CLI subprocesses and Bridge authoriza
 For a host-managed four-group workload, `createLeadWorkerHarness({ helperCount: 3, ... })` also exposes `runStage`. Call it serially four times: the first input has `{ goal, paths }`, and the later inputs have `{ supplement, paths }`. `paths` maps `helper1`, `helper2` and `helper3` to three new distinct artifact paths for that group. Pass a host `signal` on every call to enforce the outer schedule. The controller retains the original team, requires actual preceding feedback adoption and verifies twelve fixed Git files by the final group. Its receipts preserve accepted Core inputs and settled event identities. The read-only `get(agentId)` supports host monitoring during waits. The caller owns its schedule, resource limits and final cleanup verification. The supplied CLI continues to run the original short two-group workflow.
 
 A host may first call `prepareStages({ signal })` once to obtain four real Core input receipts and actor-specific public Board read/ready-note evidence. This is finite setup and excludes the short workflow; it leaves all four business groups available. All three helpers run concurrently after the lead direction is validated. Setup notes do not count among the twelve business deliverables.
+
+
+## Dynamic orders mode
+
+Set the optional property below in the configuration passed to the same example CLI. Select the image by its local Docker ID. Store the candidate bundle and Run output in private host evidence storage.
+
+```js
+config.dynamic = {
+  variant: 'orders-a',
+  serviceImage: process.env.MURM_LEAD_WORKER_SERVICE_IMAGE,
+  candidatePath: './private-evidence/orders-candidate.json',
+};
+```
+
+Dynamic mode uses one Lead, two original Workers and a runtime-created checker in the same Board and Git project. The Lead can deploy its own checking program, register the checker Profile, admit the member, and grant or revoke the checking operation on an existing Worker. The final program is evaluated from the Lead's pinned Git commit in fresh containers. The installed package includes the dynamic entry point, task, starter and independent oracle.
+
+After a successful Run, execute the offline verifier from that package using its saved report and candidate bundle.
+
+```bash
+node dist/examples/lead-worker/verify-orders.js <harness-report.json> <orders-candidate.json>
+```
+
+The command returns a nonzero exit code for a missing or mismatched artifact, incomplete cleanup receipt, or any failed oracle case. The real-model run limits and required collaboration evidence are in the [acceptance design](../../docs/phases/0005-core-harness/06-lead-worker-dynamic.md).
+
+### 动态订单模式
+
+在现有配置中设置上面的 `dynamic` 字段，检查容器镜像使用本地不可变 Docker image ID。Lead 和两名原 Worker 先启动。Lead 可以部署检查服务、登记 checker Profile、加入第四名成员，并给原 Worker 授权或撤权。任务与反馈仍由同一个 Board 和 Git 项目推进。
+
+宿主从 Lead 提交的固定 Git 版本提取文件，用包内冻结的独立测试检查退出码、stdout 和 stderr。Run 关闭后，用上面的 `verify-orders.js` 和私有报告及候选包离线复验全部用例。真实模型验收还需核对实际分工、反馈采用、Session 连续性和物理回收。

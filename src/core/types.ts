@@ -301,12 +301,14 @@ export interface AgentObservation {
 }
 
 export interface ProfileRegistration {
+  readonly actorId?: string;
   readonly id: string;
   readonly requestId: string;
   readonly profile: Profile;
 }
 
 export interface ProfileDefinition {
+  readonly actorId?: string;
   readonly id: string;
   readonly digest: string;
   readonly sequence: number;
@@ -314,6 +316,7 @@ export interface ProfileDefinition {
 }
 
 export interface RuntimeServiceRegistration {
+  readonly actorId?: string;
   readonly requestId: string;
   readonly registration: ServiceRegistration;
   readonly deploymentRef: string;
@@ -322,12 +325,14 @@ export interface RuntimeServiceRegistration {
 }
 
 export interface ServiceRetirement {
+  readonly actorId?: string;
   readonly serviceId: string;
   readonly requestId: string;
   readonly timeoutMs?: number;
 }
 
 export interface RuntimeServiceDefinition {
+  readonly actorId?: string;
   readonly id: string;
   readonly manifest: ServiceManifest;
   readonly sequence: number;

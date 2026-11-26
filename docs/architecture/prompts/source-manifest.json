@@ -23,11 +23,11 @@
     },
     {
       "path": "src/core/index.ts",
-      "sha256": "041da6b00cede1c0003513bf14c2bf4e495bb2407a1e18b8441d429dd977653b"
+      "sha256": "6ef0a8789c86b3a3a023b73fb3baa59a28b2d378abe0ea6a7d83f15032f776e3"
     },
     {
       "path": "src/core/bridge.ts",
-      "sha256": "0cd62b45d155c8e222cdd2c9702b580732c064ee829ec56f43ec4531600f1d0b"
+      "sha256": "e5259e9cccba39188f4bb0e155ddf54fb84568d93d2d18948b25c4b309b84d32"
     },
     {
       "path": "src/core/startup-prompt.ts",
@@ -155,11 +155,23 @@
     },
     {
       "path": "src/harnesses/lead-worker/prompts.ts",
-      "sha256": "edce33888bcb30b073c9d947014592de5f92b5c5dc07c70f3f3803ee91d43cc8"
+      "sha256": "077d909a15763253ee69b99503959986c9646f5620b67ebd2c7477e63d32802e"
     },
     {
       "path": "src/harnesses/lead-worker/index.ts",
-      "sha256": "586b0d7c1f152dbf1d6c22ba1dbcc83a81c1829421cda2c29f55e34edcdefd13"
+      "sha256": "68d3b573975c9df05c221f69dd4e676255c1db59e3c90aba450d9a8efccfdac0"
+    },
+    {
+      "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
+      "sha256": "729596347dab0e824fc9373dbb678108d086d56215a3dd865329af948f832625"
+    },
+    {
+      "path": "src/harnesses/lead-worker/dynamic.ts",
+      "sha256": "526d959e427ded70618e83dff496a440c7939e9585821063c689433d623ce03d"
+    },
+    {
+      "path": "examples/lead-worker/dynamic-orders.ts",
+      "sha256": "d22e39fcd2e865ea7c5de6954abe9e8fdc415917b255a3cbe3fde5ce7ffc336c"
     },
     {
       "path": "src/runtime/runtime.ts",
@@ -466,10 +478,34 @@
       "sha256": "0045a458adf415fb6e61371af1a6e0031af98fe1e8df8ee5f9cfd9cb78379e85"
     },
     {
+      "path": "src/harnesses/lead-worker/prompts.ts",
+      "anchor": "export const dynamicLeadPrompt = `",
+      "line": 8,
+      "sha256": "49bb5969b1fbd4278b1139a3e426a54041ab8cc8401a65a92eaef5426b9d3a98"
+    },
+    {
+      "path": "src/harnesses/lead-worker/prompts.ts",
+      "anchor": "export const dynamicWorkerPrompt = `",
+      "line": 16,
+      "sha256": "f3034e6102239d314276dac4317271fb3c2b0766b19430057fe38861ad3d8f23"
+    },
+    {
       "path": "src/harnesses/lead-worker/index.ts",
       "anchor": "                  const nextPath =",
-      "line": 197,
+      "line": 235,
       "sha256": "d899bf6da9a12ab775120db5f1068857fe565eb414938a7dc3d584039e096f28"
+    },
+    {
+      "path": "src/harnesses/lead-worker/dynamic-scheduler.ts",
+      "anchor": "    send(lead, { type: 'dynamic-goal'",
+      "line": 49,
+      "sha256": "03cd6cfc940618705fcfe04f34241366944ff13a5bad31e38bda7856cb9f4bae"
+    },
+    {
+      "path": "src/harnesses/lead-worker/dynamic.ts",
+      "anchor": "                model, image, writable: true, prompt:",
+      "line": 239,
+      "sha256": "a6ba57740baffd026ee1589c2222ebfda6d3dc4e4bfc12a6a4040db5bdfc14e7"
     },
     {
       "path": "benchmarks/putnambench-taskpool/run.ts",
@@ -651,7 +687,7 @@
     },
     {
       "path": "docs/architecture/prompts/08-lead-worker-harness.md",
-      "sha256": "185414b7df73eded7598f969ba39d761bb613ad94c808da75d64d7bd1f5c7335"
+      "sha256": "3c352eb4f4197ce7ac9496267541bb822d045b0d12e98d40ccd5d0bb8d732128"
     },
     {
       "path": "docs/architecture/prompts/08-taskpool-harness.md",
