@@ -52,6 +52,10 @@ if (args[0] === 'trace') {
       }
     }
   }
+  if (command && 'command' in command && command.command === 'harness') {
+    const { runProjectCommand } = await import('./murm-project.js');
+    process.exit(await runProjectCommand(command, process.cwd()));
+  }
   if (command && 'command' in command && command.command !== 'interactive') {
     const controller = new AbortController();
     let signalCode: number | undefined;

@@ -1963,6 +1963,38 @@
       "role": "Foreground host CLI for explicit local Harness configuration and bounded control"
     },
     {
+      "path": "scripts/murm-project.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Installed project command, stream ownership, signal handling and protocol flush"
+    },
+    {
+      "path": "src/harnesses/shared/project-input.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Bounded capture of the selected host project and canonical initial file digest"
+    },
+    {
+      "path": "src/harnesses/shared/project-harness.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "ESM Harness module loading, application Run admission, lifecycle and result persistence"
+    },
+    {
+      "path": "src/harnesses/shared/project-rpc.ts",
+      "category": "launch and composition",
+      "chapters": [
+        "docs/architecture/17-harness-reporting.md"
+      ],
+      "role": "Project Run JSONL protocol, request replay, bounded input queue and priority stop"
+    },
+    {
       "path": "src/harnesses/shared/foreground-host.ts",
       "category": "launch and composition",
       "chapters": [

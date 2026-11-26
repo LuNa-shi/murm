@@ -3,10 +3,10 @@ import { Transform } from 'node:stream';
 
 const failureCode = (error: any) => typeof error?.code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(error.code) ? error.code : 'HOST_COMMAND_FAILED';
 const fail = (code: any) => Object.assign(new Error(code), { code });
-const MAX_COMMAND_BYTES = 65536;
+export const MAX_COMMAND_BYTES = 65536;
 
 // Keep at most one bounded unfinished line before readline performs UTF-8 decoding.
-function boundedLines(oversized: any) {
+export function boundedLines(oversized: () => void) {
   let fragments: any[] = [], bytes = 0, discarding = false, skipLf = false;
   const reset = () => { fragments = []; bytes = 0; };
   return new Transform({

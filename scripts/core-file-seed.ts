@@ -7,9 +7,7 @@ interface DecodedFile {
   mode: number;
 }
 
-const maxFileBytes = 2 * 1024 ** 2;
-const maxTotalBytes = 16 * 1024 ** 2;
-const maxFiles = 10_000;
+export const fileSeedLimits = Object.freeze({ entryBytes: 2 * 1024 ** 2, treeBytes: 16 * 1024 ** 2, count: 10_000 });
 
 function invalid(message: string) {
   return Object.assign(new TypeError(message), { code: 'INVALID_CONTRACT' });
@@ -32,7 +30,7 @@ export function fileSeedDigest(entries: readonly DecodedFile[]) {
 export function decodeFileSeed(files: unknown) {
   if (!record(files)) throw invalid('FileSeed must be a map of ordinary files');
   const paths = Object.keys(files).sort();
-  if (paths.length > maxFiles) throw invalid('FileSeed exceeds the file count limit');
+  if (paths.length > fileSeedLimits.count) throw invalid('FileSeed exceeds the file count limit');
 
   let total = 0;
   const entries: DecodedFile[] = [];
@@ -52,13 +50,13 @@ export function decodeFileSeed(files: unknown) {
       throw invalid('FileSeed entries require utf8 or base64 data for ordinary files');
     }
     const { encoding, data, mode = 0o644 } = file;
-    const encodedLimit = encoding === 'base64' ? 4 * Math.ceil(maxFileBytes / 3) : maxFileBytes;
+    const encodedLimit = encoding === 'base64' ? 4 * Math.ceil(fileSeedLimits.entryBytes / 3) : fileSeedLimits.entryBytes;
     if (![0o644, 0o755].includes(mode as number) || data.length > encodedLimit || !data.isWellFormed()) {
       throw invalid('FileSeed entry has an unsupported mode, encoding, or byte count');
     }
     const bytes = Buffer.from(data, encoding as 'utf8' | 'base64');
     total += bytes.length;
-    if (bytes.length > maxFileBytes || total > maxTotalBytes ||
+    if (bytes.length > fileSeedLimits.entryBytes || total > fileSeedLimits.treeBytes ||
         (encoding === 'base64' && bytes.toString('base64') !== data)) {
       throw invalid('FileSeed bytes exceed the configured limits or base64 is malformed');
     }

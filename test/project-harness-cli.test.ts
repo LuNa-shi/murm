@@ -1,0 +1,280 @@
+import assert from 'node:assert/strict';
+import { execFile, spawn } from 'node:child_process';
+import { once } from 'node:events';
+import { createInterface } from 'node:readline';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+
+const execute = promisify(execFile);
+const cli = fileURLToPath(new URL('../scripts/murm.js', import.meta.url));
+
+function rpcClient(t, cwd, args) {
+  const child = spawn(process.execPath, [cli, ...args], { cwd, stdio: 'pipe' });
+  t.after(() => { if (child.exitCode === null) child.kill('SIGKILL'); });
+  const exit = once(child, 'close');
+  const lines = createInterface({ input: child.stdout })[Symbol.asyncIterator]();
+  let stderr = '';
+  child.stderr.setEncoding('utf8').on('data', text => { stderr += text; });
+  const record = async () => {
+    const next = await lines.next();
+    assert.ok(!next.done, `RPC closed before the next record: ${stderr}`);
+    return JSON.parse(next.value);
+  };
+  return {
+    child, exit, record, stderr: () => stderr,
+    send: value => child.stdin.write(JSON.stringify(value) + '\n'),
+    async take(predicate) {
+      for (;;) {
+        const message = await record();
+        if (predicate(message)) return message;
+      }
+    },
+  };
+}
+
+test('the project CLI launches external ESM with the requested prompt and actual project bytes', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-cli-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const launcher = join(directory, 'launcher');
+  const project = join(directory, 'project');
+  const output = join(project, 'runs');
+  await Promise.all([mkdir(launcher), mkdir(project), mkdir(join(directory, 'modules'))]);
+  await writeFile(join(project, '.settings'), 'hidden\n');
+  await writeFile(join(project, 'run'), Buffer.from([0, 255]));
+  await chmod(join(project, 'run'), 0o755);
+  await writeFile(join(directory, 'modules', 'asset.txt'), 'from module\n');
+  await writeFile(join(directory, 'modules', 'harness.mjs'), `
+    import { readFile } from 'node:fs/promises';
+    export default { id: 'project-probe', apiVersion: 1, async run(context) {
+      const { input, initial, markRunning } = context;
+      markRunning();
+      return {
+        outcome: 'completed', reason: 'probe-completed',
+        result: { cwd: input.cwd, prompt: input.prompt, caller: process.cwd(),
+          moduleAsset: await readFile(new URL('./asset.txt', import.meta.url), 'utf8'),
+          files: initial.files },
+        artifacts: [], cleanup: { status: 'complete' },
+      };
+    } };
+  `);
+  const { stdout } = await execute(process.execPath, [
+    cli, '--harness', '../modules/harness.mjs', '--cwd', '../project',
+    '--prompt', '  检查项目  ', '--output-dir', '../project/runs',
+  ], { cwd: launcher, timeout: 10_000 });
+  const record = JSON.parse(stdout);
+  assert.equal(record.type, 'result');
+  assert.equal(record.result.harness.id, 'project-probe');
+  assert.equal(record.result.outcome, 'completed');
+  assert.deepEqual(record.result.result, {
+    cwd: project, prompt: '  检查项目  ', caller: launcher, moduleAsset: 'from module\n',
+    files: {
+      '.settings': { encoding: 'base64', data: 'aGlkZGVuCg==', mode: 0o644 },
+      run: { encoding: 'base64', data: 'AP8=', mode: 0o755 },
+    },
+  });
+  assert.match(record.result.initial.digest, /^complete:sha256:[a-f0-9]{64}$/);
+  assert.ok(record.result.reportPath.startsWith(output + '/'));
+  assert.equal(await readFile(record.result.prompt.path, 'utf8'), '  检查项目  ');
+});
+
+test('RPC acknowledges one Run, keeps control available during input and saves actual stop receipts', { timeout: 10_000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-rpc-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const project = join(directory, 'work');
+  await mkdir(project);
+  await writeFile(join(project, 'seed.txt'), 'first version\n');
+  await writeFile(join(directory, 'harness.mjs'), `
+    import { setTimeout } from 'node:timers/promises';
+    console.log('module diagnostic');
+    export default { id: 'rpc-probe', apiVersion: 1, input: true, async run(context) {
+      const { signal, registerInput, markRunning, initial, emit } = context;
+      let admitted = 0;
+      registerInput(async (payload, { requestId }) => {
+        admitted++;
+        emit({ kind: 'input-started' });
+        await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+        return { status: 'unknown', requestId, payload };
+      });
+      markRunning();
+      await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+      await setTimeout(30);
+      return { outcome: 'cancelled', reason: 'requested', artifacts: [],
+        result: { admitted, seed: initial.files['seed.txt'].data }, cleanup: { status: 'complete' } };
+    } };
+  `);
+  const client = rpcClient(t, directory, ['--harness', './harness.mjs', '--mode', 'rpc', '--output-dir', './results']);
+  assert.deepEqual((await client.record()).harness, { id: 'rpc-probe', apiVersion: 1 });
+  client.send({ id: 'start', operation: 'run', input: { cwd: './work', prompt: 'Read the seed' } });
+  const acknowledged = await client.record();
+  assert.equal(acknowledged.type, 'reply');
+  assert.equal(acknowledged.result.phase, 'starting');
+  const runId = acknowledged.runId;
+  client.send({ id: 'start', operation: 'run', input: { prompt: 'Read the seed', cwd: './work' } });
+  assert.deepEqual(await client.take(message => message.id === 'start'), acknowledged);
+  assert.equal((await client.take(message => message.event?.phase === 'running')).runId, runId);
+
+  await writeFile(join(project, 'seed.txt'), 'second version\n');
+  client.send({ id: 'i1', operation: 'input', input: { text: 'extra' } });
+  await client.take(message => message.event?.kind === 'input-started');
+  client.send({ id: 'i1', operation: 'input', input: { text: 'different' } });
+  assert.equal((await client.take(message => message.id === 'i1')).code, 'REQUEST_ID_CONFLICT');
+  client.send({ id: 'i1', operation: 'input', input: { text: 'extra' } });
+  client.send({ id: 'i2', operation: 'input', input: { text: 'queued' } });
+  client.send({ id: 'status', operation: 'status' });
+  assert.equal((await client.take(message => message.id === 'status')).result.phase, 'running');
+  client.send({ id: 'stop', operation: 'stop' });
+  assert.equal((await client.take(message => message.id === 'stop')).result.phase, 'stopping');
+  assert.equal((await client.take(message => message.id === 'i2')).code, 'RUN_STOPPING');
+  const unknown = await client.take(message => message.id === 'i1');
+  assert.equal(unknown.result.status, 'unknown');
+  assert.equal(unknown.result.requestId, 'i1');
+  assert.deepEqual(await client.take(message => message.id === 'i1'), unknown);
+  const final = await client.take(message => message.type === 'result');
+  assert.deepEqual(final.result.result, { admitted: 1, seed: 'Zmlyc3QgdmVyc2lvbgo=' });
+  assert.equal(final.result.cleanup.status, 'complete');
+  assert.equal(final.result.stopReason, 'requested');
+  assert.equal(JSON.parse(await readFile(final.result.reportPath, 'utf8')).stopReason, 'requested');
+  assert.deepEqual(await client.exit, [1, null]);
+  assert.match(client.stderr(), /module diagnostic/);
+});
+
+test('project capture uses the selected Git working subtree and rejects unsupported file objects', async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-git-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  const repo = join(directory, 'repo');
+  const project = join(repo, 'subdir');
+  await mkdir(project, { recursive: true });
+  await execute('git', ['init', '-q', repo]);
+  await Promise.all([
+    writeFile(join(repo, 'outside'), 'outside'),
+    writeFile(join(project, '.gitignore'), 'ignored\n'),
+    writeFile(join(project, 'tracked'), 'index version'),
+    writeFile(join(project, 'removed'), 'index only'),
+  ]);
+  await execute('git', ['-C', repo, 'add', '.']);
+  await Promise.all([
+    writeFile(join(project, 'tracked'), 'working version'),
+    writeFile(join(project, '.untracked'), 'untracked'),
+    writeFile(join(project, 'ignored'), 'ignored'),
+    rm(join(project, 'removed')),
+  ]);
+  await writeFile(join(directory, 'files.mjs'), `
+    export default { id: 'files', apiVersion: 1, async run({ initial }) {
+      return { outcome: 'completed', reason: 'captured', result: initial.files,
+        artifacts: [], cleanup: { status: 'complete' } };
+    } };
+  `);
+  const args = [cli, '--harness', './files.mjs', '--cwd', './repo/subdir',
+    '--prompt', 'Read this subtree', '--output-dir', './results'];
+  const { stdout } = await execute(process.execPath, args, { cwd: directory });
+  const { result } = JSON.parse(stdout);
+  assert.equal(result.initial.selection, 'git-working-tree');
+  assert.deepEqual(Object.keys(result.result).sort(), ['.gitignore', '.untracked', 'tracked']);
+  assert.equal(result.result.tracked.data, 'd29ya2luZyB2ZXJzaW9u');
+
+  await symlink(join(repo, 'outside'), join(project, 'link'));
+  await assert.rejects(execute(process.execPath, args, { cwd: directory }), error => {
+    const { result: failed } = JSON.parse(error.stdout);
+    assert.equal(error.code, 1);
+    assert.equal(failed.failure.code, 'PROJECT_FILE_UNSUPPORTED');
+    assert.match(failed.failure.message, /"link"/);
+    assert.equal(failed.initial, null);
+    assert.equal(failed.cleanup.status, 'complete');
+    return true;
+  });
+});
+
+test('an accepted Run stopped before startup preserves a cancellation report and prompt', { timeout: 10_000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-early-stop-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, 'harness.mjs'), `
+    export default { id: 'never-run', apiVersion: 1, async run() {
+      throw new Error('Harness entered after admission sealed');
+    } };
+  `);
+  const client = rpcClient(t, directory, ['--harness', './harness.mjs', '--mode', 'rpc', '--output-dir', './results']);
+  assert.equal((await client.record()).type, 'ready');
+  const requests = [
+    { id: 'bad', operation: 'other' },
+    { id: 'run', operation: 'run', input: { prompt: 'Preserve this' } },
+    { id: 'stop', operation: 'stop' },
+  ];
+  client.child.stdin.write(requests.map(value => JSON.stringify(value)).join('\n') + '\n');
+  assert.equal((await client.take(value => value.code === 'INVALID_REQUEST')).id, 'bad');
+  assert.equal((await client.take(value => value.id === 'run')).result.phase, 'starting');
+  assert.equal((await client.take(value => value.id === 'stop')).result.phase, 'stopping');
+  const { result } = await client.take(value => value.type === 'result');
+  assert.equal(result.initial, null);
+  assert.equal(result.stopReason, 'requested');
+  assert.equal(result.outcome, 'cancelled');
+  assert.equal(result.cleanup.status, 'complete');
+  assert.equal(await readFile(result.prompt.path, 'utf8'), 'Preserve this');
+  assert.equal(JSON.parse(await readFile(result.reportPath, 'utf8')).runId, result.runId);
+  assert.deepEqual(await client.exit, [1, null]);
+});
+
+test('the installed executable resolves an import-only Harness package from a separate launch directory',
+  { timeout: 120_000 }, async t => {
+    const { preparePackageArchive } = await import('./fixtures/notes-installed-package.js');
+    const root = await mkdtemp(join(tmpdir(), 'murm-project-package-'));
+    t.after(() => rm(root, { recursive: true, force: true }));
+    const { archive } = await preparePackageArchive(root);
+    const install = join(root, 'murm-install');
+    const launcher = join(root, 'launcher');
+    const project = join(root, 'project');
+    const module = join(launcher, 'node_modules', 'test-harness');
+    await Promise.all([mkdir(install), mkdir(project), mkdir(module, { recursive: true })]);
+    await writeFile(join(install, 'package.json'), '{"private":true}');
+    const env = { ...process.env };
+    delete env.NODE_PATH;
+    delete env.NODE_OPTIONS;
+    await execute('npm', ['install', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund', archive],
+      { cwd: install, env, timeout: 60_000 });
+    await writeFile(join(project, 'value.txt'), 'actual data');
+    await writeFile(join(module, 'package.json'), '{"type":"module","exports":{"import":"./project.js"}}');
+    await writeFile(join(module, 'project.js'), `
+      export default { id: 'installed-probe', apiVersion: 1, async run({ initial, input, markRunning }) {
+        markRunning();
+        return { outcome: 'completed', reason: 'loaded', result: {
+          data: initial.files['value.txt'].data, prompt: input.prompt,
+        }, artifacts: [], cleanup: { status: 'complete' } };
+      } };
+    `);
+    const { stdout } = await execute(join(install, 'node_modules', '.bin', 'murm'), [
+      '--harness', 'test-harness', '--cwd', '../project', '--prompt', 'Use local package', '--output-dir', '../output',
+    ], { cwd: launcher, env, timeout: 10_000 });
+    const { result } = JSON.parse(stdout);
+    assert.equal(result.harness.id, 'installed-probe');
+    assert.deepEqual(result.result, { data: 'YWN0dWFsIGRhdGE=', prompt: 'Use local package' });
+  });
+
+test('EOF and SIGTERM preserve the admitted Run stop reason and saved result', { timeout: 10_000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'murm-project-transport-'));
+  t.after(() => rm(directory, { recursive: true, force: true }));
+  await writeFile(join(directory, 'harness.mjs'), `
+    export default { id: 'stop-probe', apiVersion: 1, async run({ signal, markRunning }) {
+      markRunning();
+      await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+      return { outcome: 'cancelled', reason: 'received-stop', artifacts: [], cleanup: { status: 'complete' } };
+    } };
+  `);
+  for (const action of ['EOF', 'SIGTERM']) {
+    const client = rpcClient(t, directory, ['--harness', './harness.mjs', '--mode', 'rpc', '--output-dir', './results']);
+    assert.equal((await client.record()).type, 'ready');
+    client.send({ id: 'run', operation: 'run', input: { prompt: 'Wait for lifecycle stop' } });
+    await client.take(value => value.id === 'run');
+    await client.take(value => value.event?.phase === 'running');
+    if (action === 'EOF') client.child.stdin.end();
+    else assert.ok(client.child.kill('SIGTERM'));
+    const { result } = await client.take(value => value.type === 'result');
+    const expected = action === 'EOF' ? 'input-ended' : 'SIGTERM';
+    assert.equal(result.stopReason, expected);
+    assert.equal(result.cleanup.status, 'complete');
+    assert.equal(JSON.parse(await readFile(result.reportPath, 'utf8')).stopReason, expected);
+    assert.deepEqual(await client.exit, [action === 'EOF' ? 1 : 143, null]);
+  }
+});

@@ -3,9 +3,13 @@ import { parseArgs } from 'node:util';
 export const setupUsage = 'Usage: murm setup';
 export const initUsage = 'Usage: murm init --template subagents --dir <directory>';
 export const doctorUsage = 'Usage: murm doctor [--config <config.js>] [--smoke]';
+const projectUsage = [
+  'Usage: murm --harness <module> --prompt <text> [--cwd <directory>] [--config <module>] [--output-dir <directory>]',
+  '       murm --harness <module> --mode rpc [--config <module>] [--output-dir <directory>]',
+].join('\n');
 export const murmUsage = [
   'Usage: murm                         Start an interactive session in the current project',
-  setupUsage, initUsage, doctorUsage,
+  projectUsage, setupUsage, initUsage, doctorUsage,
   'Usage: murm trace --root <runs-dir> [--port 8787] (requires @murm/trace-viewer)',
 ].join('\n');
 
@@ -13,7 +17,14 @@ export type LocalCommand =
   | { command: 'setup' }
   | { command: 'doctor'; configPath?: string; smoke: boolean };
 
-type MurmCommand = LocalCommand | { command: 'init'; directory: string } | { command: 'interactive' };
+export type ProjectCommand = {
+  command: 'harness';
+  harness: string;
+  configPath?: string;
+  outputRoot?: string;
+} & ({ mode: 'foreground'; cwd?: string; prompt: string } | { mode: 'rpc' });
+
+type MurmCommand = LocalCommand | { command: 'init'; directory: string } | { command: 'interactive' } | ProjectCommand;
 
 export function parseMurmCommand(args: string[]): MurmCommand | { help: string } {
   const [command, ...options] = args;
@@ -23,6 +34,18 @@ export function parseMurmCommand(args: string[]): MurmCommand | { help: string }
   const usage = Object.hasOwn(usages, command) ? usages[command as keyof typeof usages] : murmUsage;
   if (options.length === 1 && options[0] === '--help' && usage !== murmUsage) return { help: usage };
   try {
+    if (command.startsWith('--')) {
+      const { values } = parseArgs({ args, options: {
+        harness: { type: 'string' }, prompt: { type: 'string' }, cwd: { type: 'string' },
+        mode: { type: 'string' }, config: { type: 'string' }, 'output-dir': { type: 'string' },
+      } });
+      if (!values.harness || values.config === '' || values['output-dir'] === '') throw new Error();
+      const project = { command: 'harness' as const, harness: values.harness, configPath: values.config, outputRoot: values['output-dir'] };
+      if (values.mode === 'rpc' && values.prompt === undefined && values.cwd === undefined) return { ...project, mode: 'rpc' };
+      if (values.mode === undefined && values.prompt?.trim() && values.cwd !== '') {
+        return { ...project, mode: 'foreground', cwd: values.cwd, prompt: values.prompt };
+      }
+    }
     if (command === 'setup' && options.length === 0) return { command };
     if (command === 'init') {
       const { values } = parseArgs({
