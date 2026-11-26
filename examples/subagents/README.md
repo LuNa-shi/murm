@@ -4,22 +4,41 @@ Repository TypeScript sources compile with `npm run build` into `dist/`. `npm pa
 
 Give Root a task. Root looks for independent work it can delegate early, chooses the assignments, and works on a complementary part while the team is active. A Child can delegate again. Team members can send notices, assign more work, wait and interrupt. A Child's result goes to its direct parent.
 
-From the checkout, prepare the host and initialize the editable project.
+## Run from the checkout
+
+Use Node.js 22.19 or newer and npm on the Linux host running Docker and OpenSandbox. If you have a compatible Worker image and an OpenSandbox provider, build from the checkout root.
 
 ```sh
-./scripts/setup
-node dist/scripts/murm.js init --template subagents --dir ../my-murm
-cd ../my-murm
+npm ci
+npm run build
+cd examples/subagents
 ```
 
-With an installed binary, use `murm setup` for host preparation and `murm init --template subagents --dir ./my-murm` for project creation. Setup verifies the Worker and OpenSandbox infrastructure with a local Responses endpoint. Init installs a candidate tarball in the project directory so the project runs with its own dependencies. Use `murm doctor` for host checks or `npm run doctor -- --smoke` from the project to check its configuration and run a temporary Sandbox probe. [Host requirements and diagnostics](../../docs/architecture/07-run-configuration.md#local-setup-and-doctor)
+If you need to prepare the host, run `./scripts/setup` from the checkout root in place of the install and build commands. It builds the checkout, prepares the Worker and OpenSandbox, and verifies them with a local Responses endpoint. The setup JSON reports the image ID as `worker.id`. [Host requirements and diagnostics](../../docs/architecture/07-run-configuration.md#local-setup-and-doctor)
 
-Set `MURM_SUBAGENTS_MODEL_URL` in the generated `.env` to a streaming Responses endpoint accepting `k3`, including its `/v1/responses` path. Fill in `MURM_SUBAGENTS_MODEL_TOKEN` if the endpoint requires a bearer token. Set `MURM_SUBAGENTS_LIFECYCLE_TOKEN` if an existing provider requires it. The editable `config.js` reads the same environment for the project and doctor. From the project directory, run `murm` or use `npm start` to resolve the project-local binary. You can also run the entry directly.
+Create `examples/subagents/.env` with your Worker image ID and a streaming `/v1/responses` endpoint that accepts `k3` and supports tool calls. Fill in the token if the endpoint requires bearer authentication.
 
 ```sh
-node main.js config.js 'Review the task files and write a short explanation.'
-node main.js config.js --interactive
+MURM_SUBAGENTS_IMAGE="sha256:<your-worker-image-id>"
+MURM_SUBAGENTS_MODEL_URL="https://your-gateway.example/v1/responses"
+MURM_SUBAGENTS_MODEL_TOKEN=""
 ```
+
+The example defaults to a local OpenSandbox lifecycle URL of `http://127.0.0.1:8080/v1`. Set `MURM_SUBAGENTS_LIFECYCLE_URL` for another port and `MURM_SUBAGENTS_LIFECYCLE_TOKEN` if your provider requires authentication.
+
+From `examples/subagents/`, run one task.
+
+```sh
+node --env-file=.env ../../dist/examples/subagents/main.js \
+  ../../dist/examples/subagents/config.js \
+  'Suggest two checks to make before merging a pull request.'
+```
+
+The entry waits for Root's reply, closes the team, and writes the task result and cleanup receipts to `subagents-runs/<runtimeId>/harness-report.json`. Edit `config.ts` or `main.ts` here and rebuild from the checkout root to try changes.
+
+## Interactive mode
+
+Pass `--interactive` in place of the task to keep the example open.
 
 In interactive mode, enter a task or a follow-up as a line, use `/status` to inspect the team, and use `/exit` to close the whole run. A Root reply leaves the team available for further input. End of input and host cancellation also close the team. A host can instead supply `config.goal` or use the exported input, reply, status and close methods.
 
@@ -27,7 +46,7 @@ The example config defaults to four live Agents including Root and three child e
 
 ## Use the packaged example with Codex
 
-The generated template defaults to Pi. To use the packaged Codex example from the installed project, set `MURM_SUBAGENTS_EXECUTOR=codex`, `MURM_SUBAGENTS_MODEL_ID`, and `MURM_SUBAGENTS_MODEL_URL` in the host shell. Set `MURM_SUBAGENTS_IMAGE` to the immutable ID of a Worker built with Codex. The optional `MURM_SUBAGENTS_MODEL_PROVIDER` label defaults to `openai` for Codex. Supply any required model or lifecycle token through the host environment.
+The example defaults to Pi. To use Codex from a project with `@murm/core` installed, set `MURM_SUBAGENTS_EXECUTOR=codex`, `MURM_SUBAGENTS_MODEL_ID`, and `MURM_SUBAGENTS_MODEL_URL` in the host shell. Set `MURM_SUBAGENTS_IMAGE` to the immutable ID of a Worker built with Codex. The optional `MURM_SUBAGENTS_MODEL_PROVIDER` label defaults to `openai` for Codex. Supply any required model or lifecycle token through the host environment.
 
 ```sh
 example=node_modules/@murm/core/dist/examples/subagents
